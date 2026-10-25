@@ -1987,16 +1987,6 @@
       ]
     },
     {
-      "id": "shortcuts:desktop:programs",
-      "in": "shortcuts",
-      "name": "Programs",
-      "glyph": "program",
-      "words": [
-        "apps",
-        "applications"
-      ]
-    },
-    {
       "id": "shortcuts:desktop:launcher",
       "in": "shortcuts",
       "name": "Launcher",
@@ -2031,56 +2021,170 @@
       ]
     },
     {
-      "id": "shortcuts:desktop:brightness",
+      "id": "shortcuts:desktop:typing",
       "in": "shortcuts",
-      "name": "Brightness",
-      "glyph": "brightness",
+      "name": "Typing",
+      "glyph": "keyboard",
       "words": [
-        "lights"
-      ]
-    },
-    {
-      "id": "shortcuts:desktop:dictation",
-      "in": "shortcuts",
-      "name": "Dictation",
-      "glyph": "dictating",
-      "words": [
+        "emoji",
+        "dictation",
+        "keyboard layout"
+      ],
+      "hidden": [
         "dictate",
         "speech"
       ]
     },
     {
-      "id": "shortcuts:desktop:session",
+      "id": "shortcuts:desktop:windows:focus",
       "in": "shortcuts",
-      "name": "Session",
-      "glyph": "session",
+      "name": "Focus",
+      "glyph": "windows"
+    },
+    {
+      "id": "shortcuts:desktop:windows:place",
+      "in": "shortcuts",
+      "name": "Place",
+      "glyph": "floating",
       "words": [
-        "lock",
-        "power"
+        "centre"
       ]
     },
     {
-      "id": "shortcuts:desktop:workspaces:going",
+      "id": "shortcuts:desktop:windows:size",
       "in": "shortcuts",
-      "name": "Going to one",
-      "glyph": "workspace"
+      "name": "Size",
+      "glyph": "fullscreen",
+      "words": [
+        "height"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:windows:new",
+      "in": "shortcuts",
+      "name": "New windows",
+      "glyph": "below",
+      "words": [
+        "open",
+        "terminal"
+      ],
+      "hidden": [
+        "programs",
+        "apps",
+        "applications"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:columns:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:columns:place",
+      "in": "shortcuts",
+      "name": "Place",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:columns:width",
+      "in": "shortcuts",
+      "name": "Width",
+      "glyph": "fullscreen"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "workspace",
+      "hidden": [
+        "going to one"
+      ]
     },
     {
       "id": "shortcuts:desktop:workspaces:column",
       "in": "shortcuts",
-      "name": "Moving a column",
-      "glyph": "columns"
+      "name": "The column",
+      "glyph": "columns",
+      "hidden": [
+        "moving a column"
+      ]
     },
     {
       "id": "shortcuts:desktop:workspaces:window",
       "in": "shortcuts",
-      "name": "Moving a window",
+      "name": "The window",
+      "glyph": "windows",
+      "hidden": [
+        "moving a window"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:near",
+      "in": "shortcuts",
+      "name": "Above and below",
+      "glyph": "workspace"
+    },
+    {
+      "id": "shortcuts:desktop:screens:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "display"
+    },
+    {
+      "id": "shortcuts:desktop:screens:column",
+      "in": "shortcuts",
+      "name": "The column",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:screens:window",
+      "in": "shortcuts",
+      "name": "The window",
       "glyph": "windows"
+    },
+    {
+      "id": "shortcuts:desktop:screens:this",
+      "in": "shortcuts",
+      "name": "This screen",
+      "glyph": "brightness",
+      "words": [
+        "brightness",
+        "lock",
+        "lights"
+      ],
+      "hidden": [
+        "session"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:launcher:notices",
+      "in": "shortcuts",
+      "name": "Notices",
+      "glyph": "notifications",
+      "words": [
+        "notifications",
+        "do not disturb"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:capture:sharing",
+      "in": "shortcuts",
+      "name": "Sharing",
+      "glyph": "sharing",
+      "words": [
+        "screencast"
+      ]
     },
     {
       "id": "shortcuts:terminal:tabs",
       "in": "shortcuts",
       "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:terminal:numbers",
+      "in": "shortcuts",
+      "name": "Tab numbers"
     },
     {
       "id": "shortcuts:terminal:scrollback",
@@ -2119,7 +2223,7 @@
       ]
     },
     {
-      "id": "shortcuts:neovim:open",
+      "id": "shortcuts:neovim:files:open",
       "in": "shortcuts",
       "name": "Open files",
       "words": [
@@ -2127,7 +2231,16 @@
       ]
     },
     {
-      "id": "shortcuts:neovim:splits",
+      "id": "shortcuts:neovim:files:folders",
+      "in": "shortcuts",
+      "name": "Folders",
+      "words": [
+        "hidden files",
+        "trash"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:files:splits",
       "in": "shortcuts",
       "name": "Splits",
       "words": [
@@ -2135,9 +2248,14 @@
       ]
     },
     {
-      "id": "shortcuts:neovim:tabs",
+      "id": "shortcuts:neovim:files:tabs",
       "in": "shortcuts",
       "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:neovim:files:numbers",
+      "in": "shortcuts",
+      "name": "Tab numbers"
     },
     {
       "id": "shortcuts:neovim:search",
@@ -2148,11 +2266,35 @@
       ]
     },
     {
-      "id": "shortcuts:neovim:moving",
+      "id": "shortcuts:neovim:search:text",
       "in": "shortcuts",
-      "name": "Moving",
+      "name": "Text",
       "words": [
-        "jumps"
+        "lines",
+        "replace"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:search:symbols",
+      "in": "shortcuts",
+      "name": "Symbols"
+    },
+    {
+      "id": "shortcuts:neovim:search:lists",
+      "in": "shortcuts",
+      "name": "Lists",
+      "words": [
+        "help",
+        "to-dos",
+        "location list"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:search:jumps",
+      "in": "shortcuts",
+      "name": "Jumps",
+      "hidden": [
+        "moving"
       ]
     },
     {
@@ -2179,10 +2321,7 @@
     {
       "id": "shortcuts:neovim:outline",
       "in": "shortcuts",
-      "name": "Outline",
-      "words": [
-        "symbols"
-      ]
+      "name": "Outline"
     },
     {
       "id": "shortcuts:neovim:tests",
@@ -2211,15 +2350,17 @@
       "in": "shortcuts",
       "name": "GitHub",
       "hidden": [
-        "octo"
+        "octo",
+        "which-key"
       ]
     },
     {
-      "id": "shortcuts:neovim:github:pulls",
+      "id": "shortcuts:neovim:pulls",
       "in": "shortcuts",
       "name": "Pull requests",
       "words": [
-        "prs"
+        "prs",
+        "reviews"
       ]
     },
     {
@@ -2228,9 +2369,23 @@
       "name": "Issues"
     },
     {
-      "id": "shortcuts:neovim:github:reviews",
+      "id": "shortcuts:neovim:github:people",
       "in": "shortcuts",
-      "name": "Reviews"
+      "name": "People and labels",
+      "words": [
+        "assignees",
+        "reviewers"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:comments",
+      "in": "shortcuts",
+      "name": "Comments"
+    },
+    {
+      "id": "shortcuts:neovim:github:reactions",
+      "in": "shortcuts",
+      "name": "Reactions"
     },
     {
       "id": "shortcuts:neovim:github:runs",
@@ -2241,25 +2396,38 @@
       ]
     },
     {
-      "id": "shortcuts:neovim:suggestions",
+      "id": "shortcuts:neovim:editor",
       "in": "shortcuts",
-      "name": "Suggestions",
+      "name": "Editor",
       "words": [
-        "completion",
-        "command line"
+        "undo history"
       ]
     },
     {
-      "id": "shortcuts:neovim:looks",
+      "id": "shortcuts:neovim:editor:suggestions",
+      "in": "shortcuts",
+      "name": "Suggestions",
+      "words": [
+        "completion"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:editor:commands",
+      "in": "shortcuts",
+      "name": "Command line"
+    },
+    {
+      "id": "shortcuts:neovim:editor:looks",
       "in": "shortcuts",
       "name": "Looks",
       "words": [
         "colours",
-        "colour scheme"
+        "colour scheme",
+        "spelling"
       ]
     },
     {
-      "id": "shortcuts:neovim:insides",
+      "id": "shortcuts:neovim:editor:insides",
       "in": "shortcuts",
       "name": "Insides",
       "words": [
@@ -2267,6 +2435,16 @@
         "marks",
         "settings"
       ]
+    },
+    {
+      "id": "shortcuts:neovim:tests:running",
+      "in": "shortcuts",
+      "name": "Running tests"
+    },
+    {
+      "id": "shortcuts:neovim:tests:results",
+      "in": "shortcuts",
+      "name": "Test results"
     },
     {
       "id": "shortcuts:neovim:files:finding",
@@ -2315,9 +2493,17 @@
     {
       "id": "shortcuts:neovim:code:selecting",
       "in": "shortcuts",
-      "name": "Selecting code",
+      "name": "Selecting code"
+    },
+    {
+      "id": "shortcuts:neovim:code:pieces",
+      "in": "shortcuts",
+      "name": "Blocks of code",
       "words": [
-        "text objects"
+        "text objects",
+        "functions",
+        "classes",
+        "arguments"
       ]
     },
     {
@@ -2328,12 +2514,26 @@
     {
       "id": "shortcuts:neovim:code:server",
       "in": "shortcuts",
-      "name": "Language server's folders"
+      "name": "Language servers",
+      "words": [
+        "workspace folders"
+      ],
+      "hidden": [
+        "language server's folders"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:problems:finding",
+      "in": "shortcuts",
+      "name": "Finding problems"
     },
     {
       "id": "shortcuts:neovim:problems:showing",
       "in": "shortcuts",
-      "name": "Showing problems"
+      "name": "Showing problems",
+      "words": [
+        "signs"
+      ]
     },
     {
       "id": "shortcuts:neovim:problems:through",
@@ -2364,6 +2564,16 @@
       "id": "shortcuts:neovim:outline:symbols",
       "in": "shortcuts",
       "name": "Going to a symbol"
+    },
+    {
+      "id": "shortcuts:neovim:outline:through",
+      "in": "shortcuts",
+      "name": "Moving through the outline"
+    },
+    {
+      "id": "shortcuts:neovim:outline:holding",
+      "in": "shortcuts",
+      "name": "What a symbol holds"
     },
     {
       "id": "shortcuts:neovim:outline:folding",
@@ -2426,13 +2636,10 @@
       "name": "Repositories",
       "words": [
         "repos",
-        "forks"
+        "forks",
+        "gists",
+        "links"
       ]
-    },
-    {
-      "id": "shortcuts:neovim:github:gists",
-      "in": "shortcuts",
-      "name": "Gists"
     },
     {
       "id": "shortcuts:neovim:github:notifications",
@@ -2440,33 +2647,30 @@
       "name": "Notifications"
     },
     {
-      "id": "shortcuts:neovim:github:keys",
-      "in": "shortcuts",
-      "name": "Finding keys",
-      "hidden": [
-        "which-key"
-      ]
-    },
-    {
-      "id": "shortcuts:neovim:github:pulls:finding",
+      "id": "shortcuts:neovim:pulls:finding",
       "in": "shortcuts",
       "name": "Finding pull requests"
     },
     {
-      "id": "shortcuts:neovim:github:pulls:pull",
+      "id": "shortcuts:neovim:pulls:pull",
       "in": "shortcuts",
       "name": "The pull request"
     },
     {
-      "id": "shortcuts:neovim:github:pulls:merging",
+      "id": "shortcuts:neovim:pulls:merging",
       "in": "shortcuts",
-      "name": "Merging and checks",
+      "name": "Merging",
       "words": [
         "merge queue"
       ]
     },
     {
-      "id": "shortcuts:neovim:github:pulls:reviewing",
+      "id": "shortcuts:neovim:pulls:checks",
+      "in": "shortcuts",
+      "name": "Checks"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:reviewing",
       "in": "shortcuts",
       "name": "Starting a review",
       "words": [
@@ -2474,82 +2678,43 @@
       ]
     },
     {
-      "id": "shortcuts:neovim:github:pulls:people",
-      "in": "shortcuts",
-      "name": "People and labels"
-    },
-    {
-      "id": "shortcuts:neovim:github:pulls:comments",
-      "in": "shortcuts",
-      "name": "Comments"
-    },
-    {
-      "id": "shortcuts:neovim:github:pulls:reactions",
-      "in": "shortcuts",
-      "name": "Reactions"
-    },
-    {
-      "id": "shortcuts:neovim:github:issues:finding",
-      "in": "shortcuts",
-      "name": "Finding issues"
-    },
-    {
-      "id": "shortcuts:neovim:github:issues:issue",
-      "in": "shortcuts",
-      "name": "The issue"
-    },
-    {
-      "id": "shortcuts:neovim:github:issues:people",
-      "in": "shortcuts",
-      "name": "People and labels"
-    },
-    {
-      "id": "shortcuts:neovim:github:issues:comments",
-      "in": "shortcuts",
-      "name": "Comments"
-    },
-    {
-      "id": "shortcuts:neovim:github:issues:reactions",
-      "in": "shortcuts",
-      "name": "Reactions"
-    },
-    {
-      "id": "shortcuts:neovim:github:reviews:threads",
+      "id": "shortcuts:neovim:pulls:threads",
       "in": "shortcuts",
       "name": "Threads"
     },
     {
-      "id": "shortcuts:neovim:github:reviews:diffs",
+      "id": "shortcuts:neovim:pulls:files",
       "in": "shortcuts",
-      "name": "Diffs"
-    },
-    {
-      "id": "shortcuts:neovim:github:reviews:files",
-      "in": "shortcuts",
-      "name": "Changed files"
-    },
-    {
-      "id": "shortcuts:neovim:github:reviews:submitting",
-      "in": "shortcuts",
-      "name": "Submitting"
-    },
-    {
-      "id": "shortcuts:neovim:github:reviews:threads:comments",
-      "in": "shortcuts",
-      "name": "Comments"
-    },
-    {
-      "id": "shortcuts:neovim:github:reviews:threads:reactions",
-      "in": "shortcuts",
-      "name": "Reactions"
-    },
-    {
-      "id": "shortcuts:pi:typing",
-      "in": "shortcuts",
-      "name": "Typing",
-      "words": [
-        "message"
+      "name": "Changed files",
+      "hidden": [
+        "diffs"
       ]
+    },
+    {
+      "id": "shortcuts:neovim:pulls:submitting",
+      "in": "shortcuts",
+      "name": "Submitting a review"
+    },
+    {
+      "id": "shortcuts:pi:message",
+      "in": "shortcuts",
+      "name": "Message",
+      "words": [
+        "send"
+      ]
+    },
+    {
+      "id": "shortcuts:pi:editing",
+      "in": "shortcuts",
+      "name": "Editing",
+      "hidden": [
+        "typing"
+      ]
+    },
+    {
+      "id": "shortcuts:pi:scrollback",
+      "in": "shortcuts",
+      "name": "Scrollback"
     },
     {
       "id": "shortcuts:pi:conversation",
@@ -4327,35 +4492,67 @@
       "word": "tabs",
       "things": [
         "shortcuts:terminal:tabs",
-        "shortcuts:neovim:tabs"
+        "shortcuts:neovim:files:tabs"
       ],
-      "why": "The terminal and Neovim both have tabs, and each group says its layer beside it."
+      "why": "The terminal and Neovim both have tabs, and each group says what holds it beside it."
     },
     {
-      "word": "comments",
+      "word": "tab numbers",
       "things": [
-        "shortcuts:neovim:github:pulls:comments",
-        "shortcuts:neovim:github:issues:comments",
-        "shortcuts:neovim:github:reviews:threads:comments"
+        "shortcuts:terminal:numbers",
+        "shortcuts:neovim:files:numbers"
       ],
-      "why": "A pull request, an issue and a review's thread each have comments, and each group says what holds it beside it."
+      "why": "The terminal and Neovim both go to a tab by its number, and each group says what holds it beside it."
     },
     {
-      "word": "people and labels",
+      "word": "focus",
       "things": [
-        "shortcuts:neovim:github:pulls:people",
-        "shortcuts:neovim:github:issues:people"
+        "shortcuts:desktop:windows:focus",
+        "shortcuts:desktop:columns:focus",
+        "shortcuts:desktop:workspaces:focus",
+        "shortcuts:desktop:screens:focus"
       ],
-      "why": "A pull request and an issue each have people and labels, and each group says what holds it beside it."
+      "why": "Focus goes to a window, a column, a workspace or a screen alike, and each group says what holds it beside it."
     },
     {
-      "word": "reactions",
+      "word": "place",
       "things": [
-        "shortcuts:neovim:github:pulls:reactions",
-        "shortcuts:neovim:github:issues:reactions",
-        "shortcuts:neovim:github:reviews:threads:reactions"
+        "shortcuts:desktop:windows:place",
+        "shortcuts:desktop:columns:place"
       ],
-      "why": "A pull request, an issue and a review's thread each take reactions, and each group says what holds it beside it."
+      "why": "A window and a column are each moved in place, and each group says what holds it beside it."
+    },
+    {
+      "word": "the column",
+      "things": [
+        "shortcuts:desktop:workspaces:column",
+        "shortcuts:desktop:screens:column"
+      ],
+      "why": "A column moves to another workspace or another screen, and each group says what holds it beside it."
+    },
+    {
+      "word": "the window",
+      "things": [
+        "shortcuts:desktop:workspaces:window",
+        "shortcuts:desktop:screens:window"
+      ],
+      "why": "A window moves to another workspace or another screen, and each group says what holds it beside it."
+    },
+    {
+      "word": "text",
+      "things": [
+        "shortcuts:terminal:text",
+        "shortcuts:neovim:search:text"
+      ],
+      "why": "The terminal sizes its text and Neovim searches it, and each group says what holds it beside it."
+    },
+    {
+      "word": "scrollback",
+      "things": [
+        "shortcuts:terminal:scrollback",
+        "shortcuts:pi:scrollback"
+      ],
+      "why": "The terminal and pi each scroll back through what they showed, and each group says what holds it beside it."
     }
   ]
 }

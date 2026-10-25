@@ -1649,6 +1649,13 @@ Scope {
 
     onShownChanged: Report.say(`showing ${shown}`)
 
+    // The window the launcher opened over, as niri describes it, or null on
+    // an empty workspace: what Return pastes into (Pasting.qml), and whose
+    // program's keys Shortcuts leads with (launcher/KeyMap.qml).
+    function cameFrom() {
+        return Pasting.under();
+    }
+
     // Opens straight into a collection, all of it shown until something's
     // typed; the left arrow steps out to the search. A name no collection
     // has opens the search. A collection may lead with one member, which

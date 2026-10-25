@@ -2,7 +2,12 @@
 // "it's hard to find the needles in the haystacks"). Its top holds each
 // layer's chords from jitsusama.keys as a row, top to bottom: the desktop,
 // the touchscreen's swipes from jitsusama.swipes, the terminal, then Neovim
-// and pi inside it, pi's named Agents. Each says how many it holds after
+// and pi inside it, pi's named Agents; but the layers of the window it
+// opened over come first (Joel: "ideally context aware with the app
+// open"), read once as it opens: kitty's the terminal's, and Neovim's or
+// pi's before it when its title says one runs there, then the desktop's.
+// Its own chord opens straight into the first of them, the path saying
+// which, so its groups are already showing. Each says how many it holds after
 // its name, and its first groups at its right edge, muted, as many as fit
 // whole, since what follows a name is cut short at a third of the row
 // (Choice.qml). A layer holds its groups, by what a chord acts on
@@ -16,7 +21,9 @@
 // by its own chord, or by finding "Show these shortcuts", rather than
 // adding a row to every search, since the desktop's actions are found
 // there already, chords and all. Return on a desktop shortcut does what it
-// does; one inside a program can only be shown.
+// does; one inside a program can only be shown. One chord doing one thing
+// in several places of a group is one row saying each (KeyGroups.js's
+// merged).
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -86,7 +93,7 @@ Provider {
     }
 
     // A layer or a group, by its word in the vocabulary (shortcuts:desktop,
-    // shortcuts:neovim:github:pulls), and what's in it as KeyGroups.js
+    // shortcuts:neovim:pulls:threads), and what's in it as KeyGroups.js
     // arranged it: its row, every level below it as its own search finds
     // them, and as a search above it does. A group the vocabulary doesn't
     // know, one a bind named itself, is named by its id.
@@ -100,8 +107,8 @@ Provider {
         const name = Words.things[id] ? entry.name : last.charAt(0).toUpperCase() + last.slice(1);
         // Found inside this level, a group of its own says its first
         // groups, as it does listed; one further down says the group
-        // holding it, since Pull requests, Issues and Threads each have
-        // Comments. Found from further up, its own groups say this one.
+        // holding it, since Windows, Columns, Workspaces and Screens each
+        // have Focus. Found from further up, its own groups say this one.
         const deeper = groups.reduce((all, group) => all.concat(group.deeper), []);
         const below = groups.map(group => group.row).concat(deeper);
         // Its first groups, as many as fit whole.
@@ -139,16 +146,50 @@ Provider {
         .map(layer => {
             const id = `shortcuts:${layer.name}`;
             const glyph = layer.glyph === "" ? "" : (Words.glyph(id) || layer.glyph);
-            const chords = layer.binds.map(bind => chordRow(layer, bind, glyph));
-            return levelOf(id, KeyGroups.arrange(layer.name, layer.binds),
-                chords.map((chord, at) => at), chords, glyph);
+            const binds = KeyGroups.merged(layer.name, layer.binds);
+            const chords = binds.map(bind => chordRow(layer, bind, glyph));
+            return Object.assign({ name: layer.name }, levelOf(id,
+                KeyGroups.arrange(layer.name, binds), chords.map((chord, at) => at), chords,
+                glyph));
         })
 
-    readonly property var all: layers.reduce((rows, layer) => rows.concat(layer.chords), [])
+    // The layers whose keys work in the window the launcher opened over, its
+    // own first, by their names; only the desktop's over another program's
+    // window, or none.
+    property var leads: ["desktop"]
+
+    // Read once as Shortcuts opens, from what niri last said, since the
+    // window under the launcher can't change while it holds the keys.
+    function opened() {
+        const under = provider.launcher?.cameFrom() ?? null;
+        leads = KeyGroups.over(under?.app_id ?? "", under?.title ?? "");
+    }
+
+    // The layers in the order the window opened over puts them, the first
+    // saying it's that window's in the foot while it's selected.
+    readonly property var ranked: {
+        const own = leads.map(name => layers.find(layer => layer.name === name))
+            .filter(layer => layer !== undefined);
+        const rest = layers.filter(layer => !leads.includes(layer.name));
+        if (own.length === 0 || own[0].name === "desktop")
+            return own.concat(rest);
+        const first = Object.assign({}, own[0], {
+            row: Object.assign({}, own[0].row, { note: "the keys of the window you were in" })
+        });
+        return [first].concat(own.slice(1), rest);
+    }
+
+    // The chord opens on the program's own layer, its groups showing, the
+    // path saying which program it is; over the desktop, on the layers.
+    function leading() {
+        return ranked.length > 0 && ranked[0].name !== "desktop" ? ranked[0].row : null;
+    }
+
+    readonly property var all: ranked.reduce((rows, layer) => rows.concat(layer.chords), [])
 
     // Every level, found by its name from the top, a group saying what
     // holds it beside it, since the terminal and Neovim both have tabs.
-    readonly property var levels: layers.reduce((rows, layer) => rows.concat([layer.row],
+    readonly property var levels: ranked.reduce((rows, layer) => rows.concat([layer.row],
         layer.deeper), [])
 
     function search(typed) {
@@ -212,7 +253,7 @@ Provider {
     }
 
     function everything() {
-        return layers.map(layer => layer.row);
+        return ranked.map(layer => layer.row);
     }
 
     // Home counts every chord, not the layers.

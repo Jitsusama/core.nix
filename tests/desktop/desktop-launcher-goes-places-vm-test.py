@@ -882,6 +882,15 @@ with subtest("a word typed whole lands on what it says"):
 
 with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
     windows = len(json.loads(as_account("niri msg --json windows")))
+    # Over no window only the desktop's keys work, so the layers lead with
+    # them: the empty workspace niri keeps last on the focused screen.
+    shortcut_spaces: list[Json] = json.loads(as_account("niri msg --json workspaces"))
+    shortcut_screen = next(space for space in shortcut_spaces if space["is_focused"])["output"]
+    shortcut_empty = max(
+        (space for space in shortcut_spaces if space["output"] == shortcut_screen),
+        key=lambda space: int(space["idx"]),
+    )
+    as_account(f"niri msg action focus-workspace {shortcut_empty['idx']}")
     machine.send_key("meta_l-shift-slash")
     launcher_ready()
     # Its top is the layers, each with its count and as many of its first
@@ -894,7 +903,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
     step_in()
-    groups = ["Windows", "Columns", "Workspaces", "Screens", "Programs", "Launcher"]
+    groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
     launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     photograph("launcher-shortcut-groups")
     # What's typed there finds a group by its name, before every chord in
@@ -904,7 +913,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     t.assertIn("Go to workspace 3", showing()["rows"])
     step_in()
     launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
-    inner = ["Going to one", "Moving a column", "Moving a window"]
+    inner = ["Focus", "The column", "The window", "Above and below"]
     t.assertEqual(showing()["rows"][: len(inner)], inner)
     t.assertIn("Show every workspace", showing()["rows"])
     # The field says where that is as one path, in the rows' own case.
@@ -955,6 +964,34 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     type_in("shortcuts", selecting="Shortcuts")
     step_in()
     launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+
+with subtest("Super+Shift+/ over a terminal opens on the terminal's shortcuts"):
+    focused_kitty()
+    machine.send_key("meta_l-shift-slash")
+    launcher_ready()
+    # Over kitty the chord opens on the terminal's layer, its groups
+    # already showing, the path saying whose keys they are.
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
+    t.assertEqual(showing()["path"], ["Shortcuts", "Terminal"])
+    t.assertEqual(showing()["rows"][:2], ["Tabs", "Tab numbers"])
+    photograph("launcher-shortcuts-over-kitty")
+    # The right arrow steps into a group, and the left back out to the
+    # layers, the terminal's first and selected, saying it's the window's,
+    # and the desktop's next.
+    step_in()
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal", "tabs"])
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts"])
+    t.assertEqual(showing()["rows"][:2], ["Terminal", "Desktop"])
+    t.assertEqual((showing()["selected"] or {}).get("name"), "Terminal")
+    t.assertEqual(showing()["footer"], "the keys of the window you were in")
+    # Return goes back in.
+    step_in("ret")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
