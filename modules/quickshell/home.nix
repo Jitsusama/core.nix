@@ -291,8 +291,11 @@ let
   # them: what each does, its chord, in its one spelling too, and the group
   # it names, if any, for launcher/KeyGroups.js to group it by, and for the
   # desktop's, the command that does the same and the glyph its action
-  # wears. The touchscreen's swipes come after the desktop's chords, since
-  # they do what its chords do.
+  # wears. The touchscreen's swipes are the desktop's too, after its
+  # chords: a layer of their own split one desktop in two (Joel, 2026-10-25:
+  # "touch and desktop being separate does not make sense"), and five of the
+  # six do what a chord does, so each joins that chord's row
+  # (launcher/KeyGroups.js's merged).
   shortcutLayers =
     let
       keyed = layer: {
@@ -310,10 +313,10 @@ let
           glyph = if layer == "desktop" then actionGlyph b.run else "";
         }) config.jitsusama.keys.${layer};
       };
+      desktop = keyed "desktop";
     in
     [
-      (keyed "desktop")
-      touchscreen
+      (desktop // { binds = desktop.binds ++ swipes; })
     ]
     ++ map keyed [
       "terminal"
@@ -321,40 +324,44 @@ let
       "pi"
     ];
 
-  # Each swipe drawn as a chord is: how many fingers, then which way, the
-  # niri action it runs and the glyph that action wears.
-  touchscreen = {
-    name = "touchscreen";
-    glyph = "";
-    binds = map (
-      swipe:
-      let
-        run = [
-          "niri"
-          "msg"
-          "action"
-          swipe.action
-        ];
-      in
-      {
-        inherit (swipe) does;
-        inherit run;
-        keys = "";
-        group = "";
-        chord = [
-          {
-            text = toString swipe.fingers;
-            wide = false;
-          }
-          {
-            text = swipeGlyphs.${swipe.way};
-            wide = true;
-          }
-        ];
-        glyph = actionGlyph run;
-      }
-    ) config.jitsusama.swipes;
-  };
+  # Each swipe as a desktop bind: drawn as how many fingers, then which
+  # way, and written as words ("3 fingers up") where a chord is spelled; the
+  # niri action it runs, as the desktop's own binds run theirs; and the
+  # keys and group of the desktop bind that does the same, so it lands in
+  # that bind's group and row.
+  swipes = map (
+    swipe:
+    let
+      run = [
+        "niri"
+        "msg"
+        "action"
+        swipe.action
+        "--"
+      ];
+      twin = lib.findFirst (b: b.does == swipe.does) null config.jitsusama.keys.desktop;
+    in
+    {
+      inherit (swipe) does;
+      inherit run;
+      when = "";
+      keys = if twin == null then "" else twin.keys;
+      group = if twin == null then "" else twin.group;
+      swipe = true;
+      chord = [
+        {
+          text = toString swipe.fingers;
+          wide = false;
+          written = "${toString swipe.fingers} fingers ${swipe.way}";
+        }
+        {
+          text = swipeGlyphs.${swipe.way};
+          wide = true;
+        }
+      ];
+      glyph = actionGlyph run;
+    }
+  ) config.jitsusama.swipes;
   swipeGlyphs = {
     up = mark "swipeUp";
     down = mark "swipeDown";

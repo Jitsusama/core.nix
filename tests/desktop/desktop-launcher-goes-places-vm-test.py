@@ -1092,7 +1092,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # Its top is the layers, each with its count and as many of its first
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
     # theirs.
-    layers = ["Desktop", "Touchscreen", "Terminal"]
+    layers = ["Desktop", "Terminal"]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
     desktop_row = desktop.showing()["things"][0]["reads"]
     assert re.fullmatch(r"Desktop \u00b7 \d+ \u00b7 Windows, Columns", desktop_row), desktop_row
@@ -1123,12 +1123,21 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.photograph("launcher-shortcuts")
     for _ in "paste":
         machine.send_key("backspace")
-    # The touchscreen's swipes are among them, found by "swipe", each
-    # drawn as its fingers and then its way.
+    # The touchscreen's swipes are the desktop's, found by "swipe": one
+    # doing what a chord does is that chord's row, saying the swipe in
+    # words, and one no chord does is drawn as its fingers and its way.
     swipe = "swipe workspace below"
     desktop.type_in(swipe, selecting="Go to the workspace below")
-    assert desktop.showing()["selected"]["chord"].startswith("3 ")
+    below = desktop.showing()
+    assert not below["selected"]["chord"].startswith("3 "), below["selected"]
+    assert "3 fingers up" in below["footer"], below["footer"]
+    assert below["rows"].count("Go to the workspace below") == 1, below["rows"]
     desktop.photograph("launcher-swipes")
+    for _ in swipe:
+        machine.send_key("backspace")
+    swipe = "swipe stop showing"
+    desktop.type_in(swipe, selecting="Stop showing every workspace")
+    assert desktop.showing()["selected"]["chord"].startswith("4 ")
     for _ in swipe:
         machine.send_key("backspace")
     desktop.type_in("open a terminal")
