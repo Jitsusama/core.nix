@@ -57,13 +57,13 @@ onLinux {
   # Asked for a Mac's system font or its monospaced one by any name a page
   # gives them, the machine's fontconfig gives the theme's face, carrying the
   # name asked for, which is what Chrome takes a face under. fc-match reads
-  # a hyphen as the start of a size, so the names go to it escaped.
+  # a hyphen in a bare name as the start of a size, and escapes a leading
+  # one differently from one version to the next, so each name is asked for
+  # as the family's value, as Chrome hands it over.
   the-macs-faces-are-the-themes =
     let
       asks = face: name: ''
-        fc-match -f '%{family}\n' -- ${
-          lib.escapeShellArg (lib.replaceStrings [ "-" ] [ "\\-" ] name)
-        } > matched
+        fc-match -f '%{family}\n' ${lib.escapeShellArg ":family=${name}"} > matched
         echo ${lib.escapeShellArg name}: "$(cat matched)"
         grep -qF -- ${lib.escapeShellArg face.family} matched
         grep -qF -- ${lib.escapeShellArg name} matched
