@@ -422,9 +422,28 @@ def sound_device(typed: str, named: str) -> None:
     step_in()
 
 
+def sound_nodes() -> list[Json]:
+    """Give everything the sound server lists, from pw-dump.
+
+    A dump taken as pw-record's stream started came back as JSON that didn't parse, once, so a
+    dump that doesn't read is taken again.
+    """
+    dumps: list[list[Json]] = []
+
+    def dumped(_: bool) -> bool:
+        try:
+            dumps.append(json.loads(as_account("pw-dump")))
+        except json.JSONDecodeError:
+            return False
+        return True
+
+    retry(dumped, timeout=timedelta(seconds=10))
+    return dumps[-1]
+
+
 def sound_recording() -> int | None:
     """Give the id of pw-record's stream, as the sound server lists it, if it's there."""
-    nodes: list[Json] = json.loads(as_account("pw-dump"))
+    nodes = sound_nodes()
     return next(
         (
             int(node["id"])
@@ -594,7 +613,7 @@ with subtest("a program's Media and Sound work its real player and its stream"):
 
     def stream() -> int:
         """Give the id of the stream mpv plays through, as PipeWire lists it."""
-        nodes: list[Json] = json.loads(as_account("pw-dump"))
+        nodes = sound_nodes()
         return next(
             int(node["id"])
             for node in nodes
