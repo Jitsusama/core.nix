@@ -9,9 +9,11 @@ fixes and why.
 | ----------------------------- | ------------------------------------------------------- |
 | `backports.nix`, `backports/` | fixes a later release has, taken onto this kernel       |
 | `next.nix`, `next/`           | fixes no release has yet, each header saying where from |
+| `local.nix`, `local/`         | fixes written here and in no tree yet                   |
 
-The patches written here and sent nowhere yet are still applied from
-`../nixos.nix`, until they move into a folder of their own here.
+Four patches in `local/` came from elsewhere and wait to move at the
+stack's next regeneration, as `local.nix` says; the camera's own kernel
+patches are applied from `../camera.nix`.
 
 ## How a Patch Moves
 
