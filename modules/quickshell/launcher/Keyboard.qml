@@ -23,10 +23,6 @@ Provider {
     // in and every shortcut its parts (Words.qml).
     collection: Words.collection("keyboard")
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
     // The overlay's chord, from the desktop's binds.
     readonly property var showing: Shortcuts.actions
         .find(action => action.run.join(" ") === "qs ipc call keyboard toggle") ?? { chord: [] }
@@ -53,7 +49,7 @@ Provider {
             run: () => KeyboardLayout.toggle()
         }),
         act("keyboard:flash", "keyboard:flash", {
-            glyph: glyph(0xf0241),
+            glyph: Theme.glyph.flash,
             later: true,
             run: () => KeyboardLayout.flash()
         })

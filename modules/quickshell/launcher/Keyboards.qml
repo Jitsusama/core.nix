@@ -96,7 +96,7 @@ Provider {
             headline: `${count}, caps lock ${caps ? "on" : "off"}`,
             glyph: Theme.glyph.keyboard,
             rows: rows,
-            note: "from the kernel's input devices",
+            note: "",
             live: provider
         };
     }
@@ -166,9 +166,7 @@ Provider {
             name: part("layer"),
             side: side,
             glyph: Theme.glyph.layer,
-            offers: true,
-            note: KeyboardLayer.locked ? "a step in lets it go or locks another"
-                : "a step in locks one"
+            offers: true
         }, () => Keyboards.layerChoices(KeyboardLayout.layers.map(layer => layer.name),
             KeyboardLayer.name, KeyboardLayer.locked).map(choice => provider.thing({
                 key: choice.key,
@@ -286,7 +284,7 @@ Provider {
                 graph: first.graph,
                 glyph: Theme.glyph.brightness,
                 rows: inside(lit[0]),
-                note: first.note !== "" ? first.note : "a step in sets them",
+                note: first.note,
                 live: provider
             };
         return {
@@ -300,7 +298,7 @@ Provider {
                 glyph: Theme.glyph.keyboard,
                 note: each.rows[0].note
             }, () => inside(each))),
-            note: "each keyboard's a step in",
+            note: "",
             live: provider
         };
     }

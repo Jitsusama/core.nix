@@ -257,9 +257,13 @@ Scope {
         sortField: FolderListModel.Name
     }
 
+    // Read on the shell's own thread, as Machine's files are: a sensor's
+    // file is a few bytes, and handing each read to a reader thread and
+    // waiting for it cost more than the read.
     FileView {
         id: probe
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
 }

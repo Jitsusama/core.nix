@@ -591,9 +591,8 @@ Scope {
         });
     }
 
-    // A collection's parts the vocabulary names, before its own members:
-    // Agents holds its tasks, helpers and spend, the Keyboard its
-    // keyboards and shortcuts.
+    // A collection's parts the vocabulary names: Agents holds its tasks,
+    // helpers and spend, the Keyboard its keyboards and shortcuts.
     function partsOf(source) {
         return Words.of(source.settings.name).parts.map(id => resolved(id))
             .filter(row => row !== null);
@@ -1326,11 +1325,16 @@ Scope {
             const from = held[held.length - 1].row.from;
             // A collection searches itself, all of it until something's
             // typed, and then its parts: Agents its agents, then their
-            // tasks, helpers and spend. A part named leads what's found.
+            // tasks, helpers and spend. Members too many for one screen
+            // follow the parts instead, so the Keyboard's keyboards aren't
+            // below a hundred keys. A part named leads what's found.
             let found = [];
-            if (from)
-                found = words.length === 0 ? from.everything().concat(partsOf(from))
-                    : within(partsOf(from), letters)
+            if (from && words.length === 0) {
+                const members = from.everything();
+                const parts = partsOf(from);
+                found = members.length > root.rows ? parts.concat(members) : members.concat(parts);
+            } else if (from)
+                found = within(partsOf(from), letters)
                         .concat(learnedFirst(from.search(letters).rows, letters));
             // A step's rows, all of them in their order until something's
             // typed, then those it finds, best first, and with them the

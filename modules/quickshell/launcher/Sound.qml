@@ -54,8 +54,8 @@ Provider {
     // Named, and found, as the vocabulary says (Words.qml).
     collection: Words.collection("sound")
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
+    function glyph(mark) {
+        return Theme.glyph[mark];
     }
 
     // What it says, as the vocabulary words it, with what's in braces
@@ -143,14 +143,15 @@ Provider {
             ? Bluetooth.devices.values.find(device => device.address === address) : null;
         const known = [node.name, named(node), node.properties["device.form-factor"] ?? "",
             accessory ? accessory.icon : ""].join(" ").toLowerCase();
-        const bluetooth = !!address || known.includes("bluez");
+        // Headphones are headphones and a speaker a speaker to Joel, however
+        // they're joined, so a Bluetooth one wears the same mark as a wired.
         if (!node.isSink)
-            return known.includes("headset") ? 0xf02ce : 0xf036c;
+            return known.includes("headset") ? "headset" : "microphone";
         if (display(node))
-            return 0xf0f5f;
+            return "display";
         if (known.includes("head"))
-            return bluetooth ? 0xf0970 : 0xf02cb;
-        return bluetooth ? 0xf09a2 : 0xf04c3;
+            return "headphones";
+        return "speaker";
     }
 
     // The glyph it wears, struck through while it's muted.

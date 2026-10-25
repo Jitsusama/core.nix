@@ -132,7 +132,7 @@ Provider {
             copy: lit,
             glyph: Theme.glyph.lamp,
             graph: level(light.on ? light.percent : 0, 100),
-            note: "a camera lights it; its brightness and warmth a step in"
+            note: "a camera lights it"
         }, () => provider.deskParts())];
     }
 
@@ -211,7 +211,7 @@ Provider {
         return {
             headline: `the desk light is ${deskLit()}`,
             rows: rows,
-            note: "a camera lights it; → steps it"
+            note: "a camera lights it"
         };
     }
 
@@ -222,7 +222,7 @@ Provider {
         if (shown === null)
             return null;
         const done = power !== undefined ? {
-            headline: power === "on" ? "light the desk light" : "put the desk light out",
+            headline: power === "on" ? "turn the desk light on" : "turn the desk light off",
             run: () => DeskLight.turn(power === "on")
         } : share !== undefined ? {
             headline: `set the desk light to ${Math.min(100, Number(share))}%`,

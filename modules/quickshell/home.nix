@@ -1133,7 +1133,8 @@ in
         source = "today";
         zone = osConfig.time.timeZone or null;
       };
-      # How bright the screen and the keyboard are.
+      # How bright the screen, the desk light and the room are; the
+      # keyboard's lights are the keyboard's own.
       light = {
         order = 96;
         source = "light";
@@ -1157,6 +1158,9 @@ in
         order = 103;
         source = "sound";
         weight = 0.9;
+        # What reads a card's ports, and what moves one onto another.
+        pwDump = lib.getExe' pkgs.pipewire "pw-dump";
+        wpctl = lib.getExe' pkgs.wireplumber "wpctl";
       };
       # The headphones, mice and keyboards paired or around, and turning
       # Bluetooth off as an action.

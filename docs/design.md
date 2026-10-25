@@ -692,9 +692,12 @@ works the same way everywhere.
   against what they're rated for, and how often it Throttled), Bluetooth
   (each device's Battery, Signal and Link quality, Codec and Connection,
   and the Adapter), Sound (each speaker's or microphone's Level, its Volume
-  or Gain, the Programs using it, its Tuning and its card), each camera
+  or Gain, whether it's Muted, what's Playing through it, its Port where
+  it has several, its Tuning and its card; an unplugged port isn't listed),
+  each camera
   ("built-in camera": In use, its lights, Streaming, Sensor and Modes),
-  "keyboards" (each one's locks, Repeat and Lights), "ip" (each
+  "keyboards" (each one's locks, Repeat and Lights, which are its own and
+  not Light's, and the ErgoDox's Layer as a setting), "ip" (each
   connection's Address, Gateway and DNS, and a joined network's Signal,
   Speed, Protection and Access points) and "battery" (its Charger, Health
   and Charge limit). A part answers alone by its own
@@ -854,17 +857,22 @@ twice in the same place, and writes the whole map to
 `~/.config/jitsusama/keys.json` for the launcher and the "what's here" views.
 
 Any key is found by what it does. Super+Shift+/ opens the launcher's
-collection of every layer's shortcuts in levels, each flat: at its top the
-layers (Desktop, Touchscreen, Terminal, Neovim and Agents, pi's), each with
-its count and its first groups; inside a layer its groups, by what a chord
-acts on (the desktop's Windows, Columns, Workspaces, Screens, Programs,
-Launcher, Capture, Sound, Brightness, Dictation and Session; Neovim's by its
-leader's letters, and GitHub's by the window a key works in); inside a group
-its chords, each with its chord and where it works, or, for one too big to
-read whole, groups of its own by what their chords act on, a dozen or so
-each (the desktop's Workspaces, Neovim's Code, Problems, Outline and Git,
-and GitHub's). A group found by typing below the next level says what
-holds it. A layer of a dozen chords or fewer is its chords alone. The groups come from a small table
+collection of every layer's shortcuts in levels, each flat, and opens it on
+the program Joel came from (Joel, 2026-10-24: "ideally context aware with
+the app open"): over Neovim, Neovim's groups; over a terminal, the
+terminal's, a terminal running Neovim or an agent counting as that
+program. At its top the layers (that program's first, then Desktop, then
+the rest), each with its count and its first groups; inside a layer its
+groups, by what a chord acts on (the desktop's Windows, Columns,
+Workspaces, Screens, Launcher, Typing, Capture and Sound; Neovim's by its
+leader's letters, and GitHub's by the window a key works in); inside a
+group its chords, each with its chord and where it works, or, for one too
+big to read whole, groups of its own. A level aims at the card's eight
+rows, a group never holds fewer than three chords, and no layer is more
+than two levels of groups deep; one chord doing one thing in several
+places is one row naming each. A group found by typing below the next
+level says what holds it. A layer of eight chords or fewer is its chords
+alone. The groups come from a small table
 (launcher/KeyGroups.js) reading each chord's action, so a new chord falls
 into one without being told, and a bind the table puts wrong names its own
 (`group`). Typing at any level finds a group below it by its name, then any

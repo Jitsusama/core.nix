@@ -506,6 +506,11 @@ in
     console = "k";
     means = "a keyboard: its layout, layers, keys and lights, or one paired";
   };
+  flash = {
+    glyph = nerd "f0241";
+    console = "!";
+    means = "flashing a light to find what it's on, such as a keyboard";
+  };
   # One screen rather than several, since most of what wears it is one
   # display, and the desktop's display shortcuts wore one already.
   display = {
@@ -606,6 +611,11 @@ in
     glyph = nerd "f02ce";
     console = "h";
     means = "a headset: headphones with a microphone";
+  };
+  microphone = {
+    glyph = nerd "f036c";
+    console = "m";
+    means = "a microphone, or anything else sound is heard through";
   };
   speaker = {
     glyph = nerd "f09a2";

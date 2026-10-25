@@ -174,8 +174,7 @@ Provider {
             return copyRow(Object.assign(fields, { glyph: "" }));
         return holderRow(Object.assign(fields, {
             glyph: Theme.glyph.charging,
-            note: usb.length === 1 ? "its USB-C port a step in"
-                : `its ${usb.length} USB-C ports a step in`
+            note: usb.length === 1 ? "one USB-C port" : `${usb.length} USB-C ports`
         }), () => usb.map(port => {
             const what = Power.port(port.said, provider.number);
             return copyRow({
@@ -272,7 +271,7 @@ Provider {
             : start !== "" ? `stops at ${stop}%, starts below ${start}%` : `stops at ${stop}%`;
         if (settable !== true)
             return leaf("limit", side, {
-                note: settable === false ? "only root can change it" : ""
+                note: settable === false ? "set in the firmware's settings" : ""
             });
         const begun = start === "" ? null : Number(start);
         return holderRow({
@@ -280,8 +279,7 @@ Provider {
             name: named("limit"),
             side: side,
             glyph: Theme.glyph.charge,
-            offers: true,
-            note: "a step in sets it"
+            offers: true
         }, () => provider.stops.map(each => provider.thing({
             key: `verb:power-limit-${each}`,
             name: Words.name("power:limit:stop", "", { n: each }),
@@ -392,7 +390,7 @@ Provider {
             graph: barred,
             glyph: Theme.glyph.charge,
             rows: rows,
-            note: "from UPower and the kernel",
+            note: "",
             live: provider
         };
     }
