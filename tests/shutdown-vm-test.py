@@ -1,76 +1,115 @@
 """A reboot whose shutdown would hang goes on anyway, and says what it told Plymouth.
 
-tests/shutdown.nix runs this, and its opening comment says what the test proves. The machine
-exits on any reset, so each reboot ends in wait_for_shutdown and the next subtest starts the
-machine again. The programs the stuck service and the leftover run are named by their paths in
-the store, from the JSON file tests/shutdown.nix swaps in for the marker below.
+tests/shutdown.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. The machine exits on any reset, so each test's
+reboot ends with the machine down, and the next test starts it again. The programs the stuck
+service and the leftover run are named by their paths in the store, given as the `values`
+fixture.
 """
 
-import json
+from __future__ import annotations
+
 import re
 import time
+from dataclasses import dataclass
 from datetime import timedelta
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from test_driver.machine import QemuMachine
 
 if TYPE_CHECKING:
-    from driver_names import machine, subtest, t
+    from test_driver.machine import BaseMachine
 
-# coreutils' sleep and bash's sh, by their paths in the store.
-values = json.loads(Path("@values@").read_text())
-sleep: str = values["sleep"]
-sh: str = values["sh"]
+# How long a reboot nothing holds may take to end.
+HEALTHY = timedelta(seconds=30)
+# How long a reboot held by a service that won't stop may take: systemd's minute, and more.
+HELD = timedelta(minutes=2)
+# How long the watchdog may take to fire once the last stage is held: its 30 seconds, and more.
+WATCHED = timedelta(minutes=1)
+# What a reboot held by a service that won't stop takes, in seconds: systemd's minute, with
+# room either side for the boot's own pace.
+HELD_AT_LEAST = 55
+HELD_AT_MOST = 90
+# How soon the watchdog may fire, in seconds: its 30, less a margin.
+WATCHDOG_AT_LEAST = 25
 
 
-def reboot() -> tuple[float, int]:
-    """Reboot the machine once it's up, giving when, and how much the console had said."""
-    machine.wait_for_unit("multi-user.target")
+@dataclass(frozen=True)
+class Reboot:
+    """A reboot the machine was asked for: when, and how much its console had said before."""
+
+    machine: QemuMachine
+    started: float
+    said: int
+
+    def took(self) -> float:
+        """Give the seconds since the reboot was asked for."""
+        return time.monotonic() - self.started
+
+    def told(self) -> list[str]:
+        """Give what the machine told Plymouth since the reboot was asked for.
+
+        It reads the kernel's own line, stamped with its time, and not the journal's copy.
+        """
+        console = self.machine.get_console_log()[self.said :]
+        return re.findall(r"\] told plymouth --status=(\w+)", console)
+
+
+def reboot(machine: QemuMachine) -> Reboot:
+    """Ask the machine to reboot, and give when and how much its console had said."""
     said = len(machine.get_console_log())
     machine.succeed("systemctl --no-block reboot")
-    return time.monotonic(), said
+    return Reboot(machine, time.monotonic(), said)
 
 
-def told(said: int) -> list[str]:
-    """Give what the machine told Plymouth since the console had said that much.
-
-    It reads the kernel's own line, stamped with its time, and not the journal's copy.
-    """
-    return re.findall(r"\] told plymouth --status=(\w+)", machine.get_console_log()[said:])
-
-
-with subtest("a healthy reboot tells Plymouth nothing"):
-    started, said = reboot()
-    machine.wait_for_shutdown(timeout=timedelta(seconds=30))
-    t.assertEqual(told(said), [])
-
-with subtest("a service that won't stop holds a reboot a minute"):
-    machine.start()
+@pytest.fixture
+def up(machine: BaseMachine) -> QemuMachine:
+    """Give the machine up, started again when the last test's reboot ended it."""
+    assert isinstance(machine, QemuMachine), "the watchdog and the console are QEMU's"
+    if not machine.is_up():
+        machine.start()
     machine.wait_for_unit("multi-user.target")
-    machine.succeed(
+    return machine
+
+
+def test_a_healthy_reboot_tells_plymouth_nothing(up: QemuMachine) -> None:
+    """A healthy reboot tells Plymouth nothing."""
+    rebooted = reboot(up)
+    up.wait_for_shutdown(timeout=HEALTHY)
+    assert rebooted.told() == []
+
+
+def test_a_service_that_wont_stop_holds_a_reboot_a_minute(
+    up: QemuMachine, values: dict[str, Any]
+) -> None:
+    """A service that won't stop holds a reboot a minute, and no more, and says it forced it."""
+    sleep = values["sleep"]
+    up.succeed(
         "systemd-run --unit=stuck -p Type=exec -p TimeoutStopSec=infinity"
-        f" -p ExecStop='{sleep} infinity'"
-        f" {sleep} infinity"
+        f" -p ExecStop='{sleep} infinity' {sleep} infinity"
     )
-    started, said = reboot()
-    machine.wait_for_shutdown(timeout=timedelta(seconds=120))
-    took = time.monotonic() - started
-    t.assertGreater(took, 55, "the reboot didn't wait for the service")
-    t.assertLess(took, 90, "the reboot waited past the minute")
-    t.assertEqual(told(said), ["forced"])
+    rebooted = reboot(up)
+    up.wait_for_shutdown(timeout=HELD)
+    took = rebooted.took()
+    assert took > HELD_AT_LEAST, "the reboot didn't wait for the service"
+    assert took < HELD_AT_MOST, "the reboot waited past the minute"
+    assert rebooted.told() == ["forced"]
 
-with subtest("a leftover that ignores SIGTERM can't hold the last stage"):
-    machine.start()
-    machine.wait_for_unit("multi-user.target")
-    machine.succeed("test -e /dev/watchdog0")
-    machine.succeed(
+
+def test_a_leftover_that_ignores_sigterm_cant_hold_the_last_stage(
+    up: QemuMachine, values: dict[str, Any]
+) -> None:
+    """A leftover that ignores SIGTERM can't hold the last stage: the watchdog resets it."""
+    sleep, sh = values["sleep"], values["sh"]
+    up.succeed("test -e /dev/watchdog0")
+    up.succeed(
         f"systemd-run --unit=leftover -p KillMode=none {sh} -c"
         f" 'trap \"\" TERM; exec {sleep} infinity'"
     )
-    started, said = reboot()
-    machine.wait_for_qmp_event(
-        lambda event: event["event"] == "WATCHDOG", timeout=timedelta(seconds=60)
-    )
-    took = time.monotonic() - started
-    machine.wait_for_shutdown(timeout=timedelta(seconds=30))
-    t.assertGreater(took, 25, "the watchdog fired before its 30 seconds")
-    t.assertEqual(told(said), ["leftovers"])
+    rebooted = reboot(up)
+    up.wait_for_qmp_event(lambda event: event["event"] == "WATCHDOG", timeout=WATCHED)
+    took = rebooted.took()
+    up.wait_for_shutdown(timeout=HEALTHY)
+    assert took > WATCHDOG_AT_LEAST, "the watchdog fired before its 30 seconds"
+    assert rebooted.told() == ["leftovers"]

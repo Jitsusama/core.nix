@@ -3,18 +3,18 @@
 # signs in with each. Each asks the account's askpass for a yes in linux-id's
 # own words, a refusal makes nothing, a site that wants to know who's there
 # is refused, and the keys outlive linux-id restarting, since the TPM holds
-# them. The script is linux-id-vm-test.py.
+# them. The tests are linux-id-vm-test.py, which pytest runs inside the
+# driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
   runtime = "/run/user/1000";
-  # What the script needs of the above, which it reads at its top.
+  # What the tests need of the above, their `values` fixture.
   values = pkgs.writeText "linux-id-values.json" (builtins.toJSON { inherit runtime; });
   # Answers as Joel does through the shell's prompt, and writes down each
   # question, until it's told to refuse.
-  askpass = pkgs.writeShellScript "askpass" ''
-    echo "''${SSH_ASKPASS_PROMPT:-secret} $1" >> ${runtime}/asked
-    [ ! -e ${runtime}/refuse ]
-  '';
+  askpass = pkgs.writeShellScript "askpass" (
+    builtins.replaceStrings [ "@runtime@" ] [ runtime ] (builtins.readFile ./linux-id-askpass.sh)
+  );
   # ruff and mypy read it through `nix fmt`, so the writers' flake8 is off.
   passkey = pkgs.writers.writePython3Bin "passkey" {
     libraries = [ pkgs.python3Packages.fido2 ];
@@ -46,11 +46,13 @@ pkgs.testers.runNixOSTest {
     ];
   };
 
-  # The script reads the values from the file put in place of its marker.
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./linux-id-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./linux-id-vm-test.py}", values="${values}")
+  '';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of these lines would add only
+  # its time.
   skipTypeCheck = true;
 }
