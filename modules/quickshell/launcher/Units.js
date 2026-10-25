@@ -169,11 +169,11 @@ const kinds = {
     temperature: {
         glyph: "temperature",
         units: [
-            { symbol: "\u00b0C", size: 1, zero: 273.15,
+            { symbol: "\u00b0C", size: 1, zero: 273.15, called: "Celsius",
                 names: ["c", "\u00b0c", "celsius", "centigrade"] },
-            { symbol: "\u00b0F", size: 0.555_555_555_555_555_6,
+            { symbol: "\u00b0F", size: 0.555_555_555_555_555_6, called: "Fahrenheit",
                 zero: 255.372_222_222_222_2, names: ["f", "\u00b0f", "fahrenheit"] },
-            { symbol: "K", size: 1, zero: 0, names: ["k", "kelvin", "kelvins"] }
+            { symbol: "K", size: 1, zero: 0, called: "Kelvin", names: ["k", "kelvin", "kelvins"] }
         ]
     }
 };
@@ -261,23 +261,24 @@ function answer(text, options) {
     const said = (quantity, unit) => saying(figures(quantity, group, point), unit);
     const value = convert(amount, from.unit, to.unit);
     const { glyph } = kinds[kind];
-    // A temperature has no rate to give, so its rows are in the third scale.
+    // A temperature has no rate to give, so its rows are in the third
+    // scale, each named first as a part is: "Kelvin 373.15 K".
     const rows = kind === "temperature"
         ? kinds.temperature.units.filter(scale => scale !== from.unit && scale !== to.unit)
             .map(scale => {
                 const there = convert(amount, from.unit, scale);
-                return { text: said(there, scale), side: "", copy: copied(there) };
+                return { text: scale.called, side: said(there, scale), copy: copied(there) };
             })
         : rates(convert(1, from.unit, to.unit), from.unit, to.unit, said);
     return { headline: said(value, to.unit), copy: copied(value), glyph, kind, rows };
 }
 
 // The rows saying what one of each unit is in the other, `each` being one
-// of `from` in `to`.
+// of `from` in `to`: named by the one, "1 km", then saying it in the
+// other, "0.621371 mi".
 function rates(each, from, to, said) {
     return [
-        { text: `1 ${from.symbol} = ${said(each, to)}`, side: "rate", copy: copied(each) },
-        { text: `1 ${to.symbol} = ${said(1 / each, from)}`, side: "inverse",
-            copy: copied(1 / each) }
+        { text: `1 ${from.symbol}`, side: said(each, to), copy: copied(each) },
+        { text: `1 ${to.symbol}`, side: said(1 / each, from), copy: copied(1 / each) }
     ];
 }

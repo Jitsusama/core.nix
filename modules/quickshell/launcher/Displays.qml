@@ -65,7 +65,7 @@ Provider {
     // Its maker and model, leaving out a model that's only a number.
     function named(output) {
         if (builtIn(output))
-            return "Built-in Display";
+            return "Built-in display";
         const model = /^0x[0-9a-f]+$/i.test(output.model) ? "" : output.model;
         return `${output.make} ${model}`.trim() || output.name;
     }
@@ -82,8 +82,9 @@ Provider {
         const now = mode(output);
         if (now === null || output.logical === null)
             return "off";
-        const scale = Math.round(output.logical.scale * 100) / 100;
-        return `${now.width} \u00d7 ${now.height} \u00b7 ${hertz(now)} Hz \u00b7 scale ${scale}`;
+        // The scale as its part says it, "175%".
+        return `${now.width} \u00d7 ${now.height} \u00b7 ${hertz(now)} Hz `
+            + `\u00b7 scale ${percent(output.logical.scale)}`;
     }
 
     readonly property var shown: Object.values(outputs).sort((a, b) =>

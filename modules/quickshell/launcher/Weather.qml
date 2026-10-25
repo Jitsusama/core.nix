@@ -253,7 +253,8 @@ Provider {
         const daily = forecast.daily;
         const day = now.is_day === 1;
         const speed = imperial ? "mph" : "km/h";
-        const headline = `${degrees(now.temperature_2m)} ${said(now.weather_code)}`;
+        // Said as each day's is, its degrees, a dot, then its words.
+        const headline = `${degrees(now.temperature_2m)} \u00b7 ${said(now.weather_code)}`;
         // The time where it is, from the forecast's own clock, for elsewhere.
         const [date, clock] = (now.time ?? "").split("T");
         const weekday = date => {
@@ -268,19 +269,16 @@ Provider {
             glyph: glyph(now.weather_code, day)
         })];
         // Rain holds its hours, and Return steps into them, since copying
-        // them would be copying a table.
+        // them would be copying a table: a part holding more, as any is.
         if (hours.length > 0) {
             const inside = hourRows(hours);
-            rows.push(thing({
+            rows.push(holderRow({
                 name: Words.name("weather:rain"),
                 side: rainSaid(hours),
-                verb: "more",
                 hue: "voice",
-                plain: true,
                 glyph: Theme.glyph.rain,
-                graph: spark(hours),
-                verbs: () => inside
-            }));
+                graph: spark(hours)
+            }, () => inside));
         }
         const wind = `${Math.round(now.wind_speed_10m)} ${speed}`;
         rows.push(copyRow({

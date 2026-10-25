@@ -59,9 +59,9 @@ Provider {
             headline: `${money(total, 2)} ${to}`,
             copy: money(total, 2).replace(/[^\d.-]/g, ""),
             rows: [
-                copyRow({ name: `1 ${from} = ${rate(each)} ${to}`, side: "rate", glyph: cash,
+                copyRow({ name: `1 ${from}`, side: `${rate(each)} ${to}`, glyph: cash,
                     copy: String(each) }),
-                copyRow({ name: `1 ${to} = ${rate(1 / each)} ${from}`, side: "inverse", glyph: cash,
+                copyRow({ name: `1 ${to}`, side: `${rate(1 / each)} ${from}`, glyph: cash,
                     copy: String(1 / each) })
             ],
             note: `European Central Bank${when === "" ? "" : ` \u00b7 ${when}`}`

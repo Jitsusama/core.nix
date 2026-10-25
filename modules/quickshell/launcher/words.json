@@ -202,6 +202,17 @@
       "ask": "which agent?",
       "empty": "No agents running."
     },
+    { "id": "agents:task", "in": "agents", "name": "Task" },
+    {
+      "id": "agents:address",
+      "in": "agents",
+      "name": "Address",
+      "states": { "several": { "name": "Addresses" } }
+    },
+    { "id": "agents:started", "in": "agents", "name": "Started" },
+    { "id": "agents:spent", "in": "agents", "name": "Spent today" },
+    { "id": "agents:works", "in": "agents", "name": "Works on" },
+    { "id": "agents:hears", "in": "agents", "name": "Hears" },
     {
       "id": "quests",
       "name": "Tasks",
@@ -222,6 +233,11 @@
       "ask": "which task?",
       "empty": "No tasks."
     },
+    { "id": "quests:id", "in": "quests", "name": "Id" },
+    { "id": "quests:status", "in": "quests", "name": "Status" },
+    { "id": "quests:updated", "in": "quests", "name": "Last touched" },
+    { "id": "quests:parent", "in": "quests", "name": "Part of" },
+    { "id": "quests:folder", "in": "quests", "name": "Folder" },
     {
       "id": "runs",
       "name": "Helpers",
@@ -635,6 +651,36 @@
       ]
     },
     {
+      "id": "traffic:in",
+      "in": "traffic",
+      "name": "In"
+    },
+    {
+      "id": "traffic:out",
+      "in": "traffic",
+      "name": "Out"
+    },
+    {
+      "id": "traffic:line",
+      "in": "traffic",
+      "name": "Line"
+    },
+    {
+      "id": "traffic:trip",
+      "in": "traffic",
+      "name": "Round trip"
+    },
+    {
+      "id": "traffic:dropped",
+      "in": "traffic",
+      "name": "Dropped"
+    },
+    {
+      "id": "traffic:connections",
+      "in": "traffic",
+      "name": "Connections"
+    },
+    {
       "id": "power:charger",
       "in": "power",
       "name": "Charger"
@@ -961,6 +1007,9 @@
         "lag-watch"
       ]
     },
+    { "id": "waits:typical", "in": "waits", "name": "Desktop answers" },
+    { "id": "waits:slowest", "in": "waits", "name": "Slowest answers" },
+    { "id": "waits:work", "in": "waits", "name": "Heavy work" },
     {
       "id": "light",
       "name": "Light",
@@ -1081,12 +1130,18 @@
     {
       "id": "verb:turn",
       "in": "light:desk",
-      "name": "Put it out",
+      "name": "Turn it off",
       "verb": "off",
+      "hidden": [
+        "put it out"
+      ],
       "states": {
         "off": {
-          "name": "Light it",
-          "verb": "on"
+          "name": "Turn it on",
+          "verb": "on",
+          "hidden": [
+            "light it"
+          ]
         }
       }
     },
@@ -1109,6 +1164,31 @@
         "unix",
         "timestamp"
       ]
+    },
+    {
+      "id": "today:week",
+      "in": "today",
+      "name": "Week"
+    },
+    {
+      "id": "today:day",
+      "in": "today",
+      "name": "Day of the year"
+    },
+    {
+      "id": "today:utc",
+      "in": "today",
+      "name": "UTC"
+    },
+    {
+      "id": "today:zone",
+      "in": "today",
+      "name": "Zone"
+    },
+    {
+      "id": "today:epoch",
+      "in": "today",
+      "name": "Epoch"
     },
     {
       "id": "keyboards",
@@ -1231,7 +1311,6 @@
     { "id": "networks:hardware", "in": "networks", "name": "Hardware address", "hidden": ["mac"] },
     { "id": "networks:mtu", "in": "networks", "name": "MTU", "hidden": ["packet size"] },
     { "id": "networks:state", "in": "networks", "name": "State" },
-    { "id": "networks:device", "in": "networks", "name": "Device name", "hidden": ["interface"] },
     { "id": "networks:public", "in": "networks", "name": "Public address", "hidden": ["ipify"] },
     { "id": "networks:public6", "in": "networks", "name": "Public IPv6 address" },
     { "id": "networks:usable", "in": "networks", "name": "Usable", "hidden": ["hosts"] },
@@ -1244,6 +1323,13 @@
     { "id": "networks:holder", "in": "networks", "name": "Held by", "hidden": ["owner", "rdap"] },
     { "id": "networks:block", "in": "networks", "name": "Block" },
     { "id": "networks:registered", "in": "networks", "name": "Registered range" },
+    { "id": "vendors:kind", "in": "vendors", "name": "Kind" },
+    { "id": "vendors:colons", "in": "vendors", "name": "With colons" },
+    { "id": "vendors:dotted", "in": "vendors", "name": "With dots" },
+    { "id": "calculator:hex", "in": "calculator", "name": "Hex" },
+    { "id": "calculator:octal", "in": "calculator", "name": "Octal" },
+    { "id": "calculator:binary", "in": "calculator", "name": "Binary" },
+    { "id": "calculator:decimal", "in": "calculator", "name": "Decimal" },
     {
       "id": "weather",
       "name": "Weather",
@@ -1306,6 +1392,21 @@
       "answers": [
         "time"
       ]
+    },
+    {
+      "id": "time:day",
+      "in": "time",
+      "name": "Date"
+    },
+    {
+      "id": "time:apart",
+      "in": "time",
+      "name": "From here"
+    },
+    {
+      "id": "time:zone",
+      "in": "time",
+      "name": "Zone"
     },
     {
       "id": "sound",
@@ -1545,7 +1646,10 @@
     {
       "id": "sound:usb",
       "in": "sound",
-      "name": "USB"
+      "name": "Connection",
+      "hidden": [
+        "usb"
+      ]
     },
     {
       "id": "sound:firmware",
@@ -2886,9 +2990,10 @@
       ],
       "states": {
         "on": {
-          "name": "Let notices show",
+          "name": "Let notifications show",
           "verb": "stop",
           "hidden": [
+            "let notices show",
             "turn off do not disturb",
             "end",
             "end do not disturb"
@@ -3154,7 +3259,8 @@
     { "id": "wifi:cipher", "in": "wifi:protection", "name": "Encryption" },
     { "id": "wifi:group", "in": "wifi:protection", "name": "Encryption to all" },
     { "id": "wifi:frames", "in": "wifi:protection", "name": "Management frames" },
-    { "id": "wifi:connected", "in": "wifi", "name": "Connected for", "hidden": ["uptime"] },
+    { "id": "wifi:connected", "in": "wifi", "name": "Joined for",
+      "hidden": ["uptime", "connected for"] },
     { "id": "wifi:heard", "in": "wifi", "name": "Access points", "hidden": ["bssid", "aps"] },
     { "id": "wifi:point", "in": "wifi:heard", "name": "{band}, channel {channel}" },
     { "id": "wifi:estimate", "in": "wifi:point", "name": "Speed" },
@@ -3327,7 +3433,10 @@
     {
       "id": "bluetooth:chip",
       "in": "bluetooth",
-      "name": "Chip"
+      "name": "Model",
+      "hidden": [
+        "chip"
+      ]
     },
     {
       "id": "verb:bluetooth-trust",
@@ -4007,7 +4116,7 @@
       "id": "command:volume",
       "provider": "sound",
       "start": "volume ",
-      "form": "⟨level⟩",
+      "form": "⟨percent⟩",
       "says": "sets how loud",
       "verb": "set",
       "words": [
@@ -4019,7 +4128,7 @@
       "id": "command:brightness",
       "provider": "light",
       "start": "brightness ",
-      "form": "⟨level⟩",
+      "form": "⟨percent⟩",
       "says": "sets the screen's light",
       "verb": "set",
       "words": [
@@ -4031,7 +4140,7 @@
       "id": "command:desk",
       "provider": "light",
       "start": "desk light ",
-      "form": "⟨level, warmth, on or off⟩",
+      "form": "⟨percent, warmth, on or off⟩",
       "says": "sets the desk light",
       "verb": "set",
       "words": [

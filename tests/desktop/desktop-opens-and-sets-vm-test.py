@@ -966,16 +966,15 @@ with subtest("the addresses name each connection, its parts a step in"):
     # Each is named by what it is, never by the kernel's name for it.
     launcher_until(lambda shown: {"Wi-Fi", "Tunnel"} <= set(shown["rows"]))
     assert not {"wlan1", "tailscale0"} & set(showing()["rows"]), showing()
-    # Return opens the Wi-Fi's parts, the kernel's name a figure among them.
+    # Return opens the Wi-Fi's parts, and the kernel's name is none of them.
     type_in("wi-fi", selecting="Wi-Fi")
     step_in("ret")
     launcher_until(
-        lambda shown: (
-            {"Address", "Hardware address", "MTU", "State", "Device name"} <= set(shown["rows"])
-        )
+        lambda shown: {"Address", "Hardware address", "MTU", "State"} <= set(shown["rows"])
     )
-    type_in("device", selecting="Device name")
-    t.assertEqual(showing()["selected"]["side"], "wlan1")
+    assert "Device name" not in showing()["rows"], showing()
+    type_in("mtu", selecting="MTU")
+    t.assertRegex(showing()["selected"]["side"], r"^[\d,]+ bytes$")
     photograph("launcher-addresses-wifi")
     machine.send_key("left")
     machine.send_key("left")

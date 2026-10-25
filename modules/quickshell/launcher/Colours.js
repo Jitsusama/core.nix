@@ -294,10 +294,14 @@ function answer(text, palette, roles) {
             swatch: i === 0 ? swatch(colour) : null }));
     const close = nearest(colour, known);
     if (close) {
-        const apart = close.apart < LEAST_DELTA_E ? [] : [`\u0394E ${figure(close.apart, 1)}`];
+        // Named first, capitalised as every row is, the roles that wear it
+        // beside it, and how far it is from what was asked in the note.
+        const apart = close.apart < LEAST_DELTA_E ? "" : `\u0394E ${figure(close.apart, 1)}`;
+        const named = close.pigment.name.replace(UNDERSCORES, " ");
         rows.push({
-            text: close.pigment.name.replace(UNDERSCORES, " "),
-            side: close.pigment.roles.concat(apart).join(" \u00b7 "),
+            text: named.charAt(0).toUpperCase() + named.slice(1),
+            side: close.pigment.roles.join(" \u00b7 "),
+            note: apart,
             copy: hex(close.pigment.colour),
             swatch: swatch(close.pigment.colour)
         });

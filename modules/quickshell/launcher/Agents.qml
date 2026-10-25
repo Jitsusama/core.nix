@@ -83,17 +83,23 @@ Provider {
 
     function verbs(session, quest, spent) {
         const presence = session.presence ?? {};
+        // Each fact a part, named first (agents:task and the rest), saying
+        // its value and copying it.
         const fact = (key, name, side) => copyRow({
             key: `fact:agent:${key}`,
             name: name,
             side: side,
+            copy: side,
             glyph: Theme.glyph.agent
         });
+        const named = (id, state) => Words.name(`agents:${id}`, state);
         const addresses = presence.addresses ?? [session.address];
-        // What of its spend went on its councils and fleets, hidden with it.
+        // What of its spend went on its councils and fleets, hidden with it,
+        // each named by what it went on.
         const helpers = spent === "" ? []
             : (SpendWatch.helpers[presence.session] ?? [])
-                .map(helper => fact(`on:${helper.on}`, helper.spent, `on ${helper.on}`));
+                .map(helper => fact(`on:${helper.on}`,
+                    helper.on.charAt(0).toUpperCase() + helper.on.slice(1), helper.spent));
         // Its heavy work, what runs and then what waits, as the queue says.
         const jobs = presence.session ? Jobs.of(presence.session).map(job => copyRow({
             key: `fact:agent:job:${job.id}`,
@@ -102,13 +108,16 @@ Provider {
             glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"]
         })) : [];
         const facts = [
-            quest !== "" ? fact("quest", quest, "its task") : null,
-            fact("address", addresses.join(", "), addresses.length === 1 ? "its address" : "its addresses"),
-            presence.owner?.startedAt ? fact("started", started(presence.owner.startedAt), "started") : null,
-            spent !== "" ? fact("spent", spent, "spent today") : null
+            quest !== "" ? fact("quest", named("task"), quest) : null,
+            fact("address", named("address", addresses.length === 1 ? "" : "several"),
+                addresses.join(", ")),
+            presence.owner?.startedAt
+                ? fact("started", named("started"), started(presence.owner.startedAt)) : null,
+            spent !== "" ? fact("spent", named("spent"), spent) : null
         ].concat(helpers, jobs, [
-            presence.worksOn ? fact("works", presence.worksOn, "works on") : null,
-            (presence.groups ?? []).length > 0 ? fact("hears", presence.groups.join(", "), "hears") : null
+            presence.worksOn ? fact("works", named("works"), presence.worksOn) : null,
+            (presence.groups ?? []).length > 0
+                ? fact("hears", named("hears"), presence.groups.join(", ")) : null
         ]).filter(row => row !== null);
         return [thing({
             key: "verb:agent:switch",

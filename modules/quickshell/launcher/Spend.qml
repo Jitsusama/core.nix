@@ -224,10 +224,11 @@ Provider {
             return null;
         if (sharing)
             return {
-                headline: "Amounts are hidden while the screen is shared",
+                // In lower case, as every other answer's headline is.
+                headline: "amounts are hidden while the screen is shared",
                 copy: "",
                 rows: ordered([], said.quiet ?? []).map(build),
-                note: "Ask again once sharing ends"
+                note: "ask again once sharing ends"
             };
         if (id === "summary") {
             const lead = (said.now ?? [])[0];

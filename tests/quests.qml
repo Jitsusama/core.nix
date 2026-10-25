@@ -112,9 +112,13 @@ ShellRoot {
             // A day this year goes without its year.
             const touched = new Date().getFullYear() === 2026 ? "21 Oct" : "21 Oct 2026";
             const facts = prompt.verbs();
-            expect("stepping in",
-                names(facts) === `Start an agent, QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
-                    + "Bootstrap the laptop, ~/session", names(facts));
+            // Each fact named first, as every part is, then what it says.
+            expect("stepping in", names(facts)
+                === "Start an agent, Id, Status, Last touched, Part of, Folder", names(facts));
+            const sides = facts.slice(1).map(row => row.side).join(", ");
+            expect("what each says", sides
+                === `QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
+                + "Bootstrap the laptop, ~/session", sides);
             const folder = facts[facts.length - 1];
             expect("its folder copied whole", folder.copy === `${root.here}/session`, folder.copy);
             expect("a fact copies itself", facts[1].verb === "copy", facts[1].verb);

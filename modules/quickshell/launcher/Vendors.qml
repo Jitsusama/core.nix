@@ -33,18 +33,20 @@ Provider {
         if (!at)
             return null;
         const made = at.local ? "" : vendor(at.oui);
-        const headline = at.local ? "locally set, no vendor" : made || "no vendor listed";
+        // Who made it is its maker, as a display's or a keyboard's is.
+        const headline = at.local ? "locally set, no maker" : made || "no maker listed";
         const card = Theme.glyph.card;
-        // The vendor is the headline, so the rows say only the rest.
+        // The maker is the headline, so the rows say only the rest, each
+        // part named first.
+        const kind = `${at.local ? "locally set" : "globally unique"}, `
+            + `${at.multicast ? "multicast" : "unicast"}`;
         const rows = [];
-        rows.push(copyRow({
-            name: `${at.local ? "locally set" : "globally unique"}, `
-                + `${at.multicast ? "multicast" : "unicast"}`,
-            side: "kind",
-            glyph: card
-        }));
-        rows.push(copyRow({ name: at.colon, side: "colons", glyph: card }));
-        rows.push(copyRow({ name: at.dotted, side: "dotted", glyph: card }));
+        rows.push(copyRow({ name: Words.name("vendors:kind"), side: kind, copy: kind,
+            glyph: card }));
+        rows.push(copyRow({ name: Words.name("vendors:colons"), side: at.colon, copy: at.colon,
+            glyph: card }));
+        rows.push(copyRow({ name: Words.name("vendors:dotted"), side: at.dotted, copy: at.dotted,
+            glyph: card }));
         return {
             headline: headline,
             copy: made || at.colon,

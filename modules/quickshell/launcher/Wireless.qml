@@ -37,7 +37,7 @@ Provider {
     readonly property bool on: present && Wifi.radio
 
     collection: !present ? null : Words.collection("wifi", {
-        empty: on ? "Listening for networks\u2026" : "Wi-Fi is off"
+        empty: on ? "Looking for networks\u2026" : "Wi-Fi is off."
     })
 
     // Looking for networks costs the radio's power, so the cards look only
@@ -237,7 +237,8 @@ Provider {
             name: network.name,
             glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
-            side: joined ? "connected" : network.known ? "saved" : "",
+            // Joined, as Return joins it and its access point says it is.
+            side: joined ? "joined" : network.known ? "saved" : "",
             note: note,
             network: network.name,
             state: () => provider.said(network, note),
@@ -490,8 +491,9 @@ Provider {
         return {
             in: rx,
             out: tx,
-            side: rx === null ? "" : tx !== null && tx !== rx ? `${rx} Mb/s in, ${tx} out`
-                : `${rx} Mb/s`,
+            // Each way said as the network's speed says it.
+            side: rx === null ? "" : tx !== null && tx !== rx
+                ? `${rx} Mb/s in \u00b7 ${tx} Mb/s out` : `${rx} Mb/s`,
             note: [generation ? `Wi-Fi ${generation}` : "", link.width ?? ""]
                 .filter(part => part !== "").join(", ")
         };

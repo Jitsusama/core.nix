@@ -122,22 +122,23 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
             and shown["selected"]["verb"] == "switch"
         )
     )
+    # Each named first, as every part is, then what it says.
     for name, side in [
-        (r"QEST-20261022-TESTQA", "its task"),
-        (r"TESTQA", "its address"),
-        (r"\d\d:\d\d", "started"),
-        (r"\$12\.50", "spent today"),
-        (r"\$4\.00", "on councils"),
-        (r"Test the shell", "2nd in line"),
-        (r"Tidy the tests", "works on"),
-        (r"#desk", "hears"),
+        ("Task", r"QEST-20261022-TESTQA"),
+        ("Address", r"TESTQA"),
+        ("Started", r"\d\d:\d\d"),
+        ("Spent today", r"\$12\.50"),
+        ("Councils", r"\$4\.00"),
+        ("Test the shell", r"2nd in line"),
+        ("Works on", r"Tidy the tests"),
+        ("Hears", r"#desk"),
     ]:
         machine.send_key("down")
         # The wait ends before the loop moves on, so it reads this pass's names.
         launcher_until(
             lambda shown: (
-                re.fullmatch(name, (shown["selected"] or {}).get("name", ""))  # noqa: B023
-                and shown["selected"]["side"] == side  # noqa: B023
+                (shown["selected"] or {}).get("name") == name  # noqa: B023
+                and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
             )
         )
     photograph("launcher-agent-facts")
@@ -375,7 +376,7 @@ with subtest(
             shown["held"] == ["helpers"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
-                r"helpers \u00b7 1 of 2 done \u00b7 (<1|\d+) min \u00b7 TESTQA",
+                r"helpers \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
                 shown["selected"]["side"],
             )
         )
@@ -395,7 +396,7 @@ with subtest(
     launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "roller"
-            and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 <1 min"
+            and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 under a minute"
         )
     )
     photograph("launcher-run-members")

@@ -90,8 +90,7 @@ Provider {
         name: Words.name("session:profile"),
         keywords: Words.keywords("session:profile"),
         side: profileInUse !== "" ? Words.of(profileInUse).part : "",
-        glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile"),
-        note: "a step in chooses another"
+        glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile")
     }, () => [])
 
     // Starting a recording is Capture's (Capture.qml). While anything

@@ -115,13 +115,15 @@ ShellRoot {
         const asked = Object.keys(weather.asked).length;
 
         const here = weather.answer("weather");
-        expect("what it's like now", here.headline === "12\u00b0 mostly clear", here.headline);
+        expect("what it's like now", here.headline === "12\u00b0 \u00b7 mostly clear",
+            here.headline);
         expect("the parts, flat, in order",
             names(here.rows) === "Now, Rain, Wind, Today, Tomorrow, Monday", names(here.rows));
         expect("where it is, and how that was found",
             here.note === "Toronto, from your time zone \u00b7 Open-Meteo", here.note);
         const [now, rain, wind, today, tomorrow] = here.rows;
-        expect("now copies itself", now.side === "12\u00b0 mostly clear" && now.verb === "copy",
+        expect("now copies itself",
+            now.side === "12\u00b0 \u00b7 mostly clear" && now.verb === "copy",
             `${now.side} ${now.verb}`);
         expect("the wind", wind.side === "18 km/h", wind.side);
         expect("today", today.side === "6\u00b0 to 14\u00b0 \u00b7 light rain", today.side);
@@ -131,9 +133,10 @@ ShellRoot {
             rain.graph.shape === "spark" && rain.graph.values.length === 12
                 && rain.graph.values[0] === 0.1 && rain.graph.values[3] === 0.9,
             JSON.stringify(rain.graph));
-        // Return steps in rather than copy a table: it has nothing to do of
-        // its own, only more inside.
-        expect("rain steps in", !rain.run && rain.verb === "more" && rain.verbs, rain.verb);
+        // Return steps in rather than copy a table: a part holding more,
+        // as any is (Provider.qml's holderRow).
+        expect("rain steps in", rain.verb === "more" && rain.verbs && rain.targets === rain.verbs,
+            rain.verb);
         const hours = rain.verbs();
         expect("the next twelve hours, from this one",
             hours.length === 12 && hours[0].name === "13:00" && hours[11].name === "00:00",

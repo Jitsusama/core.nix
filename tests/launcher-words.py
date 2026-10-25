@@ -14,10 +14,16 @@ vocabulary doesn't know, a glyph the theme hasn't got, a thing with no
 place: not in a category, nor a part of one, nor found inside another, and
 a name or an empty list's words in another case than the rest: a
 category's or a thing's name starts with a capital, as every row's does, and
-what an empty list says is a sentence.
+what an empty list says is a sentence. So does anything shown that Joel
+wouldn't say: a program's or the system's own name (niri, PipeWire, the
+kernel), a name that reads its value first ("10 bit" rather than "Colour
+depth"), a unit written another way than the launcher's ("10-bit", "KB",
+"Mbit/s", "1000 a second" for "1000 Hz"), a thing's words said beside it
+in capitals, or a verb longer than a word but for a turn ("turn off").
 """
 
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -169,11 +175,99 @@ def miscased(vocabulary: Entry) -> list[str]:
     return out
 
 
+# What Joel never reads, being the machinery's names rather than his: the
+# programs and daemons behind a row, and the system's own words. Hidden
+# words may hold them, as what he typed before still finds a row.
+MACHINERY = [
+    "bluetoothctl",
+    "bluez",
+    "claude",
+    "desk-facts",
+    "hwmon",
+    "iw",
+    "kernel",
+    "lag-watch",
+    "niri",
+    "nix",
+    "pi",
+    "pipewire",
+    "quickshell",
+    "spend-watch",
+    "sysfs",
+    "systemd",
+    "tuple",
+    "tzdata",
+    "upower",
+    "v4l2",
+    "wifid",
+    "wireplumber",
+]
+MACHINE_NAME = re.compile(
+    r"(?<![\w-])(" + "|".join(re.escape(name) for name in MACHINERY) + r")(?![\w-])",
+    re.IGNORECASE,
+)
+
+# Units the launcher writes one way everywhere, and the ways it doesn't:
+# "10 bit" not "10-bit", decimal "kB" not "KB", bits a second as "Mb/s",
+# and a rate in hertz rather than "a second".
+STRAY_UNITS = [
+    (re.compile(r"(\d|\})-bit\b"), 'a bit count is written "10 bit"'),
+    (re.compile(r"\bKB\b"), 'a kilobyte is written "kB"'),
+    (re.compile(r"\b[kKMG]bits?/s\b|\b[kKMG]Bit/s\b|\b[kKMG]bps\b"), 'bits a second are "Mb/s"'),
+    (re.compile(r"(\d|\}) a second\b"), "a rate is written in Hz"),
+]
+
+# A verb of two words is a turn, which says the way it goes.
+TURN = "turn"
+
+
+def shown(entry: Entry) -> list[tuple[str, str]]:
+    """Give every string of a thing Joel reads, in any state, with what it is."""
+    said: list[tuple[str, str]] = []
+    for state in [entry, *entry.get("states", {}).values()]:
+        said.extend((key, state[key]) for key in ("name", "empty", "sure", "ask")
+                    if isinstance(state.get(key), str))  # fmt: skip
+        words = state.get("said", {})
+        said.extend(("said", word) for word in
+                    (words.values() if isinstance(words, dict) else [words]))  # fmt: skip
+    return said
+
+
+def unsaid(vocabulary: Entry) -> list[str]:
+    """Say what's shown that Joel wouldn't say, or says another way elsewhere."""
+    out: list[str] = []
+    strings = [(entry["id"], key, text) for entry in vocabulary["things"]
+               for key, text in shown(entry)]  # fmt: skip
+    strings.extend((command["id"], key, command.get(key, ""))
+                   for command in vocabulary["commands"] for key in ("form", "says"))  # fmt: skip
+    for thing, key, text in strings:
+        named = MACHINE_NAME.search(text)
+        if named:
+            out.append(f"{thing}'s {key} {text!r} names {named.group(1)}, which Joel never reads.")
+        out.extend(f"{thing}'s {key} {text!r}: {why}." for unit, why in STRAY_UNITS
+                   if unit.search(text))  # fmt: skip
+        if key == "name" and text[:1].isdigit():
+            out.append(f"{thing}'s name {text!r} reads its value first.")
+        if key == "said" and text[:1].isupper():
+            out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")
+    for entry in vocabulary["things"]:
+        for state in [entry, *entry.get("states", {}).values()]:
+            verb = state.get("verb", "").split()
+            if len(verb) > 1 and verb[0] != TURN:
+                out.append(f"{entry['id']}'s verb {' '.join(verb)!r} is more than a word.")
+    return out
+
+
 def main(argv: list[str]) -> None:
     """Print every ambiguous word and stray name, and fail if there are any."""
     vocabulary = json.loads(Path(argv[0]).read_text())
     glyphs = set(json.loads(Path(argv[1]).read_text()))
-    found = clashes(vocabulary) + misplaced(vocabulary, glyphs) + miscased(vocabulary)
+    found = (
+        clashes(vocabulary)
+        + misplaced(vocabulary, glyphs)
+        + miscased(vocabulary)
+        + unsaid(vocabulary)
+    )
     for said in found:
         print(said)
     if found:

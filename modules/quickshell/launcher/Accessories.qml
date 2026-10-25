@@ -52,7 +52,7 @@ Provider {
     readonly property bool on: adapter !== null && adapter.enabled
 
     collection: adapter === null ? null : Words.collection("bluetooth", {
-        empty: on ? "Looking for devices\u2026" : "Bluetooth is off"
+        empty: on ? "Looking for devices\u2026" : "Bluetooth is off."
     })
 
     // Looking for devices costs the radio's power, so it looks only while
@@ -137,7 +137,9 @@ Provider {
 
     function made(device) {
         const joined = device.connected;
-        const told = joined ? "connected" : device.paired ? "paired" : "new";
+        // The side says connected or paired, so the note says only what it
+        // doesn't: the battery, or that the device is new.
+        const told = joined || device.paired ? "" : "new";
         const charge = Math.round(device.battery * 100);
         const note = device.batteryAvailable ? `${charge}% battery` : told;
         return member({
@@ -480,8 +482,8 @@ Provider {
         const minutes = Math.round(seconds / 60);
         if (seconds <= 0)
             return "";
-        return seconds < 60 ? `for ${seconds} seconds once made visible`
-            : `for ${minutes} minute${minutes === 1 ? "" : "s"} once made visible`;
+        return seconds < 60 ? `for ${seconds} s once made visible`
+            : `for ${minutes} min once made visible`;
     }
 
     // The adapter's parts: its Radio, and while it's on whether others can

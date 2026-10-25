@@ -254,7 +254,7 @@ Provider {
         // Where a part of it reads hotter than the whole, as a core or a
         // disk's second sensor can, its note says so first.
         const hotter = core && Math.round(core.value) > Math.round(part.value)
-            ? `core ${core.cpu} the hottest at ${degrees(core.value)}`
+            ? `the hottest, core ${core.cpu} at ${degrees(core.value)}`
             : sensor && Math.round(sensor.value) > Math.round(part.value)
             ? `${sensorName(sensor.label).toLowerCase()} hotter at ${degrees(sensor.value)}` : "";
         return holderRow({
@@ -410,7 +410,7 @@ Provider {
             graph: hot ? level(hot.value, hot) : undefined,
             glyph: Words.glyph("heat"),
             rows: rows,
-            note: "read just now, from the kernel",
+            note: "read just now",
             live: provider
         };
     }

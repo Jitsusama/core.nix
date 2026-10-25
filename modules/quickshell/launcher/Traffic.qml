@@ -23,13 +23,13 @@ Provider {
     id: provider
 
     // The words it answers whole, and by their start (Provider.qml), and
-    // a part each asks for alone.
+    // a part each asks for alone, by its id in the vocabulary (traffic:trip).
     readonly property var parts: ({
-        "ping": "Round trip",
-        "latency": "Round trip",
-        "round trip": "Round trip",
-        "download speed": "In",
-        "upload speed": "Out"
+        "ping": "trip",
+        "latency": "trip",
+        "round trip": "trip",
+        "download speed": "in",
+        "upload speed": "out"
     })
     questions: ["network speed", "network performance", "internet speed", "bandwidth",
         "throughput", "traffic"].concat(Object.keys(parts))
@@ -44,9 +44,9 @@ Provider {
 
     // One part as an answer: its figure as the headline and its own parts a
     // step in.
-    function alone(name) {
+    function alone(id) {
         const whole = told();
-        const part = whole ? whole.rows.find(row => row.name === name) : null;
+        const part = whole ? whole.rows.find(row => row.name === named(id)) : null;
         if (!part)
             return null;
         return {
@@ -177,7 +177,46 @@ Provider {
             : settled(kept) ? "just now" : "since you last asked";
     }
 
-    readonly property var named: ({ wifi: "Wi-Fi", cable: "Cable" })
+    // A part's name, as the vocabulary says it: "Round trip" for traffic:trip.
+    function named(id) {
+        return Words.name(`traffic:${id}`);
+    }
+
+    // What isn't a card, as the addresses' answer names it: a bridge, a
+    // tunnel (an interface with no hardware address at all, as a VPN's
+    // is), or else a virtual network; asked of sysfs once a name.
+    property var virtualKinds: ({})
+    readonly property string bare: "65534"
+
+    function virtualKind(name) {
+        if (virtualKinds[name] === undefined) {
+            probe.path = `/sys/class/net/${name}/uevent`;
+            const bridge = /^DEVTYPE=bridge$/m.test(read(probe));
+            probe.path = `/sys/class/net/${name}/type`;
+            const tunnel = read(probe).trim() === bare;
+            virtualKinds[name] = bridge ? "bridge" : tunnel ? "tunnel" : "virtual";
+        }
+        return virtualKinds[name];
+    }
+
+    // A connection's kind as the addresses' answer says it, so a cable is
+    // Wired here as there, and a tunnel a Tunnel, never the kernel's name.
+    function connectionKind(one) {
+        return one.kind === "wifi" ? "wifi" : one.kind === "cable" ? "wired"
+            : virtualKind(one.name);
+    }
+
+    // Each connection's name, numbered when there are several of a kind:
+    // "Tunnel 2".
+    function connectionNames(listed) {
+        const kinds = listed.map(one => connectionKind(one));
+        return listed.map((one, at) => {
+            const alike = kinds.filter(kind => kind === kinds[at]).length;
+            const nth = kinds.slice(0, at + 1).filter(kind => kind === kinds[at]).length;
+            const base = Words.name(`networks:${kinds[at]}`);
+            return alike > 1 ? `${base} ${nth}` : base;
+        });
+    }
 
     // How the shaper's search for the line's most is going, in Joel's
     // words.
@@ -199,12 +238,12 @@ Provider {
         const shaped = cards.map(card => Traffic.line(status, card.name))
             .find(link => link !== null && link.follows === null) ?? null;
         const rows = [figure({
-            name: "In",
+            name: named("in"),
             side: bits(now.in),
             graph: spark(series.in),
             note: when
         }), figure({
-            name: "Out",
+            name: named("out"),
             side: bits(now.out),
             graph: spark(series.out),
             note: when
@@ -213,7 +252,7 @@ Provider {
             const full = Math.max(shaped.in > 0 ? now.in / shaped.in : 0,
                 shaped.out > 0 ? now.out / shaped.out : 0);
             rows.push(figure({
-                name: "Line",
+                name: named("line"),
                 side: `${bits(shaped.in)} in \u00b7 ${bits(shaped.out)} out`,
                 graph: bar(full),
                 note: finding[shaped.state] ?? "as measured"
@@ -221,7 +260,7 @@ Provider {
             const typical = Traffic.typical(shaped.trips);
             if (typical !== null)
                 rows.push(holder({
-                    name: "Round trip",
+                    name: named("trip"),
                     side: ms(typical),
                     note: "while the line is quiet, the middle of "
                         + `${shaped.trips.length} servers`
@@ -232,23 +271,28 @@ Provider {
                 }))));
         }
         rows.push(figure({
-            name: "Dropped",
+            name: named("dropped"),
             side: now.dropped === 0 ? "none"
                 : `${number(now.dropped, now.dropped < 10 ? 1 : 0)} packets/s`,
             note: when
         }));
-        const listed = now.each.filter(one => named[one.kind] !== undefined
+        const listed = now.each.filter(one => one.kind === "wifi" || one.kind === "cable"
             || one.in + one.out > 0);
+        // Numbered in the kernel's order, so a name stays as the busiest
+        // changes; the kernel's own name only finds it.
+        const names = connectionNames(listed);
         if (listed.length > 1)
             rows.push(holder({
-                name: "Connections",
+                name: named("connections"),
                 side: String(listed.length),
                 note: "each card, tunnel and bridge, busiest first"
-            }, () => listed.slice().sort((a, b) => b.in + b.out - (a.in + a.out))
-                .map(one => figure({
-                    name: named[one.kind] ?? one.name,
-                    side: `${bits(one.in)} in \u00b7 ${bits(one.out)} out`,
-                    note: named[one.kind] !== undefined ? one.name : when
+            }, () => listed.map((one, at) => ({ one: one, name: names[at] }))
+                .sort((a, b) => b.one.in + b.one.out - (a.one.in + a.one.out))
+                .map(each => figure({
+                    name: each.name,
+                    keywords: each.one.name,
+                    side: `${bits(each.one.in)} in \u00b7 ${bits(each.one.out)} out`,
+                    note: when
                 }))));
         return {
             headline: `${bits(now.in)} in \u00b7 ${bits(now.out)} out`,

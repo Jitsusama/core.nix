@@ -2,6 +2,7 @@
 // shows "= 84", "0x1f" shows 31 with its other bases as rows, and "255 in
 // hex" asks for one. Numbers.js says what counts as a sum. Its settings:
 // `decimals`, and the `group` and `point` marks numbers are written with.
+// A base's row reads its name first, "Hex 0x1f", as every part does.
 import qs
 import QtQuick
 import "Numbers.js" as Numbers
@@ -17,8 +18,8 @@ Provider {
             headline: said.headline,
             copy: said.copy,
             rows: said.rows.map(row => copyRow({
-                name: row.text,
-                side: row.side,
+                name: Words.name(`calculator:${row.side}`),
+                side: row.text,
                 copy: row.copy,
                 glyph: Theme.glyph.number
             })),

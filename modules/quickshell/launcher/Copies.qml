@@ -148,12 +148,15 @@ Provider {
         "image/gif": "GIF"
     })
 
+    // A picture's size in decimal units, as a file's and a disk's are said
+    // everywhere else in the launcher (Machine.qml's bytes).
     function weighed(bytes) {
-        if (bytes < 1024)
-            return `${bytes} B`;
-        if (bytes < 1024 * 1024)
-            return `${Math.round(bytes / 1024)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        const units = [[1e9, "GB"], [1e6, "MB"], [1e3, "kB"]];
+        const unit = units.find(each => bytes >= each[0]);
+        if (!unit)
+            return `${Math.round(bytes)} B`;
+        const scaled = bytes / unit[0];
+        return `${scaled < 10 ? scaled.toFixed(1) : Math.round(scaled)} ${unit[1]}`;
     }
 
     // A picture's row, named by its width and height when its type says

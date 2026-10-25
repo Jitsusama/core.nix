@@ -79,10 +79,12 @@ Provider {
         if (isNaN(begun))
             return "";
         const ended = to ? Date.parse(to) : Date.now();
+        // Said as every other length of time is: "1 h 5 min".
         const minutes = Math.max(0, Math.round((ended - begun) / 60000));
-        return minutes < 1 ? "<1 min"
+        const hours = Math.floor(minutes / 60);
+        return minutes < 1 ? "under a minute"
             : minutes < 60 ? `${minutes} min`
-            : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+            : minutes % 60 === 0 ? `${hours} h` : `${hours} h ${minutes % 60} min`;
     }
 
     function dollars(amount) {

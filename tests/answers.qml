@@ -243,9 +243,15 @@ QtObject {
         }
         const rated = Units.answer("5 km in mi");
         asked++;
-        if (!rated || quoted(rated.rows.map(r => r.text))
-                !== quoted(["1 km = 0.621371 mi", "1 mi = 1.60934 km"]))
+        if (!rated || quoted(rated.rows.map(r => `${r.text} ${r.side}`))
+                !== quoted(["1 km 0.621371 mi", "1 mi 1.60934 km"]))
             failures.push(`"5 km in mi" gave the rows ${quoted(rated && rated.rows)}`);
+        // A temperature's third scale is named first, as a part is.
+        const scaled = Units.answer("100 c in f");
+        asked++;
+        if (!scaled || quoted(scaled.rows.map(r => `${r.text} ${r.side}`))
+                !== quoted(["Kelvin 373.15 K"]))
+            failures.push(`"100 c in f" gave the rows ${quoted(scaled && scaled.rows)}`);
 
         const read = new XMLHttpRequest();
         read.open("GET", Qt.resolvedUrl("zones.jsonl"), false);
@@ -277,16 +283,18 @@ QtObject {
         const told = Zones.answer("time in auckland", zones, at("2026-01-15T12:00"),
             "America/Toronto", 0);
         asked++;
-        const lines = answer => answer.rows.map(r => [r.text, r.side].filter(s => s).join(" "));
-        if (!told || quoted(lines(told)) !== quoted(["Friday 16 January tomorrow",
-                "18 h ahead of here", "Pacific/Auckland NZDT \u00b7 UTC+13"]))
+        // Each row a part, its value, then its note.
+        const lines = answer => answer.rows.map(r => [r.part, r.text, r.note].filter(s => s)
+            .join(" "));
+        if (!told || quoted(lines(told)) !== quoted(["day Friday 16 January tomorrow",
+                "apart 18 h ahead", "zone Pacific/Auckland NZDT, UTC+13"]))
             failures.push(`"time in auckland" gave the rows ${quoted(told && told.rows)}`);
         // Here, the day needs no "today", and UTC is said once.
         const cases = [
-            ["time", ["Thursday 15 January", "America/Toronto EST \u00b7 UTC\u22125"]],
-            ["time in utc", ["Thursday 15 January today", "5 h ahead of here", "UTC"]],
-            ["time in kathmandu", ["Thursday 15 January today", "10 h 45 min ahead of here",
-                "Asia/Kathmandu UTC+5:45"]]
+            ["time", ["day Thursday 15 January", "zone America/Toronto EST, UTC\u22125"]],
+            ["time in utc", ["day Thursday 15 January today", "apart 5 h ahead", "zone UTC"]],
+            ["time in kathmandu", ["day Thursday 15 January today", "apart 10 h 45 min ahead",
+                "zone Asia/Kathmandu UTC+5:45"]]
         ];
         for (const [typed, expected] of cases) {
             asked++;
@@ -303,7 +311,8 @@ QtObject {
         for (const [typed, headline, rows] of ColourCases.answers) {
             asked++;
             const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
-            const said = got && got.rows.map(r => [r.text, r.side].filter(s => s).join(" "));
+            const said = got && got.rows.map(r => [r.text, r.side, r.note].filter(s => s)
+                .join(" "));
             if (!got || got.headline !== headline || quoted(said) !== quoted(rows))
                 failures.push(`"${typed}" gave ${quoted(got && got.headline)} and `
                     + `${quoted(said)}, not "${headline}" and ${quoted(rows)}`);
@@ -812,8 +821,8 @@ QtObject {
         machine("an adapter read once has no traffic", Links.traffic({ received: null,
             sent: null, traffic: [] }), null);
         machine("a busy adapter's traffic", Links.traffic({ received: 2.5e6, sent: 0,
-            traffic: [2.5e6] }), { side: "2.5 MB/s", values: [1],
-            note: "2.5 MB/s in, 0 B/s out" });
+            traffic: [2.5e6] }), { side: "20 Mb/s", values: [1],
+            note: "20 Mb/s in, 0 b/s out" });
 
         // What Sound makes of what a device and a stream say of themselves.
         const soundTuning = Sounds.target("{\n  node.name = \"alsa_output.speaker\"\n}");

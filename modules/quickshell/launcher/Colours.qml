@@ -22,6 +22,7 @@ Provider {
             rows: said.rows.map(row => copyRow({
                 name: row.text,
                 side: row.side,
+                note: row.note ?? "",
                 copy: row.copy,
                 glyph: row.swatch ? swatch : "",
                 swatch: row.swatch
