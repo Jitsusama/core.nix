@@ -542,7 +542,7 @@ impl Step for OpenRescueBundle {
         if let Some(keys) = self.opened.borrow().as_ref() {
             return Ok(Standing::Done {
                 evidence: format!(
-                    "{}'s Secure Boot keys are open, owned by {}",
+                    "the Secure Boot keys of {} are open, owned by {}",
                     self.bundle.machine(),
                     keys.owner()
                 ),

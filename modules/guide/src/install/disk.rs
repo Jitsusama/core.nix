@@ -43,7 +43,7 @@ pub fn found(machine: &mut dyn Machine, target: &Target) -> Result<Result<Disk, 
     let Some(path) = machine.resolve(&target.disk)? else {
         return Ok(Err(blocked(
             format!(
-                "{}'s disk, {}, isn't in this machine",
+                "the disk {} installs onto, {}, isn't in this machine",
                 target.machine, target.disk
             ),
             format!(
@@ -216,7 +216,7 @@ impl Step for LayOutDisk {
         if target.install_key != INSTALL_KEY {
             return Ok(blocked(
                 format!(
-                    "{}'s layout reads its first key from {}, not {INSTALL_KEY}",
+                    "the layout of {} reads its first key from {}, not {INSTALL_KEY}",
                     target.machine, target.install_key
                 ),
                 format!("set jitsusama.disk.installKey to {INSTALL_KEY} and write the stick again"),
@@ -232,7 +232,7 @@ impl Step for LayOutDisk {
         if !missing.is_empty() {
             return Ok(blocked(
                 format!(
-                    "{}'s layout needs {}, which this stick hasn't got",
+                    "the layout of {} needs {}, which this stick hasn't got",
                     target.machine,
                     missing.join(", ")
                 ),
