@@ -130,13 +130,6 @@ in
   # no card at all.
   jitsusama.gpu.path = "pci-0000:00:02.0";
 
-  # The panel, LG Display's 0x07C6, shows a gamut wider than Display P3: its
-  # EDID gives red 0.689/0.310, green 0.240/0.721 and blue 0.136/0.045. Dell's
-  # Windows profile for it has the same primaries and no calibration curves,
-  # so Windows only lets the programs that convert colours use it. P3 is the
-  # nearest space Chromium names.
-  jitsusama.panel.colourSpace = "display-p3-d65";
-
   # The panel is 2880 by 1800 at 14 inches, which the desktop draws at twice
   # its logical size, so the sign-in consoles draw at twice too.
   jitsusama.kmscon.scale = 2;
