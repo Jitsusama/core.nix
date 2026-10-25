@@ -126,6 +126,16 @@ in
           kind = "cargo";
           roots = checkouts;
         };
+        # A target a build was pointed at with CARGO_TARGET_DIR, left at the
+        # top of the cache folder under no checkout: one there sat idle at
+        # 4.4 GiB for nine days, since no root above reached it. Only the top
+        # is searched, so the caches and workspaces inside aren't walked
+        # twice.
+        cache-targets = lib.mkDefault {
+          kind = "cargo";
+          roots = [ cacheHome ];
+          depth = 1;
+        };
         installs = lib.mkDefault {
           kind = "installs";
           roots = checkouts;
