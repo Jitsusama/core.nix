@@ -6,8 +6,8 @@
 # shell inside the installed system. The machine's disk is one disko's
 # image builder laid out and installed, as vm-secure-boot-installs builds
 # its own; its two YubiKeys are enrolled from the stick before the guide
-# starts, as a machine's own install leaves them. The script is
-# guide-recover-vm-test.py.
+# starts, as a machine's own install leaves them. The tests are
+# guide-recover-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -55,6 +55,7 @@ pkgs.testers.runNixOSTest {
   name = "guide-recover";
   globalTimeout = 30 * 60;
   qemu.package = qemu;
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   # The stick's system, built as a test node so the driver can reach its
   # shell, and never started itself: the machine boots its image from USB.
@@ -127,10 +128,10 @@ pkgs.testers.runNixOSTest {
       };
     };
 
-  # The driver runs on the host, so what the script needs from Nix, the
+  # The driver runs on the host, so what the tests need from Nix, the
   # images to put overlays on, the tool to make them, the keys' state files
-  # and the secrets to type, reaches it in one file rather than on the
-  # machine's path.
+  # and the secrets to type, reaches them as their values fixture rather
+  # than on the machine's path.
   testScript =
     { nodes, ... }:
     let
@@ -151,10 +152,12 @@ pkgs.testers.runNixOSTest {
           inherit pin recovery;
         }
       );
-      script = builtins.readFile ./guide-recover-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./guide-recover-vm-test.py}", values="${values}")
+    '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
