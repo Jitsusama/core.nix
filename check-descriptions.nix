@@ -797,6 +797,9 @@
   the-splash-keeps-systemd-quiet = ''
     with the splash, systemd writes only failures to the console
   '';
+  the-splash-reads-the-generation-from-the-entry = ''
+    the splash is told the generation only from an entry whose name carries one
+  '';
   the-surface-keyboard-types-at-the-disk-prompt = ''
     the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that
     keyboard out there
