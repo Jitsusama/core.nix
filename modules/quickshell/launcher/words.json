@@ -23,9 +23,7 @@
         "session:Power Off",
         "session:Log Out",
         "session:awake",
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
+        "session:profile"
       ]
     },
     {
@@ -605,6 +603,16 @@
         "energy",
         "watt",
         "ac"
+      ],
+      "parts": [
+        "power:rate",
+        "power:voltage",
+        "power:health",
+        "power:cycles",
+        "power:type",
+        "power:limit",
+        "power:temperature",
+        "power:made"
       ]
     },
     {
@@ -632,6 +640,11 @@
       "name": "Charger"
     },
     {
+      "id": "power:port",
+      "in": "power:charger",
+      "name": "Port {n}"
+    },
+    {
       "id": "power:charge",
       "in": "power",
       "name": "Charge"
@@ -644,32 +657,90 @@
         "charging": {
           "name": "Charging"
         }
-      }
+      },
+      "answers": [
+        "power draw"
+      ]
+    },
+    {
+      "id": "power:energy",
+      "in": "power",
+      "name": "Energy"
+    },
+    {
+      "id": "power:voltage",
+      "in": "power",
+      "name": "Voltage",
+      "answers": [
+        "battery voltage"
+      ]
     },
     {
       "id": "power:health",
       "in": "power",
-      "name": "Health"
+      "name": "Health",
+      "answers": [
+        "battery health",
+        "battery wear"
+      ]
     },
     {
       "id": "power:cycles",
       "in": "power",
-      "name": "Cycles"
+      "name": "Cycles",
+      "answers": [
+        "battery cycles",
+        "charge cycles",
+        "cycle count"
+      ]
+    },
+    {
+      "id": "power:type",
+      "in": "power",
+      "name": "Charge type",
+      "answers": [
+        "charge type",
+        "charging mode"
+      ]
     },
     {
       "id": "power:limit",
       "in": "power",
-      "name": "Charge limit"
+      "name": "Charge limit",
+      "answers": [
+        "charge limit",
+        "charging limit",
+        "charge threshold"
+      ]
+    },
+    {
+      "id": "power:limit:stop",
+      "in": "power:limit",
+      "name": "Stop at {n}%",
+      "verb": "set"
     },
     {
       "id": "power:temperature",
       "in": "power",
-      "name": "Temperature"
+      "name": "Temperature",
+      "answers": [
+        "battery temperature",
+        "battery temp"
+      ]
     },
     {
       "id": "power:model",
       "in": "power",
       "name": "Model"
+    },
+    {
+      "id": "power:made",
+      "in": "power",
+      "name": "Made",
+      "answers": [
+        "battery age",
+        "battery made"
+      ]
     },
     {
       "id": "heat",
@@ -907,7 +978,11 @@
         "keyboard light",
         "keyboard backlight",
         "keyboard brightness",
-        "key light"
+        "key light",
+        "room light",
+        "ambient light",
+        "light sensor",
+        "lux"
       ]
     },
     {
@@ -919,6 +994,17 @@
           "name": "Screen {n}"
         }
       }
+    },
+    {
+      "id": "light:screen:level",
+      "in": "light:screen",
+      "name": "Screen to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "light:room",
+      "in": "light",
+      "name": "Room light"
     },
     {
       "id": "light:keyboard",
@@ -947,26 +1033,48 @@
       ]
     },
     {
-      "id": "verb:brighter",
+      "id": "light:desk:brightness",
       "in": "light:desk",
+      "name": "Brightness"
+    },
+    {
+      "id": "light:desk:warmth",
+      "in": "light:desk",
+      "name": "Warmth"
+    },
+    {
+      "id": "light:desk:level",
+      "in": "light:desk:brightness",
+      "name": "Brightness to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "light:desk:kelvin",
+      "in": "light:desk:warmth",
+      "name": "Warmth to {k} K",
+      "verb": "set"
+    },
+    {
+      "id": "verb:brighter",
+      "in": "light:desk:brightness",
       "name": "Brighter",
       "verb": "brighter"
     },
     {
       "id": "verb:dimmer",
-      "in": "light:desk",
+      "in": "light:desk:brightness",
       "name": "Dimmer",
       "verb": "dimmer"
     },
     {
       "id": "verb:warmer",
-      "in": "light:desk",
+      "in": "light:desk:warmth",
       "name": "Warmer",
       "verb": "warmer"
     },
     {
       "id": "verb:cooler",
-      "in": "light:desk",
+      "in": "light:desk:warmth",
       "name": "Cooler",
       "verb": "cooler"
     },
@@ -2814,14 +2922,25 @@
       ]
     },
     {
+      "id": "session:profile",
+      "name": "Power profile",
+      "glyph": "balanced",
+      "words": [
+        "mode",
+        "energy",
+        "power mode",
+        "performance mode",
+        "profile"
+      ]
+    },
+    {
       "id": "session:power:Power Saver",
+      "of": "session:profile",
       "name": "Power saver",
+      "part": "Power saver",
       "verb": "use",
       "glyph": "saver",
       "words": [
-        "power profile",
-        "mode",
-        "energy",
         "eco",
         "low power",
         "battery saver",
@@ -2836,13 +2955,12 @@
     },
     {
       "id": "session:power:Balanced Power",
+      "of": "session:profile",
       "name": "Balanced power",
+      "part": "Balanced",
       "verb": "use",
       "glyph": "balanced",
       "words": [
-        "power profile",
-        "mode",
-        "energy",
         "normal",
         "default",
         "balanced"
@@ -2853,13 +2971,12 @@
     },
     {
       "id": "session:power:Performance",
+      "of": "session:profile",
       "name": "Full performance",
+      "part": "Full performance",
       "verb": "use",
       "glyph": "performance",
       "words": [
-        "power profile",
-        "mode",
-        "energy",
         "turbo",
         "fast",
         "boost",
@@ -4012,33 +4129,6 @@
         "session:quiet"
       ],
       "why": "Do not disturb holds the notifications, so it's found beside them."
-    },
-    {
-      "word": "power profile",
-      "things": [
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
-      ],
-      "why": "Each power profile is one of a set; the word lists all three."
-    },
-    {
-      "word": "mode",
-      "things": [
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
-      ],
-      "why": "Each power profile is one of a set; the word lists all three."
-    },
-    {
-      "word": "energy",
-      "things": [
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
-      ],
-      "why": "Each power profile is one of a set; the word lists all three."
     },
     {
       "word": "record",

@@ -110,6 +110,7 @@ let
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
+    "launcher/Power.js"
     "launcher/Traffic.js"
     "launcher/Cameras.js"
     "launcher/Interfaces.js"

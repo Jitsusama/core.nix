@@ -57,19 +57,42 @@ Provider {
             }))
     })
 
-    // Each power profile is found by its own name, the one in use saying
-    // so; the charger's coming and going picks one again. What's learned
-    // knows each by the name it had first (was), so a rename keeps it.
-    readonly property var profiles: [
+    // The power profile is a setting: one part saying which is in use, its
+    // choices a step in, each named there as the part's value reads
+    // ("Balanced") and found from anywhere by its own name ("Balanced
+    // power") or its words ("eco"), since the launcher lists a part of
+    // another (`of`) inside it and finds it outside only by a word past
+    // the whole's name. The charger's coming and going picks one again.
+    // What's learned knows each by the name it had first (was), so a
+    // rename keeps it.
+    readonly property var profileChoices: [
         { profile: PowerProfile.PowerSaver, was: "Power Saver" },
         { profile: PowerProfile.Balanced, was: "Balanced Power" },
         { profile: PowerProfile.Performance, was: "Performance" }
     ].filter(choice => choice.profile !== PowerProfile.Performance
-        || PowerProfiles.hasPerformanceProfile).map(choice => said(`session:power:${choice.was}`, "", {
-        side: PowerProfiles.profile === choice.profile ? "in use" : "",
-        hue: "machine",
-        run: () => PowerProfiles.profile = choice.profile
-    }))
+        || PowerProfiles.hasPerformanceProfile)
+    readonly property var profiles: profileChoices.map(choice => {
+        const key = `session:power:${choice.was}`;
+        return said(key, "", {
+            side: PowerProfiles.profile === choice.profile ? "in use" : "",
+            hue: "machine",
+            of: Words.of(key).of,
+            part: Words.of(key).part,
+            run: () => PowerProfiles.profile = choice.profile
+        });
+    })
+    readonly property var profileInUse: {
+        const choice = profileChoices.find(each => each.profile === PowerProfiles.profile);
+        return choice ? `session:power:${choice.was}` : "";
+    }
+    readonly property var profile: holderRow({
+        key: "session:profile",
+        name: Words.name("session:profile"),
+        keywords: Words.keywords("session:profile"),
+        side: profileInUse !== "" ? Words.of(profileInUse).part : "",
+        glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile"),
+        note: "a step in chooses another"
+    }, () => [])
 
     // Starting a recording is Capture's (Capture.qml). While anything
     // records, stopping it leads the home screen, so it never runs unseen.
@@ -88,7 +111,7 @@ Provider {
 
     // Each is learned by the name it had first (was), so renaming one keeps
     // what Joel taught it, and its old name, a hidden word, still finds it.
-    things: [awake, quiet].concat(Recorder.recording ? [recording] : [], profiles, [
+    things: [awake, quiet].concat(Recorder.recording ? [recording] : [], [profile], profiles, [
         { was: "Lock", does: locks, run: () => provider.launcher.lock.lock() },
         { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]) },
         { was: "Log Out", run: () => Niri.act({ Quit: { skip_confirmation: true } }) },

@@ -3,7 +3,8 @@
 // over a stand-in litra that keeps a light's state and says each change on
 // its watch, as the real one does. The answer says how the light is lit;
 // "desk light 60", "desk light 4000 k", "desk light off" and "warmer" set
-// it through litra; the row's verbs step it; the bar is told of a change
+// it through litra; its row holds its Brightness and Warmth, each a
+// setting whose choices step it or set a level; the bar is told of a change
 // of brightness or warmth, never of a camera lighting it or putting it out;
 // and with no light there is no answer. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't.
@@ -135,14 +136,33 @@ ShellRoot {
 
     function button() {
         expect("its button shows on the bar", root.warmed === 2, `${root.warmed}`);
-        const verbs = light.answer("desk light").rows[0].verbs();
-        expect("the verbs",
-            verbs.map(verb => verb.name).join(", ") === "Brighter, Dimmer, Warmer, Cooler, Put it out",
-            verbs.map(verb => verb.name).join(", "));
+        // Its parts: its brightness and its warmth, each a setting with
+        // a bar, and putting it out.
+        const parts = light.answer("desk light").rows[0].verbs();
+        const partNames = parts.map(part => part.name).join(", ");
+        expect("the parts", partNames === "Brightness, Warmth, Put it out", partNames);
+        expect("how each is set", parts[0].side === "60%" && parts[1].side === "4100 K"
+            && parts[0].graph.shape === "bar" && parts[1].graph.shape === "bar",
+            JSON.stringify(parts.slice(0, 2).map(part => [part.side, part.graph])));
+        expect("each offers its choices beside it", parts[0].offers && parts[1].offers,
+            `${parts[0].offers} ${parts[1].offers}`);
+        // Their choices: a step either way first, then the levels, the
+        // one it's at in use.
+        const brighter = parts[0].verbs();
+        const warmer = parts[1].verbs();
+        const steps = brighter.slice(0, 2).concat(warmer.slice(0, 2), [parts[2]]);
+        const stepNames = steps.map(verb => verb.name).join(", ");
+        expect("the steps", stepNames === "Brighter, Dimmer, Warmer, Cooler, Put it out",
+            stepNames);
         expect("each its one word",
-            verbs.map(verb => verb.verb).join(" ") === "brighter dimmer warmer cooler off",
-            verbs.map(verb => verb.verb).join(" "));
-        verbs[0].run();
+            steps.map(verb => verb.verb).join(" ") === "brighter dimmer warmer cooler off",
+            steps.map(verb => verb.verb).join(" "));
+        const inUse = brighter.concat(warmer).filter(choice => choice.side === "in use")
+            .map(choice => choice.name);
+        expect("the levels in use", inUse.join(", ") === "Brightness to 60%", inUse.join(", "));
+        expect("a warmth to choose", warmer.some(choice => choice.name === "Warmth to 2700 K"),
+            warmer.map(choice => choice.name).join(", "));
+        brighter[0].run();
         root.step("a verb's step", () => root.lit(70, 4100), root.stepped);
     }
 

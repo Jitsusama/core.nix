@@ -491,6 +491,11 @@ in
     console = "*";
     means = "how bright the screen is, or the lights";
   };
+  lamp = {
+    glyph = nerd "f095f";
+    console = "*";
+    means = "the desk light, and its warmth";
+  };
   session = {
     glyph = nerd "f033e";
     console = "L";

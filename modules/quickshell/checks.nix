@@ -431,6 +431,7 @@ onLinux {
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
       cp ${./launcher/Heat.js} Heat.js
+      cp ${./launcher/Power.js} Power.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Interfaces.js} Interfaces.js
@@ -779,6 +780,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Light.qml} launcher/Light.qml
+      cp ${./launcher/Power.js} launcher/Power.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/desk-light.qml} shell.qml

@@ -143,6 +143,23 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     )
     # Its charge among them, drawn as a bar, and none of them a glyph.
     photograph("launcher-charger-parts")
+    # Each part is named first, then what it says: the stand-in's health
+    # is good, and its temperature has a bar.
+    launcher_until(
+        lambda shown: (
+            {"Charger", "Charge", "Health", "Temperature"} <= set(shown["rows"])
+            and any(thing["reads"].startswith("Health \u00b7 Good, ") for thing in shown["things"])
+        )
+    )
+    machine.send_key("esc")
+    # A part is asked by its own words, its figure the headline.
+    answer("battery health")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name", "").startswith("Good, ")
+        )
+    )
     machine.send_key("esc")
     # A collection is found by what a person calls it, not only its
     # title, and Return goes straight into it.
@@ -254,6 +271,29 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
+        timeout=10,
+    )
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # A step into its answer, the screen is a setting: its share, its
+    # levels a step in by Return, and beside it the room's light as the
+    # stand-in sensor hears it.
+    answer("room light")
+    step_in()
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Screen"
+            and any(
+                thing["reads"].startswith("Room light \u00b7 ") and thing["reads"].endswith(" lx")
+                for thing in shown["things"]
+            )
+        )
+    )
+    step_in("ret")
+    launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
+    type_in("40", selecting="Screen to 40%")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
         timeout=10,
     )
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)

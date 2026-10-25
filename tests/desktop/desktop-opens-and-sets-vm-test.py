@@ -747,6 +747,24 @@ with subtest("the launcher sets the power profile"):
         machine.send_key("ret")
         machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # And as the setting it is: one part saying which is in use, its
+    # choices a step in by Return or the right arrow, each named there as
+    # the part reads it.
+    for key, profile, name, was in [
+        ("ret", "balanced", "Balanced", "Power saver"),
+        ("right", "power-saver", "Power saver", "Balanced"),
+    ]:
+        as_account("qs ipc call launcher toggle")
+        launcher_ready()
+        type_in("power profile", selecting="Power profile")
+        # The wait ends before the loop moves on, so it reads this pass's name.
+        launcher_until(lambda shown: (shown["selected"] or {}).get("side") == was)  # noqa: B023
+        step_in(key)
+        launcher_until(lambda shown: shown["rows"][:2] == ["Power saver", "Balanced"])
+        type_in(name.split()[0][:3].lower(), selecting=name)
+        machine.send_key("ret")
+        machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 # The right arrow on one of a collection's members offers its own
 # actions, as on anything at the top.

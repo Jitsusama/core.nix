@@ -13,6 +13,7 @@ import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
 import "Heat.js" as Heat
+import "Power.js" as Power
 import "Links.js" as Links
 import "Keyboards.js" as Keyboards
 import "Standing.js" as Standing
@@ -957,6 +958,43 @@ QtObject {
         machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
         machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 }),
             "after 200 ms, 40 a second");
+
+        // The battery's and the room's figures, from their files as the
+        // kernel writes them.
+        machine("the charge type in use", Power.chosen("Trickle Fast Standard Adaptive [Custom]"),
+            { now: "Custom", all: ["Trickle", "Fast", "Standard", "Adaptive", "Custom"] });
+        machine("an older kernel's one charge type", Power.chosen("Fast").now, "Fast");
+        machine("no charge type", Power.chosen(""), { now: "", all: [] });
+        machine("power delivery", Power.protocol("C [PD] PD_PPS"), "USB PD");
+        machine("programmable power", Power.protocol("C PD [PD_PPS]"), "USB PD PPS");
+        machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
+        machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
+        const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };
+        machine("a port charging", Power.port(powerPort, number), "100 W, 20 V at 5.0 A, USB PD");
+        machine("a port charging, its figures unsaid",
+            Power.port({ online: true, volts: null, amps: null, protocol: "" }, number),
+            "charging");
+        machine("a port powering a phone", Power.port({ online: false, giving: true }, number),
+            "powering what's plugged in");
+        machine("a port with something in", Power.port({ online: false, partner: true }, number),
+            "plugged in, giving nothing");
+        machine("an empty port", Power.port({ online: false }, number), "empty");
+        machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
+        machine("made in a month", Power.made(2026, 7, 0), "2026-07");
+        machine("a date that isn't", Power.made(0, 13, 40), "");
+        machine("a limit raised moves its stop first", Power.limitWrites(75, 80, 90, 5),
+            [["charge_control_end_threshold", "90"], ["charge_control_start_threshold", "85"]]);
+        machine("a limit lowered moves its start first", Power.limitWrites(75, 80, 60, 5),
+            [["charge_control_start_threshold", "55"], ["charge_control_end_threshold", "60"]]);
+        machine("a limit with no start", Power.limitWrites(null, 80, 90, 5),
+            [["charge_control_end_threshold", "90"]]);
+        machine("the room's lux", Power.lux("20000", "0.001000000", "0"), 20);
+        machine("a sensor with no scale", Power.lux("17", "", ""), 17);
+        machine("a sensor not read", Power.lux("", "0.001", "0"), null);
+        machine("a dark room", Power.roomLevel(0), 0);
+        machine("daylight", Power.roomLevel(10000), 1);
+        machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
+            0.5);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
