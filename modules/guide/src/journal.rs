@@ -68,6 +68,26 @@ fn append(path: &Path, step: &str, fact: &str) -> Result<(), Fault> {
     file.sync_all().map_err(unkept)
 }
 
+/// What a folder holds, on the disk before this returns: the folder the
+/// copy is in and the one above, which holds that folder's own entry. An
+/// fsync of a file keeps its data but, on a FAT boot partition, not a new
+/// folder's name, so a restart in the seconds after could lose the copy.
+fn sync_folders_of(path: &Path) -> Result<(), Fault> {
+    let unkept = |why: std::io::Error| Fault::Unkept {
+        path: path.display().to_string(),
+        why: why.to_string(),
+    };
+    let mut folder = path.parent();
+    for _ in 0..2 {
+        let Some(here) = folder else { break };
+        fs::File::open(here)
+            .and_then(|opened| opened.sync_all())
+            .map_err(unkept)?;
+        folder = here.parent();
+    }
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize)]
 struct Line {
     step: String,
@@ -133,6 +153,7 @@ impl Journal {
             for (step, fact) in &self.facts {
                 append(path, step, fact)?;
             }
+            sync_folders_of(path)?;
         }
         self.copy = Some(path.to_path_buf());
         Ok(())
@@ -149,13 +170,16 @@ impl Journal {
             && self.path.is_some()
         {
             match fs::remove_file(&path) {
-                Err(why) if why.kind() != std::io::ErrorKind::NotFound => {
+                // Gone from the disk too, so a restart can't find a copy of
+                // an install that has since finished.
+                Ok(()) => sync_folders_of(&path)?,
+                Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+                Err(why) => {
                     return Err(Fault::Unkept {
                         path: path.display().to_string(),
                         why: why.to_string(),
                     });
                 }
-                _ => {}
             }
         }
         Ok(())
