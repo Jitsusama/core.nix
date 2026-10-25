@@ -36,6 +36,54 @@ The words core.nix is built from.
 | theme              | the look every program Joel sees shares        |      |      | `jitsusama.theme.roles.accent`                          |
 | account            | the user home-manager configures               |      |      | `home-manager.users.<account>`                          |
 
+## The Machine and Its Parts
+
+What a machine is made of, and the programs that look after each part.
+
+| Word | Means | Also | Not | In code |
+| ---- | ----- | ---- | --- | ------- |
+| firmware | the program in the machine's chip that starts it, and its settings | | BIOS, UEFI | |
+| firmware password | the password that keeps the firmware's settings shut | | BIOS password | |
+| disk | the machine's storage | | drive, SSD, storage | NVMe; `jitsusama.disk`, from disko |
+| boot partition | the disk's small first part, which the firmware starts from | | ESP | `/boot` |
+| filesystem | how a disk's room is kept as files | | | Btrfs, a subvolume |
+| disk guard | the program that keeps each filesystem from filling: one for the machine, one for the account | | | `disk-guard system`, `disk-guard user` |
+| freeze | the disk guard stopping a program that fills a filesystem, until there's room | frozen | | `SIGSTOP` |
+| thaw | letting a frozen program carry on | | | `disk-guard thaw` |
+| memory | what programs run in while the machine is on | RAM | | |
+| swap | memory set aside out of the way, compressed first, then in the swap file | | swapfile | zram |
+| memory pressure | how long programs are waiting for memory | | | PSI |
+| slice | a share of the machine's CPU, memory and disk that a group of programs runs in | | | a systemd `.slice` |
+| shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | | `shaper`, CAKE |
+| connection | the network link out of the machine | uplink | line | |
+| tunnel | a VPN's link through the network | VPN | | `jitsusama.shaper.tunnels` |
+| Wi-Fi | the network without a cable | wireless | WLAN | `wifid`, `wifi` |
+| network sign-in page | the page a network shows before it lets the machine out, as a hotel's does | | captive portal | `wifid-sign-in` |
+| firewall | what keeps others' connections out | | | nftables |
+| Bluetooth | the radio that reaches headphones, keyboards and mice | | | BlueZ |
+| power profile | how hard the CPU and firmware run: performance, balanced or power saver | | thermal mode, platform profile | power-profiles-daemon |
+| charger | the power cable, and what it's plugged into | | mains | AC |
+| sleep | the machine paused with its memory kept, until it wakes | | suspend | `systemctl suspend`, s2idle |
+| wake | coming back from sleep | | resume | |
+| lid | the laptop's lid, whose closing puts it to sleep away from a desk | | | `lid-docked` |
+| docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | at a desk | on a dock | |
+| image processor | the part turning the built-in camera's raw picture into an image | | ISP, IPU | |
+| IR camera | the infrared camera beside the built-in camera, for signing in by face | | | `ir-camera`, Howdy |
+| desk light | the light on the monitor, lit while a camera is in use | | | Litra |
+| login key | the SSH key that signs Joel in to other machines, kept in the TPM | | everyday SSH key | `id_ecdsa.tpm`, ssh-tpm-agent |
+| spare | the login key's copy on the YubiKey, for when the TPM can't be used | | | `<account>@yubikey` |
+| Joel's key | the key that signs Joel's own commits | Joel's signing key | | `joel-signing`, `joelKey` |
+| agents' key | the key that signs agents' commits | agents' signing key | agent's key | `agent-signing`, `agentKey` |
+| passkey | a key the TPM holds for signing in to websites | | FIDO security key | `linux-id` |
+| keyring | where passwords programs keep are held, opened at sign-in | | | gnome-keyring |
+| greeter | what asks Joel to sign in when the machine starts | | | greetd, tuigreet |
+| console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | | kmscon |
+| splash | the picture shown while the machine starts and stops | | boot screen | Plymouth |
+| lock screen | what hides the desktop while Joel is away, until he signs in again | | | swayidle |
+| device check | the program that tells Joel a device stopped working | | | `device-check`, smartd |
+| virtual machine | a computer run as a program on this one | VM | | libvirt, QEMU |
+| container | a program run apart from the machine, with its own files | | | Podman |
+
 ## Still to Settle
 
 Words that mean two things today. Each waits on one choice, and moves into a
@@ -50,5 +98,14 @@ table above once it's made.
   sealed to it.
 - **module**: one of core's modules, a kernel module, and the camera module.
 - **machine**: one computer here, and `Computer` in the launcher.
+- **the kinds of work**: what Joel waits on at a terminal, timed work, agents'
+  work and the desktop's each run in their own slice, but the set has no
+  name, and "jobs" names both the agents' slice and pi's background
+  commands.
+- **how full a disk is**: the disk guard says "nearly full" and "critically
+  full" on screen and `urgent` and `critical` in code, and calls the band
+  below them "pressure", which is also memory's word.
+- **TPM**: the chip that keeps the machine's keys is shown by its acronym;
+  a plain word for it is still to be chosen.
 
 [design]: design.md
