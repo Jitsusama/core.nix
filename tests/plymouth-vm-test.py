@@ -171,6 +171,19 @@ class Boot:
             )
         )
 
+    def differing(self, one: Path, other: Path) -> int:
+        """Count how many pixels differ between two photographs."""
+        # The program and every argument are the test's own, from Nix and this file.
+        compared = subprocess.run(  # noqa: S603
+            [self.magick, "compare", "-metric", "AE", "-fuzz", "4%", one, other, "null:"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        # compare says 1 when the two differ and 2 when it couldn't compare them.
+        assert compared.returncode in {0, 1}, compared.stderr
+        return int(float(compared.stderr.split()[0]))
+
     def changed_from(self, before: Path, name: str) -> None:
         """Wait for the screen to differ from a photograph.
 
@@ -433,6 +446,42 @@ def test_a_slow_job_is_named_while_it_runs_and_goes_when_it_ends(opened: Boot) -
         "systemctl stop plymouth-waits.service",
         "systemd-run --wait --collect plymouth quit",
     )
+
+
+def test_a_security_key_waiting_for_a_touch_is_asked_for_until_it_is_touched(
+    opened: Boot,
+) -> None:
+    """A security key waiting for a touch is asked for in the theme's words until it's touched."""
+    machine = opened.machine
+    opened.bare()
+    machine.succeed("systemctl restart plymouth-start.service")
+    machine.wait_for_text("starting", timeout=READING)
+    # Once the splash has faded in, two photographs a moment apart are the same.
+    shots = [opened.photographed("before-touch-0")]
+
+    def settled(_: bool) -> bool:
+        """Say whether a new photograph matches the one before it."""
+        time.sleep(1)
+        shots.append(opened.photographed(f"before-touch-{len(shots)}"))
+        return opened.differing(shots[-2], shots[-1]) == 0
+
+    retry(settled, timeout=timedelta(seconds=60))
+    before = shots[-1]
+    # What systemd sends Plymouth while a key waits for a touch, then the empty
+    # message it ends that with once the key's been touched.
+    machine.succeed(
+        f"{opened.plymouth} display-message"
+        " --text='Please confirm presence on security token to unlock.'"
+    )
+    machine.wait_for_text("touch the security key", timeout=READING)
+    opened.photographed("touch")
+    assert "confirm presence" not in machine.get_screen_text()
+    machine.succeed(f"{opened.plymouth} display-message --text=''")
+    retry(
+        lambda _: opened.differing(before, opened.photographed("touched")) == 0,
+        timeout=READING,
+    )
+    machine.succeed("systemd-run --wait --collect plymouth quit")
 
 
 def test_the_emergency_shell_wears_the_face_and_says_what_failed(opened: Boot) -> None:

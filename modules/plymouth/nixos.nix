@@ -80,6 +80,7 @@ let
     locked = "the disk is locked";
     restarting = "restarting";
     stopping = "shutting down";
+    touching = "touch the security key";
   };
   hints = {
     pin = "PIN";

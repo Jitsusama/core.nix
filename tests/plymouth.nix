@@ -2,7 +2,8 @@
 # answers the disk's passphrase on the keyboard, as Joel types his PIN: the
 # theme's screen asks for it, shows a dot for each key, says try again after
 # a wrong one in the alert frame, then lets the boot through. A slow job is
-# named while the splash is up, a shutdown's last stage is said in the
+# named while the splash is up, a security key waiting for a touch is asked
+# for in the theme's words until it's touched, a shutdown's last stage is said in the
 # theme's words, and a restart's screen lasts to its end. The test reads
 # the screen with OCR, so each step waits on what's drawn rather than on a
 # timer, and photographs each state for a person to judge. The script is

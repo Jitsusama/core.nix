@@ -56,6 +56,7 @@ fun drawn_at_scale()
     global.under.images["locked"] = drawn("locked");
     global.under.images["restarting"] = drawn("restarting");
     global.under.images["stopping"] = drawn("stopping");
+    global.under.images["touching"] = drawn("touching");
     global.under.height = global.under.images["starting"].GetHeight() - 2 * global.pad;
     global.about.image = drawn("about");
     global.about.numbered = drawn("about-generation");
@@ -402,9 +403,27 @@ Plymouth.SetDisplayPasswordFunction(password_callback);
 Plymouth.SetDisplayNormalFunction(normal_callback);
 
 # What the boot says, such as a disk being checked, on the line below the
-# panel, which nothing else uses.
+# panel, which nothing else uses. systemd asks for a security key's touch in
+# words of its own, which the theme says under the name instead, and ends a
+# message by sending an empty one, which takes the message away and puts
+# back what was under the name before the touch was asked for.
 fun message_callback(text)
   {
+    if (holds(text, "confirm presence on security token"))
+      {
+        if (global.under.showing != "touching")
+          global.touch.after = global.under.showing;
+        says("touching");
+        return;
+      }
+    if (text == "")
+      {
+        if (global.under.showing == "touching")
+          says(global.touch.after);
+        global.said.text = NULL;
+        global.said.words = NULL;
+        return;
+      }
     global.said.text = text;
     global.said.words = lifted(text, global.said.top + @said@ * global.scale / 2);
   }
