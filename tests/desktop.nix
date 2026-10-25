@@ -19,10 +19,10 @@
 # start without a single QML error.
 #
 # The test runs as one VM test per area of the desktop, each on this same
-# machine: its script is desktop/desktop_prelude.py, the boot and the
-# helpers, then its area's subtests from desktop/desktop-<area>-vm-test.py,
-# so a change to one area reruns only that one, and the areas run side by
-# side. checks.nix names each area.
+# machine: its tests are desktop/desktop-<area>-vm-test.py, run through
+# pytest inside the driver, which ask for the desktop, its boot and helpers,
+# from desktop/desktop_session.py. So a change to one area reruns only that
+# one, and the areas run side by side. checks.nix names each area.
 #
 # The pictures it takes for a person to look at, which `shots-changed`
 # compares, are taken only by an area's gallery, `.gallery`, the same test
@@ -37,11 +37,6 @@
 let
   account = "jitsusama";
   secret = "correct-horse";
-
-  # The areas written for pytest, each a file of tests that ask for the
-  # desktop as a fixture; the rest are still scripts run after the prelude,
-  # and move one at a time.
-  pytestAreas = [ "captures-and-locks" ];
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
@@ -565,25 +560,14 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    # An area written for pytest runs inside the driver with the values as
-    # its fixture; one still a script runs after the prelude, which reads
-    # them from the file put in place of its marker.
-    if builtins.elem area pytestAreas then
-      ''
-        import vm_pytest
-        vm_pytest.run(globals(), "${./desktop/desktop-${area}-vm-test.py}", values="${values}")
-      ''
-    else
-      builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-        builtins.readFile ./desktop/desktop_prelude.py
-        + builtins.readFile ./desktop/desktop-${area}-vm-test.py
-      );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./desktop/desktop-${area}-vm-test.py}", values="${values}")
+    '';
+  # nix fmt holds the tests and desktop_session.py to mypy --strict and every
+  # ruff rule against the driver's own types, so the driver's own checks of
+  # these lines would add only their time.
   skipTypeCheck = true;
-  # nix fmt lints the prelude and each area as files, with every ruff rule;
-  # the driver's own lint reads them joined, where an area's imports, which
-  # its type checking needs, repeat the prelude's.
   skipLint = true;
 }
 // pkgs.lib.optionalAttrs (!gallery) {

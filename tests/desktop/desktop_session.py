@@ -1,10 +1,8 @@
 """The desktop every area of the desktop test drives: its boot, and the helpers each area shares.
 
 tests/desktop.nix gives this to the driver as a module of its Python, and its opening comment
-says what the test proves. An area written for pytest asks for a `Desktop` as a fixture, made
-once a run; an area still a driver script reaches the same helpers through desktop_prelude.py,
-which makes one and names its methods as the script expects. A helper two areas use comes
-here, and nothing here is a test.
+says what the test proves. Each area asks for a `Desktop` as a fixture, made once a run by
+`started`. A helper two areas use comes here, and nothing here is a test.
 """
 
 from __future__ import annotations
