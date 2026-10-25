@@ -12,7 +12,8 @@
 //! probe: a small write beside its state, synced once a second while it
 //! rests, the kind of sync an editor or git makes. It never gives up, so a
 //! machine that's always busy still gets cleaned, but it stops resting
-//! once the disk falls to urgent, where room matters more than pace.
+//! once the disk falls to urgent, where room matters more than pace, or
+//! once the guard is asked to stop, which a pass can't keep waiting.
 
 use crate::config::Pacing;
 use std::collections::VecDeque;
@@ -153,8 +154,11 @@ impl Pacer {
     }
 
     /// Rests after a batch: for the pacing's rest, then for as long as
-    /// the disk is strained, unless the disk falls to urgent meanwhile,
-    /// after which the pacer never rests again.
+    /// the disk is strained, unless the disk falls to urgent or a stop
+    /// comes meanwhile, after which the pacer never rests again. A stop
+    /// waits, blocked, for the guard to take it once the pass ends, and
+    /// systemd kills a guard that keeps it waiting past its stop timeout:
+    /// a rest on a disk a repack strained kept one resting until it did.
     pub fn rest(&mut self) {
         if self.hurried {
             return;
@@ -167,7 +171,7 @@ impl Pacer {
             if at - began >= rest && !self.strain.strained(at) {
                 break;
             }
-            if (self.pressed)() {
+            if (self.pressed)() || crate::commands::stop_waiting() {
                 self.hurried = true;
                 break;
             }

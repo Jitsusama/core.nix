@@ -156,6 +156,9 @@ pub fn steps(
         // What the step built and dropped isn't kept while it waits.
         crate::sys::give_back();
         if wait(every) {
+            // The journal shows how long after systemd's stop signal the
+            // guard took it, which a step can hold up.
+            let _ = writeln!(err, "disk-guard: stopping");
             return;
         }
     }

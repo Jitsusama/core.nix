@@ -165,7 +165,8 @@ fn the_loop_steps_until_told_to_stop_waiting_between() {
     );
     assert_eq!(waits, [Duration::from_secs(5); 3]);
     assert!(dir.path().join("status.json").exists(), "it stepped");
-    assert!(err.is_empty(), "{}", String::from_utf8_lossy(&err));
+    // Only that it took the stop, for the journal to time.
+    assert_eq!(String::from_utf8_lossy(&err), STOPPING);
 }
 
 /// A desktop that saves power as told and keeps what it's told.
@@ -253,7 +254,7 @@ fn a_desktop_refusing_the_same_way_is_told_of_once_until_it_hears_again() {
 fn a_healthy_disk_tells_the_desktop_nothing_and_a_deaf_one_is_told_of() {
     let dir = tempfile::tempdir().unwrap();
     let mut desk = Fake::default();
-    assert_eq!(stepped(&mut guard(dir.path()), 2, &mut desk), "");
+    assert_eq!(stepped(&mut guard(dir.path()), 2, &mut desk), STOPPING);
     assert!(desk.told.is_empty());
     let other = tempfile::tempdir().unwrap();
     let mut deaf = Fake {
@@ -261,8 +262,14 @@ fn a_healthy_disk_tells_the_desktop_nothing_and_a_deaf_one_is_told_of() {
         ..Fake::default()
     };
     let said = stepped(&mut guard_at(other.path(), "100%"), 2, &mut deaf);
-    assert_eq!(said, "disk-guard: telling the desktop: no one listens\n");
+    assert_eq!(
+        said,
+        format!("disk-guard: telling the desktop: no one listens\n{STOPPING}")
+    );
 }
+
+/// What the loop says once it takes its stop, last of all.
+const STOPPING: &str = "disk-guard: stopping\n";
 
 #[test]
 fn a_step_that_fails_is_told_of_and_the_loop_goes_on() {
@@ -284,7 +291,9 @@ fn a_step_that_fails_is_told_of_and_the_loop_goes_on() {
     );
     assert_eq!(waits, 2);
     let said = String::from_utf8(err).unwrap();
-    assert_eq!(said.lines().count(), 2, "{said}");
+    // Each failed step, then the stop.
+    assert_eq!(said.lines().count(), 3, "{said}");
+    assert!(said.ends_with(STOPPING), "{said}");
 }
 
 #[test]

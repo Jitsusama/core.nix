@@ -87,8 +87,9 @@ fn idle() {
 /// it between steps. systemd sends a unit's stop signal once, so a command
 /// started after it would run unasked until systemd kills the whole unit,
 /// as it did when a stop's SIGTERM ended one nix and the pass started the
-/// next.
-fn stop_waiting() -> bool {
+/// next. A pacer asks too, so a pass stops resting once a stop waits.
+#[must_use]
+pub fn stop_waiting() -> bool {
     // SAFETY: waiting is a valid sigset_t, filled by sigpending before it's
     // read.
     unsafe {
