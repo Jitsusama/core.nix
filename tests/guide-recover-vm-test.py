@@ -263,7 +263,9 @@ def test_esp_gets_its_boot_loader_again(boot_loader_back: QemuMachine) -> None:
 def test_return_gives_a_root_shell_inside(boot_loader_back: QemuMachine) -> None:
     """Return gives a root shell inside the installed system."""
     enter(boot_loader_back, "")
-    boot_loader_back.sleep(timedelta(seconds=3))
+    # The installed system's root prompt, at the / nixos-enter starts in; the
+    # stick's own prompt the guide was started from is in root's home.
+    on_screen(boot_loader_back, r"\[root@[^:\]]*:/\]#")
     enter(boot_loader_back, "cat /etc/hostname > /recovered && nixos-version >> /recovered")
     boot_loader_back.wait_until_succeeds("test -s /mnt/recovered", timeout=KEY)
     said = boot_loader_back.succeed("cat /mnt/recovered")
