@@ -108,6 +108,11 @@ def splash(machine: BaseMachine, values: dict[str, Any]) -> Splash:
         f"echo -n {passphrase} | cryptsetup luksFormat -q --iter-time=1 /dev/vdb -",
         f"echo -n {passphrase} | cryptsetup luksOpen -q /dev/vdb root",
         "mkfs.ext4 -q /dev/mapper/root",
+        # The system under test isn't one of the first boot's own, so it's made the
+        # profile's newest generation, as nix-env would, for the boot loader to give it
+        # an entry.
+        f"ln -sfn {values['encrypted']} /nix/var/nix/profiles/system-2-link",
+        "ln -sfn system-2-link /nix/var/nix/profiles/system",
         f"{values['encrypted']}/bin/switch-to-configuration boot",
         "sync",
     )

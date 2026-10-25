@@ -31,10 +31,19 @@ pkgs.testers.runNixOSTest {
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
 
+  # The first boot only lays the encrypted disk out and hands over, so it
+  # carries little, since useBootLoader copies its whole closure into the
+  # boot disk's image; the graphical system booted from the encrypted disk is
+  # evaluated from it as a specialisation would be but kept out of that
+  # closure, as tests/plymouth.nix does.
   nodes.machine =
-    { lib, pkgs, ... }:
     {
-      imports = [ self.nixosModules.graphical ];
+      extendModules,
+      lib,
+      pkgs,
+      ...
+    }:
+    {
       environment.systemPackages = [ pkgs.cryptsetup ];
 
       virtualisation = {
@@ -53,27 +62,34 @@ pkgs.testers.runNixOSTest {
       };
       boot.loader.systemd-boot.enable = true;
       boot.initrd.systemd.enable = true;
-      boot.initrd.kernelModules = [ "virtio_gpu" ];
-      # The test reads the machine through a serial console, and Plymouth
-      # keeps to text where there's one unless told it needn't.
-      boot.kernelParams = [ "plymouth.ignore-serial-consoles" ];
 
-      jitsusama.login.account = account;
-      users.users.${account}.isNormalUser = true;
-      home-manager.users.${account}.home.stateVersion = "26.05";
+      system.build.encrypted =
+        (extendModules {
+          modules = [
+            {
+              imports = [ self.nixosModules.graphical ];
+              boot.initrd.kernelModules = [ "virtio_gpu" ];
+              # The test reads the machine through a serial console, and Plymouth
+              # keeps to text where there's one unless told it needn't.
+              boot.kernelParams = [ "plymouth.ignore-serial-consoles" ];
 
-      specialisation.encrypted.configuration = {
-        boot.initrd.luks.devices = lib.mkVMOverride {
-          root.device = "/dev/vdb";
-        };
-        virtualisation.rootDevice = "/dev/mapper/root";
-      };
+              jitsusama.login.account = account;
+              users.users.${account}.isNormalUser = true;
+              home-manager.users.${account}.home.stateVersion = "26.05";
+
+              boot.initrd.luks.devices = lib.mkVMOverride {
+                root.device = "/dev/vdb";
+              };
+              virtualisation.rootDevice = "/dev/mapper/root";
+            }
+          ];
+        }).config.system.build.toplevel;
     };
 
   testScript =
     { nodes, ... }:
     let
-      encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
+      inherit (nodes.machine.system.build) encrypted;
       # What the tests need from Nix, as their values fixture. ImageMagick and Tesseract run beside the driver, not on the
       # machine, so they come as paths rather than on its PATH.
       values = pkgs.writeText "plymouth-screens-values.json" (
