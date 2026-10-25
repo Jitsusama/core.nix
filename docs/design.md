@@ -864,7 +864,7 @@ terminal's, a terminal running Neovim or an agent counting as that
 program. At its top the layers (that program's first, then Desktop, then
 the rest), each with its count and its first groups; inside a layer its
 groups, by what a chord acts on (the desktop's Windows, Columns,
-Workspaces, Screens, Launcher, Typing, Capture and Sound; Neovim's by its
+Workspaces, Displays, Launcher, Typing, Capture and Sound; Neovim's by its
 leader's letters, and GitHub's by the window a key works in); inside a
 group its chords, each with its chord and where it works, or, for one too
 big to read whole, groups of its own. A level aims at the card's eight

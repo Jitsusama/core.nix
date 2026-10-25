@@ -1980,11 +1980,13 @@
     {
       "id": "shortcuts:desktop:screens",
       "in": "shortcuts",
-      "name": "Screens",
+      "name": "Displays",
       "glyph": "display",
       "words": [
-        "monitors",
-        "displays"
+        "monitors"
+      ],
+      "hidden": [
+        "screens"
       ]
     },
     {
@@ -2147,7 +2149,7 @@
     {
       "id": "shortcuts:desktop:screens:this",
       "in": "shortcuts",
-      "name": "This screen",
+      "name": "This display",
       "glyph": "brightness",
       "words": [
         "brightness",
@@ -2155,7 +2157,8 @@
         "lights"
       ],
       "hidden": [
-        "session"
+        "session",
+        "this screen"
       ]
     },
     {
@@ -3551,11 +3554,6 @@
       "id": "bluetooth:battery",
       "in": "bluetooth",
       "name": "Battery"
-    },
-    {
-      "id": "bluetooth:profile",
-      "in": "bluetooth",
-      "name": "Profile"
     },
     {
       "id": "bluetooth:rate",

@@ -276,10 +276,12 @@ function carried(properties, count) {
     const hertz = Number(said["audio.rate"] ?? (clock ? clock[1] : 0));
     const many = Number(said["audio.channels"] ?? count ?? 0);
     const layout = LAYOUTS[many] ?? "";
+    const counted = many > 0 ? `${many} channels` : "";
     return {
         profile: profile ? profile[1] : "",
         rate: hertz > 0 ? `${hertz / KILO} kHz` : "",
-        channels: many > 0 ? [String(many), layout].filter(part => part !== "").join(", ") : ""
+        // As Sound says them: "mono", "stereo", or how many.
+        channels: layout === "" ? counted : layout
     };
 }
 

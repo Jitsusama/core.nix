@@ -903,7 +903,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
     step_in()
-    groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
+    groups = ["Windows", "Columns", "Workspaces", "Displays", "Launcher", "Typing"]
     launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     photograph("launcher-shortcut-groups")
     # What's typed there finds a group by its name, before every chord in
