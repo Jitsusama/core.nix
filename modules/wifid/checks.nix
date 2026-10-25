@@ -6,7 +6,9 @@
   pkgs,
   ...
 }:
-{
+# wifid talks to wpa_supplicant over D-Bus and its window is WebKitGTK's, so
+# both are Linux's alone.
+onLinux {
   # wifid's tests run as it builds: what it hears of the air and offers,
   # what each network asks to be joined by, the address it shows each
   # network, the networks and secrets it keeps, and how it tells a network
@@ -17,8 +19,6 @@
   # only the window and only connects, and it reads from wifid which card
   # wants a sign-in until none does.
   wifid-sign-in-reads-its-network = pkgs.callPackage ./sign-in/package.nix { };
-}
-// onLinux {
   # clippy finds nothing in wifid or its sign-in window, their tests
   # included. The window's package carries what both members need, so it
   # reads the whole workspace.

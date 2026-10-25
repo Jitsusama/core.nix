@@ -4,6 +4,7 @@
   bareNixos,
   holds,
   lib,
+  onLinux,
   pkgs,
   self,
   ...
@@ -18,7 +19,10 @@
     holds "batteries-leave-time-to-power-off"
       "UPower acts below 5% or by sleeping, so a laptop under load goes flat first."
       (upower.enable && upower.percentageAction >= 5 && upower.criticalPowerAction == "PowerOff");
-
+}
+# The daemon's package and the XPS 14's are Linux's alone, so a Mac can't
+# read their units.
+// onLinux {
   # The power profile daemon starts whenever it's asked, without waiting for
   # the boot to finish, which waits for the network: the shell asks it for the
   # profile as it starts, so the boot's slowest network held the shell. Read
@@ -55,7 +59,8 @@
       ''}
       touch $out
     '';
-
+}
+// {
   # The profile follows the charger: performance on mains, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is
