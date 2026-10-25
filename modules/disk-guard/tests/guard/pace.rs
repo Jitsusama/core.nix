@@ -207,7 +207,7 @@ fn a_pacer_beats_while_it_waits_on_work_and_hands_back_its_answer() {
         std::thread::sleep(Duration::from_millis(50));
         42
     });
-    assert_eq!(answer, 42);
+    assert_eq!(answer, Ok(42));
     assert!(beats.get() > 0);
     crate::assert_exactly(pacer.rested(), 0.0);
 }
@@ -215,15 +215,52 @@ fn a_pacer_beats_while_it_waits_on_work_and_hands_back_its_answer() {
 #[test]
 fn a_hurried_pacer_beats_while_it_waits_too() {
     let (mut pacer, _, beats) = hurried();
-    pacer.waiting(|| std::thread::sleep(Duration::from_millis(50)));
+    let waited = pacer.waiting(|| std::thread::sleep(Duration::from_millis(50)));
+    assert_eq!(waited, Ok(()));
     assert!(beats.get() > 0);
+}
+
+/// A stop that comes while the guard waits on work, an answer from the
+/// system daemon or a commit, ends the wait at once, and the work is left
+/// to end with the guard. The work here waits on a channel for up to five
+/// seconds, sent to only once the wait is over, so a wait that ignored the
+/// stop ends late rather than never. The stop is this thread's alone, as
+/// in the rest's own test, and taken back before the end.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stop_ends_a_wait_on_work_that_has_not_ended() {
+    use disk_guard::pace::Stopped;
+
+    let (waited, ended_first) = std::thread::spawn(|| {
+        let (mut pacer, _, _) = hurried();
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        // SAFETY: set is a valid sigset_t; the signal goes to this thread,
+        // which blocks it, and is taken back before the thread ends.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+            libc::pthread_kill(libc::pthread_self(), libc::SIGTERM);
+            let waited = pacer.waiting(move || wait.recv_timeout(Duration::from_secs(5)).is_ok());
+            // The work still waits on the channel, so a send reaches it.
+            let ended_first = release.send(()).is_err();
+            let mut taken = 0;
+            libc::sigwait(&raw const set, &raw mut taken);
+            (waited, ended_first)
+        }
+    })
+    .join()
+    .unwrap();
+    assert_eq!(waited, Err(Stopped), "the wait went on past a stop");
+    assert!(!ended_first, "the work ended before the wait did");
 }
 
 #[test]
 #[should_panic(expected = "the work broke")]
 fn work_that_panics_panics_its_waiter() {
     let (mut pacer, _, _) = hurried();
-    pacer.waiting(|| panic!("the work broke"));
+    let _ = pacer.waiting(|| panic!("the work broke"));
 }
 
 #[test]
