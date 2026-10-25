@@ -1085,7 +1085,12 @@ impl Guard {
             return Vec::new();
         };
         let keep = garbage.keep.0.as_secs_f64();
-        let held = listing.held_back(&crate::garbage::temp_roots(&self.config.nix.temp_roots));
+        let mut roots = crate::garbage::temp_roots(&self.config.nix.temp_roots);
+        roots.extend(crate::garbage::runtime_roots(
+            &self.processes,
+            &self.config.nix.store,
+        ));
+        let held = listing.held_back(&roots);
         listing.batches(
             |dead| {
                 !held.contains(dead.path.as_str())

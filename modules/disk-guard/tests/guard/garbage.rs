@@ -122,9 +122,9 @@ fn what_isnt_a_store_path_in_the_store_is_not_described() {
     assert_eq!(paths, ["/nix/store/p0", "/nix/store/p1"]);
 }
 
-/// A `nix` whose `store delete` deletes each path in turn, as Nix does,
-/// until one marked alive, which it refuses in Nix's words; it notes
-/// each time it's run.
+/// A `nix` whose `store delete` refuses the whole call in Nix's words when
+/// any path it's given is marked alive, deleting none, as Determinate Nix
+/// 3.21 does, and otherwise deletes them all; it notes each time it's run.
 fn deleting_nix(dir: &Path) -> std::path::PathBuf {
     script(
         &dir.join("nix"),
@@ -139,8 +139,8 @@ fn deleting_nix(dir: &Path) -> std::path::PathBuf {
                  why, use: nix-store --query --roots and nix-store --query --referrers\" >&2\n\
                  exit 1\n\
                fi\n\
-               rm -r \"$p\"\n\
-             done\n",
+             done\n\
+             rm -r \"$@\"\n",
             dir.join("runs").display()
         ),
     );
@@ -164,12 +164,33 @@ fn a_batch_is_deleted_without_what_came_alive_or_is_already_gone() {
     assert_eq!(
         runs,
         format!(
-            "{a} {live} {b}\n{b}\n",
+            "{a} {live} {b}\n{a} {b}\n",
             a = path("a"),
             live = path("live"),
             b = path("b")
         )
     );
+}
+
+#[test]
+fn a_batch_that_keeps_coming_alive_is_given_up_after_three_refusals() {
+    // Each refusal cost Nix a whole look for roots and deleted nothing, so
+    // a batch that meets many is left for a pass that makes them afresh.
+    let dir = tempfile::tempdir().unwrap();
+    let nix = deleting_nix(dir.path());
+    let path = |name: &str| dir.path().join(name).to_str().unwrap().to_owned();
+    let names = ["a", "b", "c", "d", "e"];
+    for name in names {
+        fs::create_dir(path(name)).unwrap();
+        fs::write(path(&format!("{name}.alive")), "").unwrap();
+    }
+    let batch: Vec<String> = names.iter().map(|name| path(name)).collect();
+    assert_eq!(
+        delete(&nix, &batch, false).unwrap_err(),
+        "3 paths came alive since the listing"
+    );
+    let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
+    assert_eq!(runs.lines().count(), 4, "{runs}");
 }
 
 #[test]
@@ -289,6 +310,51 @@ fn temporary_roots_are_read_from_each_process_s_file() {
         ["/nix/st", "/nix/store/a", "/nix/store/b", "/nix/store/c"]
     );
     assert!(temp_roots(&dir.path().join("nowhere")).is_empty());
+}
+
+#[test]
+fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("store");
+    let proc = dir.path().join("proc");
+    let link = |from: &Path, to: &Path| {
+        fs::create_dir_all(from.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(to, from).unwrap();
+    };
+    // A test VM's virtiofsd, with files of two paths open, one of them a
+    // derivation.
+    link(&proc.join("101/fd/3"), &store.join("aaa-lib/lib/libz.so"));
+    link(&proc.join("101/fd/4"), &store.join("bbb-app.drv"));
+    link(
+        &proc.join("101/exe"),
+        &store.join("ccc-virtiofsd/bin/virtiofsd"),
+    );
+    link(&proc.join("101/cwd"), Path::new("/home/someone"));
+    fs::write(
+        proc.join("101/maps"),
+        format!(
+            "7f00-7f01 r-xp 00000000 00:1f 42    {}\n7f02-7f03 rw-p 00000000 00:00 0\n",
+            store.join("ddd-glibc/lib/libc.so.6").display()
+        ),
+    )
+    .unwrap();
+    // Not a process, so not read.
+    link(&proc.join("self/fd/3"), &store.join("eee-mine"));
+    let mut roots: Vec<String> = disk_guard::garbage::runtime_roots(&proc, &store)
+        .into_iter()
+        .collect();
+    roots.sort_unstable();
+    let named = |name: &str| store.join(name).to_string_lossy().into_owned();
+    assert_eq!(
+        roots,
+        [
+            named("aaa-lib"),
+            named("bbb-app.drv"),
+            named("ccc-virtiofsd"),
+            named("ddd-glibc")
+        ]
+    );
+    assert!(disk_guard::garbage::runtime_roots(&dir.path().join("nowhere"), &store).is_empty());
 }
 
 #[test]
