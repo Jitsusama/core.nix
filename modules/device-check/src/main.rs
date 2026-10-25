@@ -254,6 +254,15 @@ enum Change {
     Fixed,
 }
 
+/// Whether a device's name is plural, so its line says "are": its last word
+/// ends in s, as "The speakers" and "The USB-C ports" do, unless the s is a
+/// possessive's or ends "ss" or "us". Every name the hardware modules give
+/// reads right by it.
+fn plural(subject: &str) -> bool {
+    let last = subject.rsplit(' ').next().unwrap_or(subject);
+    last.ends_with('s') && !last.ends_with("'s") && !last.ends_with("ss") && !last.ends_with("us")
+}
+
 /// The line to say for a finding, or None when nobody needs telling: only
 /// a new boot clears the kernel's trouble.
 fn line(root: &OsStr, change: Change, finding: &str) -> Option<String> {
@@ -263,8 +272,15 @@ fn line(root: &OsStr, change: Change, finding: &str) -> Option<String> {
             format!("{subject} failed a power change and won't wake until the next boot")
         }
         ("power", Change::Fixed) => format!("{subject} wakes again"),
-        ("missing", Change::Broke) => format!("{subject} is missing"),
-        ("missing", Change::Fixed) => format!("{subject} is back"),
+        ("missing", change) => {
+            let verb = if plural(subject) { "are" } else { "is" };
+            let state = if change == Change::Broke {
+                "missing"
+            } else {
+                "back"
+            };
+            format!("{subject} {verb} {state}")
+        }
         ("disk", Change::Broke) => format!("The disk {subject}"),
         ("disk", Change::Fixed) => format!(
             "The disk {}",
@@ -372,6 +388,27 @@ mod tests {
     }
 
     #[test]
+    fn names_agree_with_their_verb() {
+        let root = OsStr::new("/nonexistent");
+        for (name, verb) in [
+            ("The USB-C ports", "are"),
+            ("The thermal sensors", "are"),
+            ("The firmware's settings", "are"),
+            ("Bluetooth's adapter", "is"),
+            ("The camera's ISP", "is"),
+            ("The bus", "is"),
+            ("The glass", "is"),
+            ("The TPM", "is"),
+        ] {
+            assert_eq!(
+                line(root, Change::Broke, &format!("missing\t{name}")),
+                Some(format!("{name} {verb} missing")),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn says_each_finding_as_it_broke() {
         let root = OsStr::new("/nonexistent");
         assert_eq!(
@@ -404,6 +441,10 @@ mod tests {
         assert_eq!(
             line(root, Change::Fixed, "missing\tBluetooth").as_deref(),
             Some("Bluetooth is back")
+        );
+        assert_eq!(
+            line(root, Change::Fixed, "missing\tThe speakers").as_deref(),
+            Some("The speakers are back")
         );
         assert_eq!(
             line(root, Change::Fixed, "disk\t/dev/nvme0 reports a reports b").as_deref(),
