@@ -87,9 +87,9 @@ bound by hand. `cs35l56-spkid-lock.patch`, written here, makes them take turns
 with a lock around the read; the patch says why.
 
 The amplifiers then disagreed about what they read. Dell ships two tunings
-for each amplifier, and Windows picks between them by that pin, as Linux
-does; the files are byte for byte the ones linux-firmware has as `spkid0` and
-`spkid1`. At every boot the right woofer, the first to probe, loaded `spkid1`
+for each amplifier, and the driver picks between them by that pin; the files
+are byte for byte the ones linux-firmware has as `spkid0` and `spkid1`. At
+every boot the right woofer, the first to probe, loaded `spkid1`
 and the other three `spkid0`. The pin reads low the whole time: sampled every
 2 ms for 30 s while the camera opened and closed, it never went high. The
 bridge's wake interrupt is an active-low `GpioInt` on that pin, and the ACPI
@@ -193,7 +193,7 @@ new name with it, from `HID sdw:0:0:01fa:4245:01` to one starting `SDCA HID`,
 which no rule here matches on. `iwlwifi-core-107` loads
 `iwlwifi-sc-a0-wh-b0-c107`, which linux-firmware has shipped since 20260916;
 without that file the driver falls back to 106. `issei` binds the security
-engine at `00:18.0` (`8086:e45d`), as Dell's `issei.sys` does on Windows, with
+engine at `00:18.0` (`8086:e45d`), the device Dell's `issei.sys` drives, with
 `INTEL_SSEI` and `INTEL_SSEI_HW_HECI` built as modules; it gives
 `/dev/issei0` and the engine's firmware version in `/sys/class/issei`, and
 nothing in userspace talks to it yet.
@@ -275,8 +275,8 @@ It can't shorten the firmware's own time.
 
 ### thermald's Start
 
-thermald's adaptive mode runs the laptop's own thermal tables, as Intel's
-Dynamic Tuning does on Windows. Their ITMT3 tables steer the CPU's zone,
+thermald's adaptive mode runs the laptop's own thermal tables, the ones Intel's
+Dynamic Tuning was written to. Their ITMT3 tables steer the CPU's zone,
 `TCPU`, through the power limits behind `intel-rapl-mmio`, and thermald
 looks for both once, as it starts. udev used to load their drivers, and on
 one boot of 24 they came a second after thermald: it logged that adaptive
@@ -311,8 +311,8 @@ Ethernet avoids it.
 
 ### Bluetooth's Power Limits
 
-The firmware gives Bluetooth two settings, as UEFI variables, where Windows'
-driver reads them: a SAR table, `UefiCnvBtBRDS`, with transmit limits for
+The firmware gives Bluetooth two settings, as UEFI variables: a SAR table,
+`UefiCnvBtBRDS`, with transmit limits for
 each of the chip's two chains on 2.4, 5.2 and 5.8 GHz, and the antenna gain
 setting, `IntelUefiCnvBtPpagSupport`, on for the EU and China. Linux's
 `btintel` reads both only from ACPI methods, `BRDS` and `PPAG`, which this
@@ -330,8 +330,9 @@ measured: nothing here can measure transmit power.
 
 ### The Speaker Tuning
 
-Linux loads Dell's firmware for the amplifiers but has nothing in place of the
-Waves tuning Windows puts on top, so the speakers sound thin. The module runs
+Dell voices the speakers with a Waves tuning of its own, on top of the
+amplifiers' firmware, and Linux has nothing in its place, so untuned they
+sound thin. The module runs
 [Omarchy's tuning][9] for this model: thirteen biquads per channel and a
 limiter, fitted to a measured EasyEffects profile, with no binary blob. Its
 limiter takes 9 dB more in than Omarchy's, chosen by ear, so the tuned
@@ -376,8 +377,8 @@ the image processor appears, so a machine without the camera never runs it.
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
 
-Dell fits the laptop with one of several camera modules, and its Windows
-driver tunes the picture for the one fitted; the HAL has only Intel's tuning
+Dell fits the laptop with one of several camera modules, and its own driver
+tunes the picture for the one fitted; the HAL has only Intel's tuning
 for its own reference module, KAFE799. The firmware names the module in the
 sensor's `_DDN`, which Linux doesn't show: `acpi_call` reads it, at the path
 in `/sys/bus/acpi/devices/OVTI08F4:00/path` with `._DDN` added. Naming it in
@@ -396,7 +397,7 @@ convert every frame from one colour standard to another as well, from a
 label nobody had set, which it no longer does. Over 150 frames it took 18% of
 a core before and 14% after, the squeeze's 4% included.
 
-The IR camera beside it, an HM1092 that Windows signs in with, has no driver in
+The IR camera beside it, an HM1092 made for signing in by face, has no driver in
 any kernel release yet. Three patches from the media list bring it up: its
 `ipu-bridge` entry from mainline, the sensor's driver from the [v7
 series][15] with Jake Steinman's patch for Intel laptops, and the IPU7's
@@ -409,7 +410,7 @@ CSI-2 port the firmware names only at boot, which differs between models.
 Its flood light, the `HIMX1092_00::ir_flood_led` LED, belongs to the sensor's
 power controller, which offers it to the sensor's driver, but no driver took
 it, so every frame was dark. A patch written here has the driver light it
-while the sensor streams, and only then, as Windows does.
+while the sensor streams, and only then.
 
 The IPU7's node for it offers colour formats too, and pads each line to 64
 bytes, so a program opening it as it would a webcam picks a format the sensor
@@ -418,7 +419,7 @@ can't send, and OpenCV, which Howdy reads through, shears its frames. The
 which every camera program reads, and only while one reads, so the sensor and
 its light stay off otherwise. Before each stream it wires the pipeline, from
 the CSI-2 port the sensor's own link names. Browsers and calls aren't offered
-it, as Windows keeps its IR camera to sign-in. Nothing signs in with it unless
+it, since its grey picture is for signing in. Nothing signs in with it unless
 a machine turns Howdy on and names the services it may unlock.
 
 Both cameras are v4l2loopback devices, and both relays stop writing while
@@ -428,7 +429,7 @@ timestamps running backwards, which recorders reject. A patch written here,
 in the [loopback module][18], starts each reader at the next frame written.
 
 Unbinding the IPU and binding it again, which brings a hung camera back
-without a reboot as disabling it in Windows' Device Manager does, freed the
+without a reboot, freed the
 capture side's nodes while WirePlumber still held them open, and the kernel
 oopsed as they closed. A patch written here keeps them until the last one
 closes. A sensor's node held open across the unbind still isn't made again
@@ -500,7 +501,7 @@ from a branch with nothing behind it; the driver already drops those.
   unless a machine says otherwise.
 - **The IPSE HECI** (`00:13.0`, `8086:e462`) has no driver. Dell's chipset
   pack names it "Intel(R) IPSE HECI #1" and gives it a null driver, so
-  Windows drives it no more than Linux does.
+  nothing on any system drives it.
 - **The overclocking watchdog** (`INTC109D`, `\_SB.PC00.LPCB.CWDT`).
   `intel_oc_wdt` knows its siblings, not this ID, and made to bind it fails
   with -13: the firmware locks it off at power-on. The TCO watchdog stays
@@ -561,16 +562,16 @@ session's builds kept the laptop 9% busy.
 ### The Power-Saver Profile
 
 Two drivers offer the firmware's platform profiles here: Dell's, with the
-quiet, cool, balanced and performance modes Dell's own app offers on
-Windows, and Intel's SoC slider, with low-power, balanced and performance.
+quiet, cool, balanced and performance modes Dell's own app offers, and
+Intel's SoC slider, with low-power, balanced and performance.
 power-profiles-daemon writes only the legacy file, which offers what every
 driver has, so neither quiet nor low-power was there, and its power-saver
 profile fell back to balanced: Dell's balanced table, the slider's middle
 value. `soc-slider-takes-quiet.patch`, written here, has the slider take
 quiet and cool as hidden choices, as AMD's driver does for the same reason,
 and set them as its most efficient value. Power-saver now sets Dell's quiet
-mode and the slider's low power together, as Windows' best power efficiency
-does. `platform-profiles-reach-the-legacy-file` reads both drivers' choices
+mode and the slider's low power together, the most efficient pair the
+firmware has. `platform-profiles-reach-the-legacy-file` reads both drivers' choices
 from the kernel's patched source.
 
 ### The Two Crashes
@@ -616,11 +617,10 @@ sends a sample only when the light changes by 1%, checking ten times a second.
 
 The panel, LG Display's 0x07C6, shows more than sRGB: its EDID gives red
 0.689/0.310, green 0.240/0.721 and blue 0.136/0.045, a little wider than
-Display P3. Dell's Windows profile for it has the same primaries and no
-calibration curves, so Windows changes nothing for the whole screen and only
-the programs that convert colours use it. Every program here draws as if
-the screen were sRGB, which would stretch sRGB's colours over the wider
-gamut.
+Display P3. Dell's colour profile for it has the same primaries and no
+calibration curves, so the panel needs no correction of its own, only each
+surface converted to its gamut. Every program here draws as if the screen
+were sRGB, which would stretch sRGB's colours over the wider gamut.
 
 niri maps sRGB onto the primaries the EDID declares, in the display engine,
 for the whole panel at once (modules/niri's `srgb-gamut`), so every program
@@ -643,7 +643,7 @@ next change.
 
 ### The Panel's Variable Refresh
 
-The panel varies its rate from 20 to 120 Hz, as Windows uses it, but gives
+The panel varies its rate from 20 to 120 Hz, but gives
 that range only in its EDID's DisplayID Adaptive Sync block, which the
 kernel doesn't read: it looks only for a range limits descriptor in the
 base block, so the Intel driver never offers variable refresh.
@@ -651,7 +651,8 @@ base block, so the Intel driver never offers variable refresh.
 from that block when the base block has none. On its own it changes nothing
 a person sees: the compositor still decides. In
 7.2 the Intel driver turns the panel's self refresh off while variable
-refresh is on, which Windows doesn't, so it's worth turning on only while
+refresh is on, though the hardware can keep both, so it's worth turning on
+only while
 a video or game is showing, as niri's on-demand setting does, rather than
 everywhere.
 
@@ -663,7 +664,7 @@ it reads only from CTA HDR metadata, and this panel gives its luminance only
 in its EDID's DisplayID Display Parameters block: 400 nits over the whole
 screen. With no range found, the Intel driver guesses 0 to 512 nits, so the
 top 112 of the backlight's 512 steps ask for more light than the panel is
-rated for. Dell's Windows driver gives it 25 to 400 nits.
+rated for. Dell's own graphics driver gives it 25 to 400 nits.
 `panel-luminance-range.patch`, written here, reads the range from that block
 when no CTA block gives one, so the backlight runs from 0 to 400 in steps of
 one nit, and a level keeps the same nits it had before. The panel answers 0
@@ -690,8 +691,8 @@ the read, but a boot with a monitor on USB-C still read it wrong.
 
 The touchpad is a `2C2F` haptic pad on `hid-multitouch`: it has no button,
 and its firmware buzzes when it's pressed. Its report descriptor gives the
-strength as a feature, Intensity on the Haptics page (report 11, 0 to 100),
-which is what Windows' haptic feedback intensity slider writes. The firmware
+strength as a feature, Intensity on the Haptics page (report 11, 0 to 100).
+The firmware
 starts at 50 and nothing on Linux changes it: the kernel's `hid-haptic` takes
 only pads that name a trigger as well, which this one doesn't, and Omarchy
 installs Dell's haptics daemon only for Synaptics pads (`VEN_06CB`).
@@ -699,7 +700,7 @@ installs Dell's haptics daemon only for Synaptics pads (`VEN_06CB`).
 sleep, and a machine that leaves it unset keeps the firmware's 50.
 
 Palm rejection needs nothing: the pad flags a palm in each contact's tool
-type, which libinput reads as Windows reads the same flag.
+type, which libinput reads.
 
 ### What's Left
 
@@ -712,8 +713,8 @@ type, which libinput reads as Windows reads the same flag.
   detection is on. The bridge answers with nothing unless an app has the
   camera open, so the reading never changes. Dell's own hub firmware, the
   camera sensor powered, the bridge's vision-sensing bit and the hub's
-  suspend state changed nothing, and Windows on the same bridge sends it
-  nothing while the camera is idle. Dell's specifications and driver pack
+  suspend state changed nothing, and Dell's own drivers on the same bridge
+  get nothing from it while the camera is idle. Dell's specifications and driver pack
   offer no presence feature on this model. The firmware's other presence
   setting, Intel's, gives no reading either, idle or with the camera
   streaming. The one boot with it, which also first bound the IR sensor,

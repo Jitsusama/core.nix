@@ -1,6 +1,6 @@
 # How strongly a haptic touchpad clicks, when a machine says. A haptic pad
-# has no button: its firmware buzzes when pressed, at the intensity Windows'
-# "haptic feedback intensity" slider sets, and starts at its own default,
+# has no button: its firmware buzzes when pressed, at an intensity its report
+# descriptor offers as a setting, and starts at its own default,
 # which no driver on Linux changes. click-strength.rs finds the intensity in
 # each pad's report descriptor and sets it when the pad appears, and again
 # after every sleep in case the firmware forgets. Unset, nothing runs.
@@ -35,8 +35,7 @@ in
     example = 30;
     description = ''
       How strongly a haptic touchpad clicks, as a percentage of what its
-      firmware allows, the way Windows' haptic feedback intensity slider
-      sets it. Null leaves the firmware's own. Devices without a haptic
+      firmware allows. Null leaves the firmware's own. Devices without a haptic
       intensity are passed over.
     '';
   };
