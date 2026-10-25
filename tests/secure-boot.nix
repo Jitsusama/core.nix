@@ -6,8 +6,8 @@
 # the TPM refuse. The TPM keeps no NvPCRs, so no boot or login waits on them.
 # Each generation is counted as it boots and blessed once it's up, and one
 # whose tries are spent is passed over for the last good one, the TPM still
-# opening the disk, with a word to the session. The script is
-# secure-boot-vm-test.py.
+# opening the disk, with a word to the session. The tests are
+# secure-boot-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   passphrase = "install-passphrase";
@@ -23,6 +23,7 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "secure-boot";
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
   globalTimeout = 40 * 60;
 
   nodes.machine =
@@ -122,9 +123,10 @@ pkgs.testers.runNixOSTest {
       system.stateVersion = "26.05";
     };
 
-  # The driver runs on the host, so what the script needs from Nix, the image
+  # The driver runs on the host, so what the tests need from Nix, the image
   # to boot, the tool to put an overlay on it, the systems to install and the
-  # secrets to type, reaches it in one file rather than on the machine's path.
+  # secrets to type, reaches them as their values fixture rather than on the
+  # machine's path.
   testScript =
     { nodes, ... }:
     let
@@ -144,10 +146,12 @@ pkgs.testers.runNixOSTest {
           inherit passphrase pin;
         }
       );
-      script = builtins.readFile ./secure-boot-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./secure-boot-vm-test.py}", values="${values}")
+    '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
