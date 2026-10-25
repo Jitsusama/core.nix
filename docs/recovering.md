@@ -128,7 +128,7 @@ the stick again and it says the install stopped part way, offering to carry
 it on or start again, wiping the disk. Carrying on asks for a YubiKey the
 install had already enrolled, and its PIN, then goes on from where it
 stopped. If it stopped before any YubiKey was enrolled, nothing opens that
-disk, and the guide says so: boot the stick again and start again.
+disk, so the stick says so and offers only to start again, wiping the disk.
 
 The TPM's keys were files on the old disk, so the first boot makes new ones:
 the everyday SSH key and both signing keys. GitHub still holds the old public
