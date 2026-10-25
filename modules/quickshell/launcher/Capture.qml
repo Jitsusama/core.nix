@@ -88,7 +88,7 @@ Provider {
     readonly property var stop: member({
         key: "capture:stop",
         verb: "stop",
-        name: "Stop recording",
+        name: Words.name("capture:stop"),
         keywords: "end finish video",
         side: Recorder.what,
         // The vocabulary's Stop recording wears recording's mark, so this
@@ -103,7 +103,7 @@ Provider {
         member({
             key: "capture:screen",
             verb: "take",
-            name: "The whole screen",
+            name: Words.name("capture:screen"),
             keywords: "screenshot picture display monitor",
             glyph: picture,
             hue: "action",
@@ -115,7 +115,7 @@ Provider {
         member({
             key: "capture:window",
             verb: "take",
-            name: `This window \u00b7 ${titled(focused)}`,
+            name: Words.name("capture:window", "", { title: titled(focused) }),
             keywords: "screenshot picture focused",
             glyph: picture,
             hue: "action",
@@ -127,7 +127,7 @@ Provider {
         member({
             key: "capture:region",
             verb: "pick",
-            name: "A region",
+            name: Words.name("capture:region"),
             keywords: "screenshot picture area part selection",
             glyph: picture,
             hue: "action",
@@ -138,7 +138,7 @@ Provider {
         member({
             key: "capture:record-screen",
             verb: "record",
-            name: "Record the whole screen",
+            name: Words.name("capture:record-screen"),
             keywords: "video recording screencast display monitor",
             glyph: Theme.glyph.recording,
             hue: "action",
@@ -150,7 +150,7 @@ Provider {
         member({
             key: "capture:record-window",
             verb: "record",
-            name: `Record this window \u00b7 ${titled(focused)}`,
+            name: Words.name("capture:record-window", "", { title: titled(focused) }),
             keywords: "video recording screencast focused",
             glyph: Theme.glyph.recording,
             hue: "action",
@@ -162,7 +162,7 @@ Provider {
         member({
             key: "capture:record-region",
             verb: "pick",
-            name: "Record a region",
+            name: Words.name("capture:record-region"),
             keywords: "video recording screencast area part selection",
             glyph: Theme.glyph.recording,
             hue: "action",
@@ -173,7 +173,7 @@ Provider {
         member({
             key: "capture:camera-picture",
             verb: "open",
-            name: "A picture from the camera",
+            name: Words.name("capture:camera-picture"),
             keywords: "photo selfie webcam photograph",
             glyph: picture,
             hue: "action",
@@ -183,7 +183,7 @@ Provider {
         member({
             key: "capture:camera-video",
             verb: "open",
-            name: "A video from the camera",
+            name: Words.name("capture:camera-video"),
             keywords: "record recording webcam film movie",
             glyph: Theme.glyph.recording,
             hue: "action",

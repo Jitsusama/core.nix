@@ -91,7 +91,7 @@ Provider {
         if (given.run && given.key.startsWith("finding:"))
             doing.push(copyRow({
                 key: `spend:${given.key}:copy`,
-                name: "Copy what it found",
+                name: Words.name("spend:copy"),
                 copy: given.copy,
                 figure: false,
                 glyph: glyph(given.role),
@@ -100,7 +100,7 @@ Provider {
         if (given.expect)
             doing.push(thing({
                 key: `spend:${given.key}:expect`,
-                name: "It's expected",
+                name: Words.name("spend:expect"),
                 glyph: Theme.glyph.fine,
                 hue: "action",
                 run: () => Niri.spawn(given.expect)

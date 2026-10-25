@@ -189,14 +189,16 @@ Provider {
             () => choices);
     }
 
-    // How niri turns a display, as a part says it and as its choice does;
-    // niri turns "90" counter-clockwise.
-    readonly property var turns: [
-        { transform: "Normal", side: "upright", name: "Rotate upright" },
-        { transform: "90", side: "a quarter turn left", name: "Rotate a quarter turn left" },
-        { transform: "180", side: "upside down", name: "Rotate upside down" },
-        { transform: "270", side: "a quarter turn right", name: "Rotate a quarter turn right" }
-    ]
+    // How niri turns a display, as a part says it and as its choice does,
+    // in the vocabulary's words; niri turns "90" counter-clockwise.
+    readonly property var turns: ["Normal", "90", "180", "270"].map(transform => {
+        const side = (Words.of("displays:rotation").said ?? {})[transform] ?? transform;
+        return {
+            transform: transform,
+            side: side,
+            name: Words.name("displays:rotate", "", { way: side })
+        };
+    })
 
     readonly property var scales: [1, 1.25, 1.5, 1.75, 2, 2.5, 3]
 
