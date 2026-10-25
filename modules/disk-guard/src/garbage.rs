@@ -385,7 +385,8 @@ fn output(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<(bool, Strin
         idle,
     };
     match commands::run(&job).map_err(|error| format!("starting {name}: {error}"))? {
-        Ran::TimedOut | Ran::Stopped => Err(format!("{name} ran past {timeout:?}")),
+        Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
+        Ran::Stopped => Err(format!("{name} was stopped with the guard")),
         Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),
         Ran::Finished(output) if output.status == Some(0) => {
             let stdout = String::from_utf8(output.stdout);
