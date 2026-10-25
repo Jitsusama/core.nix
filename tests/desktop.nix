@@ -43,6 +43,7 @@ let
   # and move one at a time.
   pytestAreas = [
     "captures-and-locks"
+    "opens-and-sets"
     "says-what-happens"
     "starts-clean"
   ];
