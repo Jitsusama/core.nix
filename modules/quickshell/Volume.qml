@@ -1,6 +1,7 @@
 // Shows the speaker's volume, or with `input` the microphone's, for a moment
 // whenever it changes or mutes, at the bottom of the screen, as a bar in the
 // theme. Pipewire says when, so nothing is asked every so often.
+import qs
 import Quickshell
 import Quickshell.Services.Pipewire
 import QtQuick
@@ -50,8 +51,8 @@ Scope {
 
     Meter {
         name: root.input ? "microphone" : "volume"
-        glyph: String.fromCodePoint(root.input ? (off ? 0xf036d : 0xf036c)
-            : (off ? 0xf0581 : 0xf057e))
+        glyph: root.input ? (off ? Theme.glyph.muted : Theme.glyph.microphone)
+            : (off ? Theme.glyph.silent : Theme.glyph.volume)
         visible: root.shown
         level: root.audio ? root.audio.volume : 0
         off: root.audio ? root.audio.muted : false

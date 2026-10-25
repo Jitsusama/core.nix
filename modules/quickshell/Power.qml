@@ -1,7 +1,9 @@
 // Shows the battery's charge for a moment when power is plugged in or
 // pulled out, so a cable that seated, or didn't, is seen at once, as the
-// same bar the volume uses: a plug while it charges, a battery while it
-// drains. UPower says when, so nothing is asked every so often.
+// same bar the volume uses, with the launcher's marks for the charger while
+// it's plugged in and for the charge while the battery drains. UPower says
+// when, so nothing is asked every so often.
+import qs
 import Quickshell
 import Quickshell.Services.UPower
 import QtQuick
@@ -31,7 +33,7 @@ Scope {
 
     Meter {
         name: "power"
-        glyph: String.fromCodePoint(UPower.onBattery ? 0xf0079 : 0xf06a5)
+        glyph: UPower.onBattery ? Theme.glyph.charge : Theme.glyph.charging
         visible: root.shown
         level: root.battery.percentage
     }
