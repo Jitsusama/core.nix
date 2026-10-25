@@ -242,10 +242,11 @@ fn refresh_range(descriptor: &[u8]) -> String {
 }
 
 /// A digital input's bits a colour and its interface, from EDID 1.4's input
-/// byte.
-fn input(byte: u8) -> String {
+/// byte, each empty where the EDID doesn't say. An analogue input says no
+/// depth.
+fn input(byte: u8) -> (&'static str, &'static str) {
     if byte & 0x80 == 0 {
-        return "analogue".to_owned();
+        return ("", "analogue");
     }
     let depth = match (byte >> 4) & 0b111 {
         1 => "6 bit",
@@ -262,11 +263,7 @@ fn input(byte: u8) -> String {
         5 => "DisplayPort",
         _ => "",
     };
-    [depth, interface]
-        .into_iter()
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(", ")
+    (depth, interface)
 }
 
 /// Whether a CTA-861 extension's data blocks hold HDR static metadata, and
@@ -368,7 +365,9 @@ fn display(edid: &[u8]) -> Option<Facts> {
         native(&block[54..72]).unwrap_or_default(),
     );
     fact(&mut facts, "refresh", range);
-    fact(&mut facts, "input", input(block[20]));
+    let (depth, link) = input(block[20]);
+    fact(&mut facts, "depth", depth);
+    fact(&mut facts, "input", link);
     fact(&mut facts, "colours", gamut(block));
     if let Some(extension) = edid.get(128..256) {
         fact(&mut facts, "HDR", hdr(extension).unwrap_or_default());
@@ -1710,10 +1709,18 @@ mod tests {
         assert_eq!(named(&facts, "size"), Some("60 \u{d7} 34 cm, 27.2 in"));
         assert_eq!(named(&facts, "native"), Some("3840 \u{d7} 2160 at 60 Hz"));
         assert_eq!(named(&facts, "refresh"), Some("29 to 60 Hz"));
-        assert_eq!(named(&facts, "input"), Some("10 bit, DisplayPort"));
+        assert_eq!(named(&facts, "depth"), Some("10 bit"));
+        assert_eq!(named(&facts, "input"), Some("DisplayPort"));
         assert_eq!(named(&facts, "colours"), Some("sRGB's primaries"));
         assert_eq!(named(&facts, "HDR"), Some("none"));
         assert_eq!(named(&facts, "EDID"), Some("1.4"));
+    }
+
+    #[test]
+    fn an_input_says_its_depth_apart_from_its_link() {
+        assert_eq!(input(0xB5), ("10 bit", "DisplayPort"));
+        assert_eq!(input(0x80), ("", ""));
+        assert_eq!(input(0x0F), ("", "analogue"));
     }
 
     #[test]
