@@ -661,7 +661,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     )
     machine.send_key("ret")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertRegex(as_account("wl-paste --no-newline"), r"^after \d+ ms, \d+ a second$")
+    t.assertRegex(as_account("wl-paste --no-newline"), r"^after \d+ ms, \d+ Hz$")
     answer("350 f in c")
     photograph("launcher-units")
     machine.send_key("esc")

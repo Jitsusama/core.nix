@@ -593,11 +593,7 @@ QtObject {
         machine("every interface listed", Object.keys(counted),
             ["lo", "wlp0s20f3", "tailscale0", "shaper2"]);
         machine("what isn't /proc/net/dev", Traffic.counters("nothing here\n"), {});
-        machine("a Wi-Fi card", Traffic.kind("wlp0s20f3", true), "wifi");
-        machine("a cable's card", Traffic.kind("enp1s0", true), "cable");
-        machine("a tunnel", Traffic.kind("tailscale0", false), "virtual");
-        machine("the loopback, never listed", Traffic.kind("lo", false), "");
-        const cardKinds = { lo: "", wlp0s20f3: "wifi", tailscale0: "virtual", shaper2: "" };
+        const cardKinds = { lo: "", wlp0s20f3: "wifi", tailscale0: "tunnel", shaper2: "" };
         const named = all => {
             const out = {};
             for (const name of Object.keys(all))
@@ -680,6 +676,40 @@ QtObject {
             wlp0s20f3: "wifi", enp1s0: "wired", virbr0: "bridge", tailscale0: "tunnel",
             veth0: "virtual"
         });
+        // The network's speed names each the same from sysfs, as it reads it
+        // without spawning ip, for these and the tunnels it couldn't tell
+        // apart before: a WireGuard one, a VXLAN one, and a GRE one, which
+        // sysfs names only by its type.
+        const sturdySys = {
+            lo: { uevent: "INTERFACE=lo\nIFINDEX=1\n", type: "772" },
+            wlp0s20f3: { uevent: "DEVTYPE=wlan\nINTERFACE=wlp0s20f3\n", type: "1", card: true },
+            enp1s0: { uevent: "INTERFACE=enp1s0\n", type: "1", card: true },
+            virbr0: { uevent: "DEVTYPE=bridge\nINTERFACE=virbr0\n", type: "1" },
+            tailscale0: { uevent: "INTERFACE=tailscale0\n", type: "65534", tun: true },
+            ifb4wlp0s20f3: { uevent: "INTERFACE=ifb4wlp0s20f3\n", type: "1" },
+            veth0: { uevent: "INTERFACE=veth0\n", type: "1" },
+            wg0: { uevent: "DEVTYPE=wireguard\nINTERFACE=wg0\n", type: "65534" },
+            vxlan0: { uevent: "DEVTYPE=vxlan\nINTERFACE=vxlan0\n", type: "1" },
+            gre1: { uevent: "INTERFACE=gre1\n", type: "778" }
+        };
+        const sturdyIp = networkListed.concat([
+            { ifname: "wg0", link_type: "none", linkinfo: { info_kind: "wireguard" } },
+            { ifname: "vxlan0", link_type: "ether", linkinfo: { info_kind: "vxlan" } },
+            { ifname: "gre1", link_type: "gre", linkinfo: { info_kind: "gre" } }
+        ]);
+        const sturdyKinds = (named) => {
+            const out = {};
+            for (const link of sturdyIp)
+                out[link.ifname] = named(link);
+            return out;
+        };
+        const sturdyAddresses = sturdyKinds(link => Interfaces.kind(link,
+            link.ifname === "wlp0s20f3"));
+        machine("the tunnels by what they are", [sturdyAddresses.wg0, sturdyAddresses.vxlan0,
+            sturdyAddresses.gre1], ["tunnel", "tunnel", "tunnel"]);
+        machine("each connection named alike from sysfs",
+            sturdyKinds(link => Interfaces.sysKind(link.ifname, sturdySys[link.ifname])),
+            sturdyAddresses);
         const networkLink = name => networkLinks.find(each => each.name === name);
         machine("a card's address, past its own link only", networkLink("wlp0s20f3").four,
             [{ address: "192.168.4.48", prefix: 22 }]);
@@ -873,6 +903,50 @@ QtObject {
             value: "nothing" }]), true);
         machine("speakers have no jack", [Sounds.plugged([{ name: "amplifiers", value: "4" }]),
             Sounds.unplugged(undefined)], ["", false]);
+        // A jack's "nothing" hides it only while desk-facts still runs to say
+        // otherwise; once it's gone, headphones may have come since.
+        const sturdyNothing = [{ name: "plugged in", value: "nothing" }];
+        machine("a jack hidden only while what's said is current",
+            [Sounds.hidden(sturdyNothing, true), Sounds.hidden(sturdyNothing, false),
+                Sounds.hidden([{ name: "plugged in", value: "headphones" }], true)],
+            [true, false, false]);
+        machine("whether desk-facts still runs", [Sounds.populated("populated 1\nfrozen 0\n"),
+            Sounds.populated("populated 0\nfrozen 0\n"), Sounds.populated(undefined)],
+            [true, false, false]);
+        // pw-dump is given a card's object id, and nothing it could take for
+        // an option or a pattern.
+        machine("what pw-dump is given", ["65", 65, "--monitor", "65 -m", "alsa*", "", undefined]
+            .map(id => Sounds.dumpable(id)), ["65", "65", "", "", "", "", ""]);
+        // Port reads, one at a time: one asked mid-read waits, and each run's
+        // output is its own device's, whether it prints or ends first.
+        const sturdyOut = { name: "out" };
+        const sturdyIn = { name: "in" };
+        let sturdyReads = Sounds.portReads(null, { asked: sturdyOut });
+        machine("a port read starts", sturdyReads.start, sturdyOut);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { asked: sturdyIn });
+        machine("one asked mid-read waits", sturdyReads.start, null);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { printed: "out's" });
+        machine("nothing taken before it ends", sturdyReads.take, null);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { ended: true });
+        machine("the first read is the first device's", sturdyReads.take,
+            { node: sturdyOut, text: "out's" });
+        machine("the one waiting starts after it", sturdyReads.start, sturdyIn);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { ended: true });
+        machine("nothing taken before it prints", sturdyReads.take, null);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { printed: "in's" });
+        machine("the second read is the second device's", sturdyReads.take,
+            { node: sturdyIn, text: "in's" });
+        machine("nothing waiting, nothing starts", [sturdyReads.start, sturdyReads.reads.run],
+            [null, null]);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { asked: sturdyOut });
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { asked: sturdyIn });
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { printed: "half" });
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { ended: false });
+        machine("a read stopped at its limit gives nothing, and the next starts",
+            [sturdyReads.take, sturdyReads.start], [null, sturdyIn]);
+        sturdyReads = Sounds.portReads(sturdyReads.reads, { gaveUp: true });
+        machine("one that never ended is given up", [sturdyReads.take, sturdyReads.reads.run],
+            [null, null]);
 
         // What Sound says of Bluetooth headphones, as the sound server has
         // them while they play music in AAC: their output, and WirePlumber's
@@ -1046,8 +1120,8 @@ QtObject {
         machine("what lights them again", Keyboards.wakers("+keyboard +touchpad"),
             "lit again by a key or the touchpad");
         machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
-        machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 }),
-            "after 200 ms, 40 a second");
+        machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 },
+            "after {delay} ms, {rate} Hz"), "after 200 ms, 40 Hz");
         // A board's layers to move to: the one it's locked on let go, then
         // each above the first but that one locked on; held by a key, every
         // layer above the first.

@@ -206,9 +206,11 @@ function wakers(said) {
     return on.length === 0 ? "" : `lit again by ${on.join(" or ")}`;
 }
 
-// How a held key repeats, as repeat.nix sets it.
-function repeats(repeat) {
-    return `after ${repeat.delay} ms, ${repeat.rate} a second`;
+// How a held key repeats, as repeat.nix sets it, in the vocabulary's words
+// (keyboards:repeat's "said"), which give it in Hz as every rate is:
+// "after {delay} ms, {rate} Hz".
+function repeats(repeat, said) {
+    return String(said).replace("{delay}", repeat.delay).replace("{rate}", repeat.rate);
 }
 
 // The layers a board can be moved to, by their names in its order, as the

@@ -3,7 +3,8 @@
 // as the shell does: which device a filter puts itself in front of, the
 // chips a sound card names, how much a stream asks for at once and at what
 // rate, a channel's name as it's said, a level in decibels, whether a
-// device's jack has anything plugged in, the ports its card offers it, and
+// device's jack has anything plugged in and whether that's still current,
+// the ports its card offers it and how they're read, one at a time, and
 // what a Bluetooth device's sound is for. Sound.qml reads the nodes and
 // draws the rows.
 .pragma library
@@ -34,6 +35,11 @@ const CARRIES = [[/^a2dp/, "music"], [/^(headset|hfp|hsp)/, "calls"], [/^bap/, "
 // WirePlumber's stand-in for a headset's microphone says whose it is only
 // in its name.
 const STAND_IN = /^bluez_input\.([0-9A-F]{2}(?::[0-9A-F]{2}){5})$/;
+// A sound card's object id, as the sound server numbers it, and all pw-dump
+// is ever given: anything else could be taken for one of its options.
+const OBJECT_ID = /^[0-9]+$/;
+// A control group's events say whether anything still runs in it.
+const POPULATED = /^populated 1$/m;
 
 // What a smart filter's target says a device must have, by property:
 // { "node.name": "alsa_output…" }, or nothing when it says nothing.
@@ -161,6 +167,68 @@ function plugged(facts) {
 // headphones are while none are: its port is there, but nothing hears it.
 function unplugged(facts) {
     return plugged(facts) === NOTHING;
+}
+
+// Whether a device is hidden for its jack: only while what's said of it is
+// current, since an old "nothing" would hide headphones plugged in since.
+function hidden(facts, current) {
+    return current && unplugged(facts);
+}
+
+// Whether a control group's events (cgroup.events) say a service still runs.
+function populated(text) {
+    return POPULATED.test(String(text ?? ""));
+}
+
+// What pw-dump is given to read a device's card: its card's object id,
+// or "" when that isn't one, and nothing is read.
+function dumpable(id) {
+    const said = String(id ?? "");
+    return OBJECT_ID.test(said) ? said : "";
+}
+
+// Port reads, one at a time, as a read is asked, prints and ends. `reads`
+// is { run, next }: the run under way, { node, text, ended, ok }, and the
+// device asked for while it was, read once it's done. Each run keeps the
+// device it's for, and is done only once it has both printed and ended,
+// whichever comes first, so one device's ports are never taken for
+// another's. An event is { asked: node }, { printed: text }, { ended: ok }
+// or { gaveUp: true }, for a run that never ended of itself. It gives the
+// reads after, a device to start reading now or null, and what was read,
+// { node, text }, from a run that ended well, or null.
+function portReads(reads, event) {
+    const now = reads ?? { run: null, next: null };
+    const begun = (node) => ({ node, text: null, ended: false, ok: false });
+    if (event.asked !== undefined) {
+        if (now.run !== null) {
+            return { reads: { run: now.run, next: event.asked }, start: null, take: null };
+        }
+        return { reads: { run: begun(event.asked), next: null }, start: event.asked, take: null };
+    }
+    if (now.run === null) {
+        return { reads: now, start: null, take: null };
+    }
+    const run = Object.assign({}, now.run);
+    if (event.printed !== undefined) {
+        run.text = String(event.printed);
+    }
+    if (event.ended !== undefined) {
+        run.ended = true;
+        run.ok = event.ended === true;
+    }
+    if (event.gaveUp) {
+        run.text = run.text ?? "";
+        run.ended = true;
+        run.ok = false;
+    }
+    if (run.text === null || !run.ended) {
+        return { reads: { run, next: now.next }, start: null, take: null };
+    }
+    const take = run.ok ? { node: run.node, text: run.text } : null;
+    if (now.next === null) {
+        return { reads: { run: null, next: null }, start: null, take };
+    }
+    return { reads: { run: begun(now.next), next: null }, start: now.next, take };
 }
 
 // The Bluetooth address a device's sound is of, from the sound server's

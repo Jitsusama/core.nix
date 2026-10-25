@@ -1218,7 +1218,8 @@
     {
       "id": "keyboards:repeat",
       "in": "keyboards",
-      "name": "Repeat"
+      "name": "Repeat",
+      "said": "after {delay} ms, {rate} Hz"
     },
     {
       "id": "keyboards:lights",

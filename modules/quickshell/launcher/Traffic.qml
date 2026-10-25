@@ -15,6 +15,7 @@
 import qs
 import Quickshell.Io
 import QtQuick
+import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
 import "Traffic.js" as Traffic
@@ -102,8 +103,11 @@ Provider {
     // Each spark's reads, the newest last, and the read they last took.
     property var series: ({ moved: [], in: [], out: [] })
     property var sparked: null
-    // Whether each interface is a card of its own, asked once a name.
-    property var physical: ({})
+    // What each interface is, asked of sysfs once a name while it stays:
+    // forgotten once it's gone from the counters, or after a gap between
+    // reads, since an interface can go and come again, as a VPN's tunnel
+    // does, as something else.
+    property var interfaceKinds: ({})
     readonly property int second: 1000
     readonly property int soonest: 200
     // Reads further apart than this aren't a rate of now, and start a
@@ -119,8 +123,15 @@ Provider {
         const kept = reads;
         const age = kept ? now - kept.last.at : Infinity;
         if (age >= second || (!settled(kept) && age >= soonest)) {
+            const all = Traffic.counters(read(netdev));
+            const known = {};
+            for (const name of Object.keys(all)) {
+                if (age <= stale && interfaceKinds[name] !== undefined)
+                    known[name] = interfaceKinds[name];
+            }
+            interfaceKinds = known;
             reads = {
-                last: { at: now, all: Traffic.counters(read(netdev)) },
+                last: { at: now, all: all },
                 before: kept ? kept.last : null
             };
             if (!settled(reads))
@@ -129,23 +140,41 @@ Provider {
         return reads;
     }
 
-    function isPhysical(name) {
-        if (physical[name] === undefined) {
-            probe.path = `/sys/class/net/${name}/device/uevent`;
-            physical[name] = read(probe).trim() !== "";
-        }
-        return physical[name];
+    // What a file in an interface's sysfs folder says, or "".
+    function sysSaid(name, file) {
+        probe.path = `/sys/class/net/${name}/${file}`;
+        return read(probe).trim();
+    }
+
+    // What an interface is, as the addresses name it (Interfaces.js), so a
+    // cable is Wired here as there, and a tunnel a Tunnel.
+    function interfaceKind(name) {
+        if (interfaceKinds[name] === undefined)
+            interfaceKinds[name] = Interfaces.sysKind(name, {
+                uevent: sysSaid(name, "uevent"),
+                type: sysSaid(name, "type"),
+                tun: sysSaid(name, "tun_flags") !== "",
+                card: sysSaid(name, "device/uevent") !== ""
+            });
+        return interfaceKinds[name];
     }
 
     // What each interface is, beside its counters, leaving out the
-    // shaper's mirrors.
+    // shaper's mirrors; the read before needs only its counters.
     function described(all, mirrors) {
         const out = {};
         for (const name of Object.keys(all))
             out[name] = {
-                kind: mirrors.includes(name) ? "" : Traffic.kind(name, isPhysical(name)),
+                kind: mirrors.includes(name) ? "" : interfaceKind(name),
                 counters: all[name]
             };
+        return out;
+    }
+
+    function countersOf(all) {
+        const out = {};
+        for (const name of Object.keys(all))
+            out[name] = { counters: all[name] };
         return out;
     }
 
@@ -153,7 +182,7 @@ Provider {
         const seconds = kept.before ? (kept.last.at - kept.before.at) / 1000
             : Number(read(up).trim().split(/\s+/)[0]);
         return Traffic.rates(described(kept.last.all, mirrors),
-            kept.before ? described(kept.before.all, mirrors) : null, seconds);
+            kept.before ? countersOf(kept.before.all) : null, seconds);
     }
 
     // Adds a read to the sparks once, starting them afresh after a gap. A
@@ -182,34 +211,10 @@ Provider {
         return Words.name(`traffic:${id}`);
     }
 
-    // What isn't a card, as the addresses' answer names it: a bridge, a
-    // tunnel (an interface with no hardware address at all, as a VPN's
-    // is), or else a virtual network; asked of sysfs once a name.
-    property var virtualKinds: ({})
-    readonly property string bare: "65534"
-
-    function virtualKind(name) {
-        if (virtualKinds[name] === undefined) {
-            probe.path = `/sys/class/net/${name}/uevent`;
-            const bridge = /^DEVTYPE=bridge$/m.test(read(probe));
-            probe.path = `/sys/class/net/${name}/type`;
-            const tunnel = read(probe).trim() === bare;
-            virtualKinds[name] = bridge ? "bridge" : tunnel ? "tunnel" : "virtual";
-        }
-        return virtualKinds[name];
-    }
-
-    // A connection's kind as the addresses' answer says it, so a cable is
-    // Wired here as there, and a tunnel a Tunnel, never the kernel's name.
-    function connectionKind(one) {
-        return one.kind === "wifi" ? "wifi" : one.kind === "cable" ? "wired"
-            : virtualKind(one.name);
-    }
-
-    // Each connection's name, numbered when there are several of a kind:
-    // "Tunnel 2".
+    // Each connection's name, as the addresses' answer says it, never the
+    // kernel's, numbered when there are several of a kind: "Tunnel 2".
     function connectionNames(listed) {
-        const kinds = listed.map(one => connectionKind(one));
+        const kinds = listed.map(one => one.kind);
         return listed.map((one, at) => {
             const alike = kinds.filter(kind => kind === kinds[at]).length;
             const nth = kinds.slice(0, at + 1).filter(kind => kind === kinds[at]).length;
@@ -234,7 +239,7 @@ Provider {
         const now = moved(kept, Traffic.mirrors(status));
         push(kept, now);
         const when = since(kept);
-        const cards = now.each.filter(one => one.kind === "wifi" || one.kind === "cable");
+        const cards = now.each.filter(one => one.kind === "wifi" || one.kind === "wired");
         const shaped = cards.map(card => Traffic.line(status, card.name))
             .find(link => link !== null && link.follows === null) ?? null;
         const rows = [figure({
@@ -276,7 +281,7 @@ Provider {
                 : `${number(now.dropped, now.dropped < 10 ? 1 : 0)} packets/s`,
             note: when
         }));
-        const listed = now.each.filter(one => one.kind === "wifi" || one.kind === "cable"
+        const listed = now.each.filter(one => one.kind === "wifi" || one.kind === "wired"
             || one.in + one.out > 0);
         // Numbered in the kernel's order, so a name stays as the busiest
         // changes; the kernel's own name only finds it.

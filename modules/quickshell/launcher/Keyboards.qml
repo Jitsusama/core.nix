@@ -113,7 +113,8 @@ Provider {
             rows.push(layer);
         const repeat = settings.repeat ?? null;
         if (repeat)
-            rows.push(figure(key("repeat"), "repeat", Keyboards.repeats(repeat)));
+            rows.push(figure(key("repeat"), "repeat",
+                Keyboards.repeats(repeat, Words.of("keyboards:repeat").said)));
         for (const row of lights(device, key, holder))
             rows.push(row);
         const folder = Keyboards.usbFolder(device);

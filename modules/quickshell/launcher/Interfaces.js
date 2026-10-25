@@ -1,8 +1,9 @@
 // This machine's connections, made sense of: each interface as ip's JSON
 // says it, by what it is (Wi-Fi, wired, a tunnel, a virtual bridge or
-// another virtual network), the gateways from the kernel's routing tables,
-// the name servers from resolv.conf, and a Wi-Fi card's link as iw reads
-// it. Networks.qml and Wireless.qml read the files and run the programs;
+// another virtual network), named the same from sysfs for the network's
+// speed, the gateways from the kernel's routing tables, the name servers
+// from resolv.conf, and a Wi-Fi card's link as iw reads it. Networks.qml,
+// Wireless.qml and Traffic.qml read the files and run the programs;
 // everything here is plain reading of what they said, so it's tested
 // offscreen (tests/answers.qml).
 .pragma library
@@ -66,29 +67,86 @@ const TUNNELS = [
     "geneve",
 ];
 
+// The kinds of tunnel sysfs names only by their link-layer type, as
+// /sys/class/net's `type` numbers it, by the kind ip would say.
+const TUNNEL_TYPES = {
+    "768": "ipip",
+    "769": "ip6tnl",
+    "776": "sit",
+    "778": "gre",
+    "823": "ip6gre",
+};
+// The loopback's link-layer type, and that of a link with none, as a VPN's.
+const LOOPBACK_TYPE = "772";
+const BARE_TYPE = "65534";
+const DEVTYPE = /^DEVTYPE=(.*)$/m;
+
 // What an interface is, as Joel would say it: "wifi", "wired", "tunnel",
 // "bridge" or "virtual", or "" for the loopback and the shaper's mirrors,
-// which carry nothing of their own. `wireless` is whether the kernel calls
-// it a WLAN device, which ip doesn't say.
-function kind(link, wireless) {
-    const name = String(link.ifname ?? "");
-    if (link.link_type === "loopback" || MIRROR.test(name)) {
+// which carry nothing of their own. It's told { name, loopback, wireless,
+// made, bare, card }: whether it's the loopback, whether the kernel calls
+// it a WLAN device, the kind of link it was made as (ip's info_kind),
+// whether it has no link-layer type at all, and whether it sits on a bus
+// as a card does. The addresses learn these from ip (`kind`) and the
+// network's speed from sysfs (`sysKind`), and both come here, so each names
+// an interface as the other does.
+function kindOf(link) {
+    if (link.loopback || MIRROR.test(link.name)) {
         return "";
     }
-    const made = link.linkinfo?.info_kind ?? "";
-    if (wireless) {
+    if (link.wireless) {
         return "wifi";
     }
-    if (made === "bridge") {
+    if (link.made === "bridge") {
         return "bridge";
     }
-    if (TUNNELS.includes(made) || link.link_type === "none") {
+    if (TUNNELS.includes(link.made) || link.bare) {
         return "tunnel";
     }
-    if (made === "" && link.parentbus) {
-        return WIRELESS.test(name) ? "wifi" : "wired";
+    if (link.made === "" && link.card) {
+        return WIRELESS.test(link.name) ? "wifi" : "wired";
     }
     return "virtual";
+}
+
+// What an interface is, from ip's JSON of it. `wireless` is whether the
+// kernel calls it a WLAN device, which ip doesn't say.
+function kind(link, wireless) {
+    return kindOf({
+        name: String(link.ifname ?? ""),
+        loopback: link.link_type === "loopback",
+        wireless,
+        made: link.linkinfo?.info_kind ?? "",
+        bare: link.link_type === "none",
+        card: Boolean(link.parentbus),
+    });
+}
+
+// What an interface is, from its folder in /sys/class/net, read without
+// spawning anything: { uevent, type, tun, card }, what its `uevent` and
+// `type` say, whether it has `tun_flags` (a tun or tap device) and whether
+// it has a `device` (a card's). sysfs says the kind of link only for some:
+// a bridge and some tunnels in its uevent, a tun by its flags, the rest of
+// the tunnels by their type; anything else ip calls by a kind of its own
+// is virtual here as there, since it's no card.
+function sysKind(name, sys) {
+    const said = DEVTYPE.exec(String(sys.uevent ?? ""));
+    const devtype = said ? said[1].trim() : "";
+    const type = String(sys.type ?? "").trim();
+    let made = TUNNEL_TYPES[type] ?? "";
+    if (devtype === "bridge" || TUNNELS.includes(devtype)) {
+        made = devtype;
+    } else if (sys.tun) {
+        made = "tun";
+    }
+    return kindOf({
+        name: String(name),
+        loopback: type === LOOPBACK_TYPE,
+        wireless: devtype === "wlan",
+        made,
+        bare: type === BARE_TYPE,
+        card: Boolean(sys.card),
+    });
 }
 
 // Whether it's turned on and has something at the other end.

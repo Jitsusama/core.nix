@@ -16,23 +16,8 @@ const RECEIVED = 0;
 const RECEIVED_DROPPED = 3;
 const SENT = 8;
 const SENT_DROPPED = 11;
-const MIRROR = /^ifb/;
-const WIRELESS = /^wl/;
 const LINE = /^\s*([^\s:]+):\s*(.*)$/;
 const SPACES = /\s+/;
-
-// How an interface is spoken of, by what it is: a card for Wi-Fi, one for
-// a cable, a tunnel or bridge, or the loopback and the shaper's mirrors,
-// which carry nothing of their own and are never listed.
-function kind(name, physical) {
-    if (name === "lo" || MIRROR.test(name)) {
-        return "";
-    }
-    if (physical) {
-        return WIRELESS.test(name) ? "wifi" : "cable";
-    }
-    return "virtual";
-}
 
 // Every interface's counters, by name, as /proc/net/dev says them: bytes
 // in and out, and packets dropped either way. Its two heading lines, and
@@ -65,8 +50,10 @@ function between(now, before, seconds) {
 }
 
 // Every interface's rates, `now` and `before` each mapping a name to
-// { kind, counters }, and the machine's own total: the physical cards'
-// alone, since what a tunnel carries goes over a card too.
+// { kind, counters }, each kind as the addresses say it (Interfaces.js's
+// kindOf), "" for one never listed, and the machine's own total: the
+// cards' alone, Wi-Fi and wired, since what a tunnel carries goes over a
+// card too.
 function rates(now, before, seconds) {
     const each = Object.keys(now)
         .filter((name) => now[name].kind !== "" && now[name].counters !== null)
@@ -77,7 +64,7 @@ function rates(now, before, seconds) {
                 between(now[name].counters, then, seconds),
             );
         });
-    const cards = each.filter((one) => one.kind === "wifi" || one.kind === "cable");
+    const cards = each.filter((one) => one.kind === "wifi" || one.kind === "wired");
     const sum = (key) => cards.reduce((all, one) => all + one[key], 0);
     return { each, in: sum("in"), out: sum("out"), dropped: sum("dropped") };
 }
