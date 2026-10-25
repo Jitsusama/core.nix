@@ -60,11 +60,7 @@ let
   ];
 
   # The account's home configuration, when the machine has one for it.
-  home =
-    if cfg.account != null && options ? home-manager then
-      config.home-manager.users.${cfg.account} or null
-    else
-      null;
+  inherit (import ./account.nix { inherit config lib options; }) home;
   files = home.home-files;
 
   # Every account that can sign in, the machine's own first, each called by

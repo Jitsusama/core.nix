@@ -19,15 +19,9 @@
   ...
 }:
 let
-  account = if options ? jitsusama.login.account then config.jitsusama.login.account else null;
-  home =
-    if account != null && options ? home-manager then
-      config.home-manager.users.${account} or null
-    else
-      null;
-  terminal = lib.attrByPath [ "jitsusama" "theme" "terminal" ] null home;
-  theme = lib.attrByPath [ "jitsusama" "theme" ] null home;
-  face = lib.attrByPath [ "jitsusama" "theme" "font" "mono" "family" ] null home;
+  inherit (import ../greetd/account.nix { inherit config lib options; }) account theme;
+  terminal = lib.attrByPath [ "terminal" ] null theme;
+  face = lib.attrByPath [ "font" "mono" "family" ] null theme;
 
   # The console's order: the eight colours, then the bright eight, each as
   # six hex digits, since it has no transparency.
