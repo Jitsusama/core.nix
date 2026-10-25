@@ -35,6 +35,19 @@ const CARRIES = [[/^a2dp/, "music"], [/^(headset|hfp|hsp)/, "calls"], [/^bap/, "
 // WirePlumber's stand-in for a headset's microphone says whose it is only
 // in its name.
 const STAND_IN = /^bluez_input\.([0-9A-F]{2}(?::[0-9A-F]{2}){5})$/;
+// The machine's own speakers, microphones and jack, by the port the sound
+// server names them for, and the vocabulary's word for each: its own
+// names ("Speaker", "Microphones") read as one speaker, many microphones,
+// and nothing of where they are.
+const BUILT_IN = [
+    [/HiFi__Speaker__sink$/, "speakers"],
+    [/HiFi__D?Mic\d*__source$/, "microphones"],
+    [/HiFi__Headphones__sink$/, "jack"],
+    [/HiFi__Headset__source$/, "jack-microphone"],
+];
+// A Bluetooth headset's microphone, which the sound server names as it
+// does the headset itself.
+const HEADSET_INPUT = /^bluez_input\./;
 // A sound card's object id, as the sound server numbers it, and all pw-dump
 // is ever given: anything else could be taken for one of its options.
 const OBJECT_ID = /^[0-9]+$/;
@@ -161,6 +174,18 @@ function decibels(level) {
 function plugged(facts) {
     const found = (facts ?? []).find((fact) => String(fact.name).toLowerCase() === PLUGGED);
     return found ? String(found.value) : "";
+}
+
+// The vocabulary's word for what a device is called, by its node's name:
+// the machine's own by their port, a headset's microphone as its, or ""
+// for one whose own name says what it is.
+function called(name) {
+    const text = String(name ?? "");
+    const found = BUILT_IN.find((each) => each[0].test(text));
+    if (found) {
+        return found[1];
+    }
+    return HEADSET_INPUT.test(text) ? "its-microphone" : "";
 }
 
 // Whether a device is a jack with nothing plugged into it, as the

@@ -917,6 +917,15 @@ QtObject {
             value: "nothing" }]), true);
         machine("speakers have no jack", [Sounds.plugged([{ name: "amplifiers", value: "4" }]),
             Sounds.unplugged(undefined)], ["", false]);
+        // The machine's own are called what they are, by their port, and a
+        // headset's microphone as its; any other keeps its own name.
+        const soundOut = "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__";
+        const soundIn = "alsa_input.pci-0000_00_1f.3-platform-sof_sdw.HiFi__";
+        machine("what a device is called", [`${soundOut}Speaker__sink`, `${soundIn}Mic__source`,
+            `${soundOut}Headphones__sink`, `${soundIn}Headset__source`,
+            "bluez_input.00:11:22:33:44:55", "bluez_output.00_11_22_33_44_55.1",
+            `${soundOut}HDMI1__sink`, undefined].map(name => Sounds.called(name)),
+            ["speakers", "microphones", "jack", "jack-microphone", "its-microphone", "", "", ""]);
         // A jack's "nothing" hides it only while desk-facts still runs to say
         // otherwise; once it's gone, headphones may have come since.
         const sturdyNothing = [{ name: "plugged in", value: "nothing" }];

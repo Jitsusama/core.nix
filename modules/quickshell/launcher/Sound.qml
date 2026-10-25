@@ -131,9 +131,20 @@ Provider {
     }
 
     // Its own short name, rather than the sound card's long one before it.
-    function named(node) {
+    function nicknamed(node) {
         // A node going away can have lost all three.
         return node.nickname || node.description || node.name || "";
+    }
+
+    // What it's called, saying the thing itself: Joel, on 2026-10-25,
+    // "speaker is singular and microphone is plural, they give me mixed
+    // ideas", and a headset's two rows said the same name. So the machine's
+    // own are Built-in speakers, Built-in microphones and the Headphone
+    // jack, and a headset's microphone is named as its (Sounds.js called).
+    function named(node) {
+        const own = nicknamed(node);
+        const called = Sounds.called(node.name);
+        return called === "" ? own : Words.name(`sound:called:${called}`, "", { device: own });
     }
 
     // What it is, from what the sound server knows of it, and for a
@@ -144,7 +155,7 @@ Provider {
         const address = Sounds.address(node.name, node.properties);
         const accessory = address
             ? Bluetooth.devices.values.find(device => device.address === address) : null;
-        const known = [node.name, named(node), node.properties["device.form-factor"] ?? "",
+        const known = [node.name, nicknamed(node), node.properties["device.form-factor"] ?? "",
             accessory ? accessory.icon : ""].join(" ").toLowerCase();
         // Headphones are headphones and a speaker a speaker to Joel, however
         // they're joined, so a Bluetooth one wears the same mark as a wired.
@@ -180,7 +191,7 @@ Provider {
     function made(node) {
         const used = inUse(node);
         const muted = node.audio.muted;
-        const note = [said(node.isSink ? "output" : "input"), percent(node.audio.volume)]
+        const note = [said("volume", { level: percent(node.audio.volume) })]
             .concat(muted ? [said("muted")] : [],
                 Sounds.hidden(factsOf(node), jacksCurrent) ? [said("unplugged")] : [],
                 switches(node) ? [said("to-calls")] : [])
@@ -885,7 +896,7 @@ Provider {
         const told = factsOf(node).some(fact => provider.chipFacts
             .includes(String(fact.name).toLowerCase()));
         const chips = Sounds.components(properties["alsa.components"] ?? "");
-        const what = `${properties["device.profile.description"] ?? ""} ${named(node)}`
+        const what = `${properties["device.profile.description"] ?? ""} ${nicknamed(node)}`
             .toLowerCase();
         const key = `sound:${node.name}:hardware`;
         const rows = [];
