@@ -867,6 +867,85 @@ with subtest("a search lists each thing once"):
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=10)
 
+with subtest("a step finds its rows by their hidden words, and its parts move in place"):
+    closed = in_session(LAUNCHER_OPEN)
+    # Inside the addresses, the tunnel is found by the kernel's name for
+    # it, a word it's known by but never says, as from the top.
+    machine.succeed(
+        "ip tuntap add dev tailscale0 mode tun"
+        " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
+    )
+    answer("ip")
+    step_in()
+    launcher_until(lambda shown: "Tunnel" in shown["rows"])
+    type_in("tailscale0", selecting="Tunnel")
+    t.assertNotIn("tailscale0", showing()["rows"])
+    # The left arrow takes what's typed away, the selection staying on
+    # the tunnel, and Tab steps into it as the right arrow would.
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "Tunnel"
+    )
+    step_in("tab")
+    launcher_until(lambda shown: "Address" in shown["rows"])
+    # Stepping back out lands on the row it came from.
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Tunnel"
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    machine.succeed("ip link delete tailscale0")
+    # The processors, a step into Computer, are named as the thing they
+    # are, and their cores, a step further, read again each second there
+    # as at the top: made busy, every core says so, in the order they
+    # were shown, the selection staying on its row.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    machine.send_chars("computer ")
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["computer"]
+            and any(thing["is"] == "answer:machine" for thing in shown["things"])
+        )
+    )
+    processors = [thing["is"] for thing in showing()["things"]].index("answer:machine")
+    for _ in range(processors):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "answer:machine")
+    step_in()
+    launcher_until(
+        lambda shown: shown["path"] == ["Computer", "Processor"] and "Cores" in shown["rows"]
+    )
+    for _ in range(showing()["rows"].index("Cores")):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    step_in()
+    launcher_until(lambda shown: shown["path"] == ["Computer", "Processor", "Cores"])
+    cores = showing()["rows"]
+    if len(cores) > 1:
+        machine.send_key("down")
+    chosen = cores[min(1, len(cores) - 1)]
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
+    # A loop for each core, as the shell's own builtins, since a
+    # transient unit's path has no coreutils.
+    spinning = "(while :; do :; done) & " * int(machine.succeed("nproc"))
+    machine.succeed(f"systemd-run --unit=busy-cores -p Nice=19 sh -c '{spinning}wait'")
+    busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
+    launcher_until(
+        lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
+        timeout=60,
+    )
+    shown = showing()
+    t.assertEqual(shown["rows"], cores, "the cores moved as they were read again")
+    t.assertEqual(shown["selected"]["name"], chosen, "the selection left its row")
+    machine.succeed("systemctl stop busy-cores")
+    # Back out, it's on the row it came from.
+    machine.send_key("left")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 with subtest("Quickshell warned of nothing it drew all along"):

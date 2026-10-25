@@ -27,10 +27,13 @@ const COUNTED = 8;
 const IDLE = 3;
 const WAITING_ON_IO = 4;
 // The fields of a process's stat after its name: its user and system
-// time in ticks, and its resident pages.
+// time in ticks, and its resident pages. Its line starts with its id, in
+// digits.
 const USER_TIME = 11;
 const SYSTEM_TIME = 12;
 const RESIDENT = 21;
+const DIGIT_ZERO = 48;
+const DIGIT_NINE = 57;
 // The fields of a disk's stat: reads and writes done, sectors read and
 // written, the milliseconds each spent, and the milliseconds it was busy.
 const READS = 0;
@@ -187,25 +190,59 @@ function program(name) {
     return bare;
 }
 
+// Where the field `count` past the one starting at `at` starts, in a line
+// ending at `end`, or `end` when there's none.
+function walk(text, at, end, count) {
+    let start = at;
+    for (let n = 0; n < count && start < end; n += 1) {
+        const space = text.indexOf(" ", start);
+        start = space < 0 || space >= end ? end : space + 1;
+    }
+    return start;
+}
+
+// The number a field starting at `at` says.
+function numberAt(text, at, end) {
+    const space = text.indexOf(" ", at);
+    return Number(text.slice(at, space < 0 || space > end ? end : space));
+}
+
 // What one read of the processes says: the page size first, then
 // /proc/stat, then each process's stat line. The whole machine's ticks, and
 // each process by its id with its program, its ticks and its resident
-// bytes.
+// bytes. It's a fifth of a megabyte, read each second while the programs
+// using the processors or the memory are shown, so it's walked by
+// position: splitting every line into its fifty fields took twelve
+// milliseconds of the shell's thread, and under load forty.
 function processes(text) {
-    const lines = text.split("\n");
-    const page = Number(lines[0]) || 1;
+    const firstEnd = text.indexOf("\n");
+    const page = Number(text.slice(0, firstEnd < 0 ? text.length : firstEnd)) || 1;
     const programs = {};
-    const machine = lines.find(line => line.startsWith("cpu "));
+    const cpuAt = text.startsWith("cpu ") ? 0 : text.indexOf("\ncpu ") + 1;
+    const cpuEnd = text.indexOf("\n", cpuAt);
+    const machine = cpuAt === 0 && !text.startsWith("cpu ") ? null
+        : text.slice(cpuAt, cpuEnd < 0 ? text.length : cpuEnd);
     const ticks = machine ? counters(machine).whole.all : 0;
-    for (const line of lines.filter(each => PROCESS_LINE.test(each))) {
-        const started = PROCESS_LINE.exec(line);
-        const close = line.lastIndexOf(")");
-        const fields = line.slice(close + 2).split(" ");
-        programs[started[1]] = {
-            name: program(line.slice(started[0].length, close)),
-            ticks: Number(fields[USER_TIME]) + Number(fields[SYSTEM_TIME]),
-            bytes: Number(fields[RESIDENT]) * page
-        };
+    let start = 0;
+    while (start < text.length) {
+        const found = text.indexOf("\n", start);
+        const end = found < 0 ? text.length : found;
+        const first = text.charCodeAt(start);
+        // A process's line starts with its id, a digit, and its name in
+        // brackets follows it.
+        const opened = first >= DIGIT_ZERO && first <= DIGIT_NINE ? text.indexOf(" (", start) : -1;
+        if (opened > start && opened < end && PROCESS_LINE.test(text.slice(start, opened + 2))) {
+            const close = text.lastIndexOf(")", end);
+            const user = walk(text, close + 2, end, USER_TIME);
+            const system = walk(text, user, end, SYSTEM_TIME - USER_TIME);
+            const resident = walk(text, system, end, RESIDENT - SYSTEM_TIME);
+            programs[text.slice(start, opened)] = {
+                name: program(text.slice(opened + 2, close)),
+                ticks: numberAt(text, user, end) + numberAt(text, system, end),
+                bytes: numberAt(text, resident, end) * page
+            };
+        }
+        start = end + 1;
     }
     return { ticks, programs };
 }
@@ -314,6 +351,12 @@ function hottestCore(temps) {
     return temps.filter(sensor => CORE.test(sensor.label))
         .reduce((hottest, sensor) => (hottest && hottest.value >= sensor.value ? hottest : sensor),
             null);
+}
+
+// Whether a sensor's label names the whole processor, so only that one of
+// its chip's sensors need be read: the laptop's chip has seventeen.
+function namesWhole(label) {
+    return WHOLE.test(label);
 }
 
 function wholeProcessor(temps) {

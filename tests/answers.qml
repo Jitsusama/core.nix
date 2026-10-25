@@ -418,6 +418,15 @@ QtObject {
             [{ name: "cc1 (odd) name", value: 0.4 }, { name: "kitty", value: 0.3 }]);
         machine("the programs holding the memory", Machine.holding(first),
             [{ name: "kitty", value: 8192000 }, { name: "systemd", value: 409600 }, { name: "cc1 (odd) name", value: 40960 }]);
+        // Read by position rather than split: the machine's ticks, a
+        // name closing a bracket of its own, and a last line unended.
+        machine("the processes, the last line unended",
+            Machine.processes(`4096\ncpu  10 0 0 0 0 0 0 0 0 0\nintr 3 (x) 4\n`
+                + `7 (a) b) ${fields(5, 2)}`),
+            { ticks: 10, programs: { 7: { name: "a) b", ticks: 5, bytes: 8192 } } });
+        machine("no processes", Machine.processes(""), { ticks: 0, programs: {} });
+        machine("the whole processor's sensor", ["Package id 0", "Tctl", "Core 3"]
+            .map(label => Machine.namesWhole(label)), [true, true, false]);
         machine("memory pressure", Machine.pressure("some avg10=12.50 avg60=1.48 avg300=2.33 total=26\n"
             + "full avg10=0.39 avg60=1.28 avg300=1.78 total=16\n"), 0.125);
         machine("no memory pressure said", Machine.pressure(""), null);

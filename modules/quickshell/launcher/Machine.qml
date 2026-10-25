@@ -19,14 +19,19 @@
 //
 // A part has its own words too, "disk speed" or "ram type", which answer
 // it alone. The words that ask each, and every part's name, are the
-// vocabulary's (launcher/words.json, Words.qml). Everything is read from the kernel's files when asked, and a
-// rate is the difference between two reads, so the last is kept with its
-// time. While the launcher shows one of these, it's read again once a
-// second, and never more: nothing is read for a key. What programs are
-// running is read by one spawned cat, the disk's health by asking UDisks,
-// with no prompt, and the file system's room by stat where no guard says it,
-// each at most once a second while shown, and the health once a minute;
-// the programs once as the launcher opens, too.
+// vocabulary's (launcher/words.json, Words.qml). Everything is read from
+// the kernel's files when asked, on the shell's own thread, since handing
+// each small file to a reader thread and waiting for it cost more than the
+// read under load; and a rate is the difference between two reads, so the
+// last is kept with its time. While the launcher shows one of these, or
+// holds it stepped into, it's read again once a second, and never more:
+// nothing is read for a key. An answer's parts are made only once they're
+// looked at, so a headline alone reads no more than it says. What programs
+// are running is read by one spawned cat, only while the parts saying them
+// are shown, the disk's health by asking UDisks, with no prompt, and the
+// file system's room by stat where no guard says it, each at most once a
+// second while shown, and the health once a minute; the programs once as
+// the launcher opens, too.
 import qs
 import Qt.labs.folderlistmodel
 import Quickshell.Io
@@ -108,17 +113,27 @@ Provider {
             copy: part.copied ?? "",
             graph: part.graph,
             glyph: whole.glyph,
+            hue: "machine",
+            title: part.name,
             rows: part.verbs ? part.verbs() : [],
             note: part.note !== "" ? part.note : whole.note,
             live: provider
         };
     }
 
-    // An answer that's asked again each second while it's shown (the
-    // Timer below), so its figures move, and its parts stepped into are
-    // never more than a second old.
-    function fresh(fields, rows) {
-        return Object.assign({ live: provider, rows: rows }, fields);
+    // An answer that's asked again each second while it's shown or held
+    // (the Timer below), so its figures move, and its parts stepped into
+    // are never more than a second old. Its parts are made by `parts` only
+    // when they're first looked at, and it says it has some (`parted`), so
+    // the headline alone, asked each second, makes none of them.
+    function fresh(fields, parts) {
+        const said = Object.assign({ live: provider, parted: true, hue: "machine" }, fields);
+        let made = null;
+        Object.defineProperty(said, "rows", {
+            enumerable: true,
+            get: () => made ?? (made = parts())
+        });
+        return said;
     }
 
     // How rows are drawn. A figure says something and Return closes; a leaf
@@ -301,13 +316,23 @@ Provider {
             clocks: info.maxes.map(core => Number(said(
                 `/sys/devices/system/cpu/cpu${core.n}/cpufreq/scaling_cur_freq`)) || 0),
             load: read(loadavg).trim().split(/\s+/).slice(0, 3),
-            heat: sensors.processor()
+            heat: processorHeat()
         }));
+    }
+
+    // The processor's temperature, as Heat says it: its package's sensor
+    // alone where its chip has one, rather than every core's read to find
+    // it, and every sensor only where it hasn't.
+    function processorHeat() {
+        const chip = sensors.chips().find(each => each.part === "processor");
+        if (!chip)
+            return null;
+        const whole = sensors.readings(chip, "temp", label => Machine.namesWhole(label));
+        return whole.length > 0 ? sensors.degrees(chip, whole[0]) : sensors.processor();
     }
 
     function cpu() {
         const kept = cpuRead();
-        list();
         const now = kept.last.said;
         if (now.counters.whole === null)
             return null;
@@ -317,12 +342,14 @@ Provider {
             headline: `${percent(total)} busy`,
             graph: bar(total),
             glyph: Words.glyph(kinds.cpu),
+            title: Words.name(kinds.cpu),
             note: since(kept)
-        }, cpuParts());
+        }, () => cpuParts(kept));
     }
 
-    function cpuParts() {
-        const kept = reads.cpu;
+    // The processors' parts, from the reads the headline said.
+    function cpuParts(kept) {
+        list();
         const info = fixed();
         const now = kept.last.said;
         const cores = Machine.loads(now.counters, kept.before ? kept.before.said.counters : null);
@@ -456,6 +483,19 @@ Provider {
         }
     }
 
+    // The queue is heard, not read on a clock, so while the launcher's open
+    // its answer is asked again as the harness writes it: a job finishing
+    // while it's shown says so, and one asked before the file was first
+    // heard answers once it is.
+    Connections {
+        target: Jobs
+
+        function onSaidChanged() {
+            if (provider.launcher?.open)
+                provider.answered();
+        }
+    }
+
     // The memory.
 
     function memoryRead() {
@@ -468,7 +508,6 @@ Provider {
 
     function memory() {
         const kept = sampled("memory", memoryRead);
-        list();
         const info = kept.last.said.info;
         if (!(info.MemTotal > 0))
             return null;
@@ -477,12 +516,15 @@ Provider {
             headline: `${gib(used)} used, ${percent(used / info.MemTotal)}`,
             graph: bar(used / info.MemTotal),
             glyph: Words.glyph(kinds.memory),
+            title: Words.name(kinds.memory),
             note: ""
-        }, memoryParts());
+        }, () => memoryParts(kept));
     }
 
-    function memoryParts() {
-        const now = reads.memory.last.said;
+    // The memory's parts, from the read the headline said.
+    function memoryParts(kept) {
+        list();
+        const now = kept.last.said;
         const info = now.info;
         const used = info.MemTotal - info.MemAvailable;
         const rows = [figure({
@@ -647,10 +689,11 @@ Provider {
             graph: worst ? bar(1 - worst.free / worst.total, worst.band !== "healthy")
                 : room ? bar(1 - room.free / room.total) : undefined,
             glyph: Words.glyph(kinds.disks),
+            title: Words.name(kinds.disks),
             note: guard
                 ? (guard.silent ? "the disk guard has stopped saying" : "from the disk guard")
                 : counted ? since(kept) : ""
-        }, diskParts(guard));
+        }, () => diskParts(guard));
     }
 
     function diskParts(guard) {
@@ -841,11 +884,14 @@ Provider {
         return read(probe).trim();
     }
 
-    // While one of its answers is shown, it's asked again each second, so
-    // its figures move; and once a moment after a first read, so a rate
-    // stands for now as soon as it can.
-    readonly property bool shown: launcher !== null && launcher.open && launcher.held.length === 0
-        && launcher.answer?.live === provider
+    // While one of its answers is shown, as the answer to what's typed, a
+    // row in a category's list or a step held, it's asked again each
+    // second, so its figures move; and once a moment after a first read, so
+    // a rate stands for now as soon as it can.
+    readonly property bool shown: launcher !== null && launcher.open
+        && (launcher.answer?.live === provider
+            || launcher.held.some(step => step.row.live === provider)
+            || launcher.matches.some(row => row.live === provider))
 
     Timer {
         interval: provider.second
@@ -939,25 +985,29 @@ Provider {
     FileView {
         id: stat
         path: "/proc/stat"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     FileView {
         id: loadavg
         path: "/proc/loadavg"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     FileView {
         id: meminfo
         path: "/proc/meminfo"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     FileView {
         id: memoryPressure
         path: "/proc/pressure/memory"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     // What the machine read of its memory modules at boot, as root, since
@@ -965,24 +1015,28 @@ Provider {
     FileView {
         id: memoryModules
         path: "/run/memory-modules.json"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     FileView {
         id: cpuinfo
         path: "/proc/cpuinfo"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     FileView {
         id: up
         path: "/proc/uptime"
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
     FileView {
         id: probe
-        blockLoading: true
+        preload: false
+        blockAllReads: true
         printErrors: false
     }
 }
