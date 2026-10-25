@@ -71,6 +71,7 @@ impl Store {
             "proc",
             "boot/EFI/Linux",
             "profiles",
+            "temproots",
         ] {
             fs::create_dir_all(root.join(sub)).unwrap();
         }
@@ -185,6 +186,7 @@ impl Store {
                  "bands": {{ "pressure": "{pressure}", "urgent": "{urgent}", "critical": "0%",
                             "target": "{pressure}" }},
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
+                          "temp_roots": "{0}/temproots",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
                  "garbage": {{ "keep": "3d", "budget": "10%" }},
                  "dedupe": {{ "systemd_run": "{0}/bin/systemd-run" }},
@@ -301,6 +303,29 @@ fn routine_upkeep_lists_garbage_at_idle_and_takes_what_is_old() {
     assert_eq!(log[1], format!("delete {}", old.display()));
     assert!(young.exists(), "young garbage within budget stays");
     assert_eq!(log.len(), 2, "{log:?}");
+}
+
+#[test]
+fn garbage_a_running_build_holds_is_left_for_a_later_pass() {
+    // Nix would refuse it, and each refusal costs a delete its whole look
+    // for roots; on a busy machine that was most of a core freeing nothing.
+    let store = Store::new();
+    let held = store.dead("aaa-held.drv", 10.0 * DAY, 4096);
+    let free = store.dead("bbb-free", 10.0 * DAY, 4096);
+    fs::write(
+        store.root.join("temproots/4242"),
+        format!("{}\0", held.display()),
+    )
+    .unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !free.exists());
+    let deletes: Vec<String> = store
+        .log()
+        .into_iter()
+        .filter(|line| line.starts_with("delete"))
+        .collect();
+    assert_eq!(deletes, [format!("delete {}", free.display())]);
+    assert!(held.exists(), "a temporary root holds it");
 }
 
 #[test]
