@@ -20,10 +20,43 @@ pkgs.testers.runNixOSTest {
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
 
+  # The machine's first boot only lays the encrypted disk out and hands over
+  # to the system under test, so it carries little: useBootLoader copies its
+  # whole closure into the boot disk's image, though every boot runs from the
+  # host's store. The system under test, the graphical role with the splash,
+  # is evaluated from it as a specialisation would be, but kept out of its
+  # closure, which held it twice and made each image about 11 GB.
   nodes.machine =
-    { lib, pkgs, ... }:
     {
-      imports = [ self.nixosModules.graphical ];
+      extendModules,
+      lib,
+      pkgs,
+      ...
+    }:
+    let
+      graphical = extendModules {
+        modules = [
+          {
+            imports = [ self.nixosModules.graphical ];
+            # The GPU's driver in the initrd, as a machine's hardware module puts
+            # it, so Plymouth has a screen to draw on before the disk opens.
+            boot.initrd.kernelModules = [ "virtio_gpu" ];
+            # The test reads the machine through a serial console, and Plymouth
+            # keeps to text where there's one unless told it needn't.
+            boot.kernelParams = [ "plymouth.ignore-serial-consoles" ];
+
+            jitsusama.login.account = account;
+            users.users.${account} = {
+              isNormalUser = true;
+              initialPassword = password;
+            };
+            home-manager.users.${account}.home.stateVersion = "26.05";
+          }
+        ];
+      };
+      graphicalWith = module: (graphical.extendModules { modules = [ module ]; }).config;
+    in
+    {
       environment.systemPackages = [ pkgs.cryptsetup ];
 
       virtualisation = {
@@ -38,28 +71,15 @@ pkgs.testers.runNixOSTest {
       };
       boot.loader.systemd-boot.enable = true;
       boot.initrd.systemd.enable = true;
-      # The GPU's driver in the initrd, as a machine's hardware module puts
-      # it, so Plymouth has a screen to draw on before the disk opens.
-      boot.initrd.kernelModules = [ "virtio_gpu" ];
-      # The test reads the machine through a serial console, and Plymouth
-      # keeps to text where there's one unless told it needn't.
-      boot.kernelParams = [ "plymouth.ignore-serial-consoles" ];
 
-      jitsusama.login.account = account;
-      users.users.${account} = {
-        isNormalUser = true;
-        initialPassword = password;
-      };
-      home-manager.users.${account}.home.stateVersion = "26.05";
-
-      specialisation.encrypted.configuration = {
+      system.build.encrypted = graphicalWith {
         boot.initrd.luks.devices = lib.mkVMOverride {
           root.device = "/dev/vdb";
         };
         virtualisation.rootDevice = "/dev/mapper/root";
       };
       # An initrd that can't finish, as one whose disk never comes can't.
-      specialisation.stops.configuration = {
+      system.build.stops = graphicalWith {
         # The test framework panics a test machine whose initrd fails, to
         # fail fast; a real machine waits in the shell.
         boot.initrd.systemd.services.panic-on-fail.enable = false;
@@ -83,11 +103,12 @@ pkgs.testers.runNixOSTest {
   testScript =
     { nodes, ... }:
     let
-      encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
-      stops = nodes.machine.specialisation.stops.configuration.system.build.toplevel;
-      theme = nodes.machine.home-manager.users.${account}.jitsusama.theme;
-      inherit (nodes.machine.console) font;
-      kmscon = nodes.machine.services.kmscon.config;
+      booted = nodes.machine.system.build.encrypted;
+      encrypted = booted.system.build.toplevel;
+      stops = nodes.machine.system.build.stops.system.build.toplevel;
+      theme = booted.home-manager.users.${account}.jitsusama.theme;
+      inherit (booted.console) font;
+      kmscon = booted.services.kmscon.config;
       # What the tests need from Nix, as their values fixture. ImageMagick
       # runs beside the driver, and the other programs are named by their
       # paths in the store, as the tests always named them,

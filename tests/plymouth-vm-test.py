@@ -227,10 +227,15 @@ def asking(machine: BaseMachine, values: dict[str, Any]) -> Boot:
     # The test's one machine is QEMU's, which takes keys and screenshots.
     boot = Boot(cast("QemuMachine", machine), values)
     boot.machine.wait_for_unit("multi-user.target")
+    # The system under test isn't one of the first boot's own, so it's made
+    # the profile's newest generation, as nix-env would, for the boot loader
+    # to give it an entry.
     boot.machine.succeed(
         f"echo -n {boot.passphrase} | cryptsetup luksFormat -q --iter-time=1 /dev/vdb -",
         f"echo -n {boot.passphrase} | cryptsetup luksOpen -q /dev/vdb root",
         "mkfs.ext4 -q /dev/mapper/root",
+        f"ln -sfn {boot.encrypted} /nix/var/nix/profiles/system-2-link",
+        "ln -sfn system-2-link /nix/var/nix/profiles/system",
         f"{boot.encrypted}/bin/switch-to-configuration boot",
     )
     # NixOS names its own entries by a hash of what they hold, so the next
