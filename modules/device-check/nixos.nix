@@ -13,6 +13,14 @@
 # the next boot: an oops once left two tasks no signal could end, and the
 # reboot that followed hung. It marks each in /proc, which anyone can read.
 #
+# Sleep counts too. A sleep that fails names the device that stopped it,
+# where the kernel says which. And a sleep the hardware spent mostly out of
+# its deepest state drains a battery nearly as fast as being on, which nobody
+# finds out until the bag is warm and the battery is low. Where the platform
+# reports that state, the kernel counts how long each sleep spent in it, in
+# /sys/power, which anyone can read; less than four-fifths of a sleep of ten
+# minutes or more is named.
+#
 # A disk that's failing says so before it fails: its spare blocks run low,
 # it overheats, it finds errors in what it stored, or it turns read-only. On
 # NVMe those are the critical warning flags (-H), new media errors or wear
