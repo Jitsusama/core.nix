@@ -144,6 +144,20 @@ Provider {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
 
+    // A part whose programs aren't read yet, as they're read only once the
+    // launcher opens: listed from the first, saying it's still reading, so
+    // its place is held and nothing below it moves once they are.
+    function reading(name) {
+        return figure({ name: name, side: "\u2026" });
+    }
+
+    // The programs using most of something, known by their place rather
+    // than their name, so the first stays first as the programs change
+    // and the rows say who it is now, rather than swapping places.
+    function ranked(what, at) {
+        return `machine:${what}:using:${at + 1}`;
+    }
+
     function leaf(fields) {
         return copyRow(Object.assign({
             copy: fields.side,
@@ -395,11 +409,14 @@ Provider {
                 side: `${users[0].name} ${percent(users[0].value)}`,
                 glyph: chip,
                 note: "of the whole processor"
-            }, () => users.map(user => figure({
+            }, () => users.map((user, at) => figure({
+                key: ranked("cpu", at),
                 name: user.name,
                 side: percent(user.value),
                 graph: bar(user.value)
             }))));
+        else if (!programs)
+            rows.push(reading(named("cpu:using")));
         if (now.load.length === 3)
             rows.push(figure({
                 name: named("cpu:load"),
@@ -560,11 +577,14 @@ Provider {
                 side: `${holders[0].name} ${gib(holders[0].value / 1024)}`,
                 glyph: Words.glyph(kinds.memory),
                 note: "each program's processes together"
-            }, () => holders.map(each => figure({
+            }, () => holders.map((each, at) => figure({
+                key: ranked("memory", at),
                 name: each.name,
                 side: gib(each.value / 1024),
                 graph: bar(each.value / 1024 / info.MemTotal)
             }))));
+        else if (!programs)
+            rows.push(reading(named("memory:using")));
         const modules = now.modules;
         if (modules) {
             const type = modules.speed !== ""

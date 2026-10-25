@@ -21,13 +21,16 @@ QtObject {
 
     function rows(said) {
         return said.split(" ").filter(one => one !== "").map(one => {
-            const [key, side] = one.split(":");
-            return { key: key, side: side ?? "" };
+            const gone = one.endsWith("-");
+            const [key, side] = (gone ? one.slice(0, -1) : one).split(":");
+            return gone ? { key: key, side: side ?? "", gone: true } : { key: key, side: side ?? "" };
         });
     }
 
+    // Each row as it reads, a row gone marked by a dash after it.
     function read(list) {
-        return list.map(row => row.side === "" ? row.key : `${row.key}:${row.side}`).join(" ");
+        return list.map(row => (row.side === "" ? row.key : `${row.key}:${row.side}`)
+            + (row.gone ? "-" : "")).join(" ");
     }
 
     function run() {
@@ -41,8 +44,11 @@ QtObject {
                 "a:waiting b c"],
             ["a new row comes at the end", "a b", "c a b", "a b c"],
             ["new rows come in their own order", "a", "d c a b", "a d c b"],
-            ["a row gone goes", "a b c", "c a", "a c"],
-            ["everything gone leaves nothing", "a b", "", ""],
+            ["a row gone stays where it was, gone", "a b c", "c a", "a b- c"],
+            ["and says what it said", "a b:working", "a", "a b:working-"],
+            ["everything gone stays, gone", "a b", "", "a- b-"],
+            ["a row gone is still gone", "a b-", "a", "a b-"],
+            ["a row gone and back is there again", "a b-", "b a", "a b"],
             ["nothing shown takes the rows as they are", "", "b a", "b a"],
             ["rows alike keep their places", "x:1 x:2 y", "y x:3 x:4", "x:3 x:4 y"]
         ];
