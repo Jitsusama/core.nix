@@ -524,17 +524,17 @@ with subtest("the launcher loses no letter typed straight after its chord"):
         in_session("niri msg focused-window | grep -q type-ahead"),
         timeout=STARTING,
     )
-    for gap in (0.01, 0.05, 0.1):
+    for gap in (dt.timedelta(milliseconds=ms) for ms in (10, 50, 100)):
         beneath = len(as_account("cat /tmp/type-ahead"))
         machine.send_key("meta_l-spc")
         machine.send_chars("slack", delay=gap)
         launcher_ready()
 
-        def none_lost(_: bool, beneath: int = beneath, gap: float = gap) -> bool:
+        def none_lost(_: bool, beneath: int = beneath, gap: dt.timedelta = gap) -> bool:
             """Say whether every letter typed went beneath or to the launcher, in order."""
             went = as_account("cat /tmp/type-ahead")[beneath:]
             held = showing()["typed"]
-            print(f"TYPEAHEAD {gap}: '{went}' went beneath, '{held}' held")
+            print(f"TYPEAHEAD {gap.total_seconds()}: '{went}' went beneath, '{held}' held")
             return bool(went + held == "slack")
 
         retry(none_lost, timeout=dt.timedelta(seconds=10))
