@@ -576,27 +576,27 @@ gather (
       # changed-checks names a check by how its derivation moved, so what it
       # builds is what a change touched: its tests run as it builds, the
       # whole program among them, against stand-ins for git and nix
-      # (tests/changed-checks).
-      changed-checks-names-what-moved = pkgs.callPackage ./tests/changed-checks/package.nix { };
+      # (tools/changed-checks).
+      changed-checks-names-what-moved = pkgs.callPackage ./tools/changed-checks/package.nix { };
 
       # clippy finds nothing in changed-checks, its tests included.
       changed-checks-passes-clippy = passesClippy "changed-checks-passes-clippy" (
-        pkgs.callPackage ./tests/changed-checks/package.nix { }
+        pkgs.callPackage ./tools/changed-checks/package.nix { }
       );
 
       # run-subtests keeps a test script's boot and helpers and only the subtests
       # named, and runs a pytest one whole with its tests picked, so what it runs
-      # is what was asked for (tests/run-subtests-test.py, against stand-ins for
-      # nix and a check's driver).
+      # is what was asked for (tools/run-subtests/run-subtests-test.py, against
+      # stand-ins for nix and a check's driver).
       run-subtests-keeps-what-is-named =
         let
-          run-subtests = pkgs.callPackage ./tests/run-subtests.nix { };
+          run-subtests = pkgs.callPackage ./tools/run-subtests/run-subtests.nix { };
           python = pkgs.python3.withPackages (python: [ python.pytest ]);
         in
         pkgs.runCommandLocal "run-subtests-keeps-what-is-named" { } ''
           RUN_SUBTESTS=${lib.getExe run-subtests} PYTHONDONTWRITEBYTECODE=1 \
             ${python}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
-            --quiet ${./tests/run-subtests-test.py}
+            --quiet ${./tools/run-subtests/run-subtests-test.py}
           touch $out
         '';
 
@@ -756,12 +756,12 @@ gather (
       # so an edit shows without a build, and copies what the build made, and
       # ends the nested desktop it started however it's ended: its tests run
       # as it builds, the whole program among them, against stand-ins for git,
-      # nix and the desktop (tests/shell-preview).
-      shell-preview-follows-the-working-copy = pkgs.callPackage ./tests/shell-preview/package.nix { };
+      # nix and the desktop (tools/shell-preview).
+      shell-preview-follows-the-working-copy = pkgs.callPackage ./tools/shell-preview/package.nix { };
 
       # clippy finds nothing in shell-preview, its tests included.
       shell-preview-passes-clippy = passesClippy "shell-preview-passes-clippy" (
-        pkgs.callPackage ./tests/shell-preview/package.nix { }
+        pkgs.callPackage ./tools/shell-preview/package.nix { }
       );
     })
     (onLinux vmTests)

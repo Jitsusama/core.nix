@@ -387,15 +387,15 @@
             pkgs.rust-analyzer
             pkgs.rustc
             pkgs.rustfmt
-            (pkgs.callPackage ./tests/changed-checks/package.nix { })
-            (pkgs.callPackage ./tests/shots-changed.nix { })
+            (pkgs.callPackage ./tools/changed-checks/package.nix { })
+            (pkgs.callPackage ./tools/shots-changed/shots-changed.nix { })
           ]
           # The guide's tests check the sticks it writes with sfdisk,
           # fsck.fat and mtools, and its signatures against sbsign's.
           # VM tests boot under QEMU, which they need Linux for.
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-            (pkgs.callPackage ./tests/run-subtests.nix { })
-            (pkgs.callPackage ./tests/shell-preview/package.nix { })
+            (pkgs.callPackage ./tools/run-subtests/run-subtests.nix { })
+            (pkgs.callPackage ./tools/shell-preview/package.nix { })
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.dosfstools
