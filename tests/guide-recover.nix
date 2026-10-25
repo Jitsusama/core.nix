@@ -17,39 +17,15 @@ let
   pin = "123456";
   guide = pkgs.callPackage ../modules/guide/package.nix { };
 
-  # canokeys as tests/guide-install.nix makes them: one device swapped
-  # between state files made before QEMU starts, each its own randomness.
-  canokey = pkgs.canokey-qemu.overrideAttrs (old: {
-    postPatch = old.postPatch + ''
-      cat >> Src/qemu.c <<'EOF'
-
-      #include <sys/random.h>
-      uint32_t random32(void) {
-        uint32_t r;
-        if (getrandom(&r, sizeof(r), 0) != sizeof(r)) abort();
-        return r;
-      }
-      EOF
-    '';
-  });
-  qemu = pkgs.qemu_test.override {
-    canokeySupport = true;
-    canokey-qemu = canokey;
-  };
-  keys = pkgs.runCommand "canokey-keys" { nativeBuildInputs = [ qemu ]; } ''
-    mkdir $out
-    for name in kept lost new; do
-      echo quit | qemu-system-x86_64 -machine q35 -accel tcg -nodefaults -display none \
-        -S -monitor stdio -device qemu-xhci,id=usb -device canokey,bus=usb.0,file=$out/$name
-      test -s $out/$name
-    done
-  '';
-  # Gives the key a PIN (set-pin.py), held to ruff and mypy through
-  # `nix fmt` rather than the writers' flake8.
-  setPin = pkgs.writers.writePython3Bin "set-pin" {
-    libraries = [ pkgs.python3Packages.fido2 ];
-    doCheck = false;
-  } (builtins.readFile ./set-pin.py);
+  # The kept, lost and new keys, one device swapped between their state
+  # files (canokeys.nix).
+  canokeys = import ./canokeys.nix { inherit pkgs; };
+  inherit (canokeys) qemu setPin;
+  keys = canokeys.keys [
+    "kept"
+    "lost"
+    "new"
+  ];
 in
 pkgs.testers.runNixOSTest {
   name = "guide-recover";
