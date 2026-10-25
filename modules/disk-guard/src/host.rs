@@ -183,6 +183,7 @@ pub struct Filesystem {
     path: PathBuf,
     started: Instant,
     settling: Settling,
+    pacer: Option<Rc<RefCell<Pacer>>>,
 }
 
 impl Filesystem {
@@ -191,7 +192,16 @@ impl Filesystem {
             path: path.to_owned(),
             started: Instant::now(),
             settling: Settling::Hurried,
+            pacer: None,
         }
+    }
+
+    /// Settles through `pacer`, which beats while a settle waits, since a
+    /// patient one waits out the filesystem's next commit.
+    #[must_use]
+    pub fn paced(mut self, pacer: Rc<RefCell<Pacer>>) -> Self {
+        self.pacer = Some(pacer);
+        self
     }
 
     /// Settles by waiting for the filesystem's own commit, for a pass that
@@ -209,8 +219,13 @@ impl Disk for Filesystem {
     }
 
     fn settle(&mut self) -> io::Result<()> {
-        crate::sys::settle(&self.path, self.settling)
-            .map_err(|error| doing("settling what went", &error))
+        let (path, settling) = (self.path.clone(), self.settling);
+        let settle = move || crate::sys::settle(&path, settling);
+        let settled = match &self.pacer {
+            Some(pacer) => pacer.borrow_mut().waiting(settle),
+            None => settle(),
+        };
+        settled.map_err(|error| doing("settling what went", &error))
     }
 
     fn now(&self) -> f64 {
@@ -282,6 +297,16 @@ impl<'a> Reclaim<'a> {
     pub fn notes(&self) -> &[String] {
         &self.notes
     }
+
+    /// Runs `work`, which blocks, through the pacer when there is one, so
+    /// the guard keeps beating while a command or the system daemon takes
+    /// its time.
+    fn waiting<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> T {
+        match &self.pacer {
+            Some(pacer) => pacer.borrow_mut().waiting(work),
+            None => work(),
+        }
+    }
 }
 
 impl Reclaimer for Reclaim<'_> {
@@ -322,7 +347,10 @@ impl Reclaimer for Reclaim<'_> {
                 reclaim::entry(&root, root_path, candidate, self.scan, &mut unlinked)
             }
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate, &mut unlinked),
-            Action::Run { argv, timeout, .. } => run(argv, *timeout, self.gentle),
+            Action::Run { argv, timeout, .. } => {
+                let (argv, timeout, gentle) = (argv.clone(), *timeout, self.gentle);
+                self.waiting(move || run(&argv, timeout, gentle))
+            }
             // Nix judges liveness itself, under its own lock.
             // What it freed is measured, like any command's.
             Action::Ask { socket, .. } => {
@@ -330,7 +358,8 @@ impl Reclaimer for Reclaim<'_> {
                     path: root_path.to_owned(),
                     band: self.band,
                 };
-                match socket::ask(socket, &collect, COLLECT_TIMEOUT) {
+                let socket = socket.clone();
+                match self.waiting(move || socket::ask(&socket, &collect, COLLECT_TIMEOUT)) {
                     Ok(socket::Reply::Collected(_)) => Outcome::Reclaimed,
                     Ok(other) => Outcome::Failed(format!("the system daemon answered {other:?}")),
                     Err(error) => Outcome::Failed(format!("asking the system daemon: {error}")),
@@ -341,14 +370,23 @@ impl Reclaimer for Reclaim<'_> {
                 profile,
                 numbers,
                 ..
-            } => match crate::generations::expire(nix, profile, numbers, self.gentle) {
-                Ok(()) => Outcome::Reclaimed,
-                Err(why) => Outcome::Failed(why),
-            },
-            Action::Collect { nix, paths, .. } => match garbage::delete(nix, paths, self.gentle) {
-                Ok(()) => Outcome::Reclaimed,
-                Err(why) => Outcome::Failed(why),
-            },
+            } => {
+                let (nix, profile, numbers) = (nix.clone(), profile.clone(), numbers.clone());
+                let gentle = self.gentle;
+                match self
+                    .waiting(move || crate::generations::expire(&nix, &profile, &numbers, gentle))
+                {
+                    Ok(()) => Outcome::Reclaimed,
+                    Err(why) => Outcome::Failed(why),
+                }
+            }
+            Action::Collect { nix, paths, .. } => {
+                let (nix, paths, gentle) = (nix.clone(), paths.clone(), self.gentle);
+                match self.waiting(move || garbage::delete(&nix, &paths, gentle)) {
+                    Ok(()) => Outcome::Reclaimed,
+                    Err(why) => Outcome::Failed(why),
+                }
+            }
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
                     return Outcome::Failed(format!("outside its root {}", root_path.display()));

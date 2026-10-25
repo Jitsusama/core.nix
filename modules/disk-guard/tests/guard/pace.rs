@@ -7,7 +7,7 @@ use std::time::Duration;
 
 /// A clock that moves only when the pacer sleeps, or when a test moves it.
 #[derive(Clone, Default)]
-struct FakeClock(Rc<Cell<f64>>);
+pub struct FakeClock(Rc<Cell<f64>>);
 
 impl FakeClock {
     fn at(&self) -> f64 {
@@ -149,15 +149,49 @@ fn a_resting_pacer_beats_every_ten_seconds() {
     assert_eq!(beats.get(), 3);
 }
 
-#[test]
-fn a_hurried_pacer_never_rests_but_keeps_beating() {
+/// A hurried pacer on a fake clock, counting its beats.
+pub fn hurried() -> (Pacer, FakeClock, Rc<Cell<u32>>) {
     let clock = FakeClock::default();
     let beats = Rc::new(Cell::new(0));
     let counted = Rc::clone(&beats);
-    let mut pacer = Pacer::hurried(
+    let pacer = Pacer::hurried(
         Box::new(clock.clone()),
         Box::new(move || counted.set(counted.get() + 1)),
     );
+    (pacer, clock, beats)
+}
+
+#[test]
+fn a_pacer_beats_while_it_waits_on_work_and_hands_back_its_answer() {
+    // The fake clock moves a tenth of a second at each look, which is
+    // far quicker than the work's real fiftieth, so it beats many times.
+    let (mut pacer, _, beats) = paced(2_000, None, never);
+    let answer = pacer.waiting(|| {
+        std::thread::sleep(Duration::from_millis(50));
+        42
+    });
+    assert_eq!(answer, 42);
+    assert!(beats.get() > 0);
+    crate::assert_exactly(pacer.rested(), 0.0);
+}
+
+#[test]
+fn a_hurried_pacer_beats_while_it_waits_too() {
+    let (mut pacer, _, beats) = hurried();
+    pacer.waiting(|| std::thread::sleep(Duration::from_millis(50)));
+    assert!(beats.get() > 0);
+}
+
+#[test]
+#[should_panic(expected = "the work broke")]
+fn work_that_panics_panics_its_waiter() {
+    let (mut pacer, _, _) = hurried();
+    pacer.waiting(|| panic!("the work broke"));
+}
+
+#[test]
+fn a_hurried_pacer_never_rests_but_keeps_beating() {
+    let (mut pacer, clock, beats) = hurried();
     for _ in 0..30 {
         pacer.unlinked();
         clock.pass(1.0);

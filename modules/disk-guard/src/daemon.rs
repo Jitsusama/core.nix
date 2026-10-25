@@ -1398,8 +1398,8 @@ impl Guard {
             band,
         };
         // A pass that can wait waits for the filesystem's own commits; one
-        // that can't asks for them.
-        let disk = Filesystem::new(&path);
+        // that can't asks for them. Either beats while it waits.
+        let disk = Filesystem::new(&path).paced(Rc::clone(&pacer));
         let mut disk = if gentle { disk.patient() } else { disk };
         let report = pass(
             &mut disk,

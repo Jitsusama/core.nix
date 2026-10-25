@@ -52,8 +52,11 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   ask for one, since a commit asked for holds up every save on the disk. A
   disk falling to urgent ends the resting. Urgent and critical passes never
   rest, and ask for their commits. Either keeps the status file's
-  heartbeat. `src/pace.rs` holds it; `pacing` in the config sets the batch
-  and the rest.
+  heartbeat, resting or not: a step that blocks, such as a commit waited
+  for, a command, a Nix deletion or the system daemon's answer, runs on a
+  thread of its own while the pass beats, since the desktop calls a guard
+  silent for two minutes dead. `src/pace.rs` holds it; `pacing` in the
+  config sets the batch and the rest.
 - **Removal.** Everything is reached through directories opened beneath the
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a

@@ -1,12 +1,15 @@
 use crate::procs::{LOCKS, link, stat, text};
 use disk_guard::activity::Use;
 use disk_guard::host::{Filesystem, Reclaim, Scan};
+use disk_guard::pace::Pacer;
 use disk_guard::pass::{Disk, Outcome, Reclaimer};
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim::Looker;
 use disk_guard::survey::{Action, Offer};
+use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::{Duration, SystemTime};
 
 /// A readable process sitting in `cwd`, in a fake `/proc`.
@@ -446,6 +449,14 @@ fn a_log_is_trimmed_to_its_last_part_in_place() {
 }
 
 fn run(argv: &[&str], timeout: Duration) -> (Offer, Outcome, Duration) {
+    run_paced(argv, timeout, None)
+}
+
+fn run_paced(
+    argv: &[&str],
+    timeout: Duration,
+    pacer: Option<Rc<RefCell<Pacer>>>,
+) -> (Offer, Outcome, Duration) {
     let proc = tempfile::tempdir().unwrap();
     let root = tempfile::tempdir().unwrap();
     let offers = [offer(
@@ -462,7 +473,11 @@ fn run(argv: &[&str], timeout: Duration) -> (Offer, Outcome, Duration) {
         },
     )];
     let mut scan = empty_scan(proc.path());
-    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    let reclaim = Reclaim::new(&offers, &mut scan);
+    let mut reclaim = match pacer {
+        Some(pacer) => reclaim.paced(pacer),
+        None => reclaim,
+    };
     let started = std::time::Instant::now();
     let outcome = reclaim.reclaim(&offers[0].candidate);
     let [offered] = offers;
@@ -476,6 +491,20 @@ fn a_producer_is_run_and_its_failure_told() {
     assert_eq!(outcome, Outcome::Reclaimed);
     let (_, outcome, _) = run(&["/bin/sh", "-c", "echo no room >&2; exit 3"], 10 * second);
     assert_eq!(outcome, Outcome::Failed("it exited 3: no room".to_owned()));
+}
+
+#[test]
+fn a_producer_that_takes_its_time_keeps_the_guard_beating() {
+    // A guard silent for two minutes reads as dead on the desktop, and a
+    // command, a Nix deletion or the system daemon's answer can take that.
+    let (pacer, _, beats) = crate::pace::hurried();
+    let (_, outcome, _) = run_paced(
+        &["/bin/sh", "-c", "exec sleep 0.2"],
+        Duration::from_secs(10),
+        Some(Rc::new(RefCell::new(pacer))),
+    );
+    assert_eq!(outcome, Outcome::Reclaimed);
+    assert!(beats.get() > 0);
 }
 
 #[test]
