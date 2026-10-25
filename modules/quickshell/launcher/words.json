@@ -1466,8 +1466,7 @@
         "music"
       ],
       "said": {
-        "output": "output",
-        "input": "input",
+        "volume": "volume {level}",
         "in-use": "in use",
         "muted": "muted",
         "none": "none",
@@ -1637,6 +1636,31 @@
       "id": "sound:microphones",
       "in": "sound",
       "name": "Microphones"
+    },
+    {
+      "id": "sound:called:speakers",
+      "in": "sound",
+      "name": "Built-in speakers"
+    },
+    {
+      "id": "sound:called:microphones",
+      "in": "sound",
+      "name": "Built-in microphones"
+    },
+    {
+      "id": "sound:called:jack",
+      "in": "sound",
+      "name": "Headphone jack"
+    },
+    {
+      "id": "sound:called:jack-microphone",
+      "in": "sound",
+      "name": "Headset jack microphone"
+    },
+    {
+      "id": "sound:called:its-microphone",
+      "in": "sound",
+      "name": "{device} microphone"
     },
     {
       "id": "sound:resolution",
