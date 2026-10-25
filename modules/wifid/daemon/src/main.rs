@@ -160,7 +160,24 @@ async fn run() -> Result<(), Box<dyn Error>> {
     })?;
     let secrets = Secrets::new(Credentials::system(), &Path::new(STATE).join("vault.cred"));
     let seen = RefCell::new(Seen::kept_in(&Path::new(STATE).join("seen")));
+    // The vault's key is the one thing opened through the TPM, however
+    // many networks are saved. The TPM takes a second or two over each
+    // sealed secret and takes them in turns, so two asked at once both
+    // finish late, and the login keyring asks for its own as the session
+    // starts. So wifid asks the moment it starts, beside everything else it
+    // sets up, rather than once it has a card to give networks to.
+    let ((), served) = tokio::join!(secrets.ready(&store), serve(&store, &key, &secrets, &seen));
+    served
+}
 
+/// Joins the bus, gives wpa_supplicant the cards and follows them, and
+/// answers the shell, until there's nothing left to hear.
+async fn serve(
+    store: &Store,
+    key: &AddressKey,
+    secrets: &Secrets,
+    seen: &RefCell<Seen>,
+) -> Result<(), Box<dyn Error>> {
     let bus = Connection::system().await?;
     // networkd reads the files anyway when it next starts.
     if let Err(error) = reload_networkd(&bus).await {
@@ -174,10 +191,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
-        store: &store,
-        key: &key,
-        secrets: &secrets,
-        seen: &seen,
+        store,
+        key,
+        secrets,
+        seen,
         state: &state,
     };
     wifid.add_cards().await;
@@ -193,7 +210,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         points: HashMap::new(),
         state: state.clone(),
         cards: HashMap::new(),
-        seen: &seen,
+        seen,
         stalls: Stalls::default(),
     };
     air.hear_all(&bus, &supplicant).await;
@@ -238,16 +255,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         asks: taken,
         watching: watching.subscribe(),
     };
-    // The vault's key is the one thing opened through the TPM, however
-    // many networks are saved, and it's opened as wifid starts, beside
-    // everything else.
-    let following = async {
-        let following = follow(&wifid, air, networks, heard);
-        let ((), followed) = tokio::join!(secrets.ready(&store), following);
-        followed
-    };
     tokio::select! {
-        result = following => result,
+        result = follow(&wifid, air, networks, heard) => result,
         result = answer(wifi) => result,
     }
 }
