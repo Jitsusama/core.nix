@@ -12,7 +12,8 @@
 //!   dictation-chord, which may read the keys, says when the chord is let
 //!   go; without it, `hold` is `toggle`.
 //! - `watch`: the state now, then a line at each change, until the client
-//!   goes: `idle`, `listening` or `transcribing`. Between them come words
+//!   goes: `idle`, `listening` or `transcribing`, where `listening` waits
+//!   for the microphone's first sound. Between them come words
 //!   for what the shell says: `still-writing` for a press while Whisper
 //!   works, and, before an `idle` that typed nothing, `heard-nothing`
 //!   with why: `muted`, the microphone was muted as listening began;
@@ -104,6 +105,8 @@ enum Event {
     /// The chord let go, after this many ms held.
     Released(u128),
     Watch(UnixStream),
+    /// The microphone's first sound for a listening, by its generation.
+    Sounding(u64),
     Full(u64),
     Heard(Result<String, String>),
 }
@@ -147,6 +150,7 @@ pub fn serve(
     if prime {
         let _ = jobs.send(Job::Prime);
     }
+    thread::spawn(open_the_microphone);
     let coordinator = thread::spawn({
         let events = events.clone();
         move || coordinate(&heard, &events, &jobs)
@@ -233,8 +237,22 @@ fn let_go(state: State, held: Option<u64>, generation: u64, ms: u128) -> bool {
     state == State::Listening && held == Some(generation) && ms >= HELD_MS
 }
 
+/// The state the watchers are told. Listening starts when the microphone's
+/// first sound arrives rather than at the press: an idle microphone took
+/// 0.7 s to start, and a shell that said it was listening meanwhile had
+/// its user speak into nothing.
+fn shown(state: State, sounding: bool) -> State {
+    if state == State::Listening && !sounding {
+        State::Idle
+    } else {
+        state
+    }
+}
+
 fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job>) {
     let mut state = State::Idle;
+    // Whether the current listening has heard the microphone yet.
+    let mut sounding = false;
     let mut watchers: Vec<UnixStream> = Vec::new();
     let mut recording: Option<Recording> = None;
     let mut generation = 0_u64;
@@ -242,10 +260,11 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
     let mut held: Option<u64> = None;
     for event in heard {
         let before = state;
+        let told = shown(state, sounding);
         match event {
             Event::Watch(mut stream) => {
                 if stream
-                    .write_all(format!("{}\n", state.word()).as_bytes())
+                    .write_all(format!("{}\n", told.word()).as_bytes())
                     .is_ok()
                 {
                     watchers.push(stream);
@@ -254,8 +273,11 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
             Event::Press(mut stream, chord) => {
                 let said;
                 (state, said) = press(state, &mut recording, &mut generation, events, jobs);
-                if chord && before == State::Idle && state == State::Listening {
-                    held = Some(generation);
+                if before == State::Idle && state == State::Listening {
+                    sounding = false;
+                    if chord {
+                        held = Some(generation);
+                    }
                 }
                 if let Some(said) = said {
                     say(said, &mut watchers);
@@ -267,6 +289,11 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                     generation += 1;
                     held = None;
                     state = stopped(stop(recording.take(), jobs), &mut watchers);
+                }
+            }
+            Event::Sounding(at) => {
+                if state == State::Listening && at == generation {
+                    sounding = true;
                 }
             }
             Event::Full(at) => {
@@ -288,8 +315,9 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                 }
             }
         }
-        if state != before {
-            tell(state.word(), &mut watchers);
+        let now = shown(state, sounding);
+        if now != told {
+            tell(now.word(), &mut watchers);
         }
     }
 }
@@ -368,6 +396,27 @@ fn muted() -> bool {
         .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("[MUTED]"))
 }
 
+/// Opens the default microphone for its first sound and lets it go, so a
+/// source the sound server keeps running once opened is running before the
+/// first press: starting the laptop's took 0.7 s, which cut off the start
+/// of what was said. What it hears is thrown away.
+fn open_the_microphone() {
+    let Ok(mut child) = Command::new("pw-record")
+        .args(["--raw", "--rate", "16000", "--channels", "1", "-"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return;
+    };
+    if let Some(mut stdout) = child.stdout.take() {
+        let _ = stdout.read(&mut [0_u8; 2]);
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 /// Starts pw-record on the default microphone, its samples read into
 /// memory until it stops or Whisper's window is full.
 fn listen(events: &Sender<Event>, generation: u64) -> Result<Recording, String> {
@@ -395,9 +444,14 @@ fn listen(events: &Sender<Event>, generation: u64) -> Result<Recording, String> 
     let reader = thread::spawn(move || {
         let mut buffer = [0_u8; 3200];
         let mut odd: Option<u8> = None;
+        let mut sounding = false;
         while let Ok(read) = stdout.read(&mut buffer) {
             if read == 0 {
                 break;
+            }
+            if !sounding {
+                sounding = true;
+                let _ = events.send(Event::Sounding(generation));
             }
             let mut bytes: Vec<u8> = odd.take().into_iter().collect();
             bytes.extend_from_slice(&buffer[..read]);
@@ -630,6 +684,14 @@ mod tests {
     #[test]
     fn a_tap_s_release_leaves_it_listening() {
         assert!(!let_go(State::Listening, Some(4), 4, 399));
+    }
+
+    #[test]
+    fn it_says_it_listens_only_once_the_microphone_sounds() {
+        assert_eq!(shown(State::Listening, false), State::Idle);
+        assert_eq!(shown(State::Listening, true), State::Listening);
+        assert_eq!(shown(State::Transcribing, false), State::Transcribing);
+        assert_eq!(shown(State::Idle, true), State::Idle);
     }
 
     #[test]

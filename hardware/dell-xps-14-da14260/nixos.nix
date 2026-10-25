@@ -70,6 +70,7 @@ in
     ../../modules/touchpad/nixos.nix
     ./backports.nix
     ./camera.nix
+    ./microphones.nix
     ./next.nix
     ./speakers.nix
   ];
