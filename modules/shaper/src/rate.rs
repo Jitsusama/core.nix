@@ -191,14 +191,16 @@ impl Settings {
     /// well above all, and a floor over the line leaves its packets behind
     /// the line's own queue: at 95% of a best learned in an upload's first
     /// seconds, a bulk upload took pings past the router from 27 ms to 44
-    /// on average, and up to 134. Then a cut may go to four fifths of the
-    /// best. At three fifths, live, the air's late pings took every cut to
-    /// that floor: over four pairs beside a stand-in call, an upload ran
-    /// 28% slower, for pings whose slowest twentieth came 15 ms sooner.
+    /// on average, and up to 134. Then a cut may go to three fifths of the
+    /// best. Live, over four pairs beside a stand-in call, an upload ran
+    /// 28% slower there, and the pings' slowest twentieth stayed under 54 ms
+    /// where it reached 100 without the call. At four fifths the upload ran
+    /// only 10% slower, but in a noisier hour that twentieth reached 145 ms
+    /// beside the call. Joel chose the calls.
     pub fn for_link(wireless: bool) -> Self {
         Settings {
             least_of_best: if wireless { 0.95 } else { 0.0 },
-            least_of_best_live: if wireless { 0.8 } else { 0.0 },
+            least_of_best_live: if wireless { 0.6 } else { 0.0 },
             ..Settings::default()
         }
     }
