@@ -30,9 +30,10 @@ if TYPE_CHECKING:
 
 # How many words the guide makes the stick's passphrase of.
 PASSPHRASE_WORDS = 7
-# How long a screen of the guide may take to come, and the write with its read back.
+# How long a screen of the guide may take to come, and the write with its read back, which
+# took 14 minutes on a host busy with other machines' disks.
 SCREEN = timedelta(seconds=120)
-WRITTEN = timedelta(seconds=900)
+WRITTEN = timedelta(minutes=30)
 # Another's words, refused when typed back.
 OTHER = "abacus abdomen abdominal abide abiding ability ablaze"
 
