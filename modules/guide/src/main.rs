@@ -701,6 +701,11 @@ fn what_is_there(
             question,
             guide::recover::STOPPED,
         ),
+        AlreadyThere::StoppedEarly { question } => (
+            "An install stopped part way",
+            question,
+            guide::recover::STOPPED_EARLY,
+        ),
     };
     let chosen = {
         let mut terminal = Terminal::open()?;
