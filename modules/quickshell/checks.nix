@@ -407,6 +407,24 @@ onLinux {
       touch $out
     '';
 
+  # Each opening of the launcher is kept as what it took: its keys by kind,
+  # its pick and how long it took, and a miss only where letters were typed
+  # and nothing picked, as tests/trials.qml holds launcher/Trials.js to it in
+  # Qt's own engine.
+  the-launcher-keeps-its-trials =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-keeps-its-trials" { } ''
+      cp ${../../tests/trials.qml} trials.qml
+      cp ${./launcher/Trials.js} Trials.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml trials.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
