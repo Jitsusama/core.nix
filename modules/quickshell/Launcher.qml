@@ -1395,6 +1395,11 @@ Scope {
         remember: Providers.learning.remember
     }
 
+    // What each opening took, to tell the homes Joel tries apart.
+    Trials {
+        id: trials
+    }
+
     // Every choice the words find (Fuzzy.js says how), in Rank.js's order:
     // what's latched for what's typed, then by tier, then what was picked
     // for it, what's picked most and the better match. One found only with
@@ -1662,12 +1667,14 @@ Scope {
         // One that opens a collection steps into it, the launcher kept open.
         if (choice.opens) {
             picks.picked(typed, choice.key, knowing());
+            trials.picked(choice, typed, held.length);
             into(choice.opens);
             return;
         }
         // The clipboard takes text only from a program holding the keys.
         if (choice.now)
             choice.run();
+        trials.picked(choice, typed, held.length);
         open = false;
         // Acting on a thing says it was what was meant by what was typed;
         // in a collection or a category, the one picked from it was.
@@ -1840,6 +1847,7 @@ Scope {
 
     onOpenChanged: {
         if (open) {
+            trials.opened();
             pointer = Qt.point(-1, -1);
             footWidest = {};
             footStage = 0;
@@ -1858,6 +1866,7 @@ Scope {
             Report.say(`stands ${standing.said}`);
         } else {
             screenHere = focusedScreen;
+            trials.closed();
         }
     }
 
@@ -1982,13 +1991,22 @@ Scope {
                         // What's typed narrows a list, so the left arrow
                         // takes it away whole before it steps back out.
                         leftClears: true
-                        onTextChanged: root.search(text)
-                        onAccepted: below => root.asking ? root.give()
-                            : root.run(root.selected, below)
+                        onTextChanged: {
+                            trials.retyped(root.typed, text);
+                            root.search(text);
+                        }
+                        onAccepted: below => {
+                            trials.pressed("returns");
+                            if (root.asking)
+                                root.give();
+                            else
+                                root.run(root.selected, below);
+                        }
                         // Tab on an answer puts the answer in place of the
                         // question, so a sum can be carried on; one still
                         // being asked for leaves the question as it is.
                         onCompleted: {
+                            trials.pressed("tabs");
                             // At home, Tab goes to the categories, to
                             // browse what there is.
                             if (root.atHome)
@@ -2016,21 +2034,36 @@ Scope {
                                 text = root.answer.copy ?? root.answer.headline;
                         }
                         onCancelled: root.open = false
-                        onForward: root.enter(root.matches[root.current])
-                        onBackward: root.back()
+                        onForward: {
+                            trials.pressed("steps");
+                            root.enter(root.matches[root.current]);
+                        }
+                        onBackward: {
+                            trials.pressed("backs");
+                            root.back();
+                        }
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        Keys.onUpPressed: root.current = Math.max(root.current - 1, highest)
-                        Keys.onDownPressed: root.current
-                            = Math.max(highest, Math.min(root.current + 1, root.matches.length - 1))
+                        Keys.onUpPressed: {
+                            trials.pressed("arrows");
+                            root.current = Math.max(root.current - 1, highest);
+                        }
+                        Keys.onDownPressed: {
+                            trials.pressed("arrows");
+                            root.current = Math.max(highest,
+                                Math.min(root.current + 1, root.matches.length - 1));
+                        }
                         Keys.onPressed: event => {
-                            if (event.key === Qt.Key_PageUp)
+                            if (event.key === Qt.Key_PageUp) {
+                                trials.pressed("arrows");
                                 root.current = Math.max(root.current - root.rows, highest);
-                            else if (event.key === Qt.Key_PageDown)
+                            } else if (event.key === Qt.Key_PageDown) {
+                                trials.pressed("arrows");
                                 root.current
                                     = Math.min(root.current + root.rows, root.matches.length - 1);
+                            }
                         }
                     }
                 }

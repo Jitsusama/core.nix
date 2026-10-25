@@ -695,6 +695,10 @@
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
   '';
+  the-launcher-keeps-its-trials = ''
+    each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
+    miss only where letters were typed and nothing picked
+  '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';
