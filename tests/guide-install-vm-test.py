@@ -889,7 +889,9 @@ def test_recovery_key_is_typed_back_and_opens_the_disk(
 ) -> None:
     """The recovery key is shown, typed back, and opens the disk."""
     assert len(recovery_key.split()) == RECOVERY_KEY_WORDS, recovery_key
-    on_screen(fivec_enrolled, "The recovery key opens the disk", timeout=STEP)
+    # Said above the card asking for the stick back, which says "look again"
+    # until the guide next looks.
+    on_screen(fivec_enrolled, "The recovery key opens the disk", timeout=STEP, stopped="try again")
 
 
 def test_install_asks_for_the_stick_back_and_goes_on(stick_back: QemuMachine) -> None:
