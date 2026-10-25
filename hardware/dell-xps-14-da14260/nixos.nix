@@ -78,15 +78,42 @@ in
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
 
-  # The devices this laptop always has. The USB-C controller, the speakers'
-  # amplifiers and the camera's ISP have each failed to come up here before.
-  # Wi-Fi's number moves if its driver starts again.
+  # The devices this laptop always has: every one Windows binds a driver to,
+  # so a kernel or firmware change that loses one is named rather than found
+  # by chance. The USB-C controller, the
+  # speakers' amplifiers and the camera's ISP have each failed to come up
+  # here before. A PCI function is expected bound to its driver, at the
+  # address it always has on this board; Wi-Fi's number and the sensors'
+  # instance numbers move, so those are globs.
   jitsusama.devices.expected = {
     "The USB-C ports" = "/sys/class/typec/port0";
-    "Bluetooth" = "/sys/class/bluetooth/hci0";
-    "Wi-Fi" = "/sys/class/ieee80211/phy*";
+    "Bluetooth" = "/sys/bus/pci/drivers/btintel_pcie/0000:00:14.7";
+    "Bluetooth's adapter" = "/sys/class/bluetooth/hci0";
+    "Wi-Fi" = "/sys/bus/pci/drivers/iwlwifi/0000:00:14.3";
+    "Wi-Fi's radio" = "/sys/class/ieee80211/phy*";
     "The speakers" = "/proc/asound/sofsoundwire";
+    "The graphics" = "/sys/bus/pci/drivers/xe/0000:00:02.0";
+    "The screen" = "/sys/class/drm/card*-eDP-1";
+    "The screen's brightness" = "/sys/class/backlight/intel_backlight";
     "The camera's ISP" = "/sys/bus/auxiliary/devices/intel_ipu7.psys.*";
+    "The camera" = "/sys/bus/i2c/drivers/ov08x40/i2c-OVTI08F4:00";
+    "The camera's bridge" = "/sys/bus/i2c/drivers/intel_cvs/i2c-INTC10E1:00";
+    "The camera's USB link" = "/sys/bus/auxiliary/devices/usbio.usbio-i2c.*";
+    "The IR camera" = "/sys/bus/i2c/drivers/hm1092/i2c-HIMX1092:00";
+    "The NPU" = "/sys/bus/pci/drivers/intel_vpu/0000:00:0b.0";
+    "The sensor hub" = "/sys/bus/pci/drivers/intel_ish_ipc/0000:00:12.0";
+    "The light sensor" = "/sys/bus/platform/drivers/hid_sensor_als/HID-SENSOR-200041.*";
+    "The hinge sensor" =
+      "/sys/bus/platform/drivers/hid_sensor_custom_intel_hinge/HID-SENSOR-INT-020b.*";
+    "The touchpad" = "/sys/bus/i2c/drivers/i2c_hid_acpi/i2c-VEN_2C2F:00";
+    "Thunderbolt" = "/sys/bus/thunderbolt/devices/domain*";
+    "The thermal sensors" = "/sys/bus/pci/drivers/proc_thermal_pci/0000:00:04.0";
+    "The power telemetry" = "/sys/bus/pci/drivers/intel_vsec/0000:00:0a.0";
+    "The management engine" = "/sys/class/mei/mei0";
+    "The security engine" = "/sys/class/issei/issei0";
+    "The disk" = "/sys/class/nvme/nvme0";
+    "The firmware's flash" = "/sys/class/mtd/mtd0";
+    "The watchdog" = "/sys/class/watchdog/watchdog0";
   };
 
   # The keyboard is wired to the embedded controller, which presents it as a
