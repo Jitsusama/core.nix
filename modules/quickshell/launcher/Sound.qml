@@ -678,11 +678,21 @@ Provider {
         portReader.command = [provider.settings.pwDump ?? "pw-dump",
             String(node.properties["device.id"])];
         portReader.running = true;
+        portsGiven.restart();
+    }
+
+    // A sound server that never answers mustn't leave the reader running,
+    // which would leave every later read waiting on it for good.
+    Timer {
+        id: portsGiven
+        interval: 3000
+        onTriggered: portReader.running = false
     }
 
     Process {
         id: portReader
         property var reading: null
+        onExited: portsGiven.stop()
         stdout: StdioCollector {
             id: dump
             onStreamFinished: {

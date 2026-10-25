@@ -90,7 +90,7 @@ Provider {
             name: named(device),
             side: Keyboards.joined(device),
             glyph: Theme.glyph.keyboard
-        }, () => provider.parts(device)));
+        }, () => provider.parts(device, Keyboards.lightHolder(found))));
         const count = found.length === 1 ? "one keyboard" : `${found.length} keyboards`;
         return {
             headline: `${count}, caps lock ${caps ? "on" : "off"}`,
@@ -104,7 +104,7 @@ Provider {
     // A keyboard's parts, read as it's stepped into: its locks, its layer,
     // how a held key repeats, its lights, and how it's connected and who
     // made it.
-    function parts(device) {
+    function parts(device, holder) {
         const key = id => `keyboards:${device.phys || device.name}:${id}`;
         const rows = Keyboards.locks(device).map(lock => figure(key(lock.id), lock.id,
             Number(said(`${Lights.leds}/${lock.light}/brightness`)) > 0 ? "on" : "off"));
@@ -114,7 +114,7 @@ Provider {
         const repeat = settings.repeat ?? null;
         if (repeat)
             rows.push(figure(key("repeat"), "repeat", Keyboards.repeats(repeat)));
-        for (const row of lights(device, key))
+        for (const row of lights(device, key, holder))
             rows.push(row);
         const folder = Keyboards.usbFolder(device);
         const joined = Keyboards.connection(device, folder === "" ? null : {
@@ -183,8 +183,8 @@ Provider {
     // nothing for one without them: the laptop's own, saying how lit they
     // are, then how long they stay on once nothing's touched, and a ZSA
     // board's, which its layout's command steps (KeyboardLayout.qml).
-    function lights(device, key) {
-        if (Keyboards.builtIn(device))
+    function lights(device, key, holder) {
+        if (holder && device.phys === holder.phys && device.name === holder.name)
             return laptopLights(key);
         if (Keyboards.zsa(device) && KeyboardLayout.present)
             return [boardLights(key)];
@@ -269,9 +269,11 @@ Provider {
     // keyboard by name, saying how lit its lights are, holding the same.
     // Nothing where no keyboard has lights.
     function lightsTold() {
-        const lit = Keyboards.keyboards(read(devices)).map(device => {
+        const found = Keyboards.keyboards(read(devices));
+        const holder = Keyboards.lightHolder(found);
+        const lit = found.map(device => {
             const key = id => `keyboards:${device.phys || device.name}:${id}`;
-            return { device: device, rows: lights(device, key) };
+            return { device: device, rows: lights(device, key, holder) };
         }).filter(each => each.rows.length > 0);
         if (lit.length === 0)
             return null;

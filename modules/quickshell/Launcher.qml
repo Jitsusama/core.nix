@@ -1194,9 +1194,14 @@ Scope {
         const was = current >= 0 && selected ? steadyId(selected) : "";
         const at = current;
         const scroll = list.contentY;
+        // A provider that throws mid-search mustn't leave every later search
+        // keeping its rows as a refresh does.
         steadying = true;
-        search(typed);
-        steadying = false;
+        try {
+            search(typed);
+        } finally {
+            steadying = false;
+        }
         // What's typed asked something whole, out at the top, now it can.
         if (held.length !== count)
             return;
@@ -1325,14 +1330,17 @@ Scope {
             const from = held[held.length - 1].row.from;
             // A collection searches itself, all of it until something's
             // typed, and then its parts: Agents its agents, then their
-            // tasks, helpers and spend. Members too many for one screen
-            // follow the parts instead, so the Keyboard's keyboards aren't
-            // below a hundred keys. A part named leads what's found.
+            // tasks, helpers and spend. A collection whose vocabulary says
+            // its parts lead ("lead": "parts") lists them first, so the
+            // Keyboard's keyboards aren't below a hundred keys; it's said,
+            // not counted, so no list changes order as it grows. A part
+            // named leads what's found.
             let found = [];
             if (from && words.length === 0) {
                 const members = from.everything();
                 const parts = partsOf(from);
-                found = members.length > root.rows ? parts.concat(members) : members.concat(parts);
+                found = Words.of(from.settings.name).lead === "parts" ? parts.concat(members)
+                    : members.concat(parts);
             } else if (from)
                 found = within(partsOf(from), letters)
                         .concat(learnedFirst(from.search(letters).rows, letters));

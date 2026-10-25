@@ -29,8 +29,10 @@ const NONE = { order: [], rules: [] };
 
 // Where a terminal's title says it runs Neovim or pi: Neovim titles it by a
 // memo and the file (modules/neovim/init.lua's titlestring), or by its own
-// name, and pi by its letter and the session's name.
-const NEOVIM_TITLE = /^\u{1F4DD}|\bn?vim\b/iu;
+// name, and pi by its letter and the session's name. Each is read from the
+// title's start, since what follows is a file, a folder or a quest's name,
+// any of which may hold "vim".
+const NEOVIM_TITLE = /^(\u{1F4DD}|n?vim\b)/iu;
 const PI_TITLE = /^(\u03C0|pi)( |$)/u;
 
 // The program whose keys are each layer's, by its window's app id.
@@ -471,8 +473,8 @@ function over(app, title) {
     if (app !== TERMINAL_APP) {
         return ["desktop"];
     }
-    if (NEOVIM_TITLE.test(title)) {
-        return ["neovim", "terminal", "desktop"];
+    if (PI_TITLE.test(title)) {
+        return ["pi", "terminal", "desktop"];
     }
-    return PI_TITLE.test(title) ? ["pi", "terminal", "desktop"] : ["terminal", "desktop"];
+    return NEOVIM_TITLE.test(title) ? ["neovim", "terminal", "desktop"] : ["terminal", "desktop"];
 }

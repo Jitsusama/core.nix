@@ -248,7 +248,9 @@ def unsaid(vocabulary: Entry) -> list[str]:
                    if unit.search(text))  # fmt: skip
         if key == "name" and text[:1].isdigit():
             out.append(f"{thing}'s name {text!r} reads its value first.")
-        if key == "said" and text[:1].isupper():
+        # An initialism keeps its capitals ("LE Audio", "USB"), so only a
+        # word cased as a name is refused.
+        if key == "said" and text[:1].isupper() and not text.split()[0].isupper():
             out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")
     for entry in vocabulary["things"]:
         for state in [entry, *entry.get("states", {}).values()]:

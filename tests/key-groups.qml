@@ -355,6 +355,8 @@ QtObject {
             ["kitty", "\u03C0 - Y2YBTS A Launcher T\u2026 - core.nix", ["pi", "terminal",
                 "desktop"]],
             ["kitty", "pi - core.nix", ["pi", "terminal", "desktop"]],
+            ["kitty", "\u03C0 - Q1 Tidy My Vim Config - notes", ["pi", "terminal", "desktop"]],
+            ["kitty", "~/src/vim-config", ["terminal", "desktop"]],
             ["kitty", "~/src/core.nix", ["terminal", "desktop"]],
             ["kitty", "pipewire", ["terminal", "desktop"]],
             ["google-chrome", "\u{1F4DD} notes.md", ["desktop"]],

@@ -601,9 +601,11 @@ in
     means = "a program, where it has no glyph of its own";
   };
   # The things Bluetooth pairs with, by the kind each says it is, and what's
-  # done with them.
+  # done with them. Headphones and a speaker wear no Bluetooth badge, since
+  # Sound shows the wired ones with the same marks and Bluetooth's own list
+  # already says how they're joined.
   headphones = {
-    glyph = nerd "f0970";
+    glyph = nerd "f02cb";
     console = "h";
     means = "headphones";
   };
@@ -618,7 +620,7 @@ in
     means = "a microphone, or anything else sound is heard through";
   };
   speaker = {
-    glyph = nerd "f09a2";
+    glyph = nerd "f04c3";
     console = "s";
     means = "a speaker, or anything else sound plays through";
   };

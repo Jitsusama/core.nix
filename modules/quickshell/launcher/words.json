@@ -1766,6 +1766,7 @@
       "id": "keyboard",
       "name": "Keyboard",
       "noun": "keys",
+      "lead": "parts",
       "glyph": "keyboard",
       "words": [
         "layout",

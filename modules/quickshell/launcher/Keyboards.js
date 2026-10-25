@@ -115,6 +115,16 @@ function zsa(device) {
     return device.bus === USB && device.vendor === ZSA;
 }
 
+// Which keyboard the laptop's own light is: the one on its keyboard port,
+// or, on a laptop whose keyboard is joined another way (I2C, or USB
+// inside), the first that's neither paired nor a board with its own
+// lights; null with none.
+function lightHolder(listed) {
+    return listed.find(builtIn)
+        ?? listed.find(device => joined(device) !== "by Bluetooth" && !zsa(device))
+        ?? null;
+}
+
 // The lock lights it has, each with its light's folder under the kernel's
 // lights, as "input0::capslock".
 function locks(device) {

@@ -1007,6 +1007,14 @@ QtObject {
         machine("the built-in one", keyboardsFound.map(device => Keyboards.builtIn(device)),
             [true, false]);
         machine("ZSA's board", keyboardsFound.map(device => Keyboards.zsa(device)), [false, true]);
+        machine("the laptop's light on its keyboard", Keyboards.lightHolder(keyboardsFound).name,
+            "AT Translated Set 2 keyboard");
+        // A laptop whose keyboard isn't on the keyboard port still has its
+        // light, on the first keyboard neither paired nor ZSA's.
+        const keyboardsInside = { name: "Inside keyboard", phys: "i2c-PNP0C50:00", bus: "0018" };
+        machine("the laptop's light with no keyboard port",
+            Keyboards.lightHolder([keyboardsErgodox, keyboardsInside]).name, "Inside keyboard");
+        machine("no light with only a board", Keyboards.lightHolder([keyboardsErgodox]), null);
         machine("the laptop's locks", Keyboards.locks(keyboardsLaptop), [
             { id: "caps", light: "input0::capslock" },
             { id: "num", light: "input0::numlock" },

@@ -260,4 +260,15 @@ Provider {
     function counted() {
         return all.length === 0 ? "empty" : String(all.length).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
+
+    // The window read as Shortcuts opened is that opening's alone: once the
+    // launcher closes, a chord typed at the top next time is ranked as the
+    // desktop's, with no layer saying it's the window's.
+    Connections {
+        target: provider.launcher
+        function onOpenChanged() {
+            if (!provider.launcher.open)
+                provider.leads = ["desktop"];
+        }
+    }
 }
