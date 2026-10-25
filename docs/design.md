@@ -548,8 +548,8 @@ works the same way everywhere.
 - **The same letters land on the same row.** The name typed whole comes
   first, then a name it starts, then a later word it starts, then a word
   that only finds it, typed whole before only started: an act's name starts
-  with its verb, so "pow" is Power off before Power saver's "power", and
-  "quiet" is do not disturb before the volume's "quieter". Below three
+  with its verb, so "quiet" is do not disturb before the volume's
+  "quieter". Below three
   letters a collection's other words find it only whole, so "pi" is the
   Agents and not the Clipboard's pictures. What's
   picked most for what was typed, counting the longer words it starts, is
@@ -687,7 +687,17 @@ works the same way everywhere.
   speed" (what the cards carry In and Out now, the Line as the shaper
   last measured it and how full it is, the Round trip while it's quiet,
   each server a step in, what's Dropped, and each of the Connections,
-  tunnels too), "uptime" and "queue". A part answers alone by its own
+  tunnels too), "uptime" and "queue". The devices hold as much: "heat"
+  (each part against its critical point, the processor's Cores, the fans
+  against what they're rated for, and how often it Throttled), Bluetooth
+  (each device's Battery, Signal and Link quality, Codec and Connection,
+  and the Adapter), Sound (each speaker's or microphone's Level, its Volume
+  or Gain, the Programs using it, its Tuning and its card), each camera
+  ("built-in camera": In use, its lights, Streaming, Sensor and Modes),
+  "keyboards" (each one's locks, Repeat and Lights), "ip" (each
+  connection's Address, Gateway and DNS, and a joined network's Signal,
+  Speed, Protection and Access points) and "battery" (its Charger, Health
+  and Charge limit). A part answers alone by its own
   words, "disk speed", "ram type" or "ping". A rate is the difference between two reads, read again
   once a second while it's shown and never for a key, and the footer says
   whether it's just now or since last asked. A part holding more steps in
