@@ -432,6 +432,7 @@ onLinux {
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
+      cp ${./launcher/Cameras.js} Cameras.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1

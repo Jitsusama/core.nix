@@ -110,6 +110,7 @@ let
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Traffic.js"
+    "launcher/Cameras.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
     "launcher/Numbers.js"
@@ -521,6 +522,7 @@ let
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
+    cameras = ./launcher/Cameras.qml;
     spend = ./launcher/Spend.qml;
     agents = ./launcher/Agents.qml;
     quests = ./launcher/Quests.qml;
@@ -965,6 +967,7 @@ in
         Bluetooth = "device";
         sound = "device";
         display = "display";
+        camera = "camera";
         person = "person";
         call = "call";
       };
@@ -1210,6 +1213,17 @@ in
       on = {
         order = 113;
         source = "on";
+      };
+      # Each camera with its parts, and whether one is in use. Return opens
+      # the viewfinder on the camera the machine calls camera, the one
+      # pictures are taken with; the loopbacks' cards find their nodes in
+      # sysfs, so what they give is read without opening them.
+      cameras = {
+        order = 114;
+        source = "cameras";
+        weight = 0.9;
+        viewfinder = config.jitsusama.camera.device;
+        cards = lib.mapAttrs (_: holder: holder.card) (osConfig.jitsusama.v4l2loopback.holders or { });
       };
       # Opened by its own chord, not shown in a search.
       shortcuts = {

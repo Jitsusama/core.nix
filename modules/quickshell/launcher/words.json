@@ -15,6 +15,7 @@
         "waits",
         "light",
         "displays",
+        "cameras",
         "keyboard",
         "session:Lock",
         "session:Suspend",
@@ -2134,14 +2135,131 @@
         "print",
         "grab"
       ],
+      "ask": "of what?"
+    },
+    {
+      "id": "cameras",
+      "name": "Cameras",
+      "glyph": "camera",
+      "said": "the {name}",
       "answers": [
         "camera",
         "webcam",
         "camera in use",
         "is the camera on",
         "who has the camera"
-      ],
-      "ask": "of what?"
+      ]
+    },
+    {
+      "id": "cameras:camera",
+      "in": "cameras",
+      "name": "Built-in camera",
+      "verb": "open",
+      "said": "the camera",
+      "words": [
+        "webcam",
+        "front camera",
+        "laptop camera",
+        "viewfinder"
+      ]
+    },
+    {
+      "id": "cameras:ir-camera",
+      "in": "cameras",
+      "name": "IR camera",
+      "said": "the infrared camera",
+      "words": [
+        "infrared",
+        "infrared camera",
+        "face camera"
+      ]
+    },
+    {
+      "id": "cameras:plugged",
+      "in": "cameras",
+      "name": "{name}",
+      "words": [
+        "camera",
+        "usb camera",
+        "external camera"
+      ]
+    },
+    {
+      "id": "cameras:holders",
+      "in": "cameras",
+      "name": "In use"
+    },
+    {
+      "id": "cameras:privacy",
+      "in": "cameras",
+      "name": "Privacy light",
+      "answers": [
+        "privacy light",
+        "camera light"
+      ]
+    },
+    {
+      "id": "cameras:flood",
+      "in": "cameras",
+      "name": "IR light",
+      "answers": [
+        "ir light",
+        "infrared light",
+        "flood light",
+        "ir flood light"
+      ]
+    },
+    {
+      "id": "cameras:streaming",
+      "in": "cameras",
+      "name": "Streaming"
+    },
+    {
+      "id": "cameras:sensor",
+      "in": "cameras",
+      "name": "Sensor"
+    },
+    {
+      "id": "cameras:sensor:ovti08f4",
+      "in": "cameras:sensor",
+      "name": "OmniVision OV08X40",
+      "camera": "camera"
+    },
+    {
+      "id": "cameras:sensor:himx1092",
+      "in": "cameras:sensor",
+      "name": "Himax HM1092",
+      "camera": "ir-camera"
+    },
+    {
+      "id": "cameras:where",
+      "in": "cameras",
+      "name": "Where"
+    },
+    {
+      "id": "cameras:powered",
+      "in": "cameras",
+      "name": "Powered"
+    },
+    {
+      "id": "cameras:modes",
+      "in": "cameras",
+      "name": "Modes"
+    },
+    {
+      "id": "cameras:usb",
+      "in": "cameras",
+      "name": "Connection"
+    },
+    {
+      "id": "cameras:firmware",
+      "in": "cameras",
+      "name": "Firmware"
+    },
+    {
+      "id": "cameras:field-of-view",
+      "in": "cameras",
+      "name": "Field of view"
     },
     {
       "id": "emoji",

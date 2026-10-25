@@ -16,6 +16,7 @@ import "Links.js" as Links
 import "Standing.js" as Standing
 import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
+import "Cameras.js" as Cameras
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -619,6 +620,49 @@ QtObject {
         machine("a step louder", Sounds.stepped(0.42, 0.05, 0.05), 0.45);
         machine("never past the whole", Sounds.stepped(0.98, 0.05, 0.05), 1);
         machine("never below nothing", Sounds.stepped(0.02, -0.05, 0.05), 0);
+
+        // What each camera says of itself, from sysfs and desk-facts.
+        machine("a loopback's format at a fraction of frames",
+            Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");
+        machine("a loopback's format at whole frames", Cameras.loopback("GREY:648x368@30"),
+            "GREY 648 \u00d7 368 at 30");
+        machine("a loopback's format as usually written", Cameras.loopback("MJPG:640x480@15/1"),
+            "MJPEG 640 \u00d7 480 at 15");
+        machine("no loopback format", Cameras.loopback(""), "");
+        machine("a sensor on the bus", Cameras.sensor("i2c-OVTI08F4:00"),
+            { id: "OVTI08F4", lights: "OVTI08F4_00::" });
+        machine("not a sensor", Cameras.sensor("i2c-17"), null);
+        const cameraColour = "OVTI08F4_00::";
+        const cameraInfrared = "HIMX1092_00::";
+        machine("a sensor's privacy light",
+            Cameras.light(`${cameraColour}privacy_led`, cameraColour), "privacy");
+        machine("a sensor's IR light",
+            Cameras.light(`${cameraInfrared}ir_flood_led`, cameraInfrared), "flood");
+        machine("another sensor's light",
+            Cameras.light(`${cameraInfrared}ir_flood_led`, cameraColour), "");
+        machine("the keyboard's light", Cameras.light("dell::kbd_backlight", "OVTI08F4_00::"), "");
+        machine("where the laptop's cameras sit", Cameras.place({ panel: "front", vertical: "center",
+            horizontal: "right", lid: "no" }), "front, centre right");
+        machine("a camera dead centre, in the lid", Cameras.place({ panel: "front",
+            vertical: "center", horizontal: "center", lid: "yes" }), "front, centre, in the lid");
+        machine("a camera the firmware doesn't place", Cameras.place({ panel: "unknown",
+            vertical: "", horizontal: "", lid: "" }), "");
+        machine("powered a moment", Cameras.lasted(999), "0 s");
+        machine("powered for minutes", Cameras.lasted(678291), "11 min");
+        machine("powered for hours", Cameras.lasted(7500000), "2 h 5 min");
+        machine("powered for whole hours", Cameras.lasted(7200000), "2 h");
+        const cameraFacts = [{ name: "streaming", value: "MJPEG 1920 \u00d7 1080 at 30" },
+            { name: "MJPEG", value: "3840 \u00d7 2160 at 30; 1920 \u00d7 1080 at 60" },
+            { name: "YUYV", value: "640 \u00d7 480 at 30" },
+            { name: "H.264", value: "1920 \u00d7 1080 at 30" },
+            { name: "field of view", value: "90\u00b0" }, { name: "USB", value: "5 Gbit/s" },
+            { name: "firmware", value: "release 3.17" }];
+        const cameraSplit = Cameras.formats(cameraFacts);
+        machine("a camera's formats", cameraSplit.modes.map(fact => fact.name),
+            ["MJPEG", "YUYV", "H.264"]);
+        machine("a camera's other facts", cameraSplit.rest.map(fact => fact.name),
+            ["streaming", "field of view", "USB", "firmware"]);
+        machine("a camera with no facts", Cameras.formats(undefined), { modes: [], rest: [] });
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

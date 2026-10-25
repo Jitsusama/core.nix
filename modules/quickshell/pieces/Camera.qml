@@ -14,6 +14,7 @@
 // A holder is named by the program itself, so this says who has a camera,
 // not who may: it's for seeing at a glance, not for trusting.
 pragma ComponentBehavior: Bound
+import qs
 import Quickshell.Io
 import Qt.labs.folderlistmodel
 import QtQuick
@@ -21,12 +22,16 @@ import QtQuick
 Piece {
     id: piece
 
-    // What each camera is called: by the name the machine gives it, or a
-    // USB camera by its own, which its file is named for.
+    // What each camera is called in a sentence, as the vocabulary says it
+    // (launcher/words.json): the machine's own by their own words or by the
+    // name the machine gives them, or a USB camera by its own, which its
+    // file is named for.
     function called(name) {
-        return name === "camera" ? "the camera"
-            : name === "ir-camera" ? "the infrared camera"
-            : configured.includes(name) ? `the ${name}` : name;
+        const own = Words.of(`cameras:${name}`).said;
+        if (own !== undefined)
+            return own;
+        const machines = Words.of("cameras").said ?? "{name}";
+        return configured.includes(name) ? machines.replace("{name}", name) : name;
     }
 
     readonly property var configured: settings.holders ?? []

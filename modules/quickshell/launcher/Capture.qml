@@ -12,18 +12,9 @@
 // (Picker.qml), and Escape there comes back here. The camera's rows open its
 // viewfinder (modules/camera), and are left out where there's no camera.
 // Each waits for the launcher to be gone, so it's never in the picture.
-//
-// It answers whether a camera is open, too: "camera", "webcam" or "who has
-// the camera" says which programs read it, each a row by the camera it
-// reads, from the margin's camera piece (pieces/Camera.qml), so the fact
-// has one home. A machine whose cameras say nothing of it gets no answer.
-// After them come what desk-facts knows of each USB camera
-// (modules/desk-facts): what it streams, the largest and fastest mode of
-// each format, its field of view, USB speed and firmware, Return copying
-// one.
+// Whether a camera is open, and each camera's parts, are the cameras' own
+// (Cameras.qml).
 import qs
-import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -251,54 +242,5 @@ Provider {
 
     function counted() {
         return Recorder.recording ? "recording" : "";
-    }
-
-    // What desk-facts knows of each USB camera, by the name its holders
-    // file has; a camera it says nothing of, or no file at all, has no
-    // facts.
-    property var facts: ({})
-
-    FileView {
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/cameras.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.facts = provider.parsed(text())
-        onLoadFailed: provider.facts = ({})
-    }
-
-    // Each camera's facts, its own name beside each only when more than
-    // one camera has some.
-    function factRows(names) {
-        const known = names.filter(name => (facts[name] ?? []).length > 0);
-        return known.reduce((rows, name) => rows.concat(facts[name].map(fact => copyRow({
-            key: `fact:cameras:${name}:${fact.name}`,
-            name: fact.value,
-            side: known.length > 1 ? `${fact.name}, ${name}` : fact.name,
-            glyph: Theme.glyph.camera
-        }))), []);
-    }
-
-    // The words it answers whole, and by their start (Provider.qml).
-    questions: ["camera", "webcam", "camera in use", "is the camera on", "who has the camera"]
-
-    function answer(typed) {
-        if (asks(typed) === "")
-            return null;
-        const fact = Facts.all.find(fact => fact.entry.name === "camera");
-        const camera = fact ? fact.piece : null;
-        if (!camera || !camera.present)
-            return null;
-        // Quickshell's JavaScript has no flatMap.
-        const rows = camera.reading.reduce((all, seen) => all.concat(seen.programs.map(program => copyRow({
-            name: program,
-            side: `has ${seen.name} open`,
-            glyph: Theme.glyph.camera
-        }))), []);
-        return {
-            headline: camera.active ? `in use by ${camera.programs.join(", ")}` : "not in use",
-            rows: rows.concat(factRows(camera.names)),
-            note: "from the cameras' own records"
-        };
     }
 }
