@@ -185,31 +185,31 @@ Scope {
             run();
         };
         return offers(notification).map(offer => ({
-            glyph: /reply/i.test(offer.text) ? 0xf045a : 0xf0ce0,
+            glyph: /reply/i.test(offer.text) ? Theme.glyph.reply : Theme.glyph.offer,
             name: offer.text,
             chord: [],
             run: done(() => offer.invoke())
         })).concat([{
-            glyph: 0xf018f,
+            glyph: Theme.glyph.copy,
             name: "Copy what it said",
             chord: [],
             run: done(() => {
                 Quickshell.clipboardText = root.said(notification);
             })
         }, {
-            glyph: 0xf0a91,
+            glyph: Theme.glyph.dismiss,
             name: "Let it go",
             // Keys drawn as the desktop draws them (home.nix, keyFaces),
             // Backspace by its name, since it has no glyph of its own.
             chord: [{ text: "Backspace" }],
             run: () => notification.dismiss()
         }, {
-            glyph: 0xf0a91,
+            glyph: Theme.glyph.dismiss,
             name: "Let them all go",
             chord: [{ text: "\u21e7" }, { text: "Backspace" }],
             run: () => root.putAway()
         }, {
-            glyph: 0xf009c,
+            glyph: Theme.glyph.notifications,
             name: "All the notices",
             chord: [{ text: "Tab" }],
             run: () => root.history()
@@ -829,7 +829,7 @@ Scope {
                                             Text {
                                                 height: root.line
                                                 verticalAlignment: Text.AlignVCenter
-                                                text: String.fromCodePoint(0xf0ce0)
+                                                text: Theme.glyph.offer
                                                 color: Theme.action
                                                 font.family: Theme.mono.family
                                                 font.pointSize: Theme.mono.body
@@ -903,7 +903,7 @@ Scope {
 
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: String.fromCodePoint(verb.modelData.glyph)
+                                        text: verb.modelData.glyph
                                         color: Theme.action
                                         font.family: Theme.mono.family
                                         font.pointSize: Theme.mono.body

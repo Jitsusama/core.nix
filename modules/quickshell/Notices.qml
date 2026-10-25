@@ -59,14 +59,14 @@ Singleton {
     // never missed.
     readonly property var senders: ({
         "slack": { glyph: 0xf198, hue: "person" },
-        "tuple": { glyph: 0xf03f2, hue: "person" },
+        "tuple": { glyph: Theme.glyph.call.codePointAt(0), hue: "person" },
         "google chrome": { glyph: 0xf268, hue: "program" },
         "chromium": { glyph: 0xf268, hue: "program" },
         "niri": { glyph: 0xf0e51, hue: "machine" },
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
         // never missed, since the margin's mark says it while it holds.
         "pi": { glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true },
-        "recorder": { glyph: 0xf0ec2, hue: "machine", answers: true },
+        "recorder": { glyph: Theme.glyph.recording.codePointAt(0), hue: "machine", answers: true },
         // What arrives by itself (Arrivals.qml), in its margin mark, which
         // says it while it holds, so it's never missed either.
         "camera": { glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true },

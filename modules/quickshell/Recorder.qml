@@ -162,7 +162,7 @@ Singleton {
             'notify-send --app-name=niri --transient --icon="file://$file" \\',
             '    "Screenshot captured" "You can paste the image from the clipboard."'
         ].join("\n");
-        Picker.pick("A picture of a region", String.fromCodePoint(0xf0100),
+        Picker.pick("A picture of a region", Theme.glyph.capture,
             geometry => Niri.spawn(["sh", "-c", script, "screenshot", geometry]), back ?? null);
     }
 

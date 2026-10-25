@@ -209,7 +209,7 @@ Scope {
                         x: Theme.inset
                         y: Theme.inset
                         width: parent.width - 2 * Theme.inset
-                        glyph: String.fromCodePoint(0xf023)
+                        glyph: Theme.glyph.secret
                         hue: Theme.machine
                         secret: root.read === null || !root.read.shows
                         onAccepted: root.settle("answer", `${text}\n`)
