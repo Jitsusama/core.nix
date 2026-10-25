@@ -367,9 +367,14 @@ impl Direction {
     /// live the floor held an upload at 11.7 Mbit/s over a line of 9.3,
     /// its queue at 60 to 70 ms. A climb puts the best back once the line
     /// carries more.
-    fn pinned(&mut self, s: &Settings, now: f64, carried: f64) {
+    ///
+    /// Only a direction that may be filling the line counts: a download
+    /// arriving faster than its rate is held back here, and lowering its
+    /// best for a queue elsewhere took one from 50 Mbit/s to 8 in two
+    /// minutes.
+    fn pinned(&mut self, s: &Settings, now: f64, carried: f64, suspect: bool) {
         let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
-        if carried < float(self.rate) * s.busy || self.held > least {
+        if !suspect || carried < float(self.rate) * s.busy || self.held > least {
             self.floored_since = None;
             return;
         }
@@ -611,8 +616,11 @@ impl Controller {
                     cuts[i] = true;
                 }
             }
-            for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
-                dir.pinned(&s, now, carried);
+            for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
+                .into_iter()
+                .enumerate()
+            {
+                dir.pinned(&s, now, carried, filling[i]);
             }
             if cuts[0] || cuts[1] {
                 self.cut_in_spell[0] |= cuts[0];
@@ -1064,6 +1072,27 @@ mod tests {
         }
         assert!(lowest >= 9_500, "{lowest}");
         assert!(c.up.best >= 10_000, "{}", c.up.best);
+    }
+
+    #[test]
+    fn a_download_held_back_here_keeps_its_best_through_a_standing_queue() {
+        // Binks's case on core #616: a Wi-Fi download at its floor, arriving
+        // at 1.1 times its rate, is held back here and fills no line; with
+        // pings standing 60 ms late, its rate fell to 18 Mbit/s in a minute
+        // and a best of 19 was kept.
+        let mut c = wi_fi(10_000);
+        // Cut to its floor earlier.
+        c.down.held = 47_500;
+        c.down.rate = 47_500;
+        pings(&mut c, 20.0, 6);
+        let mut at = 0.0;
+        while at < 120.0 {
+            pings(&mut c, 80.0, 3);
+            at += 0.2;
+            c.step(at, 0.0, 1.1 * float(c.down.rate));
+        }
+        assert!(c.down.best >= 50_000, "{}", c.down.best);
+        assert!(c.down.rate >= 47_500, "{}", c.down.rate);
     }
 
     /// Uploads four seconds of every five into a line of 11 Mbit/s, under a
