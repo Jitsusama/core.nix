@@ -674,6 +674,7 @@
     {
       "id": "heat",
       "name": "Heat",
+      "glyph": "heat",
       "answers": [
         "temperature",
         "temp",
@@ -687,6 +688,187 @@
         "cooling",
         "cpu temperature",
         "cpu temp"
+      ]
+    },
+    {
+      "id": "heat:processor",
+      "in": "heat",
+      "name": "Processor",
+      "hidden": [
+        "cpu",
+        "coretemp"
+      ]
+    },
+    {
+      "id": "heat:cores",
+      "in": "heat:processor",
+      "name": "Cores"
+    },
+    {
+      "id": "heat:core",
+      "in": "heat:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:throttled",
+      "in": "heat",
+      "name": "Throttled",
+      "answers": [
+        "throttling",
+        "throttled",
+        "thermal throttling"
+      ],
+      "hidden": [
+        "throttle",
+        "slowed"
+      ]
+    },
+    {
+      "id": "heat:package",
+      "in": "heat:throttled",
+      "name": "Whole processor",
+      "hidden": [
+        "package"
+      ]
+    },
+    {
+      "id": "heat:throttled-cores",
+      "in": "heat:throttled",
+      "name": "Cores"
+    },
+    {
+      "id": "heat:throttled-core",
+      "in": "heat:throttled-cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:graphics",
+      "in": "heat",
+      "name": "Graphics",
+      "hidden": [
+        "gpu"
+      ]
+    },
+    {
+      "id": "heat:disk",
+      "in": "heat",
+      "name": "Disk",
+      "hidden": [
+        "ssd",
+        "nvme",
+        "drive"
+      ]
+    },
+    {
+      "id": "heat:sensor",
+      "in": "heat:disk",
+      "name": "Sensor {n}"
+    },
+    {
+      "id": "heat:memory",
+      "in": "heat",
+      "name": "Memory",
+      "hidden": [
+        "ram",
+        "sodimm"
+      ]
+    },
+    {
+      "id": "heat:wifi",
+      "in": "heat",
+      "name": "Wi-Fi card",
+      "hidden": [
+        "wireless"
+      ]
+    },
+    {
+      "id": "heat:chipset",
+      "in": "heat",
+      "name": "Chipset"
+    },
+    {
+      "id": "heat:board",
+      "in": "heat",
+      "name": "Board",
+      "hidden": [
+        "motherboard"
+      ]
+    },
+    {
+      "id": "heat:battery",
+      "in": "heat",
+      "name": "Battery"
+    },
+    {
+      "id": "heat:air",
+      "in": "heat",
+      "name": "Air inside",
+      "hidden": [
+        "ambient",
+        "case"
+      ]
+    },
+    {
+      "id": "heat:video-fan",
+      "in": "heat",
+      "name": "Video fan",
+      "hidden": [
+        "gpu fan",
+        "graphics fan"
+      ]
+    },
+    {
+      "id": "heat:cpu-fan",
+      "in": "heat",
+      "name": "CPU fan",
+      "hidden": [
+        "processor fan"
+      ]
+    },
+    {
+      "id": "heat:fan",
+      "in": "heat",
+      "name": "Fan {n}"
+    },
+    {
+      "id": "heat:lately",
+      "in": "heat",
+      "name": "Lately",
+      "hidden": [
+        "history"
+      ]
+    },
+    {
+      "id": "heat:high",
+      "in": "heat",
+      "name": "High",
+      "hidden": [
+        "warns"
+      ]
+    },
+    {
+      "id": "heat:critical",
+      "in": "heat",
+      "name": "Critical",
+      "hidden": [
+        "most",
+        "limit"
+      ]
+    },
+    {
+      "id": "heat:power",
+      "in": "heat",
+      "name": "Power",
+      "hidden": [
+        "pwm"
+      ]
+    },
+    {
+      "id": "heat:aiming",
+      "in": "heat",
+      "name": "Aiming for",
+      "hidden": [
+        "target"
       ]
     },
     {

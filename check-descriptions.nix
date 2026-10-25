@@ -621,7 +621,7 @@
     or "when will it rain" answer when it next rains, here or in a place
   '';
   the-launcher-answers-what-is-asked = ''
-    sums, addresses, measures, zones, colours and the machine's figures answer
+    sums, addresses, measures, zones, colours, the machine's figures and its parts' heat answer
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

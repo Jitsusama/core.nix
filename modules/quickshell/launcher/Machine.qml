@@ -31,6 +31,7 @@ import qs
 import Qt.labs.folderlistmodel
 import Quickshell.Io
 import QtQuick
+import "Heat.js" as Heat
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
 
@@ -192,6 +193,21 @@ Provider {
         return `${number(value, 0)} \u00b0C`;
     }
 
+    // A temperature part: the processor's or the disk's whole reading, as
+    // Heat's Processor and Disk say it and drawn the same way, against
+    // the most it's meant to reach and warning near it (Heat.js's level).
+    // It's one figure here, since its detail, each core, the disk's other
+    // sensors, its history and how often it's slowed, is Heat's alone.
+    function heated(id, heat, part) {
+        const said = Heat.level(heat.value, heat.high, heat.most, part);
+        return figure({
+            name: named(id),
+            side: degrees(heat.value),
+            graph: bar(said.value, said.warn),
+            note: heat.most ? `at most ${degrees(heat.most)}` : ""
+        });
+    }
+
     function ghz(khz) {
         return `${number(khz / 1e6, 1)} GHz`;
     }
@@ -343,12 +359,7 @@ Provider {
             }));
         }
         if (now.heat)
-            rows.push(figure({
-                name: named("cpu:temperature"),
-                side: degrees(now.heat.value),
-                graph: bar(now.heat.value / (now.heat.most ?? 100)),
-                note: now.heat.most ? `at most ${degrees(now.heat.most)}` : ""
-            }));
+            rows.push(heated("cpu:temperature", now.heat, "processor"));
         const users = programs
             ? Machine.using(programs.last.said, programs.before?.said ?? null) : [];
         if (users.length > 0)
@@ -710,12 +721,7 @@ Provider {
             }));
             const heat = kept.last.said.heat;
             if (heat)
-                rows.push(figure({
-                    name: named("disk:temperature"),
-                    side: degrees(heat.value),
-                    graph: bar(heat.value / (heat.most ?? 85)),
-                    note: heat.most ? `at most ${degrees(heat.most)}` : ""
-                }));
+                rows.push(heated("disk:temperature", heat, "disk"));
         }
         if (health !== null && health.said !== null) {
             const smart = health.said;

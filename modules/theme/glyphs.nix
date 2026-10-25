@@ -250,6 +250,16 @@ in
     console = "M";
     means = "the memory: what's used, what's waiting for it and what holds it";
   };
+  heat = {
+    glyph = nerd "f050f";
+    console = "H";
+    means = "how hot the machine's parts run, and how often the processor slowed to cool";
+  };
+  fan = {
+    glyph = nerd "f0210";
+    console = "F";
+    means = "a fan: how fast it turns, and how hard it's driven";
+  };
   lag = {
     glyph = nerd "f051f";
     console = "W";

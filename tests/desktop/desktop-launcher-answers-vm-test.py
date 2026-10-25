@@ -206,6 +206,32 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
+    # Each part reads name first, a step in; Return opens one, its
+    # history first, and so does the right arrow, once back out.
+    answer("temperature")
+    launcher_until(lambda shown: shown["kind"] == "answer")
+    step_in()
+    launcher_until(lambda shown: "Battery" in shown["rows"])
+    type_in("battery", "Battery")
+    t.assertRegex(showing()["selected"]["side"], r"^-?\d+ \u00b0C$")
+
+    def in_battery(shown: Json) -> bool:
+        """Say whether the launcher holds the battery's heat, its history selected."""
+        return bool(
+            shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
+        )
+
+    step_in("ret")
+    launcher_until(in_battery)
+    photograph("launcher-heat-part")
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
+    )
+    step_in()
+    launcher_until(in_battery)
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The date in full, as the machine's clock has it; the day may
     # turn while it's asked, so either will do.
     before = machine.succeed("date '+%A %-d %B %Y'").strip()

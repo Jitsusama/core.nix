@@ -411,9 +411,10 @@ onLinux {
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, hardware
   # addresses, measures, the time in any zone tzdata names and the
-  # machine's figures from its files, how each Bluetooth link is doing from
-  # what bluetooth-links writes, what Sound makes of a sound device's properties, as
-  # tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # machine's figures from its files, its parts' heat from their sensors,
+  # how each Bluetooth link is doing from what bluetooth-links writes, what
+  # Sound makes of a sound device's properties, as tests/answers.qml lists
+  # them, and leaves alone what isn't one, in Qt's
   # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
@@ -428,6 +429,7 @@ onLinux {
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
+      cp ${./launcher/Heat.js} Heat.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Links.js} Links.js
