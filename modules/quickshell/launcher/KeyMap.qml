@@ -1,7 +1,7 @@
 // Every shortcut, a collection, in levels, each flat (Joel, 2026-10-24:
 // "it's hard to find the needles in the haystacks"). Its top holds each
 // layer's chords from jitsusama.keys as a row, top to bottom: the desktop,
-// the touchscreen's swipes from jitsusama.swipes, the terminal, then Neovim
+// with the touchscreen's swipes from jitsusama.swipes, the terminal, then Neovim
 // and pi inside it, pi's named Agents; but the layers of the window it
 // opened over come first (Joel: "ideally context aware with the app
 // open"), read once as it opens: kitty's the terminal's, and Neovim's or
@@ -38,7 +38,6 @@ Provider {
 
     readonly property var places: ({
         desktop: "on the desktop",
-        touchscreen: "on the touchscreen",
         terminal: "in the terminal",
         neovim: "in Neovim",
         pi: "in pi"
@@ -46,7 +45,6 @@ Provider {
 
     // The words that find a layer's shortcuts besides their names.
     readonly property var also: ({
-        touchscreen: "swipe touch touchscreen gesture fingers",
         terminal: "terminal kitty",
         neovim: "neovim vim nvim editor",
         pi: "pi agent"
@@ -64,8 +62,21 @@ Provider {
     function spelled(chord) {
         if (typeof chord === "string")
             return chord;
+        // A swipe says itself in words, as "3 fingers up".
+        if ((chord ?? [])[0]?.written)
+            return chord[0].written;
         return (chord ?? []).map((key, index) => index === 0 ? key.text
             : `${key.after === true ? " " : "+"}${key.text}`).join("");
+    }
+
+    // The words that find a chord's row besides its name: its layer's, and
+    // a swipe's, for a row that a swipe does too (home.nix's swipes).
+    readonly property string swiping: "swipe swipes touch touchscreen gesture gestures fingers"
+
+    function wordsOf(layer, bind) {
+        const swiped = [bind.chord].concat(bind.also ?? []).some(chord => !!(chord ?? [])[0]?.written);
+        const extra = [also[layer.name] ?? "", swiped ? swiping : ""].filter(one => one !== "");
+        return extra.length > 0 ? Fuzzy.prepare(`${bind.does} ${extra.join(" ")}`) : null;
     }
 
     // A chord, as its row.
@@ -77,9 +88,9 @@ Provider {
             // What it does, by its first word, as the desktop's own are.
             verb: bind.run.length > 0 ? bind.does.split(" ")[0].toLowerCase() : "close",
             name: bind.does,
-            words: also[layer.name] ? Fuzzy.prepare(`${bind.does} ${also[layer.name]}`) : null,
+            words: wordsOf(layer, bind),
             glyph: glyph === "" ? bind.glyph : glyph,
-            hue: layer.name === "desktop" || layer.name === "touchscreen" ? "action" : "program",
+            hue: layer.name === "desktop" ? "action" : "program",
             chord: bind.chord,
             note: [bind.when ? `${places[layer.name]}, ${bind.when}` : places[layer.name]]
                 .concat((bind.also ?? []).length > 0

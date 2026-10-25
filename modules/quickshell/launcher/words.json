@@ -1917,15 +1917,8 @@
       "name": "Desktop",
       "glyph": "desktop",
       "hidden": [
-        "niri"
-      ]
-    },
-    {
-      "id": "shortcuts:touchscreen",
-      "in": "shortcuts",
-      "name": "Touchscreen",
-      "glyph": "touchscreen",
-      "words": [
+        "niri",
+        "touchscreen",
         "swipes",
         "gestures",
         "fingers"

@@ -65,14 +65,24 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Touchscreen, Terminal, Neovim, Agents", names(top).join(", "));
+                === "Desktop, Terminal, Neovim, Agents", names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
             const binds = KeyGroups.merged("desktop", Shortcuts.layers[0].binds).length;
             expect("the desktop's count and first groups", desktop.count === String(binds)
                 && desktop.side === "Windows, Columns", `${desktop.count} ${desktop.side}`);
-            expect("a short layer, its chords alone",
-                top[1].verbs().every(one => !one.verbs), names(top[1].verbs()).join(", "));
+            // The touchscreen's swipes are the desktop's: one doing what a
+            // chord does is that chord's row, the swipe in words in its note,
+            // and found by "swipe".
+            const below = map.all.filter(one => one.name === "Go to the workspace below"
+                && String(one.key).startsWith("shortcut:desktop:"));
+            expect("a swipe joins its chord's row", below.length === 1
+                && below[0].note.includes("3 fingers up"), below.map(one => one.note).join("; "));
+            expect("a swipe found by its word", map.search("swipe below").rows
+                .some(one => one.name === "Go to the workspace below"),
+                names(map.search("swipe below").rows.slice(0, 3)).join(", "));
+            const swiped = map.spelled([{ text: "4", written: "4 fingers down" }, { text: "x" }]);
+            expect("a swipe in words", swiped === "4 fingers down", swiped);
             // A chord doing one thing in several places is one row.
             const total = Shortcuts.layers.reduce((all, layer) => all
                 + KeyGroups.merged(layer.name, layer.binds).length, 0);
@@ -114,7 +124,8 @@ ShellRoot {
             expect("a big group holds groups, then what none takes",
                 names(workspaces.verbs()).join(", ") === "Focus, The column, The window, "
                 + "Above and below, Move the workspace up, Move the workspace down, "
-                + "Show every workspace", names(workspaces.verbs()).join(", "));
+                + "Show every workspace, Stop showing every workspace",
+                names(workspaces.verbs()).join(", "));
             const going = row(workspaces.verbs(), "Focus");
             expect("a group holds its chords", going.verbs().some(one => one.name
                 === "Go to workspace 3") && going.verbs().every(one => !one.verbs),
@@ -122,7 +133,7 @@ ShellRoot {
             expect("a group's chords found inside it", workspaces.from.search("3").rows.some(
                 one => one.name === "Go to workspace 3"), "not found");
 
-            const neovim = top[3];
+            const neovim = top[2];
             const code = row(neovim.verbs(), "Code");
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
                 && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
@@ -156,7 +167,7 @@ ShellRoot {
             expect("pull requests, by what they hold", names(pulls.verbs()).slice(0, 4)
                 .join(", ") === "Finding pull requests, The pull request, Merging, Checks",
                 names(pulls.verbs()).join(", "));
-            const held = top[2].verbs();
+            const held = top[1].verbs();
             const loose = held.findIndex(one => !one.verbs);
             expect("what no group takes, after the groups", loose > 0
                 && held.slice(loose).every(one => !one.verbs), names(held).join(", "));
@@ -168,7 +179,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Touchscreen, Agents",
+                === "Neovim, Terminal, Desktop, Agents",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
