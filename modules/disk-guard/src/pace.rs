@@ -23,6 +23,8 @@ const LOOK_EVERY: Duration = Duration::from_secs(1);
 /// How often a pacer says it's alive, in seconds. The desktop calls a
 /// guard silent after two minutes without a heartbeat.
 const BEAT_EVERY: f64 = 10.0;
+/// How often a pacer waiting on work looks whether it has ended.
+const WAIT_LOOK: Duration = Duration::from_millis(100);
 /// A sync this slow means the disk is holding writers up.
 const SLOW: Duration = Duration::from_millis(100);
 /// More than this many slow syncs within `WINDOW` strain the disk, and it
@@ -176,6 +178,27 @@ impl Pacer {
             self.beat_when_due();
         }
         self.rested += self.clock.now() - began;
+    }
+
+    /// Runs `work` on a thread of its own and waits for it, beating while
+    /// it waits. A step that blocks, such as a commit waited for, a
+    /// command or an answer from the system daemon, otherwise left the
+    /// guard silent: a garbage pass of many batches, each waiting out a
+    /// Btrfs commit, went minutes without a heartbeat, and the user guard
+    /// asking for it went as long.
+    ///
+    /// # Panics
+    ///
+    /// With `work`'s own panic, when it panics.
+    pub fn waiting<T: Send + 'static>(&mut self, work: impl FnOnce() -> T + Send + 'static) -> T {
+        let worker = std::thread::spawn(work);
+        while !worker.is_finished() {
+            self.clock.sleep(WAIT_LOOK);
+            self.beat_when_due();
+        }
+        worker
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
     }
 
     /// The seconds this pacer has rested.

@@ -709,6 +709,43 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
 }
 
 #[test]
+fn a_fresh_measure_moves_the_band_a_status_shows() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    let bands = Bands {
+        pressure: Size::Percent(25.0),
+        urgent: Size::Percent(10.0),
+        critical: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let space = |free| Space {
+        total: 1000,
+        free,
+        btrfs: None,
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Pressure,
+        free: 200,
+        total: 1000,
+        forecast: Some(60.0),
+    };
+    status.measured(&space(210), &bands);
+    assert_eq!(status.band, Band::Pressure);
+    assert_eq!(status.free, 210);
+    assert_eq!(
+        status.forecast,
+        Some(60.0),
+        "still the band it was made for"
+    );
+    status.measured(&space(300), &bands);
+    assert_eq!(status.band, Band::Healthy);
+    assert_eq!(status.free, 300);
+    assert_eq!(status.forecast, None);
+}
+
+#[test]
 fn a_filesystem_is_named_by_where_it_is_mounted() {
     use disk_guard::pool::pool;
     use std::os::unix::fs::MetadataExt;
