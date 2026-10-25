@@ -1,48 +1,40 @@
 """The desktop test's launcher answers area.
 
 Here the launcher answers: everything Joel types lists each thing once, its answers are copied,
-and emoji keep their own place. tests/desktop.nix runs it after desktop_prelude.py, the boot and
-the helpers every area shares, so the names it takes from there are imported only for type
-checkers.
+and emoji keep their own place. tests/desktop.nix runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks for
+the desktop, started once a run (desktop_session.py), and waits at its start for what it needs,
+so any test runs alone.
 """
+
+from __future__ import annotations
 
 import datetime as dt
 import json
 import re
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
+
+import desktop_session
+import pytest
+from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from desktop_prelude import (
-        LAUNCHER_OPEN,
-        ROWS_LOOKED_AT,
-        STARTING,
-        Json,
-        answer,
-        as_account,
-        in_session,
-        launcher_ready,
-        launcher_until,
-        photograph,
-        shell_said,
-        showing,
-        step_in,
-        told,
-        type_in,
-    )
-    from driver_names import machine, subtest, t
+    from desktop_session import Desktop, Json
+    from test_driver.machine import BaseMachine
 
-# Seeing one thing twice costs Joel more than any other mess in the
-# list, so for everything he typed in a week of picks, every word of
-# the launcher's photo survey and every case its audit found listed
-# twice, no two rows may be the same thing, nor read the same. The
-# launcher stays open through them all, the left arrow taking away
-# what's typed whole between one and the next, as Joel would: opening
-# and closing it for each, each a login as the account, took most of
-# the time.
-with subtest("the launcher lists each thing once, for everything Joel types"):
+
+@pytest.fixture(scope="module")
+def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
+    """Give the desktop, started once a run."""
+    return desktop_session.started(machine, cast("desktop_session.Values", values))
+
+
+def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: Desktop) -> None:
+    """The launcher lists each thing once, for everything Joel types."""
+    machine = desktop.machine
 
     def settled_on(query: str) -> Json:
         """Wait until the launcher holds exactly this query, with Return's row settled.
@@ -57,10 +49,10 @@ with subtest("the launcher lists each thing once, for everything Joel types"):
             row = shown["selected"]
             return bool(shown["typed"] == query and (row is None or row["settled"]))
 
-        shown = showing()
+        shown = desktop.showing()
         while not holds(shown):
-            launcher_until(holds)
-            shown = showing()
+            desktop.launcher_until(holds)
+            shown = desktop.showing()
         return shown
 
     picked_in_a_week = [
@@ -82,8 +74,8 @@ with subtest("the launcher lists each thing once, for everything Joel types"):
     ]  # fmt: skip
     listed_twice: list[str] = []
     looked_at = 0
-    as_account("qs ipc call launcher toggle")
-    launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
     for query in picked_in_a_week + surveyed + audited:
         machine.send_chars(query)
         shown = settled_on(query)
@@ -98,26 +90,34 @@ with subtest("the launcher lists each thing once, for everything Joel types"):
         # have the next typed inside it, so it's closed and opened.
         if shown["held"]:
             machine.send_key("esc")
-            machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-            as_account("qs ipc call launcher toggle")
-            launcher_ready()
+            machine.wait_until_fails(
+                desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+            )
+            desktop.as_account("qs ipc call launcher toggle")
+            desktop.launcher_ready()
         else:
             machine.send_key("left")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertEqual(listed_twice, [], "a thing was listed twice")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert listed_twice == [], "a thing was listed twice"
     # Most of those find something, so the rows were looked at.
-    t.assertGreater(looked_at, ROWS_LOOKED_AT)
+    assert looked_at > ROWS_LOOKED_AT
 
-with subtest("the launcher answers what's asked, and copies the answer"):
+
+# One walk, as its subtest was: each step starts where the last left it.
+def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, PLR0915
+    desktop: Desktop,
+) -> None:
+    """The launcher answers what's asked, and copies the answer."""
+    machine = desktop.machine
 
     def copied(typed: str, expected: str) -> None:
         """Ask the launcher, take its answer with Return, and check that it copied this."""
-        answer(typed)
+        desktop.answer(typed)
         machine.send_key("ret")
-        closed = in_session(LAUNCHER_OPEN)
+        closed = desktop.in_session(LAUNCHER_OPEN)
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-        t.assertEqual(as_account("wl-paste --no-newline"), expected)
+        assert desktop.as_account("wl-paste --no-newline") == expected
 
     copied("12*7", "84")
     # The vendor comes from the list built from hwdata, so this proves it's there.
@@ -125,27 +125,27 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     copied("5 km in mi", "3.10686")
     # The battery's charge leads, as the kernel's stand-in has it.
     charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
-    answer("battery")
-    photograph("launcher-battery")
+    desktop.answer("battery")
+    desktop.photograph("launcher-battery")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
     # Then what feeds it: the stand-in's mains, plugged in, a step
     # into the answer's row.
-    answer("charger")
-    launcher_until(lambda shown: shown["kind"] == "answer")
-    step_in()
-    launcher_until(
+    desktop.answer("charger")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Charger"
             and shown["selected"]["side"] == "mains"
         )
     )
     # Its charge among them, drawn as a bar, and none of them a glyph.
-    photograph("launcher-charger-parts")
+    desktop.photograph("launcher-charger-parts")
     # Each part is named first, then what it says: the stand-in's health
     # is good, and its temperature has a bar.
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (
             {"Charger", "Charge", "Health", "Temperature"} <= set(shown["rows"])
             and any(thing["reads"].startswith("Health \u00b7 Good, ") for thing in shown["things"])
@@ -153,8 +153,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     )
     machine.send_key("esc")
     # A part is asked by its own words, its figure the headline.
-    answer("battery health")
-    launcher_until(
+    desktop.answer("battery health")
+    desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and (shown["selected"] or {}).get("name", "").startswith("Good, ")
@@ -165,9 +165,9 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # title, and Return goes straight into it.
     # Beside the field, it says what sort of thing each is.
     for typed, collection in [("audio", "Sound"), ("notifications", "Notifications")]:
-        answer(typed)
+        desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
-        launcher_until(
+        desktop.launcher_until(
             lambda shown: (
                 (shown["selected"] or {}).get("name") == collection  # noqa: B023
                 and shown["kind"] == "collection"
@@ -176,18 +176,18 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         machine.send_key("esc")
     # Half a word asks its question too: "batt" is the battery, and
     # Tab finishes the word.
-    answer("batt")
-    launcher_until(
+    desktop.answer("batt")
+    desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
         )
     )
     machine.send_key("tab")
-    launcher_until(lambda shown: shown["typed"] == "battery")
+    desktop.launcher_until(lambda shown: shown["typed"] == "battery")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
     # The words a poor memory reaches for ask the same answers.
     # "lag" answers from lag-watch's last ten seconds.
     for typed, said in [
@@ -196,9 +196,9 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         ("ram", ""),
         ("lag", ""),
     ]:
-        answer(typed)
+        desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's answer.
-        launcher_until(
+        desktop.launcher_until(
             lambda shown: (
                 shown["kind"] == "answer"
                 and (shown["selected"] or {}).get("name", "").startswith(said)  # noqa: B023
@@ -207,8 +207,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         machine.send_key("esc")
     # A name starting the same way is chosen over an answer only
     # started: "pow" is Power Off, the battery's answer above it.
-    answer("pow")
-    launcher_until(
+    desktop.answer("pow")
+    desktop.launcher_until(
         lambda shown: (
             shown["kind"] not in ("", "answer")
             and (shown["selected"] or {}).get("name", "").lower().startswith("pow")
@@ -218,19 +218,19 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # The hottest part, from the sensors the kernel lists, of which
     # the stand-in battery is one.
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
-    answer("temperature")
-    photograph("launcher-heat")
+    desktop.answer("temperature")
+    desktop.photograph("launcher-heat")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert re.search("^-?\\d+ \\u00b0C at the ", desktop.as_account("wl-paste --no-newline"))
     # Each part reads name first, a step in; Return opens one, its
     # history first, and so does the right arrow, once back out.
-    answer("temperature")
-    launcher_until(lambda shown: shown["kind"] == "answer")
-    step_in()
-    launcher_until(lambda shown: "Battery" in shown["rows"])
-    type_in("battery", "Battery")
-    t.assertRegex(showing()["selected"]["side"], r"^-?\d+ \u00b0C$")
+    desktop.answer("temperature")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
+    desktop.type_in("battery", "Battery")
+    assert re.search("^-?\\d+ \\u00b0C$", desktop.showing()["selected"]["side"])
 
     def in_battery(shown: Json) -> bool:
         """Say whether the launcher holds the battery's heat, its history selected."""
@@ -238,26 +238,26 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
         )
 
-    step_in("ret")
-    launcher_until(in_battery)
-    photograph("launcher-heat-part")
+    desktop.step_in("ret")
+    desktop.launcher_until(in_battery)
+    desktop.photograph("launcher-heat-part")
     machine.send_key("left")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
     )
-    step_in()
-    launcher_until(in_battery)
+    desktop.step_in()
+    desktop.launcher_until(in_battery)
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The date in full, as the machine's clock has it; the day may
     # turn while it's asked, so either will do.
     before = machine.succeed("date '+%A %-d %B %Y'").strip()
-    answer("date")
-    photograph("launcher-date")
+    desktop.answer("date")
+    desktop.photograph("launcher-date")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     after = machine.succeed("date '+%A %-d %B %Y'").strip()
-    t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+    assert desktop.as_account("wl-paste --no-newline") in [before, after]
     # The stand-in backlight's share, as its files say.
     now, most = (
         int(machine.succeed(f"cat /sys/class/backlight/stand-in/{f}"))
@@ -266,20 +266,22 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # Rounded half up, as JavaScript's Math.round does.
     copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
     # With a number, Return sets it, as the brightness keys do.
-    answer("brightness 30")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%")
+    desktop.answer("brightness 30")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%"
+    )
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
         timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A step into its answer, the screen is a setting: its share, its
     # levels a step in by Return, and beside it the room's light as the
     # stand-in sensor hears it.
-    answer("room light")
-    step_in()
-    launcher_until(
+    desktop.answer("room light")
+    desktop.step_in()
+    desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Screen"
             and any(
@@ -290,19 +292,18 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     )
     # The keyboard's light is the keyboard's own, so the light's answer
     # holds none of it.
-    t.assertFalse(
-        [name for name in showing()["rows"] if name.startswith("Keyboard")],
-        "the light's answer holds the keyboard's light",
+    assert not [name for name in desktop.showing()["rows"] if name.startswith("Keyboard")], (
+        "the light's answer holds the keyboard's light"
     )
-    step_in("ret")
-    launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
-    type_in("40", selecting="Screen to 40%")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
+    desktop.type_in("40", selecting="Screen to 40%")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
         timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # "keyboard light" asks the keyboard's lights alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
@@ -310,21 +311,23 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
     kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
     kbd_levels = ["Lights off", "Lights to 1 of 2", "Lights to 2 of 2"]
-    answer("keyboard light")
-    launcher_until(
+    desktop.answer("keyboard light")
+    desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and (shown["selected"] or {}).get("name") == f"the keyboard's lights are {kbd_said}"
         )
     )
-    step_in()
-    launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
     for _ in range(kbd_levels.index("Lights to 2 of 2")):
         machine.send_key("down")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights to 2 of 2")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Lights to 2 of 2"
+    )
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
@@ -332,9 +335,9 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         ("restart", "Reboot", "Reboot"),
         ("sign out", "Log out", "Log out"),
     ]:
-        answer(typed)
+        desktop.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
-        launcher_until(
+        desktop.launcher_until(
             lambda shown: (
                 (shown["selected"] or {}).get("name") == action  # noqa: B023
                 and shown["kind"] == "session"
@@ -344,7 +347,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         # one verb saying what a second Return would do and what it
         # closes.
         machine.send_key("ret")
-        launcher_until(
+        desktop.launcher_until(
             lambda shown: (
                 shown["held"] == [action]  # noqa: B023
                 and re.fullmatch(
@@ -355,10 +358,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             )
         )
         machine.send_key("esc")
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
     # A key's action, by the other words its bind lists.
-    answer("fullscreen")
-    launcher_until(
+    desktop.answer("fullscreen")
+    desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name")
             == "Fill the screen with the window, or put it back"
@@ -366,7 +371,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # Each disk's room, as a disk guard says it, the tightest first.
     status = {
         "version": 1,
@@ -382,15 +387,15 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
-    answer("disk")
-    launcher_until(
+    desktop.answer("disk")
+    desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
     )
-    photograph("launcher-disks")
+    desktop.photograph("launcher-disks")
     # Its first part, a step in, is the space the headline's disk has,
     # and the disk's speed, how busy it is and its latency come after.
-    step_in()
-    launcher_until(
+    desktop.step_in()
+    desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Space"
             and shown["selected"]["side"] == "20.0 GiB free"
@@ -398,29 +403,29 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     # A step further, each disk the guard watches, the headline's first.
-    step_in()
-    launcher_until(
+    desktop.step_in()
+    desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
             and shown["selected"]["side"] == "20.0 GiB free \u00b7 pressure"
         )
     )
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A part asked for alone, by its own words: how fast the disk
     # reads and writes, each a step in.
-    answer("disk speed")
-    launcher_until(
+    desktop.answer("disk speed")
+    desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and re.fullmatch(r"[\d.,]+ (B|kB|MB|GB)/s", (shown["selected"] or {}).get("name", ""))
             is not None
         )
     )
-    step_in()
-    launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # What the network carries now, in and out, from the kernel's
     # counters, and what the line can and how quickly it answers, from
     # what the shaper last wrote, here a stand-in for the machine's card.
@@ -443,8 +448,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         f" && echo '{json.dumps(shaped)}' > /run/shaper/status.json"
     )
     rate = r"[\d.,]+ (b|kb|Mb|Gb)/s"
-    answer("network speed")
-    launcher_until(
+    desktop.answer("network speed")
+    desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and re.fullmatch(
@@ -453,24 +458,24 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             is not None
         )
     )
-    step_in()
+    desktop.step_in()
     # Connections follows only where more than one interface is listed.
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: shown["rows"][:5] == ["In", "Out", "Line", "Round trip", "Dropped"]
     )
-    t.assertEqual(showing()["things"][2]["reads"], "Line \u00b7 40 Mb/s in \u00b7 12 Mb/s out")
+    assert desktop.showing()["things"][2]["reads"] == "Line · 40 Mb/s in · 12 Mb/s out"
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # "ping" asks the round trip alone, the middle of the servers, each
     # a step in, the quickest first.
-    answer("ping")
-    launcher_until(
+    desktop.answer("ping")
+    desktop.launcher_until(
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
-    step_in()
-    launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9"])
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9"])
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A guard that stops writing is silent once its last heartbeat is
     # two minutes old, by a deadline that heartbeat set, with nothing
     # read again in between.
@@ -479,15 +484,15 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
-    answer("disk")
-    launcher_until(lambda shown: shown["footer"] == "from the disk guard")
+    desktop.answer("disk")
+    desktop.launcher_until(lambda shown: shown["footer"] == "from the disk guard")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     time.sleep(25)
-    answer("disk")
-    launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
+    desktop.answer("disk")
+    desktop.launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     machine.succeed("rm /run/disk-guard/status.json")
     # The machine's queue as pi's harness writes it, replaced whole:
     # what runs, then what waits in turn, and the room to spare.
@@ -525,12 +530,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         ],
         "wasted": {"today": 0},
     }
-    as_account(
+    desktop.as_account(
         f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    answer("what's running")
-    launcher_until(
+    desktop.answer("what's running")
+    desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
             and shown["footer"] == "3 GiB to spare \u00b7 the processors 13% held up"
@@ -539,7 +544,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # At a glance its place in line or how long it's run, a minute
     # turning over allowed for; since when below it. They're a step
     # into the answer, the first selected there.
-    step_in()
+    desktop.step_in()
     for index, (name, side, footer) in enumerate(
         [
             (
@@ -553,49 +558,49 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         if index > 0:
             machine.send_key("down")
         # The wait ends before the loop moves on, so it reads this pass's row.
-        launcher_until(
+        desktop.launcher_until(
             lambda shown: (
                 (shown["selected"] or {}).get("name") == name  # noqa: B023
                 and re.fullmatch(side, shown["selected"]["side"]) is not None  # noqa: B023
                 and re.fullmatch(footer, shown["footer"]) is not None  # noqa: B023
             )
         )
-    photograph("launcher-queue")
+    desktop.photograph("launcher-queue")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # How busy the processors are, read again while it's shown, so a
     # moment on it says just now; a step in, each core and the rest.
-    answer("cpu")
-    launcher_until(
+    desktop.answer("cpu")
+    desktop.launcher_until(
         lambda shown: (
             re.fullmatch(r"\d+% busy", (shown["selected"] or {}).get("name", "")) is not None
             and shown["footer"] == "just now"
         )
     )
-    step_in()
-    launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
-    step_in()
-    launcher_until(lambda shown: shown["rows"][0] == "Core 0")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][0] == "Core 0")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The memory, and the programs holding most of it, read once it's
     # asked.
-    answer("memory")
-    launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    desktop.answer("memory")
+    desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
     time.sleep(2)
-    step_in()
-    launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The keyboards QEMU gives it, however many, and caps lock.
-    answer("keyboards")
-    photograph("launcher-keyboards")
+    desktop.answer("keyboards")
+    desktop.photograph("launcher-keyboards")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertRegex(
-        as_account("wl-paste --no-newline"),
-        r"^(one keyboard|[1-9]\d* keyboards), caps lock off$",
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert re.search(
+        "^(one keyboard|[1-9]\\d* keyboards), caps lock off$",
+        desktop.as_account("wl-paste --no-newline"),
     )
     # The keyboards are a step into the answer, and each holds its parts,
     # named first, a step further by Return as by the right arrow. QEMU's
@@ -603,114 +608,114 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # desk-facts doesn't run here, so what it would say of it is written
     # for it, and reads as a part.
     board_facts = {"AT Translated Set 2 keyboard": [{"name": "keys", "value": "105"}]}
-    as_account(
+    desktop.as_account(
         f"mkdir -p $XDG_RUNTIME_DIR/desk"
         f" && echo '{json.dumps(board_facts)}' > $XDG_RUNTIME_DIR/desk/.k"
         " && mv $XDG_RUNTIME_DIR/desk/.k $XDG_RUNTIME_DIR/desk/keyboards.json"
     )
     board = "The laptop's keyboard"
-    answer("keyboards")
-    step_in()
-    launcher_until(lambda shown: board in shown["rows"])
-    for _ in range(showing()["rows"].index(board)):
+    desktop.answer("keyboards")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: board in shown["rows"])
+    for _ in range(desktop.showing()["rows"].index(board)):
         machine.send_key("down")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
-    step_in("ret")
-    launcher_until(
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    desktop.step_in("ret")
+    desktop.launcher_until(
         lambda shown: (
             shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
             and {"Repeat", "Lights", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
-    photograph("launcher-keyboard-parts")
-    t.assertEqual(showing()["selected"]["side"], "off")
+    desktop.photograph("launcher-keyboard-parts")
+    assert desktop.showing()["selected"]["side"] == "off"
     # Its Lights are a setting saying how lit they are, the level set
     # above; Return steps into its levels, and on one, sets it.
-    for _ in range(showing()["rows"].index("Lights")):
+    for _ in range(desktop.showing()["rows"].index("Lights")):
         machine.send_key("down")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lights"
             and shown["selected"]["side"] == "2 of 2"
         ),
     )
-    step_in("ret")
-    launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights off")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights off")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=dt.timedelta(seconds=10))
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    answer("keyboards")
-    step_in()
-    launcher_until(lambda shown: board in shown["rows"])
-    for _ in range(showing()["rows"].index(board)):
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.answer("keyboards")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: board in shown["rows"])
+    for _ in range(desktop.showing()["rows"].index(board)):
         machine.send_key("down")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
-    step_in("ret")
-    launcher_until(lambda shown: "Repeat" in shown["rows"])
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Repeat" in shown["rows"])
     machine.send_key("left")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,
     )
-    step_in()
-    launcher_until(lambda shown: "Repeat" in shown["rows"])
-    for _ in range(showing()["rows"].index("Repeat")):
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Repeat" in shown["rows"])
+    for _ in range(desktop.showing()["rows"].index("Repeat")):
         machine.send_key("down")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("side", "").startswith("after "),
     )
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    t.assertRegex(as_account("wl-paste --no-newline"), r"^after \d+ ms, \d+ Hz$")
-    answer("350 f in c")
-    photograph("launcher-units")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert re.search("^after \\d+ ms, \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
+    desktop.answer("350 f in c")
+    desktop.photograph("launcher-units")
     machine.send_key("esc")
     # The zones come from the list built from tzdata, so this proves it's
     # there. The minute may turn while it's asked, so either will do.
     before = machine.succeed("date -u +%H:%M").strip()
-    answer("time in utc")
-    photograph("launcher-time")
+    desktop.answer("time in utc")
+    desktop.photograph("launcher-time")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     after = machine.succeed("date -u +%H:%M").strip()
-    t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+    assert desktop.as_account("wl-paste --no-newline") in [before, after]
     # A theme's colour is found by its role, as the theme exports it.
-    theme = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))
+    theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
     copied("colour accent", theme["roles"]["accent"].lower())
     # Slack takes its theme only by hand, so the launcher copies it,
     # in the theme's own roles.
     slack = ["accent", "selection", "success", "warning"]
     copied("slack theme", ",".join(theme["roles"][role] for role in slack))
-    answer("#f53")
-    photograph("launcher-colour")
+    desktop.answer("#f53")
+    desktop.photograph("launcher-colour")
     machine.send_key("esc")
-    answer("10.0.0.0/22")
-    photograph("launcher-answer")
+    desktop.answer("10.0.0.0/22")
+    desktop.photograph("launcher-answer")
     machine.send_key("esc")
     # With no network, what has to ask one says it couldn't, and nothing
     # breaks. Each waits for its answer to settle, failed; asked again
     # while that failure stands, it says so at once. When a failure is
     # asked again is the launcher's answers check's to say.
     for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "ip"]:
-        answer(typed)
+        desktop.answer(typed)
         machine.send_key("esc")
-    answer("weather tokyo")
-    photograph("launcher-offline")
+    desktop.answer("weather tokyo")
+    desktop.photograph("launcher-offline")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The rain is the weather's to answer: here asks where here is, since
     # the VM has no time zone, and a place's rain asks the same forecast.
     # Built as a check, the VM has no network and says Open-Meteo didn't
     # answer; run by hand it may reach Open-Meteo itself, and then says the
     # next rain. That the next rain is said from the hours is the
     # launcher's rain check's to show.
-    answer("rain")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
+    desktop.answer("rain")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    answer("when will it rain in tokyo")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.answer("when will it rain in tokyo")
     rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (
             (
                 (shown["selected"] or {}).get("name") == "no forecast"
@@ -723,122 +728,134 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     machine.send_key("esc")
-    log = shell_said("ERROR", "Error:")
+    log = desktop.shell_said("ERROR", "Error:")
     assert "ERROR" not in log, "an answer raised an error"
     assert "Error:" not in log, "an answer raised an error"
 
-with subtest("the launcher finds emoji in their own place, and only there"):
-    closed = in_session(LAUNCHER_OPEN)
+
+def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
+    """The launcher finds emoji in their own place, and only there."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
     # The main search lists no emoji, only the place they're in.
-    answer("tada")
-    t.assertNotIn("Party popper", showing()["rows"])
+    desktop.answer("tada")
+    assert "Party popper" not in desktop.showing()["rows"]
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    answer("emoji")
-    launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    desktop.answer("emoji")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     machine.send_key("ret")
-    launcher_until(lambda shown: shown["held"] == ["emoji"])
+    desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
     # Its name capitalised, as every row's is.
-    type_in("tada", selecting="Party popper")
+    desktop.type_in("tada", selecting="Party popper")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f389")
+    assert desktop.as_account("wl-paste --no-newline") == "🎉"
     machine.send_key("meta_l-e")
-    launcher_ready()
-    type_in("smiling")
-    photograph("launcher-emoji")
-    type_in(" cat")
-    photograph("launcher-emoji-all")
+    desktop.launcher_ready()
+    desktop.type_in("smiling")
+    desktop.photograph("launcher-emoji")
+    desktop.type_in(" cat")
+    desktop.photograph("launcher-emoji-all")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # The grinning cat with smiling eyes, first among the smiling cats.
-    t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f638")
+    assert desktop.as_account("wl-paste --no-newline") == "😸"
     # Super+E opens the emoji straight away, so "kitty" is a cat there,
     # where the main search would open the terminal.
     machine.send_key("meta_l-e")
-    launcher_ready()
-    type_in("kitty")
+    desktop.launcher_ready()
+    desktop.type_in("kitty")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f431")
+    assert desktop.as_account("wl-paste --no-newline") == "🐱"
     # Over a window, Return pastes the emoji into it as well as copying
     # it, as Super+V's copies do, and a step in are Paste and Copy.
-    as_account(
+    desktop.as_account(
         "niri msg action spawn -- kitty --title emoji-here "
         "sh -c 'stty -icanon -echo; cat > /tmp/emoji-pasted'"
     )
     machine.wait_until_succeeds(
-        in_session("niri msg focused-window | grep -q emoji-here"),
+        desktop.in_session("niri msg focused-window | grep -q emoji-here"),
         timeout=STARTING,
     )
     machine.send_key("meta_l-e")
-    launcher_ready()
-    type_in("tada", selecting="Party popper")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
-    step_in()
-    launcher_until(lambda shown: shown["rows"] == ["Paste", "Copy"])
-    with told("pastes into kitty"):
+    desktop.launcher_ready()
+    desktop.type_in("tada", selecting="Party popper")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Paste", "Copy"])
+    with desktop.told("pastes into kitty"):
         machine.send_key("ret")
     machine.wait_until_succeeds(
-        in_session("grep -q \U0001f389 /tmp/emoji-pasted"), timeout=dt.timedelta(seconds=10)
+        desktop.in_session("grep -q \U0001f389 /tmp/emoji-pasted"), timeout=dt.timedelta(seconds=10)
     )
-    as_account("pkill -f 'cat > /tmp/emoji-pasted'")
+    desktop.as_account("pkill -f 'cat > /tmp/emoji-pasted'")
     machine.wait_until_fails(
-        in_session("niri msg windows | grep -q emoji-here"), timeout=dt.timedelta(seconds=30)
+        desktop.in_session("niri msg windows | grep -q emoji-here"),
+        timeout=dt.timedelta(seconds=30),
     )
 
-with subtest("a category's word and a space step into it, and a command finishes by Tab"):
-    closed = in_session(LAUNCHER_OPEN)
+
+def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab(
+    desktop: Desktop,
+) -> None:
+    """A category's word and a space step into it, and a command finishes by Tab."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
     # The word and a space become a chip, the field cleared, listing
     # what it holds; what's typed then searches only inside it.
-    as_account("qs ipc call launcher toggle")
-    launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
     machine.send_chars("ai ")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["ai"]
             and shown["typed"] == ""
             and {"Agents", "Tasks", "Helpers"} <= set(shown["rows"])
         )
     )
-    photograph("launcher-category")
-    type_in("tas", selecting="Tasks")
+    desktop.photograph("launcher-category")
+    desktop.type_in("tas", selecting="Tasks")
     # The left arrow takes what's typed, then steps out with the word
     # put back.
     machine.send_key("left")
-    launcher_until(lambda shown: shown["held"] == ["ai"] and shown["typed"] == "")
+    desktop.launcher_until(lambda shown: shown["held"] == ["ai"] and shown["typed"] == "")
     machine.send_key("left")
-    launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ai")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ai")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A question that starts with a category's word is still a question.
-    answer("time in utc")
-    launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
+    desktop.answer("time in utc")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Every command, its form shown; Tab puts its start in the field,
     # out at the top, where it's finished.
-    as_account("qs ipc call launcher toggle")
-    launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
     machine.send_chars("commands ")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["commands"]
             and {"ip \u27e8address or network\u27e9", "time in \u27e8place\u27e9"}
             <= set(shown["rows"])
         )
     )
-    photograph("launcher-commands")
-    type_in("ip", selecting="ip \u27e8address or network\u27e9")
+    desktop.photograph("launcher-commands")
+    desktop.type_in("ip", selecting="ip \u27e8address or network\u27e9")
     machine.send_key("tab")
-    launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ip ")
-    type_in("10.0.0.0/22")
-    launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ip ")
+    desktop.type_in("10.0.0.0/22")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
-with subtest("the session's acts are found from anywhere by Joel's own words"):
-    closed = in_session(LAUNCHER_OPEN)
+
+def test_the_sessions_acts_are_found_from_anywhere_by_joels_own_words(desktop: Desktop) -> None:
+    """The session's acts are found from anywhere by Joel's own words."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
     # Short names, each found by the start Joel types, or a word of
     # his; Escape, never Return, since Return would do them.
     for typed, name, verb in [
@@ -849,9 +866,9 @@ with subtest("the session's acts are found from anywhere by Joel's own words"):
         # An old name, kept as a hidden word.
         ("suspend the machine", "Suspend", "suspend"),
     ]:
-        answer(typed)
+        desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
-        launcher_until(
+        desktop.launcher_until(
             lambda shown: (
                 (shown["selected"] or {}).get("name") == name  # noqa: B023
                 and shown["selected"]["verb"] == verb  # noqa: B023
@@ -860,8 +877,11 @@ with subtest("the session's acts are found from anywhere by Joel's own words"):
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
-with subtest("a search lists each thing once"):
-    closed = in_session(LAUNCHER_OPEN)
+
+def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
+    """A search lists each thing once."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
     # Tuple's place stands alone for its rows and its people; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;
@@ -905,45 +925,50 @@ with subtest("a search lists each thing once"):
         ("screenshot", ["Capture"]),
         ("", []),
     ]:
-        answer(typed)
-        launcher_until(once(leading))
+        desktop.answer(typed)
+        desktop.launcher_until(once(leading))
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    answer("zqxj")
-    launcher_until(lambda shown: shown["rows"] == [])
+    desktop.answer("zqxj")
+    desktop.launcher_until(lambda shown: shown["rows"] == [])
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # The speakers' tuning plays through them, and is no program.
-    answer("volume")
-    launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
-    t.assertNotIn("pebble_x_plus_tuning_output", showing()["rows"])
+    desktop.answer("volume")
+    desktop.launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
+    assert "pebble_x_plus_tuning_output" not in desktop.showing()["rows"]
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
-with subtest("a step finds its rows by their hidden words, and its parts move in place"):
-    closed = in_session(LAUNCHER_OPEN)
+
+def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place(
+    desktop: Desktop,
+) -> None:
+    """A step finds its rows by their hidden words, and its parts move in place."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
     # Inside the addresses, the tunnel is found by the kernel's name for
     # it, a word it's known by but never says, as from the top.
     machine.succeed(
         "ip tuntap add dev tailscale0 mode tun"
         " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
     )
-    answer("ip")
-    step_in()
-    launcher_until(lambda shown: "Tunnel" in shown["rows"])
-    type_in("tailscale0", selecting="Tunnel")
-    t.assertNotIn("tailscale0", showing()["rows"])
+    desktop.answer("ip")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Tunnel" in shown["rows"])
+    desktop.type_in("tailscale0", selecting="Tunnel")
+    assert "tailscale0" not in desktop.showing()["rows"]
     # The left arrow takes what's typed away, the selection staying on
     # the tunnel, and Tab steps into it as the right arrow would.
     machine.send_key("left")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "Tunnel"
     )
-    step_in("tab")
-    launcher_until(lambda shown: "Address" in shown["rows"])
+    desktop.step_in("tab")
+    desktop.launcher_until(lambda shown: "Address" in shown["rows"])
     # Stepping back out lands on the row it came from.
     machine.send_key("left")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Tunnel"
     )
     machine.send_key("esc")
@@ -954,69 +979,70 @@ with subtest("a step finds its rows by their hidden words, and its parts move in
     # as at the top: made busy, every core says so, and the selection
     # stays on its row, which says so too, as read again rather than as
     # first shown.
-    as_account("qs ipc call launcher toggle")
-    launcher_ready()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
     machine.send_chars("computer ")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["computer"]
             and any(thing["is"] == "answer:machine" for thing in shown["things"])
         )
     )
-    processors = [thing["is"] for thing in showing()["things"]].index("answer:machine")
+    processors = [thing["is"] for thing in desktop.showing()["things"]].index("answer:machine")
     for _ in range(processors):
         machine.send_key("down")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "answer:machine")
-    step_in()
-    launcher_until(
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "answer:machine")
+    desktop.step_in()
+    desktop.launcher_until(
         lambda shown: shown["path"] == ["Computer", "Processor"] and "Cores" in shown["rows"]
     )
-    for _ in range(showing()["rows"].index("Cores")):
+    for _ in range(desktop.showing()["rows"].index("Cores")):
         machine.send_key("down")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
-    step_in()
-    launcher_until(lambda shown: shown["path"] == ["Computer", "Processor", "Cores"])
-    cores = showing()["rows"]
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["path"] == ["Computer", "Processor", "Cores"])
+    cores = desktop.showing()["rows"]
     if len(cores) > 1:
         machine.send_key("down")
     chosen = cores[min(1, len(cores) - 1)]
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
     busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
     # At rest not every core is busy, so every core saying it is below
     # is each read again.
-    cores_resting = showing()
-    t.assertFalse(
-        all(busy.fullmatch(thing["reads"]) for thing in cores_resting["things"]),
-        "the cores were busy before anything made them so",
+    cores_resting = desktop.showing()
+    assert not all(busy.fullmatch(thing["reads"]) for thing in cores_resting["things"]), (
+        "the cores were busy before anything made them so"
     )
     # A loop for each core, as the shell's own builtins, since a
     # transient unit's path has no coreutils.
     spinning = "(while :; do :; done) & " * int(machine.succeed("nproc"))
     machine.succeed(f"systemd-run --unit=busy-cores -p Nice=19 sh -c '{spinning}wait'")
-    launcher_until(
+    desktop.launcher_until(
         lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
         timeout=dt.timedelta(seconds=60),
     )
-    shown = showing()
-    t.assertEqual(shown["selected"]["name"], chosen, "the selection left its row")
-    t.assertRegex(
-        shown["selected"]["side"],
-        r"^([89]\d|100)%$",
-        "the selection kept its row as first read",
+    shown = desktop.showing()
+    assert shown["selected"]["name"] == chosen, "the selection left its row"
+    assert re.search("^([89]\\d|100)%$", shown["selected"]["side"]), (
+        "the selection kept its row as first read"
     )
     machine.succeed("systemctl stop busy-cores")
     # Back out, it's on the row it came from.
     machine.send_key("left")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
-with subtest("Quickshell warned of nothing it drew all along"):
+
+
+def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
+    """Quickshell warned of nothing it drew all along."""
     # Quickshell colours its levels and categories even in the journal,
     # so a colour code may stand between the two words.
-    log = as_account(
+    log = desktop.as_account(
         "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
     )
     assert log.strip() == "", f"Quickshell warned of a scene: {log}"
