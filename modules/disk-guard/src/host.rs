@@ -5,7 +5,7 @@ use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
 use crate::band::{Band, Space};
 use crate::commands::{self, Job, Output, Ran};
-use crate::pace::{Pacer, Settling};
+use crate::pace::{Pacer, Settling, Stopped};
 use crate::pass::{Disk, Outcome, Reclaimer};
 use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
@@ -222,7 +222,10 @@ impl Disk for Filesystem {
         let (path, settling) = (self.path.clone(), self.settling);
         let settle = move || crate::sys::settle(&path, settling);
         let settled = match &self.pacer {
-            Some(pacer) => pacer.borrow_mut().waiting(settle),
+            Some(pacer) => pacer
+                .borrow_mut()
+                .waiting(settle)
+                .unwrap_or_else(|Stopped| Err(io::Error::other(STOPPED))),
             None => settle(),
         };
         settled.map_err(|error| doing("settling what went", &error))
@@ -237,6 +240,24 @@ impl Disk for Filesystem {
 /// journal's "failed" tells measuring from settling.
 fn doing(what: &str, error: &io::Error) -> io::Error {
     io::Error::new(error.kind(), format!("{what}: {error}"))
+}
+
+/// What the journal says of a reclaim the guard's stop cut short, whether
+/// it was a command or a wait.
+const STOPPED: &str = "it was stopped with the guard";
+
+fn stopped() -> Outcome {
+    Outcome::Failed(STOPPED.to_owned())
+}
+
+/// What a reclaim that waited on work came to: done, failed saying why, or
+/// cut short by the guard's stop.
+fn ended(waited: Result<Result<(), String>, Stopped>) -> Outcome {
+    match waited {
+        Ok(Ok(())) => Outcome::Reclaimed,
+        Ok(Err(why)) => Outcome::Failed(why),
+        Err(Stopped) => stopped(),
+    }
 }
 
 /// Reclaims what a survey offered, each as its action says, anchored to
@@ -300,11 +321,14 @@ impl<'a> Reclaim<'a> {
 
     /// Runs `work`, which blocks, through the pacer when there is one, so
     /// the guard keeps beating while a command or the system daemon takes
-    /// its time.
-    fn waiting<T: Send + 'static>(&self, work: impl FnOnce() -> T + Send + 'static) -> T {
+    /// its time, until a stop comes.
+    fn waiting<T: Send + 'static>(
+        &self,
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> Result<T, Stopped> {
         match &self.pacer {
             Some(pacer) => pacer.borrow_mut().waiting(work),
-            None => work(),
+            None => Ok(work()),
         }
     }
 }
@@ -350,6 +374,7 @@ impl Reclaimer for Reclaim<'_> {
             Action::Run { argv, timeout, .. } => {
                 let (argv, timeout, gentle) = (argv.clone(), *timeout, self.gentle);
                 self.waiting(move || run(&argv, timeout, gentle))
+                    .unwrap_or_else(|Stopped| stopped())
             }
             // Nix judges liveness itself, under its own lock.
             // What it freed is measured, like any command's.
@@ -360,9 +385,12 @@ impl Reclaimer for Reclaim<'_> {
                 };
                 let socket = socket.clone();
                 match self.waiting(move || socket::ask(&socket, &collect, COLLECT_TIMEOUT)) {
-                    Ok(socket::Reply::Collected(_)) => Outcome::Reclaimed,
-                    Ok(other) => Outcome::Failed(format!("the system daemon answered {other:?}")),
-                    Err(error) => Outcome::Failed(format!("asking the system daemon: {error}")),
+                    Ok(Ok(socket::Reply::Collected(_))) => Outcome::Reclaimed,
+                    Ok(Ok(other)) => {
+                        Outcome::Failed(format!("the system daemon answered {other:?}"))
+                    }
+                    Ok(Err(error)) => Outcome::Failed(format!("asking the system daemon: {error}")),
+                    Err(Stopped) => stopped(),
                 }
             }
             Action::Expire {
@@ -373,19 +401,15 @@ impl Reclaimer for Reclaim<'_> {
             } => {
                 let (nix, profile, numbers) = (nix.clone(), profile.clone(), numbers.clone());
                 let gentle = self.gentle;
-                match self
-                    .waiting(move || crate::generations::expire(&nix, &profile, &numbers, gentle))
-                {
-                    Ok(()) => Outcome::Reclaimed,
-                    Err(why) => Outcome::Failed(why),
-                }
+                ended(
+                    self.waiting(move || {
+                        crate::generations::expire(&nix, &profile, &numbers, gentle)
+                    }),
+                )
             }
             Action::Collect { nix, paths, .. } => {
                 let (nix, paths, gentle) = (nix.clone(), paths.clone(), self.gentle);
-                match self.waiting(move || garbage::delete(&nix, &paths, gentle)) {
-                    Ok(()) => Outcome::Reclaimed,
-                    Err(why) => Outcome::Failed(why),
-                }
+                ended(self.waiting(move || garbage::delete(&nix, &paths, gentle)))
             }
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
@@ -448,7 +472,7 @@ fn run(argv: &[String], timeout: Duration, idle: bool) -> Outcome {
             })
         }
         Ok(Ran::TimedOut) => Outcome::Failed(format!("it ran past its {timeout:?} and was killed")),
-        Ok(Ran::Stopped) => Outcome::Failed("it was stopped with the guard".to_owned()),
+        Ok(Ran::Stopped) => stopped(),
         Err(error) => Outcome::Failed(format!("starting it: {error}")),
     }
 }

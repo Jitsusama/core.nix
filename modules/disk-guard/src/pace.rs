@@ -191,18 +191,34 @@ impl Pacer {
     /// Btrfs commit, went minutes without a heartbeat, and the user guard
     /// asking for it went as long.
     ///
+    /// A stop waiting ends the wait at the next look, and the work is left
+    /// to end with the guard: a stop waited on an answer from the system
+    /// daemon for a minute, and the session's shell, which stops and
+    /// starts with the guard, was gone for that minute. A command the work
+    /// runs is ended by the stop itself.
+    ///
+    /// # Errors
+    ///
+    /// `Stopped` when a stop came before the work ended.
+    ///
     /// # Panics
     ///
     /// With `work`'s own panic, when it panics.
-    pub fn waiting<T: Send + 'static>(&mut self, work: impl FnOnce() -> T + Send + 'static) -> T {
+    pub fn waiting<T: Send + 'static>(
+        &mut self,
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> Result<T, Stopped> {
         let worker = std::thread::spawn(work);
         while !worker.is_finished() {
+            if crate::commands::stop_waiting() {
+                return Err(Stopped);
+            }
             self.clock.sleep(WAIT_LOOK);
             self.beat_when_due();
         }
-        worker
+        Ok(worker
             .join()
-            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic)))
     }
 
     /// The seconds this pacer has rested.
@@ -218,6 +234,10 @@ impl Pacer {
         }
     }
 }
+
+/// Work a pacer stopped waiting for, since the guard is stopping.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stopped;
 
 /// The machine's own monotonic clock.
 pub struct Monotonic(std::time::Instant);
