@@ -24,7 +24,7 @@ Piece {
     hint: `Recording ${Recorder.what}, ${length}`
     context: Recorder.what
     actions: Recorder.stoppable ? [{
-        glyph: String.fromCodePoint(0xf04db),
+        glyph: Theme.glyph.recording,
         name: "Stop recording",
         run: () => Recorder.stop()
     }] : []

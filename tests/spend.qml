@@ -87,8 +87,8 @@ ShellRoot {
             && piece.value === "$3,642 of $4,000 this week"
             && piece.hint === "The weekly cap is 91% spent"
             && piece.actions[0].name === "Go to the session"
-            && piece.actions[0].glyph === String.fromCodePoint(0xf03cb)
-            && piece.actions[1].glyph === String.fromCodePoint(0xf012c)
+            && piece.actions[0].glyph === Theme.glyph.windows
+            && piece.actions[1].glyph === Theme.glyph.fine
     }, {
         what: "the actions run what the watch says",
         status: root.alert,

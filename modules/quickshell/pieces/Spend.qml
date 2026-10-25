@@ -23,13 +23,16 @@ Piece {
     readonly property var opening: Shortcuts.actions
         .find(action => action.opens === "spend") ?? { chord: [] }
     readonly property var shown: said === null ? null : Quiet.sharing ? said.quiet : said.open
-    // Each action's glyph, by the kind the daemon gives it.
-    readonly property var glyphs: ({
-        go: 0xf03cb,
-        ask: 0xf0369,
-        "sign-in": 0xf0342,
-        report: 0xf0215,
-        mark: 0xf012c
+    // Each action's mark, by the kind the daemon gives it: going to a
+    // session wears its window's, as the agents' piece does, and marking a
+    // finding expected all's fine, as the launcher's Spend does. The daemon
+    // asks for anything it doesn't name.
+    readonly property var marks: ({
+        go: "windows",
+        ask: "ask",
+        "sign-in": "signIn",
+        report: "report",
+        mark: "fine"
     })
 
     present: said !== null
@@ -41,17 +44,17 @@ Piece {
     hint: silent ? "Nothing is watching what AI use costs" : shown?.hint ?? value
     context: silent ? "the spend-watch unit says why" : shown?.context ?? ""
     actions: (silent ? [] : (said?.actions ?? []).map(action => ({
-        glyph: String.fromCodePoint(glyphs[action.kind] ?? 0xf0054),
+        glyph: Theme.glyph[marks[action.kind] ?? "ask"],
         name: action.name,
         run: () => Niri.spawn(action.run)
     }))).concat([{
-        glyph: String.fromCodePoint(0xf012a),
+        glyph: Theme.glyph.trend,
         name: "Show where it went",
         verb: "show",
         chord: opening.chord,
         run: shell => shell.launcher.into("spend")
     }]).concat(silent ? [{
-        glyph: String.fromCodePoint(0xf040a),
+        glyph: Theme.glyph.resume,
         name: "Start the watch",
         run: () => Niri.spawn(["systemctl", "--user", "restart", "spend-watch.service"])
     }] : [])
