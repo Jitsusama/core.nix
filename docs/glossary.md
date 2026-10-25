@@ -91,7 +91,7 @@ What Joel sees and reaches for on the desktop.
 | Word | Means | Also | Not | In code |
 | ---- | ----- | ---- | --- | ------- |
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | | palette, command palette | `Launcher.qml` |
-| foot | the launcher's bottom line: the time, the battery and what the keys do | | glance | `foot` |
+| foot | the launcher's bottom line: the time, the battery and what the keys do | | | `foot` |
 | margin | the row of marks at the top of the screen saying what's true now | | corner | `Margin.qml`, `overview.pieces` |
 | Now | the launcher's list of what's on and waiting, on Super+O | | What's on | `WhatsOn.qml` |
 | meter | a level shown while it changes, such as the volume | | overlay | `Meter.qml` |
@@ -121,6 +121,7 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | Journey | a quest's dated log of what happened | | | `quest journal` |
 | peer | another session on the same machine, reached over the mesh | | instance, swarm | |
 | mesh | how sessions on one machine message each other | | | `mesh_send` |
+| glance | a mesh message given to a peer as one line, since it's another peer's own business | | | |
 | hold | a peer asking every other to put something off, such as a switch, until it says it's over | | | `intent: hold` |
 | steer | Joel's words, delivered to a session from outside its window | | | `steer/<ADDRESS>/` |
 | hand | a subagent, seen on the mesh as its parent's hands | | | `hand.ts` |
@@ -190,6 +191,8 @@ table above once it's made.
 - **workspace**: niri's workspaces, and a quest's scratch folder.
 - **check names**: whether a check's name may name its program
   (`quickshell-`, `niri-`, `pi-`), which `nix flake check` shows Joel.
+- **wake**: coming back from sleep, and the mesh's loudest attention level,
+  a message that starts a peer's turn at once.
 - **TPM**: the chip that keeps the machine's keys is shown by its acronym;
   a plain word for it is still to be chosen.
 
