@@ -1,18 +1,11 @@
-# The settings core holds pi to, and the program that puts them in the
-# settings file pi keeps. pi writes that file itself, as /settings changes
-# it and as it records what it has shown, so the program keeps every key pi
-# wrote, gives the declared ones their values, and leaves a file it can't
-# read as JSON for a person to look at rather than replacing it.
-{ pkgs }:
+# The program that puts the settings declared for pi (jitsusama.pi.settings)
+# in the settings file pi keeps. pi writes that file itself, as /settings
+# changes it and as it records what it has shown, so the program keeps every
+# key pi wrote, gives the declared ones their values, and leaves a file it
+# can't read as JSON for a person to look at rather than replacing it.
+{ pkgs, settings }:
 let
   inherit (pkgs) lib;
-
-  settings = {
-    # The room kept for what a compaction writes. pi's default, 16,384
-    # tokens, runs out summarising a long session, which then compacts
-    # nothing and runs on toward the model's limit.
-    compaction.reserveTokens = 64000;
-  };
 in
 pkgs.writeShellApplication {
   name = "pi-settings";

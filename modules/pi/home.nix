@@ -2,7 +2,8 @@
 # its messages, tools, diffs and code wear the same colours as everything
 # else. pi keeps which theme it uses in a settings file of its own, so this
 # only puts the theme where pi finds it, for Joel to pick in /settings, and
-# merges into that file the few settings core holds pi to (settings.nix). Its
+# merges into that file the settings declared for it in jitsusama.pi.settings,
+# core's few and a machine's own (settings.nix). Its
 # keys come from keys.nix, written where pi reads them and into the key map.
 # Its status line tells a folder and git as the prompt does, by the prompt's
 # root markers, its git-engine and the theme's marks.
@@ -118,39 +119,66 @@ in
     ../prompt/home.nix
   ];
 
-  home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
-
-  home.activation.piTakesCoresSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${
-      lib.getExe (import ./settings.nix { inherit pkgs; })
-    } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
-  '';
-
-  # Where the harness's status line learns the folder and git; its README
-  # says what each field means.
-  xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text = builtins.toJSON {
-    engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
-    inherit (config.jitsusama.prompt) roots;
-    marks = lib.mapAttrs (_: mark: mark.glyph) {
-      inherit (glyphs)
-        branch
-        unpushed
-        more
-        complete
-        active
-        pending
-        thinking
-        ;
-      unsaved = glyphs.on;
+  options.jitsusama.pi.settings = lib.mkOption {
+    type = lib.types.submodule { freeformType = (pkgs.formats.json { }).type; };
+    default = { };
+    example = {
+      defaultProvider = "anthropic";
+      packages = [ "git:github.com/Jitsusama/agentic-harness.pi" ];
     };
+    description = ''
+      Settings merged into pi's own settings file at every switch, each
+      winning over what pi wrote there, every other key pi wrote kept. The
+      file stays pi's, so a machine sets its settings here rather than
+      linking the file, which the merge would replace.
+    '';
   };
 
-  home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
-    { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
-  );
+  config = {
+    home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
 
-  jitsusama.keys.pi = map (key: {
-    inherit (key) chord does;
-    when = key.when or "";
-  }) keys;
+    # The room kept for what a compaction writes. pi's default, 16,384
+    # tokens, runs out summarising a long session, which then compacts
+    # nothing and runs on toward the model's limit.
+    jitsusama.pi.settings.compaction.reserveTokens = lib.mkDefault 64000;
+
+    home.activation.piTakesCoresSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run ${
+        lib.getExe (
+          import ./settings.nix {
+            inherit pkgs;
+            inherit (config.jitsusama.pi) settings;
+          }
+        )
+      } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
+    '';
+
+    # Where the harness's status line learns the folder and git; its README
+    # says what each field means.
+    xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text = builtins.toJSON {
+      engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
+      inherit (config.jitsusama.prompt) roots;
+      marks = lib.mapAttrs (_: mark: mark.glyph) {
+        inherit (glyphs)
+          branch
+          unpushed
+          more
+          complete
+          active
+          pending
+          thinking
+          ;
+        unsaved = glyphs.on;
+      };
+    };
+
+    home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
+      { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
+    );
+
+    jitsusama.keys.pi = map (key: {
+      inherit (key) chord does;
+      when = key.when or "";
+    }) keys;
+  };
 }
