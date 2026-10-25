@@ -146,38 +146,18 @@ Provider {
     }
 
     // What desk-facts says of a display, each named first as a part is:
-    // Colour depth "10 bit", Colours, then who made it and when. Its input
-    // says the colour depth and the link as one ("10 bit, DisplayPort"),
-    // which reads as two parts, the depth first, since it's what's asked.
+    // Colour depth "10 bit", Colours, then who made it and when, the depth
+    // first since it's what's asked.
     function factRows(output) {
-        const said = [];
-        for (const fact of facts[output.name] ?? []) {
-            const both = fact.name === "input" ? bitsAndLink.exec(fact.value) : null;
-            if (both) {
-                said.push({ id: "depth", value: both[1] }, { id: "input", value: both[2] });
-            } else {
-                said.push({ id: fact.name.toLowerCase(), value: fact.value });
-            }
-        }
-        const first = said.filter(fact => askedFirst.includes(fact.id));
-        return first.concat(said.filter(fact => !askedFirst.includes(fact.id))).map(fact => copyRow({
-            key: `fact:displays:${output.name}:${fact.id}`,
-            name: partName(fact.id),
-            side: fact.value,
-            copy: fact.value
-        }));
+        return factParts("displays", output.name, facts[output.name], askedFirst);
     }
 
-    // "10 bit, DisplayPort", as desk-facts says a display's input.
-    readonly property var bitsAndLink: /^(\d+ bits?), (.+)$/
     // The facts asked of a display most, which lead the rest.
     readonly property var askedFirst: ["depth", "colours", "hdr"]
 
-    // A part's name, as the vocabulary says it (displays:depth is "Colour
-    // depth"), or the fact's own, capitalised, for one it doesn't know.
+    // A part's name, as the vocabulary says it (Provider's partNamed).
     function partName(id) {
-        const named = Words.name(`displays:${id}`);
-        return named !== `displays:${id}` ? named : id.charAt(0).toUpperCase() + id.slice(1);
+        return partNamed("displays", id);
     }
 
     // A display's right arrow: turning it on while it's off; while it's

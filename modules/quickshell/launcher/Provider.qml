@@ -273,6 +273,35 @@ Scope {
         });
     }
 
+    // A part's name as the vocabulary says it within `scope`, as
+    // displays:depth is "Colour depth", or the fact's own name capitalised
+    // for one it doesn't know yet, so a new fact still reads as a name. It
+    // asks the launcher's vocabulary, since this file mustn't import qs
+    // (Launcher.qml's vocabulary says why).
+    function partNamed(scope, id) {
+        const key = `${scope}:${id.toLowerCase().split(" ").join("-")}`;
+        const named = provider.launcher?.vocabulary?.name(key) ?? key;
+        return named !== key ? named : id.charAt(0).toUpperCase() + id.slice(1);
+    }
+
+    // What a daemon says of one of the provider's things, as a list of
+    // { name, value }, each a part named first and saying its value, its
+    // Return copying the value: the ids in `first` lead, as they're what's
+    // asked most, and the rest keep the daemon's order. One place makes
+    // them, so every provider's facts read the same way round.
+    function factParts(scope, thing, facts, first) {
+        const leading = first ?? [];
+        const said = (facts ?? []).map(fact => ({ id: fact.name.toLowerCase(), value: fact.value }));
+        return said.filter(fact => leading.includes(fact.id))
+            .concat(said.filter(fact => !leading.includes(fact.id)))
+            .map(fact => copyRow({
+                key: `fact:${scope}:${thing}:${fact.id}`,
+                name: partNamed(scope, fact.id),
+                side: fact.value,
+                copy: fact.value
+            }));
+    }
+
     // What each URL said, and when: { pending, value, failed, at }.
     property var asked: ({})
 
