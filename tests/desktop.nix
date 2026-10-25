@@ -38,6 +38,11 @@ let
   account = "jitsusama";
   secret = "correct-horse";
 
+  # The areas written for pytest, each a file of tests that ask for the
+  # desktop as a fixture; the rest are still scripts run after the prelude,
+  # and move one at a time.
+  pytestAreas = [ "captures-and-locks" ];
+
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
   certificates = pkgs.runCommand "stand-in-certificates" { nativeBuildInputs = [ pkgs.openssl ]; } ''
@@ -156,10 +161,18 @@ in
 pkgs.testers.runNixOSTest {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
   # Reads the colours of the windows it photographs, and paces its waits
-  # to the host (tests/lib/vm_helpers.py).
+  # to the host (tests/lib/vm_helpers.py). The desktop it drives is
+  # desktop/desktop_session.py, a module of the driver's Python, so an area
+  # written for pytest and one still a script import the same one.
   extraPythonPackages = python: [
     python.pillow
     (pkgs.callPackage ./lib/vm-helpers.nix { } python)
+    (python.toPythonModule (
+      pkgs.runCommandLocal "desktop-session" { } ''
+        mkdir -p $out/${python.python.sitePackages}
+        cp ${./desktop/desktop_session.py} $out/${python.python.sitePackages}/desktop_session.py
+      ''
+    ))
   ];
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
@@ -552,10 +565,19 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-      builtins.readFile ./desktop/desktop_prelude.py
-      + builtins.readFile ./desktop/desktop-${area}-vm-test.py
-    );
+    # An area written for pytest runs inside the driver with the values as
+    # its fixture; one still a script runs after the prelude, which reads
+    # them from the file put in place of its marker.
+    if builtins.elem area pytestAreas then
+      ''
+        import vm_pytest
+        vm_pytest.run(globals(), "${./desktop/desktop-${area}-vm-test.py}", values="${values}")
+      ''
+    else
+      builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+        builtins.readFile ./desktop/desktop_prelude.py
+        + builtins.readFile ./desktop/desktop-${area}-vm-test.py
+      );
   # nix fmt holds the script to mypy --strict against the driver's own types,
   # through driver_names.pyi, which the driver's lighter check can't find.
   skipTypeCheck = true;
