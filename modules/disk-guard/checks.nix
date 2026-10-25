@@ -134,6 +134,22 @@
         touch $out
       '';
 
+  # The account's GitHub predicate calls a checkout finished only when a
+  # merged pull request's head is exactly its own, built as home.nix builds
+  # it but over a stand-in gh (tests/disk-guard-asks-github-what-merged.sh).
+  disk-guard-asks-github-what-merged =
+    let
+      gh = pkgs.writeShellApplication {
+        name = "gh";
+        text = builtins.readFile ../../tests/stand-in-gh.sh;
+      };
+      merged = pkgs.callPackage ./merged-on-github.nix { inherit gh; };
+    in
+    pkgs.runCommandLocal "disk-guard-asks-github-what-merged" { } ''
+      ${lib.getExe pkgs.bash} ${../../tests/disk-guard-asks-github-what-merged.sh} ${lib.getExe merged}
+      touch $out
+    '';
+
   # clippy finds nothing in the guard, its scenarios included.
   disk-guard-passes-clippy = passesClippy "disk-guard-passes-clippy" (
     pkgs.callPackage ./package.nix { }

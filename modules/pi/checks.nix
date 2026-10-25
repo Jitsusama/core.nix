@@ -82,30 +82,7 @@
       builtins.unsafeDiscardStringContext home.home.activation.piTakesCoresSettings.data
     )) "pi's activation doesn't run the settings program the check tests.";
     pkgs.runCommandLocal "pi-keeps-its-own-settings" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      file=$TMPDIR/agent/settings.json
-      mkdir -p $TMPDIR/agent
-      # As pi writes it, with a reserve of its own that core's replaces.
-      echo '{"theme":"jitsusama","lastChangelogVersion":"1.3.0","compaction":{"enabled":true,"reserveTokens":16384}}' >$file
-      ${program} $file
-      jq -e '.theme == "jitsusama" and .lastChangelogVersion == "1.3.0"' $file
-      jq -e '.compaction == {"enabled": true, "reserveTokens": 64000}' $file
-
-      touch -d 2000-01-01 $file
-      ${program} $file
-      [ "$(stat -c %Y $file)" = "$(date -d 2000-01-01 +%s)" ]
-
-      echo '{"theme":' >$file
-      if ${program} $file; then exit 1; fi
-      [ "$(cat $file)" = '{"theme":' ]
-
-      rm $file
-      ${program} $file
-      jq -e '.compaction.reserveTokens == 64000' $file
-
-      echo '{"theme":"jitsusama","defaultModel":"picked-in-pi"}' >$file
-      ${machines} $file
-      jq -e '.theme == "jitsusama" and .defaultModel == "a-model"' $file
-      jq -e '.compaction.reserveTokens == 64000' $file
+      ${lib.getExe pkgs.bash} ${../../tests/pi-keeps-its-own-settings.sh} ${program} ${machines}
       touch $out
     '';
 }

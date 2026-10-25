@@ -170,6 +170,9 @@
   disk-guard-accepts-its-configuration = ''
     the disk guard passes its scenarios and accepts the configs a workstation and its account get
   '';
+  disk-guard-asks-github-what-merged = ''
+    the disk guard counts a GitHub checkout finished only once its own head was merged
+  '';
   disk-guard-compiles-for-macos = ''
     the disk guard and its scenarios compile for macOS, clean
   '';
