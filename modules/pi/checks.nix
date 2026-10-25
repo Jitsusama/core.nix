@@ -55,13 +55,28 @@
           }
       );
 
-  # pi's settings file gets core's settings at every switch and keeps every
-  # key pi wrote there; a file that isn't JSON is left alone and the switch
-  # says so; and a file already holding them isn't written again.
+  # pi's settings file gets the settings declared for it at every switch,
+  # core's and a machine's own, and keeps every key pi wrote there; a file
+  # that isn't JSON is left alone and the switch says so; and a file already
+  # holding them isn't written again.
   pi-keeps-its-own-settings =
     let
       home = account workstation;
-      program = lib.getExe (import ./settings.nix { inherit pkgs; });
+      program = lib.getExe (
+        import ./settings.nix {
+          inherit pkgs;
+          inherit (home.jitsusama.pi) settings;
+        }
+      );
+      # As a machine adds its own, such as the model it starts with.
+      machines = lib.getExe (
+        import ./settings.nix {
+          inherit pkgs;
+          settings = home.jitsusama.pi.settings // {
+            defaultModel = "a-model";
+          };
+        }
+      );
     in
     assert lib.assertMsg (lib.hasInfix (builtins.unsafeDiscardStringContext program) (
       builtins.unsafeDiscardStringContext home.home.activation.piTakesCoresSettings.data
@@ -85,6 +100,11 @@
 
       rm $file
       ${program} $file
+      jq -e '.compaction.reserveTokens == 64000' $file
+
+      echo '{"theme":"jitsusama","defaultModel":"picked-in-pi"}' >$file
+      ${machines} $file
+      jq -e '.theme == "jitsusama" and .defaultModel == "a-model"' $file
       jq -e '.compaction.reserveTokens == 64000' $file
       touch $out
     '';
