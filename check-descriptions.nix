@@ -121,9 +121,10 @@
     the XPS 14's dell-wmi ignores the EC's hourly type 0x0012 event rather than log an unknown key
   '';
   desk-facts-read-the-desk = ''
-    desk-facts reads a monitor's EDID and USB-C cable, a USB sound card's modes, a camera's
-    formats and a Bluetooth input device's link and inputs as the desk's own report them, and
-    writes the launcher's JSON in order
+    desk-facts reads a monitor's EDID and USB-C cable, a USB sound card's modes, a built-in
+    card's jacks and chips, a camera's formats, a loopback camera's mode and sensor, and a
+    Bluetooth input device's link and inputs as the devices' own report them, and writes the
+    launcher's JSON in order
   '';
   device-check-passes-clippy = ''
     clippy finds nothing in device-check, device-check-disk or their tests
@@ -868,7 +869,8 @@
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
-    pulled out, and names it again when it's plugged back in
+    pulled out, and names it again when it's plugged back in; and names a card not on USB by
+    each of its devices, saying what one plays at only while it plays
   '';
   vm-desktop-captures-and-locks = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures by the

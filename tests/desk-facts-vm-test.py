@@ -3,7 +3,8 @@
 tests/desk-facts.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), on a
 machine with an xHCI controller named desk and nothing plugged into it. QEMU's monitor plugs its
 USB audio device in and takes it out, and each time sound.json, which desk-facts rewrites only
-on what it hears, must name the card or no longer name it. Each state, booted, plugged in,
+on what it hears, must name the card or no longer name it. snd-dummy's card, which isn't on USB,
+stands in for a laptop's own, named by each of its devices. Each state, booted, plugged in,
 pulled out and plugged in again, is a fixture made from the one before, so any test runs alone
 with `-k`. The tests need no value from Nix.
 """
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
     from test_driver.machine import BaseMachine
 
 FACTS = "/run/user/1000/desk/sound.json"
+# A USB card's key, its ALSA id and direction, which a built-in device's comma never is in.
+USB_OUT = '"[^",]+:out"'
 PLUG = "device_add usb-audio,id=speakers,bus=desk.0,audiodev=nowhere"
 # How long desk-facts may take to say what it heard, or QEMU to let a device go.
 HEARING = dt.timedelta(seconds=30)
@@ -42,12 +45,12 @@ class Desk:
         return parsed
 
     def until(self, *, named: bool) -> list[str]:
-        """Wait until sound.json names a card, or names none, and give what it names then."""
+        """Wait until sound.json names a USB card, or names none, and give those it names then."""
         self.machine.wait_until_succeeds(
-            f"test -s {FACTS} && {'' if named else '! '}grep -q ':out' {FACTS}",
+            f"test -s {FACTS} && {'' if named else '! '}grep -qE '{USB_OUT}' {FACTS}",
             timeout=HEARING,
         )
-        return sorted(self.said())
+        return sorted(key for key in self.said() if "," not in key)
 
 
 @pytest.fixture(scope="module")
@@ -82,7 +85,7 @@ def replugged(desk: Desk, pulled: list[str]) -> list[str]:
     """Plug the card in again once it's gone, and give the cards sound.json names then."""
     assert not pulled
     # QEMU frees the id only once the guest has let the device go.
-    desk.machine.wait_until_succeeds("! ls /proc/asound/card[0-9]", timeout=HEARING)
+    desk.machine.wait_until_succeeds("! ls /proc/asound/card*/usbid", timeout=HEARING)
     desk.machine.send_monitor_command(PLUG)
     return desk.until(named=True)
 
@@ -102,6 +105,24 @@ def test_a_card_plugged_in_is_named_with_what_it_offers(desk: Desk, plugged: lis
 def test_pulled_out_it_s_no_longer_named(pulled: list[str]) -> None:
     """Pulled out, it's no longer named."""
     assert pulled == []
+
+
+def test_a_card_not_on_usb_is_named_by_each_of_its_devices(desk: Desk) -> None:
+    """A card not on USB is named by each of its devices."""
+    desk.machine.wait_until_succeeds(f"grep -q '\"Dummy,0:in\"' {FACTS}", timeout=HEARING)
+    assert {"Dummy,0:out", "Dummy,0:in"} <= set(desk.said())
+
+
+def test_a_device_not_on_usb_says_what_it_plays_at_while_it_plays(desk: Desk) -> None:
+    """A device not on USB says what it plays at while it plays, and no longer once it stops."""
+    desk.machine.succeed(
+        "systemd-run --unit=playing aplay -q -D hw:Dummy,0 -t raw -f S16_LE -r 48000 -c 2 /dev/zero"
+    )
+    desk.machine.wait_until_succeeds(f"grep -q '\"playing\"' {FACTS}", timeout=HEARING)
+    facts = {fact["name"]: fact["value"] for fact in desk.said()["Dummy,0:out"]}
+    assert facts["playing"].startswith("48 kHz, 16 bit, period ")
+    desk.machine.succeed("systemctl stop playing")
+    desk.machine.wait_until_fails(f"grep -q '\"playing\"' {FACTS}", timeout=HEARING)
 
 
 def test_plugged_in_again_it_s_named_again(desk: Desk, replugged: list[str]) -> None:
