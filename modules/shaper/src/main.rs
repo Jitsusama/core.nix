@@ -710,29 +710,40 @@ const TINS: [&str; 4] = ["bulk", "best effort", "video", "voice"];
 
 /// What the shaper holds each uplink to, and what each tin carried.
 fn status(runtime: &Path) -> ExitCode {
+    use std::fmt::Write as _;
     let Ok(text) = fs::read_to_string(runtime.join("status.json")) else {
         eprintln!("the shaper isn't running");
         return ExitCode::FAILURE;
     };
+    // Written whole at the end, so a reader that stops early, as
+    // `grep -q` or `head` does, ends the report rather than panicking it.
+    let mut out = String::new();
     let all: Vec<LinkStatus> = serde_json::from_str(&text).unwrap_or_default();
     if all.is_empty() {
-        println!("nothing to shape: no link has a default route");
+        let _ = writeln!(out, "nothing to shape: no link has a default route");
     }
     for link in all {
-        println!("{}  on {}", link.name, link.network);
-        println!("  up {}, down {}", mbit(link.up), mbit(link.down));
+        let _ = writeln!(out, "{}  on {}", link.name, link.network);
+        let _ = writeln!(out, "  up {}, down {}", mbit(link.up), mbit(link.down));
         if let Some(leader) = &link.follows {
-            println!("  at {leader}'s rate: both reach the same router");
+            let _ = writeln!(out, "  at {leader}'s rate: both reach the same router");
         }
         // Said only while it holds: a quiet line needs no line saying so.
         if link.building && link.follows.is_none() {
-            println!("  the line's queue is building, so the shaper is slowing");
+            let _ = writeln!(
+                out,
+                "  the line's queue is building, so the shaper is slowing"
+            );
         }
         if link.live {
-            println!("  real-time traffic flows, so the line's queue is kept here");
+            let _ = writeln!(
+                out,
+                "  real-time traffic flows, so the line's queue is kept here"
+            );
         }
         if link.follows.is_none() {
-            println!(
+            let _ = writeln!(
+                out,
                 "  held under load: up {}, down {}",
                 mbit(link.held_up),
                 mbit(link.held_down)
@@ -743,15 +754,17 @@ fn status(runtime: &Path) -> ExitCode {
             .iter()
             .map(|(h, ms)| format!("{h} {ms:.0} ms"))
             .collect();
-        println!("  quiet round trips: {}", pings.join(", "));
+        let _ = writeln!(out, "  quiet round trips: {}", pings.join(", "));
         for (way, dev) in [("sent", &link.name), ("received", &link.ifb)] {
             let json = sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).unwrap_or_default();
-            println!(
+            let _ = writeln!(
+                out,
                 "  {way:<9} {:>12} {:>8} {:>8} {:>16}",
                 "packets", "dropped", "marked", "delay (av, peak)"
             );
             for (name, tin) in TINS.iter().zip(qdisc::tins(&json)) {
-                println!(
+                let _ = writeln!(
+                    out,
                     "    {name:<11} {:>10} {:>8} {:>8} {:>8.1} {:>6.1} ms",
                     tin.packets,
                     tin.drops,
@@ -762,6 +775,7 @@ fn status(runtime: &Path) -> ExitCode {
             }
         }
     }
+    let _ = std::io::stdout().write_all(out.as_bytes());
     ExitCode::SUCCESS
 }
 

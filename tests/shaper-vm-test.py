@@ -356,8 +356,9 @@ def test_real_time(line: Line) -> None:
     second are as many as a call's audio sends; the shaper looks once a second.
     """
     line.run("app.slice", line.datagrams(9000, n=600))
+    # grep reads it all: one that stops at the match leaves the status writing to nothing.
     line.client.wait_until_succeeds(
-        "shaper status | grep -q 'real-time traffic flows'", timeout=SHAPING
+        "shaper status | grep 'real-time traffic flows'", timeout=SHAPING
     )
     line.client.succeed("journalctl -u shaper | grep -q 'real-time traffic flows'")
 
