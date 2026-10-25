@@ -6,7 +6,6 @@ the helpers every area shares, so the names it takes from there are imported onl
 checkers.
 """
 
-import datetime
 import json
 import time
 from datetime import timedelta
@@ -32,6 +31,7 @@ if TYPE_CHECKING:
         as_account,
         copied_then_closed,
         drawn_at,
+        held_still,
         in_session,
         launcher_ready,
         launcher_until,
@@ -535,7 +535,7 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
             print(as_account("systemctl --user status listening; pw-cli ls Node"))
         return sound_recording() is not None
 
-    retry(records, timeout=datetime.timedelta(seconds=30))
+    retry(records, timeout=timedelta(seconds=30))
     recording = sound_recording()
     sound_device("microphone", "stand-in microphone")
     launcher_until(lambda shown: "Recording" in shown["rows"])
@@ -566,7 +566,7 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
 # always apply, as they do in a music player set to repeat.
 #
 # How long the player, PipeWire or the launcher may take to show a change.
-WAIT = datetime.timedelta(seconds=15)
+WAIT = timedelta(seconds=15)
 # How far a pixel's shade moves, of 255, to count as drawn anew rather than
 # as noise.
 CHANGED = 24
@@ -609,7 +609,7 @@ with subtest("a program's Media and Sound work its real player and its stream"):
                 and player("Metadata")["xesam:title"]["data"] == title
             )
 
-        retry(says, timeout=datetime.timedelta(seconds=15))
+        retry(says, timeout=timedelta(seconds=15))
 
     def stream() -> int:
         """Give the id of the stream mpv plays through, as PipeWire lists it."""
@@ -928,6 +928,12 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.wait_until_succeeds(
         "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=SIGNING_IN
     )
+    # Return reaches its button only once the window holds the keyboard and
+    # has drawn the page, and a window slow to start gets both later: a run
+    # that pressed it as soon as the page was served lost the key.
+    focused = 'niri msg --json focused-window | grep -qF \'"app_id":"io.jitsusama.WifiSignIn"\''
+    machine.wait_until_succeeds(in_session(focused), timeout=SIGNING_IN)
+    held_still(timedelta(seconds=20))
     photograph("sign-in", timeout=timedelta(seconds=20))
     # Its one button signs in, and the window closes as Lantern lets
     # the machine through, its notice taken back with it.
