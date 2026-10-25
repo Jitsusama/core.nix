@@ -142,6 +142,43 @@ fn a_disk_fallen_to_urgent_ends_the_rest_and_every_one_after_it() {
     crate::assert_exactly(clock.at(), 10.0);
 }
 
+/// A stop waits, blocked, for the guard to take it between passes, and
+/// systemd kills a guard that keeps it waiting, so a rest ends for it
+/// however strained the disk, and none follows. The stop is this thread's
+/// alone, so no other test sees it, and it's taken back before the end.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stop_ends_the_rest_and_every_one_after_it() {
+    let (rested, after) = std::thread::spawn(|| {
+        // Strained for five minutes, as a repack strains it, so a rest that
+        // ignored the stop would end only after them.
+        let (mut pacer, clock, _) =
+            paced(2, Some(|at| if at <= 300.0 { SLOW } else { QUICK }), never);
+        // SAFETY: set is a valid sigset_t; the signal goes to this thread,
+        // which blocks it, and is taken back before the thread ends.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+            libc::pthread_kill(libc::pthread_self(), libc::SIGTERM);
+            pacer.rest();
+            let rested = clock.at();
+            for _ in 0..10 {
+                pacer.unlinked();
+            }
+            let after = clock.at();
+            let mut taken = 0;
+            libc::sigwait(&raw const set, &raw mut taken);
+            (rested, after)
+        }
+    })
+    .join()
+    .unwrap();
+    assert!(rested < 2.0, "rested {rested} s with a stop waiting");
+    crate::assert_exactly(after, rested);
+}
+
 #[test]
 fn a_resting_pacer_beats_every_ten_seconds() {
     let (mut pacer, _, beats) = paced(1, Some(|_| QUICK), never);
