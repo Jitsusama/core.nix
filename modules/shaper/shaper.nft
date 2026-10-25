@@ -69,6 +69,11 @@ chain classify {
   socket cgroupv2 level 2 @bulk2 goto bulk
   socket cgroupv2 level 4 @bulk4 goto bulk
 
+  # A unit that ends with bytes still to send leaves them in a socket whose
+  # cgroup has gone from its set, so they match nothing; its connection
+  # keeps the class it had, where Tuple's stand-in had a fifth of its
+  # upload sent as best effort.
+  ct mark and 0x07000000 != 0 return
   goto best
 }
 
