@@ -12,8 +12,4 @@ Provider {
     what: "call"
 
     things: Tuple.controls.map(control => thing(Object.assign({ inside: "people" }, control)))
-
-    function home() {
-        return things.filter(row => row.key === "tuple:ringing" || row.key === "tuple:join");
-    }
 }

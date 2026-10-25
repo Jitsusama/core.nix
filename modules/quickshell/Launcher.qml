@@ -499,26 +499,39 @@ Scope {
             || (category.words ?? []).includes(said)) ?? null;
     }
 
-    // What a category holds, in its order: each thing the vocabulary names
-    // as it's found anywhere, and only those this machine has.
+    // The one order every list a category holds keeps: by name, numbers
+    // counting up first, capitals ignored (RSCH-20261025-U7566F), so where
+    // a thing is never has to be remembered, only its name.
+    function byName(a, b) {
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    }
+
+    // What a category holds, by name: each thing the vocabulary names as
+    // it's found anywhere, and only those this machine has, and the
+    // commands with them where the category says it holds those too.
     function members(category) {
-        if (category.id === "commands")
-            return commands();
-        return (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null);
+        const held = (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null)
+            .concat(category.commands ? commands() : []);
+        return held.sort((a, b) => byName(a.name, b.name));
     }
 
     // What a category holds, said after its name at home so scrolling
-    // through them says what's there: its members' names in its order, as
-    // their rows name them ("Agents, Tasks, Helpers, AI spend"), as many
+    // through them says what's there: its members' names by name, as
+    // their rows name them ("Agents, AI spend, Calls, Capture"), as many
     // whole as fit in `room` characters, but for one its own name already
     // says (Sound's Sound). Read from the vocabulary as home is made, so no
     // answer is asked for it.
     function holding(category, room) {
-        const names = category.id === "commands"
-            ? commands().map(row => row.start.trim() || row.key.replace(/^command:/, ""))
-            : (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "");
+        const names = (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "")
+            .concat(category.commands ? commands().map(row => row.start.trim()
+                || row.key.replace(/^command:/, "")) : []);
         const own = (category.name ?? category.id).toLowerCase();
-        const cased = names.filter(name => name.toLowerCase() !== own);
+        return listed(names.filter(name => name.toLowerCase() !== own).sort(byName), room);
+    }
+
+    // Names as one line, as many whole as fit in `room` characters, then
+    // an ellipsis for the rest.
+    function listed(cased, room) {
         const more = ", \u2026";
         let said = "";
         for (let at = 0; at < cased.length; at++) {
@@ -701,10 +714,9 @@ Scope {
     }
 
     // What a category's own answers make of what's typed in it: in
-    // computer, "battery". Commands answer nothing there, since what's
-    // typed finds a command, which finishes at the top.
+    // computer, "battery".
     function answeringIn(category, letters) {
-        if (letters.trim() === "" || category.id === "commands")
+        if (letters.trim() === "")
             return null;
         const names = (category.holds ?? []).map(id => Words.of(id).provider ?? id);
         for (const source of sources.filter(one => names.includes(one.settings.name))) {
@@ -793,11 +805,6 @@ Scope {
         }
         return rows;
     }
-
-    // How many of the likeliest picks the home screen shows, and what leads
-    // them: jitsusama.quickshell.launcher.home.
-    readonly property int likely: Providers.launcher.home.likely
-    readonly property var pinned: Providers.launcher.home.pinned
 
     // How tall the list is while the launcher's open: always its rows, and
     // home's gap when it has one.
@@ -1009,11 +1016,6 @@ Scope {
         return out;
     }
 
-    // The collections home keeps on its shelf, in this order, each with
-    // the chord that opens it: the ones reached most. The rest are a word
-    // away, and most have chords of their own.
-    readonly property var shelf: Providers.launcher.home.shelf
-
     // A row's own words, with those a machine adds for it
     // (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's finds
     // it. Made once for each row, and never twice for the same one.
@@ -1031,64 +1033,45 @@ Scope {
     // what it orders holds still while it's open.
     property var often: ({})
 
-    // With nothing typed, a shelf that's always the same shape: what's in
-    // front of you, then what holds while it's on (a mode, a screenshot
-    // just taken), then the likeliest picks, most picked first, and after a
-    // gap the shelf's collections, each its size and the chord that opens
-    // it, so the chords are learned by seeing them where they're used, and
-    // the categories, each saying what it holds, so scrolling down reminds
-    // Joel what there is.
+    // With nothing typed, home is the same five rows every time, each in
+    // its one place (RSCH-20261025-U7566F): Now first, saying what's on or
+    // waiting this moment, then Computer, Programs, Session and Tools by
+    // name, each saying what it holds, so one glance reminds Joel what
+    // there is. Each thing has one home among them, and nothing else is
+    // here: what's on is in Now, a mode in Session, a window in Programs'
+    // and Tools' Windows. What each row says is read as the launcher opens
+    // and held while it's open, so nothing moves under him.
     function home() {
-        const rows = [];
-        const shown = new Set();
-        for (const source of sources)
-            for (const row of source.home()) {
-                rows.push(row);
-                shown.add(Rank.identity(row));
-            }
-        const byKey = {};
-        const names = {};
-        for (const choice of choices) {
-            byKey[choice.key] = choice;
-            names[choice.key] = choice.name;
-        }
-        let added = 0;
-        // Those pinned lead, in their order, whether picked or not.
-        for (const key of pinned.concat(Rank.likeliest(often, names))) {
-            const choice = byKey[key];
-            // A collection is always below with the rest, in its own place,
-            // so it isn't listed again as a likely pick.
-            if (!choice || shown.has(Rank.identity(choice)) || choice.named)
-                continue;
-            rows.push(choice);
-            shown.add(Rank.identity(choice));
-            if (++added === likely)
-                break;
-        }
-        const kept = shelf.map(name => collections.find(source => source.settings.name === name))
-            .filter(source => !!source);
-        const places = kept.map(source => whole(source, false)).concat(browsed());
-        if (places.length > 0 && rows.length > 0)
-            places[0] = Object.assign({}, places[0], { gap: true });
-        return rows.concat(places);
+        const room = Math.floor((list.width - Theme.space.l - Theme.space.xxl
+            - Theme.space.xxl - Theme.space.m - Theme.space.l)
+            / Math.max(1, measure.advanceWidth("0")));
+        const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
+        // Now stands apart from the rest by a gap, as what's this moment.
+        if (rows.length > 1)
+            rows[1] = Object.assign({}, rows[1], { gap: true });
+        return rows;
     }
 
-    // The categories as home lists them, in the vocabulary's order, each
-    // with what it holds after its name, as much as the row has room for.
-    // One led by a collection the shelf already shows (Clipboard,
-    // Notifications) is left to the shelf's row, chord and all, so home
-    // never says the same thing twice.
-    function browsed() {
-        const glyphs = Theme.space.l + Theme.space.xxl;
-        const room = Math.floor((list.width - glyphs - Theme.space.xxl - Theme.space.m
-            - Theme.space.l) / Math.max(1, measure.advanceWidth("0")));
-        const shelved = row => {
-            const first = (row.category.holds ?? [])[0];
-            return first !== undefined && shelf.includes(Words.of(first).provider ?? first);
-        };
-        return categories.filter(row => !shelved(row)).map(row => Object.assign({}, row, {
-            count: holding(row.category, room > 0 ? room - row.name.length : Infinity)
-        }));
+    // One of home's rows: a category, saying what it holds, or a
+    // collection whole, Now saying what's in it by name.
+    function homeRow(id, room) {
+        const category = categories.find(row => row.category.id === id);
+        if (category)
+            return Object.assign({}, category, {
+                count: holding(category.category, room > 0 ? room - category.name.length
+                    : Infinity)
+            });
+        const source = collections.find(one => one.settings.name === id);
+        if (!source)
+            return null;
+        const row = whole(source, false);
+        if (id !== "on")
+            return row;
+        const names = source.everything().map(one => one.name);
+        return Object.assign({}, row, {
+            count: names.length === 0 ? Words.of("on").empty ?? ""
+                : listed(names, room > 0 ? room - row.name.length : Infinity)
+        });
     }
 
     // Where Tab at home goes: the first category, so browsing them takes

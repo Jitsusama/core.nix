@@ -123,7 +123,15 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
     """Say what names an unknown thing or glyph, and what has no place."""
     things = {entry["id"]: entry for entry in vocabulary["things"]}
     out: list[str] = []
-    placed: set[str] = set()
+    # What home lists itself is placed there, and a home row naming
+    # neither a category nor a thing is a slip.
+    categories = {category["id"] for category in vocabulary["categories"]}
+    placed: set[str] = set(vocabulary.get("home", []))
+    out.extend(
+        f"Home lists {shown}, which isn't named."
+        for shown in vocabulary.get("home", [])
+        if shown not in things and shown not in categories
+    )
     for category in vocabulary["categories"]:
         placed.update(category.get("holds", []))
         out.extend(stray(category, things))

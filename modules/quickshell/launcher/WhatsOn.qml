@@ -2,14 +2,14 @@
 // margin (Margin.qml), saying in words what the glyph only pictures. Each
 // row is the glyph in the colour the margin gives it, the piece's name, and
 // how it stands at the right, with what more there is to know in the footer
-// while it's picked. They're grouped by how much they ask, what
-// wants Joel first, so Super+O then Return deals with it, then what's on
-// air, then what was left on, each group a step apart. Return does a
-// piece's first action, and the right arrow steps into the rest.
+// while it's picked. They're listed by name, as every list in the launcher
+// is, so one keeps its place however many are on; what each asks of Joel
+// shows in its glyph's colour. Return does a piece's first action, and the
+// right arrow steps into the rest.
 //
 // It holds nothing of its own: the pieces are the margin's (Facts.qml), so
-// a glyph and its row come and go together, and it adds no row to a search
-// or to home, where the same things are found by their own words.
+// a glyph and its row come and go together, and it adds no row to a search.
+// It's home's first row, Now, saying what's in it by name.
 import qs
 import QtQuick
 import "../Marks.js" as Marks
@@ -23,7 +23,8 @@ Provider {
     // word, under the calendar clock.
     collection: Words.collection("on", { searched: false })
 
-    // How the groups follow one another, top to bottom.
+    // The kinds of piece it lists: what wants Joel, what's on air, and
+    // what was left on.
     readonly property var groups: ["wants", "onAir", "leftOn"]
     // What the thing is where the launcher has a row of its own for it, by
     // its mark, so one found in both is listed once (Rank.identity).
@@ -37,12 +38,13 @@ Provider {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active);
         const rows = [];
-        for (const kind of groups) {
-            const these = lit.filter(fact => fact.piece.kind === kind)
-                .sort((a, b) => a.entry.order - b.entry.order);
-            these.forEach((fact, index) => rows.push(made(fact, index === 0 && rows.length > 0)));
-        }
-        return rows;
+        // By name, as every list the launcher holds is, so each keeps one
+        // place however many are on (RSCH-20261025-U7566F); what each asks
+        // of Joel is its glyph's colour, not its place.
+        for (const kind of groups)
+            lit.filter(fact => fact.piece.kind === kind).forEach(fact => rows.push(made(fact)));
+        return rows.sort((a, b) => a.name.localeCompare(b.name, undefined,
+            { numeric: true, sensitivity: "base" }));
     }
     onAllChanged: changed()
 
@@ -50,7 +52,7 @@ Provider {
     // collection opens it here.
     readonly property var shell: ({ launcher: provider.launcher })
 
-    function made(fact, gap) {
+    function made(fact) {
         const piece = fact.piece;
         const actions = piece.actions.map(action => thing({
             key: `verb:on:${fact.entry.mark}:${action.name}`,
@@ -72,7 +74,6 @@ Provider {
             note: piece.context,
             glyph: Theme.glyph[fact.entry.mark],
             hue: Marks.tone(piece),
-            gap: gap,
             plain: actions.length === 0,
             verbs: actions.length > 1 ? () => actions.slice(1) : null,
             run: () => {

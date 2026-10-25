@@ -130,12 +130,6 @@ Scope {
         return questions.find(question => question === text || `${question}s` === text) ?? "";
     }
 
-    // What it puts on the home screen, with nothing typed, before the
-    // likeliest picks: the windows' provider gives the focused window.
-    function home() {
-        return [];
-    }
-
     // Things worth typing to try it, as its data: the field no longer
     // suggests them at home, since the commands category lists each typed
     // command with its form (Words.qml's commands).

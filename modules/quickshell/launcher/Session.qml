@@ -137,9 +137,4 @@ Provider {
             })] : null
         });
     }))
-
-    function home() {
-        return (Caffeinate.on ? [awake] : []).concat(Quiet.on ? [quiet] : [],
-            Recorder.recording ? [recording] : []);
-    }
 }

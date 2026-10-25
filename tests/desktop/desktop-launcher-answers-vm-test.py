@@ -807,22 +807,26 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     # what it holds; what's typed then searches only inside it.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("ai ")
+    machine.send_chars("tools ")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["ai"]
+            shown["held"] == ["tools"]
             and shown["typed"] == ""
             and {"Agents", "Tasks", "Helpers"} <= set(shown["rows"])
         )
     )
+    # What it holds is listed by name, capitals ignored, its commands with
+    # them.
+    held = desktop.showing()["rows"]
+    assert held[:2] == ["Agents", "AI spend"], held
     desktop.photograph("launcher-category")
     desktop.type_in("tas", selecting="Tasks")
     # The left arrow takes what's typed, then steps out with the word
     # put back.
     machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == ["ai"] and shown["typed"] == "")
+    desktop.launcher_until(lambda shown: shown["held"] == ["tools"] and shown["typed"] == "")
     machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ai")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "tools")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A question that starts with a category's word is still a question.
@@ -830,14 +834,14 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Every command, its form shown; Tab puts its start in the field,
-    # out at the top, where it's finished.
+    # Every command is in Tools, its form shown; Tab puts its start in
+    # the field, out at the top, where it's finished.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("commands ")
+    machine.send_chars("tools ")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["commands"]
+            shown["held"] == ["tools"]
             and {"ip \u27e8address or network\u27e9", "time in \u27e8place\u27e9"}
             <= set(shown["rows"])
         )

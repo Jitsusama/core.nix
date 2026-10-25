@@ -121,11 +121,6 @@ Provider {
             });
     }
 
-    // What's in front of you comes first at home, its verbs one arrow away.
-    function home() {
-        return things.filter(window => window.focused);
-    }
-
     // An act on a window, named, worded and worn as the vocabulary says
     // (Words.qml), in the state it's in: one word for Return, a short name.
     function act(key, state, fields) {

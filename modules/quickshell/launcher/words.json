@@ -1,4 +1,11 @@
 {
+  "home": [
+    "on",
+    "computer",
+    "applications",
+    "session",
+    "tools"
+  ],
   "categories": [
     {
       "id": "computer",
@@ -6,172 +13,76 @@
       "words": [
         "machine",
         "laptop",
-        "hardware"
-      ],
-      "holds": [
-        "machine",
-        "power",
-        "heat",
-        "waits",
-        "light",
-        "displays",
-        "cameras",
-        "keyboard",
-        "session:Lock",
-        "session:Suspend",
-        "session:Reboot",
-        "session:Power Off",
-        "session:Log Out",
-        "session:awake",
-        "session:profile"
-      ]
-    },
-    {
-      "id": "network",
-      "name": "Network",
-      "words": [
+        "hardware",
         "online",
         "connection"
       ],
       "holds": [
-        "wifi",
-        "bluetooth",
-        "traffic",
         "networks",
-        "wifi:radio",
+        "power",
+        "bluetooth",
         "bluetooth:radio",
+        "bluetooth:links",
+        "cameras",
+        "displays",
+        "heat",
+        "keyboard",
+        "waits",
+        "light",
+        "traffic",
+        "machine",
         "wifi:sign-in",
-        "bluetooth:links"
+        "sound",
+        "wifi",
+        "wifi:radio"
       ]
     },
     {
-      "id": "sound",
-      "name": "Sound",
-      "words": [],
-      "holds": [
-        "sound"
-      ]
-    },
-    {
-      "id": "now",
-      "name": "Now",
-      "words": [],
-      "holds": [
-        "on",
-        "agents",
-        "notices"
-      ]
-    },
-    {
-      "id": "ai",
-      "name": "AI",
-      "words": [],
-      "holds": [
-        "agents",
-        "quests",
-        "runs",
-        "spend",
-        "jobs"
-      ]
-    },
-    {
-      "id": "apps",
-      "name": "Apps",
+      "id": "session",
+      "name": "Session",
       "words": [
-        "applications"
+        "modes"
       ],
       "holds": [
-        "applications",
-        "windows"
+        "session:quiet",
+        "session:awake",
+        "session:Lock",
+        "session:Log Out",
+        "session:Power Off",
+        "session:profile",
+        "session:Reboot",
+        "session:Suspend"
       ]
     },
     {
-      "id": "shortcuts",
-      "name": "Shortcuts",
-      "words": [],
-      "holds": [
-        "shortcuts"
-      ]
-    },
-    {
-      "id": "notifications",
-      "name": "Notifications",
-      "words": [],
-      "holds": [
-        "notices",
-        "session:quiet"
-      ]
-    },
-    {
-      "id": "clipboard",
-      "name": "Clipboard",
-      "words": [],
-      "holds": [
-        "clipboard",
-        "copies:forget"
-      ]
-    },
-    {
-      "id": "weather",
-      "name": "Weather",
-      "words": [
-        "outside"
-      ],
-      "holds": [
-        "weather"
-      ]
-    },
-    {
-      "id": "time",
-      "name": "Time",
-      "words": [
-        "clock",
-        "calendar"
-      ],
-      "holds": [
-        "time",
-        "today"
-      ]
-    },
-    {
-      "id": "calls",
-      "name": "Calls",
-      "words": [],
-      "holds": [
-        "people",
-        "tuple"
-      ]
-    },
-    {
-      "id": "capture",
-      "name": "Capture",
-      "words": [
-        "recordings"
-      ],
-      "holds": [
-        "capture",
-        "gimp",
-        "swayimg",
-        "session:recording"
-      ]
-    },
-    {
-      "id": "typing",
-      "name": "Typing",
-      "words": [
-        "dictation"
-      ],
-      "holds": [
-        "emoji"
-      ]
-    },
-    {
-      "id": "commands",
-      "name": "Commands",
+      "id": "tools",
+      "name": "Tools",
+      "commands": true,
       "words": [
         "special"
       ],
-      "holds": []
+      "holds": [
+        "agents",
+        "spend",
+        "people",
+        "capture",
+        "clipboard",
+        "emoji",
+        "copies:forget",
+        "runs",
+        "jobs",
+        "notices",
+        "gimp",
+        "swayimg",
+        "shortcuts",
+        "session:recording",
+        "tuple",
+        "quests",
+        "time",
+        "today",
+        "weather",
+        "windows"
+      ]
     }
   ],
   "things": [
