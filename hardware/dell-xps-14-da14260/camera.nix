@@ -206,6 +206,8 @@ in
     height = 368;
     prepare = lib.getExe irPipeline;
   };
+  # The IR camera's sensor, for desk-facts to say of it.
+  jitsusama.v4l2loopback.holders.ir-camera.sensor = "i2c-HIMX1092:00";
   # Howdy's own threshold rejects every frame here: in the IR light, about
   # three in four of a frame's pixels read near black, face and all.
   services.howdy.settings.video.dark_threshold = lib.mkOverride 900 90;
@@ -303,6 +305,8 @@ in
     inherit device;
     unit = "camera.service";
     card = "Built-in Camera";
+    # The sensor the HAL reads, for desk-facts to say of it.
+    sensor = "i2c-OVTI08F4:00";
     ignoreUnits = [ "camera.service" ];
   };
   # The bridge carries the sensor's I2C over USB, so its drivers have to be up

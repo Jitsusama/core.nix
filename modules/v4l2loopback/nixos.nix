@@ -56,6 +56,17 @@ in
                 been given since isn't taken for this one. Null for any.
               '';
             };
+            sensor = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "i2c-OVTI08F4:00";
+              description = ''
+                The I2C device of the sensor the camera is relayed from, as
+                /sys/bus/i2c/devices names it, for desk-facts to say what it
+                is, which way it faces and whether it's powered, which it
+                reads without opening the camera. Null where there's none.
+              '';
+            };
             ignoreUnits = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];

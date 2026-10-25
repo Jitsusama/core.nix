@@ -2,8 +2,10 @@
 # plugs it in again, through QEMU's monitor, and reads what desk-facts says
 # of it each time, as a desk's speakers come and go when a laptop leaves it
 # and comes back. The card is QEMU's own USB audio device, which the kernel's
-# USB audio driver takes as it would a real one, on an xHCI controller. The
-# script is desk-facts-vm-test.py.
+# USB audio driver takes as it would a real one, on an xHCI controller.
+# Beside it is snd-dummy's card, which isn't on USB, as a laptop's own isn't,
+# and must be named by each of its devices and say what one plays at while
+# it plays. The script is desk-facts-vm-test.py.
 { self, pkgs }:
 pkgs.testers.runNixOSTest {
   name = "desk-facts";
@@ -17,6 +19,8 @@ pkgs.testers.runNixOSTest {
       "-device qemu-xhci,id=desk"
       "-audiodev none,id=nowhere"
     ];
+    boot.kernelModules = [ "snd-dummy" ];
+    environment.systemPackages = [ pkgs.alsa-utils ];
   };
 
   # What VM tests' scripts share (tests/lib).
