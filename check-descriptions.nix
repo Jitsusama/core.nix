@@ -210,6 +210,9 @@
   every-check-says-what-it-proves = ''
     every check says here what it proves, and every description here names a check
   '';
+  every-folder-says-what-it-holds = ''
+    every folder says what goes in it, but those still waiting for their note
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';
