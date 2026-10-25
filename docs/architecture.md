@@ -163,11 +163,11 @@ fixed:
 | `homeModules`                | home-manager modules and roles                                  |
 | `darwinModules`              | nix-darwin modules and roles                                    |
 | `nixosModules`               | NixOS modules, roles and hardware                               |
-| `packages`                   | what core builds itself: the kernel, for x86_64-linux           |
+| `packages`                   | what core builds itself, for x86_64-linux: the kernel, the guide and its stick |
 | `checks`                     | every module and role evaluated, the examples, formatting       |
 | `formatter`                  | treefmt, for `nix fmt`                                          |
 | `treefmtModules`             | the linters core holds itself to, for a repository's `nix fmt`  |
-| `lib`                        | `guide`, a machine's stick, and `clippy`, core's Rust lints     |
+| `lib`                        | `guide`, a machine's stick; `clippy`, core's Rust lints; `vmHelpers`, what VM tests share |
 | `home-manager`, `nix-darwin` | what the machine repositories imported before the outputs above |
 | `wallpapers`, `neovim-pi`    | inputs the machine repositories reached through core.nix        |
 

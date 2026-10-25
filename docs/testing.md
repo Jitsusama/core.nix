@@ -101,9 +101,10 @@ written beside each in `tests/`.
 ### Examples
 
 Whole machines that use core only through its outputs, as a machine
-repository does. Between them they import every role, every module and the
-hardware core knows, so a module that sets an option that doesn't exist, or
-relies on one nothing brings, fails here.
+repository does. Between them they import every role and the Dell's
+hardware, so a module that sets an option that doesn't exist, or relies on
+one nothing brings, fails here; the Surface's hardware is evaluated by its
+own checks.
 
 ### Programs
 
@@ -164,21 +165,14 @@ path through each connection is enough; the many cases of a behaviour, such
 as a search's ranking or a guard's thresholds, go in the tiers below, where
 they run in milliseconds.
 
-Its script is Python in a file of its own, `tests/<name>-vm-test.py`, which
-the test reads with `builtins.readFile` and `skipTypeCheck = true`, so ruff
-and mypy read it as strictly as any other Python, as `nix fmt` runs them.
-The driver gives the script its names as globals; for type checkers, it
-imports them from `tests/driver_names.pyi` under `if TYPE_CHECKING:`, and
-mypy checks every call against the driver's own types before a machine
-boots. What the script needs from Nix comes as a program on the machine's
-path, or as one JSON file of values it reads at its top, never spliced into
-its text. Every subtest stays at the top of the file, where `run-subtests`
-finds it.
-
-A test written for pytest instead, as `tests/network-revive-vm-test.py`
-is, is a file of test functions that pytest runs inside the driver,
-through `tests/lib/vm_pytest.py`; its `testScript` is the one line
-`import vm_pytest; vm_pytest.run(globals(), "${./<name>-vm-test.py}")`.
+Its tests are Python in a file of their own, `tests/<name>-vm-test.py`: test
+functions that pytest runs inside the driver, through
+`tests/lib/vm_pytest.py`, with `vm-helpers.nix` in the test's
+`extraPythonPackages`. Its `testScript` is the one line
+`import vm_pytest; vm_pytest.run(globals(), "${./<name>-vm-test.py}")`,
+with `skipTypeCheck = true`, since ruff and mypy read the file as strictly
+as any other Python when `nix fmt` runs them, against the driver's own
+types. `tests/lid-vm-test.py` is a small one to copy.
 The driver's machines are fixtures (`machine`, `machines`, `driver`), and
 each state a test starts from, booted or with the network let down, is a
 fixture of its own, made once a run however many tests ask for it. What
@@ -186,7 +180,9 @@ the tests need from Nix is one JSON file, handed to `run` as `values=`,
 which a test reads parsed through the `values` fixture, as
 `tests/signing.nix` does. Each
 test is one of the driver's subtests in the log, named by its docstring's
-first line, so a test runs alone, after only what it asks for.
+first line, so a test runs alone, after only what it asks for. A program
+the test runs on the machine is a file beside it too, never a script in a
+Nix string, so a linter reads it.
 `run-subtests` knows such a test by its `vm_pytest.run` and runs its script
 whole, telling pytest to pick the tests whose function names hold the words
 (a word's spaces read as underscores); with no words, pytest lists the tests
@@ -197,6 +193,10 @@ run-subtests vm-network-revives-units           # list its tests
 run-subtests vm-network-revives-units reload    # run those named, and what they need
 PYTEST_ADDOPTS=-x run-subtests vm-commits-are-signed terminal
 ```
+
+One older test, usb-wake, is still one script, its subtests at the top of
+the file in `with subtest(...)`, where `run-subtests` cuts it. It moves to
+pytest in its turn, and nothing new is written that way.
 
 A selection that picks no test fails the run, so a mistyped name can't pass
 for a proof. A failed assert says what each side held, and the run ends by
