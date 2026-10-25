@@ -683,6 +683,10 @@
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run
   '';
+  the-macs-faces-are-the-themes = ''
+    the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
+    it, gives the theme's sans or monospaced face, carrying the name asked for
+  '';
   the-margins-glyphs-stand-level = ''
     every glyph in the margin stands one height on the gap's middle line, read from the right by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
