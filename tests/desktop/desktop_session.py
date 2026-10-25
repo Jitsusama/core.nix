@@ -26,7 +26,7 @@ from PIL import Image, ImageStat
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from test_driver.machine import QemuMachine
+    from test_driver.machine import BaseMachine, QemuMachine
 
 
 class Values(TypedDict):
@@ -218,6 +218,25 @@ def changed_at_the_top(before: Image.Image, after: Image.Image) -> tuple[float, 
     assert top, "nothing changed along the top"
     xs, ys = [x for x, _ in top], [y for _, y in top]
     return (min(xs) + max(xs)) / 2 / width, (min(ys) + max(ys)) / 2 / height
+
+
+def started(machine: BaseMachine, values: Values) -> Desktop:
+    """Give the desktop on a test's machine, started, with every wait paced to the host.
+
+    An area written for pytest makes its `desktop` fixture of this, once a run. A busy host is
+    slower at everything, so every wait allows for how busy it is as it starts.
+    """
+    assert isinstance(machine, test_driver.machine.QemuMachine), "the desktop is QEMU's"
+    desktop = Desktop(machine, values)
+    # The machines wait through the driver's machine module's retry, which this replaces; the
+    # globals a script would have had are only somewhere to put the copy it also makes.
+    vm_helpers.pace_the_driver({}, describe=desktop.described)
+    print(
+        f"waits allow {vm_helpers.pace(vm_helpers.busyness()):.1f} times as long as they say,"
+        " for now"
+    )
+    desktop.start()
+    return desktop
 
 
 class Desktop:  # The helpers every area shares, as one machine's desktop.

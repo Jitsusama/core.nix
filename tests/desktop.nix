@@ -38,6 +38,11 @@ let
   account = "jitsusama";
   secret = "correct-horse";
 
+  # The areas written for pytest, each a file of tests that ask for the
+  # desktop as a fixture; the rest are still scripts run after the prelude,
+  # and move one at a time.
+  pytestAreas = [ "captures-and-locks" ];
+
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
   certificates = pkgs.runCommand "stand-in-certificates" { nativeBuildInputs = [ pkgs.openssl ]; } ''
@@ -560,10 +565,19 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-      builtins.readFile ./desktop/desktop_prelude.py
-      + builtins.readFile ./desktop/desktop-${area}-vm-test.py
-    );
+    # An area written for pytest runs inside the driver with the values as
+    # its fixture; one still a script runs after the prelude, which reads
+    # them from the file put in place of its marker.
+    if builtins.elem area pytestAreas then
+      ''
+        import vm_pytest
+        vm_pytest.run(globals(), "${./desktop/desktop-${area}-vm-test.py}", values="${values}")
+      ''
+    else
+      builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+        builtins.readFile ./desktop/desktop_prelude.py
+        + builtins.readFile ./desktop/desktop-${area}-vm-test.py
+      );
   # nix fmt holds the script to mypy --strict against the driver's own types,
   # through driver_names.pyi, which the driver's lighter check can't find.
   skipTypeCheck = true;

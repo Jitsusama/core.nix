@@ -1,478 +1,512 @@
 """The desktop test's captures and locks area.
 
 Here the desktop captures and locks: screenshots, recordings, the camera, the lock screen,
-polkit's prompt and the askpass. tests/desktop.nix runs it after desktop_prelude.py, the boot
-and the helpers every area shares, so the names it takes from there are imported only for type
-checkers.
+polkit's prompt and the askpass. tests/desktop.nix runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks
+for the desktop, started once a run (desktop_session.py), and leaves it as it found it:
+unlocked, the shell running, nothing of its own still open, so any test runs alone.
 """
+
+from __future__ import annotations
 
 import json
 import re
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
+
+import desktop_session
+import pytest
+from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
 
 if TYPE_CHECKING:
-    from desktop_prelude import (
-        ACCOUNT,
-        ASKING,
-        FFMPEG_HEADLESS,
-        LAUNCHER_OPEN,
-        PICTURE_COLOURS,
-        SECRET,
-        SIGNING,
-        STARTING,
-        answer,
-        answered_with,
-        as_account,
-        ask,
-        capture,
-        captured,
-        colours_and_light,
-        in_session,
-        launcher_until,
-        mark,
-        newest_size,
-        photograph,
-        pictures,
-        reported,
-        showing,
-        step_in,
-        told,
-        type_in,
-    )
-    from driver_names import machine, retry, subtest, t
+    from desktop_session import Desktop
+    from test_driver.machine import BaseMachine
 
-with subtest("Print opens Capture, where Return takes the whole screen"):
-    capture()
-    screen = showing()["selected"]
-    t.assertEqual(screen["name"], "The whole screen")
-    t.assertEqual(screen["chord"], "\u21e7 Print", "the whole screen's row shows its chord")
-    photograph("capture")
-    with told("shows card Screenshot captured"), captured():
-        machine.send_key("ret")
+# The camera's window, which the viewfinder is.
+CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
+# Where the shell keeps the notices it holds.
+KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+# Where lock-screen and the shell say whether the screens are locked.
+LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
+# How long a camera may take to wake, or a recording to start, stop or be saved.
+WAKING = timedelta(seconds=60)
 
-with subtest("Capture takes a window found by its title, on any workspace"):
-    as_account("niri msg action spawn -- kitty --title Seashells")
-    machine.wait_until_succeeds(
-        in_session('niri msg --json windows | grep -qF \'"title":"Seashells"\''),
-        timeout=STARTING,
-    )
+
+@pytest.fixture(scope="module")
+def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
+    """Give the desktop, started once a run."""
+    return desktop_session.started(machine, cast("desktop_session.Values", values))
+
+
+def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Desktop) -> None:
+    """Print opens Capture, where Return takes the whole screen."""
+    desktop.capture()
+    screen = desktop.showing()["selected"]
+    assert screen["name"] == "The whole screen"
+    assert screen["chord"] == "\u21e7 Print", "the whole screen's row shows its chord"
+    desktop.photograph("capture")
+    with desktop.told("shows card Screenshot captured"), desktop.captured():
+        desktop.machine.send_key("ret")
+
+
+def test_capture_takes_a_window_found_by_its_title_on_any_workspace(desktop: Desktop) -> None:
+    """Capture takes a window found by its title, on any workspace."""
+    desktop.opened("Seashells")
     # The window the keys were in, though niri says none has focus
     # while the launcher has the keys.
-    capture()
-    type_in("this window", selecting="This window \u00b7 Seashells")
-    t.assertEqual(showing()["selected"]["chord"], "Alt Print")
-    with captured():
-        machine.send_key("ret")
-    windows = json.loads(as_account("niri msg --json windows"))
-    seashells = next(w for w in windows if w["title"] == "Seashells")
-    t.assertEqual(newest_size(), tuple(seashells["layout"]["window_size"]))
+    desktop.capture()
+    desktop.type_in("this window", selecting="This window \u00b7 Seashells")
+    assert desktop.showing()["selected"]["chord"] == "Alt Print"
+    with desktop.captured():
+        desktop.machine.send_key("ret")
+    seashells = desktop.window_titled("Seashells")
+    assert desktop.newest_size() == tuple(seashells["layout"]["window_size"])
     # Moved to a workspace of its own and left there.
-    as_account("niri msg action move-window-to-workspace-down")
-    as_account("niri msg action focus-workspace-up")
-    capture()
-    type_in("seashells", selecting="Seashells")
-    with captured():
-        machine.send_key("ret")
-    windows = json.loads(as_account("niri msg --json windows"))
-    seashells = next(w for w in windows if w["title"] == "Seashells")
-    t.assertEqual(newest_size(), tuple(seashells["layout"]["window_size"]))
-    as_account(f"niri msg action close-window --id {seashells['id']}")
+    desktop.as_account("niri msg action move-window-to-workspace-down")
+    desktop.as_account("niri msg action focus-workspace-up")
+    desktop.capture()
+    desktop.type_in("seashells", selecting="Seashells")
+    with desktop.captured():
+        desktop.machine.send_key("ret")
+    seashells = desktop.window_titled("Seashells")
+    assert desktop.newest_size() == tuple(seashells["layout"]["window_size"])
+    desktop.close(seashells)
 
-with subtest("Capture records the window, and says why when niri can't share it"):
-    as_account("niri msg action spawn -- kitty --title Tidepool")
-    machine.wait_until_succeeds(
-        in_session('niri msg --json windows | grep -qF \'"title":"Tidepool"\''),
-        timeout=STARTING,
-    )
-    capture()
-    type_in("record this window", selecting="Record this window \u00b7 Tidepool")
-    t.assertEqual(showing()["selected"]["chord"], "Ctrl Alt Print")
+
+def test_capture_records_the_window_and_says_why_when_niri_cant_share_it(
+    desktop: Desktop,
+) -> None:
+    """Capture records the window, and says why when niri can't share it."""
+    pool = desktop.opened("Tidepool")
+    desktop.capture()
+    desktop.type_in("record this window", selecting="Record this window \u00b7 Tidepool")
+    assert desktop.showing()["selected"]["chord"] == "Ctrl Alt Print"
     # niri here offers no screencast on the session bus, so the
     # recording can't start, and the notice says why rather than it
     # failing unseen.
-    with told("shows card The window could not be recorded"):
-        machine.send_key("ret")
-    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+    with desktop.told("shows card The window could not be recorded"):
+        desktop.machine.send_key("ret")
     print(
-        machine.wait_until_succeeds(
-            in_session(kept + ' | grep -o \'"summary":"The window could not[^}]*\''),
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(KEPT + ' | grep -o \'"summary":"The window could not[^}]*\''),
             timeout=timedelta(seconds=10),
         )
     )
-    windows = json.loads(as_account("niri msg --json windows"))
-    pool = next(w for w in windows if w["title"] == "Tidepool")
-    as_account(f"niri msg action close-window --id {pool['id']}")
+    desktop.close(pool)
 
-with subtest("A region is picked by the keys, and Escape goes back to Capture"):
+
+def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
+    desktop: Desktop,
+) -> None:
+    """A region is picked by the keys, and Escape goes back to Capture."""
+    machine = desktop.machine
     # The picker covers the screen niri gives it, whatever cage leaves.
-    logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
+    logical = json.loads(desktop.as_account("niri msg --json focused-output"))["logical"]
     wide, high = logical["width"], logical["height"]
     # It opens on the middle quarter; an arrow moves it a step, and
     # Shift and an arrow size it from its bottom right corner.
     width, height = round(wide / 2), round(high / 2)
     x, y = round((wide - width) / 2), round((high - height) / 2)
+    pictures = desktop.pictures
     pictures_before = int(machine.succeed(f"ls {pictures}/*.png | wc -l"))
+
+    def picker() -> None:
+        """Open Capture's region picker, ready for the keys."""
+        desktop.capture()
+        desktop.type_in("region", selecting="A region")
+        with desktop.told("keys picker"):
+            machine.send_key("ret")
+
+    def pictures_taken(count: int) -> None:
+        """Wait until there are so many more pictures than there were."""
+        machine.wait_until_succeeds(
+            f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + count}",
+            timeout=timedelta(seconds=15),
+        )
 
     # Return at once takes the box it opened on, which has to be there
     # from its first frame, though the window learns its size later.
-    capture()
-    type_in("region", selecting="A region")
-    with told("keys picker"):
+    picker()
+    with desktop.told(f"picked {x},{y} {width}x{height}"):
         machine.send_key("ret")
-    with told(f"picked {x},{y} {width}x{height}"):
-        machine.send_key("ret")
-    machine.wait_until_succeeds(
-        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 1}",
-        timeout=timedelta(seconds=15),
-    )
-    t.assertEqual(newest_size(), (width, height))
+    pictures_taken(1)
+    assert desktop.newest_size() == (width, height)
 
-    capture()
-    type_in("region", selecting="A region")
-    with told("keys picker"):
-        machine.send_key("ret")
+    picker()
     for key in ("left", "up", "shift-right", "shift-right"):
         machine.send_key(key)
     # The pictures before leave their notices, which go on their own.
-    machine.wait_until_fails(
-        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
-    photograph("picker")
-    with told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.photograph("picker")
+    with desktop.told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
         machine.send_key("ret")
-    machine.wait_until_succeeds(
-        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 2}",
-        timeout=timedelta(seconds=15),
-    )
-    t.assertEqual(newest_size(), (width + 32, height))
+    pictures_taken(2)
+    assert desktop.newest_size() == (width + 32, height)
 
     # One cell's letters and another's make the box between them.
-    capture()
-    type_in("region", selecting="A region")
-    with told("keys picker"):
-        machine.send_key("ret")
-    with told("picker typed b"):
+    picker()
+    with desktop.told("picker typed b"):
         machine.send_chars("aab")
-    machine.wait_until_fails(
-        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
-    photograph("picker-cells")
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.photograph("picker-cells")
     rows = round(16 * high / wide)
-    with told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
+    with desktop.told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
         machine.send_chars("b\n")
 
     # Escape clears the letters typed first, then goes back to Capture,
     # taking nothing.
-    capture()
-    type_in("region", selecting="A region")
-    with told("keys picker"):
-        machine.send_key("ret")
+    picker()
     machine.send_chars("c")
     machine.send_key("esc")
-    with told("gone picker"):
+    with desktop.told("gone picker"):
         machine.send_key("esc")
-    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["captures"])
+    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["captures"])
     machine.send_key("esc")
-    launcher_until(lambda shown: not shown["open"])
+    desktop.launcher_until(lambda shown: not shown["open"])
 
-with subtest("the camera takes a picture and a video by the keys"):
-    camera = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
-    capture()
-    type_in("picture from the camera", selecting="camera")
-    machine.send_key("ret")
-    machine.wait_until_succeeds(in_session(camera), timeout=timedelta(seconds=60))
-    # Return before the camera wakes takes the picture once it has, and then the viewfinder
-    # goes, as a screenshot's would.
-    with told("shows card Picture copied", timeout=timedelta(seconds=60)):
-        machine.send_key("ret")
-    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=10))
 
-    def viewfinder(opened_for: str) -> None:
-        """Open the camera again from Capture's row for it."""
-        capture()
-        type_in(opened_for, selecting=f"A {opened_for}")
-        machine.send_key("ret")
-        machine.wait_until_succeeds(in_session(camera), timeout=timedelta(seconds=60))
+class Camera:
+    """The machine's stand-in camera, its viewfinder, and what it keeps."""
 
-    def probe(entries: str, files: str) -> str:
+    def __init__(self, desktop: Desktop) -> None:
+        """Use the camera on that desktop."""
+        self.desktop = desktop
+        self.machine = desktop.machine
+        self.ffmpeg = f"{desktop.values['ffmpeg_headless']}/bin"
+        self.pictures = f"/home/{desktop.account}/Pictures/Camera"
+        self.videos = f"/home/{desktop.account}/Videos/Camera"
+
+    def viewfinder(self, opened_for: str) -> None:
+        """Open the camera from Capture's row for it."""
+        self.desktop.capture()
+        self.desktop.type_in(opened_for, selecting=f"A {opened_for}")
+        self.machine.send_key("ret")
+        self.machine.wait_until_succeeds(self.desktop.in_session(CAMERA), timeout=WAKING)
+
+    def gone(self) -> None:
+        """Wait until the viewfinder has gone."""
+        self.machine.wait_until_fails(
+            self.desktop.in_session(CAMERA), timeout=timedelta(seconds=30)
+        )
+
+    def probe(self, entries: str, files: str) -> str:
         """Give what ffprobe says of each file there, which it reads one at a time."""
-        ffprobe = f"{FFMPEG_HEADLESS}/bin/ffprobe -v error -of csv=p=0"
+        ffprobe = f"{self.ffmpeg}/ffprobe -v error -of csv=p=0"
         each = f'for f in {files}; do {ffprobe} -show_entries {entries} "$f" || exit; done'
-        return machine.succeed(each)
+        return self.machine.succeed(each)
 
-    sizes = probe("stream=width,height", f"/home/{ACCOUNT}/Pictures/Camera/*.jpg")
-    t.assertEqual(sizes.split(), ["640,480"])
-
-    videos = f"/home/{ACCOUNT}/Videos/Camera"
-    # The notices kept, none until one that isn't transient arrives.
-    kept = in_session(
-        "find ~/.local/state/quickshell -name notices.json -exec cat {} + 2>/dev/null; true"
-    )
-
-    def recording(count: int, last: bool) -> bool:
+    def recording(self, count: int, last: bool) -> bool:  # As retry calls it.
         """Say whether there are so many videos, the newest grown, so recording."""
+        kept = self.desktop.in_session(
+            "find ~/.local/state/quickshell -name notices.json -exec cat {} + 2>/dev/null; true"
+        )
         failed = re.search(
-            r'"summary":"The video could not be recorded",[^}]*', machine.succeed(kept)
+            r'"summary":"The video could not be recorded",[^}]*', self.machine.succeed(kept)
         )
         if failed is not None:
             # What the recording said, and who had the camera then.
-            print(machine.execute("cat /run/user/1000/camera-recording.log")[1])
+            print(self.machine.execute("cat /run/user/1000/camera-recording.log")[1])
             holders = (
                 "for p in /proc/[0-9]*; do"
                 " ls -l $p/fd 2>/dev/null | grep -q video9 && echo open $p $(cat $p/comm);"
                 " grep -qs video9 $p/maps && echo mapped $p $(cat $p/comm); done; true"
             )
-            print(machine.succeed(holders))
+            print(self.machine.succeed(holders))
             raise AssertionError(failed.group(0))
         grown = (
-            f"[ $(ls {videos}/*.mp4 | wc -l) = {count} ]"
-            f' && [ $(stat -c %s "$(ls -t {videos}/*.mp4 | head -1)") -gt 50000 ]'
+            f"[ $(ls {self.videos}/*.mp4 | wc -l) = {count} ]"
+            f' && [ $(stat -c %s "$(ls -t {self.videos}/*.mp4 | head -1)") -gt 50000 ]'
         )
-        status, _ = machine.execute(grown)
+        status, _ = self.machine.execute(grown)
         if last and status != 0:
-            print(machine.execute("ps -eww -o pid,args | grep -aE 'ffmpeg|mpv|sh -c'")[1])
-            print(as_account("pw-top -b -n 2 || true"))
-            print(machine.execute(f"ls -la /run/user/1000 {videos}")[1])
-            print(machine.execute("cat /run/user/1000/camera-recording.log")[1])
-            print(as_account("journalctl --user --no-pager -n 60 -o cat"))
+            self.said()
         assert not last or status == 0, f"video {count} never grew"
         return status == 0
 
-    def saved(key: str) -> None:
+    def saved(self, key: str) -> None:
         """Press a key that stops the recording, and wait for the notice that it's saved.
 
         A run has gone a minute without it, so what the recording was doing then is printed.
         """
         try:
-            with told("shows card Video saved", timeout=timedelta(seconds=60)):
-                machine.send_key(key)
+            with self.desktop.told("shows card Video saved", timeout=WAKING):
+                self.machine.send_key(key)
         except AssertionError:
-            print(
-                machine.execute("ps -eww -o pid,stat,wchan:32,args | grep -aE '[f]fmpeg|[m]pv'")[1]
-            )
-            print(
-                machine.execute(
-                    "ls -la /run/user/1000/camera-*; cat /run/user/1000/camera-recording.log"
-                )[1]
-            )
-            print(as_account("pw-top -b -n 2 || true"))
-            print(as_account("journalctl --user --no-pager -n 60 -o cat"))
+            self.said()
             raise
 
-    # Tab makes Return record, and Return again stops it, the viewfinder going once the video
-    # is saved.
-    viewfinder("picture from the camera")
-    machine.send_key("tab")
-    machine.send_key("ret")
-    retry(lambda last: recording(1, last), timeout=timedelta(seconds=60))
-    photograph("camera")
-    saved("ret")
-    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=30))
-    # Escape while recording saves the video, then closes.
-    viewfinder("video from the camera")
-    machine.send_key("ret")
-    retry(lambda last: recording(2, last), timeout=timedelta(seconds=60))
-    saved("esc")
-    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=30))
-    streams = probe("stream=codec_name", f"{videos}/*.mp4")
-    t.assertEqual(streams.split(), ["h264", "aac"] * 2)
+    def said(self) -> None:
+        """Print what the recording and its programs were doing, for a wait that ran out."""
+        print(self.machine.execute("ps -eww -o pid,stat,wchan:32,args | grep -aE 'ffmpeg|mpv'")[1])
+        print(self.machine.execute(f"ls -la /run/user/1000 {self.videos}")[1])
+        print(self.machine.execute("cat /run/user/1000/camera-recording.log")[1])
+        print(self.desktop.as_account("pw-top -b -n 2 || true"))
+        print(self.desktop.as_account("journalctl --user --no-pager -n 60 -o cat"))
 
-    # A picture is kept as others see Joel, not mirrored as the viewfinder
-    # shows him: it matches what the camera gives better than its mirror.
-    ffmpeg = f"{FFMPEG_HEADLESS}/bin/ffmpeg"
-    machine.succeed(f"{ffmpeg} -v error -f v4l2 -i /dev/video9 -frames:v 1 -y /tmp/given.png")
-    picture = machine.succeed(f"ls /home/{ACCOUNT}/Pictures/Camera/*.jpg | head -1").strip()
-
-    def likeness(turn: str) -> float:
-        """Give how alike the picture kept and the camera's own are, turned this way."""
+    def likeness(self, picture: str, turn: str) -> float:
+        """Give how alike a picture kept and the camera's own are, the camera's turned so."""
         compared = f"[1]{turn}format=yuv420p[given];[0]format=yuv420p[kept];[kept][given]psnr"
-        said = machine.succeed(
-            f'{ffmpeg} -i "{picture}" -i /tmp/given.png -lavfi "{compared}" -f null - 2>&1'
+        said = self.machine.succeed(
+            f'{self.ffmpeg}/ffmpeg -i "{picture}" -i /tmp/given.png -lavfi "{compared}"'
+            " -f null - 2>&1"
         )
         found = re.search(r"average:([0-9.]+)", said)
         assert found is not None, said
         return float(found.group(1))
 
-    t.assertGreater(likeness(""), likeness("hflip,") + 3)
 
-with subtest("a camera is a thing: its parts a step in, and Return its viewfinder"):
-    camera = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
+def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) -> None:
+    """The camera takes a picture and a video by the keys, and keeps a picture unmirrored."""
+    camera = Camera(desktop)
+    machine = desktop.machine
+    camera.viewfinder("picture from the camera")
+    # Return before the camera wakes takes the picture once it has, and then the viewfinder
+    # goes, as a screenshot's would.
+    with desktop.told("shows card Picture copied", timeout=WAKING):
+        machine.send_key("ret")
+    camera.gone()
+    sizes = camera.probe("stream=width,height", f"{camera.pictures}/*.jpg")
+    assert sizes.split() == ["640,480"]
+
+    # Tab makes Return record, and Return again stops it, the viewfinder going once the video
+    # is saved.
+    camera.viewfinder("picture from the camera")
+    machine.send_key("tab")
+    machine.send_key("ret")
+    retry(lambda last: camera.recording(1, last), timeout=WAKING)
+    desktop.photograph("camera")
+    camera.saved("ret")
+    camera.gone()
+    # Escape while recording saves the video, then closes.
+    camera.viewfinder("video from the camera")
+    machine.send_key("ret")
+    retry(lambda last: camera.recording(2, last), timeout=WAKING)
+    camera.saved("esc")
+    camera.gone()
+    streams = camera.probe("stream=codec_name", f"{camera.videos}/*.mp4")
+    assert streams.split() == ["h264", "aac"] * 2
+
+    # A picture is kept as others see Joel, not mirrored as the viewfinder
+    # shows him: it matches what the camera gives better than its mirror.
+    machine.succeed(
+        f"{camera.ffmpeg}/ffmpeg -v error -f v4l2 -i /dev/video9 -frames:v 1 -y /tmp/given.png"
+    )
+    picture = machine.succeed(f"ls {camera.pictures}/*.jpg | head -1").strip()
+    assert camera.likeness(picture, "") > camera.likeness(picture, "hflip,") + 3
+
+
+def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
+    desktop: Desktop,
+) -> None:
+    """A camera is a thing: its parts a step in, and Return its viewfinder."""
+    machine = desktop.machine
     holders = "/run/camera-holders/camera"
     # Written whole, as a loopback's holders are, so the stand-in is the machine's own camera,
     # held by a program.
     machine.succeed(f"echo chrome > {holders}.1 && mv {holders}.1 {holders}")
     # The answer leads to the camera, rather than saying its parts again.
-    answer("who has the camera")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
-    step_in()
-    t.assertEqual(showing()["rows"], ["Built-in camera"])
+    desktop.answer("who has the camera")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
+    )
+    desktop.step_in()
+    assert desktop.showing()["rows"] == ["Built-in camera"]
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    answer("built-in camera")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
-    t.assertEqual(showing()["selected"]["side"], "in use by chrome")
-    step_in()
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.answer("built-in camera")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
+    assert desktop.showing()["selected"]["side"] == "in use by chrome"
+    desktop.step_in()
     # Who has it first, then what it gives, from the loopback's own file in sysfs.
     # The rate is the loopback's own, whatever the stand-in's writer asks.
-    parts = [thing["reads"] for thing in showing()["things"]]
-    t.assertEqual(len(parts), 2, parts)
-    t.assertEqual(parts[0], "In use \u00b7 chrome")
-    t.assertRegex(parts[1], "^Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+$")
-    photograph("launcher-camera")
-    step_in()
-    t.assertEqual(showing()["rows"], ["chrome"])
+    parts = [thing["reads"] for thing in desktop.showing()["things"]]
+    assert len(parts) == 2, parts  # noqa: PLR2004 # Who has it, and what it gives.
+    assert parts[0] == "In use \u00b7 chrome"
+    assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[1]), parts
+    desktop.photograph("launcher-camera")
+    desktop.step_in()
+    assert desktop.showing()["rows"] == ["chrome"]
     machine.send_key("left")
-    launcher_until(lambda shown: len(shown["held"]) == 1)
+    desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
     machine.send_key("left")
-    launcher_until(lambda shown: shown["held"] == [])
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
+    desktop.launcher_until(lambda shown: shown["held"] == [])
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
     machine.send_key("ret")
-    machine.wait_until_succeeds(in_session(camera), timeout=timedelta(seconds=60))
+    machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=30))
+    machine.wait_until_fails(desktop.in_session(CAMERA), timeout=timedelta(seconds=30))
     machine.succeed(f"rm {holders}")
-    # Its notice goes before the lock screen is looked at.
-    machine.wait_until_fails(
-        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
-    )
+    # Its notice goes before anything after looks at the screen.
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 
-with subtest("the lock screen takes only the right password"):
-    with told("keys lock"):
+
+def test_the_lock_screen_takes_only_the_right_password(desktop: Desktop) -> None:
+    """The lock screen takes only the right password, and shows its picture meanwhile."""
+    machine = desktop.machine
+    with desktop.told("keys lock"):
         machine.send_key("meta_l-l")
-    as_account("qs ipc call lock isLocked | grep -q true")
+    desktop.as_account("qs ipc call lock isLocked | grep -q true")
     # PAM answers a wrong password after a delay, which the lock says.
-    with told("refused lock"):
+    with desktop.told("refused lock"):
         machine.send_chars("wrong-password\n")
-    as_account("qs ipc call lock isLocked | grep -q true")
+    desktop.as_account("qs ipc call lock isLocked | grep -q true")
 
     # Its picture fades in, as the wallpaper's does.
-    def pictured(last: bool) -> bool:
+    def pictured(last: bool) -> bool:  # As retry calls it.
         """Say whether the lock screen shows its picture rather than a flat colour."""
-        _, colours, _ = colours_and_light("locked")
-        if last:
-            t.assertGreater(
-                colours, PICTURE_COLOURS, "the lock screen shows a flat colour, not its picture"
-            )
+        _, colours, _ = desktop.colours_and_light("locked")
+        assert not last or colours > PICTURE_COLOURS, "the lock screen shows a flat colour"
         return colours > PICTURE_COLOURS
 
     retry(pictured, timeout=timedelta(seconds=30))
-    with told("released lock"):
-        machine.send_chars(f"{SECRET}\n")
-    as_account("qs ipc call lock isLocked | grep -q false")
+    with desktop.told("released lock"):
+        machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.as_account("qs ipc call lock isLocked | grep -q false")
 
-# What locks before the machine sleeps returns only once niri has drawn
-# the lock on every screen, so nothing else shows on waking.
-with subtest("lock-screen returns once the lock is drawn"):
-    marker = "$XDG_RUNTIME_DIR/quickshell-locked"
-    as_account(f"grep -qx unlocked {marker}")
-    as_account("lock-screen")
-    as_account(f"grep -qx locked {marker}")
-    with told("released lock"):
-        machine.send_chars(f"{SECRET}\n")
-    as_account(f"grep -qx unlocked {marker}")
 
-with subtest("polkit's prompt lets the account start a system service"):
-    with told("keys polkit"):
-        as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
-    photograph("polkit")
-    machine.send_chars(f"{SECRET}\n")
+def test_lock_screen_returns_once_the_lock_is_drawn(desktop: Desktop) -> None:
+    """What locks before the machine sleeps returns only once niri has drawn the lock.
+
+    So nothing else shows on waking.
+    """
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    desktop.as_account("lock-screen")
+    desktop.as_account(f"grep -qx locked {LOCKED}")
+    with desktop.told("released lock"):
+        desktop.machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
+def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop) -> None:
+    """Polkit's prompt lets the account start a system service."""
+    machine = desktop.machine
+    with desktop.told("keys polkit"):
+        desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
+    desktop.photograph("polkit")
+    machine.send_chars(f"{desktop.values['secret']}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
 
-with subtest("the askpass asks for a yes, a PIN and a touch"):
-    with told("keys askpass"):
-        ask("confirm", SIGNING)
-    photograph("askpass")
+
+def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:
+    """The askpass asks for a yes, a PIN and a touch, each answered as OpenSSH expects."""
+    machine = desktop.machine
+    with desktop.told("keys askpass"):
+        desktop.ask("confirm", SIGNING)
+    desktop.photograph("askpass")
     machine.send_key("ret")
-    answered_with("confirm", 0)
+    desktop.answered_with("confirm", 0)
 
-    with told("keys askpass"):
-        ask("confirm", SIGNING)
-    with told("gone askpass"):
+    with desktop.told("keys askpass"):
+        desktop.ask("confirm", SIGNING)
+    with desktop.told("gone askpass"):
         machine.send_key("esc")
-    answered_with("confirm", 1)
+    desktop.answered_with("confirm", 1)
 
-    with told("keys askpass"):
-        ask("secret", f"Enter PIN for ED25519-SK key /home/{ACCOUNT}/.ssh/id_ed25519_sk: ")
-    photograph("askpass-pin")
+    with desktop.told("keys askpass"):
+        desktop.ask(
+            "secret", f"Enter PIN for ED25519-SK key /home/{desktop.account}/.ssh/id_ed25519_sk: "
+        )
+    desktop.photograph("askpass-pin")
     machine.send_chars("2468\n")
-    answered_with("secret", 0, "2468\n")
+    desktop.answered_with("secret", 0, "2468\n")
 
     # A touch takes no keys, and goes once ssh stops waiting on it.
-    with told("drawn askpass"):
-        ask("none", "Confirm user presence for key ED25519-SK SHA256:abc")
-    with told("gone askpass"):
-        as_account("pkill -TERM -f '^[^ ]*bash [^ ]*ssh-askpass Confirm'")
-    answered_with("none", 1)
-    as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+    with desktop.told("drawn askpass"):
+        desktop.ask("none", "Confirm user presence for key ED25519-SK SHA256:abc")
+    with desktop.told("gone askpass"):
+        desktop.as_account("pkill -TERM -f '^[^ ]*bash [^ ]*ssh-askpass Confirm'")
+    desktop.answered_with("none", 1)
+    desktop.as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
 
-# linux-id's service starts with the account's systemd, before the desktop says
-# which display it's on, and an askpass it runs knows no display.
-with subtest("the askpass finds the shell for a program started before the desktop"):
-    with told("keys askpass"):
-        as_account(
+
+def test_the_askpass_finds_the_shell_for_a_program_started_before_the_desktop(
+    desktop: Desktop,
+) -> None:
+    """The askpass finds the shell for a program started before the desktop.
+
+    linux-id's service starts with the account's systemd, before the desktop says which
+    display it's on, and an askpass it runs knows no display.
+    """
+    with desktop.told("keys askpass"):
+        desktop.as_account(
             "systemd-run --user --collect --quiet -- env -u WAYLAND_DISPLAY "
-            f"{ASKING} confirm '{SIGNING}'"
+            f"{desktop.values['asking']} confirm '{SIGNING}'"
         )
-    machine.send_key("ret")
-    answered_with("confirm", 0)
+    desktop.machine.send_key("ret")
+    desktop.answered_with("confirm", 0)
 
-# The shell holds an ask only in memory, as a switch restarts it.
-with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
-    with told("keys askpass"):
-        ask("confirm", SIGNING)
-    with told("keys askpass", timeout=timedelta(seconds=60)):
-        as_account("systemctl --user restart quickshell")
-    machine.send_key("ret")
-    answered_with("confirm", 0)
 
-    with told("keys askpass"):
-        ask("confirm", SIGNING)
-    as_account("systemctl --user stop quickshell")
-    answered_with("confirm", 1, timeout=timedelta(seconds=60))
-    as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
-    as_account("systemctl --user start quickshell")
-    machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=STARTING)
+def test_the_askpass_asks_a_restarted_shell_again_and_gives_up_on_a_gone_one(
+    desktop: Desktop,
+) -> None:
+    """The askpass asks a restarted shell again, and gives up on a gone one.
 
-# A switch restarts the shell, and can come while Joel is away and the
-# screens are locked. niri holds a lock whose shell died, so the shell
-# it starts again has to take that lock back, or nothing is left to
-# type the password into.
-with subtest("the lock holds when the shell restarts, and only for its niri"):
-    locked = "$XDG_RUNTIME_DIR/quickshell-locked"
+    The shell holds an ask only in memory, as a switch restarts it.
+    """
+    with desktop.told("keys askpass"):
+        desktop.ask("confirm", SIGNING)
+    with desktop.told("keys askpass", timeout=timedelta(seconds=60)):
+        desktop.as_account("systemctl --user restart quickshell")
+    desktop.machine.send_key("ret")
+    desktop.answered_with("confirm", 0)
+
+    with desktop.told("keys askpass"):
+        desktop.ask("confirm", SIGNING)
+    desktop.as_account("systemctl --user stop quickshell")
+    desktop.answered_with("confirm", 1, timeout=timedelta(seconds=60))
+    desktop.as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+    desktop.as_account("systemctl --user start quickshell")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("qs ipc show | grep -q askpass"), timeout=STARTING
+    )
+
+
+def test_the_lock_holds_when_the_shell_restarts_and_only_for_its_niri(desktop: Desktop) -> None:
+    """The lock holds when the shell restarts, and only for its niri.
+
+    A switch restarts the shell, and can come while Joel is away and the screens are locked.
+    niri holds a lock whose shell died, so the shell it starts again has to take that lock
+    back, or nothing is left to type the password into.
+    """
     holder = "$XDG_RUNTIME_DIR/quickshell-lock-holder"
-    as_account("lock-screen")
-    since = mark()
-    as_account("systemctl --user restart quickshell")
+    desktop.as_account("lock-screen")
+    since = desktop.mark()
+    desktop.as_account("systemctl --user restart quickshell")
     for word in ("secured lock", "keys lock"):
-        reported(word, lambda rest: rest == "", since, timeout=timedelta(seconds=60))
-    as_account("qs ipc call lock isLocked | grep -qx true")
-    as_account(f"grep -qx locked {locked}")
-    with told("released lock"):
-        machine.send_chars(f"{SECRET}\n")
-    as_account(f"grep -qx unlocked {locked}")
+        desktop.reported(word, lambda rest: rest == "", since, timeout=timedelta(seconds=60))
+    desktop.as_account("qs ipc call lock isLocked | grep -qx true")
+    desktop.as_account(f"grep -qx locked {LOCKED}")
+    with desktop.told("released lock"):
+        desktop.machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
     def started_unlocked() -> None:
         """Restart the shell, and check that it starts with the screens unlocked."""
-        as_account("systemctl --user restart quickshell")
-        machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=STARTING)
-        as_account("qs ipc call lock isLocked | grep -qx false")
-        as_account(f"grep -qx unlocked {locked}")
+        desktop.as_account("systemctl --user restart quickshell")
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session("qs ipc show | grep -q askpass"), timeout=STARTING
+        )
+        desktop.as_account("qs ipc call lock isLocked | grep -qx false")
+        desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
     # Let go, the lock isn't taken again.
     started_unlocked()
     # The runtime directory outlives a session while the account
     # lingers, so a lock a crashed niri held is left to that niri.
-    as_account(f"echo $XDG_RUNTIME_DIR/niri.wayland-1.1.sock > {holder}")
-    as_account(f"echo locked > {locked}")
+    desktop.as_account(f"echo $XDG_RUNTIME_DIR/niri.wayland-1.1.sock > {holder}")
+    desktop.as_account(f"echo locked > {LOCKED}")
     started_unlocked()
 
-# A binding that throws or assigns the wrong type only warns, and
-# only once a surface draws it, which can be long after the start.
-with subtest("Quickshell warned of nothing it drew all along"):
+
+def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
+    """Quickshell warned of nothing it drew all along.
+
+    A binding that throws or assigns the wrong type only warns, and only once a surface draws
+    it, which can be long after the start, so this comes last.
+    """
     # Quickshell colours its levels and categories even in the journal,
     # so a colour code may stand between the two words.
-    log = as_account(
+    log = desktop.as_account(
         "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
     )
     assert log.strip() == "", f"Quickshell warned of a scene: {log}"
