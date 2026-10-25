@@ -673,6 +673,7 @@ gather (
     ./modules/disko/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/firmware-settings/checks.nix
+    ./modules/fonts/checks.nix
     ./modules/gimp/checks.nix
     ./modules/git/checks.nix
     ./modules/git-engine/checks.nix

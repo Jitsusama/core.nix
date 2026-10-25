@@ -317,6 +317,10 @@
     memory-modules reads each memory device's locator, size, type, speed, maker and part from the
     bytes the firmware lists, leaves out an empty slot, and reads LPDDR5 past 6400 MT/s as LPDDR5X
   '';
+  mona-sans-vf-is-the-whole-face = ''
+    the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable
+    file with every axis and lists no other file under that name
+  '';
   mpv-accepts-its-configuration = ''
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
