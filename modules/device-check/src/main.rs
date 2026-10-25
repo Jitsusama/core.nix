@@ -4,7 +4,8 @@
 //! reported a fault to smartd this boot, which device-check-disk keeps. And the
 //! kernel itself, when it oopsed, locked up, heard of a hardware fault or had a
 //! task stuck in it, since it can misbehave until the next boot and only says
-//! so in its log.
+//! so in its log. And sleep: one that failed, and one the hardware spent
+//! mostly awake, which drains a battery as fast as being on.
 //!
 //!   device-check    names what has gone wrong since it last ran, and what
 //!                   works again, in the journal and on the desktop
@@ -14,8 +15,9 @@
 //!
 //! `DEVICE_CHECK_ROOT` puts a directory in front of /sys, /proc and /run,
 //! `DEVICE_CHECK_EXPECTED` names the expected devices' file, `DEVICE_CHECK_STATE`
-//! where it keeps what it found, and `DEVICE_CHECK_NOTIFY` the program that
-//! notifies, for tests.
+//! where it keeps what it found, `DEVICE_CHECK_NOTIFY` the program that
+//! notifies, and `DEVICE_CHECK_SUSPENDED` the seconds spent asleep since
+//! boot in place of the clocks', for tests.
 
 use std::collections::BTreeSet;
 use std::env;
@@ -291,6 +293,180 @@ fn line(root: &OsStr, change: Change, finding: &str) -> Option<String> {
     })
 }
 
+/// What the kernel counts of sleep since boot, and how long it slept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Sleep {
+    /// Sleeps that went and came back.
+    success: u64,
+    /// Sleeps that failed to go or to come back.
+    fail: u64,
+    /// Microseconds the hardware spent in its deepest state, which the
+    /// platform's power controller reports after each sleep.
+    hardware: u64,
+    /// Microseconds asleep, as the system's clocks tell it.
+    asleep: u64,
+}
+
+impl Sleep {
+    fn parse(text: &str) -> Option<Self> {
+        let mut numbers = text.split_whitespace().map(str::parse);
+        Some(Self {
+            success: numbers.next()?.ok()?,
+            fail: numbers.next()?.ok()?,
+            hardware: numbers.next()?.ok()?,
+            asleep: numbers.next()?.ok()?,
+        })
+    }
+
+    fn kept(&self) -> String {
+        format!(
+            "{} {} {} {}\n",
+            self.success, self.fail, self.hardware, self.asleep
+        )
+    }
+}
+
+/// A clock's reading, as the kernel's `struct timespec` lays it out.
+#[repr(C)]
+struct Timespec {
+    seconds: i64,
+    nanoseconds: i64,
+}
+
+// std links libc, so this comes from it.
+unsafe extern "C" {
+    fn clock_gettime(clock: i32, time: *mut Timespec) -> i32;
+}
+
+const CLOCK_MONOTONIC: i32 = 1;
+const CLOCK_BOOTTIME: i32 = 7;
+
+/// A clock's reading in microseconds, or None when it can't be read.
+fn clock(id: i32) -> Option<u64> {
+    let mut time = Timespec {
+        seconds: 0,
+        nanoseconds: 0,
+    };
+    // SAFETY: time is a valid timespec the kernel fills in.
+    if unsafe { clock_gettime(id, &raw mut time) } != 0 {
+        return None;
+    }
+    let micros = i128::from(time.seconds) * 1_000_000 + i128::from(time.nanoseconds) / 1000;
+    u64::try_from(micros).ok()
+}
+
+/// Microseconds asleep since boot: boot time counts sleep and monotonic
+/// time doesn't, so the gap between them is the time spent asleep.
+fn asleep() -> u64 {
+    if let Some(seconds) = env::var_os("DEVICE_CHECK_SUSPENDED") {
+        return seconds
+            .to_str()
+            .and_then(|seconds| seconds.parse::<u64>().ok())
+            .unwrap_or(0)
+            * 1_000_000;
+    }
+    match (clock(CLOCK_BOOTTIME), clock(CLOCK_MONOTONIC)) {
+        (Some(boot), Some(monotonic)) => boot.saturating_sub(monotonic),
+        _ => 0,
+    }
+}
+
+/// The kernel's sleep counts now, or None on a kernel that keeps none.
+fn sleep_now(root: &OsStr) -> Option<Sleep> {
+    let stats = under(root, "/sys/power/suspend_stats");
+    if !stats.is_dir() {
+        return None;
+    }
+    Some(Sleep {
+        success: number(&stats.join("success")),
+        fail: number(&stats.join("fail")),
+        hardware: number(&stats.join("total_hw_sleep")),
+        asleep: asleep(),
+    })
+}
+
+/// The least sleep worth judging, in microseconds: a short one can spend
+/// most of itself getting down to the deepest state and back.
+const SLEEP_WORTH_JUDGING: u64 = 10 * 60 * 1_000_000;
+
+/// What to say about the sleeps between two readings: one that failed, by
+/// the device that stopped it where the kernel names one, and sleep the
+/// hardware spent less than four-fifths of in its deepest state. That's
+/// judged only where the platform reports its deepest state at all, which
+/// it says by the most its counter can hold.
+fn sleep_lines(root: &OsStr, before: &Sleep, now: &Sleep) -> Vec<String> {
+    let stats = under(root, "/sys/power/suspend_stats");
+    let mut lines = Vec::new();
+    if now.fail > before.fail {
+        let device = first_line(&stats.join("last_failed_dev")).unwrap_or_default();
+        let step = first_line(&stats.join("last_failed_step")).unwrap_or_default();
+        let device = device.trim();
+        let step = step.trim();
+        lines.push(if !device.is_empty() {
+            let verb = if step.contains("resume") {
+                "resume"
+            } else {
+                "suspend"
+            };
+            format!("Sleep failed: {device} wouldn't {verb}")
+        } else if step == "freeze" {
+            "Sleep failed: a program wouldn't pause for it".to_owned()
+        } else {
+            "Sleep failed".to_owned()
+        });
+    }
+    let reports = number(&stats.join("max_hw_sleep")) > 0;
+    let slept = now.asleep.saturating_sub(before.asleep);
+    let deep = now.hardware.saturating_sub(before.hardware);
+    if reports
+        && now.success > before.success
+        && slept >= SLEEP_WORTH_JUDGING
+        && deep.saturating_mul(5) < slept.saturating_mul(4)
+    {
+        let minutes = |micros: u64| (micros + 30_000_000) / 60_000_000;
+        lines.push(format!(
+            "Sleep was shallow: {} of {} minutes in the deepest state, so the battery ran \
+             down faster",
+            minutes(deep),
+            minutes(slept)
+        ));
+    }
+    lines
+}
+
+/// Says each sleep finding since the last look, and keeps what the kernel
+/// counts now for the next. The first look after boot only keeps it.
+fn look_at_sleep(root: &OsStr, notify: &OsStr, state: &Path) -> io::Result<()> {
+    let Some(now) = sleep_now(root) else {
+        return Ok(());
+    };
+    let kept = state.join("sleep");
+    let before = fs::read_to_string(&kept)
+        .ok()
+        .and_then(|text| Sleep::parse(&text))
+        // Counts that went down are another boot's.
+        .filter(|before| before.success <= now.success && before.fail <= now.fail);
+    if let Some(before) = before {
+        for line in sleep_lines(root, &before, &now) {
+            say(notify, 4, "normal", &line);
+        }
+    }
+    let next = state.join(format!("sleep.{}", process::id()));
+    fs::write(&next, now.kept())?;
+    fs::rename(&next, &kept)
+}
+
+/// Says one line, in the journal at a priority journald reads from the
+/// prefix, and as a notification.
+fn say(notify: &OsStr, priority: u8, urgency: &str, line: &str) {
+    eprintln!("<{priority}>{line}");
+    let _ = Command::new(notify)
+        .args(["-u", urgency, "-a", "Devices"])
+        .arg(line)
+        .stdin(Stdio::null())
+        .status();
+}
+
 /// Says each finding, warnings for what broke and notices for what's fixed,
 /// whose priority journald reads from the prefix.
 fn tell<'a>(
@@ -307,12 +483,7 @@ fn tell<'a>(
         let Some(line) = line(root, change, finding) else {
             continue;
         };
-        eprintln!("<{priority}>{line}");
-        let _ = Command::new(notify)
-            .args(["-u", urgency, "-a", "Devices"])
-            .arg(&line)
-            .stdin(Stdio::null())
-            .status();
+        say(notify, priority, urgency, &line);
     }
 }
 
@@ -345,6 +516,7 @@ fn look() -> io::Result<()> {
 
     tell(&root, &notify, Change::Broke, now.difference(&found));
     tell(&root, &notify, Change::Fixed, found.difference(&now));
+    look_at_sleep(&root, &notify, &state)?;
 
     let next = state.join(format!("now.{}", process::id()));
     let text = now.iter().fold(String::new(), |mut text, finding| {
@@ -451,6 +623,101 @@ mod tests {
             Some("The disk /dev/nvme0 no longer reports a reports b")
         );
         assert_eq!(line(root, Change::Fixed, "kernel\toops"), None);
+    }
+
+    /// A stand-in for the kernel's sleep counts, with the most the
+    /// hardware's counter can hold, the last failure's device and step.
+    fn sleep_root(name: &str, max: u64, device: &str, step: &str) -> PathBuf {
+        let dir = env::temp_dir().join(format!("device-check-{name}-{}", process::id()));
+        let stats = dir.join("sys/power/suspend_stats");
+        fs::create_dir_all(&stats).unwrap();
+        fs::write(stats.join("max_hw_sleep"), format!("{max}\n")).unwrap();
+        fs::write(stats.join("last_failed_dev"), format!("{device}\n")).unwrap();
+        fs::write(stats.join("last_failed_step"), format!("{step}\n")).unwrap();
+        dir
+    }
+
+    const MINUTE: u64 = 60_000_000;
+
+    #[test]
+    fn names_a_shallow_sleep() {
+        let dir = sleep_root("shallow", 523_986_009_990, "", "");
+        let root = dir.as_os_str();
+        let before = Sleep::default();
+        let slept = |hardware, asleep| Sleep {
+            success: 1,
+            fail: 0,
+            hardware,
+            asleep,
+        };
+        assert_eq!(
+            sleep_lines(root, &before, &slept(12 * MINUTE, 60 * MINUTE)),
+            [
+                "Sleep was shallow: 12 of 60 minutes in the deepest state, so the battery ran \
+              down faster"
+            ]
+        );
+        // Four-fifths is deep enough, and a short sleep isn't judged.
+        assert!(sleep_lines(root, &before, &slept(48 * MINUTE, 60 * MINUTE)).is_empty());
+        assert!(sleep_lines(root, &before, &slept(0, 9 * MINUTE)).is_empty());
+        // Nor is time asleep with no sleep the kernel counts.
+        let unslept = Sleep {
+            success: 0,
+            ..slept(0, 60 * MINUTE)
+        };
+        assert!(sleep_lines(root, &before, &unslept).is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+
+        // A platform that doesn't report its deepest state isn't judged.
+        let dir = sleep_root("unreported", 0, "", "");
+        assert!(sleep_lines(dir.as_os_str(), &before, &slept(0, 60 * MINUTE)).is_empty());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn names_a_failed_sleep() {
+        let failed = Sleep {
+            fail: 1,
+            ..Sleep::default()
+        };
+        for (device, step, said) in [
+            (
+                "0000:00:14.3",
+                "suspend_noirq",
+                "Sleep failed: 0000:00:14.3 wouldn't suspend",
+            ),
+            (
+                "usb3-port1",
+                "resume_early",
+                "Sleep failed: usb3-port1 wouldn't resume",
+            ),
+            (
+                "",
+                "freeze",
+                "Sleep failed: a program wouldn't pause for it",
+            ),
+            ("", "", "Sleep failed"),
+        ] {
+            let dir = sleep_root("failed", 0, device, step);
+            assert_eq!(
+                sleep_lines(dir.as_os_str(), &Sleep::default(), &failed),
+                [said],
+                "{device} {step}"
+            );
+            fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn keeps_its_sleep_counts() {
+        let counts = Sleep {
+            success: 3,
+            fail: 1,
+            hardware: 42,
+            asleep: 99,
+        };
+        assert_eq!(Sleep::parse(&counts.kept()), Some(counts));
+        assert_eq!(Sleep::parse("3 1"), None);
     }
 
     #[test]
