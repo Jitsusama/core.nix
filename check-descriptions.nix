@@ -924,6 +924,10 @@
     an account outside the input group hears how long Super and D were held and a tap's, nothing of
     D alone, another key or Super after D, and can't read the keyboard itself
   '';
+  vm-dictation-listens-once-it-hears = ''
+    dictation's watchers hear it listening only once the microphone sounds, never for a press with
+    no microphone
+  '';
   vm-disk-guard-keeps-the-disk = ''
     the guards answer each band, sparing what's in use
   '';
