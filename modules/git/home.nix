@@ -1,3 +1,6 @@
+# git in the account: who commits, by the identity module, the settings and
+# ignores every machine shares, and where git reads them, after what
+# programs write to ~/.gitconfig themselves (declared-last.sh).
 {
   config,
   lib,

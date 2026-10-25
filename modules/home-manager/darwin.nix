@@ -1,3 +1,4 @@
+# home-manager on a Mac, configuring each account with the system.
 { home-manager }:
 {
   imports = [ home-manager.darwinModules.home-manager ];

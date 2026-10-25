@@ -1,3 +1,5 @@
+# home-manager on NixOS, configuring each account with the system, and
+# holding every login until its account is set up.
 { home-manager }:
 {
   config,

@@ -1,3 +1,8 @@
+# Neovim, the account's editor: its plugins, each set up by its own file in
+# plugins/ as Neovim starts or once it's wanted (later.lua); its keys, from
+# keys.nix, bound by keys.lua and listed for the launcher; the theme as its
+# colour scheme; and a status line that tells a file's place and git's state
+# as the prompt does.
 { neovim-pi }:
 {
   config,
