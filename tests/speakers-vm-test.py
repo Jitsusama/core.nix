@@ -24,6 +24,13 @@ headphones: str = values["headphones"]
 HEARD = 0.01
 # How many decibels further the tuning must cut 631 Hz than 1356 Hz, of the about 10 it does.
 CUT_FURTHER = 6
+# The limiter's ceiling in speakers.conf, which keeps the small drivers from being pushed
+# however loud the tuning plays, and how far a sample may pass it.
+CEILING = 0.891
+OVERSHOOT = 1.02
+# The tuning's loudest frequency, its bass peak, and one of its peaks above, each played at
+# full scale so the limiter has to hold them.
+LOUDEST = (100, 1356)
 
 
 def as_joel(command: str) -> str:
@@ -32,7 +39,7 @@ def as_joel(command: str) -> str:
     return machine.succeed("su - joel -c " + shlex.quote(environment + command))
 
 
-def level(frequency: int, sink: str) -> float:
+def level(frequency: int, sink: str, measure: str = "RMS +amplitude", loud: str = "") -> float:
     """Play a tone to the default sink, and give the level of what reached the given one.
 
     The level is that of the tone's middle second, away from its edges: sox finds where the
@@ -45,14 +52,13 @@ def level(frequency: int, sink: str) -> float:
         "pw-record -P '{ node.name = heard node.autoconnect = false }' heard.wav & recording=$!;"
         " until pw-link -i | grep -q '^heard:input_FR'; do sleep 0.1; done;"
         f" pw-link {sink}:monitor_FL heard:input_FL; pw-link {sink}:monitor_FR heard:input_FR;"
-        f" pw-play tone-{frequency}.wav;"
+        f" pw-play tone-{frequency}{loud}.wav;"
         # pw-record exits with 1 when interrupted, so its file is the
         # evidence rather than its status.
         " kill -INT $recording; wait $recording; test -s heard.wav"
     )
     rms = as_joel(
-        "sox heard.wav -n silence 1 0.01 0.1% trim 1 1 stat 2>&1"
-        " | awk '/RMS +amplitude/ {print $3}'"
+        f"sox heard.wav -n silence 1 0.01 0.1% trim 1 1 stat 2>&1 | awk '/{measure}/ {{print $3}}'"
     )
     return float(rms)
 
@@ -77,6 +83,8 @@ as_joel("systemctl --user start pipewire.service")
 machine.wait_for_unit("wireplumber.service", "joel")
 for frequency in (631, 1356):
     as_joel(f"sox -n -r 48000 -c 2 tone-{frequency}.wav synth 3 sine {frequency} vol 0.1")
+for frequency in LOUDEST:
+    as_joel(f"sox -n -r 48000 -c 2 tone-{frequency}-loud.wav synth 3 sine {frequency} vol 0.99")
 
 with subtest("the tuning starts with PipeWire"):
     tuning_ready()
@@ -96,6 +104,12 @@ with subtest("the speakers hear the tuning"):
     lift = decibels(level(1356, speakers), played[1356])
     machine.log(f"631 Hz changed by {cut:.1f} dB, 1356 Hz by {lift:.1f} dB")
     assert lift - cut > CUT_FURTHER, (cut, lift)
+
+with subtest("the speakers never hear the tuning past its ceiling"):
+    for frequency in LOUDEST:
+        peak = level(frequency, speakers, "Maximum amplitude", "-loud")
+        machine.log(f"{frequency} Hz at full scale reached the speakers at {peak:.3f}")
+        assert peak <= CEILING * OVERSHOOT, (frequency, peak)
 
 with subtest("the headphones hear what was played"):
     as_joel(f"pactl set-default-sink {headphones}")

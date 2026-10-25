@@ -330,8 +330,10 @@ measured: nothing here can measure transmit power.
 
 Linux loads Dell's firmware for the amplifiers but has nothing in place of the
 Waves tuning Windows puts on top, so the speakers sound thin. The module runs
-[Omarchy's tuning][9] for this model unchanged: thirteen biquads per channel
-and a limiter, fitted to a measured EasyEffects profile, with no binary blob.
+[Omarchy's tuning][9] for this model: thirteen biquads per channel and a
+limiter, fitted to a measured EasyEffects profile, with no binary blob. Its
+limiter takes 9 dB more in than Omarchy's, chosen by ear, so the tuned
+speakers aren't far quieter than plain ones, under the same ceiling.
 It lives in [`speakers.conf`][10], beside the module, and runs as a PipeWire
 client of its own, so changing it restarts only the filter and never cuts off
 the programs playing.
