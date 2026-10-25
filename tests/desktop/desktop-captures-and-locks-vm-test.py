@@ -283,8 +283,25 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     retry(lambda last: camera.recording(2, last), timeout=WAKING)
     camera.saved("esc")
     camera.gone()
+
+    # While it records, the shell says so, and Capture's Stop recording stops it as Return
+    # would; the viewfinder takes the camera back.
+    state = "/run/user/1000/camera-recording.json"
+    camera.viewfinder("video from the camera")
+    machine.send_key("ret")
+    retry(lambda last: camera.recording(3, last), timeout=WAKING)
+    machine.succeed(f"test -s {state}")
+    desktop.capture()
+    desktop.type_in("stop", selecting="Stop recording")
+    assert desktop.showing()["selected"]["side"] == "a video from the camera"
+    with desktop.told("shows card Video saved", timeout=WAKING):
+        machine.send_key("ret")
+    machine.wait_until_fails(f"test -e {state}", timeout=timedelta(seconds=10))
+    machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
+    machine.send_key("esc")
+    camera.gone()
     streams = camera.probe("stream=codec_name", f"{camera.videos}/*.mp4")
-    assert streams.split() == ["h264", "aac"] * 2
+    assert streams.split() == ["h264", "aac"] * 3
 
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.

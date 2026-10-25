@@ -353,7 +353,7 @@ local function start()
   play(feed, function()
     run(
       table.concat({
-        'device=$1 file=$2 pid=$3 feed=$4 log=$5 stop=$6',
+        'device=$1 file=$2 pid=$3 feed=$4 log=$5 stop=$6 state=$7',
         -- Waits for the viewfinder to open the pipe.
         'exec 3> "$feed" || exit',
         'rm -f "$feed"',
@@ -384,9 +384,15 @@ local function start()
         '    -movflags +frag_keyframe+empty_moov+default_base_moof "$file" \\',
         '    -map 0:v -c:v rawvideo -f nut pipe:3 < /dev/null 2> "$log" &',
         'echo $! > "$pid"',
+        -- Said for the shell while it records, which it shows as recording
+        -- and can stop as Return here does (Recorder.qml), and taken back
+        -- however this ends.
+        [[trap 'rm -f "$state"' EXIT]],
+        [[printf '{"pid":%s,"stop":"%s","file":"%s"}\n' $! "$stop" "$file" > "$state.new"]],
+        'mv "$state.new" "$state"',
         '[ -e "$stop" ] && kill -INT $!',
         'wait $!',
-        'rm -f "$pid" "$stop"',
+        'rm -f "$pid" "$stop" "$state"',
         'exec 3>&-',
         'if [ ! -s "$file" ]; then',
         '    rm -f "$file"',
@@ -402,7 +408,8 @@ local function start()
       feed,
       -- What the last recording said, kept until the next.
       runtime .. '/camera-recording.log',
-      recording.stop
+      recording.stop,
+      runtime .. '/camera-recording.json'
     )
   end)
 end

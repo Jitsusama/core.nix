@@ -39,9 +39,15 @@ Singleton {
     // looks to niri like a call's share, so sharing and do not disturb leave
     // it out (pieces/Sharing.qml, Quiet.qml).
     readonly property var windowSession: windowRecording.said?.session ?? null
-    readonly property bool recording: casts.length > 0
+    // A video the camera's viewfinder records (modules/camera), which niri
+    // never sees, as its recording says it while it runs: its process, the
+    // file that asks it to stop, and where it goes. Joel recorded one and
+    // saw only the camera in use, never that it was recording.
+    readonly property var camera: cameraRecording.said
+    readonly property bool recording: casts.length > 0 || camera !== null
     // Whether a recording can be stopped from here, which takes its process.
-    readonly property bool stoppable: casts.some(cast => recorderOf(cast) !== null)
+    readonly property bool stoppable: camera !== null
+        || casts.some(cast => recorderOf(cast) !== null)
     // Between asking for a recording and niri saying it began, so a second
     // press can't start another.
     property bool starting: false
@@ -61,6 +67,11 @@ Singleton {
     }
 
     function stop(): void {
+        // As the viewfinder's Return does: asked to stop, then told, so
+        // the recording finishes its file.
+        if (camera !== null)
+            Niri.spawn(["sh", "-c", ': > "$1"; kill -INT "$2"', "recorder", camera.stop,
+                String(camera.pid)]);
         for (const cast of casts) {
             const pid = recorderOf(cast);
             if (pid !== null)
@@ -122,6 +133,29 @@ Singleton {
         function onCastsChanged(): void {
             windowRecording.reload();
         }
+    }
+
+    onCameraChanged: {
+        if (camera !== null)
+            what = "a video from the camera";
+    }
+
+    FileView {
+        id: cameraRecording
+        property var said: null
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/camera-recording.json`
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const read = JSON.parse(text());
+                said = typeof read?.pid === "number" ? read : null;
+            } catch (error) {
+                said = null;
+            }
+        }
+        onLoadFailed: said = null
     }
 
     // What record-window says while it records: its process, and which of
