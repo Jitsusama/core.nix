@@ -5,8 +5,8 @@
 # switch only says when one is missing.
 #
 # home.nix gives it, through the environment, the provider OpenSSH reaches
-# the enclave through, as $provider, and the identities, as $identities: one
-# a line, each its label, protection, name and email, separated by tabs, the
+# the enclave through, as $provider, and the file of identities, as
+# $identities: one a line, each its label, protection, name and email, separated by tabs, the
 # email empty when there's none. SE_KEYS_CMD chooses what it does: ensure
 # (the default) or status.
 
@@ -87,7 +87,7 @@ ensure() {
     ensure_identity "$label" "$protection" "$name" "$email"
     export_handle "$label"
     labels+=("$label")
-  done 3<<< "$identities"
+  done 3< "$identities"
   echo
   echo "public keys, which belong in jitsusama.signing.allowedSigners:"
   for label in "${labels[@]}"; do
