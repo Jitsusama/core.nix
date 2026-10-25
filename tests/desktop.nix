@@ -153,15 +153,13 @@ let
     '';
   };
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
-  # Reads the colours of the windows it photographs, and paces its waits
-  # to the host (tests/lib/vm_helpers.py). The desktop it drives is
-  # desktop/desktop_session.py, a module of the driver's Python, so an area
-  # written for pytest and one still a script import the same one.
+  # Reads the colours of the windows it photographs. The desktop it drives
+  # is desktop/desktop_session.py, a module of the driver's Python, which
+  # every area imports.
   extraPythonPackages = python: [
     python.pillow
-    (pkgs.callPackage ./lib/vm-helpers.nix { } python)
     (python.toPythonModule (
       pkgs.runCommandLocal "desktop-session" { } ''
         mkdir -p $out/${python.python.sitePackages}
@@ -515,7 +513,8 @@ pkgs.testers.runNixOSTest {
       };
     };
 
-  testScript =
+  tests = ./desktop/desktop-${area}-vm-test.py;
+  values =
     { nodes, ... }:
     let
       inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) roles font;
@@ -560,14 +559,9 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./desktop/desktop-${area}-vm-test.py}", values="${values}")
-    '';
-  # nix fmt holds the tests and desktop_session.py to mypy --strict and every
-  # ruff rule against the driver's own types, so the driver's own checks of
-  # these lines would add only their time.
-  skipTypeCheck = true;
+    values;
+  # nix fmt holds the tests and desktop_session.py to every ruff rule, so the
+  # driver's own lint of its one line would add only its time.
   skipLint = true;
 }
 // pkgs.lib.optionalAttrs (!gallery) {

@@ -25,7 +25,7 @@ let
     height = 1200;
   };
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "plymouth-screens";
   enableOCR = true;
   # The base role sets nixpkgs' own settings.
@@ -86,7 +86,8 @@ pkgs.testers.runNixOSTest {
         }).config.system.build.toplevel;
     };
 
-  testScript =
+  tests = ./plymouth-screens-vm-test.py;
+  values =
     { nodes, ... }:
     let
       inherit (nodes.machine.system.build) encrypted;
@@ -101,13 +102,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./plymouth-screens-vm-test.py}", values="${values}")
-    '';
-  # What VM tests share (tests/lib), pytest and its runner among them.
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+    values;
 }

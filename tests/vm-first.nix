@@ -99,7 +99,7 @@ let
       }
     '';
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "vm-first";
 
   nodes.machine = {
@@ -144,14 +144,5 @@ pkgs.testers.runNixOSTest {
     }/bin/vm-first --every 20";
   };
 
-  # What VM tests' scripts share, and pytest, which runs this one's tests (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
-  # PYTEST_ADDOPTS='-k restart' runs only the tests that name a restart.
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./vm-first-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./vm-first-vm-test.py;
 }

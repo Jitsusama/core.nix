@@ -6,7 +6,7 @@
 # loads Whisper only to transcribe, and what's heard here is silence, which
 # it says rather than transcribes. The tests are dictation-listening-vm-test.py.
 { self, pkgs }:
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "dictation-listening";
 
   nodes.machine = {
@@ -18,17 +18,5 @@ pkgs.testers.runNixOSTest {
     ];
   };
 
-  # What VM tests share, and pytest, which runs these tests (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
-  # PYTEST_ADDOPTS='-k sounds' runs only the test with a microphone.
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./dictation-listening-vm-test.py}")
-  '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./dictation-listening-vm-test.py;
 }

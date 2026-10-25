@@ -16,7 +16,7 @@ let
   server = "192.168.2.3";
   line = rate: "tbf rate ${rate} burst 32kbit limit 1000000";
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-rate";
 
   nodes.client = {
@@ -111,14 +111,5 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # What VM tests' scripts share, and pytest, which runs this one's tests (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
-  # PYTEST_ADDOPTS='-k second' runs only the test of a second link.
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./shaper-rate-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./shaper-rate-vm-test.py;
 }

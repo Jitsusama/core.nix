@@ -76,9 +76,8 @@ let
         dd if=vault.fat of=$out/stick.raw bs=512 seek=133120 conv=notrunc
       '';
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-host";
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   nodes.host = {
     services.udisks2.enable = true;
@@ -139,7 +138,8 @@ pkgs.testers.runNixOSTest {
   # from Nix, the used stick, the tool to put an overlay on it, the old
   # stick's bundle and the passphrase of the host's own, reaches them as
   # their values fixture rather than on the machine's path.
-  testScript =
+  tests = ./guide-host-vm-test.py;
+  values =
     let
       values = pkgs.writeText "guide-host-values.json" (
         builtins.toJSON {
@@ -150,11 +150,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./guide-host-vm-test.py}", values="${values}")
-    '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+    values;
 }

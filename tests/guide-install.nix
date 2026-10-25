@@ -38,11 +38,10 @@ let
   ];
   guide = pkgs.callPackage ../modules/guide/package.nix { };
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-install";
   globalTimeout = 60 * 60;
   qemu.package = qemu;
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   # The stick's system, built as a test node so the driver can reach its
   # shell, and never started itself: the machine boots its image from USB.
@@ -142,7 +141,8 @@ pkgs.testers.runNixOSTest {
       };
     };
 
-  testScript =
+  tests = ./guide-install-vm-test.py;
+  values =
     { nodes, ... }:
     let
       payload = pkgs.callPackage ../modules/guide/payload.nix { } {
@@ -197,11 +197,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./guide-install-vm-test.py}", values="${values}")
-    '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+    values;
 }

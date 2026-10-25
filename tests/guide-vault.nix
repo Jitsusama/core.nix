@@ -23,10 +23,9 @@ let
     )
   );
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-vault";
   qemu.package = qemu;
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   nodes.machine = {
     services.getty.autologinUser = "root";
@@ -49,7 +48,8 @@ pkgs.testers.runNixOSTest {
 
   # pytest runs the tests inside the driver, with the key's PIN and the
   # stick's recovery passphrase as their values fixture.
-  testScript =
+  tests = ./guide-vault-vm-test.py;
+  values =
     let
       values = pkgs.writeText "guide-vault-values.json" (
         builtins.toJSON {
@@ -57,11 +57,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./guide-vault-vm-test.py}", values="${values}")
-    '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+    values;
 }

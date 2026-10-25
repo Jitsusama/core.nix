@@ -148,7 +148,7 @@ let
     private_key=${certificates}/radius.key
   '';
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "wifi";
 
   nodes.machine =
@@ -343,13 +343,5 @@ pkgs.testers.runNixOSTest {
       ];
     };
 
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./wifi-vm-test.py}")
-  '';
-  # What VM tests share (tests/lib), pytest and its runner among them.
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+  tests = ./wifi-vm-test.py;
 }

@@ -25,7 +25,7 @@ let
     mv /tmp/signed-in.part /tmp/signed-in
   '';
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "greeter";
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
@@ -99,15 +99,6 @@ pkgs.testers.runNixOSTest {
       };
     };
 
-  # What VM tests share (tests/lib), pytest and its runner among them.
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  # pytest runs the tests inside the driver, with the values as their fixture.
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./greeter-vm-test.py}", values="${values}")
-  '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+  tests = ./greeter-vm-test.py;
+  inherit values;
 }

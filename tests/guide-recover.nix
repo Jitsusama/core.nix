@@ -27,11 +27,10 @@ let
     "new"
   ];
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-recover";
   globalTimeout = 30 * 60;
   qemu.package = qemu;
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   # The stick's system, built as a test node so the driver can reach its
   # shell, and never started itself: the machine boots its image from USB.
@@ -108,7 +107,8 @@ pkgs.testers.runNixOSTest {
   # images to put overlays on, the tool to make them, the keys' state files
   # and the secrets to type, reaches them as their values fixture rather
   # than on the machine's path.
-  testScript =
+  tests = ./guide-recover-vm-test.py;
+  values =
     { nodes, ... }:
     let
       image = "${nodes.stick.system.build.image}/${nodes.stick.image.filePath}";
@@ -129,11 +129,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./guide-recover-vm-test.py}", values="${values}")
-    '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+    values;
 }

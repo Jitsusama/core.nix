@@ -13,7 +13,7 @@ let
     builtins.readFile ./zram-hold.py
   );
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "zram";
 
   nodes.machine = {
@@ -21,10 +21,5 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ hold ];
   };
 
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./zram-vm-test.py}")'';
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./zram-vm-test.py;
 }

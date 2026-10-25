@@ -58,7 +58,7 @@ let
     }
   '';
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "disk-guard";
 
   nodes.machine = {
@@ -123,7 +123,8 @@ pkgs.testers.runNixOSTest {
   # The driver runs on the host, so what the tests need from Nix, the
   # drop-ins that give each guard the test's config and the build script
   # that waits, reaches them in one file, their `values` fixture.
-  testScript =
+  tests = ./disk-guard-vm-test.py;
+  values =
     { nodes, ... }:
     let
       # The machine's guard as its module renders it, with its store under
@@ -169,13 +170,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./disk-guard-vm-test.py}", values="${values}")
-    '';
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+    values;
 }

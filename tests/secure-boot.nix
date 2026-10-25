@@ -21,9 +21,8 @@ let
     '';
   };
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "secure-boot";
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
   globalTimeout = 40 * 60;
 
   nodes.machine =
@@ -127,7 +126,8 @@ pkgs.testers.runNixOSTest {
   # to boot, the tool to put an overlay on it, the systems to install and the
   # secrets to type, reaches them as their values fixture rather than on the
   # machine's path.
-  testScript =
+  tests = ./secure-boot-vm-test.py;
+  values =
     { nodes, ... }:
     let
       inherit (nodes.machine.system.build)
@@ -147,11 +147,5 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    ''
-      import vm_pytest
-      vm_pytest.run(globals(), "${./secure-boot-vm-test.py}", values="${values}")
-    '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+    values;
 }

@@ -12,7 +12,7 @@ let
     builtins.readFile ./full-swap-grow.py
   );
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "full-swap";
 
   nodes.machine =
@@ -38,10 +38,5 @@ pkgs.testers.runNixOSTest {
       environment.systemPackages = [ grow ];
     };
 
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./full-swap-vm-test.py}")'';
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./full-swap-vm-test.py;
 }

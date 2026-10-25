@@ -9,7 +9,7 @@
 # be named in keyboards.json with how often it's polled, and then no longer.
 # The script is desk-facts-vm-test.py.
 { self, pkgs }:
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desk-facts";
 
   nodes.machine = {
@@ -25,12 +25,5 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ pkgs.alsa-utils ];
   };
 
-  # What VM tests' scripts share (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./desk-facts-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./desk-facts-vm-test.py;
 }

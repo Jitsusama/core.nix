@@ -6,7 +6,7 @@
 # own, which starts from 1600. The webcam's card is then unplugged and plugged
 # back in, and must yield again. The script is microphones-vm-test.py.
 { pkgs }:
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "microphones";
 
   nodes.machine = {
@@ -26,12 +26,5 @@ pkgs.testers.runNixOSTest {
     '';
   };
 
-  # What VM tests' scripts share (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./microphones-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./microphones-vm-test.py;
 }
