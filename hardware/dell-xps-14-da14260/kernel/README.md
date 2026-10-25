@@ -5,10 +5,10 @@ filed by where it stands upstream, so a patch's folder says how
 soon it can go. [docs/hardware.md][hardware] says what each one
 fixes and why.
 
-| Here                             | Holds                                                  |
-| -------------------------------- | ------------------------------------------------------ |
-| `backports.nix`, `backports/`    | fixes a later release has, taken onto this kernel      |
-| `next.nix`, `next/`              | fixes no release has yet, each header saying where from |
+| Here                          | Holds                                                   |
+| ----------------------------- | ------------------------------------------------------- |
+| `backports.nix`, `backports/` | fixes a later release has, taken onto this kernel       |
+| `next.nix`, `next/`           | fixes no release has yet, each header saying where from |
 
 The patches written here and sent nowhere yet are still applied from
 `../nixos.nix`, until they move into a folder of their own here.

@@ -163,8 +163,8 @@ tagged for 7.2's stable releases. Rather than wait for the kernel to move,
 `kernel/backports/`, 87 mainline commits, each patch naming its commits in
 order. They were picked from every commit between 7.2 and 7.3 touching a
 driver this laptop binds or could bind, and apply to 7.2.12 after the
-kernel's own patches with no offset or fuzz. One, the Thunderbolt fix, had a hunk moved onto 7.2's
-context, which its header says.
+kernel's own patches with no offset or fuzz. One, the Thunderbolt fix, had
+a hunk moved onto 7.2's context, which its header says.
 
 | Patch                           | What it gives                                       |
 | ------------------------------- | --------------------------------------------------- |
