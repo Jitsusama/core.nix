@@ -40,11 +40,27 @@ Item {
     property bool leftClears: false
     // Says how far an aside may run, so a long one never crowds what's typed.
     property real asideMost: width * 0.4
+    // Whether the aside keeps the room its widest has taken until forget():
+    // the launcher's says the selected row's note, which changes with each
+    // arrow, and an aside sized to each one moved where what's typed had to
+    // end and so every chip's share of the line.
+    property bool steady: false
+    property real asideWidest: 0
     property alias text: input.text
 
-    // Where what's typed has to end: before the aside, and before caps
-    // lock's glyph when it shows.
-    readonly property real end: said === "" ? width - Theme.space.l
+    // The aside's room: its own width, or, held steady, its widest since
+    // forget(), its words starting at the same place whatever they say.
+    readonly property real asideRoom: Math.min(prompt.asideMost, steady
+        ? Math.max(asideWidest, asideText.implicitWidth) : asideText.implicitWidth)
+
+    // Lets the aside's room go, as a new step starts, keeping what it says now.
+    function forget() {
+        asideWidest = Math.min(asideText.implicitWidth, asideMost);
+    }
+
+    // Where what's typed has to end: before the aside's room, and before
+    // caps lock's glyph when it shows.
+    readonly property real end: asideRoom === 0 ? width - Theme.space.l
         : asideText.x - Theme.space.xl
             - (capitals ? Theme.space.s + capitalsGlyph.implicitWidth : 0)
 
@@ -86,8 +102,13 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
-        width: Math.min(implicitWidth, prompt.asideMost)
+        width: prompt.asideRoom
         elide: Text.ElideRight
+        onImplicitWidthChanged: {
+            if (prompt.steady)
+                prompt.asideWidest = Math.max(prompt.asideWidest,
+                    Math.min(implicitWidth, prompt.asideMost));
+        }
         text: prompt.said
         color: Theme.muted
         font.family: Theme.mono.family

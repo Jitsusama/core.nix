@@ -43,30 +43,46 @@ function ranks(facts) {
         .sort((a, b) => a - b);
 }
 
-// The facts as the foot draws them, each with what it `said`, given
-// whether facts so told `fit` the room.
-function fitted(facts, fits) {
-    const whole = told(reading(facts, GLANCE));
-    if (fits(whole)) {
-        return whole;
-    }
+// Each way the facts can read, longest first: at a glance, then the
+// least, then with each rank shrunk to its glyph, then with each rank
+// given way.
+function stages(facts) {
     const order = ranks(facts);
+    const out = [told(reading(facts, GLANCE))];
     let left = reading(facts, LEAST);
     for (const rank of order) {
-        const now = told(left);
-        if (fits(now)) {
-            return now;
-        }
+        out.push(told(left));
         left = left
             .filter((fact) => rankOf(fact) !== rank || fact.sign !== "")
             .map((fact) => (rankOf(fact) === rank ? Object.assign({}, fact, { way: GLYPH }) : fact));
     }
     for (const rank of order) {
-        const now = told(left);
-        if (fits(now)) {
-            return now;
-        }
+        out.push(told(left));
         left = left.filter((fact) => rankOf(fact) !== rank);
     }
-    return told(left);
+    out.push(told(left));
+    return out;
+}
+
+// The facts as the foot draws them, and which way they read, from the
+// `from`th way on: the first that `fits` the room, or the shortest. The
+// launcher starts each from the shortest it has had to read since it
+// opened, so a fact growing by a digit flips every fact to its shortest
+// once, and back never while it's open: "3 working" becoming "12
+// working" and back moved the whole foot twice.
+function fittedFrom(facts, fits, from) {
+    const all = stages(facts);
+    const start = Math.min(Math.max(0, from), all.length - 1);
+    for (let stage = start; stage < all.length; stage += 1) {
+        if (fits(all[stage])) {
+            return { told: all[stage], stage };
+        }
+    }
+    return { told: all[all.length - 1], stage: all.length - 1 };
+}
+
+// The facts as the foot draws them, each with what it `said`, given
+// whether facts so told `fit` the room.
+function fitted(facts, fits) {
+    return fittedFrom(facts, fits, 0).told;
 }
