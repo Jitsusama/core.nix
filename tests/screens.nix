@@ -13,7 +13,7 @@
 let
   account = "jitsusama";
 
-  # What the script needs of the above, which it reads at its top.
+  # What the tests need of the above, as their values fixture.
   values = pkgs.writeText "screens-values.json" (builtins.toJSON { inherit account; });
 
   # Stands in for dictation's service, which would load Whisper, as the
@@ -197,11 +197,15 @@ pkgs.testers.runNixOSTest {
       services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "info";
     };
 
-  # The script reads the values from the file put in place of its marker.
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./screens-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests share (tests/lib), pytest and its runner among them.
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  # pytest runs the tests inside the driver, with the values as their fixture.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./screens-vm-test.py}", values="${values}")
+  '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
