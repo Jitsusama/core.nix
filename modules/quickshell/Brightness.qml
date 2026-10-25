@@ -69,14 +69,14 @@ Scope {
 
     Meter {
         name: "brightness"
-        glyph: String.fromCodePoint(0xf00e0)
+        glyph: Theme.glyph.brightness
         visible: root.shown === "screen"
         level: root.level
     }
 
     Meter {
         name: "keyboard-light"
-        glyph: String.fromCodePoint(0xf030c)
+        glyph: Theme.glyph.keyboard
         visible: root.shown === "keyboard"
         level: Lights.lit
         off: Lights.dark
