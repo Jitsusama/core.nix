@@ -139,6 +139,15 @@ in
     # place of niri's own overlay of only its own.
     action = ''spawn "launcher-say" "collection" "shortcuts";'';
   }
+  # The displays, as Windows' Win+P opens its projection menu. The XPS 14's
+  # projection key sends Super with the P key, which keyd's Colemak makes a
+  # semicolon (modules/keyd).
+  {
+    chord = "Super+Semicolon";
+    does = "Find the displays";
+    also = "monitors screens project projector external mirror extend duplicate";
+    action = ''spawn "launcher-say" "collection" "displays";'';
+  }
   # The keyboard's layout, for a glance while typing, where a keyboard's
   # module describes one. K for keyboard.
   {
