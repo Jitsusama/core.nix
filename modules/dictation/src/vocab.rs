@@ -78,12 +78,23 @@ impl Vocab {
     pub fn count(&self) -> usize {
         self.tokens.len()
     }
+
+    /// Each token's number, by its bytes.
+    #[must_use]
+    pub fn numbers(&self) -> HashMap<Vec<u8>, usize> {
+        self.tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, bytes)| !bytes.is_empty())
+            .map(|(id, bytes)| (bytes.clone(), id))
+            .collect()
+    }
 }
 
 /// GPT-2's table from the character each byte is written as to the byte:
 /// printable Latin-1 stands for itself, and the other 68 bytes are written
 /// as the characters from U+0100 up, in order.
-fn byte_decoder() -> HashMap<char, u8> {
+pub fn byte_decoder() -> HashMap<char, u8> {
     let printable = |b: u8| matches!(b, b'!'..=b'~' | 0xa1..=0xac | 0xae..=0xff);
     let mut table = HashMap::new();
     let mut shifted = 0x100_u32;

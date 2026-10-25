@@ -150,8 +150,12 @@
     a switch restarts dictation after reloading its units
   '';
   dictation-works-it-out = ''
-    dictation's spectrogram, transform and vocabulary match their references; a held chord's
-    release stops only what it started, and a tap's none
+    dictation's spectrogram, transform and vocabulary match their references, words turn into
+    Whisper's tokens as GPT-2's merges join them; a held chord's release stops only what it
+    started, and a tap's none
+  '';
+  dictation-writes-the-words-it-knows = ''
+    Whisper writes a name it misheard as the words file spells it, given the file
   '';
   disabling-a-module-removes-it = ''
     `disabledModules` removes a module a role brought in

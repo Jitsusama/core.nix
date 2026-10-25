@@ -22,7 +22,8 @@
 //! ```
 //!
 //! `DICTATION_DEVICE` names where the encoder runs (NPU, falling back to the
-//! CPU), and `DICTATION_CACHE` where OpenVINO keeps what it compiles.
+//! CPU), `DICTATION_CACHE` where OpenVINO keeps what it compiles, and
+//! `DICTATION_WORDS` a file of words Whisper should know, one a line.
 
 mod mel;
 mod openvino;
@@ -30,6 +31,7 @@ mod service;
 mod vocab;
 mod wav;
 mod whisper;
+mod words;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -39,7 +41,9 @@ use whisper::Whisper;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["serve", model] => service::serve(Path::new(model), device(), cache()),
+        ["serve", model] => {
+            words().and_then(|words| service::serve(Path::new(model), device(), cache(), words))
+        }
         ["toggle"] => service::ask("toggle"),
         ["hold"] => service::ask("hold"),
         ["watch"] => service::ask("watch"),
@@ -66,10 +70,19 @@ fn cache() -> Option<PathBuf> {
     std::env::var_os("DICTATION_CACHE").map(PathBuf::from)
 }
 
+/// The words file's text, or nothing when no file is named.
+fn words() -> Result<String, String> {
+    match std::env::var_os("DICTATION_WORDS") {
+        Some(file) => std::fs::read_to_string(&file)
+            .map_err(|e| format!("reading {}: {e}", Path::new(&file).display())),
+        None => Ok(String::new()),
+    }
+}
+
 fn transcribe(model: &Path, file: &Path) -> Result<(), String> {
     let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
     let audio = wav::samples(&bytes)?;
-    let mut whisper = Whisper::load(model, &device(), cache().as_deref())?;
+    let mut whisper = Whisper::load(model, &device(), cache().as_deref(), &words()?)?;
     let (text, timings) = whisper.transcribe(&audio)?;
     println!("{text}");
     eprintln!("dictation: {}", timings.describe(&whisper.device));

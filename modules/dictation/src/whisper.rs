@@ -6,6 +6,9 @@
 //! gives it only the token before, and a fresh request starts afresh. It
 //! won't compile for the NPU, whose shapes are fixed while the decoder's
 //! grow a token at a time; on the GPU it was no faster than the CPU.
+//!
+//! Given words, the decoder reads them first as what came before
+//! (words.rs), so it writes them as they're spelled there.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -13,6 +16,7 @@ use std::time::{Duration, Instant};
 use crate::mel::{FRAMES, MELS, Spectrogram};
 use crate::openvino::{Compiled, Core, Input, Request, Result};
 use crate::vocab::Vocab;
+use crate::words::{self, Encoder};
 
 const END: usize = 50_257;
 const PROMPT: [i64; 4] = [
@@ -23,6 +27,8 @@ const PROMPT: [i64; 4] = [
 ];
 // As many tokens as Whisper writes for its 30 s window.
 const MOST: usize = 224;
+// As many tokens as the decoder holds, what it's given and what it writes.
+const CONTEXT: usize = 448;
 const VOCAB: usize = 51_865;
 
 /// Whisper, loaded and compiled.
@@ -31,6 +37,7 @@ pub struct Whisper {
     vocab: Vocab,
     encoder: Request,
     decoder: Compiled,
+    start: Vec<i64>,
     _core: Core,
     /// Where the encoder runs.
     pub device: String,
@@ -60,12 +67,13 @@ impl Timings {
 
 impl Whisper {
     /// Whisper from an OpenVINO export in `dir`, the encoder on `device`,
-    /// or on the CPU when that device can't take it.
+    /// or on the CPU when that device can't take it, leaning toward the
+    /// words file's words, one a line, when there are any.
     ///
     /// # Errors
     ///
     /// When a file is missing or neither device takes a model.
-    pub fn load(dir: &Path, device: &str, cache: Option<&Path>) -> Result<Self> {
+    pub fn load(dir: &Path, device: &str, cache: Option<&Path>, words: &str) -> Result<Self> {
         let vocab = std::fs::read_to_string(dir.join("vocab.json"))
             .map_err(|e| format!("reading vocab.json: {e}"))
             .and_then(|json| Vocab::parse(&json))?;
@@ -75,6 +83,19 @@ impl Whisper {
                 vocab.count()
             ));
         }
+        let sentence = words::sentence(words);
+        let before = if sentence.is_empty() {
+            Vec::new()
+        } else {
+            let merges = std::fs::read_to_string(dir.join("merges.txt"))
+                .map_err(|e| format!("reading merges.txt: {e}"))?;
+            Encoder::new(&vocab, &merges)?.encode(&sentence)?
+        };
+        let task: Vec<usize> = PROMPT.iter().map(|&id| usize_of(id)).collect();
+        let start = words::start(&before, &task)
+            .into_iter()
+            .map(i64_of)
+            .collect();
         let core = Core::new(cache)?;
         let mut encoder = core.read(&dir.join("openvino_encoder_model.xml"))?;
         encoder.fix_input(&[1, i64_of(MELS), i64_of(FRAMES)])?;
@@ -92,6 +113,7 @@ impl Whisper {
             vocab,
             encoder: encoder.request()?,
             decoder,
+            start,
             _core: core,
             device,
         })
@@ -119,8 +141,8 @@ impl Whisper {
 
         let mut decoder = self.decoder.request()?;
         let mut tokens = Vec::new();
-        let mut ids: Vec<i64> = PROMPT.to_vec();
-        for _ in 0..MOST {
+        let mut ids = self.start.clone();
+        for _ in 0..MOST.min(CONTEXT - self.start.len()) {
             let (_, logits) = decoder.run(
                 &[
                     Input::I64("input_ids", &[1, i64_of(ids.len())], &ids),
@@ -152,6 +174,10 @@ impl Whisper {
 
 fn i64_of(n: usize) -> i64 {
     i64::try_from(n).expect("a size Whisper uses fits in 64 bits")
+}
+
+fn usize_of(n: i64) -> usize {
+    usize::try_from(n).expect("Whisper's tokens are positive")
 }
 
 /// The likeliest token that's text or the end, leaving out the special

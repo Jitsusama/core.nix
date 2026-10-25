@@ -1,6 +1,6 @@
 # Whisper small, as OpenVINO exported it in fp16 (Apache 2.0): the encoder,
-# the stateful decoder and the vocabulary, the files dictation reads, at
-# the revision whose transcripts were measured.
+# the stateful decoder, the vocabulary and its merges, the files dictation
+# reads, at the revision whose transcripts were measured.
 { fetchurl, linkFarm }:
 let
   revision = "2410d022171ca8a97343182f88eec8807a324db9";
@@ -18,4 +18,5 @@ linkFarm "whisper-small-fp16-ov" [
   (file "openvino_decoder_model.xml" "sha256-cD3ZfbuaF1mQsEmAmcL6FaaG8kQtZgVyZgBvjl/QLCc=")
   (file "openvino_decoder_model.bin" "sha256-Mc5QKQ6Uv31Z6QEVFMxi/I0kYhAmoaupmCwCqLohfik=")
   (file "vocab.json" "sha256-j2gLujGeAaZT0uil28F6kVcXngV25s50zgwGNWxuJPk=")
+  (file "merges.txt" "sha256-LfKZCjleNejfvHUR4IwS1WAY2NBGkeATPl1jsh4VTcY=")
 ]

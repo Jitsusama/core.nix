@@ -134,11 +134,16 @@ pub fn socket() -> PathBuf {
 /// # Errors
 ///
 /// When it can't take or bind its socket.
-pub fn serve(model: &Path, device: String, cache: Option<PathBuf>) -> Result<(), String> {
+pub fn serve(
+    model: &Path,
+    device: String,
+    cache: Option<PathBuf>,
+    words: String,
+) -> Result<(), String> {
     let listener = listener()?;
     let (events, heard) = mpsc::channel();
     let prime = device != "CPU" && accelerated();
-    let jobs = worker(model.to_owned(), device, cache, events.clone());
+    let jobs = worker(model.to_owned(), device, cache, words, events.clone());
     if prime {
         let _ = jobs.send(Job::Prime);
     }
@@ -468,6 +473,7 @@ fn worker(
     model: PathBuf,
     device: String,
     cache: Option<PathBuf>,
+    words: String,
     events: Sender<Event>,
 ) -> Sender<Job> {
     let (jobs, work) = mpsc::channel::<Job>();
@@ -475,7 +481,7 @@ fn worker(
         let mut whisper: Option<Whisper> = None;
         let load = |whisper: &mut Option<Whisper>| -> Result<(), String> {
             if whisper.is_none() {
-                *whisper = Some(Whisper::load(&model, &device, cache.as_deref())?);
+                *whisper = Some(Whisper::load(&model, &device, cache.as_deref(), &words)?);
             }
             Ok(())
         };
@@ -495,7 +501,7 @@ fn worker(
                 Job::Prime => {
                     if whisper.is_none() {
                         let started = Instant::now();
-                        match Whisper::load(&model, &device, cache.as_deref()) {
+                        match Whisper::load(&model, &device, cache.as_deref(), &words) {
                             Ok(_) => eprintln!(
                                 "dictation: ready in {} ms",
                                 started.elapsed().as_millis()
