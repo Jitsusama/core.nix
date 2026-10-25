@@ -157,7 +157,7 @@ impl Step for OpenVault {
                 id: "passphrase",
                 name,
                 or: format!(
-                    "plug in {} beside the stick, type its PIN and press Return, then touch the key when it blinks",
+                    "if a port is free beside the stick, plug in {} there, type its PIN and press Return, then touch the key when it blinks",
                     either(&keys)
                 ),
             }],
