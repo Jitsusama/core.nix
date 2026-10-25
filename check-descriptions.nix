@@ -52,16 +52,23 @@
     clippy finds nothing in bluetooth-links or its tests
   '';
   bluetooth-links-reads-the-replies = ''
-    bluetooth-links reads the kernel's lists of adapters and of the connections that are up, writes
-    each HCI command as the controller takes it and picks its answer out of the events, reads the
-    signal, link quality, power and channel map from reply bytes, leaves a failed one null, writes
-    nothing connected once, and replaces its file whole, readable by everyone
+    bluetooth-links reads the kernel's lists of adapters and of the connections that are up, with
+    who leads each, who started it and how it's secured, and each adapter's address and byte
+    counts, writes each HCI command as the controller takes it and picks its answer out of the
+    events, reads the signal, link quality, power, channel map and the adapter's version and maker
+    from reply bytes, leaves a failed one null, keeps each link's last twenty reads and each
+    adapter's traffic, asks the version once, writes nothing new while nothing is connected, and
+    replaces its file whole, readable by everyone
   '';
   bluetooth-pairs-before-it-connects = ''
     the launcher trusts a Bluetooth device before pairing it, follows it past its link coming up
-    until it's paired, untrusts one that fails, and connects one paired before, and lists a
-    connected device's facts after its verbs, after how its link is doing from the file
-    bluetooth-links would write, and answers how the links are doing
+    until it's paired, untrusts one that fails, and connects one paired before; lists a device's
+    parts after its verbs, named first: its battery warning low, its signal and link quality as
+    sparks of the reads bluetooth-links would write, its channels, connection, an input device's
+    facts held by how it's carried, whether it reconnects by itself and wakes the machine as
+    settings whose choices set them, and its address to copy; lists the adapter's radio,
+    visibility and pairing as settings, its traffic as a spark and what it is; and answers how the
+    links are doing
   '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and

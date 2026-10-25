@@ -557,6 +557,31 @@ QtObject {
         machine("any Opus", Links.codec("opus_05_51").name, "Opus");
         machine("a codec not known", Links.codec("new_one").name, "NEW_ONE");
         machine("no codec", Links.codec(undefined), null);
+        machine("what music's codec carries", Links.carried({ "api.bluez5.profile": "a2dp-sink",
+            "node.rate": "1/44100" }, 2), { profile: "music", rate: "44.1 kHz",
+            channels: "2, stereo" });
+        machine("what a call's codec carries", Links.carried({
+            "api.bluez5.profile": "headset-head-unit", "audio.rate": 16000,
+            "audio.channels": 1 }, 0), { profile: "calls", rate: "16 kHz", channels: "1, mono" });
+        machine("a node saying nothing", Links.carried(null, 0),
+            { profile: "", rate: "", channels: "" });
+        machine("an old reader's link has its one read", Links.signals(btClassic), [0.85]);
+        machine("a link held unencrypted", Links.held({ le: true, held: { central: false,
+            outgoing: true, security: "authenticated" } }), {
+            side: "Low Energy, peripheral, not encrypted",
+            note: "this machine started it, though the device proved who it is" });
+        machine("an old reader's link says nothing of how", Links.held(btClassic), null);
+        machine("the version of Bluetooth", Links.version(14), "Bluetooth 6.0");
+        machine("a version not known", Links.version(99), "");
+        machine("a chip's maker", [Links.maker(2), Links.maker(9999)], ["Intel", ""]);
+        machine("an adapter by its name", Links.adapter(Links.adapters(JSON.stringify({
+            adapters: [{ name: "hci0" }], links: [] })), "hci0").name, "hci0");
+        machine("an old reader's file has no adapters", Links.adapters(btFile), []);
+        machine("an adapter read once has no traffic", Links.traffic({ received: null,
+            sent: null, traffic: [] }), null);
+        machine("a busy adapter's traffic", Links.traffic({ received: 2.5e6, sent: 0,
+            traffic: [2.5e6] }), { side: "2.5 MB/s", values: [1],
+            note: "2.5 MB/s in, 0 B/s out" });
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

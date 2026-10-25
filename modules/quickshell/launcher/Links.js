@@ -1,9 +1,11 @@
 // What the launcher's Bluetooth makes of how each link is doing, in plain
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // the file the machine's link reader writes (modules/bluetooth-links), read
-// into each link's signal, how well it carries and which channels it skips
-// as noisy, and the codec PipeWire names, in its usual spelling.
-// Accessories.qml reads the file and draws the rows.
+// into each link's signal and how well it carries, with their last reads,
+// which channels it skips as noisy and how it's held, and each adapter's
+// traffic, version and maker; and the codec PipeWire names, in its usual
+// spelling, with what it carries. Accessories.qml reads the file and draws
+// the rows.
 .pragma library
 
 const PERCENT = 100;
@@ -34,16 +36,33 @@ const CALL_CODECS = ["cvsd", "msbc", "lc3_swb"];
 const OPUS = /^opus/;
 const IN_USE = "1";
 
-// Every link the file says, or null when it isn't the reader's file: no
-// reader, so nothing is said of any link.
-function links(text) {
+// What the file says, or null when it isn't the reader's file.
+function read(text) {
     let said = null;
     try {
         said = JSON.parse(text);
     } catch (_error) {
         return null;
     }
-    return said && Array.isArray(said.links) ? said.links : null;
+    return said && Array.isArray(said.links) ? said : null;
+}
+
+// Every link the file says, or null when it isn't the reader's file: no
+// reader, so nothing is said of any link.
+function links(text) {
+    const said = read(text);
+    return said ? said.links : null;
+}
+
+// Every adapter the file says, or none.
+function adapters(text) {
+    const said = read(text);
+    return said && Array.isArray(said.adapters) ? said.adapters : [];
+}
+
+// An adapter by the kernel's name for it (hci0), or null.
+function adapter(all, name) {
+    return (all ?? []).find(each => each.name === name) ?? null;
 }
 
 // The link to a device, by its address, or null.
@@ -94,6 +113,24 @@ function signal(link) {
     };
 }
 
+// A history's reads, each the controller said, the newest last: those it
+// didn't are left out, since a gap isn't a reading of nothing.
+function reads(link, field) {
+    const history = link?.history?.[field];
+    const said = Array.isArray(history) ? history.filter(figure) : [];
+    return said.length > 0 || !(link && figure(link[field])) ? said : [link[field]];
+}
+
+// The signal's last reads as a spark draws them, each as its bar would be.
+function signals(link) {
+    return reads(link, "rssi").map(rssi => signal({ rssi, le: link.le }).value);
+}
+
+// The link quality's last reads as a spark draws them.
+function qualities(link) {
+    return reads(link, "quality").map(each => kept(each / QUALITY_MOST));
+}
+
 // How well the link carries, as a share of the 255 its controller counts
 // to, or null.
 function quality(link) {
@@ -134,6 +171,111 @@ function channels(link) {
         clear,
         note: skipped === 0 ? "the link skips none as noisy"
             : `the link skips the other ${skipped} as noisy`
+    };
+}
+
+// How a link is held, as its Connection says it: over which radio, which
+// end leads it and how well it's kept from others, then who started it, or
+// null when the reader doesn't say.
+const KEPT = {
+    secure: ["encrypted", ", with Secure Connections\u2019 keys"],
+    encrypted: ["encrypted", ", with older keys"],
+    authenticated: ["not encrypted", ", though the device proved who it is"],
+    none: ["not encrypted", ""]
+};
+
+function held(link) {
+    const how = link?.held;
+    if (!how) {
+        return null;
+    }
+    const [side, more] = KEPT[how.security] ?? ["", ""];
+    const role = how.central ? "central" : "peripheral";
+    return {
+        side: [link.le ? "Low Energy" : "Classic", role, side].filter(part => part !== "")
+            .join(", "),
+        note: `${how.outgoing ? "this machine" : "the device"} started it${more}`
+    };
+}
+
+// The version of Bluetooth a controller follows, by the number it says,
+// as the specification is named, or "".
+const VERSIONS = ["1.0b", "1.1", "1.2", "2.0", "2.1", "3.0", "4.0", "4.1", "4.2", "5.0",
+    "5.1", "5.2", "5.3", "5.4", "6.0", "6.1", "6.2"];
+
+function version(number) {
+    return figure(number) && VERSIONS[number] ? `Bluetooth ${VERSIONS[number]}` : "";
+}
+
+// Who made a controller, by the number the Bluetooth SIG gives each
+// company, for those that make laptops' and dongles' radios, or "".
+const MAKERS = {
+    2: "Intel", 10: "Qualcomm", 13: "Texas Instruments", 15: "Broadcom", 18: "Zeevo",
+    29: "Qualcomm", 48: "STMicroelectronics", 70: "MediaTek", 93: "Realtek", 305: "Cypress",
+    1521: "Infineon"
+};
+
+function maker(number) {
+    return MAKERS[number] ?? "";
+}
+
+// Bytes a second, in decimal units, as a network's are said.
+const KILO = 1e3;
+const MEGA = 1e6;
+const UNITS = [[MEGA, "MB/s"], [KILO, "kB/s"]];
+const TENS = 10;
+
+function rate(count) {
+    const unit = UNITS.find(each => count >= each[0]);
+    if (!unit) {
+        return `${Math.round(count)} B/s`;
+    }
+    const scaled = count / unit[0];
+    return `${scaled < TENS ? scaled.toFixed(1) : Math.round(scaled)} ${unit[1]}`;
+}
+
+// The least a traffic spark's top stands for, so the radio's few bytes a
+// second of housekeeping draw as almost nothing.
+const LEAST_TRAFFIC = 1e3;
+
+// What an adapter carries: its row's words, a spark of its last reads,
+// each to the most of them, and its note, or null before it's been read
+// twice.
+function traffic(told) {
+    if (!(told && figure(told.received) && figure(told.sent))) {
+        return null;
+    }
+    const said = Array.isArray(told.traffic) ? told.traffic.filter(figure) : [];
+    const most = Math.max(LEAST_TRAFFIC, ...said);
+    return {
+        side: rate(told.received + told.sent),
+        values: said.map(each => each / most),
+        note: `${rate(told.received)} in, ${rate(told.sent)} out`
+    };
+}
+
+// What a codec carries, as its parts say it, from the properties of the
+// PipeWire node it's sent from and how many channels the node has: what
+// it's for, music or calls, its sample rate and its channels, each ""
+// when the node doesn't say.
+const PROFILES = [
+    [/^a2dp/, "music"], [/^bap/, "LE Audio"], [/^(headset|hfp|hsp)/, "calls"]
+];
+const LAYOUTS = ["", "mono", "stereo"];
+// A node says its rate as audio.rate or as its clock, 1/48000.
+const CLOCK = /^1\/(\d+)$/;
+
+function carried(properties, count) {
+    const said = properties ?? {};
+    const profile = PROFILES.find(each => each[0].test(said["api.bluez5.profile"] ?? ""));
+    const clock = CLOCK.exec(String(said["node.rate"] ?? ""));
+    const hertz = Number(said["audio.rate"] ?? (clock ? clock[1] : 0));
+    const many = Number(said["audio.channels"] ?? count ?? 0);
+    const layout = LAYOUTS[many] ?? "";
+    return {
+        profile: profile ? profile[1] : "",
+        rate: hertz > 0 ? `${hertz / KILO} kHz` : "",
+        channels: many > 0 ? [String(many), layout].filter(part => part !== "").join(", ") : ""
     };
 }
 

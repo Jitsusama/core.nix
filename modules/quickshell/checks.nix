@@ -1328,8 +1328,9 @@ onLinux {
   # through Quickshell itself with stand-in devices
   # (tests/bluetooth-pairing.qml), with the facts desk-facts would write
   # for a connected mouse, and how its link and some headphones' are doing,
-  # as bluetooth-links would write it: the headphones' skipping channels 22
-  # to 39, where a Wi-Fi network on its channel 6 sits.
+  # with their last reads and how each is held, and the adapter's traffic
+  # and version, as bluetooth-links would write it: the headphones'
+  # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -1344,11 +1345,18 @@ onLinux {
         EOF
         map=$(printf '1%.0s' {1..22}; printf '0%.0s' {1..18}; printf '1%.0s' {1..39})
         cat > runtime/bluetooth-links.json <<EOF
-        {"at": 1761350400, "links": [
+        {"at": 1761350400,
+         "adapters": [{"name": "hci9", "address": "02:00:00:00:00:01", "up": true,
+           "version": 14, "maker": 2, "received": 1200, "sent": 300,
+           "traffic": [0, 750, 1500]}],
+         "links": [
           {"address": "00:1B:66:AA:BB:CC", "rssi": 0, "quality": 230, "power": 4,
-           "channels": 61, "map": "$map", "le": false},
+           "channels": 61, "map": "$map", "le": false,
+           "held": {"central": true, "outgoing": false, "security": "secure"},
+           "history": {"rssi": [-20, null, 0], "quality": [204, 230]}},
           {"address": "C3:9C:E3:2A:F3:6E", "rssi": -58, "quality": null, "power": 4,
-           "channels": null, "map": null, "le": true}
+           "channels": null, "map": null, "le": true,
+           "held": {"central": false, "outgoing": true, "security": "none"}}
         ]}
         EOF
         cp ${./Fuzzy.js} Fuzzy.js

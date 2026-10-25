@@ -2288,7 +2288,10 @@
     {
       "id": "bluetooth:quality",
       "in": "bluetooth",
-      "name": "Link"
+      "name": "Link quality",
+      "hidden": [
+        "link"
+      ]
     },
     {
       "id": "bluetooth:codec",
@@ -2299,6 +2302,162 @@
       "id": "bluetooth:channels",
       "in": "bluetooth",
       "name": "Channels"
+    },
+    {
+      "id": "bluetooth:battery",
+      "in": "bluetooth",
+      "name": "Battery"
+    },
+    {
+      "id": "bluetooth:profile",
+      "in": "bluetooth",
+      "name": "Profile"
+    },
+    {
+      "id": "bluetooth:rate",
+      "in": "bluetooth",
+      "name": "Sample rate"
+    },
+    {
+      "id": "bluetooth:sound-channels",
+      "in": "bluetooth",
+      "name": "Audio channels"
+    },
+    {
+      "id": "bluetooth:held",
+      "in": "bluetooth",
+      "name": "Connection",
+      "hidden": [
+        "encrypted",
+        "central"
+      ]
+    },
+    {
+      "id": "bluetooth:input",
+      "in": "bluetooth",
+      "name": "Input"
+    },
+    {
+      "id": "bluetooth:id",
+      "in": "bluetooth",
+      "name": "Ids"
+    },
+    {
+      "id": "bluetooth:trusted",
+      "in": "bluetooth",
+      "name": "Reconnects by itself",
+      "hidden": [
+        "trusted"
+      ]
+    },
+    {
+      "id": "bluetooth:wake",
+      "in": "bluetooth",
+      "name": "Wakes the machine"
+    },
+    {
+      "id": "bluetooth:address",
+      "in": "bluetooth",
+      "name": "Address",
+      "hidden": [
+        "mac"
+      ]
+    },
+    {
+      "id": "bluetooth:adapter",
+      "in": "bluetooth",
+      "name": "Adapter",
+      "hidden": [
+        "radio",
+        "this machine",
+        "discoverable",
+        "pairable"
+      ]
+    },
+    {
+      "id": "bluetooth:powered",
+      "in": "bluetooth",
+      "name": "Radio"
+    },
+    {
+      "id": "bluetooth:discoverable",
+      "in": "bluetooth",
+      "name": "Visible to others"
+    },
+    {
+      "id": "bluetooth:pairable",
+      "in": "bluetooth",
+      "name": "Pairable"
+    },
+    {
+      "id": "bluetooth:traffic",
+      "in": "bluetooth",
+      "name": "Traffic"
+    },
+    {
+      "id": "bluetooth:name",
+      "in": "bluetooth",
+      "name": "Name"
+    },
+    {
+      "id": "bluetooth:version",
+      "in": "bluetooth",
+      "name": "Version"
+    },
+    {
+      "id": "bluetooth:chip",
+      "in": "bluetooth",
+      "name": "Chip"
+    },
+    {
+      "id": "verb:bluetooth-trust",
+      "in": "bluetooth",
+      "name": "Let it reconnect by itself"
+    },
+    {
+      "id": "verb:bluetooth-untrust",
+      "in": "bluetooth",
+      "name": "Only connect it when asked"
+    },
+    {
+      "id": "verb:bluetooth-wake",
+      "in": "bluetooth",
+      "name": "Let it wake the machine"
+    },
+    {
+      "id": "verb:bluetooth-no-wake",
+      "in": "bluetooth",
+      "name": "Keep it from waking the machine"
+    },
+    {
+      "id": "verb:bluetooth-radio-on",
+      "in": "bluetooth",
+      "name": "Turn the radio on"
+    },
+    {
+      "id": "verb:bluetooth-radio-off",
+      "in": "bluetooth",
+      "name": "Turn the radio off"
+    },
+    {
+      "id": "verb:bluetooth-visible",
+      "in": "bluetooth",
+      "name": "Let others find it"
+    },
+    {
+      "id": "verb:bluetooth-hidden",
+      "in": "bluetooth",
+      "name": "Keep it hidden"
+    },
+    {
+      "id": "verb:bluetooth-pairable",
+      "in": "bluetooth",
+      "name": "Let others pair with it"
+    },
+    {
+      "id": "verb:bluetooth-unpairable",
+      "in": "bluetooth",
+      "name": "Refuse new pairings"
     },
     {
       "id": "verb:bluetooth-connect",

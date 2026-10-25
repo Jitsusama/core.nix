@@ -1,26 +1,39 @@
 // Bluetooth, a collection: the devices around, those connected first, then
 // those paired, then the rest by name, each glyph saying what kind of device
-// it is and the footer its battery where it says. Return connects one,
-// pairing it first if it's new, or disconnects the one connected, and the
-// launcher stays, saying it's connecting, until it's done or says why not.
-// A device that wants a passkey typed is paired in bluetoothctl instead,
-// since this pairs only as headphones and mice do, with nothing to type.
-// Turning Bluetooth off and on is an action in the main search. Everything
-// comes from BlueZ over D-Bus through Quickshell, so no process is asked,
-// and the radio looks for devices only while the launcher is open. What a
-// connected input device's kernel side says of it (how it's carried, its
-// buttons, wheel or keys, its ids) comes from desk-facts, after its verbs.
+// it is and the footer its battery where it says, and last the machine's
+// own Adapter. Return connects one, pairing it first if it's new, or
+// disconnects the one connected, and the launcher stays, saying it's
+// connecting, until it's done or says why not. A device that wants a
+// passkey typed is paired in bluetoothctl instead, since this pairs only as
+// headphones and mice do, with nothing to type. Turning Bluetooth off and
+// on is an action in the main search, and the Adapter's Radio too.
+// Everything of a device's state comes from BlueZ over D-Bus through
+// Quickshell, so no process is asked, and the radio looks for devices only
+// while the launcher is open.
 //
-// How a connected device's link is doing comes between its verbs and those
-// facts: its Signal, how well the Link carries, the Codec its sound goes
-// in, as PipeWire names it, and how many Channels are clear, the rest
-// skipped as noisy, which is how crowded the air is. BlueZ says none of
-// the first and last, so they're from the file the machine's link reader
-// writes (modules/bluetooth-links), read as the device's list is made and
-// again each second while it's shown, and never for a key; a machine
-// without the reader shows none of them. "bluetooth performance",
-// "bluetooth signal" or "interference" answers with each connected
-// device's Signal and Channels.
+// A device's right arrow lists what can be done to it, then its parts:
+// its Battery as a bar; its Signal and how well its link carries (Link
+// quality) as sparks of their last twenty reads; the Codec its sound goes
+// in, as PipeWire names it, holding what it's for, its sample rate and
+// its channels; how many Channels of the radio's are clear, the rest
+// skipped as noisy, which is how crowded the air is; its Connection,
+// which radio carries it, which end leads it and whether it's encrypted;
+// how an input device's kernel side says it's carried, holding its
+// buttons, wheel or keys and ids (from desk-facts); whether it Reconnects
+// by itself and Wakes the machine, settings whose two choices are a step
+// in; and its Address, which Return copies. The Adapter holds its Radio,
+// whether it's Visible to others and Pairable, as settings, then its
+// Traffic as a spark, its Name, Address, Version and Chip.
+//
+// BlueZ says nothing of a link's signal, quality, channels or how it's
+// held, nor of an adapter's traffic, address or version, so they're from
+// the file the machine's link reader writes (modules/bluetooth-links),
+// with each link's last reads, so a spark is full the moment it's shown.
+// It's read as a list is made, and while a device's parts, the Adapter's
+// or an answer are shown it's watched and read again only when the reader
+// writes it, never for a key; a machine without the reader shows none of
+// them. "bluetooth performance", "bluetooth signal" or "interference"
+// answers with each connected device's Signal and Channels.
 import qs
 import Quickshell
 import Quickshell.Bluetooth
@@ -146,7 +159,20 @@ Provider {
         });
     }
 
+    // The machine's own adapter, last, so Return on the first row still
+    // connects the likeliest device: a thing holding how it's set and what
+    // it is.
+    readonly property var adapterRow: adapter === null ? null : holderRow({
+        key: "bluetooth:adapter",
+        name: Words.name("bluetooth:adapter"),
+        keywords: Words.keywords("bluetooth:adapter"),
+        side: on ? "on" : "off",
+        glyph: Theme.glyph.bluetooth,
+        adapter: adapter
+    }, () => provider.adapterParts(provider.adapter))
+
     readonly property var all: devices.map(device => made(device))
+        .concat(adapterRow === null ? [] : [adapterRow])
     onAllChanged: changed()
 
     // What desk-facts knows of each connected input device, by its address;
@@ -162,21 +188,13 @@ Provider {
         onLoadFailed: provider.facts = ({})
     }
 
-    function factRows(device) {
-        const said = facts[device.address] ?? [];
-        return said.map(fact => copyRow({
-            key: `fact:bluetooth:${device.address}:${fact.name}`,
-            name: fact.value,
-            side: fact.name,
-            glyph: kind(device)
-        }));
-    }
-
-    // How each link is doing, as the reader last wrote it: its text and
-    // when it was read, so an answer asked again by each letter of its
-    // question reads it once a second at most. A check points it at a
-    // stand-in.
-    readonly property var memo: ({ text: "", at: 0 })
+    // How each link is doing, as the reader last wrote it: its text, when
+    // it was read, and when watching it began. While something of it is
+    // shown the file is watched, and read again only when the reader
+    // writes it; otherwise it's read as it's asked, once a second at most,
+    // so an answer asked again by each letter of its question reads it
+    // once. A check points it at a stand-in.
+    readonly property var memo: ({ text: "", at: 0, since: 0 })
     readonly property int second: 1000
 
     FileView {
@@ -184,20 +202,43 @@ Provider {
         path: provider.settings.links ?? "/run/bluetooth-links.json"
         blockLoading: true
         printErrors: false
+        watchChanges: provider.watching
+        onFileChanged: provider.heard()
+    }
+
+    readonly property bool watching: looking !== null || answering
+    onWatchingChanged: memo.since = Date.now()
+
+    // What the reader's file says, read again unless it's been read since
+    // the reader last wrote it, as far as can be told.
+    function linksText(fresh) {
+        const now = Date.now();
+        const current = watching ? memo.at >= memo.since : now - memo.at < second;
+        if (fresh || !current) {
+            memo.text = read(linksFile);
+            memo.at = now;
+        }
+        return memo.text;
     }
 
     // Every link the reader says, or null with no reader.
     function links(fresh) {
-        const now = Date.now();
-        if (fresh || now - memo.at >= second) {
-            memo.text = read(linksFile);
-            memo.at = now;
-        }
-        return Links.links(memo.text);
+        return Links.links(linksText(fresh));
+    }
+
+    // The reader wrote its file while something of it is shown: an answer
+    // is asked again, and a list says it changed only when the file did.
+    function heard() {
+        const before = memo.text;
+        linksText(true);
+        if (answering)
+            answered();
+        else if (memo.text !== before)
+            changed();
     }
 
     // PipeWire's own Bluetooth nodes, whose properties name the codec each
-    // sends in, heard once something binds them.
+    // sends in and what it carries, heard once something binds them.
     readonly property var bluez: Pipewire.nodes.values
         .filter(node => (node.name ?? "").startsWith("bluez_"))
 
@@ -205,38 +246,128 @@ Provider {
         objects: provider.bluez
     }
 
-    // The codec a device's sound goes in, its output's before its input's,
-    // or null for a device with no sound.
-    function codec(device) {
+    // The node a device's sound goes through, its output's before its
+    // input's, or null for a device with no sound.
+    function soundNode(device) {
         const nodes = bluez.filter(node => node.properties["api.bluez5.address"] === device.address
             && !!node.properties["api.bluez5.codec"]);
-        const node = nodes.find(one => one.isSink) ?? nodes[0];
-        return node ? Links.codec(node.properties["api.bluez5.codec"]) : null;
+        return nodes.find(one => one.isSink) ?? nodes[0] ?? null;
     }
 
-    // A figure says something and copies nothing, wearing no glyph.
-    function figure(fields) {
+    // How rows are drawn. A figure says something and Return closes; a leaf
+    // worth having elsewhere, as an address, copies what it says. Neither
+    // wears a glyph.
+    function saying(fields) {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
 
-    function bar(value) {
-        return { shape: "bar", values: [value], warn: false };
+    function leaf(fields) {
+        return copyRow(Object.assign({ copy: fields.side, hue: "machine", glyph: "", note: "" },
+            fields));
+    }
+
+    // A graph a row draws (Graph.qml): a bar has one value, a spark one a
+    // read, the newest last, each 0 to 1.
+    readonly property int graphed: 20
+
+    function bar(value, warn) {
+        return { shape: "bar", values: [Math.max(0, Math.min(1, value))], warn: warn === true };
+    }
+
+    function spark(values) {
+        return { shape: "spark", values: values.slice(-graphed), warn: false };
+    }
+
+    // A setting as a part: its name, how it's set, and its choices a step
+    // in, each an act wearing its thing's glyph.
+    function setting(owner, id, side, mark, choices, fields) {
+        return holderRow(Object.assign({
+            key: `bluetooth:${owner}:${id}`,
+            name: Words.name(`bluetooth:${id}`),
+            side: side,
+            glyph: mark,
+            offers: true
+        }, fields ?? {}), choices);
+    }
+
+    function choice(id, inUse, mark, run) {
+        return thing({
+            key: `verb:${id}`,
+            name: Words.name(`verb:${id}`),
+            glyph: mark,
+            hue: "action",
+            side: inUse ? "in use" : "",
+            run: run
+        });
+    }
+
+    // A battery at this share or below warns.
+    readonly property real low: 0.2
+
+    function batteryRow(device) {
+        if (!device.batteryAvailable)
+            return null;
+        const warns = device.battery <= low;
+        return saying({
+            key: `bluetooth:${device.address}:battery`,
+            name: Words.name("bluetooth:battery"),
+            side: `${Math.round(device.battery * 100)}%`,
+            graph: bar(device.battery, warns),
+            note: warns ? "running low" : ""
+        });
     }
 
     function signalRow(device, link) {
         const signal = Links.signal(link);
-        return signal === null ? null : figure({
+        return signal === null ? null : saying({
             key: `link:bluetooth:${device.address}:signal`,
             name: Words.name("bluetooth:signal"),
             side: signal.side,
-            graph: bar(signal.value),
+            graph: spark(Links.signals(link)),
             note: signal.note
         });
     }
 
+    function qualityRow(device, link) {
+        const quality = Links.quality(link);
+        return quality === null ? null : saying({
+            key: `link:bluetooth:${device.address}:quality`,
+            name: Words.name("bluetooth:quality"),
+            side: quality.side,
+            graph: spark(Links.qualities(link)),
+            note: quality.note
+        });
+    }
+
+    // The codec a connected device's sound goes in, holding what it's for,
+    // its sample rate and its channels, as far as PipeWire says them.
+    function codecRow(device) {
+        const node = device.connected ? soundNode(device) : null;
+        const sent = node ? Links.codec(node.properties["api.bluez5.codec"]) : null;
+        if (sent === null)
+            return null;
+        const carried = Links.carried(node.properties, node.audio?.channels?.length ?? 0);
+        const parts = [["profile", carried.profile], ["rate", carried.rate],
+            ["sound-channels", carried.channels]].filter(each => each[1] !== "")
+            .map(each => saying({
+                key: `bluetooth:${device.address}:${each[0]}`,
+                name: Words.name(`bluetooth:${each[0]}`),
+                side: each[1]
+            }));
+        const fields = {
+            key: `link:bluetooth:${device.address}:codec`,
+            name: Words.name("bluetooth:codec"),
+            side: sent.name,
+            note: sent.note,
+            device: device
+        };
+        return parts.length === 0 ? saying(fields)
+            : holderRow(Object.assign(fields, { glyph: kind(device) }), () => parts);
+    }
+
     function channelsRow(device, link) {
         const channels = Links.channels(link);
-        return channels === null ? null : figure({
+        return channels === null ? null : saying({
             key: `link:bluetooth:${device.address}:channels`,
             name: Words.name("bluetooth:channels"),
             side: channels.side,
@@ -245,25 +376,158 @@ Provider {
         });
     }
 
-    // How a connected device's link is doing, as figures.
-    function linkRows(device) {
-        if (!device.connected)
-            return [];
-        const link = Links.of(links(false), device.address);
-        const quality = Links.quality(link);
-        const sent = codec(device);
-        return [signalRow(device, link), quality === null ? null : figure({
-            key: `link:bluetooth:${device.address}:quality`,
-            name: Words.name("bluetooth:quality"),
-            side: quality.side,
-            graph: bar(quality.value),
-            note: quality.note
-        }), sent === null ? null : figure({
-            key: `link:bluetooth:${device.address}:codec`,
-            name: Words.name("bluetooth:codec"),
-            side: sent.name,
-            note: sent.note
-        }), channelsRow(device, link)].filter(row => row !== null);
+    function connectionRow(device, link) {
+        const held = Links.held(link);
+        return held === null ? null : saying({
+            key: `link:bluetooth:${device.address}:held`,
+            name: Words.name("bluetooth:held"),
+            side: held.side,
+            note: held.note
+        });
+    }
+
+    // What desk-facts says of a connected input device: how it's carried,
+    // holding the rest, each named first as a part is (Buttons "5").
+    function inputRow(device) {
+        const told = facts[device.address] ?? [];
+        if (told.length === 0)
+            return null;
+        const carried = told.find(fact => fact.name === "connection") ?? null;
+        const rest = told.filter(fact => fact !== carried);
+        const fields = {
+            key: `bluetooth:${device.address}:input`,
+            name: Words.name("bluetooth:input"),
+            side: carried ? carried.value : "",
+            device: device
+        };
+        if (rest.length === 0)
+            return leaf(fields);
+        return holderRow(Object.assign(fields, { glyph: kind(device) }),
+            () => provider.factParts("bluetooth", device.address, rest));
+    }
+
+    // Whether a paired device comes back by itself, which BlueZ calls
+    // trusting it, and whether an input device may wake the machine.
+    function trustedRow(device) {
+        if (!device.paired)
+            return null;
+        const trusted = device.trusted;
+        const mark = kind(device);
+        return setting(device.address, "trusted", trusted ? "yes" : "no", mark, () => [
+            choice("bluetooth-trust", trusted, mark, () => device.trusted = true),
+            choice("bluetooth-untrust", !trusted, mark, () => device.trusted = false)
+        ], { device: device });
+    }
+
+    function wakeRow(device) {
+        if (!device.paired || !(device.icon ?? "").startsWith("input-"))
+            return null;
+        const wakes = device.wakeAllowed;
+        const mark = kind(device);
+        return setting(device.address, "wake", wakes ? "yes" : "no", mark, () => [
+            choice("bluetooth-wake", wakes, mark, () => device.wakeAllowed = true),
+            choice("bluetooth-no-wake", !wakes, mark, () => device.wakeAllowed = false)
+        ], { device: device });
+    }
+
+    function addressRow(device) {
+        return leaf({
+            key: `bluetooth:${device.address}:address`,
+            name: Words.name("bluetooth:address"),
+            side: device.address
+        });
+    }
+
+    // A device's parts, after what can be done to it; the link's only
+    // while it's connected.
+    function deviceParts(device) {
+        const link = device.connected ? Links.of(links(false), device.address) : null;
+        return [batteryRow(device), signalRow(device, link), qualityRow(device, link),
+            codecRow(device), channelsRow(device, link), connectionRow(device, link),
+            inputRow(device), trustedRow(device), wakeRow(device), addressRow(device)]
+            .filter(row => row !== null);
+    }
+
+    // What the kernel's sysfs says of an adapter's chip, its maker's and
+    // model's ids, read once, since they never change: a PCI chip's as
+    // vendor and device, a USB one's from the device its interface is of.
+    readonly property var chips: ({})
+
+    FileView {
+        id: probe
+        blockLoading: true
+        printErrors: false
+    }
+
+    function sysfs(file) {
+        probe.path = file;
+        return read(probe).trim().replace(/^0x/, "");
+    }
+
+    function chip(radio, told) {
+        const id = radio.adapterId;
+        if (chips[id] === undefined) {
+            const at = `/sys/class/bluetooth/${id}/device`;
+            const pci = [sysfs(`${at}/vendor`), sysfs(`${at}/device`)];
+            const ids = pci[0] !== "" ? pci : [sysfs(`${at}/../idVendor`),
+                sysfs(`${at}/../idProduct`)];
+            chips[id] = ids.every(part => part !== "") ? ids.join(":") : "";
+        }
+        return [told ? Links.maker(told.maker) : "", chips[id]].filter(part => part !== "")
+            .join(", ");
+    }
+
+    // How long the adapter stays visible once it's made so, as its note.
+    function hides(radio) {
+        const seconds = radio.discoverableTimeout;
+        const minutes = Math.round(seconds / 60);
+        if (seconds <= 0)
+            return "";
+        return seconds < 60 ? `for ${seconds} seconds once made visible`
+            : `for ${minutes} minute${minutes === 1 ? "" : "s"} once made visible`;
+    }
+
+    // The adapter's parts: its Radio, and while it's on whether others can
+    // find it and pair with it, and what it carries; then what it is.
+    function adapterParts(radio) {
+        const told = Links.adapter(Links.adapters(linksText(false)), radio.adapterId);
+        const mark = Theme.glyph.bluetooth;
+        const enabled = radio.enabled;
+        const rows = [setting("adapter", "powered", enabled ? "on" : "off", mark, () => [
+            choice("bluetooth-radio-on", enabled, Words.glyph("bluetooth:radio", "off"),
+                () => radio.enabled = true),
+            choice("bluetooth-radio-off", !enabled, Words.glyph("bluetooth:radio"),
+                () => radio.enabled = false)
+        ])];
+        if (enabled) {
+            const visible = radio.discoverable;
+            rows.push(setting("adapter", "discoverable", visible ? "yes" : "no", mark, () => [
+                choice("bluetooth-visible", visible, mark, () => radio.discoverable = true),
+                choice("bluetooth-hidden", !visible, mark, () => radio.discoverable = false)
+            ], { note: hides(radio) }));
+            const pairable = radio.pairable;
+            rows.push(setting("adapter", "pairable", pairable ? "yes" : "no", mark, () => [
+                choice("bluetooth-pairable", pairable, mark, () => radio.pairable = true),
+                choice("bluetooth-unpairable", !pairable, mark, () => radio.pairable = false)
+            ]));
+            const carried = Links.traffic(told);
+            if (carried !== null)
+                rows.push(saying({
+                    key: "bluetooth:adapter:traffic",
+                    name: Words.name("bluetooth:traffic"),
+                    side: carried.side,
+                    graph: spark(carried.values),
+                    note: carried.note
+                }));
+        }
+        // What it is, each worth copying, as a model is.
+        return rows.concat([["name", radio.name], ["address", told ? told.address : ""],
+            ["version", told ? Links.version(told.version) : ""], ["chip", chip(radio, told)]]
+            .filter(each => each[1] !== "").map(each => leaf({
+                key: `bluetooth:adapter:${each[0]}`,
+                name: Words.name(`bluetooth:${each[0]}`),
+                side: each[1]
+            })));
     }
 
     // How the links are doing, as an answer: one device's Signal and
@@ -284,6 +548,7 @@ Provider {
             const link = Links.of(all, device.address);
             return {
                 device: device,
+                link: link,
                 signal: Links.signal(link),
                 channels: Links.channels(link),
                 rows: [signalRow(device, link), channelsRow(device, link)]
@@ -294,7 +559,7 @@ Provider {
             return null;
         const said = each => [each.signal ? each.signal.side : "",
             each.channels ? each.channels.side : ""].filter(part => part !== "").join(", ");
-        const graph = each => each.signal ? bar(each.signal.value) : undefined;
+        const graph = each => each.signal ? spark(Links.signals(each.link)) : undefined;
         const glyph = Words.glyph("bluetooth");
         if (told.length === 1)
             return {
@@ -322,32 +587,23 @@ Provider {
         };
     }
 
-    // The connected device whose list is shown, and whether one of its
-    // answers is: each is read again once a second while it's there, and
-    // never otherwise. A list says it changed only when the file did.
+    // The connected device, or the adapter, whose parts are shown, and
+    // whether one of its answers is: the file is watched while they're
+    // there, and never otherwise.
     readonly property var looking: {
         const launcher = provider.launcher;
         if (!launcher || !launcher.open || launcher.held.length === 0)
             return null;
-        const shown = launcher.held[launcher.held.length - 1].row.device ?? null;
+        const row = launcher.held[launcher.held.length - 1].row;
+        if (row.from !== undefined && row.from !== provider)
+            return null;
+        if (row.adapter)
+            return row.adapter;
+        const shown = row.device ?? null;
         return shown && shown.connected ? shown : null;
     }
     readonly property bool answering: launcher !== null && launcher.open
         && launcher.held.length === 0 && launcher.answer?.live === provider
-
-    Timer {
-        interval: provider.second
-        repeat: true
-        running: provider.looking !== null || provider.answering
-        onTriggered: {
-            const before = provider.memo.text;
-            provider.links(true);
-            if (provider.answering)
-                provider.answered();
-            else if (provider.memo.text !== before)
-                provider.changed();
-        }
-    }
 
     function verbs(device) {
         const rows = [device.connected ? thing({
@@ -385,7 +641,7 @@ Provider {
                 hue: "action",
                 run: () => device.forget()
             }));
-        return rows.concat(linkRows(device), factRows(device));
+        return rows.concat(deviceParts(device));
     }
 
     // Done with the device being connected: the launcher closes, if it's
@@ -459,12 +715,12 @@ Provider {
         return { rows: kept.map(f => f.row), grade: finest };
     }
 
-    // With Bluetooth off, turning it on is all there is to do.
+    // With Bluetooth off, turning it on comes first, then the adapter.
     function everything() {
-        return on ? all.slice() : [radio];
+        return on ? all.slice() : [radio].concat(all);
     }
 
     function counted() {
-        return !on ? "off" : `${all.filter(row => row.side !== "").length} paired`;
+        return !on ? "off" : `${all.filter(row => row.device && row.side !== "").length} paired`;
     }
 }
