@@ -40,8 +40,15 @@ def surfaces() -> set[str]:
     return {layer["namespace"] for layer in held}
 
 
+# How many reads a second apart must find every surface before a wait trusts them. A screen
+# coming back can make the shell remake a surface that was already there, as the second of two
+# screens returning does, so one read can see it just before it goes.
+STEADY_READS = 2
+
+
 def wait_for_surfaces(*namespaces: str, timeout: int = 60) -> None:
-    """Wait until niri holds a surface for each namespace, saying which never came."""
+    """Wait until niri holds a surface for each namespace and keeps it, saying which didn't."""
+    deadline = time.monotonic() + timeout
     wanted = " && ".join(
         f"niri msg --json layers | grep -qF {shlex.quote(json.dumps(name))}" for name in namespaces
     )
@@ -50,9 +57,15 @@ def wait_for_surfaces(*namespaces: str, timeout: int = 60) -> None:
         + shlex.quote(f"until {in_niri(wanted)} > /dev/null 2>&1; do sleep 1; done"),
         timeout=timeout + 30,
     )
-    if status != 0:
+    steady = 0
+    while True:
+        missing = set(namespaces) - surfaces()
+        steady = 0 if missing else steady + 1
+        if steady >= STEADY_READS or time.monotonic() >= deadline:
+            break
+        time.sleep(1)
+    if status != 0 or missing:
         machine.screenshot("missing-surfaces")
-    missing = set(namespaces) - surfaces()
     assert not missing, f"niri holds no surface for {sorted(missing)}"
 
 
