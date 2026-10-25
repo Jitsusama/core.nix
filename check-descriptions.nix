@@ -97,8 +97,8 @@
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
   '';
-  chromium-knows-the-panels-colours = ''
-    the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3
+  chromium-leaves-the-panel-to-niri = ''
+    the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
   '';
   claude-shows-its-status-line = ''
     Claude Code is told of its status line on Linux and macOS, in settings it can still write

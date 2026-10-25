@@ -617,18 +617,17 @@ The panel, LG Display's 0x07C6, shows more than sRGB: its EDID gives red
 0.689/0.310, green 0.240/0.721 and blue 0.136/0.045, a little wider than
 Display P3. Dell's Windows profile for it has the same primaries and no
 calibration curves, so Windows changes nothing for the whole screen and only
-the programs that convert colours use it. niri has no colour management, so
-every program here draws as if the screen were sRGB, which stretches sRGB's
-colours over the wider gamut.
+the programs that convert colours use it. Every program here draws as if
+the screen were sRGB, which would stretch sRGB's colours over the wider
+gamut.
 
-Chromium converts to the screen's colours when told what they are, so the
-module names the panel's as P3 and the panel module adds
-`--force-color-profile=display-p3-d65` to Chrome, Slack and 1Password. Against
-true sRGB, by CIE76 from the panel's primaries, a skin tone was 10.8 off and
-is 3.8 with the flag, Slack's aubergine 8.1 and 2.9, pure green 53.2 and 9.7:
-pure primaries stay a little off, because P3 is narrower than this panel.
-Other programs still draw sRGB stretched, as on Windows; only colour
-management in niri fixes them.
+niri maps sRGB onto the primaries the EDID declares, in the display engine,
+for the whole panel at once (modules/niri's `srgb-gamut`), so every program
+shows sRGB as it is, as on the monitor beside it. No program is told the
+panel's colours: Chromium told they're P3 would draw in P3, and niri would
+map that as if it were sRGB, converting twice. Modelled by CIE76 against
+true sRGB, that left pure green 24.0 off and a skin tone 4.6, worse than
+with either alone.
 
 ### The Panel's Rate
 

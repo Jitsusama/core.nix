@@ -219,22 +219,27 @@ in
         touch $out
       '';
 
-  # niri has no colour management, so a program that converts its colours
-  # itself has to be told the panel's, or it draws sRGB stretched over it.
-  chromium-knows-the-panels-colours =
+  # niri maps sRGB onto the panel's own primaries for every program
+  # (srgb-gamut), so a program told the panel's colours as well converts them
+  # twice: it draws in P3, and niri maps that as if it were sRGB, washing
+  # every colour out.
+  chromium-leaves-the-panel-to-niri =
     let
       xps = bareNixos [
         self.nixosModules.dell-xps-14-da14260
         { nixpkgs.config.allowUnfree = true; }
       ];
-      flag = "--force-color-profile=${xps.config.jitsusama.panel.colourSpace or "none"}";
-      told = package: lib.hasInfix flag (package.postFixup or "");
+      told = package: lib.hasInfix "force-color-profile" (package.postFixup or "");
+      # A line of its own, so a comment naming it doesn't count.
+      mapped = lib.elem "srgb-gamut" (
+        map lib.trim (lib.splitString "\n" (builtins.readFile ../../modules/niri/config.kdl))
+      );
     in
-    holds "chromium-knows-the-panels-colours"
-      "Chrome, Slack or 1Password would draw sRGB stretched over the XPS 14's wider panel."
+    holds "chromium-leaves-the-panel-to-niri"
+      "Chrome, Slack or 1Password would convert the XPS 14's colours on top of niri's mapping, or niri would no longer map them."
       (
-        (xps.config.jitsusama.panel.colourSpace or null) == "display-p3-d65"
-        && lib.all told [
+        mapped
+        && !lib.any told [
           xps.pkgs.google-chrome
           xps.pkgs.slack
           xps.pkgs._1password-gui
