@@ -21,8 +21,12 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ pkgs.sox ];
   };
 
-  testScript = builtins.readFile ./shure-mv7-voice-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests' scripts share (tests/lib), vm_pytest among them.
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./shure-mv7-voice-vm-test.py}")'';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }

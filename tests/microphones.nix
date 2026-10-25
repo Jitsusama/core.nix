@@ -29,8 +29,9 @@ pkgs.testers.runNixOSTest {
   # What VM tests' scripts share (tests/lib).
   extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
-  testScript = builtins.readFile ./microphones-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./microphones-vm-test.py}")'';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }
