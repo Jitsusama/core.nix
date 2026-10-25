@@ -255,6 +255,24 @@ Scope {
         }, fields));
     }
 
+    // A figure holding more, as a CPU's Cores or a display's Scale: it says
+    // a value, wears its glyph dimmed (Choice.qml's "more"), and steps in
+    // on Return as on the right arrow to what `inside` gives, made then.
+    // The launcher asks a row for its verbs at the top and for its targets
+    // a step in (enter), so it gives the same rows as both, or a part such
+    // as a display's Scale, a step inside the display, would open nothing.
+    function holderRow(fields, inside) {
+        const row = copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields));
+        return Object.assign(row, {
+            verb: "more",
+            stays: true,
+            now: false,
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
+        });
+    }
+
     // What each URL said, and when: { pending, value, failed, at }.
     property var asked: ({})
 

@@ -202,22 +202,12 @@ Provider {
         const fields = {
             key: `displays:${output.name}:${id}`,
             name: partName(id),
-            side: side,
-            copy: "",
-            hue: "machine",
-            note: ""
+            side: side
         };
         if (choices.length === 0)
-            return copyRow(Object.assign(fields, { glyph: "" }));
-        const row = copyRow(Object.assign(fields, { glyph: glyph(glyphCode) }));
-        return Object.assign(row, {
-            verb: "more",
-            stays: true,
-            now: false,
-            offers: true,
-            verbs: () => choices,
-            run: () => provider.launcher?.enter(row)
-        });
+            return copyRow(Object.assign(fields, { copy: "", hue: "machine", glyph: "" }));
+        return holderRow(Object.assign(fields, { glyph: glyph(glyphCode), offers: true }),
+            () => choices);
     }
 
     // How niri turns a display, as a part says it and as its choice does;

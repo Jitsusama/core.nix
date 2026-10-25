@@ -410,17 +410,24 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         outputs = json.loads(as_account("niri msg --json outputs"))
         return cast("float", next(iter(outputs.values()))["logical"]["scale"])
 
-    for wanted in [1.5, scale()]:
+    for wanted, inside in [(1.5, True), (scale(), False)]:
         as_account("qs ipc call launcher collection displays")
         launcher_ready()
         step_in()
         # Its settings lead, each saying how it's set, their choices a step
-        # in, and found from here by what's typed.
+        # in, there by Return on the setting, or found from here by what's
+        # typed.
         launcher_until(
             lambda shown: shown["rows"][:4] == ["Scale", "Refresh", "Resolution", "Rotation"]
         )
         photograph("launcher-displays")
-        type_in(f"scale {round(wanted * 100)}")
+        percent = round(wanted * 100)
+        if inside:
+            step_in("ret")
+            launcher_until(lambda shown: "Scale to 150%" in shown["rows"])
+            type_in(str(percent))
+        else:
+            type_in(f"scale {percent}")
         machine.send_key("ret")
         retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)

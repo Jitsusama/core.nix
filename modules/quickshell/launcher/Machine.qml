@@ -122,8 +122,8 @@ Provider {
 
     // How rows are drawn. A figure says something and Return closes; a leaf
     // worth having, such as a model, copies what it says; a part holding
-    // more steps in on Return as on the right arrow, wearing its thing's
-    // glyph.
+    // more (Provider's holderRow) steps in on Return as on the right arrow,
+    // wearing its thing's glyph.
     function figure(fields) {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
@@ -136,17 +136,6 @@ Provider {
             glyph: "",
             note: ""
         }, fields));
-    }
-
-    function holder(fields, inside) {
-        const row = copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields));
-        return Object.assign(row, {
-            verb: "more",
-            stays: true,
-            now: false,
-            verbs: inside,
-            run: () => provider.launcher?.enter(row)
-        });
     }
 
     // A graph a row draws (Choice.qml): a bar has one value, a strip one a
@@ -323,7 +312,7 @@ Provider {
         const cores = Machine.loads(now.counters, kept.before ? kept.before.said.counters : null);
         const kindOf = n => info.kinds ? info.kinds[n] : "";
         const chip = Words.glyph(kinds.cpu);
-        const rows = [holder({
+        const rows = [holderRow({
             name: named("cpu:cores"),
             side: `${cores.length}`,
             graph: strip(cores.map(core => core.load)),
@@ -363,7 +352,7 @@ Provider {
         const users = programs
             ? Machine.using(programs.last.said, programs.before?.said ?? null) : [];
         if (users.length > 0)
-            rows.push(holder({
+            rows.push(holderRow({
                 name: named("cpu:using"),
                 side: `${users[0].name} ${percent(users[0].value)}`,
                 glyph: chip,
@@ -384,7 +373,7 @@ Provider {
             const present = order.filter(kind => cores.some(core => kindOf(core.n) === kind));
             const inKind = kind => cores.map((core, i) => ({ core: core, clock: now.clocks[i] }))
                 .filter(each => kindOf(each.core.n) === kind);
-            rows.push(holder({
+            rows.push(holderRow({
                 name: named("cpu:kinds"),
                 side: present.map(kind => inKind(kind).length).join(" \u00b7 "),
                 glyph: chip,
@@ -513,7 +502,7 @@ Provider {
             }));
         const holders = programs ? Machine.holding(programs.last.said) : [];
         if (holders.length > 0)
-            rows.push(holder({
+            rows.push(holderRow({
                 name: named("memory:using"),
                 side: `${holders[0].name} ${gib(holders[0].value / 1024)}`,
                 glyph: Words.glyph(kinds.memory),
@@ -676,7 +665,7 @@ Provider {
                     : `on ${worst.path}`
             };
             rows.push(watched.length > 1
-                ? holder(Object.assign(space, { glyph: chip }), () => watched.map(each))
+                ? holderRow(Object.assign(space, { glyph: chip }), () => watched.map(each))
                 : figure(space));
         } else if (room) {
             rows.push(figure({
@@ -691,7 +680,7 @@ Provider {
             const moved = diskRates(kept);
             const when = since(kept);
             const floor = 1e6;
-            rows.push(holder({
+            rows.push(holderRow({
                 name: named("disk:speed"),
                 side: rate(moved.read + moved.write),
                 graph: spark(series.moved ?? [], floor),
@@ -732,7 +721,7 @@ Provider {
             const smart = health.said;
             const worn = smart.percent_used / 100;
             const failing = smart.avail_spare < smart.spare_thresh || smart.media_errors > 0;
-            rows.push(holder({
+            rows.push(holderRow({
                 name: named("disk:health"),
                 side: `${smart.percent_used}% worn`,
                 graph: bar(worn, failing),
