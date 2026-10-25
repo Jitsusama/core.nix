@@ -580,6 +580,20 @@ QtObject {
             [3, "17:30"]
         ])
             machine(`how things stand in ${room}`, footFor(room), said);
+        // Once the foot has had to read shorter, it reads no longer until
+        // the launcher closes, though there's room again.
+        const roomy = told => told.reduce((sum, one) => sum + one.said.length, 0)
+            + 2 * Math.max(0, told.length - 1) <= 100;
+        const tight = Standing.fittedFrom(facts, told => told.reduce((sum, one) => sum
+            + one.said.length, 0) + 2 * Math.max(0, told.length - 1) <= 22, 0);
+        machine("short of room, the foot reads shorter", tight.told.map(one => one.said).join("  "),
+            "17:30  B 50%  N  V  R");
+        machine("and with room again, no longer", Standing.fittedFrom(facts, roomy, tight.stage)
+            .told.map(one => one.said).join("  "), "17:30  B 50%  N  V  R");
+        machine("from the first way, as long as there's room", Standing.fittedFrom(facts, roomy, 0)
+            .stage, 0);
+        machine("a way past the last is the last", Standing.fittedFrom(facts, roomy, 99)
+            .told.map(one => one.said).join("  "), "17:30");
 
         // The network's figures, from /proc/net/dev and the shaper's file.
         const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"

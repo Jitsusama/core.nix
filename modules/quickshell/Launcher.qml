@@ -902,6 +902,17 @@ Scope {
             figuresWidest = now;
     }
 
+    // The shortest way the foot's facts have had to read since the launcher
+    // opened (Standing.js's fittedFrom), which they never read longer than
+    // until it closes.
+    property int footStage: 0
+
+    // A step of its own has notes of its own, so the field's right end
+    // takes the room they need afresh (Prompt.qml's steady). Known by the
+    // path, since a refresh makes the same steps again.
+    readonly property string stepsTaken: held.map(step => steadyId(step.row)).join("/")
+    onStepsTakenChanged: prompt.forget()
+
     onMatchesChanged: {
         noteKeys();
         noteFigures();
@@ -1831,8 +1842,10 @@ Scope {
         if (open) {
             pointer = Qt.point(-1, -1);
             footWidest = {};
+            footStage = 0;
             figuresStep = "";
             held = [];
+            prompt.forget();
             often = picks.counts();
             restart("");
             // Always the same height, eight rows and home's gap, kept until
@@ -1941,6 +1954,7 @@ Scope {
 
                     Prompt {
                         id: prompt
+                        steady: true
                         x: Theme.inset
                         y: Theme.inset
                         width: parent.width - 2 * Theme.inset
@@ -2295,10 +2309,24 @@ Scope {
                                 // The network's glyph alone says all is well.
                                 .filter(fact => fact.sign !== "" || fact.glance !== "")
 
-                            readonly property var kept: {
+                            // Read no longer than the shortest they've had to
+                            // since the launcher opened (root.footStage), so
+                            // they change their form once, not back and forth.
+                            readonly property var fit: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + measure.advanceWidth(fact.said), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
-                                return Standing.fitted(facts, told => wide(told) <= foot.room);
+                                return Standing.fittedFrom(facts, told => wide(told) <= foot.room,
+                                    root.footStage);
+                            }
+                            readonly property var kept: fit.told
+
+                            // Noted once the binding has settled, since `fit`
+                            // reads what this writes.
+                            onFitChanged: Qt.callLater(standing.noteStage)
+
+                            function noteStage() {
+                                if (root.open && foot.room > 0 && fit.stage > root.footStage)
+                                    root.footStage = fit.stage;
                             }
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
