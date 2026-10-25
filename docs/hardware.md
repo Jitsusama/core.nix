@@ -1035,8 +1035,8 @@ power button.
 [7]: https://github.com/NixOS/nixos-hardware/pull/1912
 [8]: installing.md
 [9]: https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/audio/tunings/dell-xps-2026/filter-chain.conf
-[10]: ../hardware/dell-xps-14-da14260/speakers.conf
-[11]: ../hardware/dell-xps-14-da14260/camera.nix
+[10]: ../hardware/dell-xps-14-da14260/sound/speakers.conf
+[11]: ../hardware/dell-xps-14-da14260/camera/camera.nix
 [12]: https://github.com/TsaiGaggery/hurrican_omarchy_enabling
 [13]: ../modules/firmware-settings/nixos.nix
 [14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499
