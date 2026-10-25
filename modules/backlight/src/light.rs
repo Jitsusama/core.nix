@@ -124,8 +124,10 @@ struct Units {
 
 impl Units {
     fn lux(self, raw: i64) -> f64 {
-        // Exact enough: a light sensor's readings are far below 2⁵³.
-        #[allow(clippy::cast_precision_loss)]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a light sensor's readings are far below 2⁵³, so the float is exact"
+        )]
         let raw = raw as f64;
         ((raw + self.offset) * self.scale).max(0.0)
     }

@@ -265,7 +265,10 @@ fn size(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes} B");
     }
-    #[allow(clippy::cast_precision_loss)] // A tenth of a unit is all it says.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a tenth of a unit is all it says"
+    )]
     let mut scaled = bytes as f64 / 1024.0;
     let mut unit = 0;
     while scaled >= 1024.0 && unit < UNITS.len() - 1 {

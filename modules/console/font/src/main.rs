@@ -217,12 +217,18 @@ fn draw_all(
     cut: u8,
 ) -> Result<Vec<Vec<bool>>, String> {
     let advance = font.metrics('0', 1000.0).advance_width / 1000.0;
-    #[allow(clippy::cast_precision_loss)]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a cell is a few dozen pixels, which a float holds exactly"
+    )]
     let px = cell.width as f32 / advance;
     let line = font
         .horizontal_line_metrics(px)
         .ok_or("the face has no line metrics")?;
-    #[allow(clippy::cast_precision_loss)]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a cell is a few dozen pixels, which a float holds exactly"
+    )]
     let baseline =
         ((cell.height as f32 - (line.ascent - line.descent)) / 2.0 + line.ascent).round();
     glyphs
@@ -246,10 +252,12 @@ fn draw_all(
         .collect()
 }
 
-#[allow(
+#[expect(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    reason = "a glyph and its cell are a few dozen pixels, and only a point inside the cell \
+              becomes an index"
 )]
 fn raster(font: &fontdue::Font, c: char, px: f32, baseline: f32, cell: Cell, cut: u8) -> Vec<bool> {
     let (metrics, coverage) = font.rasterize(c, px);
@@ -331,7 +339,10 @@ fn psf(glyphs: &[Glyph], drawn: &[Vec<bool>], slots: &[Option<usize>], cell: Cel
     let stride = cell.width.div_ceil(8);
     let size = stride * cell.height;
     let mut out = Vec::new();
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the header's counts and sizes are a few hundred at most"
+    )]
     for word in [
         0x864a_b572,
         0,

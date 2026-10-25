@@ -5,12 +5,18 @@
 rec {
   # clippy's own lints and its pedantic group, less three about a published
   # library's API, which nothing here is: the results a caller must use, and
-  # the errors and panics its docs must name. A warning fails.
+  # the errors and panics its docs must name. A warning fails. A lint is
+  # silenced only with `#[expect]` and its reason, never `#[allow]`, so each
+  # says why, and one whose lint no longer fires is caught and taken out.
   lints = [
     "-D"
     "warnings"
     "-W"
     "clippy::pedantic"
+    "-W"
+    "clippy::allow_attributes"
+    "-W"
+    "clippy::allow_attributes_without_reason"
     "-A"
     "clippy::must_use_candidate"
     "-A"
