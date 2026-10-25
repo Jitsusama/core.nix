@@ -30,6 +30,14 @@
 # upload. A tunnel named in jitsusama.shaper.tunnels gets a CAKE of its
 # own, sorted by the same classes, at a little under the uplink's rate, so
 # its queue forms inside it.
+#
+# Each time the shaper starts, the kernel warns "htb: cake qdisc 2: is
+# non-work-conserving?", once for the uplink and once for its IFB, and
+# never again until the queues are made afresh. It's expected: CAKE keeps
+# its own rate, so when HTB asks it for a packet it holds back, it gives
+# none, and HTB says so the first time any child does (sch_htb.c,
+# qdisc_warn_nonwc in pkt_sched.h). HTB's classes never limit, so CAKE's
+# rate is the only one that does.
 {
   config,
   lib,
