@@ -5,7 +5,9 @@
 # USB audio driver takes as it would a real one, on an xHCI controller.
 # Beside it is snd-dummy's card, which isn't on USB, as a laptop's own isn't,
 # and must be named by each of its devices and say what one plays at while
-# it plays. The script is desk-facts-vm-test.py.
+# it plays. QEMU's USB keyboard, plugged in and pulled out the same way, must
+# be named in keyboards.json with how often it's polled, and then no longer.
+# The script is desk-facts-vm-test.py.
 { self, pkgs }:
 pkgs.testers.runNixOSTest {
   name = "desk-facts";
