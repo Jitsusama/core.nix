@@ -486,6 +486,11 @@ in
     PowerWarn = "Disabled";
     # A bad BIOS can be rolled back.
     AllowBiosDowngrade = "Enabled";
+    # The firmware reads the disk's own health report at power-on and stops
+    # to say so when it's failing, before anything boots, so a dying disk is
+    # named even when the system on it can no longer start to say it. smartd
+    # watches the same report while the system runs.
+    SmartErrors = "Enabled";
     # Microsoft's presence detection, as the laptop ships and as the camera
     # was proven on. Intel's gave no presence reading either; see
     # docs/hardware.md.
