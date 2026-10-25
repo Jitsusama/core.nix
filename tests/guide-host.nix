@@ -10,7 +10,7 @@
 # with its passphrase and signs the stick with the machine's db key.
 # polkit lets the person open a removable disk without the password a
 # desktop's agent would ask for, since a test has no agent to answer it.
-# The script is guide-host-vm-test.py.
+# The tests are guide-host-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -78,6 +78,7 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "guide-host";
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   nodes.host = {
     services.udisks2.enable = true;
@@ -134,10 +135,10 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # The driver runs beside the machine, not on it, so what the script needs
+  # The driver runs beside the machine, not on it, so what the tests need
   # from Nix, the used stick, the tool to put an overlay on it, the old
-  # stick's bundle and the passphrase of the host's own, reaches it in one
-  # file rather than on the machine's path.
+  # stick's bundle and the passphrase of the host's own, reaches them as
+  # their values fixture rather than on the machine's path.
   testScript =
     let
       values = pkgs.writeText "guide-host-values.json" (
@@ -148,10 +149,12 @@ pkgs.testers.runNixOSTest {
           inherit bundlePassphrase;
         }
       );
-      script = builtins.readFile ./guide-host-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./guide-host-vm-test.py}", values="${values}")
+    '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
