@@ -92,7 +92,7 @@ Scope {
     // From warm, empty, to cool, full, said in kelvin.
     Meter {
         name: "desk-warmth"
-        glyph: String.fromCodePoint(0xf05a8)
+        glyph: Theme.glyph.lamp
         visible: root.shown === "desk-warmth"
         level: DeskLight.light === null ? 0
             : (DeskLight.light.kelvin - DeskLight.warmest) / (DeskLight.coolest - DeskLight.warmest)
