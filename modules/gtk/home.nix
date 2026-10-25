@@ -130,6 +130,12 @@ in
     '';
   };
 
-  dconf.settings."org/gnome/desktop/interface".monospace-font-name =
-    "${font.mono.family} ${font.mono.size}";
+  dconf.settings."org/gnome/desktop/interface" = {
+    monospace-font-name = "${font.mono.family} ${font.mono.size}";
+    # Letters drawn in their own shapes rather than nudged onto whole
+    # pixels, as macOS draws them: on a screen at twice the scale the
+    # nudge only thins them. GTK and Chrome read it through the portal;
+    # Joel judged Chrome's GitHub better for it on 2026-10-24.
+    font-hinting = "none";
+  };
 }

@@ -588,6 +588,10 @@
     the console takes the account's terminal colours in its own order, whatever the theme, and a
     machine with no account keeps the kernel's
   '';
+  the-desktop-draws-letters-unhinted = ''
+    the graphical account's desktop settings tell GTK and Chrome to draw letters unhinted, as macOS
+    does
+  '';
   the-disk-piece-reads-the-guards = ''
     the disk piece says the worst disk as the guards wrote it, and a guard gone quiet
   '';
