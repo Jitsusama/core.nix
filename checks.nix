@@ -214,12 +214,19 @@ let
     testers = pkgs.testers // {
       runNixOSTest =
         test:
-        pkgs.testers.runNixOSTest {
-          imports = [ test ];
-          hostPkgs = lib.mkForce vmHostPkgs;
-        };
+        pkgs.testers.runNixOSTest (
+          { config, ... }:
+          {
+            imports = [ test ];
+            hostPkgs = lib.mkForce vmHostPkgs;
+            # Each machine's qemu, whichever the test chose, waits for the
+            # virtiofsd sockets it connects to before starting.
+            nodeDefaults.virtualisation.qemu.package = lib.mkForce (qemuAfterItsSockets config.qemu.package);
+          }
+        );
     };
   };
+  qemuAfterItsSockets = pkgs.callPackage ./tests/lib/qemu-after-its-sockets.nix { };
 
   # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTestsOn = pkgs: {
@@ -606,6 +613,30 @@ gather (
           PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
             -p no:cacheprovider --import-mode=importlib --quiet \
             vm-helpers-test.py vm-pytest-test.py
+          touch $out
+        '';
+
+      # The qemu VM tests run, put in front of a stand-in qemu that says how
+      # it was run.
+      qemu-starts-after-its-sockets =
+        let
+          python = pkgs.python3.withPackages (python: [ python.pytest ]);
+          standIn =
+            pkgs.runCommandLocal "qemu-stand-in" { } ''
+              mkdir -p $out/bin
+              printf '#!%s\nprintf "%%s\\n" "$@" > "$QEMU_RAN"\n' ${pkgs.runtimeShell} \
+                > $out/bin/qemu-system-x86_64
+              printf '#!%s\n' ${pkgs.runtimeShell} > $out/bin/qemu-img
+              chmod +x $out/bin/*
+            ''
+            // {
+              inherit (pkgs) stdenv;
+            };
+        in
+        pkgs.runCommandLocal "qemu-starts-after-its-sockets" { } ''
+          QEMU=${qemuAfterItsSockets standIn} PYTHONDONTWRITEBYTECODE=1 \
+            ${python}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
+            --quiet ${./tests/lib/qemu-after-its-sockets-test.py}
           touch $out
         '';
 
