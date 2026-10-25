@@ -41,3 +41,6 @@ ignore = [
 # The desktop test's prelude is the head of each of its areas' scripts, so it's one too, named
 # as a module so they can import its names for type checkers.
 "tests/desktop/desktop_prelude.py" = ["TC004", "FBT001", "S101", "PT009", "PT027"]
+# The desktop its areas drive asserts what a test needs, as pytest reports what each side
+# held, and hands the driver's retry a test taking a positional bool, as the driver calls it.
+"tests/desktop/desktop_session.py" = ["FBT001", "S101"]

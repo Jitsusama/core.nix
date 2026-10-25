@@ -156,10 +156,18 @@ in
 pkgs.testers.runNixOSTest {
   name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
   # Reads the colours of the windows it photographs, and paces its waits
-  # to the host (tests/lib/vm_helpers.py).
+  # to the host (tests/lib/vm_helpers.py). The desktop it drives is
+  # desktop/desktop_session.py, a module of the driver's Python, so an area
+  # written for pytest and one still a script import the same one.
   extraPythonPackages = python: [
     python.pillow
     (pkgs.callPackage ./lib/vm-helpers.nix { } python)
+    (python.toPythonModule (
+      pkgs.runCommandLocal "desktop-session" { } ''
+        mkdir -p $out/${python.python.sitePackages}
+        cp ${./desktop/desktop_session.py} $out/${python.python.sitePackages}/desktop_session.py
+      ''
+    ))
   ];
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
