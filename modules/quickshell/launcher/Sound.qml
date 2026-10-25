@@ -2,7 +2,8 @@
 // outputs then inputs, the one in use first in each, every glyph saying
 // what kind of device it is, its volume drawn as a bar and said in the
 // footer. A jack with nothing plugged into it, as the headphones' while
-// none are, isn't listed unless it's the one in use, which says so. Return
+// none are, isn't listed unless it's the one in use, which says so, or
+// what's said of its jack can no longer be trusted to be current. Return
 // uses one, or mutes or unmutes the one in use, and the right arrow holds
 // its parts, each named first and saying how it stands:
 //
@@ -118,12 +119,14 @@ Provider {
 
     // A device is listed while there's something to hear it through: a jack
     // desk-facts says has nothing plugged in isn't, as the headphones
-    // aren't while none are, unless it's the one in use, which says so. A
-    // display's output desk-facts says nothing of waits for a display.
+    // aren't while none are, unless it's the one in use, which says so, or
+    // what desk-facts said is no longer current (jacksCurrent), when it's
+    // listed rather than hidden. A display's output desk-facts says nothing
+    // of waits for a display.
     function listed(node) {
         const told = factsOf(node);
         if (Sounds.plugged(told) !== "")
-            return !Sounds.unplugged(told) || inUse(node);
+            return !Sounds.hidden(told, jacksCurrent) || inUse(node);
         return displayed || !display(node);
     }
 
@@ -179,7 +182,7 @@ Provider {
         const muted = node.audio.muted;
         const note = [said(node.isSink ? "output" : "input"), percent(node.audio.volume)]
             .concat(muted ? [said("muted")] : [],
-                Sounds.unplugged(factsOf(node)) ? [said("unplugged")] : [],
+                Sounds.hidden(factsOf(node), jacksCurrent) ? [said("unplugged")] : [],
                 switches(node) ? [said("to-calls")] : [])
             .join(" \u00b7 ");
         return member({
@@ -207,9 +210,63 @@ Provider {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/sound.json`
         watchChanges: true
         printErrors: false
-        onFileChanged: reload()
+        onFileChanged: {
+            reload();
+            writer.reload();
+        }
         onLoaded: provider.facts = provider.parsed(text())
         onLoadFailed: provider.facts = ({})
+    }
+
+    // Whether what desk-facts said of the jacks is current. It writes the
+    // file only when what it says changes, and holds no time, so an old
+    // file is no sign of an old fact; the sign is desk-facts itself having
+    // stopped without removing it, as it does when stopped, by crashing
+    // until systemd gives up on it. So its service's control group is
+    // watched, which the kernel says is populated while it runs and which
+    // goes when it's stopped, and the jacks are current until it's been
+    // gone longer than systemd takes to start it again.
+    property bool jacksCurrent: true
+    readonly property bool writing: Sounds.populated(writerSaid)
+    property string writerSaid: ""
+    readonly property string account: String(Quickshell.env("XDG_RUNTIME_DIR") ?? "")
+        .split("/").pop()
+
+    onWritingChanged: {
+        if (writing)
+            jacksCurrent = true;
+    }
+
+    FileView {
+        id: writer
+        path: `/sys/fs/cgroup/user.slice/user-${provider.account}.slice/user@${provider.account}`
+            + ".service/app.slice/desk-facts.service/cgroup.events"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.writerSaid = text()
+        onLoadFailed: provider.writerSaid = ""
+    }
+
+    // desk-facts' service starts it again five seconds after it fails
+    // (RestartSec in modules/desk-facts/nixos.nix), so gone for twice that
+    // it isn't coming back of itself.
+    Timer {
+        id: writerGone
+        interval: 10000
+        running: !provider.writing
+        onTriggered: provider.jacksCurrent = false
+    }
+
+    // The group, once gone, can come again where nothing watches for it,
+    // so it's looked at again each time the launcher opens.
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                writer.reload();
+        }
     }
 
     // What the kernel says of a device's card, by its key in the file, or
@@ -671,39 +728,69 @@ Provider {
     onPortingChanged: readPorts(porting)
     onFactsChanged: readPorts(porting)
 
+    // One read at a time (Sounds.portReads): a read asked while another
+    // runs, as a jack changing or a port moved asks one, waits for it, and
+    // each run keeps the device it's for, so its output is only that one's.
+    property var portReading: null
+
     function readPorts(node) {
-        if (!routed(node) || portReader.running)
+        if (routed(node))
+            portStep({ asked: node });
+    }
+
+    function portStep(event) {
+        const after = Sounds.portReads(portReading, event);
+        portReading = after.reads;
+        const done = after.take;
+        if (done !== null && done.node.audio) {
+            const read = Object.assign({}, portsOf);
+            read[done.node.name] = Sounds.ports(done.text, done.node.properties,
+                done.node.isSink);
+            portsOf = read;
+            changed();
+        }
+        if (after.start === null)
             return;
-        portReader.reading = node;
-        portReader.command = [provider.settings.pwDump ?? "pw-dump",
-            String(node.properties["device.id"])];
+        // Only a card's object id is given to pw-dump; a device whose isn't
+        // one isn't read, and the next asked is, if any.
+        const card = Sounds.dumpable(after.start.properties["device.id"]);
+        if (card === "") {
+            portStep({ gaveUp: true });
+            return;
+        }
+        portReader.command = [provider.settings.pwDump ?? "pw-dump", card];
         portReader.running = true;
         portsGiven.restart();
     }
 
     // A sound server that never answers mustn't leave the reader running,
-    // which would leave every later read waiting on it for good.
+    // which would leave every later read waiting on it for good: three
+    // seconds is many times what pw-dump takes. One that never started
+    // ends nothing, so its run is given up here.
     Timer {
         id: portsGiven
         interval: 3000
-        onTriggered: portReader.running = false
+        onTriggered: {
+            if (portReader.running)
+                portReader.running = false;
+            else
+                provider.portStep({ gaveUp: true });
+        }
     }
+
+    // How a process says it ended of itself (QProcess's NormalExit), rather
+    // than being stopped, whose output is cut short.
+    readonly property int normalExit: 0
 
     Process {
         id: portReader
-        property var reading: null
-        onExited: portsGiven.stop()
+        onExited: (code, status) => {
+            portsGiven.stop();
+            provider.portStep({ ended: code === 0 && status === provider.normalExit });
+        }
         stdout: StdioCollector {
             id: dump
-            onStreamFinished: {
-                const node = portReader.reading;
-                if (!node || !node.audio)
-                    return;
-                const read = Object.assign({}, provider.portsOf);
-                read[node.name] = Sounds.ports(dump.text, node.properties, node.isSink);
-                provider.portsOf = read;
-                provider.changed();
-            }
+            onStreamFinished: provider.portStep({ printed: dump.text })
         }
     }
 

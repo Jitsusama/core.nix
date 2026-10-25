@@ -6,7 +6,10 @@
 // the locked layer offers to be let go rather than locked again, the
 // board's Layer and Lights choices are found by their words though they're
 // listed only in the board's own parts (Keyboards.qml), and the overlay
-// shows what the launcher chose. It exits 0 once every case holds,
+// shows what the launcher chose. Among the keyboards plugged in, the
+// board's parts hold its Layer, saying where it's locked, and its Lights,
+// each a setting whose choices a step in run the board's own command. It
+// exits 0 once every case holds,
 // and otherwise 1, saying which case didn't.
 import qs
 import Quickshell
@@ -27,6 +30,30 @@ ShellRoot {
 
     Keyboard {
         id: keyboard
+    }
+
+    Keyboards {
+        id: keyboards
+    }
+
+    // The ErgoDox as the kernel's list of input devices has it, without the
+    // lock lights or a USB folder the sandbox has no files for.
+    readonly property var board: ({
+        name: "ZSA Technology Labs ErgoDox EZ",
+        phys: "usb-0000:00:14.0-2/input0",
+        sysfs: "/devices/virtual/input/input9",
+        bus: "0003",
+        vendor: "3297",
+        product: "1307",
+        leds: 0
+    })
+
+    // What each of a setting's choices runs, by its name.
+    function runs(choices) {
+        return choices.map(choice => {
+            choice.run();
+            return `${choice.name}: ${Niri.spawned.join(" ")}`;
+        }).join("; ");
     }
 
     // Quickshell reads the files in the background, so the cases wait for
@@ -106,6 +133,21 @@ ShellRoot {
             first("lock punk").run();
             expect("locking runs ergodox", Niri.spawned.join(" ") === "ergodox layer 1",
                 Niri.spawned.join(" "));
+
+            const parts = keyboards.parts(board, null);
+            const layer = parts.find(part => part.name === "Layer");
+            expect("the board's Layer, a setting", layer !== undefined
+                && layer.side === "Numb, locked" && layer.verb === "more",
+                parts.map(part => `${part.name} ${part.side}`).join(", "));
+            expect("the Layer's choices run ergodox", runs(layer.verbs())
+                === "Let Numb go: ergodox layer 0; Lock Punk on: ergodox layer 1",
+                runs(layer.verbs()));
+            const lights = parts.find(part => part.name === "Lights");
+            expect("the board's Lights, a setting", lights !== undefined
+                && lights.verb === "more", parts.map(part => part.name).join(", "));
+            expect("the Lights' choices run ergodox", runs(lights.verbs())
+                === "Lights off: ergodox lights off; Lights on: ergodox lights on; "
+                + "Brighter: ergodox brighter; Dimmer: ergodox dimmer", runs(lights.verbs()));
 
             slash.run();
             expect("a key shown on its layer", KeyboardLayout.shown && KeyboardLayout.layer === 1

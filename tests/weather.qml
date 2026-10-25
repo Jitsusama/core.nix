@@ -133,11 +133,17 @@ ShellRoot {
             rain.graph.shape === "spark" && rain.graph.values.length === 12
                 && rain.graph.values[0] === 0.1 && rain.graph.values[3] === 0.9,
             JSON.stringify(rain.graph));
-        // Return steps in rather than copy a table: a part holding more,
-        // as any is (Provider.qml's holderRow).
-        expect("rain steps in", rain.verb === "more" && rain.verbs && rain.targets === rain.verbs,
-            rain.verb);
-        const hours = rain.verbs();
+        // Return steps in rather than copy a table, as the right arrow
+        // does: the launcher, stood in for, is asked to enter the rain, and
+        // what it lists there, at the top or a step down, is the hours.
+        let entered = null;
+        weather.launcher = { enter: row => { entered = row; } };
+        rain.run();
+        weather.launcher = null;
+        expect("rain steps in", rain.verb === "more" && entered === rain, rain.verb);
+        const hours = entered.verbs();
+        expect("a step down, the same hours", names(entered.targets()) === names(hours),
+            names(entered.targets()));
         expect("the next twelve hours, from this one",
             hours.length === 12 && hours[0].name === "13:00" && hours[11].name === "00:00",
             names(hours));

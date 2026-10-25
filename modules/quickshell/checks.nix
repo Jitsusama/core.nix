@@ -731,6 +731,129 @@ onLinux {
     touch $out
   '';
 
+  # The launcher's answers that build their parts' ids as they answer, the
+  # calculator's bases, the time's, today's, the waits' and a hardware
+  # address's, name every part as the vocabulary does (tests/part-names.qml),
+  # with tzdata's zones kept and lag-watch's last ten seconds written here.
+  the-launcher-names-the-parts-it-builds =
+    pkgs.runCommandLocal "the-launcher-names-the-parts-it-builds" { }
+      ''
+        mkdir -p launcher runtime/lag-watch && chmod 700 runtime
+        echo '{"trouble":[],"niri":{"p50_ms":4,"p99_ms":21},"band":"calm","ended":0}' \
+          > runtime/lag-watch/status.json
+        cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./launcher/Asking.js} launcher/Asking.js
+        cp ${./launcher/Numbers.js} launcher/Numbers.js
+        cp ${./launcher/Zones.js} launcher/Zones.js
+        cp ${./launcher/Addresses.js} launcher/Addresses.js
+        cp ${./launcher/Calculator.qml} launcher/Calculator.qml
+        cp ${./launcher/Clocks.qml} launcher/Clocks.qml
+        cp ${./launcher/Today.qml} launcher/Today.qml
+        cp ${./launcher/Waits.qml} launcher/Waits.qml
+        cp ${./launcher/Vendors.qml} launcher/Vendors.qml
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Words.qml} Words.qml
+        cp ${./launcher/words.json} launcher/words.json
+        cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+        cp ${../../tests/part-names.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        ${shellFolderLint}
+        timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+        touch $out
+      '';
+
+  # The launcher's Machine answers the processors and the memory from the
+  # sandbox's own /proc without making their parts or listing the
+  # processes, and lists them only once the parts are looked at
+  # (tests/machine.qml), the list stood in for by one that says each time
+  # it's run, and the queue and niri stood in for.
+  the-machine-lists-processes-for-its-parts =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      listing = pkgs.writeShellScript "process-list" ''
+        echo listed >> "$XDG_RUNTIME_DIR/listed"
+        echo 4096
+        exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat
+      '';
+    in
+    pkgs.runCommandLocal "the-machine-lists-processes-for-its-parts" { } ''
+      mkdir -p launcher runtime && chmod 700 runtime
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Heat.js} launcher/Heat.js
+      cp ${./launcher/Machine.js} launcher/Machine.js
+      cp ${./launcher/Machine.qml} launcher/Machine.qml
+      cp ${./launcher/Sensors.qml} launcher/Sensors.qml
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
+      cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
+      cp ${../../tests/machine.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PROCESSES=${listing}
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
+  # The launcher's Sound leaves out a jack with nothing plugged in and a
+  # display's output with no display, and never listens to a headset's
+  # microphone while the headset plays music (tests/sound.qml), deciding
+  # over stand-in devices, with niri and the music stood in for.
+  sound-hears-only-what-can-be-heard =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      niri = singleton "Niri.qml" ''
+        property var workspaces: ({ "1": { id: 1, output: "eDP-1" } })
+      '';
+      music = singleton "Music.qml" ''
+        property bool playing: false
+        property string title: ""
+        property string artist: ""
+      '';
+    in
+    pkgs.runCommandLocal "sound-hears-only-what-can-be-heard" { } ''
+      mkdir -p launcher runtime && chmod 700 runtime
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Sounds.js} launcher/Sounds.js
+      cp ${./launcher/Sound.qml} launcher/Sound.qml
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${niri} Niri.qml
+      cp ${music} Music.qml
+      cp ${../../tests/sound.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # The launcher tells how the desk light is lit and sets it, and the
   # brightness bar hears its changes but not a camera lighting it
   # (tests/desk-light.qml), over a stand-in litra that keeps a light's
@@ -1298,9 +1421,11 @@ onLinux {
     '';
 
   # The launcher's Keyboard collection finds the ErgoDox's keys and actions
-  # and shows what it finds on the layout, as tests/keyboard.qml drives it
-  # through Quickshell itself, over the firmware's own description of the
-  # board, locked on Numb, with niri and the shortcuts stood in for.
+  # and shows what it finds on the layout, and the board's parts among the
+  # keyboards plugged in hold its Layer and Lights, as tests/keyboard.qml
+  # drives them through Quickshell itself, over the firmware's own
+  # description of the board, locked on Numb, with niri, the shortcuts and
+  # the shell's lights stood in for.
   the-launcher-finds-the-keyboards-keys =
     let
       singleton =
@@ -1319,6 +1444,14 @@ onLinux {
         property var spawned: []
         function spawn(command) { spawned = command; }
       '';
+      # No caps lock and no laptop backlight, as on a desk with the board
+      # alone.
+      lights = singleton "Lights.qml" ''
+        property bool caps: false
+        property string leds: ""
+        property string backlight: ""
+        signal turned
+      '';
     in
     pkgs.runCommandLocal "the-launcher-finds-the-keyboards-keys" { } ''
       mkdir -p runtime config/ergodox launcher && chmod 700 runtime
@@ -1332,12 +1465,14 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Keyboard.qml} launcher/Keyboard.qml
+      cp ${./launcher/Keyboards.qml} launcher/Keyboards.qml
       cp ${./launcher/Keyboards.js} launcher/Keyboards.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      cp ${lights} Lights.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

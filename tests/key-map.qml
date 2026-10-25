@@ -7,8 +7,9 @@
 // inside a layer, a group found from the top saying its layer, and one
 // found further down saying the group holding it; a group can hold
 // groups, Code's each a dozen or fewer; and the window the launcher opened
-// over puts its program's layers first, its own chord opening on the first
-// of them. It exits 0 once every case holds, and otherwise 1, saying which
+// over, as the launcher says it as Shortcuts opens, puts its program's
+// layers first, its own chord opening on the first of them, until the
+// launcher closes. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -35,6 +36,27 @@ ShellRoot {
 
     KeyMap {
         id: map
+
+        launcher: opener
+    }
+
+    // The launcher, as far as Shortcuts asks it: whether it's open, and the
+    // window it opened over, which each case sets before Shortcuts opens.
+    QtObject {
+        id: opener
+
+        property bool open: true
+        property var under: null
+
+        function cameFrom() {
+            return under;
+        }
+    }
+
+    // Shortcuts opened over a window, or over none, as the launcher opens it.
+    function over(appId, title) {
+        opener.under = appId === null ? null : { app_id: appId, title: title };
+        map.opened();
     }
 
     Component.onCompleted: Qt.callLater(run)
@@ -142,10 +164,9 @@ ShellRoot {
             // Over Neovim in the terminal, its layers lead, and the chord
             // opens on Neovim's, its row saying it's that window's; over
             // pi, Agents; over nothing, the desktop, and nothing to open on.
-            map.opened();
-            expect("no window, the desktop first", names(map.everything())[0] === "Desktop"
-                && map.leading() === null, names(map.everything()).join(", "));
-            map.leads = KeyGroups.over("kitty", "\u{1F4DD} notes.md");
+            // Each is what the launcher says it opened over, read as
+            // Shortcuts opens (KeyMap.qml's opened).
+            over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
                 === "Neovim, Terminal, Desktop, Touchscreen, Agents",
                 names(map.everything()).join(", "));
@@ -155,15 +176,28 @@ ShellRoot {
                 lead ? `${lead.name} ${lead.note}` : "nothing");
             expect("its chords searched first", String(map.all[0].key)
                 .startsWith("shortcut:neovim:"), map.all[0].key);
-            map.leads = KeyGroups.over("kitty", "\u03C0 - core.nix");
+            over("kitty", "\u03C0 - core.nix");
             expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
                 === "Agents, Terminal, Desktop", names(map.everything()).join(", "));
-            map.leads = KeyGroups.over("kitty", "~");
+            over("kitty", "~");
             expect("over the terminal, its own", map.leading().name === "Terminal"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
-            map.leads = KeyGroups.over("google-chrome", "");
+            // Each of these after the terminal led, so a window read wrong
+            // would leave it leading.
+            over("google-chrome", "");
             expect("over another program, the desktop's", map.leading() === null
                 && names(map.everything())[0] === "Desktop", names(map.everything()).join(", "));
+            over("kitty", "~");
+            over(null, "");
+            expect("no window, the desktop first", names(map.everything())[0] === "Desktop"
+                && map.leading() === null, names(map.everything()).join(", "));
+            // What it opened over is that opening's alone: closed, the
+            // desktop leads again.
+            over("kitty", "~");
+            opener.open = false;
+            expect("closed, the desktop's again", map.leading() === null
+                && names(map.everything())[0] === "Desktop", names(map.everything()).join(", "));
+            opener.open = true;
 
             const lock = map.search("lock the screen").rows[0];
             lock.run();

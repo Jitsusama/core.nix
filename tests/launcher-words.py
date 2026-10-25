@@ -20,6 +20,8 @@ kernel), a name that reads its value first ("10 bit" rather than "Colour
 depth"), a unit written another way than the launcher's ("10-bit", "KB",
 "Mbit/s", "1000 a second" for "1000 Hz"), a thing's words said beside it
 in capitals, or a verb longer than a word but for a turn ("turn off").
+And so does the check itself, should one of those last rules stop refusing
+what it's there for, or refuse what sits beside it.
 """
 
 import json
@@ -260,12 +262,75 @@ def unsaid(vocabulary: Entry) -> list[str]:
     return out
 
 
+# A thing for each of unsaid's rules, saying what it's there to refuse, so a
+# rule that stops refusing fails the check rather than passing everything.
+REFUSED: list[tuple[str, Entry]] = [
+    ("a program's name", {"id": "bad:program", "name": "Restart niri"}),
+    ("the system's name", {"id": "bad:system", "name": "Lid", "said": "as the kernel says"}),
+    ("a value first", {"id": "bad:value", "name": "10 bit"}),
+    ("a bit count hyphenated", {"id": "bad:bits", "name": "Depth", "said": "10-bit"}),
+    ("kilobytes in capitals", {"id": "bad:kilobytes", "name": "Size", "said": "4 KB"}),
+    (
+        "bits a second spelt out",
+        {"id": "bad:bits-a-second", "name": "Speed", "said": "40 Mbit/s"},
+    ),
+    ("a rate a second", {"id": "bad:rate", "name": "Polling rate", "said": "1000 a second"}),
+    ("a side word in capitals", {"id": "bad:side", "name": "Lid", "said": "Open"}),
+    (
+        "a state's side word in capitals",
+        {"id": "bad:state", "name": "Lid", "states": {"shut": {"said": {"why": "Closed"}}}},
+    ),
+    ("a verb of two words", {"id": "bad:verb", "name": "Join", "verb": "join now"}),
+]
+
+# A command saying a program's name, as unsaid refuses for commands too.
+REFUSED_COMMAND: Entry = {"id": "bad:command", "start": "", "form": "ip", "says": "from iw"}
+
+# What sits beside each rule's edge and isn't refused: a program's name
+# hidden, or inside another word; a name with its value after; units as
+# the launcher writes them; an initialism at the start of a side word; and
+# a turn, the one verb of two words.
+ALLOWED: Entry = {
+    "things": [
+        {"id": "good:depth", "name": "Colour depth", "said": "10 bit", "hidden": ["niri"]},
+        {"id": "good:pinch", "name": "Pinch to zoom", "said": "kernels of corn"},
+        {
+            "id": "good:units",
+            "name": "Speed",
+            "said": {"size": "4 kB", "rate": "40 Mb/s", "polling": "1000 Hz"},
+        },
+        {
+            "id": "good:audio",
+            "name": "Codec",
+            "said": "LE Audio",
+            "verb": "turn off",
+            "states": {"wired": {"said": "USB 3", "verb": "copy"}},
+        },
+    ],
+    "commands": [{"id": "good:command", "start": "", "form": "ip", "says": "your addresses"}],
+}
+
+
+def refuses() -> list[str]:
+    """Say each of unsaid's rules that lets through what it's there to refuse."""
+    out = [
+        f"The check lets {why} through: {entry}."
+        for why, entry in REFUSED
+        if len(unsaid({"things": [entry], "commands": []})) != 1
+    ]
+    if len(unsaid({"things": [], "commands": [REFUSED_COMMAND]})) != 1:
+        out.append(f"The check lets a command's program through: {REFUSED_COMMAND}.")
+    out.extend(f"The check refuses what it shouldn't: {said}" for said in unsaid(ALLOWED))
+    return out
+
+
 def main(argv: list[str]) -> None:
     """Print every ambiguous word and stray name, and fail if there are any."""
     vocabulary = json.loads(Path(argv[0]).read_text())
     glyphs = set(json.loads(Path(argv[1]).read_text()))
     found = (
-        clashes(vocabulary)
+        refuses()
+        + clashes(vocabulary)
         + misplaced(vocabulary, glyphs)
         + miscased(vocabulary)
         + unsaid(vocabulary)
