@@ -49,14 +49,18 @@ use std::collections::{HashMap, VecDeque};
 
 /// A count, a rate in kbit/s or a time in microseconds, as a float. Exact:
 /// every one here is far below 2⁵³.
-#[allow(clippy::cast_precision_loss)]
+#[expect(clippy::cast_precision_loss, reason = "every one is far below 2⁵³")]
 pub fn float(n: u64) -> f64 {
     n as f64
 }
 
 /// A rate worked out as a float, to the nearest whole kbit/s. A negative
 /// rate is none, and every caller holds the result within its bounds.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "rounded, held at zero or more, and within its bounds by every caller"
+)]
 pub fn whole(kbit: f64) -> u64 {
     kbit.round().max(0.0) as u64
 }

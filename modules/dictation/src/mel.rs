@@ -81,7 +81,10 @@ impl Spectrogram {
 
         let logs: Vec<f64> = mel.iter().map(|&m| m.max(1e-10).log10()).collect();
         let floor = logs.iter().copied().fold(f64::NEG_INFINITY, f64::max) - 8.0;
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "Whisper takes its features as 32-bit floats"
+        )]
         logs.iter()
             .map(|&l| ((l.max(floor) + 4.0) / 4.0) as f32)
             .collect()
@@ -249,7 +252,10 @@ mod tests {
     fn a_tone_matches_the_reference() {
         let tone: Vec<f32> = (0..RATE)
             .map(|i| {
-                #[allow(clippy::cast_possible_truncation)]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "Whisper takes its samples as 32-bit floats"
+                )]
                 let s = (0.5
                     * (2.0 * std::f64::consts::PI * 440.0 * as_f64(i) / as_f64(RATE)).sin())
                     as f32;

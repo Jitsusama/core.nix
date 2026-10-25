@@ -13,20 +13,24 @@ use std::collections::BTreeMap;
 
 /// Nanoseconds, microseconds or a tally, as a float. Exact: every one here
 /// is far below 2⁵³.
-#[allow(clippy::cast_precision_loss)]
+#[expect(clippy::cast_precision_loss, reason = "every one is far below 2⁵³")]
 pub fn float(n: u64) -> f64 {
     n as f64
 }
 
 /// How many there are, as a float; as exact as `float`.
-#[allow(clippy::cast_precision_loss)]
+#[expect(clippy::cast_precision_loss, reason = "a count here is far below 2⁵³")]
 pub fn count(n: usize) -> f64 {
     n as f64
 }
 
 /// The place in a list nearest a fractional one; before the first is the
 /// first.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "rounded, and held at zero or more, so it's a whole place in the list"
+)]
 fn nearest(at: f64) -> usize {
     at.round().max(0.0) as usize
 }
