@@ -486,11 +486,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     )
     desktop.answer("disk")
     desktop.launcher_until(lambda shown: shown["footer"] == "from the disk guard")
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    time.sleep(25)
-    desktop.answer("disk")
-    desktop.launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
+    # Held open, the answer is asked again each second, so it says so as
+    # the deadline passes, about twenty seconds on.
+    desktop.launcher_until(
+        lambda shown: shown["footer"] == "the disk guard has stopped saying",
+        timeout=dt.timedelta(seconds=60),
+    )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     machine.succeed("rm /run/disk-guard/status.json")
@@ -588,7 +589,6 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # asked.
     desktop.answer("memory")
     desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
-    time.sleep(2)
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
     machine.send_key("esc")
