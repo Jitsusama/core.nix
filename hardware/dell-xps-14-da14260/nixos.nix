@@ -78,13 +78,14 @@ in
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
 
-  # The devices this laptop always has: every one Windows binds a driver to,
-  # so a kernel or firmware change that loses one is named rather than found
-  # by chance. The USB-C controller, the
-  # speakers' amplifiers and the camera's ISP have each failed to come up
-  # here before. A PCI function is expected bound to its driver, at the
-  # address it always has on this board; Wi-Fi's number and the sensors'
-  # instance numbers move, so those are globs.
+  # The devices this laptop always has: every one a driver binds to, and each
+  # light, sensor, control and setting those drivers give, so a kernel or
+  # firmware change that loses one is named rather than found by chance.
+  # The USB-C controller, the speakers' amplifiers and the camera's ISP have
+  # each failed to come up here before. A PCI function is expected bound to
+  # its driver, at the address it always has on this board; Wi-Fi's number,
+  # the sensors' instance numbers and the WMI devices' suffixes move, so
+  # those are globs.
   jitsusama.devices.expected = {
     "The USB-C ports" = "/sys/class/typec/port0";
     "Bluetooth" = "/sys/bus/pci/drivers/btintel_pcie/0000:00:14.7";
@@ -105,7 +106,21 @@ in
     "The light sensor" = "/sys/bus/platform/drivers/hid_sensor_als/HID-SENSOR-200041.*";
     "The hinge sensor" =
       "/sys/bus/platform/drivers/hid_sensor_custom_intel_hinge/HID-SENSOR-INT-020b.*";
+    "The presence sensor" = "/sys/bus/platform/drivers/hid_sensor_prox/HID-SENSOR-200011.*";
     "The touchpad" = "/sys/bus/i2c/drivers/i2c_hid_acpi/i2c-VEN_2C2F:00";
+    "The touchscreen" = "/sys/bus/i2c/drivers/i2c_hid_acpi/i2c-CUST0000:00";
+    "The hotkeys" = "/sys/bus/wmi/drivers/dell-wmi/9DBB5994-A997-11DA-B012-B622A1EF5492*";
+    "The power button" = "/sys/bus/platform/drivers/intel-hid/INTC10CC:00";
+    "The keyboard's light" = "/sys/class/leds/dell::kbd_backlight";
+    "The mic-mute light" = "/sys/class/leds/platform::micmute";
+    "The camera's light" = "/sys/class/leds/OVTI08F4_00::privacy_led";
+    "The IR camera's light" = "/sys/class/leds/HIMX1092_00::ir_flood_led";
+    "The battery" = "/sys/class/power_supply/BAT0";
+    "The charger's input" = "/sys/class/power_supply/AC";
+    "The power modes" = "/sys/bus/faux/devices/dell-pc";
+    "The fans" = "/sys/bus/wmi/drivers/dell_smm_hwmon/F1DDEE52-063C-4784-A11E-8A06684B9B01*";
+    "The firmware's settings" = "/sys/class/firmware-attributes/dell-wmi-sysman";
+    "The TPM" = "/sys/class/tpm/tpm0";
     "Thunderbolt" = "/sys/bus/thunderbolt/devices/domain*";
     "The thermal sensors" = "/sys/bus/pci/drivers/proc_thermal_pci/0000:00:04.0";
     "The power telemetry" = "/sys/bus/pci/drivers/intel_vsec/0000:00:0a.0";
