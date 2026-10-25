@@ -288,6 +288,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             )
         )
     )
+    # The keyboard's light is the keyboard's own, so the light's answer
+    # holds none of it.
+    t.assertFalse(
+        [name for name in showing()["rows"] if name.startswith("Keyboard")],
+        "the light's answer holds the keyboard's light",
+    )
     step_in("ret")
     launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
     type_in("40", selecting="Screen to 40%")
@@ -296,6 +302,28 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
         timeout=10,
     )
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # "keyboard light" asks the keyboard's lights alone, as the stand-in's
+    # files say: its levels are the answer's rows, a step in by the right
+    # arrow, and Return on one sets it, through logind as the screen's is.
+    kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
+    kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
+    kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
+    kbd_levels = ["Lights off", "Lights to 1 of 2", "Lights to 2 of 2"]
+    answer("keyboard light")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name") == f"the keyboard's lights are {kbd_said}"
+        )
+    )
+    step_in()
+    launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
+    for _ in range(kbd_levels.index("Lights to 2 of 2")):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights to 2 of 2")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=10)
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
@@ -591,11 +619,35 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     launcher_until(
         lambda shown: (
             shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
-            and {"Repeat", "Connection", "Keys"} <= set(shown["rows"])
+            and {"Repeat", "Lights", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
     photograph("launcher-keyboard-parts")
     t.assertEqual(showing()["selected"]["side"], "off")
+    # Its Lights are a setting saying how lit they are, the level set
+    # above; Return steps into its levels, and on one, sets it.
+    for _ in range(showing()["rows"].index("Lights")):
+        machine.send_key("down")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Lights"
+            and shown["selected"]["side"] == "2 of 2"
+        ),
+    )
+    step_in("ret")
+    launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights off")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    answer("keyboards")
+    step_in()
+    launcher_until(lambda shown: board in shown["rows"])
+    for _ in range(showing()["rows"].index(board)):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    step_in("ret")
+    launcher_until(lambda shown: "Repeat" in shown["rows"])
     machine.send_key("left")
     launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,
@@ -679,14 +731,15 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     closed = in_session(LAUNCHER_OPEN)
     # The main search lists no emoji, only the place they're in.
     answer("tada")
-    t.assertNotIn("party popper", showing()["rows"])
+    t.assertNotIn("Party popper", showing()["rows"])
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=10)
     answer("emoji")
     launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     machine.send_key("ret")
     launcher_until(lambda shown: shown["held"] == ["emoji"])
-    type_in("tada", selecting="party popper")
+    # Its name capitalised, as every row's is.
+    type_in("tada", selecting="Party popper")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=10)
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f389")
@@ -720,7 +773,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     )
     machine.send_key("meta_l-e")
     launcher_ready()
-    type_in("tada", selecting="party popper")
+    type_in("tada", selecting="Party popper")
     launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
     step_in()
     launcher_until(lambda shown: shown["rows"] == ["Paste", "Copy"])
@@ -864,6 +917,85 @@ with subtest("a search lists each thing once"):
     answer("volume")
     launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
     t.assertNotIn("pebble_x_plus_tuning_output", showing()["rows"])
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+
+with subtest("a step finds its rows by their hidden words, and its parts move in place"):
+    closed = in_session(LAUNCHER_OPEN)
+    # Inside the addresses, the tunnel is found by the kernel's name for
+    # it, a word it's known by but never says, as from the top.
+    machine.succeed(
+        "ip tuntap add dev tailscale0 mode tun"
+        " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
+    )
+    answer("ip")
+    step_in()
+    launcher_until(lambda shown: "Tunnel" in shown["rows"])
+    type_in("tailscale0", selecting="Tunnel")
+    t.assertNotIn("tailscale0", showing()["rows"])
+    # The left arrow takes what's typed away, the selection staying on
+    # the tunnel, and Tab steps into it as the right arrow would.
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "Tunnel"
+    )
+    step_in("tab")
+    launcher_until(lambda shown: "Address" in shown["rows"])
+    # Stepping back out lands on the row it came from.
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Tunnel"
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    machine.succeed("ip link delete tailscale0")
+    # The processors, a step into Computer, are named as the thing they
+    # are, and their cores, a step further, read again each second there
+    # as at the top: made busy, every core says so, in the order they
+    # were shown, the selection staying on its row.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    machine.send_chars("computer ")
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["computer"]
+            and any(thing["is"] == "answer:machine" for thing in shown["things"])
+        )
+    )
+    processors = [thing["is"] for thing in showing()["things"]].index("answer:machine")
+    for _ in range(processors):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "answer:machine")
+    step_in()
+    launcher_until(
+        lambda shown: shown["path"] == ["Computer", "Processor"] and "Cores" in shown["rows"]
+    )
+    for _ in range(showing()["rows"].index("Cores")):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    step_in()
+    launcher_until(lambda shown: shown["path"] == ["Computer", "Processor", "Cores"])
+    cores = showing()["rows"]
+    if len(cores) > 1:
+        machine.send_key("down")
+    chosen = cores[min(1, len(cores) - 1)]
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
+    # A loop for each core, as the shell's own builtins, since a
+    # transient unit's path has no coreutils.
+    spinning = "(while :; do :; done) & " * int(machine.succeed("nproc"))
+    machine.succeed(f"systemd-run --unit=busy-cores -p Nice=19 sh -c '{spinning}wait'")
+    busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
+    launcher_until(
+        lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
+        timeout=60,
+    )
+    shown = showing()
+    t.assertEqual(shown["rows"], cores, "the cores moved as they were read again")
+    t.assertEqual(shown["selected"]["name"], chosen, "the selection left its row")
+    machine.succeed("systemctl stop busy-cores")
+    # Back out, it's on the row it came from.
+    machine.send_key("left")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=10)
 

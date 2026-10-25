@@ -112,20 +112,22 @@ function offset(minutes) {
     return `UTC${sign}${Math.floor(whole / 60)}${whole % 60 ? `:${two(whole % 60)}` : ""}`;
 }
 
-// "13 h ahead of here", "4 h 30 min behind here", "the same time as here".
+// "13 h ahead", "4 h 30 min behind", "the same time", as its row, named
+// From here, says it.
 function apart(minutes) {
     if (minutes === 0) {
-        return "the same time as here";
+        return "the same time";
     }
     const whole = Math.abs(minutes);
     const hours = Math.floor(whole / 60);
     const parts = [hours ? `${hours} h` : "", whole % 60 ? `${whole % 60} min` : ""];
-    const way = minutes > 0 ? "ahead of" : "behind";
-    return `${parts.filter(part => part).join(" ")} ${way} here`;
+    const way = minutes > 0 ? "ahead" : "behind";
+    return `${parts.filter(part => part).join(" ")} ${way}`;
 }
 
-// Each row's glyph, by what it tells: the day, the gap, the zone.
-const glyphs = { day: 0xf_0b_67, apart: 0xf_01_50, zone: 0xf_01_e7 };
+// Each row's glyph, as the theme's mark for what it tells: the day, the
+// gap, the zone. The day wears the date's, as Today's rows do.
+const glyphs = { day: "date", apart: "clock", zone: "zone" };
 
 // Which day it is there against here, by how many days apart they are.
 function relative(dayApart) {
@@ -149,10 +151,13 @@ function tell(zone, now, here, local, name) {
         ours.getUTCDate())) / DAY);
     const isHere = here !== null && zone.id === here.id;
     // Which day it is there only says something when it's another place.
+    // Each row is a part (`part`, which the vocabulary names as time:day
+    // and the rest), saying its value (`text`) and its note.
     const which = isHere ? "" : relative(dayApart);
-    const rows = [{ text: day(there), side: which, copy: day(there), glyph: glyphs.day }];
+    const rows = [{ part: "day", text: day(there), note: which, copy: day(there),
+        glyph: glyphs.day }];
     if (!isHere) {
-        rows.push({ text: apart(minutes - mine), side: "", copy: offset(minutes),
+        rows.push({ part: "apart", text: apart(minutes - mine), note: "", copy: offset(minutes),
             glyph: glyphs.apart });
     }
     // tzdata writes an offset where a zone has no abbreviation of its own,
@@ -161,7 +166,7 @@ function tell(zone, now, here, local, name) {
         .filter(part => part !== "" && !WRITTEN_OFFSET.test(part) && part !== zone.id);
     const unique = names.filter((part, i) => names.indexOf(part) === i);
     if (zone.id !== "") {
-        rows.push({ text: zone.id, side: unique.join(" \u00b7 "), copy: zone.id,
+        rows.push({ part: "zone", text: zone.id, note: unique.join(", "), copy: zone.id,
             glyph: glyphs.zone });
     }
     return {

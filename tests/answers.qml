@@ -243,9 +243,15 @@ QtObject {
         }
         const rated = Units.answer("5 km in mi");
         asked++;
-        if (!rated || quoted(rated.rows.map(r => r.text))
-                !== quoted(["1 km = 0.621371 mi", "1 mi = 1.60934 km"]))
+        if (!rated || quoted(rated.rows.map(r => `${r.text} ${r.side}`))
+                !== quoted(["1 km 0.621371 mi", "1 mi 1.60934 km"]))
             failures.push(`"5 km in mi" gave the rows ${quoted(rated && rated.rows)}`);
+        // A temperature's third scale is named first, as a part is.
+        const scaled = Units.answer("100 c in f");
+        asked++;
+        if (!scaled || quoted(scaled.rows.map(r => `${r.text} ${r.side}`))
+                !== quoted(["Kelvin 373.15 K"]))
+            failures.push(`"100 c in f" gave the rows ${quoted(scaled && scaled.rows)}`);
 
         const read = new XMLHttpRequest();
         read.open("GET", Qt.resolvedUrl("zones.jsonl"), false);
@@ -277,16 +283,18 @@ QtObject {
         const told = Zones.answer("time in auckland", zones, at("2026-01-15T12:00"),
             "America/Toronto", 0);
         asked++;
-        const lines = answer => answer.rows.map(r => [r.text, r.side].filter(s => s).join(" "));
-        if (!told || quoted(lines(told)) !== quoted(["Friday 16 January tomorrow",
-                "18 h ahead of here", "Pacific/Auckland NZDT \u00b7 UTC+13"]))
+        // Each row a part, its value, then its note.
+        const lines = answer => answer.rows.map(r => [r.part, r.text, r.note].filter(s => s)
+            .join(" "));
+        if (!told || quoted(lines(told)) !== quoted(["day Friday 16 January tomorrow",
+                "apart 18 h ahead", "zone Pacific/Auckland NZDT, UTC+13"]))
             failures.push(`"time in auckland" gave the rows ${quoted(told && told.rows)}`);
         // Here, the day needs no "today", and UTC is said once.
         const cases = [
-            ["time", ["Thursday 15 January", "America/Toronto EST \u00b7 UTC\u22125"]],
-            ["time in utc", ["Thursday 15 January today", "5 h ahead of here", "UTC"]],
-            ["time in kathmandu", ["Thursday 15 January today", "10 h 45 min ahead of here",
-                "Asia/Kathmandu UTC+5:45"]]
+            ["time", ["day Thursday 15 January", "zone America/Toronto EST, UTC\u22125"]],
+            ["time in utc", ["day Thursday 15 January today", "apart 5 h ahead", "zone UTC"]],
+            ["time in kathmandu", ["day Thursday 15 January today", "apart 10 h 45 min ahead",
+                "zone Asia/Kathmandu UTC+5:45"]]
         ];
         for (const [typed, expected] of cases) {
             asked++;
@@ -303,7 +311,8 @@ QtObject {
         for (const [typed, headline, rows] of ColourCases.answers) {
             asked++;
             const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
-            const said = got && got.rows.map(r => [r.text, r.side].filter(s => s).join(" "));
+            const said = got && got.rows.map(r => [r.text, r.side, r.note].filter(s => s)
+                .join(" "));
             if (!got || got.headline !== headline || quoted(said) !== quoted(rows))
                 failures.push(`"${typed}" gave ${quoted(got && got.headline)} and `
                     + `${quoted(said)}, not "${headline}" and ${quoted(rows)}`);
@@ -418,6 +427,15 @@ QtObject {
             [{ name: "cc1 (odd) name", value: 0.4 }, { name: "kitty", value: 0.3 }]);
         machine("the programs holding the memory", Machine.holding(first),
             [{ name: "kitty", value: 8192000 }, { name: "systemd", value: 409600 }, { name: "cc1 (odd) name", value: 40960 }]);
+        // Read by position rather than split: the machine's ticks, a
+        // name closing a bracket of its own, and a last line unended.
+        machine("the processes, the last line unended",
+            Machine.processes(`4096\ncpu  10 0 0 0 0 0 0 0 0 0\nintr 3 (x) 4\n`
+                + `7 (a) b) ${fields(5, 2)}`),
+            { ticks: 10, programs: { 7: { name: "a) b", ticks: 5, bytes: 8192 } } });
+        machine("no processes", Machine.processes(""), { ticks: 0, programs: {} });
+        machine("the whole processor's sensor", ["Package id 0", "Tctl", "Core 3"]
+            .map(label => Machine.namesWhole(label)), [true, true, false]);
         machine("memory pressure", Machine.pressure("some avg10=12.50 avg60=1.48 avg300=2.33 total=26\n"
             + "full avg10=0.39 avg60=1.28 avg300=1.78 total=16\n"), 0.125);
         machine("no memory pressure said", Machine.pressure(""), null);
@@ -803,8 +821,8 @@ QtObject {
         machine("an adapter read once has no traffic", Links.traffic({ received: null,
             sent: null, traffic: [] }), null);
         machine("a busy adapter's traffic", Links.traffic({ received: 2.5e6, sent: 0,
-            traffic: [2.5e6] }), { side: "2.5 MB/s", values: [1],
-            note: "2.5 MB/s in, 0 B/s out" });
+            traffic: [2.5e6] }), { side: "20 Mb/s", values: [1],
+            note: "20 Mb/s in, 0 b/s out" });
 
         // What Sound makes of what a device and a stream say of themselves.
         const soundTuning = Sounds.target("{\n  node.name = \"alsa_output.speaker\"\n}");
@@ -841,6 +859,65 @@ QtObject {
         machine("a step louder", Sounds.stepped(0.42, 0.05, 0.05), 0.45);
         machine("never past the whole", Sounds.stepped(0.98, 0.05, 0.05), 1);
         machine("never below nothing", Sounds.stepped(0.02, -0.05, 0.05), 0);
+        machine("a level in decibels", [Sounds.decibels(1), Sounds.decibels(0.5),
+            Sounds.decibels(0.35), Sounds.decibels(1.2), Sounds.decibels(0)],
+            ["0 dB", "-18.1 dB", "-27.4 dB", "+4.8 dB", "-\u221e dB"]);
+        machine("what a jack has plugged in", Sounds.plugged([{ name: "codec", value: "CS42L45" },
+            { name: "plugged in", value: "headphones" }]), "headphones");
+        machine("a jack with nothing in it", Sounds.unplugged([{ name: "plugged in",
+            value: "nothing" }]), true);
+        machine("speakers have no jack", [Sounds.plugged([{ name: "amplifiers", value: "4" }]),
+            Sounds.unplugged(undefined)], ["", false]);
+
+        // What Sound says of Bluetooth headphones, as the sound server has
+        // them while they play music in AAC: their output, and WirePlumber's
+        // stand-in for their microphone, which names them only by address.
+        const soundHeadphones = { "api.bluez5.address": "12:34:56:78:9A:BC",
+            "api.bluez5.codec": "aac", "api.bluez5.profile": "a2dp-sink",
+            "node.description": "Muse", "device.id": 65, "card.profile.device": 1 };
+        const soundStandIn = { "bluez5.loopback": "true", "node.description": "Muse" };
+        machine("a Bluetooth output's address", Sounds.address("bluez_output.12_34_56_78_9A_BC.1",
+            soundHeadphones), "12:34:56:78:9A:BC");
+        machine("its microphone's stand-in's, from its name",
+            Sounds.address("bluez_input.12:34:56:78:9A:BC", soundStandIn), "12:34:56:78:9A:BC");
+        machine("a card's own output has none", Sounds.address("alsa_output.pci", {}), "");
+        machine("the stand-in is one", [Sounds.standIn(soundStandIn),
+            Sounds.standIn(soundHeadphones)], [true, false]);
+        machine("music, not a2dp", Sounds.carries(soundHeadphones["api.bluez5.profile"]),
+            "music");
+        machine("calls, not hfp", [Sounds.carries("headset-head-unit"),
+            Sounds.carries("hfp-hf")], ["calls", "calls"]);
+        machine("no profile, nothing carried", Sounds.carries(undefined), "");
+
+        // A card's ports, as pw-dump says them: one analog output with its
+        // speakers and a headphone jack nothing's plugged into, and its
+        // microphone, in the profile it's in.
+        const soundCard = JSON.stringify([{ id: 7, type: "PipeWire:Interface:Device", info: {
+            params: {
+                Profile: [{ index: 1, name: "output:analog-stereo+input:analog-stereo" }],
+                Route: [{ index: 3, device: 4, direction: "Output" }],
+                EnumRoute: [
+                    { index: 3, name: "analog-output-speaker", description: "Speakers",
+                        direction: "Output", available: "unknown", devices: [4],
+                        profiles: [1] },
+                    { index: 4, name: "analog-output-headphones", description: "Headphones",
+                        direction: "Output", available: "no", devices: [4], profiles: [1] },
+                    { index: 5, name: "analog-input-mic", description: "Microphone",
+                        direction: "Input", available: "unknown", devices: [5],
+                        profiles: [1] },
+                    { index: 6, name: "hdmi-output-0", description: "HDMI",
+                        direction: "Output", available: "no", devices: [4], profiles: [2] }
+                ]
+            } } }]);
+        machine("an output's ports, the one in use", Sounds.ports(soundCard,
+            { "device.id": "7", "card.profile.device": "4" }, true), [
+            { index: 3, name: "Speakers", available: "unknown", active: true },
+            { index: 4, name: "Headphones", available: "no", active: false }]);
+        machine("an input's, the other way", Sounds.ports(soundCard,
+            { "device.id": "7", "card.profile.device": "5" }, false).map(port => port.name),
+            ["Microphone"]);
+        machine("another card's, none", Sounds.ports(soundCard, { "device.id": "8" }, true), []);
+        machine("no dump, no ports", Sounds.ports("", { "device.id": "7" }, true), []);
 
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
@@ -930,6 +1007,14 @@ QtObject {
         machine("the built-in one", keyboardsFound.map(device => Keyboards.builtIn(device)),
             [true, false]);
         machine("ZSA's board", keyboardsFound.map(device => Keyboards.zsa(device)), [false, true]);
+        machine("the laptop's light on its keyboard", Keyboards.lightHolder(keyboardsFound).name,
+            "AT Translated Set 2 keyboard");
+        // A laptop whose keyboard isn't on the keyboard port still has its
+        // light, on the first keyboard neither paired nor ZSA's.
+        const keyboardsInside = { name: "Inside keyboard", phys: "i2c-PNP0C50:00", bus: "0018" };
+        machine("the laptop's light with no keyboard port",
+            Keyboards.lightHolder([keyboardsErgodox, keyboardsInside]).name, "Inside keyboard");
+        machine("no light with only a board", Keyboards.lightHolder([keyboardsErgodox]), null);
         machine("the laptop's locks", Keyboards.locks(keyboardsLaptop), [
             { id: "caps", light: "input0::capslock" },
             { id: "num", light: "input0::numlock" },
@@ -958,6 +1043,16 @@ QtObject {
         machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
         machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 }),
             "after 200 ms, 40 a second");
+        // A board's layers to move to: the one it's locked on let go, then
+        // each above the first but that one locked on; held by a key, every
+        // layer above the first.
+        const keyboardsLayers = ["Coal", "Punk", "Numb"];
+        machine("a locked board's layers", Keyboards.layerChoices(keyboardsLayers, "Numb", true), [
+            { id: "keyboard:release", key: "keyboard:release", layer: "Numb", index: 0 },
+            { id: "keyboard:lock", key: "keyboard:lock:Punk", layer: "Punk", index: 1 }
+        ]);
+        machine("a held board's layers", Keyboards.layerChoices(keyboardsLayers, "Numb", false)
+            .map(choice => `${choice.layer} ${choice.index}`), ["Punk 1", "Numb 2"]);
 
         // The battery's and the room's figures, from their files as the
         // kernel writes them.

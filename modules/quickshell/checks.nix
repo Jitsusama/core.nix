@@ -244,7 +244,11 @@ onLinux {
     let
       dir = ./.;
       qml = lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir dir));
-      starts = file: lib.hasInfix "execDetached" file || lib.hasInfix ".execute()" file;
+      # Split on each literal rather than lib.hasInfix, whose ".*" pattern
+      # recurses once a character and overflows the evaluator's stack on a
+      # file past about 100 kB, as Launcher.qml is.
+      holding = infix: file: builtins.length (builtins.split (lib.escapeRegex infix) file) > 1;
+      starts = file: holding "execDetached" file || holding ".execute()" file;
       culprits = lib.filter (name: starts (builtins.readFile (dir + "/${name}"))) qml;
     in
     holds "quickshell-opens-programs-through-niri"
@@ -1327,6 +1331,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Keyboard.qml} launcher/Keyboard.qml
+      cp ${./launcher/Keyboards.js} launcher/Keyboards.js
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json

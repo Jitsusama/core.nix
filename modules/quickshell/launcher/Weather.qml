@@ -46,41 +46,37 @@ Provider {
     readonly property int likely: 50
     readonly property int possible: 30
     readonly property int percent: 100
-    // The glyphs of the parts that aren't a weather code's.
-    readonly property int windy: 0xf059d
-    readonly property int rainy: 0xf0597
-
-    // WMO's weather codes, as Open-Meteo gives them: what each says, and its
-    // glyph by day and by night.
+    // WMO's weather codes, as Open-Meteo gives them: what each says, and the
+    // theme's mark for it by day and by night.
     readonly property var codes: ({
-        0: ["clear", 0xf0599, 0xf0594],
-        1: ["mostly clear", 0xf0595, 0xf0f31],
-        2: ["partly cloudy", 0xf0595, 0xf0f31],
-        3: ["overcast", 0xf0590, 0xf0590],
-        45: ["fog", 0xf0591, 0xf0591],
-        48: ["freezing fog", 0xf0591, 0xf0591],
-        51: ["light drizzle", 0xf0f33, 0xf0597],
-        53: ["drizzle", 0xf0597, 0xf0597],
-        55: ["heavy drizzle", 0xf0597, 0xf0597],
-        56: ["freezing drizzle", 0xf067f, 0xf067f],
-        57: ["freezing drizzle", 0xf067f, 0xf067f],
-        61: ["light rain", 0xf0f33, 0xf0597],
-        63: ["rain", 0xf0597, 0xf0597],
-        65: ["heavy rain", 0xf0596, 0xf0596],
-        66: ["freezing rain", 0xf067f, 0xf067f],
-        67: ["freezing rain", 0xf067f, 0xf067f],
-        71: ["light snow", 0xf0598, 0xf0598],
-        73: ["snow", 0xf0598, 0xf0598],
-        75: ["heavy snow", 0xf0f36, 0xf0f36],
-        77: ["snow grains", 0xf0598, 0xf0598],
-        80: ["showers", 0xf0f33, 0xf0597],
-        81: ["showers", 0xf0597, 0xf0597],
-        82: ["heavy showers", 0xf0596, 0xf0596],
-        85: ["snow showers", 0xf0598, 0xf0598],
-        86: ["heavy snow showers", 0xf0f36, 0xf0f36],
-        95: ["thunderstorms", 0xf0593, 0xf0593],
-        96: ["thunderstorms and hail", 0xf067e, 0xf067e],
-        99: ["thunderstorms and hail", 0xf067e, 0xf067e]
+        0: ["clear", "sunny", "clearNight"],
+        1: ["mostly clear", "partlyCloudy", "partlyCloudyNight"],
+        2: ["partly cloudy", "partlyCloudy", "partlyCloudyNight"],
+        3: ["overcast", "cloudy", "cloudy"],
+        45: ["fog", "fog", "fog"],
+        48: ["freezing fog", "fog", "fog"],
+        51: ["light drizzle", "showers", "rain"],
+        53: ["drizzle", "rain", "rain"],
+        55: ["heavy drizzle", "rain", "rain"],
+        56: ["freezing drizzle", "sleet", "sleet"],
+        57: ["freezing drizzle", "sleet", "sleet"],
+        61: ["light rain", "showers", "rain"],
+        63: ["rain", "rain", "rain"],
+        65: ["heavy rain", "pouring", "pouring"],
+        66: ["freezing rain", "sleet", "sleet"],
+        67: ["freezing rain", "sleet", "sleet"],
+        71: ["light snow", "snow", "snow"],
+        73: ["snow", "snow", "snow"],
+        75: ["heavy snow", "heavySnow", "heavySnow"],
+        77: ["snow grains", "snow", "snow"],
+        80: ["showers", "showers", "rain"],
+        81: ["showers", "rain", "rain"],
+        82: ["heavy showers", "pouring", "pouring"],
+        85: ["snow showers", "snow", "snow"],
+        86: ["heavy snow showers", "heavySnow", "heavySnow"],
+        95: ["thunderstorms", "thunder", "thunder"],
+        96: ["thunderstorms and hail", "hail", "hail"],
+        99: ["thunderstorms and hail", "hail", "hail"]
     })
 
     function said(code) {
@@ -88,8 +84,8 @@ Provider {
     }
 
     function glyph(code, day) {
-        const known = codes[code] ?? ["", 0xf0590, 0xf0590];
-        return String.fromCodePoint(day ? known[1] : known[2]);
+        const known = codes[code] ?? ["", "cloudy", "cloudy"];
+        return Theme.glyph[day ? known[1] : known[2]];
     }
 
     function degrees(value) {
@@ -176,7 +172,7 @@ Provider {
             name: hour.clock,
             copy: "",
             side: `${hour.chance}%, ${amount(hour.falls)}`,
-            glyph: String.fromCodePoint(rainy),
+            glyph: Theme.glyph.rain,
             graph: { shape: "bar", values: [hour.chance / percent], warn: false }
         }));
     }
@@ -257,7 +253,8 @@ Provider {
         const daily = forecast.daily;
         const day = now.is_day === 1;
         const speed = imperial ? "mph" : "km/h";
-        const headline = `${degrees(now.temperature_2m)} ${said(now.weather_code)}`;
+        // Said as each day's is, its degrees, a dot, then its words.
+        const headline = `${degrees(now.temperature_2m)} \u00b7 ${said(now.weather_code)}`;
         // The time where it is, from the forecast's own clock, for elsewhere.
         const [date, clock] = (now.time ?? "").split("T");
         const weekday = date => {
@@ -272,26 +269,23 @@ Provider {
             glyph: glyph(now.weather_code, day)
         })];
         // Rain holds its hours, and Return steps into them, since copying
-        // them would be copying a table.
+        // them would be copying a table: a part holding more, as any is.
         if (hours.length > 0) {
             const inside = hourRows(hours);
-            rows.push(thing({
+            rows.push(holderRow({
                 name: Words.name("weather:rain"),
                 side: rainSaid(hours),
-                verb: "more",
                 hue: "voice",
-                plain: true,
-                glyph: String.fromCodePoint(rainy),
-                graph: spark(hours),
-                verbs: () => inside
-            }));
+                glyph: Theme.glyph.rain,
+                graph: spark(hours)
+            }, () => inside));
         }
         const wind = `${Math.round(now.wind_speed_10m)} ${speed}`;
         rows.push(copyRow({
             name: Words.name("weather:wind"),
             copy: wind,
             side: wind,
-            glyph: String.fromCodePoint(windy)
+            glyph: Theme.glyph.wind
         }));
         for (let i = 0; i < (daily.time ?? []).length; i++) {
             const words = `${degrees(daily.temperature_2m_min[i])} to `

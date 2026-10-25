@@ -51,7 +51,7 @@ Provider {
         verbs: Quiet.on ? null : () => [60, 0].map(minutes => provider.said(
             `session:quiet:${minutes}`, "", {
                 verb: "hold",
-                glyph: minutes > 0 ? String.fromCodePoint(0xf1862) : Theme.glyph.quiet,
+                glyph: minutes > 0 ? Theme.glyph.timed : Theme.glyph.quiet,
                 hue: "action",
                 run: () => Quiet.keep(minutes)
             }))
@@ -90,8 +90,7 @@ Provider {
         name: Words.name("session:profile"),
         keywords: Words.keywords("session:profile"),
         side: profileInUse !== "" ? Words.of(profileInUse).part : "",
-        glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile"),
-        note: "a step in chooses another"
+        glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile")
     }, () => [])
 
     // Starting a recording is Capture's (Capture.qml). While anything

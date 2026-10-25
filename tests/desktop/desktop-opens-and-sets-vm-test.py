@@ -436,23 +436,28 @@ def sound_recording() -> int | None:
 
 
 with subtest("the launcher's Sound opens an output's and a microphone's parts"):
-    # The speakers, in use, hold their Level, Volume and Channels, named
-    # first; the null sink has no card, so nothing more.
+    # The speakers, in use, hold their Level, Volume, whether they're
+    # Muted, and Channels, named first; the null sink has no card, so
+    # nothing more.
     sound_device("speakers", "speakers")
-    launcher_until(lambda shown: shown["rows"][:2] == ["Level", "Volume"])
+    launcher_until(lambda shown: shown["rows"][:3] == ["Level", "Volume", "Muted"])
     launcher_until(lambda shown: "Channels" in shown["rows"])
     launcher_until(sound_reads("Channels", "stereo"))
+    launcher_until(sound_reads("Muted", "no"))
     # Nothing plays, so the Level reads silent, and no program is listed.
     launcher_until(sound_reads("Level", "silent"))
-    t.assertNotIn("Programs", showing()["rows"])
+    t.assertNotIn("Playing", showing()["rows"])
     photograph("launcher-sound-output-parts")
-    # Return on Volume steps into its choices, Mute among them.
+    # Return on Volume steps into its choices, each level saying its
+    # decibels in the footer.
     machine.send_key("down")
     launcher_until(sound_selected("Volume"))
+    launcher_until(lambda shown: shown["footer"].endswith(" dB"))
     step_in("ret")
-    launcher_until(lambda shown: shown["rows"][:3] == ["Louder", "Quieter", "Mute it"])
+    launcher_until(lambda shown: shown["rows"][:2] == ["Louder", "Quieter"])
     photograph("launcher-sound-volume")
     type_in("50", selecting="Volume to 50%")
+    launcher_until(lambda shown: "-18.1 dB" in shown["footer"])
     machine.send_key("ret")
     sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
     machine.wait_until_succeeds(in_session(sink), timeout=10)
@@ -460,18 +465,36 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
     # The part says what it was set to.
     sound_device("speakers", "speakers")
     launcher_until(sound_reads("Volume", "50%"))
-    machine.send_key("esc")
+    # The right arrow on Muted holds Mute and Unmute, Unmute in use, and
+    # Return on Mute mutes the speakers; then Unmute, its Return, unmutes.
+    for _down in range(2):
+        machine.send_key("down")
+    launcher_until(sound_selected("Muted"))
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["Mute", "Unmute"])
+    launcher_until(sound_reads("Unmute", "in use"))
+    photograph("launcher-sound-muted")
+    launcher_until(sound_selected("Mute"))
+    machine.send_key("ret")
+    hushed_sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"
+    machine.wait_until_succeeds(in_session(hushed_sink), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    sound_device("speakers", "speakers")
+    launcher_until(sound_reads("Muted", "yes"))
+    type_in("unmute", selecting="Unmute")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session(hushed_sink), timeout=10)
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
-    # The microphone holds its own: a live Level, its Gain, its Mute, and
-    # who's Recording, which is nobody, though the Level's own stream is
-    # reading it while it shows.
+    # The microphone holds its own: a live Level, its Gain, whether it's
+    # Muted, and who's Recording, which is nobody, though the Level's own
+    # stream is reading it while it shows.
     sound_device("microphone", "stand-in microphone")
     launcher_until(
-        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Mute", "Recording"],
+        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Muted", "Recording"],
     )
     launcher_until(sound_reads("Level", "%"))
-    launcher_until(sound_reads("Mute", "off"))
+    launcher_until(sound_reads("Muted", "no"))
     launcher_until(sound_reads("Recording", "nothing"))
     photograph("launcher-sound-input-parts")
     machine.send_key("esc")
@@ -966,16 +989,15 @@ with subtest("the addresses name each connection, its parts a step in"):
     # Each is named by what it is, never by the kernel's name for it.
     launcher_until(lambda shown: {"Wi-Fi", "Tunnel"} <= set(shown["rows"]))
     assert not {"wlan1", "tailscale0"} & set(showing()["rows"]), showing()
-    # Return opens the Wi-Fi's parts, the kernel's name a figure among them.
+    # Return opens the Wi-Fi's parts, and the kernel's name is none of them.
     type_in("wi-fi", selecting="Wi-Fi")
     step_in("ret")
     launcher_until(
-        lambda shown: (
-            {"Address", "Hardware address", "MTU", "State", "Device name"} <= set(shown["rows"])
-        )
+        lambda shown: {"Address", "Hardware address", "MTU", "State"} <= set(shown["rows"])
     )
-    type_in("device", selecting="Device name")
-    t.assertEqual(showing()["selected"]["side"], "wlan1")
+    assert "Device name" not in showing()["rows"], showing()
+    type_in("mtu", selecting="MTU")
+    t.assertRegex(showing()["selected"]["side"], r"^[\d,]+ bytes$")
     photograph("launcher-addresses-wifi")
     machine.send_key("left")
     machine.send_key("left")

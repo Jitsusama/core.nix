@@ -143,7 +143,7 @@ Provider {
 
     // The lights its sensor's power controller names, as each is lit now.
     readonly property var lightNotes: ({
-        privacy: "as the kernel sets it; the camera's own bridge may light it too",
+        privacy: "as the machine sets it; the camera may light it itself too",
         flood: "lit only while the camera streams, for its pictures"
     })
 

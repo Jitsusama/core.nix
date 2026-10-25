@@ -129,11 +129,14 @@ Provider {
 
     function verbs(quest) {
         const session = loaded[quest.id];
-        const fact = (key, name, side, copy) => copyRow({
+        // Each fact a part, named first (quests:id and the rest), saying its
+        // value and copying it, or what `copy` gives.
+        const fact = (key, side, note, copy) => copyRow({
             key: `fact:quest:${key}`,
-            name: name,
+            name: Words.name(`quests:${key}`),
             side: side,
-            copy: copy ?? name,
+            note: note ?? "",
+            copy: copy ?? side,
             glyph: Theme.glyph.agent
         });
         // A folder at home reads from ~, as a shell says it; the copy is whole.
@@ -151,12 +154,12 @@ Provider {
             later: true,
             run: () => provider.go(quest)
         })].concat([
-            fact("id", quest.id, "its id"),
+            fact("id", quest.id),
             fact("status", [quest.status, isOpen(quest) ? quest.priority : ""]
-                .filter(part => part !== "").join(" \u00b7 "), "how it stands"),
-            quest.updated ? fact("updated", day(quest.updated), "last touched") : null,
-            parent ? fact("parent", parent.title || parent.id, `its parent, ${parent.id}`) : null,
-            fact("folder", homely, "an agent starts in", quest.folder)
+                .filter(part => part !== "").join(" \u00b7 ")),
+            quest.updated ? fact("updated", day(quest.updated)) : null,
+            parent ? fact("parent", parent.title || parent.id, parent.id) : null,
+            fact("folder", homely, "where an agent starts", quest.folder)
         ].filter(row => row !== null));
     }
 

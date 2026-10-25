@@ -52,12 +52,8 @@ Provider {
     readonly property bool on: adapter !== null && adapter.enabled
 
     collection: adapter === null ? null : Words.collection("bluetooth", {
-        empty: on ? "Looking for devices\u2026" : "Bluetooth is off"
+        empty: on ? "Looking for devices\u2026" : "Bluetooth is off."
     })
-
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
 
     // Looking for devices costs the radio's power, so it looks only while
     // the launcher is there to show them.
@@ -82,22 +78,23 @@ Provider {
 
     things: adapter === null ? [] : [radio]
 
-    // What it is, from the icon BlueZ names for its class.
+    // What it is, from the icon BlueZ names for its class, as the theme's
+    // mark for that kind of thing.
     function kind(device) {
         const icon = device.icon;
         const kinds = {
-            "audio-headphones": 0xf0970,
-            "audio-headset": 0xf02ce,
-            "audio-card": 0xf09a2,
-            "input-mouse": 0xf037d,
-            "input-tablet": 0xf037d,
-            "input-keyboard": 0xf030c,
-            "input-gaming": 0xf0297,
-            "phone": 0xf011c,
-            "computer": 0xf0322,
-            "video-display": 0xf0502
+            "audio-headphones": "headphones",
+            "audio-headset": "headset",
+            "audio-card": "speaker",
+            "input-mouse": "mouse",
+            "input-tablet": "mouse",
+            "input-keyboard": "keyboard",
+            "input-gaming": "gamepad",
+            "phone": "phone",
+            "computer": "computer",
+            "video-display": "display"
         };
-        return glyph(kinds[icon] ?? 0xf00af);
+        return Theme.glyph[kinds[icon] ?? "bluetooth"];
     }
 
     // Connected, then paired, then the rest, then by name; a device that
@@ -140,7 +137,9 @@ Provider {
 
     function made(device) {
         const joined = device.connected;
-        const told = joined ? "connected" : device.paired ? "paired" : "new";
+        // The side says connected or paired, so the note says only what it
+        // doesn't: the battery, or that the device is new.
+        const told = joined || device.paired ? "" : "new";
         const charge = Math.round(device.battery * 100);
         const note = device.batteryAvailable ? `${charge}% battery` : told;
         return member({
@@ -483,8 +482,8 @@ Provider {
         const minutes = Math.round(seconds / 60);
         if (seconds <= 0)
             return "";
-        return seconds < 60 ? `for ${seconds} seconds once made visible`
-            : `for ${minutes} minute${minutes === 1 ? "" : "s"} once made visible`;
+        return seconds < 60 ? `for ${seconds} s once made visible`
+            : `for ${minutes} min once made visible`;
     }
 
     // The adapter's parts: its Radio, and while it's on whether others can
@@ -609,14 +608,14 @@ Provider {
         const rows = [device.connected ? thing({
             key: "verb:bluetooth-disconnect",
             name: Words.name("verb:bluetooth-disconnect"),
-            glyph: glyph(0xf00b2),
+            glyph: Theme.glyph.disconnect,
             hue: "action",
             run: () => device.disconnect()
         }) : thing({
             key: "verb:bluetooth-connect",
             verb: device.paired ? "connect" : "pair",
             name: Words.name("verb:bluetooth-connect", device.paired ? "" : "unpaired"),
-            glyph: glyph(0xf00b1),
+            glyph: Theme.glyph.connect,
             hue: "action",
             device: device,
             stays: true,
@@ -628,7 +627,7 @@ Provider {
                 key: "verb:bluetooth-passkey",
                 name: Words.name("verb:bluetooth-passkey"),
                 keywords: Words.keywords("verb:bluetooth-passkey"),
-                glyph: glyph(0xf030c),
+                glyph: Theme.glyph.password,
                 hue: "action",
                 later: true,
                 run: () => Niri.spawn(["kitty", "bluetoothctl"])
@@ -637,7 +636,7 @@ Provider {
             rows.push(thing({
                 key: "verb:bluetooth-forget",
                 name: Words.name("verb:bluetooth-forget"),
-                glyph: glyph(0xf16c5),
+                glyph: Theme.glyph.forget,
                 hue: "action",
                 run: () => device.forget()
             }));

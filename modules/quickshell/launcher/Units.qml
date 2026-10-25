@@ -3,6 +3,7 @@
 // temperature the third scale. Units.js holds every unit and the names it's
 // typed as. Its settings: the `group` and `point` marks numbers are written
 // with.
+import qs
 import QtQuick
 import "Units.js" as Units
 
@@ -20,7 +21,7 @@ Provider {
                 name: row.text,
                 side: row.side,
                 copy: row.copy,
-                glyph: String.fromCodePoint(said.glyph)
+                glyph: Theme.glyph[said.glyph]
             })),
             note: said.kind
         };

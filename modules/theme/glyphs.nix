@@ -304,7 +304,7 @@ in
   offline = {
     glyph = nerd "f05aa";
     console = "X";
-    means = "joined to no network";
+    means = "joined to no network, or leaving the one joined";
   };
   volume = {
     glyph = nerd "f057e";
@@ -443,7 +443,7 @@ in
   forget = {
     glyph = nerd "f01fe";
     console = "-";
-    means = "forgetting what's kept, such as the clipboard's copies";
+    means = "forgetting what's kept: the clipboard's copies, a network or a paired device";
   };
   clipboard = {
     glyph = nerd "f0a38";
@@ -504,10 +504,17 @@ in
   keyboard = {
     glyph = nerd "f030c";
     console = "k";
-    means = "the keyboard: its layout, layers, keys and lights";
+    means = "a keyboard: its layout, layers, keys and lights, or one paired";
   };
+  flash = {
+    glyph = nerd "f0241";
+    console = "!";
+    means = "flashing a light to find what it's on, such as a keyboard";
+  };
+  # One screen rather than several, since most of what wears it is one
+  # display, and the desktop's display shortcuts wore one already.
   display = {
-    glyph = nerd "f037a";
+    glyph = nerd "f0379";
     console = "D";
     means = "a display, or the displays";
   };
@@ -570,5 +577,441 @@ in
     glyph = nerd "f011";
     console = "o";
     means = "powering the machine off";
+  };
+  # What the launcher's own line and its empty list wear.
+  greeting = {
+    glyph = nerd "f0674";
+    console = "*";
+    means = "the launcher saying what it can do, before anything's typed";
+  };
+  nothingFound = {
+    glyph = nerd "f02a0";
+    console = "?";
+    means = "nothing answers what was typed";
+  };
+  # The padlock, as locked's is, beside anything typed that stays hidden.
+  secret = {
+    glyph = nerd "f023";
+    console = "%";
+    means = "where a secret is typed: a password or a passphrase";
+  };
+  program = {
+    glyph = nerd "f0614";
+    console = "a";
+    means = "a program, where it has no glyph of its own";
+  };
+  # The things Bluetooth pairs with, by the kind each says it is, and what's
+  # done with them. Headphones and a speaker wear no Bluetooth badge, since
+  # Sound shows the wired ones with the same marks and Bluetooth's own list
+  # already says how they're joined.
+  headphones = {
+    glyph = nerd "f02cb";
+    console = "h";
+    means = "headphones";
+  };
+  headset = {
+    glyph = nerd "f02ce";
+    console = "h";
+    means = "a headset: headphones with a microphone";
+  };
+  microphone = {
+    glyph = nerd "f036c";
+    console = "m";
+    means = "a microphone, or anything else sound is heard through";
+  };
+  speaker = {
+    glyph = nerd "f04c3";
+    console = "s";
+    means = "a speaker, or anything else sound plays through";
+  };
+  mouse = {
+    glyph = nerd "f037d";
+    console = "m";
+    means = "a mouse or a tablet";
+  };
+  gamepad = {
+    glyph = nerd "f0297";
+    console = "g";
+    means = "a game controller";
+  };
+  phone = {
+    glyph = nerd "f011c";
+    console = "t";
+    means = "a phone";
+  };
+  computer = {
+    glyph = nerd "f0322";
+    console = "l";
+    means = "a computer: the screen built into this one, or another paired";
+  };
+  connect = {
+    glyph = nerd "f00b1";
+    console = "+";
+    means = "connecting to a device, or pairing with it";
+  };
+  # Bluetooth's own glyph struck through, as bluetoothOff is, since a
+  # device let go is one Bluetooth no longer reaches.
+  disconnect = {
+    glyph = nerd "f00b2";
+    console = "-";
+    means = "letting a connected device go";
+  };
+  password = {
+    glyph = nerd "f0306";
+    console = "k";
+    means = "what a network or a device asks to let it in: a password, an account, a passkey";
+  };
+  trust = {
+    glyph = nerd "f0483";
+    console = "t";
+    means = "trusting a network: finding others on it, and being found";
+  };
+  accessPoint = {
+    glyph = nerd "f0003";
+    console = "a";
+    means = "the access points a network is heard from";
+  };
+  tunnel = {
+    glyph = nerd "f0582";
+    console = "v";
+    means = "a tunnel to another network, such as a VPN";
+  };
+  signIn = {
+    glyph = nerd "f0342";
+    console = ">";
+    means = "signing in: to a network's page, or to an account";
+  };
+  # A network card, not the cable, since an address is a card's whether it
+  # joins through the air or by wire.
+  card = {
+    glyph = nerd "f08ae";
+    console = "n";
+    means = "a network card, by its hardware address";
+  };
+  # A network's signal in four bars, then the same with a padlock for one
+  # that asks for a password; the first of each is none heard.
+  signal0 = {
+    glyph = nerd "f092f";
+    console = "0";
+    means = "a network heard, its signal no bars";
+  };
+  signal1 = {
+    glyph = nerd "f091f";
+    console = "1";
+    means = "a network heard, its signal one bar";
+  };
+  signal2 = {
+    glyph = nerd "f0922";
+    console = "2";
+    means = "a network heard, its signal two bars";
+  };
+  signal3 = {
+    glyph = nerd "f0925";
+    console = "3";
+    means = "a network heard, its signal three bars";
+  };
+  signal4 = {
+    glyph = nerd "f0928";
+    console = "4";
+    means = "a network heard, its signal four bars";
+  };
+  lockedSignal0 = {
+    glyph = nerd "f092c";
+    console = "0";
+    means = "a network with a password, its signal no bars";
+  };
+  lockedSignal1 = {
+    glyph = nerd "f0921";
+    console = "1";
+    means = "a network with a password, its signal one bar";
+  };
+  lockedSignal2 = {
+    glyph = nerd "f0924";
+    console = "2";
+    means = "a network with a password, its signal two bars";
+  };
+  lockedSignal3 = {
+    glyph = nerd "f0927";
+    console = "3";
+    means = "a network with a password, its signal three bars";
+  };
+  lockedSignal4 = {
+    glyph = nerd "f092a";
+    console = "4";
+    means = "a network with a password, its signal four bars";
+  };
+  # A display's settings, and turning one off; turning one on wears the
+  # display's own glyph, as the radios' do.
+  displayOff = {
+    glyph = nerd "f0d90";
+    console = "_";
+    means = "a display turned off, or turning one off";
+  };
+  scale = {
+    glyph = nerd "f06ed";
+    console = "+";
+    means = "how large a display draws things";
+  };
+  refresh = {
+    glyph = nerd "f095b";
+    console = "~";
+    means = "how often a display draws itself again";
+  };
+  resolution = {
+    glyph = nerd "f0a24";
+    console = "#";
+    means = "how many dots a display draws, across and down";
+  };
+  rotation = {
+    glyph = nerd "f0475";
+    console = "r";
+    means = "which way up a display is turned";
+  };
+  newWorkspace = {
+    glyph = nerd "f11da";
+    console = "+";
+    means = "a new workspace, made by moving a window to it";
+  };
+  # What a notice's program offers on it, and what's done with one.
+  reply = {
+    glyph = nerd "f045a";
+    console = "<";
+    means = "replying to a message from its notice";
+  };
+  offer = {
+    glyph = nerd "f0ce0";
+    console = ">";
+    means = "doing what a notice's program offers on it";
+  };
+  read = {
+    glyph = nerd "f01ef";
+    console = "o";
+    means = "marking a notice read";
+  };
+  unread = {
+    glyph = nerd "f0b92";
+    console = "*";
+    means = "marking a notice unread";
+  };
+  dismiss = {
+    glyph = nerd "f0a91";
+    console = "x";
+    means = "letting a notice go";
+  };
+  timed = {
+    glyph = nerd "f1862";
+    console = "t";
+    means = "on for a while, then off by itself";
+  };
+  # What a copy is, so a link, a path or a number stands out from the text
+  # around it; a copy of plain text wears the clipboard's.
+  lines = {
+    glyph = nerd "f09aa";
+    console = "=";
+    means = "text of several lines";
+  };
+  link = {
+    glyph = nerd "f0337";
+    console = "/";
+    means = "a link to somewhere";
+  };
+  email = {
+    glyph = nerd "f01f0";
+    console = "@";
+    means = "an email address";
+  };
+  path = {
+    glyph = nerd "f0224";
+    console = "/";
+    means = "where a file or a folder is";
+  };
+  picture = {
+    glyph = nerd "f02e9";
+    console = "p";
+    means = "a picture";
+  };
+  # What an answer in the field is about, by what was asked.
+  number = {
+    glyph = nerd "f03a0";
+    console = "#";
+    means = "a number, or a sum worked out";
+  };
+  swatch = {
+    glyph = nerd "f14fb";
+    console = "#";
+    means = "a colour, shown in itself";
+  };
+  currency = {
+    glyph = nerd "f0116";
+    console = "$";
+    means = "money, from one currency to another";
+  };
+  date = {
+    glyph = nerd "f00ed";
+    console = "d";
+    means = "a date: today, or the day it is somewhere";
+  };
+  clock = {
+    glyph = nerd "f0150";
+    console = "o";
+    means = "the time somewhere, and how far it's ahead of here or behind";
+  };
+  zone = {
+    glyph = nerd "f01e7";
+    console = "z";
+    means = "a time zone";
+  };
+  # What's measured, for a measure from one unit to another.
+  distance = {
+    glyph = nerd "f046d";
+    console = "|";
+    means = "how long or how far: metres, miles";
+  };
+  mass = {
+    glyph = nerd "f05d1";
+    console = "m";
+    means = "how heavy: grams, pounds";
+  };
+  capacity = {
+    glyph = nerd "f01ab";
+    console = "u";
+    means = "how much something holds: litres, cups";
+  };
+  area = {
+    glyph = nerd "f0fe6";
+    console = "#";
+    means = "how much ground or surface: square metres, acres";
+  };
+  speed = {
+    glyph = nerd "f04c5";
+    console = ">";
+    means = "how fast: kilometres an hour, knots";
+  };
+  data = {
+    glyph = nerd "f02ca";
+    console = "b";
+    means = "how much data: bytes, bits";
+  };
+  duration = {
+    glyph = nerd "f051b";
+    console = "t";
+    means = "how long it takes: seconds, days";
+  };
+  energy = {
+    glyph = nerd "f140b";
+    console = "e";
+    means = "how much energy: joules, calories";
+  };
+  pressure = {
+    glyph = nerd "f029a";
+    console = "p";
+    means = "how hard something presses: pascals, bars";
+  };
+  angle = {
+    glyph = nerd "f0937";
+    console = "<";
+    means = "how wide an angle: degrees, radians";
+  };
+  temperature = {
+    glyph = nerd "f050f";
+    console = "c";
+    means = "how hot or cold: Celsius, Fahrenheit";
+  };
+  # What AI spend found and how it stands.
+  urgent = {
+    glyph = nerd "f0028";
+    console = "!";
+    means = "wanting Joel now, as a cap reached does";
+  };
+  trend = {
+    glyph = nerd "f012a";
+    console = "~";
+    means = "something found in how a figure has moved";
+  };
+  fine = {
+    glyph = nerd "f012c";
+    console = "v";
+    means = "nothing wants a look: all is well, or marked as expected";
+  };
+  report = {
+    glyph = nerd "f0215";
+    console = "=";
+    means = "a report, to read in full";
+  };
+  # The weather, by day and by night where the sky looks different.
+  sunny = {
+    glyph = nerd "f0599";
+    console = "o";
+    means = "a clear sky by day";
+  };
+  clearNight = {
+    glyph = nerd "f0594";
+    console = "c";
+    means = "a clear sky by night";
+  };
+  partlyCloudy = {
+    glyph = nerd "f0595";
+    console = "o";
+    means = "some cloud by day";
+  };
+  partlyCloudyNight = {
+    glyph = nerd "f0f31";
+    console = "c";
+    means = "some cloud by night";
+  };
+  cloudy = {
+    glyph = nerd "f0590";
+    console = "m";
+    means = "a sky covered in cloud, or weather unknown";
+  };
+  fog = {
+    glyph = nerd "f0591";
+    console = "=";
+    means = "fog";
+  };
+  showers = {
+    glyph = nerd "f0f33";
+    console = "'";
+    means = "a little rain, or showers, by day";
+  };
+  rain = {
+    glyph = nerd "f0597";
+    console = "'";
+    means = "rain, and the hours it's likely";
+  };
+  pouring = {
+    glyph = nerd "f0596";
+    console = "\"";
+    means = "heavy rain";
+  };
+  sleet = {
+    glyph = nerd "f067f";
+    console = ",";
+    means = "rain or drizzle that freezes";
+  };
+  snow = {
+    glyph = nerd "f0598";
+    console = "*";
+    means = "snow";
+  };
+  heavySnow = {
+    glyph = nerd "f0f36";
+    console = "*";
+    means = "heavy snow";
+  };
+  thunder = {
+    glyph = nerd "f0593";
+    console = "z";
+    means = "thunderstorms";
+  };
+  hail = {
+    glyph = nerd "f067e";
+    console = "z";
+    means = "thunderstorms with hail";
+  };
+  wind = {
+    glyph = nerd "f059d";
+    console = "~";
+    means = "the wind";
   };
 }

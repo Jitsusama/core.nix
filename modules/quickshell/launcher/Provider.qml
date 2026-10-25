@@ -391,7 +391,11 @@ Scope {
 
     // An application's own glyph where the icon font has one, by its desktop
     // entry's id or a window's app id, with a machine's own from
-    // `settings.glyphs`, as hex code points.
+    // `settings.glyphs`, as hex code points. These are the programs' own
+    // logos, named by the programs rather than by a meaning, so they're
+    // kept here and not among the theme's marks; one without a logo wears
+    // the theme's program mark, through the launcher, since this file
+    // mustn't import qs.
     readonly property var programGlyphs: Object.assign({
         "kitty": "f011b",
         "google-chrome": "f268",
@@ -406,8 +410,9 @@ Scope {
     }, settings.glyphs ?? {})
 
     function programGlyph(id) {
-        const code = programGlyphs[(id ?? "").toLowerCase()] ?? "f0614";
-        return String.fromCodePoint(parseInt(code, 16));
+        const code = programGlyphs[(id ?? "").toLowerCase()] ?? "";
+        return code === "" ? provider.launcher?.marks?.program ?? ""
+            : String.fromCodePoint(parseInt(code, 16));
     }
 
     // A window's title without its program's name trailing it, as Chrome

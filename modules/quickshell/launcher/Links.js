@@ -219,18 +219,22 @@ function maker(number) {
     return MAKERS[number] ?? "";
 }
 
-// Bytes a second, in decimal units, as a network's are said.
+// Bytes a second, said in bits a second, as the network's speed is
+// (Traffic.js's bits), since Bluetooth is a link too.
 const KILO = 1e3;
 const MEGA = 1e6;
-const UNITS = [[MEGA, "MB/s"], [KILO, "kB/s"]];
+const GIGA = 1e9;
+const BITS = 8;
+const UNITS = [[GIGA, "Gb/s"], [MEGA, "Mb/s"], [KILO, "kb/s"]];
 const TENS = 10;
 
 function rate(count) {
-    const unit = UNITS.find(each => count >= each[0]);
+    const bits = count * BITS;
+    const unit = UNITS.find(each => bits >= each[0]);
     if (!unit) {
-        return `${Math.round(count)} B/s`;
+        return `${Math.round(bits)} b/s`;
     }
-    const scaled = count / unit[0];
+    const scaled = bits / unit[0];
     return `${scaled < TENS ? scaled.toFixed(1) : Math.round(scaled)} ${unit[1]}`;
 }
 

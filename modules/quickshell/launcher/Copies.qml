@@ -75,21 +75,21 @@ Provider {
         return `${Math.floor(seconds / 86400)} d ago`;
     }
 
-    // What a copy is, by its glyph, so a link, a path or a number stands
-    // out from the text around it.
+    // What a copy is, by the theme's mark for it, so a link, a path or a
+    // number stands out from the text around it.
     function kind(text, lines) {
         const one = text.trim();
         if (lines > 1)
-            return 0xf09aa;
+            return Theme.glyph.lines;
         if (/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(one))
-            return 0xf0337;
+            return Theme.glyph.link;
         if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(one))
-            return 0xf01f0;
+            return Theme.glyph.email;
         if (/^(~|\.{0,2})\/\S*$/.test(one))
-            return 0xf0224;
+            return Theme.glyph.path;
         if (/^[-+]?[\d,_ ]*\.?\d+$/.test(one))
-            return 0xf03a0;
-        return 0xf0a38;
+            return Theme.glyph.number;
+        return Theme.glyph.clipboard;
     }
 
     function made(copy) {
@@ -97,7 +97,7 @@ Provider {
         const row = member({
             key: `copy:${shown(copy.text)}`,
             name: shown(copy.text),
-            glyph: String.fromCodePoint(kind(copy.text, lines)),
+            glyph: kind(copy.text, lines),
             hue: "text",
             at: copy.at,
             text: copy.text,
@@ -148,12 +148,15 @@ Provider {
         "image/gif": "GIF"
     })
 
+    // A picture's size in decimal units, as a file's and a disk's are said
+    // everywhere else in the launcher (Machine.qml's bytes).
     function weighed(bytes) {
-        if (bytes < 1024)
-            return `${bytes} B`;
-        if (bytes < 1024 * 1024)
-            return `${Math.round(bytes / 1024)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        const units = [[1e9, "GB"], [1e6, "MB"], [1e3, "kB"]];
+        const unit = units.find(each => bytes >= each[0]);
+        if (!unit)
+            return `${Math.round(bytes)} B`;
+        const scaled = bytes / unit[0];
+        return `${scaled < 10 ? scaled.toFixed(1) : Math.round(scaled)} ${unit[1]}`;
     }
 
     // A picture's row, named by its width and height when its type says
@@ -163,7 +166,7 @@ Provider {
         const row = member({
             key: `picture:${copy.picture}`,
             name: `Image${size}`,
-            glyph: String.fromCodePoint(0xf02e9),
+            glyph: Theme.glyph.picture,
             hue: "text",
             at: copy.at,
             id: copy.picture,

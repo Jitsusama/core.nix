@@ -1,8 +1,10 @@
 // What the launcher's Keyboards answer makes of the kernel's files, in plain
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // which of the kernel's input devices are keyboards, how each is joined, the
-// lock lights it has, where a USB board's own description sits in sysfs, and
-// how its lights' timeout reads. Keyboards.qml reads the files and says it.
+// lock lights it has, where a USB board's own description sits in sysfs, how
+// its lights' timeout reads, and which layers a board can be moved to.
+// Keyboards.qml reads the files and says it, and Keyboard.qml offers the
+// layers too.
 .pragma library
 
 // The kernel's buses, as /proc/bus/input/devices numbers them.
@@ -113,6 +115,16 @@ function zsa(device) {
     return device.bus === USB && device.vendor === ZSA;
 }
 
+// Which keyboard the laptop's own light is: the one on its keyboard port,
+// or, on a laptop whose keyboard is joined another way (I2C, or USB
+// inside), the first that's neither paired nor a board with its own
+// lights; null with none.
+function lightHolder(listed) {
+    return listed.find(builtIn)
+        ?? listed.find(device => joined(device) !== "by Bluetooth" && !zsa(device))
+        ?? null;
+}
+
 // The lock lights it has, each with its light's folder under the kernel's
 // lights, as "input0::capslock".
 function locks(device) {
@@ -197,4 +209,23 @@ function wakers(said) {
 // How a held key repeats, as repeat.nix sets it.
 function repeats(repeat) {
     return `after ${repeat.delay} ms, ${repeat.rate} a second`;
+}
+
+// The layers a board can be moved to, by their names in its order, as the
+// launcher offers them: the one it's locked on let go, then each above the
+// first locked on, all but the one it's locked on already. Each is the
+// vocabulary's id, the key learning knows it by, the layer it names and the
+// number the board is told. The first layer is where a board let go falls
+// back to, so it's never locked on.
+function layerChoices(names, now, locked) {
+    const release = locked
+        ? [{ id: "keyboard:release", key: "keyboard:release", layer: now, index: 0 }]
+        : [];
+    const locking = names.map((name, index) => ({
+        id: "keyboard:lock",
+        key: `keyboard:lock:${name}`,
+        layer: name,
+        index,
+    })).filter((choice) => choice.index > 0 && !(locked && choice.layer === now));
+    return release.concat(locking);
 }

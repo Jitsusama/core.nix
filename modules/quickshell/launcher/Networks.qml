@@ -35,10 +35,6 @@ Provider {
     // How long what ip said stands before it's asked again.
     readonly property int stands: 5000
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
     function grouped(value) {
         return Numbers.format(value, 0, settings.group, settings.point);
     }
@@ -170,7 +166,7 @@ Provider {
 
     function linkGlyph(kind) {
         return kind === "wifi" ? Theme.glyph.wireless
-            : kind === "wired" ? Theme.glyph.wired : glyph(0xf0582);
+            : kind === "wired" ? Theme.glyph.wired : Theme.glyph.tunnel;
     }
 
     function addressOf(link) {
@@ -253,8 +249,9 @@ Provider {
     })
 
     // A connection's parts, as it stands now: its addresses, the gateway,
-    // the name servers where the traffic leaves, its hardware address, MTU,
-    // state and the name the kernel knows it by.
+    // the name servers where the traffic leaves, its hardware address, MTU
+    // and state. The name the kernel knows it by is never shown, only kept
+    // among the words that find the connection.
     function partsOf(name) {
         const now = standing();
         const link = now ? now.links.find(each => each.name === name) ?? null : null;
@@ -288,7 +285,6 @@ Provider {
             rows.push(part(key("mtu"), "mtu", `${grouped(link.mtu)} bytes`,
                 "the largest packet it sends whole", String(link.mtu)));
         rows.push(part(key("state"), "state", stateSaid[link.state], "", ""));
-        rows.push(part(key("device"), "device", link.name, "the kernel's name for it"));
         return rows;
     }
 
@@ -354,7 +350,7 @@ Provider {
         if (!kind.public) {
             if (headline === "")
                 headline = kind.kind;
-            rows.push(part(key("kind"), "kind", `${kind.kind}, ${kind.rfc}`, "", kind.rfc));
+            rows.push(part(key("kind"), "kind", kind.kind, kind.rfc, kind.kind));
             return { headline: headline, copy: copy, rows: rows, note: "" };
         }
         if (!lookups)

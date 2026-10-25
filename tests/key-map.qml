@@ -5,13 +5,16 @@
 // groups; a layer holds its groups, then what no group takes; typing finds a
 // group by its name before every chord it starts, flat, at the top and
 // inside a layer, a group found from the top saying its layer, and one
-// found further down saying the group holding it; and a group can hold
-// groups, Code's each a dozen or fewer. It exits 0 once every case holds, and otherwise 1, saying
-// which case didn't.
+// found further down saying the group holding it; a group can hold
+// groups, Code's each a dozen or fewer; and the window the launcher opened
+// over puts its program's layers first, its own chord opening on the first
+// of them. It exits 0 once every case holds, and otherwise 1, saying which
+// case didn't.
 import qs
 import Quickshell
 import QtQuick
 import "launcher"
+import "launcher/KeyGroups.js" as KeyGroups
 
 ShellRoot {
     id: root
@@ -47,7 +50,9 @@ ShellRoot {
                 && desktop.side === "Windows, Columns", `${desktop.count} ${desktop.side}`);
             expect("a short layer, its chords alone",
                 top[1].verbs().every(one => !one.verbs), names(top[1].verbs()).join(", "));
-            const total = Shortcuts.layers.reduce((all, layer) => all + layer.binds.length, 0);
+            // A chord doing one thing in several places is one row.
+            const total = Shortcuts.layers.reduce((all, layer) => all
+                + KeyGroups.merged(layer.name, layer.binds).length, 0);
             expect("home counts every chord", map.counted() === String(total).replace(
                 /\B(?=(\d{3})+(?!\d))/g, ","), map.counted());
 
@@ -61,8 +66,8 @@ ShellRoot {
                 && work.some(one => one.name === "Go to workspace 3"),
                 names(work.slice(0, 3)).join(", "));
             const tabs = map.search("tabs").rows.filter(one => one.name === "Tabs");
-            expect("a group from the top says its layer",
-                tabs.map(one => one.side).join(", ") === "Terminal, Neovim",
+            expect("a group from the top says what holds it",
+                tabs.map(one => one.side).join(", ") === "Terminal, Files",
                 tabs.map(one => one.side).join(", "));
             expect("a chord at the top, flat", map.search("open a terminal").rows[0].name
                 === "Open a terminal", map.search("open a terminal").rows[0].name);
@@ -77,10 +82,10 @@ ShellRoot {
                 names(there.slice(0, 3)).join(", "));
             const workspaces = row(inside.everything(), "Workspaces");
             expect("a big group holds groups, then what none takes",
-                names(workspaces.verbs()).join(", ") === "Going to one, Moving a column, "
-                + "Moving a window, Move the workspace up, Move the workspace down, "
+                names(workspaces.verbs()).join(", ") === "Focus, The column, The window, "
+                + "Above and below, Move the workspace up, Move the workspace down, "
                 + "Show every workspace", names(workspaces.verbs()).join(", "));
-            const going = row(workspaces.verbs(), "Going to one");
+            const going = row(workspaces.verbs(), "Focus");
             expect("a group holds its chords", going.verbs().some(one => one.name
                 === "Go to workspace 3") && going.verbs().every(one => !one.verbs),
                 names(going.verbs()).join(", "));
@@ -92,28 +97,65 @@ ShellRoot {
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
                 && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
                 === "Definitions and calls, Hints and fixes", names(code.verbs()).join(", "));
-            // Pull requests, Issues and Threads each have Reactions, so each
-            // found from above says what holds it.
-            const holders = rows => rows.filter(one => one.name === "Reactions")
+            // Windows, Columns, Workspaces and Screens each have Focus, so
+            // each found from above says what holds it.
+            const holders = rows => rows.filter(one => one.name === "Focus")
                 .map(one => one.side).sort().join(", ");
+            const focus = "Columns, Screens, Windows, Workspaces";
             expect("a group found from the top says what holds it",
-                holders(map.search("reactions").rows) === "Issues, Pull requests, Threads",
-                holders(map.search("reactions").rows));
+                holders(map.search("focus").rows) === focus, holders(map.search("focus").rows));
             expect("and found inside its layer",
-                holders(neovim.from.search("reactions").rows) === "Issues, Pull requests, Threads",
-                holders(neovim.from.search("reactions").rows));
+                holders(desktop.from.search("focus").rows) === focus,
+                holders(desktop.from.search("focus").rows));
+            // Reacting in a pull request, an issue or a review's thread is
+            // one row, saying all three.
+            const reacting = map.search("react with a heart").rows.filter(one => one.name
+                === "React with a heart");
+            expect("one chord in several places, one row", reacting.length === 1
+                && reacting[0].note.endsWith("a pull request or a review's thread"),
+                reacting.map(one => one.note).join(" | "));
             const own = row(neovim.from.search("code").rows, "Code");
             expect("a level's own group found inside it says its first groups",
                 own !== null && own.side === code.side && code.side.startsWith("Definitions"),
                 own ? own.side : "not found");
             const github = row(neovim.verbs(), "GitHub");
             expect("a group holding groups", names(github.verbs()).slice(0, 4).join(", ")
-                === "Pull requests, Issues, Reviews, Workflow runs",
+                === "Issues, People and labels, Comments, Reactions",
                 names(github.verbs()).join(", "));
-            const held = neovim.verbs();
+            const pulls = row(neovim.verbs(), "Pull requests");
+            expect("pull requests, by what they hold", names(pulls.verbs()).slice(0, 4)
+                .join(", ") === "Finding pull requests, The pull request, Merging, Checks",
+                names(pulls.verbs()).join(", "));
+            const held = top[2].verbs();
             const loose = held.findIndex(one => !one.verbs);
             expect("what no group takes, after the groups", loose > 0
                 && held.slice(loose).every(one => !one.verbs), names(held).join(", "));
+
+            // Over Neovim in the terminal, its layers lead, and the chord
+            // opens on Neovim's, its row saying it's that window's; over
+            // pi, Agents; over nothing, the desktop, and nothing to open on.
+            map.opened();
+            expect("no window, the desktop first", names(map.everything())[0] === "Desktop"
+                && map.leading() === null, names(map.everything()).join(", "));
+            map.leads = KeyGroups.over("kitty", "\u{1F4DD} notes.md");
+            expect("over Neovim, its layers first", names(map.everything()).join(", ")
+                === "Neovim, Terminal, Desktop, Touchscreen, Agents",
+                names(map.everything()).join(", "));
+            const lead = map.leading();
+            expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
+                && lead.verbs().some(one => one.name === "Code") && lead.note !== "",
+                lead ? `${lead.name} ${lead.note}` : "nothing");
+            expect("its chords searched first", String(map.all[0].key)
+                .startsWith("shortcut:neovim:"), map.all[0].key);
+            map.leads = KeyGroups.over("kitty", "\u03C0 - core.nix");
+            expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
+                === "Agents, Terminal, Desktop", names(map.everything()).join(", "));
+            map.leads = KeyGroups.over("kitty", "~");
+            expect("over the terminal, its own", map.leading().name === "Terminal"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            map.leads = KeyGroups.over("google-chrome", "");
+            expect("over another program, the desktop's", map.leading() === null
+                && names(map.everything())[0] === "Desktop", names(map.everything()).join(", "));
 
             const lock = map.search("lock the screen").rows[0];
             lock.run();

@@ -14,6 +14,7 @@
 // Each waits for the launcher to be gone, so it's never in the picture.
 // Whether a camera is open, and each camera's parts, are the cameras' own
 // (Cameras.qml).
+import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -28,11 +29,7 @@ Provider {
     // they'd be the same window twice (Joel, 2026-10-23).
     collection: Words.collection("capture", { searched: false })
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
-    readonly property string picture: glyph(0xf0100)
+    readonly property string picture: Theme.glyph.capture
 
     // The desktop's bind that runs what a row runs. A niri action's command
     // ends its options with --, which says nothing here.
@@ -63,6 +60,13 @@ Provider {
         return title.length > 48 ? `${title.slice(0, 47)}\u2026` : title;
     }
 
+    // A window's program as its desktop entry names it, or nothing when it
+    // has none, as the windows' own rows say it.
+    function programOf(window) {
+        const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
+        return entry ? entry.name : "";
+    }
+
     // Comes back here from the picker, as Escape there says.
     function back() {
         provider.launcher.into(provider.settings.name);
@@ -87,7 +91,9 @@ Provider {
         name: "Stop recording",
         keywords: "end finish video",
         side: Recorder.what,
-        glyph: glyph(0xf04db),
+        // The vocabulary's Stop recording wears recording's mark, so this
+        // one, the same act, does too.
+        glyph: Theme.glyph.recording,
         hue: "action",
         chord: chord("qs ipc call recording screen"),
         run: () => Recorder.stop()
@@ -120,7 +126,7 @@ Provider {
     ], [
         member({
             key: "capture:region",
-            verb: "pick one",
+            verb: "pick",
             name: "A region",
             keywords: "screenshot picture area part selection",
             glyph: picture,
@@ -155,7 +161,7 @@ Provider {
     ], Recorder.recording ? [] : [
         member({
             key: "capture:record-region",
-            verb: "pick one",
+            verb: "pick",
             name: "Record a region",
             keywords: "video recording screencast area part selection",
             glyph: Theme.glyph.recording,
@@ -197,7 +203,8 @@ Provider {
                 verb: "take",
                 name: titled(window),
                 keywords: `${window.app_id ?? ""} window screenshot picture`,
-                side: window.app_id ?? "",
+                // Its program by the name Joel knows, never its app id.
+                side: provider.programOf(window),
                 glyph: picture,
                 hue: "action",
                 later: true,

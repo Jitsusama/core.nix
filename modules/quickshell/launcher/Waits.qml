@@ -3,8 +3,10 @@
 // its last ten seconds to a file as each ends; it's read when asked, so
 // nothing is watched or spawned. The headline is what waited, or that
 // nothing did; the rows are each thing that waited, in lag-watch's words,
-// then how fast niri answered and how hard the work behind was going. A
-// machine without lag-watch has no file, and so no answer.
+// then how fast the desktop (niri) answered and how hard the work behind
+// was going, each named first and never by the program's name. A machine
+// without lag-watch has no file, and so no answer.
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -46,14 +48,16 @@ Provider {
         const window = parsed(read(status));
         if (!window || !Array.isArray(window.trouble))
             return null;
-        const waited = String.fromCodePoint(0xf051f);
-        const fine = String.fromCodePoint(0xf012c);
+        const waited = Theme.glyph.lag;
+        const fine = Theme.glyph.fine;
         const trouble = window.trouble.map(line => copyRow({ name: line, side: "", glyph: waited }));
         const niri = window.niri ?? {};
+        const part = (id, side, note) => copyRow({ name: Words.name(`waits:${id}`), side: side,
+            note: note, glyph: fine });
         const rows = trouble.concat([
-            copyRow({ name: ms(niri.p50_ms ?? 0), side: "niri's answer, as a rule", glyph: fine }),
-            copyRow({ name: ms(niri.p99_ms ?? 0), side: "niri's answer, 1 in 100", glyph: fine }),
-            copyRow({ name: String(window.band ?? ""), side: "how hard jobs and builds ran", glyph: fine })
+            part("typical", ms(niri.p50_ms ?? 0), "as a rule"),
+            part("slowest", ms(niri.p99_ms ?? 0), "the slowest 1 in 100"),
+            part("work", String(window.band ?? ""), "how hard jobs and builds ran")
         ]);
         const count = window.trouble.length;
         let headline = "nothing waited";
@@ -62,8 +66,8 @@ Provider {
         else if (count > 1)
             headline = `${count} things waited`;
         const age = Date.now() / 1000 - Number(window.ended ?? 0);
-        const note = age <= fresh ? "from lag-watch, the last ten seconds"
-            : `from lag-watch, ten seconds that ended ${ago(age)}`;
+        const note = age <= fresh ? "the last ten seconds"
+            : `ten seconds that ended ${ago(age)}`;
         return { headline: headline, rows: rows, note: note };
     }
 

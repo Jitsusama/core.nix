@@ -126,10 +126,6 @@ Provider {
         return things.filter(window => window.focused);
     }
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
     // An act on a window, named, worded and worn as the vocabulary says
     // (Words.qml), in the state it's in: one word for Return, a short name.
     function act(key, state, fields) {
@@ -225,7 +221,7 @@ Provider {
                 verb: "move",
                 name: last ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
                 count: here && space.id === here.id ? "here" : "",
-                glyph: glyph(last ? 0xf11da : 0xf11d9),
+                glyph: last ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
                 hue: "machine",
                 side: last ? "" : inside.length === 0 ? "empty" : inside.join(", "),
                 note: chord === "" ? "" : `next time ${chord}`,

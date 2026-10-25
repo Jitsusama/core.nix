@@ -2,8 +2,9 @@
 // "day", "week", "utc", "epoch" or "unix time". The headline is the date
 // in full; the rows are the week of the year, the day of the year and how
 // many are left, the time in UTC, the zone with its offset, and the time
-// as seconds since the epoch, each copied by Return. It's all reckoned from
-// the clock, so nothing is asked.
+// as seconds since the epoch, each named first and copied by Return. It's
+// all reckoned from the clock, so nothing is asked.
+import qs
 import QtQuick
 import "Numbers.js" as Numbers
 import "Zones.js" as Zones
@@ -34,21 +35,25 @@ Provider {
     }
 
     function told(now) {
-        const glyph = String.fromCodePoint(0xf00ed);
+        const glyph = Theme.glyph.date;
         const day = Zones.dayOfYear(now);
         const days = new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365;
         const zone = settings.zone ?? "";
         const two = n => String(n).padStart(2, "0");
-        const row = (name, side) => copyRow({ name: name, side: side, glyph: glyph });
+        const row = (id, side, note) => copyRow({ name: Words.name(`today:${id}`), side: side,
+            note: note, glyph: glyph });
+        // As the clocks write it, "UTC\u22124".
+        const offset = Zones.offset(-now.getTimezoneOffset());
         return {
             headline: Qt.formatDate(now, "dddd d MMMM yyyy"),
             rows: [
-                row(`week ${week(now)}`, "of the year, Monday first"),
-                row(`day ${day}`, `of ${days}, ${days - day} left`),
-                row(`${two(now.getUTCHours())}:${two(now.getUTCMinutes())}`, "UTC"),
-                // As the clocks write it, "UTC\u22124".
-                row(Zones.offset(-now.getTimezoneOffset()), zone !== "" ? zone : "the zone here"),
-                row(Numbers.format(Math.floor(now.getTime() / 1000), 0, "", "."), "seconds since 1970")
+                row("week", `${week(now)}`, "of the year, Monday first"),
+                row("day", `${day}`, `${days - day} left of ${days}`),
+                row("utc", `${two(now.getUTCHours())}:${two(now.getUTCMinutes())}`, ""),
+                // The zone as the time's answer names it, its offset after.
+                row("zone", zone !== "" ? zone : offset, zone !== "" ? offset : ""),
+                row("epoch", Numbers.format(Math.floor(now.getTime() / 1000), 0, "", "."),
+                    "seconds since 1970")
             ],
             note: "from the clock"
         };

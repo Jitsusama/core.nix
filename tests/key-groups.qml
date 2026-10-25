@@ -2,15 +2,18 @@
 // runs them in: the-launcher-groups-every-shortcut copies
 // launcher/KeyGroups.js beside this file with an account's own binds, every
 // layer's, as layers.json, and its vocabulary, as words.json, and runs
-// `qml -platform offscreen key-groups.qml`. Every desktop chord falls in a
-// group, each chord of a grouped layer is listed once, the chords below
-// land where Joel would look for them, a chord niri adds tomorrow finds a
-// group without being told, a bind that names its group is put there, a
-// short layer stays whole, a big group is split into groups of its own, so
-// no level lists more than about twenty chords and Code's and Problems'
-// groups hold a dozen or fewer, and every group the table lists is named in
-// the vocabulary, a desktop group with a glyph. It prints each group's
-// count.
+// `qml -platform offscreen key-groups.qml`. One chord doing one thing in
+// several of a group's places is one row, and only then; every desktop
+// chord falls in a group, each row of a grouped layer is listed once, the
+// chords below land where Joel would look for them, a chord niri adds
+// tomorrow finds a group without being told, a bind that names its group is
+// put there, and a short layer stays whole. Each level is the right size for
+// the card's eight rows: no group holds fewer than three chords, none sits
+// more than two levels below its layer, and no level lists more than a
+// card and a half. Every group the table lists is named in the vocabulary,
+// a desktop group with a glyph, and the window the launcher opened over
+// puts its program's layers first. It prints each group's count, and each
+// level longer than the card.
 import QtQuick
 import "KeyGroups.js" as KeyGroups
 
@@ -31,24 +34,33 @@ QtObject {
         return { run: command, keys: "", when: "", does: "" };
     }
 
-    // No level lists more chords of its own than this.
-    readonly property int most: 20
-    // Nor does a group inside Neovim's Code or Problems hold more than this.
-    readonly property int dozen: 12
+    // The rows the card shows at once.
+    readonly property int card: 8
+    // No level lists more rows than this, groups and chords together.
+    readonly property int most: 13
+    // Nor does a group hold fewer chords than this.
+    readonly property int fewest: 3
+    // Nor is a group more levels below its layer than this.
+    readonly property int deepest: 2
 
-    // Every place a layer lists a chord, each group's said to `counts`, and
-    // the level each chord is listed in to `where`, by its place.
+    // Every place a layer lists a row, each group's said to `counts`, and
+    // the level each row is listed in to `where`, by its place.
     function placed(arranged, path, counts, where) {
         let out = arranged.loose.slice();
         for (const at of arranged.loose)
             where[at] = path;
-        if (arranged.loose.length > most)
-            counts.push(`FAILED ${path} lists ${arranged.loose.length} chords of its own`);
+        const rows = arranged.groups.length + arranged.loose.length;
+        if (rows > most)
+            counts.push(`FAILED ${path} lists ${rows} rows, more than ${most}`);
+        else if (rows > card)
+            counts.push(`${path} lists ${rows} rows, past the card's ${card}`);
         for (const group of arranged.groups) {
             const inner = `${path}/${group.id}`;
             counts.push(`${inner} ${group.at.length}`);
-            if (/^neovim\/(code|problems)\//.test(inner) && group.at.length > dozen)
-                counts.push(`FAILED ${inner} holds ${group.at.length}, more than ${dozen}`);
+            if (group.at.length < fewest)
+                counts.push(`FAILED ${inner} holds ${group.at.length}, fewer than ${fewest}`);
+            if (inner.split("/").length - 1 > deepest)
+                counts.push(`FAILED ${inner} is more than ${deepest} levels below its layer`);
             const inside = placed(group.inside, inner, counts, where);
             if (JSON.stringify(inside.slice().sort()) !== JSON.stringify(group.at.slice().sort()))
                 counts.push(`FAILED ${path}/${group.id} lists other chords inside it`);
@@ -72,29 +84,59 @@ QtObject {
         for (const entry of vocabulary.things)
             known[entry.id] = entry;
 
-        // Each chord of a layer is listed once, and a desktop chord is never
-        // left out of the groups.
+        // Each bind of a layer is in one row, the rows doing one thing by
+        // one chord in one group; each row is listed once, and a desktop
+        // chord is never left out of the groups. Each bind is said, by its
+        // chord and where it works, with the level its row is listed in.
         const counts = [];
         const levels = {};
+        const rowsOf = {};
         for (const layer of Object.keys(layers)) {
             const binds = layers[layer];
-            const arranged = KeyGroups.arrange(layer, binds);
+            const rows = KeyGroups.merged(layer, binds);
+            rowsOf[layer] = rows;
+            const held = rows.reduce((all, row) => all.concat(row.places), []);
+            expect(`${layer}'s binds, each in one row`, held.slice().sort((a, b) => a - b),
+                binds.map((bind, at) => at));
+            for (const row of rows)
+                for (const at of row.places)
+                    expect(`${layer}'s ${binds[at].chord} ${binds[at].when}, its row`,
+                        [row.chord, row.does, KeyGroups.groupOf(layer, row)],
+                        [binds[at].chord, binds[at].does, KeyGroups.groupOf(layer, binds[at])]);
+            const arranged = KeyGroups.arrange(layer, rows);
             const listed = {};
             const places = placed(arranged, layer, counts, listed);
             levels[layer] = {};
-            binds.forEach((bind, at) => {
-                levels[layer][`${bind.chord} ${bind.when}`.trim()] = listed[at];
+            rows.forEach((row, at) => {
+                for (const place of row.places) {
+                    const bind = binds[place];
+                    levels[layer][`${bind.chord} ${bind.when}`.trim()] = listed[at];
+                }
             });
-            expect(`${layer}'s chords, each once`, places.slice().sort((a, b) => a - b),
-                binds.map((bind, at) => at));
+            expect(`${layer}'s rows, each once`, places.slice().sort((a, b) => a - b),
+                rows.map((row, at) => at));
             if (layer === "desktop")
                 expect("the desktop's chords in no group",
-                    arranged.loose.map(at => binds[at].chord), []);
+                    arranged.loose.map(at => rows[at].chord), []);
         }
         for (const line of counts)
             if (line.startsWith("FAILED"))
                 failures.push(line);
         console.warn(counts.join("\n"));
+
+        // Reacting in a pull request, an issue or a review's thread is one
+        // row saying all three; [ C is the code's, GitHub's and a review's.
+        const neovimRows = rowsOf.neovim ?? [];
+        const reacting = neovimRows.filter(row => row.chord === "Space g h t +");
+        expect("one reaction, everywhere it works", reacting.map(row => row.when),
+            ["in a GitHub issue, a pull request or a review's thread"]);
+        expect("the comment before, by its groups",
+            neovimRows.filter(row => row.chord === "[ C").length, 3);
+        expect("a place said once", KeyGroups.merged("neovim", [
+            { chord: "x", does: "X", keys: "x", when: "in the outline" },
+            { chord: "x", does: "X", keys: "x", when: "walking the outline" },
+            { chord: "x", does: "X", keys: "x", when: "in the outline" }
+        ]).map(row => row.when), ["in the outline or walking the outline"]);
 
         // The desktop's chords where Joel would look for them.
         const desktop = {};
@@ -105,6 +147,8 @@ QtObject {
             "Super+Up": "windows",
             "Super+G": "windows",
             "Super+Alt+Return": "windows",
+            "Super+Return": "windows",
+            "Super+Shift+Return": "windows",
             "Super+Left": "columns",
             "Super+Shift+Left": "columns",
             "Super+R": "columns",
@@ -114,21 +158,22 @@ QtObject {
             "Super+Ctrl+Left": "screens",
             "Super+Ctrl+Alt+Left": "screens",
             "Super+Ctrl+Shift+Page_Up": "screens",
-            "Super+Return": "programs",
-            "Super+Shift+Return": "programs",
+            "XF86MonBrightnessUp": "screens",
+            "Super+L": "screens",
+            "XF86ScreenSaver": "screens",
             "Super+Space": "launcher",
             "Super+Shift+Slash": "launcher",
             "Super+N": "launcher",
+            "XF86DoNotDisturb": "launcher",
+            "Super+E": "typing",
+            "Super+D": "typing",
+            "Super+K": "typing",
             "Print": "capture",
             "Shift+Print": "capture",
             "Ctrl+Print": "capture",
             "Super+Print": "capture",
             "XF86AudioRaiseVolume": "sound",
-            "XF86AudioPlay": "sound",
-            "XF86MonBrightnessUp": "brightness",
-            "Super+D": "dictation",
-            "Super+L": "session",
-            "XF86ScreenSaver": "session"
+            "XF86AudioPlay": "sound"
         };
         for (const chord of Object.keys(where))
             expect(chord, desktop[chord] ?? "not bound", where[chord]);
@@ -142,8 +187,7 @@ QtObject {
             KeyGroups.groupOf("desktop", niri("swap-window-left")), "windows");
         expect("a new column action",
             KeyGroups.groupOf("desktop", niri("swap-column-left")), "columns");
-        expect("quitting", KeyGroups.groupOf("desktop", niri("quit")), "session");
-        expect("a new program", KeyGroups.groupOf("desktop", spawn(["firefox"])), "programs");
+        expect("a new program", KeyGroups.groupOf("desktop", spawn(["firefox"])), "windows");
         expect("a new collection",
             KeyGroups.groupOf("desktop", spawn(["launcher-say", "collection", "weather"])),
             "launcher");
@@ -166,58 +210,80 @@ QtObject {
             niri("open-overview")];
         expect("a short layer", KeyGroups.arrange("desktop", swipes).groups, []);
 
-        // Neovim's keys by its leader's letters, and the window they work in.
-        const neovim = {};
-        for (const bind of layers.neovim ?? [])
-            neovim[`${bind.chord} ${bind.when}`.trim()] = KeyGroups.groupOf("neovim", bind);
-        const neovimWhere = {
-            "Space f Space": "files",
-            "Space b w": "open",
-            "Space T Return": "tabs",
-            "Space 3": "tabs",
-            "Space Left": "splits",
-            "[ d": "problems",
-            "] t": "tests",
-            "Space g c Return": "git",
-            "Space g h p Space": "github",
-            "Return in the outline": "outline",
-            "Return in the file browser": "files",
-            "g d in code": "code"
-        };
-        for (const chord of Object.keys(neovimWhere))
-            expect(`Neovim's ${chord}`, neovim[chord] ?? "not bound", neovimWhere[chord]);
-
-        // A big group's chords where Joel would look for them, the level
-        // each is listed in.
+        // Each row where Joel would look for it, the level it's listed in.
         const deep = {
             desktop: {
-                "Super+3": "desktop/workspaces/going",
-                "Super+Page_Down": "desktop/workspaces/going",
+                "Super+Up": "desktop/windows/focus",
+                "Super+Alt+Left": "desktop/windows/place",
+                "Super+F": "desktop/windows/size",
+                "Super+Return": "desktop/windows/new",
+                "Super+W": "desktop/windows",
+                "Super+Left": "desktop/columns/focus",
+                "Super+Shift+Home": "desktop/columns/place",
+                "Super+R": "desktop/columns/width",
+                "Super+T": "desktop/columns",
+                "Super+3": "desktop/workspaces/focus",
                 "Super+Shift+3": "desktop/workspaces/column",
                 "Super+Alt+3": "desktop/workspaces/window",
-                "Super+A": "desktop/workspaces"
+                "Super+Page_Down": "desktop/workspaces/near",
+                "Super+Shift+Up": "desktop/workspaces/near",
+                "Super+A": "desktop/workspaces",
+                "Super+Ctrl+Left": "desktop/screens/focus",
+                "Super+Ctrl+Shift+Left": "desktop/screens/column",
+                "Super+Ctrl+Alt+Left": "desktop/screens/window",
+                "XF86MonBrightnessUp": "desktop/screens/this",
+                "Super+L": "desktop/screens/this",
+                "Super+Ctrl+Shift+Page_Up": "desktop/screens",
+                "Super+N": "desktop/launcher/notices",
+                "XF86DoNotDisturb": "desktop/launcher/notices",
+                "Super+Space": "desktop/launcher",
+                "Super+E": "desktop/typing",
+                "Super+D": "desktop/typing",
+                "Ctrl+Print": "desktop/capture",
+                "Super+Print": "desktop/capture/sharing",
+                "XF86AudioPlay": "desktop/sound"
             },
             neovim: {
                 "Space f Space": "neovim/files/finding",
                 "Space f e": "neovim/files/browser",
                 "Return in the file browser": "neovim/files/browser",
+                "- in the file browser": "neovim/files/folders",
+                "Space b w": "neovim/files/open",
+                "Space Left": "neovim/files/splits",
+                "Space T Return": "neovim/files/tabs",
+                "Space 3": "neovim/files/numbers",
+                "Space Space": "neovim/search",
+                "Space s p": "neovim/search/text",
+                "Space s y": "neovim/search/symbols",
+                "Space c Space": "neovim/search/symbols",
+                "Space s H": "neovim/search/lists",
+                "g s": "neovim/search/jumps",
                 "g d in code": "neovim/code/definitions",
-                "Space c c i in code": "neovim/code/definitions",
                 "Space c a in code": "neovim/code/hints",
                 "Space c R in code": "neovim/code/refactoring",
                 "Space c f": "neovim/code/formatting",
-                "a f selecting, or after an operator": "neovim/code/selecting",
+                "Space c s s": "neovim/code/selecting",
+                "a f selecting, or after an operator": "neovim/code/pieces",
                 "] f": "neovim/code/through",
+                "[ C": "neovim/code/through",
                 "Space k a in code": "neovim/code/server",
+                "Space i l": "neovim/code/server",
+                "Space e E": "neovim/problems/finding",
                 "Space e t d": "neovim/problems/showing",
                 "] d": "neovim/problems/through",
                 "Return in the problems list": "neovim/problems/opening",
                 "R in the problems list": "neovim/problems/list",
                 "z M in the problems list": "neovim/problems/folding",
                 "Space c o o": "neovim/outline/showing",
-                "} in the outline": "neovim/outline/symbols",
+                "Return in the outline": "neovim/outline/symbols",
+                "Return walking the outline": "neovim/outline/symbols",
+                "} in the outline": "neovim/outline/through",
+                "L in the outline": "neovim/outline/holding",
                 "z a in the outline": "neovim/outline/folding",
-                "Return walking the outline": "neovim/outline/walking",
+                "h walking the outline": "neovim/outline/walking",
+                "Space t t": "neovim/tests/running",
+                "] t": "neovim/tests/results",
+                "Space t Space": "neovim/tests",
                 "] g in a file git tracks": "neovim/git/changes",
                 "Space g s A in a file git tracks": "neovim/git/staging",
                 "Space g c Return": "neovim/git/commits",
@@ -225,27 +291,53 @@ QtObject {
                 "Space g a s": "neovim/git/stashes",
                 "Space g n p": "neovim/git/remote",
                 "c c in git's status": "neovim/git/status",
-                "Space g h p Space": "neovim/github/pulls/finding",
-                "Space g h m o in a pull request": "neovim/github/pulls/pull",
-                "Space g h m s in a pull request": "neovim/github/pulls/merging",
-                "Space g h v s in a pull request": "neovim/github/pulls/reviewing",
-                "Space g h l a in a pull request": "neovim/github/pulls/people",
-                "Space g h T r in a pull request": "neovim/github/pulls/comments",
-                "Space g h t + in a pull request": "neovim/github/pulls/reactions",
-                "Space g h i Space": "neovim/github/issues/finding",
-                "Space g h b w in a GitHub issue": "neovim/github/issues/issue",
-                "Space g h t + in a GitHub issue": "neovim/github/issues/reactions",
-                "Space g h c s in a review's thread": "neovim/github/reviews/threads/comments",
-                "Space g h t + in a review's thread": "neovim/github/reviews/threads/reactions",
-                "] v in a review's thread": "neovim/github/reviews/threads",
-                "Space g h v S in a review's change": "neovim/github/reviews/diffs",
-                "j in a review's changed files": "neovim/github/reviews/files",
-                "Ctrl+A submitting a review": "neovim/github/reviews/submitting",
+                "Space g Space": "neovim/git",
+                "Space g h p Space": "neovim/pulls/finding",
+                "Space g h m o in a pull request": "neovim/pulls/pull",
+                "Space g h m s in a pull request": "neovim/pulls/merging",
+                "Space g h k o in a pull request": "neovim/pulls/checks",
+                "Space g h v s in a pull request": "neovim/pulls/reviewing",
+                "Space g h T r in a pull request": "neovim/pulls/threads",
+                "] C in a review's change": "neovim/pulls/threads",
+                "] v in a review's thread": "neovim/pulls/files",
+                "j in a review's changed files": "neovim/pulls/files",
+                "Space g h v S in a review's change": "neovim/pulls/submitting",
+                "Ctrl+A submitting a review": "neovim/pulls/submitting",
+                "Space g h i Space": "neovim/github/issues",
+                "Space g h b w in a GitHub issue": "neovim/github/issues",
+                "Space g h l a in a pull request": "neovim/github/people",
+                "Space g h c s in a review's thread": "neovim/github/comments",
+                "Space g h c Return in a GitHub issue": "neovim/github/comments",
+                "] C in a pull request": "neovim/github/comments",
+                "Space g h t + in a review's thread": "neovim/github/reactions",
                 "Return in a workflow run": "neovim/github/runs",
                 "Space g h r f": "neovim/github/repositories",
-                "Space g h g Space": "neovim/github/gists",
+                "Space g h g Space": "neovim/github/repositories",
                 "Ctrl+R finding GitHub's notifications": "neovim/github/notifications",
-                "Space g h m q Space": "neovim/github/keys"
+                "Space g h Space": "neovim/github",
+                "Tab on the command line": "neovim/editor/suggestions",
+                "Ctrl+N on the command line": "neovim/editor/commands",
+                "Space u c": "neovim/editor/looks",
+                "Space i x": "neovim/editor/looks",
+                "Space i r": "neovim/editor/insides",
+                "Space Q": "neovim/editor",
+                "Shift+Escape in a terminal": "neovim/editor"
+            },
+            pi: {
+                "enter": "pi/message",
+                "ctrl+-": "pi/editing",
+                "ctrl+t": "pi/conversation",
+                "pageUp": "pi/scrollback",
+                "ctrl+l": "pi/models",
+                "escape": "pi"
+            },
+            terminal: {
+                "ctrl+shift+t": "terminal/tabs",
+                "ctrl+shift+3": "terminal/numbers",
+                "shift+page_up": "terminal/scrollback",
+                "ctrl+shift+h": "terminal/clipboard",
+                "ctrl+shift+equal": "terminal/text",
+                "ctrl+shift+e": "terminal"
             }
         };
         for (const layer of Object.keys(deep))
@@ -253,13 +345,36 @@ QtObject {
                 expect(`${layer}'s ${chord}`, (levels[layer] ?? {})[chord] ?? "not bound",
                     deep[layer][chord]);
 
+        // The window the launcher opened over puts its program's layers
+        // first: kitty's the terminal's, Neovim's or pi's before it when its
+        // title says one runs there, as Neovim's titlestring and pi's own
+        // title do, and anything else only the desktop's.
+        const programs = [
+            ["kitty", "\u{1F4DD} notes.md", ["neovim", "terminal", "desktop"]],
+            ["kitty", "nvim notes.md", ["neovim", "terminal", "desktop"]],
+            ["kitty", "\u03C0 - Y2YBTS A Launcher T\u2026 - core.nix", ["pi", "terminal",
+                "desktop"]],
+            ["kitty", "pi - core.nix", ["pi", "terminal", "desktop"]],
+            ["kitty", "\u03C0 - Q1 Tidy My Vim Config - notes", ["pi", "terminal", "desktop"]],
+            ["kitty", "~/src/vim-config", ["terminal", "desktop"]],
+            ["kitty", "~/src/core.nix", ["terminal", "desktop"]],
+            ["kitty", "pipewire", ["terminal", "desktop"]],
+            ["google-chrome", "\u{1F4DD} notes.md", ["desktop"]],
+            ["", "", ["desktop"]]
+        ];
+        for (const program of programs)
+            expect(`over ${program[0]} titled ${program[1]}`, KeyGroups.over(program[0],
+                program[1]), program[2]);
+
         // Every group the table lists is named in the vocabulary, inside
-        // Shortcuts, and a desktop group wears a glyph.
+        // Shortcuts, no more than two levels below its layer, and a desktop
+        // group wears a glyph.
         for (const path of KeyGroups.paths()) {
             const id = `shortcuts:${path.split("/").join(":")}`;
             const entry = known[id];
             expect(`${id} named`, !!entry && (entry.name ?? "") !== "", true);
             expect(`${id} inside Shortcuts`, entry ? entry.in : "", "shortcuts");
+            expect(`${id} near its layer`, path.split("/").length - 1 <= deepest, true);
             if (path.startsWith("desktop/"))
                 expect(`${id}'s glyph`, !!entry && (entry.glyph ?? "") !== "", true);
         }

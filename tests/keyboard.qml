@@ -4,9 +4,9 @@
 // on Numb, with niri stood in for: a symbol is found by its name with its
 // layer and where it sits, an action by what it does, a layer by its name,
 // the locked layer offers to be let go rather than locked again, the
-// board's lights are one setting whose choices are still found by their
-// words, and the
-// overlay shows what the launcher chose. It exits 0 once every case holds,
+// board's Layer and Lights choices are found by their words though they're
+// listed only in the board's own parts (Keyboards.qml), and the overlay
+// shows what the launcher chose. It exits 0 once every case holds,
 // and otherwise 1, saying which case didn't.
 import qs
 import Quickshell
@@ -71,17 +71,22 @@ ShellRoot {
 
             expect("an action by what it does", first("flash").name === "Flash the keyboard",
                 first("flash").name);
+            // Only what's done to the board itself is listed; locking a
+            // layer and its lights are the board's Layer's and Lights'.
             const names = keyboard.everything().map(row => row.name);
-            expect("the locked layer let go", names.includes("Let Numb go")
-                && !names.includes("Lock Numb on") && names.includes("Lock Punk on"),
-                names.filter(name => /Lock|Let/.test(name)).join(", "));
-            const lights = keyboard.everything().find(row => row.name === "Lights");
-            expect("the lights as one setting", lights !== undefined
-                && !names.some(name => /keyboard's lights/.test(name)), names.join(", "));
-            const choices = lights.verbs().map(row => row.name);
-            expect("the lights' choices a step in", choices.join(", ") === "Turn off the "
+            expect("the board's own acts listed", names[0] === "Show the keyboard's layout"
+                && names[1] === "Flash the keyboard" && !names.includes("Lights")
+                && !names.some(name => /^Lock .* on$|^Let .* go$|keyboard's lights/.test(name)),
+                names.filter(name => /^Lock |^Let |lights/.test(name)).join(", "));
+            const layered = keyboard.search("layer").rows.map(row => row.name);
+            expect("the locked layer let go", layered.includes("Let Numb go")
+                && !layered.includes("Lock Numb on") && layered.includes("Lock Punk on"),
+                layered.join(", "));
+            const lit = ["turn off keyboard", "turn on keyboard", "brighten keyboard",
+                "dim keyboard"].map(typed => first(typed).name);
+            expect("each light's choice found", lit.join(", ") === "Turn off the "
                 + "keyboard's lights, Turn on the keyboard's lights, Brighten the keyboard's "
-                + "lights, Dim the keyboard's lights", choices.join(", "));
+                + "lights, Dim the keyboard's lights", lit.join(", "));
             const brighter = first("brighten keyboard");
             expect("a choice found by its words", brighter.name === "Brighten the keyboard's lights"
                 && brighter.verb === "brighten", `${brighter.name}, ${brighter.verb}`);
@@ -98,7 +103,7 @@ ShellRoot {
             const punk = keyboard.search("punk").rows;
             expect("a layer's keys by its name", punk.length > 20, `${punk.length} rows`);
 
-            keyboard.everything().find(row => row.name === "Lock Punk on").run();
+            first("lock punk").run();
             expect("locking runs ergodox", Niri.spawned.join(" ") === "ergodox layer 1",
                 Niri.spawned.join(" "));
 

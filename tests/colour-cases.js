@@ -14,25 +14,27 @@ const roles = {
     selection: "#32473B"
 };
 
-// What's typed, the answer in the field, and its rows, each with its side.
+// What's typed, the answer in the field, and its rows, each with its side
+// and note: the nearest pigment named first, its roles beside it, and how
+// far it is in the note.
 const answers = [
     ["#ff0000", "rgb(255 0 0)", ["hsl(0 100% 50%)", "oklch(62.8% 0.258 29.2)",
-        "vermilion alert \u00b7 \u0394E 6.9"]],
+        "Vermilion alert \u0394E 6.9"]],
     ["#ff5345", "rgb(255 83 69)", ["hsl(4.5 100% 63.5%)", "oklch(67.8% 0.21 28.6)",
-        "vermilion alert"]],
+        "Vermilion alert"]],
     ["#F53", "rgb(255 85 51)", ["hsl(10 100% 60%)", "oklch(67.8% 0.212 33.2)",
-        "vermilion alert \u00b7 \u0394E 1.7"]],
+        "Vermilion alert \u0394E 1.7"]],
     ["rgba(255, 83, 69, 0.5)", "#ff534580", ["hsl(4.5 100% 63.5% / 0.5)",
-        "oklch(67.8% 0.21 28.6 / 0.5)", "vermilion alert"]],
+        "oklch(67.8% 0.21 28.6 / 0.5)", "Vermilion alert"]],
     ["hsl(120deg 100% 50%)", "#00ff00", ["rgb(0 255 0)", "oklch(86.6% 0.295 142.5)"]],
     ["oklch(62.8% 0.2577 29.23)", "#ff0000", ["rgb(255 0 0)", "hsl(0 100% 50%)",
-        "vermilion alert \u00b7 \u0394E 6.9"]],
+        "Vermilion alert \u0394E 6.9"]],
     ["#808080", "rgb(128 128 128)", ["hsl(0 0% 50.2%)", "oklch(60% 0 none)",
-        "jade accent \u00b7 \u0394E 8.6"]],
+        "Jade accent \u0394E 8.6"]],
     ["colour accent", "#509475", ["rgb(80 148 117)", "hsl(152.6 29.8% 44.7%)",
-        "oklch(61.2% 0.085 162.8)", "jade accent"]],
+        "oklch(61.2% 0.085 162.8)", "Jade accent"]],
     ["color edge", "#32473b", ["rgb(50 71 59)", "hsl(145.7 17.4% 23.7%)",
-        "oklch(37.6% 0.033 159.2)", "moss edge \u00b7 selection"]]
+        "oklch(37.6% 0.033 159.2)", "Moss edge \u00b7 selection"]]
 ];
 
 // What's typed, and the swatch its first row wears, alpha first as Qt

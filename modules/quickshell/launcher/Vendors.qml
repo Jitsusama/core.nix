@@ -4,6 +4,7 @@
 // each network to keep from being followed, has no vendor to name. The
 // list is hwdata's, split at build time into a file for each first byte,
 // named in `directory`, so a lookup reads one small file.
+import qs
 import Quickshell.Io
 import QtQuick
 import "Addresses.js" as Addresses
@@ -12,10 +13,6 @@ Provider {
     id: provider
 
     examples: ["3c:22:fb:12:34:56"]
-
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
 
     // Who made it, by the first three bytes, or "" when the list doesn't say.
     function vendor(oui) {
@@ -36,18 +33,20 @@ Provider {
         if (!at)
             return null;
         const made = at.local ? "" : vendor(at.oui);
-        const headline = at.local ? "locally set, no vendor" : made || "no vendor listed";
-        const card = glyph(0xf0200);
-        // The vendor is the headline, so the rows say only the rest.
+        // Who made it is its maker, as a display's or a keyboard's is.
+        const headline = at.local ? "locally set, no maker" : made || "no maker listed";
+        const card = Theme.glyph.card;
+        // The maker is the headline, so the rows say only the rest, each
+        // part named first.
+        const kind = `${at.local ? "locally set" : "globally unique"}, `
+            + `${at.multicast ? "multicast" : "unicast"}`;
         const rows = [];
-        rows.push(copyRow({
-            name: `${at.local ? "locally set" : "globally unique"}, `
-                + `${at.multicast ? "multicast" : "unicast"}`,
-            side: "kind",
-            glyph: card
-        }));
-        rows.push(copyRow({ name: at.colon, side: "colons", glyph: card }));
-        rows.push(copyRow({ name: at.dotted, side: "dotted", glyph: card }));
+        rows.push(copyRow({ name: Words.name("vendors:kind"), side: kind, copy: kind,
+            glyph: card }));
+        rows.push(copyRow({ name: Words.name("vendors:colons"), side: at.colon, copy: at.colon,
+            glyph: card }));
+        rows.push(copyRow({ name: Words.name("vendors:dotted"), side: at.dotted, copy: at.dotted,
+            glyph: card }));
         return {
             headline: headline,
             copy: made || at.colon,

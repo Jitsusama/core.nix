@@ -4,6 +4,7 @@
 // of the theme's own. Colours.js says how, and is the one that names
 // colours. Its settings: the theme's `palette` and `roles`, rendered at
 // build.
+import qs
 import QtQuick
 import "Colours.js" as Colours
 
@@ -14,13 +15,14 @@ Provider {
         const said = Colours.answer(typed, settings.palette, settings.roles);
         if (!said)
             return null;
-        const swatch = String.fromCodePoint(0xf14fb);
+        const swatch = Theme.glyph.swatch;
         return {
             headline: said.headline,
             copy: said.copy,
             rows: said.rows.map(row => copyRow({
                 name: row.text,
                 side: row.side,
+                note: row.note ?? "",
                 copy: row.copy,
                 glyph: row.swatch ? swatch : "",
                 swatch: row.swatch

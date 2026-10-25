@@ -193,13 +193,13 @@ ShellRoot {
     function adapterHolds() {
         const parts = bluetooth.adapterParts(radio);
         expect("the adapter's parts", said(parts) === ["Radio=on", "Visible to others=no",
-            "Pairable=yes", "Traffic=1.5 kB/s", "Name=studio", "Address=02:00:00:00:00:01",
-            "Version=Bluetooth 6.0", "Chip=Intel"].join(","), said(parts));
-        expect("visible for a while", parts[1].note === "for 3 minutes once made visible",
+            "Pairable=yes", "Traffic=12 kb/s", "Name=studio", "Address=02:00:00:00:00:01",
+            "Version=Bluetooth 6.0", "Model=Intel"].join(","), said(parts));
+        expect("visible for a while", parts[1].note === "for 3 min once made visible",
             parts[1].note);
         expect("its traffic drawn as a spark", JSON.stringify(parts[3].graph)
             === JSON.stringify({ shape: "spark", values: [0, 0.5, 1], warn: false })
-            && parts[3].note === "1.2 kB/s in, 300 B/s out", JSON.stringify(parts[3]));
+            && parts[3].note === "9.6 kb/s in, 2.4 kb/s out", JSON.stringify(parts[3]));
         expect("what it is copied", parts.slice(4).every(row => row.verb === "copy"
             && row.glyph === ""), "a figure of the adapter doesn't copy");
         const choices = parts[0].verbs();

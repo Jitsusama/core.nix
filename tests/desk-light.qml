@@ -140,7 +140,7 @@ ShellRoot {
         // a bar, and putting it out.
         const parts = light.answer("desk light").rows[0].verbs();
         const partNames = parts.map(part => part.name).join(", ");
-        expect("the parts", partNames === "Brightness, Warmth, Put it out", partNames);
+        expect("the parts", partNames === "Brightness, Warmth, Turn it off", partNames);
         expect("how each is set", parts[0].side === "60%" && parts[1].side === "4100 K"
             && parts[0].graph.shape === "bar" && parts[1].graph.shape === "bar",
             JSON.stringify(parts.slice(0, 2).map(part => [part.side, part.graph])));
@@ -152,7 +152,7 @@ ShellRoot {
         const warmer = parts[1].verbs();
         const steps = brighter.slice(0, 2).concat(warmer.slice(0, 2), [parts[2]]);
         const stepNames = steps.map(verb => verb.name).join(", ");
-        expect("the steps", stepNames === "Brighter, Dimmer, Warmer, Cooler, Put it out",
+        expect("the steps", stepNames === "Brighter, Dimmer, Warmer, Cooler, Turn it off",
             stepNames);
         expect("each its one word",
             steps.map(verb => verb.verb).join(" ") === "brighter dimmer warmer cooler off",

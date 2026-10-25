@@ -65,7 +65,8 @@ Provider {
             };
             const made = member({
                 key: `emoji:${e.name}`,
-                name: e.name,
+                // Capitalised, as every row's name is; learning keeps its key.
+                name: e.name.charAt(0).toUpperCase() + e.name.slice(1),
                 glyph: e.emoji,
                 hue: "text",
                 now: true,

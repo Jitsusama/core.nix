@@ -122,22 +122,23 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
             and shown["selected"]["verb"] == "switch"
         )
     )
+    # Each named first, as every part is, then what it says.
     for name, side in [
-        (r"QEST-20261022-TESTQA", "its task"),
-        (r"TESTQA", "its address"),
-        (r"\d\d:\d\d", "started"),
-        (r"\$12\.50", "spent today"),
-        (r"\$4\.00", "on councils"),
-        (r"Test the shell", "2nd in line"),
-        (r"Tidy the tests", "works on"),
-        (r"#desk", "hears"),
+        ("Task", r"QEST-20261022-TESTQA"),
+        ("Address", r"TESTQA"),
+        ("Started", r"\d\d:\d\d"),
+        ("Spent today", r"\$12\.50"),
+        ("Councils", r"\$4\.00"),
+        ("Test the shell", r"2nd in line"),
+        ("Works on", r"Tidy the tests"),
+        ("Hears", r"#desk"),
     ]:
         machine.send_key("down")
         # The wait ends before the loop moves on, so it reads this pass's names.
         launcher_until(
             lambda shown: (
-                re.fullmatch(name, (shown["selected"] or {}).get("name", ""))  # noqa: B023
-                and shown["selected"]["side"] == side  # noqa: B023
+                (shown["selected"] or {}).get("name") == name  # noqa: B023
+                and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
             )
         )
     photograph("launcher-agent-facts")
@@ -375,7 +376,7 @@ with subtest(
             shown["held"] == ["helpers"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
-                r"helpers \u00b7 1 of 2 done \u00b7 (<1|\d+) min \u00b7 TESTQA",
+                r"helpers \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
                 shown["selected"]["side"],
             )
         )
@@ -395,7 +396,7 @@ with subtest(
     launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "roller"
-            and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 <1 min"
+            and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 under a minute"
         )
     )
     photograph("launcher-run-members")
@@ -881,6 +882,15 @@ with subtest("a word typed whole lands on what it says"):
 
 with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
     windows = len(json.loads(as_account("niri msg --json windows")))
+    # Over no window only the desktop's keys work, so the layers lead with
+    # them: the empty workspace niri keeps last on the focused screen.
+    shortcut_spaces: list[Json] = json.loads(as_account("niri msg --json workspaces"))
+    shortcut_screen = next(space for space in shortcut_spaces if space["is_focused"])["output"]
+    shortcut_empty = max(
+        (space for space in shortcut_spaces if space["output"] == shortcut_screen),
+        key=lambda space: int(space["idx"]),
+    )
+    as_account(f"niri msg action focus-workspace {shortcut_empty['idx']}")
     machine.send_key("meta_l-shift-slash")
     launcher_ready()
     # Its top is the layers, each with its count and as many of its first
@@ -893,7 +903,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
     step_in()
-    groups = ["Windows", "Columns", "Workspaces", "Screens", "Programs", "Launcher"]
+    groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
     launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     photograph("launcher-shortcut-groups")
     # What's typed there finds a group by its name, before every chord in
@@ -903,7 +913,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     t.assertIn("Go to workspace 3", showing()["rows"])
     step_in()
     launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
-    inner = ["Going to one", "Moving a column", "Moving a window"]
+    inner = ["Focus", "The column", "The window", "Above and below"]
     t.assertEqual(showing()["rows"][: len(inner)], inner)
     t.assertIn("Show every workspace", showing()["rows"])
     # The field says where that is as one path, in the rows' own case.
@@ -954,6 +964,34 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     type_in("shortcuts", selecting="Shortcuts")
     step_in()
     launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+
+with subtest("Super+Shift+/ over a terminal opens on the terminal's shortcuts"):
+    focused_kitty()
+    machine.send_key("meta_l-shift-slash")
+    launcher_ready()
+    # Over kitty the chord opens on the terminal's layer, its groups
+    # already showing, the path saying whose keys they are.
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
+    t.assertEqual(showing()["path"], ["Shortcuts", "Terminal"])
+    t.assertEqual(showing()["rows"][:2], ["Tabs", "Tab numbers"])
+    photograph("launcher-shortcuts-over-kitty")
+    # The right arrow steps into a group, and the left back out to the
+    # layers, the terminal's first and selected, saying it's the window's,
+    # and the desktop's next.
+    step_in()
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal", "tabs"])
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts"])
+    t.assertEqual(showing()["rows"][:2], ["Terminal", "Desktop"])
+    t.assertEqual((showing()["selected"] or {}).get("name"), "Terminal")
+    t.assertEqual(showing()["footer"], "the keys of the window you were in")
+    # Return goes back in.
+    step_in("ret")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 

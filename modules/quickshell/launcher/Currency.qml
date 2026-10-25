@@ -3,6 +3,7 @@
 // Central Bank's, which it sets once each working day, asked of Frankfurter
 // only when a conversion is typed and kept for an hour; the footer says
 // which day's they are. With `lookups` set false it answers nothing.
+import qs
 import QtQuick
 import "Numbers.js" as Numbers
 
@@ -53,14 +54,14 @@ Provider {
         const total = amount * each;
         const [year, month, day] = (said.value.date ?? "").split("-").map(Number);
         const when = month ? `${day} ${months[month - 1]}` : "";
-        const cash = String.fromCodePoint(0xf0116);
+        const cash = Theme.glyph.currency;
         return {
             headline: `${money(total, 2)} ${to}`,
             copy: money(total, 2).replace(/[^\d.-]/g, ""),
             rows: [
-                copyRow({ name: `1 ${from} = ${rate(each)} ${to}`, side: "rate", glyph: cash,
+                copyRow({ name: `1 ${from}`, side: `${rate(each)} ${to}`, glyph: cash,
                     copy: String(each) }),
-                copyRow({ name: `1 ${to} = ${rate(1 / each)} ${from}`, side: "inverse", glyph: cash,
+                copyRow({ name: `1 ${to}`, side: `${rate(1 / each)} ${from}`, glyph: cash,
                     copy: String(1 / each) })
             ],
             note: `European Central Bank${when === "" ? "" : ` \u00b7 ${when}`}`

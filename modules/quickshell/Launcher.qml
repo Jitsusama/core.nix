@@ -69,8 +69,9 @@ Scope {
     // made Machine's "what's running" answer nothing in the desktop test,
     // with no warning, as if its Jobs were another, unfed one.
     readonly property var vocabulary: Words
-    readonly property string sparkle: String.fromCodePoint(0xf0674)
-    readonly property string ghost: String.fromCodePoint(0xf02a0)
+    // The theme's marks, handed over the same way, for a glyph Provider
+    // gives of its own.
+    readonly property var marks: Theme.glyph
 
     // The providers, made from their files as the shell starts, each given
     // its settings and weight; one that fails to load is said and skipped.
@@ -89,7 +90,7 @@ Scope {
                 weight: listed.weight,
                 launcher: root
             });
-            source.answered.connect(root.reanswer);
+            source.answered.connect(() => root.reanswer(source));
             source.changed.connect(() => root.refreshed(source));
             made.push(source);
         }
@@ -110,7 +111,7 @@ Scope {
         for (const source of sources) {
             const said = source.answer(letters);
             if (said)
-                return said;
+                return heard(said, source, letters);
         }
         // Typed so far, a question's start asks it, as `question` says.
         const text = Fuzzy.plainly(letters);
@@ -122,9 +123,36 @@ Scope {
                 continue;
             const said = started(source, question, fresh);
             if (said)
-                return Object.assign({}, said, { question: question });
+                return Object.assign(heard(said, source, question), { question: question });
         }
         return null;
+    }
+
+    // An answer as the launcher keeps it: who gave it, and to what words,
+    // so it can be asked again while it's stepped into and say what it says
+    // now. Made over the provider's own, rather than copied, so parts it
+    // makes only once they're looked at (Machine.qml's fresh) still are.
+    function heard(said, source, words) {
+        return Object.assign(Object.create(said), { asker: source, heard: words });
+    }
+
+    // Whether an answer has parts, without making them: one whose parts are
+    // made only once they're looked at says it has some.
+    function parted(said) {
+        return !!said && (said.parted === true || said.rows.length > 0);
+    }
+
+    // What each word asking an answer names it, as the vocabulary does, so
+    // a step into an answer is named as the thing it is ("cpu" is
+    // Processor), not as what was typed.
+    readonly property var answerNames: {
+        const out = {};
+        for (const id of Object.keys(Words.things)) {
+            const entry = Words.of(id);
+            for (const asked of entry.answers)
+                out[asked] = entry.name;
+        }
+        return out;
     }
 
     // The question the answer was asked by when what's typed only starts
@@ -166,7 +194,7 @@ Scope {
     function compose(fresh) {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         answer = answering(typed, fresh);
-        const rows = answer && answer.rows.length > 0 ? [answered(answer)] : [];
+        const rows = parted(answer) ? [answered(answer)] : [];
         // A category named as a thing is, or as an answer asks, gives way to
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
@@ -191,7 +219,10 @@ Scope {
         // with the most to say.
         const below = Rank.once(Rank.placed(found.filter(once),
             gathered.filter(row => !whole.has(row.from.settings.name)), latch));
-        matches = rows.concat(below);
+        // Searched again only to say what's there now, it keeps the order
+        // it's shown in (reshow).
+        matches = steadying ? Steady.kept(matches, rows.concat(below), steadyId)
+            : rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
@@ -206,7 +237,9 @@ Scope {
     // doing what it does, and its detail behind the right arrow, each part
     // copied the same way. Its kind says it's an answer.
     function answered(said) {
-        const first = said.rows[0];
+        // One whose parts wait to be looked at says its own glyph and hue.
+        const first = said.parted === true ? {} : said.rows[0];
+        const asked = said.question ?? Fuzzy.plainly(said.heard ?? typed);
         return {
             // Nothing to learn: an answer is always first for its question.
             key: "",
@@ -217,12 +250,17 @@ Scope {
             // it is marked as matched.
             plain: true,
             name: said.headline,
-            chip: said.question ?? Fuzzy.plainly(typed),
-            title: root.capitalised(said.question ?? Fuzzy.plainly(typed)),
+            chip: asked,
+            title: said.title ?? answerNames[asked] ?? root.capitalised(asked),
             glyph: said.glyph ?? first.glyph,
             graph: said.graph,
-            hue: first.hue,
+            hue: said.hue ?? first.hue,
             swatch: first.swatch,
+            // Who answered, to what, and whether it moves, so a step held
+            // in it is asked again as it changes.
+            asker: said.asker ?? null,
+            heard: said.heard ?? "",
+            live: said.live ?? null,
             side: "",
             chord: [],
             verb: said.verb ?? ((said.copy ?? said.headline) === "" ? "close" : "copy"),
@@ -237,9 +275,68 @@ Scope {
         };
     }
 
-    function reanswer() {
-        if (open && held.length === 0)
+    // A provider has more to say: out at the top, its answer is asked
+    // again; stepped in, so is whatever of its answers is held or listed.
+    function reanswer(source) {
+        if (!open)
+            return;
+        if (held.length === 0)
             compose(false);
+        else
+            relive(source);
+    }
+
+    // An answer row asked again, as it says now, keeping where it's held
+    // and how its step is named, or null when it no longer answers.
+    function again(row) {
+        const said = row.asker ? row.asker.answer(row.heard) : null;
+        if (!parted(said))
+            return null;
+        return Object.assign(answered(heard(said, row.asker, row.heard)), {
+            key: row.key,
+            is: row.is,
+            chip: row.chip,
+            title: row.title
+        });
+    }
+
+    // What a source's answers say now, wherever they're shown below the
+    // top: an answer stepped into, its parts and what's held in them made
+    // again, or a category's own answers, listed or asked in it. What's
+    // shown refreshes in place, as `refreshed` says.
+    function relive(source) {
+        if (asking)
+            return;
+        const steps = held.slice();
+        const at = steps.findIndex(step => step.row.asker === source);
+        const last = steps.length - 1;
+        if (at >= 0) {
+            const was = steps[at];
+            const row = again(was.row);
+            if (!row)
+                return;
+            steps[at] = Object.assign({}, was, {
+                row: row,
+                rows: Steady.kept(was.rows, row.verbs(), steadyId)
+            });
+            // The list it was stepped into from says it as it is now too,
+            // for the way back out.
+            if (at > 0)
+                steps[at - 1] = Object.assign({}, steps[at - 1], {
+                    rows: steps[at - 1].rows.map(one => one === was.row ? row : one)
+                });
+            if (!remade(steps, at + 1))
+                return;
+        } else if (category !== null && (steps[last].rows.some(row => row.asker === source)
+            || (answer && answer.asker === source))) {
+            steps[last] = Object.assign({}, steps[last], {
+                rows: steps[last].rows.map(row => row.asker === source ? again(row) ?? row : row)
+            });
+        } else {
+            return;
+        }
+        held = steps;
+        reshow(steps.length);
     }
 
     // The headline as a row of its own, for Return and the footer. Return
@@ -441,8 +538,10 @@ Scope {
         const question = entry.question ?? source.questions[0];
         if (question !== undefined) {
             const said = source.answer(question);
-            return said && said.rows.length > 0
-                ? Object.assign(answered(said), { is: `answer:${id}`, chip: question }) : null;
+            return parted(said) ? Object.assign(answered(heard(said, source, question)), {
+                is: `answer:${id}`,
+                chip: question
+            }) : null;
         }
         const things = source.things.filter(row => !(row.key.startsWith("action:")
             && standIns.includes(row.name)));
@@ -492,28 +591,72 @@ Scope {
         });
     }
 
-    // A collection's parts the vocabulary names, before its own members:
-    // Agents holds its tasks, helpers and spend, the Keyboard its
-    // keyboards and shortcuts.
+    // A collection's parts the vocabulary names: Agents holds its tasks,
+    // helpers and spend, the Keyboard its keyboards and shortcuts.
     function partsOf(source) {
         return Words.of(source.settings.name).parts.map(id => resolved(id))
             .filter(row => row !== null);
     }
 
-    // Rows found by the words typed, by their names or their other words,
-    // best first, as a step's are.
-    function within(rows, typedWords) {
+    // Rows found by what's typed, inside a step, a category or a
+    // collection's parts, in the top level's tiers (Rank.js): a name that
+    // is what's typed, then one starting with it, then one with a later
+    // word starting with it, and then a row found only by its hidden words
+    // (hiddenWords), each tier best match first. A hidden word isn't said beside
+    // the row, since it may be a name the machine knows a thing by, such as
+    // tailscale0, that Joel never sees.
+    function within(rows, letters) {
+        const typedWords = Fuzzy.words(letters);
+        const need = Fuzzy.letters(typedWords);
         const found = [];
         for (const row of rows) {
             const prepared = row.prepared ?? Fuzzy.prepare(row.name);
-            const byName = Fuzzy.match(prepared, typedWords, false);
-            const byWord = row.keywords ? Fuzzy.match(row.keywords, typedWords, false)
-                : { score: -1, grade: 3 };
-            const best = byName.score >= 0 ? byName : byWord;
-            if (best.score >= 0)
-                found.push({ item: prepared, score: best.score, grade: best.grade, choice: row });
+            const byName = (prepared.mask & need) === need
+                ? Fuzzy.match(prepared, typedWords, false) : { score: -1 };
+            if (byName.score >= 0) {
+                found.push({
+                    item: prepared,
+                    score: byName.score,
+                    grade: byName.grade,
+                    tier: Rank.tier(row.name, letters, false),
+                    choice: row
+                });
+                continue;
+            }
+            const known = hiddenWords(row);
+            if (!known || (known.mask & need) !== need)
+                continue;
+            const byWord = Fuzzy.match(known, typedWords, false);
+            if (byWord.score >= 0)
+                found.push({
+                    item: prepared,
+                    score: byWord.score,
+                    grade: byWord.grade,
+                    tier: Rank.wordTier(known.text, letters),
+                    choice: row
+                });
         }
-        return Fuzzy.keep(found).map(f => f.choice);
+        return Rank.order(found, {}).map(f => f.choice);
+    }
+
+    // A row's hidden words, prepared to match: its keywords, and what the
+    // vocabulary says finds the thing it is (Words.qml's keywords), by its
+    // key, or the provider's things it holds, or the answer it gives.
+    // Made once for each row and kept on it, since a step's rows are
+    // searched at every key; a WeakMap keeping them crashed the shell once
+    // its rows were collected.
+    function hiddenWords(row) {
+        if (row.hiddenMade !== undefined)
+            return row.hiddenMade;
+        const key = String(row.key ?? "");
+        const id = key.startsWith("group:") ? key.slice("group:".length)
+            : String(row.is ?? "").startsWith("answer:") ? row.is.slice("answer:".length) : key;
+        const said = id !== "" && Words.things[id] ? Words.keywords(id) : "";
+        const own = row.keywords ? row.keywords.text ?? "" : "";
+        const words = [own, said].filter(part => part !== "").join(" ");
+        const made = words === "" ? null : Fuzzy.prepare(words);
+        row.hiddenMade = made;
+        return made;
     }
 
     // What's typed in a category: what it holds, and what's held in the
@@ -526,7 +669,7 @@ Scope {
         const pool = offered.reduce((all, row) => all.concat([row], row.group ? row.verbs() : []),
             []);
         const inside = offered.filter(row => row.from).map(row => row.from);
-        return namedFirst(within(pool, words).concat(gathering(letters, inside)), letters);
+        return namedFirst(within(pool, letters).concat(gathering(letters, inside)), letters);
     }
 
     // Rows named what's typed, whole, before the rest, each in its order.
@@ -546,7 +689,7 @@ Scope {
         for (const source of sources.filter(one => names.includes(one.settings.name))) {
             const said = source.answer(letters);
             if (said)
-                return said;
+                return heard(said, source, letters);
         }
         return null;
     }
@@ -905,7 +1048,7 @@ Scope {
         return {
             typed: typed,
             at: current,
-            key: row ? Rank.identity(row) : "",
+            key: row ? steadyId(row) : "",
             scroll: list.contentY
         };
     }
@@ -916,7 +1059,7 @@ Scope {
     // scrolls the list back to where it stood.
     function reselect(left) {
         const byKey = left.key === "" ? -1
-            : matches.findIndex(row => Rank.identity(row) === left.key);
+            : matches.findIndex(row => steadyId(row) === left.key);
         const lowest = answer ? -1 : 0;
         const at = left.at === -1 && answer ? -1
             : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, matches.length - 1));
@@ -1005,47 +1148,94 @@ Scope {
         if (from < 0 && !top && !held.some(ofSource))
             return;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
-            rows: Steady.kept(step.rows, members(step.row.category), Rank.identity)
+            rows: Steady.kept(step.rows, members(step.row.category), steadyId)
         }) : step);
-        let rows = top ? source.things : from < 0 ? [] : source.everything();
-        for (let at = top ? 0 : from < 0 ? held.length : from + 1; at < held.length; at++) {
+        const above = top ? source.things : from < 0 ? [] : source.everything();
+        if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))
+            return;
+        held = steps;
+        reshow(steps.length);
+    }
+
+    // Each step from `from` on made again from the rows the one above it
+    // offers now (`above`, or that step's own rows), as enter made it:
+    // a thing at the top, a collection's things or a nested row's, asked
+    // for their verbs and then their parts, anything else for its targets.
+    // Says whether every step was still there.
+    function remade(steps, from, above) {
+        let rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
+        for (let at = from; at < steps.length; at++) {
             const step = steps[at];
-            const thing = rows.find(row => row.key === step.row.key);
-            // Asked as enter asks: a thing at the top, a collection's things
-            // or a nested row's, for their verbs and then their parts,
-            // anything else for its targets.
+            const thing = rows.find(row => sameRow(row, step.row));
             const things = at === 0 || collects(steps[at - 1]);
             const own = !thing ? null : things ? (thing.verbs ? thing.verbs() : null)
                 : thing.targets ? thing.targets() : null;
             const parts = thing && things ? partsIn(thing) : [];
             const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
             if (!into)
-                return;
+                return false;
             steps[at] = Object.assign({}, step, {
                 row: thing,
-                rows: Steady.kept(step.rows, into, Rank.identity)
+                rows: Steady.kept(step.rows, into, steadyId)
             });
             rows = into;
         }
-        held = steps;
-        const shown = matches;
-        const was = current >= 0 && selected ? Rank.identity(selected) : "";
+        return true;
+    }
+
+    // What's shown searched again under what's held now, `count` steps,
+    // and kept in place: the rows in the order they're shown, the
+    // selection on its row and the list where it was scrolled.
+    // The search is told it's only saying what's there now (steadying), so
+    // it keeps the rows in their order itself and leaves the selection and
+    // the list alone, rather than starting them afresh to be put back: the
+    // rows are made once a refresh, not twice.
+    function reshow(count) {
+        const was = current >= 0 && selected ? steadyId(selected) : "";
         const at = current;
         const scroll = list.contentY;
-        search(typed);
+        // A provider that throws mid-search mustn't leave every later search
+        // keeping its rows as a refresh does.
+        steadying = true;
+        try {
+            search(typed);
+        } finally {
+            steadying = false;
+        }
         // What's typed asked something whole, out at the top, now it can.
-        if (held.length !== steps.length)
+        if (held.length !== count)
             return;
-        matches = Steady.kept(shown, matches, Rank.identity);
-        const lowest = answer && answer.rows.length === 0 ? -1 : 0;
-        current = at === -1 && answer ? -1 : Steady.selection(matches, {
+        const lowest = answer && !parted(answer) ? -1 : 0;
+        const now = at === -1 && answer ? -1 : Steady.selection(matches, {
             row: was,
             at: at,
             lowest: lowest
-        }, Rank.identity);
-        list.contentY = scroll;
+        }, steadyId);
+        if (current !== now)
+            current = now;
+        if (list.contentY !== scroll)
+            list.contentY = scroll;
         if (current >= 0)
             list.positionViewAtIndex(current, ListView.Contain);
+    }
+
+    // Whether the search under way only says again what's there, as a
+    // refresh does (reshow).
+    property bool steadying: false
+
+    // What a row is, to hold it in place as it changes: what it says it
+    // is, or for a part with no key, as an answer's figures have none, its
+    // name, so the Cores stay the Cores as their loads move.
+    function steadyId(row) {
+        return Rank.identity(row) || `named:${row.name ?? ""}`;
+    }
+
+    // Whether a row offered now is the one held: by its key, or else by
+    // what it says it is, or a part with neither by its name.
+    function sameRow(row, was) {
+        if ((was.key ?? "") !== "")
+            return row.key === was.key;
+        return (was.is ?? "") !== "" ? row.is === was.is : row.name === was.name;
     }
 
     // Whether a category holds something of a source's, by the provider
@@ -1068,6 +1258,7 @@ Scope {
     // Searches afresh for what the field is set to, since what was found
     // before belongs to another step.
     function restart(text) {
+        steadying = false;
         typed = "";
         candidates = [];
         if (prompt.text === text)
@@ -1101,6 +1292,10 @@ Scope {
     // collection's own words, which are what it's called.
     function search(letters) {
         const narrowing = typed !== "" && letters.startsWith(typed);
+        // Inside a step, the row selected as what's typed is taken away,
+        // to stay on.
+        const cleared = letters === "" && typed !== "" && held.length > 0 && selected
+            ? steadyId(selected) : "";
         typed = letters;
         words = Fuzzy.words(letters);
         if (asking) {
@@ -1126,45 +1321,55 @@ Scope {
             // What's typed searches only inside it, its answers first.
             gathered = [];
             root.found = words.length === 0 ? offered.slice() : inCategory(letters);
-            compose(true);
-            list.positionViewAtBeginning();
+            compose(!steadying);
+            if (!steadying)
+                list.positionViewAtBeginning();
             return;
         }
         if (held.length > 0) {
             const from = held[held.length - 1].row.from;
             // A collection searches itself, all of it until something's
             // typed, and then its parts: Agents its agents, then their
-            // tasks, helpers and spend. A part named leads what's found.
-            if (from)
-                matches = words.length === 0 ? from.everything().concat(partsOf(from))
-                    : within(partsOf(from), words)
+            // tasks, helpers and spend. A collection whose vocabulary says
+            // its parts lead ("lead": "parts") lists them first, so the
+            // Keyboard's keyboards aren't below a hundred keys; it's said,
+            // not counted, so no list changes order as it grows. A part
+            // named leads what's found.
+            let found = [];
+            if (from && words.length === 0) {
+                const members = from.everything();
+                const parts = partsOf(from);
+                found = Words.of(from.settings.name).lead === "parts" ? parts.concat(members)
+                    : members.concat(parts);
+            } else if (from)
+                found = within(partsOf(from), letters)
                         .concat(learnedFirst(from.search(letters).rows, letters));
             // A step's rows, all of them in their order until something's
             // typed, then those it finds, best first, and with them the
             // choices of a part that offers them (a display's Scale), so
             // what's typed reaches them without a step in: "scale 150".
+            // Found by name or by hidden word, in the top level's tiers.
             else if (words.length === 0)
-                matches = offered.slice();
-            else {
-                const found = [];
-                const pool = offered.reduce((all, row) => all.concat([row],
-                    row.offers && row.verbs ? row.verbs() : []), []);
-                for (const row of pool) {
-                    const prepared = row.prepared ?? Fuzzy.prepare(row.name);
-                    const m = Fuzzy.match(prepared, words, false);
-                    if (m.score >= 0)
-                        found.push({
-                            item: prepared,
-                            score: m.score,
-                            grade: m.grade,
-                            choice: row
-                        });
-                }
-                matches = Fuzzy.keep(found).map(f => f.choice);
-            }
+                found = offered.slice();
+            else
+                found = within(offered.reduce((all, row) => all.concat([row],
+                    row.offers && row.verbs ? row.verbs() : []), []), letters);
             answer = null;
-            current = 0;
-            list.positionViewAtBeginning();
+            // Searched again only to say what's there now, it keeps the
+            // order it's shown in, and the selection where it is (reshow).
+            if (steadying) {
+                matches = Steady.kept(matches, found, steadyId);
+                return;
+            }
+            matches = found;
+            // What's typed taken away whole leaves the selection on the row
+            // it was on, now among them all.
+            const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
+            current = Math.max(0, kept);
+            if (kept >= 0)
+                list.positionViewAtIndex(kept, ListView.Contain);
+            else
+                list.positionViewAtBeginning();
             return;
         }
         gathered = gathering(letters);
@@ -1456,6 +1661,13 @@ Scope {
 
     onShownChanged: Report.say(`showing ${shown}`)
 
+    // The window the launcher opened over, as niri describes it, or null on
+    // an empty workspace: what Return pastes into (Pasting.qml), and whose
+    // program's keys Shortcuts leads with (launcher/KeyMap.qml).
+    function cameFrom() {
+        return Pasting.under();
+    }
+
     // Opens straight into a collection, all of it shown until something's
     // typed; the left arrow steps out to the search. A name no collection
     // has opens the search. A collection may lead with one member, which
@@ -1616,8 +1828,8 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        glyph: secret ? String.fromCodePoint(0xf023)
-                            : thing ? thing.lead ?? thing.glyph : String.fromCodePoint(0xf0349)
+                        glyph: secret ? Theme.glyph.secret
+                            : thing ? thing.lead ?? thing.glyph : Theme.glyph.launcher
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
@@ -1655,8 +1867,10 @@ Scope {
                                 text = root.question;
                             // A row that holds more is stepped into, so a
                             // few letters and Tab reach inside a thing from
-                            // anywhere, as the right arrow would.
-                            else if (root.typed !== "" && root.current !== -1
+                            // anywhere, as the right arrow would, and so
+                            // does Tab alone inside a step.
+                            else if ((root.typed !== "" || root.held.length > 0)
+                                && root.current !== -1
                                 && root.enter(root.matches[root.current]))
                                 return;
                             else if (root.current !== -1 || !root.answer)
@@ -1671,7 +1885,7 @@ Scope {
                         onBackward: root.back()
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
-                        readonly property int highest: root.answer && root.answer.rows.length === 0
+                        readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
                         Keys.onUpPressed: root.current = Math.max(root.current - 1, highest)
                         Keys.onDownPressed: root.current
@@ -1783,7 +1997,8 @@ Scope {
                                 ? root.held[root.held.length - 1].row.from ?? null : null
                             visible: root.matches.length === 0 && root.answer === null
                                 && root.asking === null
-                            glyph: root.typed === "" ? root.sparkle : root.ghost
+                            glyph: root.typed === "" ? Theme.glyph.greeting
+                                : Theme.glyph.nothingFound
                             hue: Theme.voice
                             quiet: true
                             name: root.typed !== ""
@@ -1899,18 +2114,28 @@ Scope {
                         readonly property real room: keys.x - Theme.space.xl - Theme.space.l
 
                         // An answer's footer says where it came from.
-                        readonly property string said: !choice ? ""
-                            : choice.state ? choice.state()
-                            : (choice.note ?? "") !== "" ? choice.note
-                            : choice.plain && root.answer ? root.answer.note ?? ""
-                            : root.held.length > 0 ? root.held[0].row.context ?? ""
+                        readonly property string said: {
+                            if (!choice)
+                                return "";
+                            if (choice.state)
+                                return choice.state();
+                            if ((choice.note ?? "") !== "")
+                                return choice.note;
+                            if (choice.plain && root.answer)
+                                return root.answer.note ?? "";
+                            if (root.held.length > 0)
+                                return root.held[0].row.context ?? "";
+                            // What's typed is longer than it need be,
+                            // worked out once, since each start of what's
+                            // typed asks every pick.
+                            const shorter = root.enough(choice);
+                            if (shorter !== "")
+                                return `${shorter} is enough`;
                             // A thing's row says its kind where a chord
                             // would be, so its chord is taught here.
-                            // What's typed is longer than it need be.
-                            : root.enough(choice) !== "" ? `${root.enough(choice)} is enough`
-                            : root.kindOf(choice) !== "" && (choice.chord ?? []).length > 0
-                                ? `next time ${root.chordText(choice.chord)}`
-                            : ""
+                            return root.kindOf(choice) !== "" && (choice.chord ?? []).length > 0
+                                ? `next time ${root.chordText(choice.chord)}` : "";
+                        }
 
                         width: parent.width
                         height: Theme.space.xxl + Theme.space.s
