@@ -41,7 +41,10 @@ let
   # The areas written for pytest, each a file of tests that ask for the
   # desktop as a fixture; the rest are still scripts run after the prelude,
   # and move one at a time.
-  pytestAreas = [ "captures-and-locks" ];
+  pytestAreas = [
+    "captures-and-locks"
+    "starts-clean"
+  ];
 
   # A certificate authority the machine trusts, and the Office's server's
   # certificate from it, naming radius.office.test.
