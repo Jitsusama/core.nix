@@ -277,13 +277,27 @@ Scope {
 
     // A provider has more to say: out at the top, its answer is asked
     // again; stepped in, so is whatever of its answers is held or listed.
+    // With nothing typed nothing is asked, so home isn't made again: it
+    // was, each time the machine's queue changed, and a new list scrolled
+    // back to the top with the selection out of sight below it (Joel,
+    // 2026-10-25: "jumpy ... at home arrowing around"). An answer asked
+    // again keeps the list where it was scrolled, as a refresh does.
     function reanswer(source) {
         if (!open)
             return;
-        if (held.length === 0)
-            compose(false);
-        else
+        Report.say(`asked again by ${source.settings.name}`);
+        if (held.length > 0) {
             relive(source);
+            return;
+        }
+        if (typed.trim() === "")
+            return;
+        const scroll = list.contentY;
+        compose(false);
+        if (list.contentY !== scroll)
+            list.contentY = scroll;
+        if (current >= 0)
+            list.positionViewAtIndex(current, ListView.Contain);
     }
 
     // An answer row asked again, as it says now, keeping where it's held
@@ -808,6 +822,61 @@ Scope {
             return oneWord(row.verb);
         return kindOf(row) !== "" ? "open" : oneWord(Rank.verbIn(row.name ?? "") || "open");
     }
+
+    // What the keys do for a row, as the foot says them, a key and its
+    // word each: Return's verb, Shift+Return where it can, where the arrows
+    // step, and Tab at home.
+    function keysFor(choice) {
+        if (!choice)
+            return [];
+        const keys = [["\u21b5", verbOf(choice)]];
+        if (held.length === 0 && choice.below)
+            keys.push(["\u21e7\u21b5", "below"]);
+        if ((held.length === 0 || collecting) && choice.verbs)
+            keys.push(["\u2192", choice.from ? "see all" : "more"]);
+        // The left arrow takes what's typed first, then goes back.
+        if (typed !== "")
+            keys.push(["\u2190", "clear"]);
+        else if (held.length > 0)
+            keys.push(["\u2190", "back"]);
+        if (atHome && matches.some(row => !!row.category))
+            keys.push(["\u21e5", "browse"]);
+        return keys;
+    }
+
+    // The foot's keys in the order it says them.
+    readonly property var footOrder: ["\u21b5", "\u21e7\u21b5", "\u2192", "\u2190", "\u21e5"]
+
+    // Each key the foot has said since the launcher opened, with the
+    // longest word it's said beside it, so the key keeps a place that wide
+    // and every key stays put. Said for the selected row alone, the keys
+    // moved as the arrows went from a row that opens to one with more behind
+    // it, and squeezed how things stand beside them from words to glyphs
+    // and back (Joel, 2026-10-25: "jumpy ... at home arrowing around").
+    // A row a key doesn't apply to leaves its place empty. It only grows
+    // while the launcher's open, and only as the rows change, so nothing
+    // gives way under the selection.
+    property var footWidest: ({})
+
+    function noteKeys() {
+        const widest = Object.assign({}, footWidest);
+        let grew = false;
+        for (const row of asking ? matches.concat([asking]) : matches)
+            for (const key of keysFor(row)) {
+                const was = widest[key[0]];
+                if (was === undefined || key[1].length > was.length) {
+                    widest[key[0]] = key[1];
+                    grew = true;
+                }
+            }
+        if (grew)
+            footWidest = widest;
+    }
+
+    readonly property var footPlaces: footOrder.filter(key => footWidest[key] !== undefined)
+
+    onMatchesChanged: noteKeys()
+    onAskingChanged: noteKeys()
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), anything else
@@ -1651,7 +1720,11 @@ Scope {
             },
             kind: root.kind,
             footer: foot.said,
-            glance: standing.said
+            glance: standing.said,
+            // Where the keys start, which holds still as the arrows go.
+            keysAt: Math.round(keys.x),
+            // How far the list is scrolled, which only a key changes.
+            scrolled: Math.round(list.contentY)
         });
     }
 
@@ -1712,6 +1785,7 @@ Scope {
     onOpenChanged: {
         if (open) {
             pointer = Qt.point(-1, -1);
+            footWidest = {};
             held = [];
             often = picks.counts();
             restart("");
@@ -2214,24 +2288,17 @@ Scope {
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
+                            // Every key said since it opened, each in its
+                            // place, as wide as the most it's said there
+                            // (footWidest); a row it doesn't apply to
+                            // leaves it empty.
                             keys: {
-                                const choice = foot.choice;
-                                if (!choice)
-                                    return [];
-                                const keys = [["\u21b5", root.verbOf(choice)]];
-                                if (root.held.length === 0 && choice.below)
-                                    keys.push(["\u21e7\u21b5", "below"]);
-                                if ((root.held.length === 0 || root.collecting) && choice.verbs)
-                                    keys.push(["\u2192", choice.from ? "see all" : "more"]);
-                                // The left arrow takes what's typed first, then goes back.
-                                if (root.typed !== "")
-                                    keys.push(["\u2190", "clear"]);
-                                else if (root.held.length > 0)
-                                    keys.push(["\u2190", "back"]);
-                                if (root.atHome && root.matches.some(row => !!row.category))
-                                    keys.push(["\u21e5", "browse"]);
-                                return keys;
+                                const now = root.keysFor(foot.choice);
+                                return root.footPlaces.map(key => now.find(each => each[0] === key)
+                                    ?? ["", ""]);
                             }
+                            widths: root.footPlaces.map(key =>
+                                measure.advanceWidth(`${key} ${root.footWidest[key]}`))
                         }
                     }
                 }

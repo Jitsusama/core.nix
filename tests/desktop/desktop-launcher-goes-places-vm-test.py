@@ -800,8 +800,17 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         """Give what the launcher's selected row is, or nothing."""
         return cast("str", (desktop.showing()["selected"] or {}).get("is", ""))
 
+    def foot() -> tuple[int, int]:
+        """Give where the foot's keys start, and how long how things stand reads."""
+        shown = desktop.showing()
+        return shown["keysAt"], len(shown["glance"])
+
     # Down past what's in front, the likely picks and the shelf, into
-    # the categories, the first of them first.
+    # the categories, the first of them first. The foot holds still on
+    # the way, whatever each row's keys say: the keys in their places,
+    # and how things stand beside them as long (a minute turning keeps
+    # its length).
+    feet = {selected_is(): foot()}
     while not selected_is().startswith("category:"):
         before = selected_is()
         machine.send_key("down")
@@ -809,11 +818,36 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
         )
+        feet[selected_is()] = foot()
     assert selected_is() == "category:computer"
+    assert len(set(feet.values())) == 1, f"the foot moved as the arrows went: {feet}"
     # Each says what it holds after its name, from the vocabulary.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
     assert reads["category:ai"].startswith("AI · Agents, Tasks, Helpers, AI spend"), (
         f"ai reads {reads['category:ai']!r}"
+    )
+    # Further down, past what the list shows at once, home holds still
+    # while something it answers changes: the machine's queue, which a
+    # busy machine writes all the time, made it again and scrolled it to
+    # the top, with the selection out of sight below.
+    for _row in range(6):
+        before = selected_is()
+        machine.send_key("down")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
+        )
+    scrolled = desktop.showing()
+    assert scrolled["scrolled"] > 0, f"home never scrolled: {scrolled}"
+    since = desktop.mark()
+    queued = {"v": 1, "heartbeat": float(machine.succeed("date +%s")), "machine": {}, "jobs": []}
+    desktop.as_account(
+        f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
+        " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+    )
+    desktop.reported("asked again by ", lambda _: True, since)
+    still = desktop.showing()
+    assert (still["scrolled"], still["selected"]) == (scrolled["scrolled"], scrolled["selected"]), (
+        f"home moved as the queue changed: from {scrolled} to {still}"
     )
     desktop.photograph("launcher-home-categories")
     machine.send_key("esc")
