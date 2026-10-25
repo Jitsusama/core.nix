@@ -12,32 +12,8 @@ let
   passphrase = "a recovery passphrase for the stick";
   guide = pkgs.callPackage ../modules/guide/package.nix { };
 
-  # canokey keeps one global state and makes working keys only at QEMU's
-  # start, as tests/guide-install.nix says; one key is all this needs.
-  canokey = pkgs.canokey-qemu.overrideAttrs (old: {
-    postPatch = old.postPatch + ''
-      cat >> Src/qemu.c <<'EOF'
-
-      #include <sys/random.h>
-      uint32_t random32(void) {
-        uint32_t r;
-        if (getrandom(&r, sizeof(r), 0) != sizeof(r)) abort();
-        return r;
-      }
-      EOF
-    '';
-  });
-  qemu = pkgs.qemu_test.override {
-    canokeySupport = true;
-    canokey-qemu = canokey;
-  };
-
-  # Gives the key a PIN (set-pin.py), held to ruff and mypy through
-  # `nix fmt` rather than the writers' flake8.
-  setPin = pkgs.writers.writePython3Bin "set-pin" {
-    libraries = [ pkgs.python3Packages.fido2 ];
-    doCheck = false;
-  } (builtins.readFile ./set-pin.py);
+  # One key is all this needs, made by QEMU at its start (canokeys.nix).
+  inherit (import ./canokeys.nix { inherit pkgs; }) qemu setPin;
 
   # A recipient made as a person makes one, the plugin's questions
   # answered as its README says (guide-vault/make-recipient.py).

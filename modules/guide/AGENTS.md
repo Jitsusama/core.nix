@@ -419,5 +419,5 @@ program for that machine. It carries no rescue bundles, which only
   the test fail.
 - A test never reaches the machine. Steps take `&mut dyn Machine`, and tests
   give them `Fake`, which refuses any call or file its test didn't script.
-- A new program goes in `src/tool.rs` and `package.nix` together, and
+- A new program goes in `src/tool.rs` and `tools.nix` together, and
   `guide tools` fails the build until it has a path.

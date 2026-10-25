@@ -17,12 +17,8 @@
 # machine's own TPM. Its firmware starts in setup mode.
 #
 # The FIDO2 keys are canokeys, one QEMU device swapped between two state
-# files, made before QEMU starts (spikes in QEST-20261011-2HN63P): canokey
-# keeps one global state, so a second device crashes it, a state file made
-# on a hot-plug answers every makeCredential with 0xF1, and its random
-# numbers come from a fixed seed, so every key it made would hold the same
-# secrets. A getrandom-backed random32 makes each key its own. The tests
-# are guide-install-vm-test.py, run through pytest.
+# files made before QEMU starts (canokeys.nix says why). The tests are
+# guide-install-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -34,38 +30,12 @@ let
   # Typed into a shell as it is, so a word with nothing to quote.
   bundlePassphrase = "the-bundles-recovery-passphrase";
 
-  canokey = pkgs.canokey-qemu.overrideAttrs (old: {
-    postPatch = old.postPatch + ''
-      cat >> Src/qemu.c <<'EOF'
-
-      #include <sys/random.h>
-      uint32_t random32(void) {
-        uint32_t r;
-        if (getrandom(&r, sizeof(r), 0) != sizeof(r)) abort();
-        return r;
-      }
-      EOF
-    '';
-  });
-  qemu = pkgs.qemu_test.override {
-    canokeySupport = true;
-    canokey-qemu = canokey;
-  };
-  keys = pkgs.runCommand "canokey-keys" { nativeBuildInputs = [ qemu ]; } ''
-    mkdir $out
-    for name in nano fivec; do
-      echo quit | qemu-system-x86_64 -machine q35 -accel tcg -nodefaults -display none \
-        -S -monitor stdio -device qemu-xhci,id=usb -device canokey,bus=usb.0,file=$out/$name
-      test -s $out/$name
-    done
-  '';
-  # A fresh key has no PIN, and the guide enrols with one, as a person's
-  # YubiKeys have (set-pin.py), held to ruff and mypy through `nix fmt`
-  # rather than the writers' flake8.
-  setPin = pkgs.writers.writePython3Bin "set-pin" {
-    libraries = [ pkgs.python3Packages.fido2 ];
-    doCheck = false;
-  } (builtins.readFile ./set-pin.py);
+  canokeys = import ./canokeys.nix { inherit pkgs; };
+  inherit (canokeys) qemu setPin;
+  keys = canokeys.keys [
+    "nano"
+    "fivec"
+  ];
   guide = pkgs.callPackage ../modules/guide/package.nix { };
 in
 pkgs.testers.runNixOSTest {
