@@ -951,8 +951,9 @@ with subtest("a step finds its rows by their hidden words, and its parts move in
     machine.succeed("ip link delete tailscale0")
     # The processors, a step into Computer, are named as the thing they
     # are, and their cores, a step further, read again each second there
-    # as at the top: made busy, every core says so, in the order they
-    # were shown, the selection staying on its row.
+    # as at the top: made busy, every core says so, and the selection
+    # stays on its row, which says so too, as read again rather than as
+    # first shown.
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     machine.send_chars("computer ")
@@ -980,18 +981,29 @@ with subtest("a step finds its rows by their hidden words, and its parts move in
         machine.send_key("down")
     chosen = cores[min(1, len(cores) - 1)]
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
+    busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
+    # At rest not every core is busy, so every core saying it is below
+    # is each read again.
+    cores_resting = showing()
+    t.assertFalse(
+        all(busy.fullmatch(thing["reads"]) for thing in cores_resting["things"]),
+        "the cores were busy before anything made them so",
+    )
     # A loop for each core, as the shell's own builtins, since a
     # transient unit's path has no coreutils.
     spinning = "(while :; do :; done) & " * int(machine.succeed("nproc"))
     machine.succeed(f"systemd-run --unit=busy-cores -p Nice=19 sh -c '{spinning}wait'")
-    busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
     launcher_until(
         lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
         timeout=dt.timedelta(seconds=60),
     )
     shown = showing()
-    t.assertEqual(shown["rows"], cores, "the cores moved as they were read again")
     t.assertEqual(shown["selected"]["name"], chosen, "the selection left its row")
+    t.assertRegex(
+        shown["selected"]["side"],
+        r"^([89]\d|100)%$",
+        "the selection kept its row as first read",
+    )
     machine.succeed("systemctl stop busy-cores")
     # Back out, it's on the row it came from.
     machine.send_key("left")

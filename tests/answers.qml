@@ -414,13 +414,17 @@ QtObject {
                 [".hidden", "hidden"]])
             machine(`the program run as ${name}`, Machine.program(name), known);
         const stats = (ticks, lines) => `4096\ncpu  ${ticks} 0 0 0 0 0 0 0 0 0\nintr 1\n${lines.join("\n")}\n`;
-        const fields = (time, pages) => `S 1 1 1 0 -1 0 0 0 0 0 ${time} 0 0 0 20 0 1 0 5 100 ${pages}`;
-        const first = Machine.processes(stats(1000, [`1 (systemd) ${fields(10, 100)}`,
-            `2 (.kitty-wrapped) ${fields(100, 1000)}`, `3 (kitty) ${fields(50, 1000)}`,
-            `4 (cc1 (odd) name) ${fields(0, 10)}`]));
-        const second = Machine.processes(stats(2000, [`1 (systemd) ${fields(10, 100)}`,
-            `2 (.kitty-wrapped) ${fields(300, 1000)}`, `3 (kitty) ${fields(150, 1000)}`,
-            `4 (cc1 (odd) name) ${fields(400, 10)}`, `5 (cat) ${fields(900, 10)}`]));
+        // A process's stat from its state on: its user and system ticks,
+        // its pages resident, and every field around them a figure of its
+        // own, so reading the column beside one gives another sum.
+        const fields = (user, system, pages) => `S 1 1 1 0 -1 4194560 31 7 3 2 ${user} ${system} `
+            + `977 733 20 0 1 0 5 123456 ${pages} 18446744073709551615`;
+        const first = Machine.processes(stats(1000, [`1 (systemd) ${fields(6, 4, 100)}`,
+            `2 (.kitty-wrapped) ${fields(60, 40, 1000)}`, `3 (kitty) ${fields(30, 20, 1000)}`,
+            `4 (cc1 (odd) name) ${fields(1, 1, 10)}`]));
+        const second = Machine.processes(stats(2000, [`1 (systemd) ${fields(6, 4, 100)}`,
+            `2 (.kitty-wrapped) ${fields(180, 120, 1000)}`, `3 (kitty) ${fields(90, 60, 1000)}`,
+            `4 (cc1 (odd) name) ${fields(201, 201, 10)}`, `5 (cat) ${fields(500, 400, 10)}`]));
         // Each program's processes summed, one started between the reads
         // left out, and one at nothing left out.
         machine("the programs using the processors", Machine.using(second, first),
@@ -431,7 +435,7 @@ QtObject {
         // name closing a bracket of its own, and a last line unended.
         machine("the processes, the last line unended",
             Machine.processes(`4096\ncpu  10 0 0 0 0 0 0 0 0 0\nintr 3 (x) 4\n`
-                + `7 (a) b) ${fields(5, 2)}`),
+                + `7 (a) b) ${fields(3, 2, 2)}`),
             { ticks: 10, programs: { 7: { name: "a) b", ticks: 5, bytes: 8192 } } });
         machine("no processes", Machine.processes(""), { ticks: 0, programs: {} });
         machine("the whole processor's sensor", ["Package id 0", "Tctl", "Core 3"]

@@ -9,8 +9,8 @@
 // tomorrow finds a group without being told, a bind that names its group is
 // put there, and a short layer stays whole. Each level is the right size for
 // the card's eight rows: no group holds fewer than three chords, none sits
-// more than two levels below its layer, and no level lists more than a
-// card and a half. Every group the table lists is named in the vocabulary,
+// more than two levels below its layer, and no level lists more than
+// thirteen rows, as Neovim's longest do. Every group the table lists is named in the vocabulary,
 // a desktop group with a glyph, and the window the launcher opened over
 // puts its program's layers first. It prints each group's count, and each
 // level longer than the card.
@@ -36,7 +36,9 @@ QtObject {
 
     // The rows the card shows at once.
     readonly property int card: 8
-    // No level lists more rows than this, groups and chords together.
+    // No level lists more rows than this, groups and chords together: a
+    // card and five, as Neovim's Changed files and Insides do, the longest
+    // levels there are.
     readonly property int most: 13
     // Nor does a group hold fewer chords than this.
     readonly property int fewest: 3

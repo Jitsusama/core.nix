@@ -516,6 +516,10 @@
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';
+  sound-hears-only-what-can-be-heard = ''
+    the launcher's Sound leaves out a jack with nothing plugged in and a display's output with no
+    display, and never listens to a headset's microphone while it plays music
+  '';
   speaker-amps-have-every-dai-named = ''
     the XPS 14's SoundWire machine driver names only DAIs its amplifiers register
   '';
@@ -639,7 +643,8 @@
     litra, and the bar hears changes but not a camera putting it out
   '';
   the-launcher-finds-the-keyboards-keys = ''
-    a key is found by what it types, and shown where it is
+    a key is found by what it types, and shown where it is, and the board's Layer and Lights hold
+    choices that run its own command
   '';
   the-launcher-finds-the-people = ''
     the launcher's Tuple place leads with the room or a call's controls, lists and finds contacts as
@@ -674,7 +679,11 @@
   the-launcher-means-one-thing-a-word = ''
     no name, word or question in the launcher's vocabulary finds two things at once unless it's
     listed as meant to, and each clash, unknown name, missing glyph and thing with no place is
-    printed
+    printed, and the check refuses a stand-in vocabulary breaking each rule of what Joel reads
+  '';
+  the-launcher-names-the-parts-it-builds = ''
+    every part the calculator, the time, today, the waits and a hardware address show is named as
+    the vocabulary names it
   '';
   the-litra-follows-the-cameras = ''
     `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
@@ -686,6 +695,10 @@
   the-macs-faces-are-the-themes = ''
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
     it, gives the theme's sans or monospaced face, carrying the name asked for
+  '';
+  the-machine-lists-processes-for-its-parts = ''
+    the processors' and the memory's headlines make no parts and spawn nothing, and their parts,
+    once looked at, list the processes once
   '';
   the-margins-glyphs-stand-level = ''
     every glyph in the margin stands one height on the gap's middle line, read from the right by
