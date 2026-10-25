@@ -367,12 +367,16 @@ def test_tuple(line: Line) -> None:
     """Everything Tuple's daemon sends is video.
 
     The daemon runs well before a call, so its unit's set knows it by the time it sends: the
-    stand-in waits to send until the set holds it.
+    stand-in waits to send until the set holds it. It hands 4 MB to a socket whose buffer holds
+    them, so it ends, and its cgroup goes from the set, with most still to send: those bytes
+    keep the connection's class too.
     """
     client = line.client
+    client.succeed("sysctl -w net.ipv4.tcp_wmem='4096 8388608 8388608'")
+    upload = f"{BIN}/head -c 4000000 /dev/zero > /dev/tcp/{line.far}/5201"
     client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=tuple"
-        f" {BIN}/bash -c 'until [ -e /tmp/send ]; do {BIN}/sleep 0.1; done; {line.upload}'"
+        f" {BIN}/bash -c 'until [ -e /tmp/send ]; do {BIN}/sleep 0.1; done; {upload}'"
     )
     client.wait_until_succeeds(
         "nft list set inet shaper video5 | grep -q tuple.service", timeout=HOLDING
