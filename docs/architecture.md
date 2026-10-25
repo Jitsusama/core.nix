@@ -9,23 +9,14 @@ fits without knowing anything beyond Nix and the module system.
 ## Vocabulary
 
 Each word has one meaning, used the same way in code, directories and docs.
-
-| Word               | Means                                          | In code                                                 |
-| ------------------ | ---------------------------------------------- | ------------------------------------------------------- |
-| machine            | one computer                                   | `nixosConfigurations.laptop`                            |
-| machine repository | a repository of machines built on core.nix     | any flake with core.nix as an input                     |
-| module             | one program or subsystem, configured           | `modules/bat/` becomes `homeModules.bat`                |
-| role               | what a machine is for                          | `roles/workstation/` becomes `nixosModules.workstation` |
-| hardware           | one machine model, and what it needs           | `nixosModules.dell-xps-14-da14260`                      |
-| layer              | what a machine repository adds to its machines | the machine repository's own modules                    |
-| identity           | who Joel is on a machine                       | `jitsusama.identity.email`                              |
-| theme              | the look every program Joel sees shares        | `jitsusama.theme.roles.accent`                          |
-| account            | the user home-manager configures               | `home-manager.users.<account>`                          |
+The words this library is built from (machine, machine repository, module,
+role, hardware, layer, identity, theme and account) are in [the
+glossary][6], with every other thing's name and the words still to
+settle.
 
 Modules are named after the program or subsystem they configure, never after
 an abstraction, and no name carries a prefix saying what kind of thing it is:
-the output and the directory already say that. "Host" appears only in
-`hostName`, where NixOS requires it, and "shell" means zsh.
+the output and the directory already say that.
 
 ## The Pieces
 
@@ -227,3 +218,4 @@ repository sees it only when it runs `nix flake update core`. [Decision
 [3]: decisions/0002-choosing-is-importing.md
 [4]: decisions/0005-modules-and-options-are-the-interface.md
 [5]: hardware.md
+[6]: glossary.md

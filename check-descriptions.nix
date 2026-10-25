@@ -622,6 +622,10 @@
     `firmware-settings` names what differs, writes it with the password, then wipes it, even when
     stopped partway, and refuses a value it can't read
   '';
+  the-glossary-names-each-thing-once = ''
+    no word in docs/glossary.md is the name, another word or a replaced name of two things, and
+    each clash is printed, and the check refuses a stand-in glossary breaking each of its rules
+  '';
   the-gpu-security-link-loads-with-the-gpu = ''
     the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its
     CSME link

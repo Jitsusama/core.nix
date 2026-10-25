@@ -20,8 +20,8 @@ other files. So:
 
 ## Names
 
-- One word per concept, used the same way in code, directories and docs. The
-  [vocabulary][3] lists them.
+- One word per concept, used the same way in code, directories, docs, on
+  screen and in what agents say. The [glossary][3] lists them.
 - A module is named after the program or subsystem it configures (`kitty`,
   `zsh`, `fonts`), never after an abstraction.
 - A role is named after what a machine is for: `base`, `workstation`,
@@ -171,5 +171,5 @@ option breaks the machines that use it, so it is marked with `!`.
 
 [1]: testing.md
 [2]: https://www.conventionalcommits.org
-[3]: architecture.md#vocabulary
+[3]: glossary.md
 [4]: design.md
