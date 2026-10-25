@@ -651,11 +651,21 @@ let
     name = "ssh-askpass";
     runtimeInputs = [
       pkgs.coreutils
+      pkgs.gnused
       pkgs.inotify-tools
       pkgs.quickshell
+      pkgs.systemd
     ];
     text = ''
       kind=''${SSH_ASKPASS_PROMPT:-secret}
+      # qs finds the shell by the display it draws on, and a program started
+      # before the desktop, as linux-id's service is at sign-in, was never
+      # told it, so it's taken from the session the account's systemd holds.
+      # With no systemd to ask, there's no shell to find either, and qs says so.
+      if [[ -z ''${WAYLAND_DISPLAY:-} ]] && environment=$(systemctl --user show-environment 2> /dev/null); then
+        display=$(sed -n 's/^WAYLAND_DISPLAY=//p' <<< "$environment")
+        [[ -z $display ]] || export WAYLAND_DISPLAY=$display
+      fi
       # Who asked: the program that ran this, or the script an interpreter
       # runs, named without its store path or a wrapper's dots.
       argv=()

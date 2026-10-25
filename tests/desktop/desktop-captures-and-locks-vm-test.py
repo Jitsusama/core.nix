@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from desktop_prelude import (
         ACCOUNT,
+        ASKING,
         FFMPEG_HEADLESS,
         PICTURE_COLOURS,
         SECRET,
@@ -353,6 +354,17 @@ with subtest("the askpass asks for a yes, a PIN and a touch"):
         as_account("pkill -TERM -f '^[^ ]*bash [^ ]*ssh-askpass Confirm'")
     answered_with("none", 1)
     as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+
+# linux-id's service starts with the account's systemd, before the desktop says
+# which display it's on, and an askpass it runs knows no display.
+with subtest("the askpass finds the shell for a program started before the desktop"):
+    with told("keys askpass"):
+        as_account(
+            "systemd-run --user --collect --quiet -- env -u WAYLAND_DISPLAY "
+            f"{ASKING} confirm '{SIGNING}'"
+        )
+    machine.send_key("ret")
+    answered_with("confirm", 0)
 
 # The shell holds an ask only in memory, as a switch restarts it.
 with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
