@@ -184,7 +184,7 @@ pub struct SecureBootKeys;
 
 /// Where the installed machine keeps its rescue bundle, under the
 /// install's root.
-fn bundle_path() -> String {
+pub(crate) fn bundle_path() -> String {
     format!("{ROOT}{}", rescue::KEPT)
 }
 

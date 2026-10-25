@@ -311,7 +311,7 @@ fn told(done: u64, total: Option<u64>, rate: Option<f64>) -> String {
                 Duration::try_from_secs_f64(approximately(total - done) / rate).ok()
             });
             if let Some(left) = left {
-                parts.push(format!("about {} left", rough(left)));
+                parts.push(rough(left));
             }
         }
         None => {}
@@ -355,24 +355,28 @@ fn duration(elapsed: Duration) -> String {
     }
 }
 
-/// A time left, rounded as a person would say it: never to the second
-/// past the first minute, since an estimate isn't that sure.
+/// How long is left, rounded as a person would say it: never to the
+/// second, since an estimate isn't that sure, and under half a minute only
+/// that it's nearly done.
 fn rough(left: Duration) -> String {
     let seconds = left.as_secs();
+    if seconds < 30 {
+        return "a few seconds left".into();
+    }
     if seconds < 90 {
-        return "a minute".into();
+        return "about a minute left".into();
     }
     let minutes = (seconds + 30) / 60;
     if minutes < 60 {
-        return format!("{minutes} minutes");
+        return format!("about {minutes} minutes left");
     }
     let hours = minutes / 60;
     let minutes = minutes % 60;
     let hours = format!("{hours} hour{}", if hours == 1 { "" } else { "s" });
     if minutes == 0 {
-        hours
+        format!("about {hours} left")
     } else {
-        format!("{hours} {minutes} minutes")
+        format!("about {hours} {minutes} minutes left")
     }
 }
 
@@ -470,10 +474,16 @@ mod tests {
 
     #[test]
     fn the_time_left_is_rounded_as_a_person_would_say_it() {
-        assert_eq!(rough(Duration::from_secs(20)), "a minute");
-        assert_eq!(rough(Duration::from_secs(89)), "a minute");
-        assert_eq!(rough(Duration::from_secs(150)), "3 minutes");
-        assert_eq!(rough(Duration::from_mins(65)), "1 hour 5 minutes");
+        assert_eq!(rough(Duration::from_secs(3)), "a few seconds left");
+        assert_eq!(rough(Duration::from_secs(29)), "a few seconds left");
+        assert_eq!(rough(Duration::from_secs(30)), "about a minute left");
+        assert_eq!(rough(Duration::from_secs(89)), "about a minute left");
+        assert_eq!(rough(Duration::from_secs(150)), "about 3 minutes left");
+        assert_eq!(rough(Duration::from_mins(60)), "about 1 hour left");
+        assert_eq!(
+            rough(Duration::from_mins(65)),
+            "about 1 hour 5 minutes left"
+        );
     }
 
     #[test]

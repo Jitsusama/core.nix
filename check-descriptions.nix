@@ -949,8 +949,9 @@
   vm-guide-installs = ''
     the guide, driven by its keys, holding the machine awake and drawing over what writes on its
     screen, installs a machine from its stick: two keys and a recovery key of seven words, shown
-    alone for a phone and typed back, Secure Boot enforcing with its keys, its firmware enrolling
-    them before the disk first asks; then seals the disk to the TPM with a PIN, which opens it at
+    alone for a phone and typed back, an install whose memory a restart took carried on through a
+    key it enrolled, Secure Boot enforcing with its keys, its firmware enrolling them before the
+    disk first asks; then seals the disk to the TPM with a PIN, which opens it at
     the next boot, leaving one systemd-pcrlock policy; makes the account's TPM keys under one PIN
     and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
     opens with a YubiKey, seals again, makes the keys it lost again and downloads a lost spare; a

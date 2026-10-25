@@ -27,17 +27,26 @@ pub const VAULT_KEY: &str = "/run/guide/vault-key";
 /// module's `jitsusama.disk.installKey` names it.
 pub const INSTALL_KEY: &str = "/run/guide/install-key";
 pub const LAYOUT: &str = "/run/guide/layout";
+/// disko's script that opens and mounts a laid-out disk, held to run.
+pub const MOUNT: &str = "/run/guide/mount";
 pub const RECOVERY_KEY: &str = "/run/guide/recovery-key";
 /// What the vault says to install, held once it's open.
 pub const HELD_TARGET: &str = "/run/guide/target.json";
 /// Where the new system is mounted while it's installed.
 pub const ROOT: &str = "/mnt";
+/// Where the install keeps a copy of its journal while it's under way: on
+/// the disk's boot partition, which a later start reads before anything
+/// is opened. Its facts open nothing, and taking the install's key off the
+/// disk takes it away, so a disk that holds it holds an install that
+/// stopped part way.
+pub const BOOT_JOURNAL: &str = "guide/install-journal";
 /// The stick's vault, by the name its image gives it.
 pub const STICK_VAULT: &str = "/dev/disk/by-partlabel/vault";
 
 /// What's in the vault for an install, by its path there.
 pub const TARGET: &str = "target.json";
 pub const LAYOUT_SCRIPT: &str = "layout.sh";
+pub const MOUNT_SCRIPT: &str = "mount.sh";
 pub const SYSTEM_CACHE: &str = "cache/system";
 
 /// What a reinstall stick installs, as the host that wrote it said, sealed
@@ -150,13 +159,32 @@ pub fn opening() -> Vec<Box<dyn Step>> {
     ]
 }
 
+/// The copy of the journal on the installed disk, as the stick reaches it.
+pub fn boot_journal() -> String {
+    format!("{ROOT}/boot/{BOOT_JOURNAL}")
+}
+
+/// Whether the install starts on a wiped disk or carries on one a
+/// restart stopped part way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    Afresh,
+    CarryingOn,
+}
+
 /// Every step of installing from the stick, the YubiKeys named as the
-/// vault's target names them, in the order they're enrolled.
-pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
+/// vault's target names them, in the order they're enrolled. Carrying on,
+/// the disk is opened as it was left rather than wiped and laid out.
+pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
     let mut steps = opening();
     steps.push(Box::new(system::CheckFirmware));
     steps.push(Box::new(disk::ConfirmDisk));
-    steps.push(Box::new(disk::LayOutDisk));
+    match start {
+        Start::Afresh => steps.push(Box::new(disk::LayOutDisk)),
+        Start::CarryingOn => steps.push(Box::new(disk::OpenStoppedInstall {
+            yubikeys: yubikeys.to_vec(),
+        })),
+    }
     for name in yubikeys {
         steps.push(Box::new(keys::EnrolYubikey::new(name)));
     }

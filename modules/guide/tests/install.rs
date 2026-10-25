@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use guide::fake::Fake;
-use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
+use guide::install::disk::{ConfirmDisk, LayOutDisk, OpenStoppedInstall, WipeInstallKey};
 use guide::install::keys::{EnrolYubikey, NAMED, NameYubikeys, Named};
 use guide::install::memory::{self, RunFromMemory};
 use guide::install::system::{
@@ -19,7 +19,8 @@ use guide::install::system::{
 };
 use guide::install::vault::OpenVault;
 use guide::install::{
-    INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, SYSTEM_CACHE, TARGET, Target, VAULT_KEY,
+    INSTALL_KEY, MOUNT_SCRIPT, RECOVERY_KEY, STICK_VAULT, SYSTEM_CACHE, Start, TARGET, Target,
+    VAULT_KEY,
 };
 use guide::rescue::{self, Bundle};
 use guide::vault::store::{Directory, Store};
@@ -707,6 +708,185 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
     ));
 }
 
+#[test]
+fn the_install_key_coming_off_takes_the_journals_copy_with_it() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-copy-goes");
+    let mut fake = stick(&scratch, &target);
+    fake.prints(
+        Tool::Cryptsetup,
+        &DUMP,
+        fixture!("luks-dump-installed.json"),
+    );
+    fake.journal()
+        .keep_a_copy(std::path::Path::new("/mnt/boot/guide/install-journal"))
+        .unwrap();
+    // Every slot a token's and the key forgotten, but the copy still says
+    // an install is under way: not done until it goes.
+    let step = WipeInstallKey { yubikeys: 2 };
+    assert!(matches!(
+        step.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    Journey::attempt(&step, &mut fake, &Answers::new()).unwrap();
+    assert_eq!(fake.journal().copy(), None);
+}
+
+const DUMP: [&str; 3] = [
+    "luksDump",
+    "--dump-json-metadata",
+    "/dev/disk/by-partlabel/system",
+];
+
+#[test]
+fn carrying_on_opens_the_disk_as_it_was_left_rather_than_wiping_it() {
+    let afresh: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
+        .iter()
+        .map(|step| step.id())
+        .collect();
+    let carrying_on: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::CarryingOn)
+        .iter()
+        .map(|step| step.id())
+        .collect();
+    assert!(!carrying_on.contains(&"lay-out-disk"), "{carrying_on:?}");
+    let opened = carrying_on
+        .iter()
+        .position(|id| *id == "open-stopped-install")
+        .unwrap();
+    assert_eq!(
+        afresh.iter().position(|id| *id == "lay-out-disk"),
+        Some(opened)
+    );
+    assert_eq!(afresh.len(), carrying_on.len());
+}
+
+/// A stick on a disk an install stopped on: the volume there but shut,
+/// with this header.
+fn stopped_with(scratch: &std::path::Path, target: &Target, header: &str) -> Fake {
+    let mut fake = stick_carrying(scratch, target, &[(MOUNT_SCRIPT, b"mount it")]);
+    lsblk(&mut fake, fixture!("lsblk-blank.json"));
+    fake.link("/dev/disk/by-partlabel/system", None)
+        .prints(Tool::Cryptsetup, &DUMP, header);
+    fake
+}
+
+/// The same, its header as it was before the install key came off.
+fn stopped_on(scratch: &std::path::Path, target: &Target) -> Fake {
+    stopped_with(scratch, target, fixture!("luks-dump-before-wipe.json"))
+}
+
+fn first_credential() -> String {
+    guide::observe::luks::parse(fixture!("luks-dump-before-wipe.json"))
+        .unwrap()
+        .credentials()[0]
+        .to_string()
+}
+
+#[test]
+fn a_stopped_install_asks_for_the_key_it_proved_opens_the_disk() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-stopped-asks");
+    let mut fake = stopped_on(&scratch, &target);
+    let step = OpenStoppedInstall {
+        yubikeys: target.yubikeys.clone(),
+    };
+    // With no key proven, either may be the one.
+    let Standing::Needed { asks } = step.observe(&mut fake).unwrap() else {
+        panic!("the disk is still to open")
+    };
+    let said = format!("{asks:?}");
+    assert!(said.contains("Plug in the Nano or the 5C"), "{said}");
+
+    fake.journal()
+        .record("enrol-nano", &format!("opened:{}", first_credential()))
+        .unwrap();
+    let Standing::Needed { asks } = step.observe(&mut fake).unwrap() else {
+        panic!("the disk is still to open")
+    };
+    let said = format!("{asks:?}");
+    assert!(
+        said.contains("Plug in the Nano, which opened the disk"),
+        "{said}"
+    );
+    assert!(said.contains("the Nano's PIN"), "{said}");
+}
+
+#[test]
+fn a_stopped_install_no_key_opens_can_only_start_again() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-stopped-shut");
+    let mut header: serde_json::Value =
+        serde_json::from_str(fixture!("luks-dump-before-wipe.json")).unwrap();
+    header["tokens"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|_, token| token["type"] != "systemd-fido2");
+    let mut fake = stopped_with(&scratch, &target, &header.to_string());
+    let standing = OpenStoppedInstall {
+        yubikeys: target.yubikeys.clone(),
+    }
+    .observe(&mut fake)
+    .unwrap();
+    assert!(
+        matches!(&standing, Standing::Blocked { remedy, .. } if remedy.contains("install it again")),
+        "{standing:?}"
+    );
+}
+
+#[test]
+fn a_stopped_install_gets_a_new_install_key_through_a_yubikey_then_is_mounted() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-stopped-opens");
+    let mut fake = stopped_on(&scratch, &target);
+    plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+    let enrol = [
+        "--unlock-fido2-device=/dev/hidraw1",
+        "--wipe-slot=password",
+        "--password",
+        "/dev/disk/by-partlabel/system",
+    ];
+    fake.prints(Tool::SystemdCryptenroll, &enrol, "")
+        .prints(Tool::Bash, &["/run/guide/mount"], "")
+        .prints(Tool::Udevadm, &["settle"], "");
+    let mut answers = Answers::new();
+    answers.give("plugged", Answer::Done);
+    answers.give("pin", Answer::Secret(Secret::new("123456".into())));
+    OpenStoppedInstall {
+        yubikeys: target.yubikeys.clone(),
+    }
+    .run(&mut fake, &answers)
+    .unwrap();
+
+    // The new key held before it's enrolled, given as cryptenroll reads a
+    // new password, and the PIN under both names systemd reads it by.
+    let key = String::from_utf8(fake.holds(INSTALL_KEY).unwrap().to_vec()).unwrap();
+    assert_eq!(key.len(), 64, "{key}");
+    assert!(
+        fake.secrets.contains(&("NEWPASSWORD".into(), key.clone())),
+        "{:?}",
+        fake.secrets
+    );
+    for name in ["cryptsetup.fido2-pin", "cryptenroll.fido2-pin"] {
+        assert!(
+            fake.secrets.contains(&(name.into(), "123456".into())),
+            "{:?}",
+            fake.secrets
+        );
+    }
+    assert_eq!(fake.holds("/run/guide/mount"), Some(b"mount it".as_slice()));
+    let at = |call: &str| fake.calls.iter().position(|made| made.starts_with(call));
+    assert!(
+        at("systemd-cryptenroll").unwrap() < at("bash /run/guide/mount").unwrap(),
+        "{:#?}",
+        fake.calls
+    );
+    assert!(!wiped(&fake), "{:#?}", fake.calls);
+    assert_eq!(
+        fake.journal().copy(),
+        Some(std::path::Path::new("/mnt/boot/guide/install-journal"))
+    );
+}
+
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
 const DB: &str = "/sys/firmware/efi/efivars/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f";
 const SBCTL: &str = "/mnt/var/lib/sbctl";
@@ -899,7 +1079,7 @@ fn a_firmware_that_wont_take_the_keys_stops_the_install_before_the_disk_is_touch
         Standing::Blocked { .. }
     ));
 
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()])
+    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
         .iter()
         .map(|step| step.id())
         .collect();
@@ -1044,7 +1224,7 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
         Standing::Blocked { .. }
     ));
 
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()])
+    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
         .iter()
         .map(|step| step.id())
         .collect();
@@ -1300,7 +1480,7 @@ fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
 
 #[test]
 fn the_stick_is_made_the_machines_own_only_once_the_machine_is_finished() {
-    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()])
+    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()], Start::Afresh)
         .iter()
         .map(|step| step.id())
         .collect();
@@ -1392,6 +1572,9 @@ fn the_recovery_key_is_seven_words_held_before_theyre_enrolled_then_marked_as_on
     };
     assert!(at("writing /run/guide/recovery-key") < at("systemd-cryptenroll"));
     assert!(at("systemd-cryptenroll") < at("cryptsetup token import"));
+    // New words mean a bundle sealed to any before them goes, as after a
+    // restart lost them, so the next step seals it to these.
+    assert!(at(&format!("removing {BUNDLE}")) < at("writing /run/guide/recovery-key"));
 }
 
 #[test]
@@ -1407,6 +1590,11 @@ fn a_recovery_key_cut_short_keeps_its_words_and_enrols_no_second_slot() {
         .prints(Tool::Cryptsetup, &IMPORT, "");
     MakeRecoveryKey.run(&mut fake, &Answers::new()).unwrap();
     assert_eq!(fake.holds(RECOVERY_KEY), Some(held.as_bytes()));
+    assert!(
+        !fake.calls.iter().any(|call| call.contains(BUNDLE)),
+        "{:#?}",
+        fake.calls
+    );
     assert!(
         !fake
             .calls

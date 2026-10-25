@@ -5,8 +5,11 @@
 //! and the first one built. Any stick does this, since it needs nothing
 //! from the machine's own repository: the disk says what it is.
 
-use crate::install::ROOT;
+use std::collections::BTreeSet;
+
 use crate::install::disk::described;
+use crate::install::{BOOT_JOURNAL, ROOT};
+use crate::journal::{self, Fact};
 use crate::observe::disks::{self, Disk, Kind};
 use crate::observe::luks;
 use crate::tool::Path;
@@ -77,22 +80,87 @@ pub fn the_machine(machine: &mut dyn Machine) -> Result<Result<Found, Standing>,
 /// own confirmation still asks for the name typed back before any wipe.
 pub const ALREADY_THERE: &[&str] = &["Recover it", "Install it again, wiping the disk"];
 
+/// What it offers when the disk holds this machine's install, stopped part
+/// way: to carry it on, or to start again.
+pub const STOPPED: &[&str] = &["Carry it on", "Start again, wiping the disk"];
+
+/// Where the stick reads a disk's boot partition, before anything on the
+/// disk is opened.
+const BOOT: &str = "/run/guide/boot";
+
+/// What a disk here holds that a machine's own stick asks about before it
+/// installs.
+#[derive(Debug, PartialEq, Eq)]
+pub enum AlreadyThere {
+    /// A machine, to recover or install over.
+    Machine { question: String },
+    /// This machine's install, stopped part way, on this disk, with what its
+    /// journal's copy knew.
+    Stopped {
+        question: String,
+        disk: String,
+        facts: BTreeSet<Fact>,
+    },
+}
+
+/// What the copy of an install's journal on a disk's boot partition says,
+/// when the partition holds one: read with the partition mounted read-only
+/// and let go again, so nothing on the disk changes.
+fn stopped_install(
+    machine: &mut dyn Machine,
+    found: &Found,
+) -> Result<Option<BTreeSet<Fact>>, Fault> {
+    let boot = format!("/dev/disk/by-partlabel/{}-boot", found.name);
+    let mounted = machine.run(Tool::Mount, &["-o", "ro,X-mount.mkdir", &boot, BOOT])?;
+    if mounted.status != 0 {
+        return Ok(None);
+    }
+    let copy = format!("{BOOT}/{BOOT_JOURNAL}");
+    let read = machine.read(&copy);
+    machine.run(Tool::Umount, &[BOOT])?.ok()?;
+    match read? {
+        Some(bytes) => Ok(Some(journal::facts_in(
+            &String::from_utf8_lossy(&bytes),
+            &format!("{}'s install journal", described(&found.disk)),
+        )?)),
+        None => Ok(None),
+    }
+}
+
 /// Whether a machine's own stick should ask before installing: when a disk
-/// here already holds a machine and the install hasn't yet been confirmed
-/// onto it this boot, the question to ask; otherwise none, and the install
-/// goes on as it would.
-pub fn already_there(machine: &mut dyn Machine, installing: &str) -> Result<Option<String>, Fault> {
+/// here already holds a machine or a stopped install, and the install
+/// hasn't yet been confirmed onto it this boot, what to ask; otherwise
+/// nothing, and the install goes on as it would. A stopped install is only
+/// this machine's when its journal says the disk was laid out for it.
+pub fn already_there(
+    machine: &mut dyn Machine,
+    installing: &str,
+) -> Result<Option<AlreadyThere>, Fault> {
     let found = machines(machine)?;
     let confirmed = found
         .iter()
         .any(|found| machine.journal().knows("confirm-disk", &found.disk.path));
-    Ok(match found.first() {
-        Some(found) if !confirmed => Some(format!(
+    let Some(found) = found.first().filter(|_| !confirmed) else {
+        return Ok(None);
+    };
+    if let Some(facts) = stopped_install(machine, found)?
+        && facts.contains(&("lay-out-disk".into(), installing.into()))
+    {
+        return Ok(Some(AlreadyThere::Stopped {
+            question: format!(
+                "The install of {installing} onto {} stopped before it finished. Carry it on from where it stopped, or start again, wiping the disk?",
+                described(&found.disk)
+            ),
+            disk: found.disk.path.clone(),
+            facts,
+        }));
+    }
+    Ok(Some(AlreadyThere::Machine {
+        question: format!(
             "This computer's disk already holds a machine: {}. Recover it, or install {installing} on it again?",
             described(&found.disk)
-        )),
-        _ => None,
-    })
+        ),
+    }))
 }
 
 /// The machine found, shown to the person before any secret is typed for

@@ -198,6 +198,7 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     )
     .unwrap();
     fs::write(payload.join("layout.sh"), "").unwrap();
+    fs::write(payload.join("mount.sh"), "").unwrap();
     let step = WriteStick::new(
         image(&directory),
         Some(guide::host::Payload::open(&payload).unwrap()),
@@ -257,6 +258,7 @@ fn payload(directory: &Path, target: &str) -> guide::host::Payload {
     fs::create_dir_all(payload.join("cache")).unwrap();
     fs::write(payload.join("target.json"), target).unwrap();
     fs::write(payload.join("layout.sh"), "").unwrap();
+    fs::write(payload.join("mount.sh"), "").unwrap();
     guide::host::Payload::open(&payload).unwrap()
 }
 
