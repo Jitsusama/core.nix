@@ -25,7 +25,7 @@ let
     // properties;
   };
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "pebble-x-plus";
 
   nodes.machine = {
@@ -42,12 +42,5 @@ pkgs.testers.runNixOSTest {
     ];
   };
 
-  # What VM tests' scripts share (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./pebble-x-plus-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./pebble-x-plus-vm-test.py;
 }

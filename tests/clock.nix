@@ -11,7 +11,7 @@ let
   # What the tests need from Nix, in one file, their `values` fixture.
   values = pkgs.writeText "clock-values.json" (builtins.toJSON { inherit silent; });
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "clock";
 
   nodes.server = {
@@ -40,13 +40,6 @@ pkgs.testers.runNixOSTest {
       systemd.services.systemd-timesyncd.wantedBy = lib.mkForce [ ];
     };
 
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./clock-vm-test.py}", values="${values}")
-  '';
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of these lines would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./clock-vm-test.py;
+  inherit values;
 }

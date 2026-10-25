@@ -30,7 +30,7 @@ let
   # fixture.
   values = pkgs.writeText "speakers-values.json" (builtins.toJSON { inherit speakers headphones; });
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "speakers";
 
   nodes.machine = {
@@ -47,17 +47,6 @@ pkgs.testers.runNixOSTest {
     ];
   };
 
-  # What VM tests share, and pytest, which runs these tests (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
-  # PYTEST_ADDOPTS='-k ceiling' runs only the limiter's test.
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./speakers-vm-test.py}", values="${values}")
-  '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./speakers-vm-test.py;
+  inherit values;
 }

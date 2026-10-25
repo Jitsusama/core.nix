@@ -22,7 +22,7 @@ let
     }
   );
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shutdown";
 
   nodes.machine =
@@ -35,13 +35,6 @@ pkgs.testers.runNixOSTest {
       systemd.services.shutdown-status.environment.PLYMOUTH = lib.mkForce "${plymouth}";
     };
 
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./shutdown-vm-test.py}", values="${values}")
-  '';
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of these lines would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./shutdown-vm-test.py;
+  inherit values;
 }

@@ -12,7 +12,7 @@ let
     builtins.toJSON { standIn = "${./desk-light-stand-in.py}"; }
   );
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "desk-lights";
 
   nodes.machine = {
@@ -24,15 +24,6 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ pkgs.python3 ];
   };
 
-  # What VM tests' scripts share (tests/lib), vm_pytest among them.
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./desk-lights-vm-test.py}", values="${values}")
-  '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of these lines would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./desk-lights-vm-test.py;
+  inherit values;
 }

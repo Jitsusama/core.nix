@@ -21,7 +21,7 @@ let
     doCheck = false;
   } (builtins.readFile ./passkey.py);
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "linux-id";
 
   nodes.machine = {
@@ -46,13 +46,6 @@ pkgs.testers.runNixOSTest {
     ];
   };
 
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./linux-id-vm-test.py}", values="${values}")
-  '';
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of these lines would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./linux-id-vm-test.py;
+  inherit values;
 }

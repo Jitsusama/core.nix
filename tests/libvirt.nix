@@ -7,7 +7,7 @@
 # so a stop often finds the thread still waiting, and ten leave the old code
 # next to no way through. The script is libvirt-vm-test.py.
 { self, pkgs }:
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "libvirt";
 
   nodes.machine = {
@@ -17,12 +17,5 @@ pkgs.testers.runNixOSTest {
     virtualisation.cores = 2;
   };
 
-  # What VM tests' scripts share, and pytest, which runs this one's tests (tests/lib).
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./libvirt-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./libvirt-vm-test.py;
 }

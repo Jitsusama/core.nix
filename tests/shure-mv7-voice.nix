@@ -11,7 +11,7 @@
 # at that level comes up the full 12. The headset should be heard as played.
 # The script is shure-mv7-voice-vm-test.py.
 { pkgs }:
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shure-mv7-voice";
 
   nodes.machine = {
@@ -21,12 +21,5 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ pkgs.sox ];
   };
 
-  # What VM tests' scripts share (tests/lib), vm_pytest among them.
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./shure-mv7-voice-vm-test.py}")'';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, so the driver's check of this one line would add only
-  # its time.
-  skipTypeCheck = true;
+  tests = ./shure-mv7-voice-vm-test.py;
 }

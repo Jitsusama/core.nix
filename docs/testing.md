@@ -167,18 +167,19 @@ they run in milliseconds.
 
 Its tests are Python in a file of their own, `tests/<name>-vm-test.py`: test
 functions that pytest runs inside the driver, through
-`tests/lib/vm_pytest.py`, with `vm-helpers.nix` in the test's
-`extraPythonPackages`. Its `testScript` is the one line
-`import vm_pytest; vm_pytest.run(globals(), "${./<name>-vm-test.py}")`,
-with `skipTypeCheck = true`, since ruff and mypy read the file as strictly
-as any other Python when `nix fmt` runs them, against the driver's own
-types. `tests/lid-vm-test.py` is a small one to copy.
+`tests/lib/vm_pytest.py`. The test's Nix calls `tests/lib/pytest-vm-test.nix`
+in place of `runNixOSTest`, naming its machines and `tests = ./<name>-vm-test.py`,
+and the helper gives it the rest: the shared Python, the line that hands the
+file to pytest, and no driver type check, since ruff and mypy read the file
+as strictly as any other Python when `nix fmt` runs them, against the
+driver's own types. `tests/lid.nix` and `tests/lid-vm-test.py` are a small
+pair to copy.
 The driver's machines are fixtures (`machine`, `machines`, `driver`), and
 each state a test starts from, booted or with the network let down, is a
 fixture of its own, made once a run however many tests ask for it. What
-the tests need from Nix is one JSON file, handed to `run` as `values=`,
-which a test reads parsed through the `values` fixture, as
-`tests/signing.nix` does. Each
+the tests need from Nix is one JSON file, the helper's `values`, or a
+function of the test's nodes giving it, which a test reads parsed through
+the `values` fixture, as `tests/signing.nix` does. Each
 test is one of the driver's subtests in the log, named by its docstring's
 first line, so a test runs alone, after only what it asks for. A program
 the test runs on the machine is a file beside it too, never a script in a

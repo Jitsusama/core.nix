@@ -11,7 +11,7 @@ let
   # What the tests need of the above, as their values fixture.
   values = pkgs.writeText "gnome-keyring-values.json" (builtins.toJSON { inherit runtime; });
 in
-pkgs.testers.runNixOSTest {
+import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "gnome-keyring";
 
   nodes.machine = {
@@ -40,15 +40,6 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # What VM tests share (tests/lib), pytest and its runner among them.
-  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
-
-  # pytest runs the tests inside the driver, with the values as their fixture.
-  testScript = ''
-    import vm_pytest
-    vm_pytest.run(globals(), "${./gnome-keyring-vm-test.py}", values="${values}")
-  '';
-  # nix fmt holds the tests and vm_pytest to mypy --strict against the
-  # driver's own types, which the driver's lighter check can't find.
-  skipTypeCheck = true;
+  tests = ./gnome-keyring-vm-test.py;
+  inherit values;
 }
