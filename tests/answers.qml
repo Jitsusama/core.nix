@@ -800,10 +800,11 @@ QtObject {
         machine("no codec", Links.codec(undefined), null);
         machine("what music's codec carries", Links.carried({ "api.bluez5.profile": "a2dp-sink",
             "node.rate": "1/44100" }, 2), { profile: "music", rate: "44.1 kHz",
-            channels: "2, stereo" });
+            channels: "stereo" });
         machine("what a call's codec carries", Links.carried({
             "api.bluez5.profile": "headset-head-unit", "audio.rate": 16000,
-            "audio.channels": 1 }, 0), { profile: "calls", rate: "16 kHz", channels: "1, mono" });
+            "audio.channels": 1 }, 0), { profile: "calls", rate: "16 kHz", channels: "mono" });
+        machine("six channels", Links.carried({ "audio.channels": 6 }, 0).channels, "6 channels");
         machine("a node saying nothing", Links.carried(null, 0),
             { profile: "", rate: "", channels: "" });
         machine("an old reader's link has its one read", Links.signals(btClassic), [0.85]);

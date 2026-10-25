@@ -338,16 +338,17 @@ Provider {
         });
     }
 
-    // The codec a connected device's sound goes in, holding what it's for,
-    // its sample rate and its channels, as far as PipeWire says them.
+    // The codec a connected device's sound goes in, holding its sample rate
+    // and its channels, as far as PipeWire says them. What it's for, music
+    // or calls, is Sound's Profile, so it isn't said twice; the codec's
+    // note says when it's a call's.
     function codecRow(device) {
         const node = device.connected ? soundNode(device) : null;
         const sent = node ? Links.codec(node.properties["api.bluez5.codec"]) : null;
         if (sent === null)
             return null;
         const carried = Links.carried(node.properties, node.audio?.channels?.length ?? 0);
-        const parts = [["profile", carried.profile], ["rate", carried.rate],
-            ["sound-channels", carried.channels]].filter(each => each[1] !== "")
+        const parts = [["rate", carried.rate], ["sound-channels", carried.channels]].filter(each => each[1] !== "")
             .map(each => saying({
                 key: `bluetooth:${device.address}:${each[0]}`,
                 name: Words.name(`bluetooth:${each[0]}`),

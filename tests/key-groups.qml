@@ -101,8 +101,10 @@ QtObject {
             for (const row of rows)
                 for (const at of row.places)
                     expect(`${layer}'s ${binds[at].chord} ${binds[at].when}, its row`,
-                        [row.chord, row.does, KeyGroups.groupOf(layer, row)],
-                        [binds[at].chord, binds[at].does, KeyGroups.groupOf(layer, binds[at])]);
+                        [[row.chord].concat(row.also).some(chord => JSON.stringify(chord)
+                            === JSON.stringify(binds[at].chord)), row.does,
+                            KeyGroups.groupOf(layer, row)],
+                        [true, binds[at].does, KeyGroups.groupOf(layer, binds[at])]);
             const arranged = KeyGroups.arrange(layer, rows);
             const listed = {};
             const places = placed(arranged, layer, counts, listed);
@@ -137,6 +139,19 @@ QtObject {
             { chord: "x", does: "X", keys: "x", when: "walking the outline" },
             { chord: "x", does: "X", keys: "x", when: "in the outline" }
         ]).map(row => row.when), ["in the outline or walking the outline"]);
+        // Two chords doing one thing in one place are one row, the first
+        // drawn and the other said; in another place, a row of their own.
+        const twins = KeyGroups.merged("desktop", [
+            { chord: "Super+L", does: "Lock the screen", keys: "super+l", when: "" },
+            { chord: "XF86ScreenSaver", does: "Lock the screen", keys: "xf86screensaver",
+                when: "" }
+        ]);
+        expect("two chords for one act, one row",
+            twins.map(row => [row.chord, row.also]), [["Super+L", ["XF86ScreenSaver"]]]);
+        expect("elsewhere, a row of its own", KeyGroups.merged("neovim", [
+            { chord: "Space g c Return", does: "Commit", keys: "space g c return", when: "" },
+            { chord: "c c", does: "Commit", keys: "c c", when: "in git's status" }
+        ]).length, 2);
 
         // The desktop's chords where Joel would look for them.
         const desktop = {};
@@ -240,7 +255,8 @@ QtObject {
                 "Super+E": "desktop/typing",
                 "Super+D": "desktop/typing",
                 "Ctrl+Print": "desktop/capture",
-                "Super+Print": "desktop/capture/sharing",
+                // Eight rows once Print and Super+P are one, so read whole.
+                "Super+Print": "desktop/capture",
                 "XF86AudioPlay": "desktop/sound"
             },
             neovim: {

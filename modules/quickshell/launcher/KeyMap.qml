@@ -58,10 +58,22 @@ Provider {
     // How much of a hidden word finds it, short of the whole word.
     readonly property int hiddenFrom: 4
 
+    // A chord as words: its keys joined by +, those pressed one after
+    // another a space apart, as the launcher's foot says them. One the key
+    // map gives as a string is already words.
+    function spelled(chord) {
+        if (typeof chord === "string")
+            return chord;
+        return (chord ?? []).map((key, index) => index === 0 ? key.text
+            : `${key.after === true ? " " : "+"}${key.text}`).join("");
+    }
+
     // A chord, as its row.
     function chordRow(layer, bind, glyph) {
         return member({
-            key: `shortcut:${layer.name}:${bind.does}`,
+            // One act in two places is two rows, each its own key.
+            key: bind.when ? `shortcut:${layer.name}:${bind.does}:${bind.when}`
+                : `shortcut:${layer.name}:${bind.does}`,
             // What it does, by its first word, as the desktop's own are.
             verb: bind.run.length > 0 ? bind.does.split(" ")[0].toLowerCase() : "close",
             name: bind.does,
@@ -69,7 +81,10 @@ Provider {
             glyph: glyph === "" ? bind.glyph : glyph,
             hue: layer.name === "desktop" || layer.name === "touchscreen" ? "action" : "program",
             chord: bind.chord,
-            note: bind.when ? `${places[layer.name]}, ${bind.when}` : places[layer.name],
+            note: [bind.when ? `${places[layer.name]}, ${bind.when}` : places[layer.name]]
+                .concat((bind.also ?? []).length > 0
+                    ? [`also ${bind.also.map(chord => spelled(chord)).join(", ")}`] : [])
+                .join("; "),
             // Acts on the screen, so it waits for the launcher to be gone.
             later: true,
             run: () => {
