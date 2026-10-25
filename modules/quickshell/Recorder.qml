@@ -43,7 +43,7 @@ Singleton {
     // never sees, as its recording says it while it runs: its process, the
     // file that asks it to stop, and where it goes. Joel recorded one and
     // saw only the camera in use, never that it was recording.
-    readonly property var camera: cameraRecording.said
+    readonly property var camera: cameraAlive.said
     readonly property bool recording: casts.length > 0 || camera !== null
     // Whether a recording can be stopped from here, which takes its process.
     readonly property bool stoppable: camera !== null
@@ -68,9 +68,12 @@ Singleton {
 
     function stop(): void {
         // As the viewfinder's Return does: asked to stop, then told, so
-        // the recording finishes its file.
+        // the recording finishes its file. Told only if its process is
+        // still the recording's, since a file left by one killed outright
+        // can name a process number another program has since been given.
         if (camera !== null)
-            Niri.spawn(["sh", "-c", ': > "$1"; kill -INT "$2"', "recorder", camera.stop,
+            Niri.spawn(["sh", "-c", ': > "$1"; case $(cat /proc/$2/comm 2>/dev/null) in'
+                + ' *ffmpeg*) kill -INT "$2" ;; esac', "recorder", camera.stop,
                 String(camera.pid)]);
         for (const cast of casts) {
             const pid = recorderOf(cast);
@@ -155,6 +158,21 @@ Singleton {
                 said = null;
             }
         }
+        onLoadFailed: said = null
+    }
+
+    // The camera's recording, believed only while its process lives: one
+    // killed outright never takes its file back.
+    FileView {
+        id: cameraAlive
+        property var said: null
+        path: cameraRecording.said === null ? "" : `/proc/${cameraRecording.said.pid}/comm`
+        printErrors: false
+        onPathChanged: {
+            if (path === "")
+                said = null;
+        }
+        onLoaded: said = cameraRecording.said
         onLoadFailed: said = null
     }
 

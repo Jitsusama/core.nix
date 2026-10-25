@@ -284,24 +284,8 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     camera.saved("esc")
     camera.gone()
 
-    # While it records, the shell says so, and Capture's Stop recording stops it as Return
-    # would; the viewfinder takes the camera back.
-    state = "/run/user/1000/camera-recording.json"
-    camera.viewfinder("video from the camera")
-    machine.send_key("ret")
-    retry(lambda last: camera.recording(3, last), timeout=WAKING)
-    machine.succeed(f"test -s {state}")
-    desktop.capture()
-    desktop.type_in("stop", selecting="Stop recording")
-    assert desktop.showing()["selected"]["side"] == "a video from the camera"
-    with desktop.told("shows card Video saved", timeout=WAKING):
-        machine.send_key("ret")
-    machine.wait_until_fails(f"test -e {state}", timeout=timedelta(seconds=10))
-    machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
-    machine.send_key("esc")
-    camera.gone()
     streams = camera.probe("stream=codec_name", f"{camera.videos}/*.mp4")
-    assert streams.split() == ["h264", "aac"] * 3
+    assert streams.split() == ["h264", "aac"] * 2
 
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.
@@ -310,6 +294,50 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     )
     picture = machine.succeed(f"ls {camera.pictures}/*.jpg | head -1").strip()
     assert camera.likeness(picture, "") > camera.likeness(picture, "hflip,") + 3
+
+
+def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
+    desktop: Desktop,
+) -> None:
+    """A camera video shows as recording, and Capture's Stop recording stops it."""
+    camera = Camera(desktop)
+    machine = desktop.machine
+    state = "/run/user/1000/camera-recording.json"
+    videos = int(machine.succeed(f"ls {camera.videos}/*.mp4 2>/dev/null | wc -l"))
+
+    def marked(rest: str) -> bool:
+        return any(glyph["mark"] == "recording" for glyph in json.loads(rest))
+
+    camera.viewfinder("video from the camera")
+    since = desktop.mark()
+    machine.send_key("ret")
+    retry(lambda last: camera.recording(videos + 1, last), timeout=WAKING)
+    machine.succeed(f"test -s {state}")
+    # The margin wears recording's mark while it records, as for the screen.
+    desktop.reported("sets margin ", marked, since)
+    desktop.capture()
+    desktop.type_in("stop", selecting="Stop recording")
+    assert desktop.showing()["selected"]["side"] == "a video from the camera"
+    since = desktop.mark()
+    # It stops as Return would, and the viewfinder takes the camera back.
+    with desktop.told("shows card Video saved", timeout=WAKING):
+        machine.send_key("ret")
+    machine.wait_until_fails(f"test -e {state}", timeout=timedelta(seconds=10))
+    # And the mark goes once the recording's file does.
+    desktop.reported("sets margin ", lambda rest: not marked(rest), since)
+    machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
+    machine.send_key("esc")
+    camera.gone()
+    # One killed outright leaves its file behind, and its process gone says it isn't recording.
+    desktop.as_account(
+        f"""echo '{{"pid":999999,"stop":"/tmp/stop","file":"/tmp/v.mp4"}}' > {state}"""
+    )
+    desktop.capture()
+    desktop.launcher_until(lambda shown: "A region" in shown["rows"])
+    assert "Stop recording" not in desktop.showing()["rows"], desktop.showing()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm {state}")
 
 
 def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
