@@ -357,47 +357,73 @@ let
     right = nerd "f073f";
   };
 
-  # The glyph an action wears in the launcher, by what it runs.
+  # The glyph an action wears in the launcher, by what it runs: the theme's
+  # mark for what it acts on, so a chord wears its group's mark in
+  # Shortcuts (Windows, Columns, Workspaces) and a screenshot the camera
+  # Capture's own rows wear. The terminal wears its program's logo, as
+  # programs do.
   actionGlyph =
     run:
     let
       program = if run == [ ] then "" else lib.head run;
       action = if program == "niri" then lib.elemAt run 3 else "";
       says = lib.concatStringsSep " " run;
+      mark = name: config.jitsusama.theme.glyphs.${name}.glyph;
+      asks = word: program == "qs" && lib.elem word run;
     in
     if lib.hasInfix "kitty" says then
       nerd "f489"
     else if lib.hasPrefix "screenshot" action then
-      nerd "f0e51"
+      mark "capture"
     # What the margin shows while the screen is recorded.
-    else if program == "qs" && lib.elem "recording" run then
-      config.jitsusama.theme.glyphs.recording.glyph
+    else if asks "recording" then
+      mark "recording"
     # What the margin shows while the screen is shared.
     else if lib.hasInfix "dynamic-cast" action then
-      config.jitsusama.theme.glyphs.sharing.glyph
+      mark "sharing"
     else if lib.hasInfix "AUDIO_SOURCE" says then
-      nerd "f036d"
+      mark "muted"
     else if program == "sh" && lib.hasInfix "wpctl" says then
-      nerd "f057e"
+      mark "volume"
     else if program == "brightnessctl" then
-      nerd "f00e0"
-    else if program == "qs" && lib.elem "music" run then
-      nerd "f040e"
+      mark "brightness"
+    else if asks "music" then
+      mark "playing"
     else if lib.hasInfix "workspace" action || lib.hasInfix "overview" action then
-      nerd "f0570"
+      mark "workspace"
     else if lib.hasInfix "monitor" action then
-      nerd "f0379"
+      mark "display"
     # A collection's own glyph, as its row in the launcher wears
     # (launcher/words.json).
     else if program == "launcher-say" && lib.elem "collection" run then
       let
         named = lib.findFirst (thing: thing.id == lib.last run) { } launcher.words.things;
       in
-      config.jitsusama.theme.glyphs.${named.glyph or "shortcuts"}.glyph
-    else if program == "qs" && lib.elem "keyboard" run then
-      nerd "f030c"
+      mark (named.glyph or "shortcuts")
+    else if program == "launcher-say" then
+      mark "launcher"
+    else if asks "keyboard" || lib.hasInfix "keyboard-shortcuts" action then
+      mark "keyboard"
+    else if program == "dictation" then
+      mark "dictating"
+    else if asks "lock" then
+      mark "session"
+    else if asks "quiet" then
+      mark "quiet"
+    else if asks "notices" && lib.elem "putAway" run then
+      mark "dismiss"
+    else if asks "notices" then
+      mark "notifications"
+    else if action == "close-window" then
+      mark "close"
+    else if lib.hasInfix "floating" action then
+      mark "floating"
+    else if lib.hasInfix "fullscreen" action then
+      mark "fullscreen"
+    else if lib.hasInfix "column" action then
+      mark "columns"
     else
-      nerd "f2d0";
+      mark "windows";
 
   # The desktop's binds the launcher can run, its own toggle left out, since
   # picking that from the launcher would only close it.
