@@ -131,8 +131,8 @@ nix build --override-input core path:$HOME/src/core.nix \
 
 ## 📚 Documentation
 
-- [Architecture][3]: the vocabulary, how the pieces connect, and how to trace
-  any of them.
+- [Architecture][3]: how the pieces connect, and how to trace any of them.
+- [Glossary][14]: what every thing is called, one word for each.
 - [Conventions][4]: the rules the code follows.
 - [Modules][5]: adding a module or a role, and changing one from another
   repository.
@@ -161,3 +161,4 @@ nix build --override-input core path:$HOME/src/core.nix \
 [11]: docs/installing.md
 [12]: docs/ergodox.md
 [13]: docs/recovering.md
+[14]: docs/glossary.md

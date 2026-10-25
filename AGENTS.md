@@ -25,7 +25,8 @@ A file's name says its module system: `home.nix` (home-manager), `darwin.nix`
 (nix-darwin), `nixos.nix` (NixOS) or `system.nix` (both NixOS and
 nix-darwin). To learn how any file fits, search `flake.nix` for its path. The
 words machine, role, module, hardware, layer, identity and account have one
-meaning each; [docs/architecture.md][2] defines them.
+meaning each; [docs/glossary.md][15] defines them, and every other thing's
+name. A name for something new comes from it, or is added to it.
 
 ## Rules
 
@@ -111,8 +112,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 
 ## More
 
-- [docs/architecture.md][2]: the vocabulary, how the pieces connect, how to
-  trace them
+- [docs/architecture.md][2]: how the pieces connect, how to trace them
+- [docs/glossary.md][15]: what every thing is called, once
 - [docs/conventions.md][3]: the rules, with their reasons
 - [docs/modules.md][4]: adding a module or a role, and changing one from a
   machine repository
@@ -143,3 +144,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [12]: modules/guide/AGENTS.md
 [13]: modules/quickshell/AGENTS.md
 [14]: modules/spend-watch/AGENTS.md
+[15]: docs/glossary.md

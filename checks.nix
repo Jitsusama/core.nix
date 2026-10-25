@@ -697,6 +697,15 @@ gather (
           fi
           touch $out
         '';
+
+      # The glossary gives each thing one word and each word one thing
+      # (tests/glossary.py), printing each word to settle.
+      the-glossary-names-each-thing-once =
+        pkgs.runCommandLocal "the-glossary-names-each-thing-once" { }
+          ''
+            ${lib.getExe pkgs.python3} ${./tests/glossary.py} ${./docs/glossary.md}
+            touch $out
+          '';
     }
     # shell-preview shows the shell nested in a Wayland session, which only
     # Linux has.
