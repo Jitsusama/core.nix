@@ -43,7 +43,17 @@ let
         ])
       ]
       ++ lib.mapAttrsToList (variable: value: "export ${variable}=\"${value}\"") signer.environment
-      ++ [ (builtins.readFile ./sign.sh) ]
+      ++ [
+        (lib.concatStringsSep "\n" (
+          [ "agent_environment() {" ]
+          ++ lib.mapAttrsToList (variable: value: "  export ${variable}=\"${value}\"") signer.agentEnvironment
+          ++ [
+            "  :"
+            "}"
+          ]
+        ))
+        (builtins.readFile ./sign.sh)
+      ]
     );
   };
 in
@@ -100,6 +110,15 @@ in
                 Variables the ssh-keygen needs to reach the keys, each exported
                 in double quotes when the program runs, so a value may expand
                 another variable.
+              '';
+            };
+            agentEnvironment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              description = ''
+                Variables exported after the environment when the agent's key
+                signs, as the environment's are, so it can reach a key held
+                apart from Joel's, which no prompt of his holds up.
               '';
             };
           };

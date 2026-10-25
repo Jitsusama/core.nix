@@ -2,7 +2,8 @@
 # docs/installing.md does, and commits the ways he and his harnesses do. A
 # commit made over pipes is signed with the agent's key and asks nothing; one
 # made at a terminal is signed with Joel's key, after its PIN and a
-# confirmation; a refused confirmation leaves no commit. git verifies each
+# confirmation; a refused confirmation leaves no commit, and one left
+# unanswered holds up no harness's commit. git verifies each
 # signature against the key that should have made it, and trusts the signers
 # the module lists without losing how it signs. The tests are
 # signing-vm-test.py, run under pytest.
@@ -10,16 +11,13 @@
 let
   pin = "2468";
   runtime = "/run/user/1000";
-  # Answers the agent's prompts, as Joel does through the themed ones, and
-  # writes down each one it was asked. It refuses confirmations once told to.
-  askpass = pkgs.writeShellScript "askpass" ''
-    echo "''${SSH_ASKPASS_PROMPT:-pin}" >> ${runtime}/asked
-    if [ "''${SSH_ASKPASS_PROMPT:-}" = confirm ]; then
-      [ ! -e ${runtime}/refuse ]
-    else
-      echo ${pin}
-    fi
-  '';
+  # Answers the agent's prompts as Joel does, refusing or holding a
+  # confirmation when told to (signing-askpass.sh).
+  askpass = pkgs.writeShellScript "askpass" (
+    builtins.replaceStrings [ "@runtime@" "@pin@" ] [ runtime pin ] (
+      builtins.readFile ./signing-askpass.sh
+    )
+  );
   noPin = pkgs.writeShellScript "no-pin" "echo";
   # Another machine's key. The keys under test are only made once the machine
   # runs, so the test verifies against its own file; this one is what a

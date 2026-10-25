@@ -51,6 +51,8 @@ chmod +x "$work/stand-in"
   printf 'set -euo pipefail\n'
   printf 'name=sign real=%q joel_key=%q agent_key=%q makes_keys=se-keys\n' \
     "$work/stand-in" "$work/joel-signing" "$work/agent-signing"
+  # The agent's key needs nothing more to reach here.
+  printf 'agent_environment() {\n  :\n}\n'
   cat "$program"
 } > "$work/sign"
 chmod +x "$work/sign"
