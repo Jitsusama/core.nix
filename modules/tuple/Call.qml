@@ -51,23 +51,23 @@ Piece {
         : watching.length > 0 ? `${Log.company(watching).replace(/^with /, "")}, on camera`
         : Log.company(Tuple.others.map(who => first(who)))
     actions: rings ? [{
-        glyph: String.fromCodePoint(0xf03f2),
+        glyph: Theme.glyph.call,
         name: "Show the call",
         run: () => Tuple.show()
     }] : [{
-        glyph: String.fromCodePoint(0xf03f5),
+        glyph: Theme.glyph.hangUp,
         name: "Leave the call",
         run: () => Tuple.leave()
     }].concat(sharing ? [] : [{
-        glyph: String.fromCodePoint(0xf1483),
+        glyph: Theme.glyph.sharing,
         name: "Share the screen",
         run: () => Tuple.share()
     }], [{
-        glyph: String.fromCodePoint(Tuple.muted === true ? 0xf036c : 0xf036d),
+        glyph: Tuple.muted === true ? Theme.glyph.microphone : Theme.glyph.muted,
         name: Tuple.muted === true ? "Let them hear me again" : "Mute me in the call",
         run: () => Tuple.mute(Tuple.muted !== true)
     }], Tuple.room === "" ? [] : [{
-        glyph: String.fromCodePoint(0xf0339),
+        glyph: Theme.glyph.link,
         name: "Copy my room's link",
         run: () => Tuple.copyRoom()
     }])

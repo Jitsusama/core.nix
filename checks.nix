@@ -518,6 +518,33 @@ gather (
           touch $out
         '';
 
+      # Every surface draws its marks from the theme's table (modules/theme/
+      # glyphs.nix) by name, so no module but the theme's spells one of the
+      # table's code points itself: a surface that did would keep its mark when
+      # the table changes, and could drift from the mark the same idea wears
+      # elsewhere. A code point is caught as a script writes one, 0xf023 or an
+      # escape; tests spell what they expect to see, which is their job.
+      nothing-spells-a-mark =
+        pkgs.runCommandLocal "nothing-spells-a-mark" { nativeBuildInputs = [ pkgs.ripgrep ]; }
+          ''
+            cd ${./.}
+            codes=$(rg --only-matching --no-filename --replace '$1' 'nerd "([0-9a-fA-F]+)"' \
+              modules/theme/glyphs.nix | sort -u | paste -sd '|')
+            [ -n "$codes" ]
+            # ripgrep answers 0 for a match, 1 for none and 2 when it can't
+            # search, and only none passes.
+            status=0
+            rg --line-number --no-heading --hidden --ignore-case --glob '!modules/theme/**' \
+              -e "(0x|\\\\u\\{?|\\\\U000)0*($codes)\\b" modules roles hardware examples flake.nix \
+              || status=$?
+            if [ $status = 0 ]; then
+              echo "The lines above spell a mark the theme names; use the theme's mark instead."
+              exit 1
+            fi
+            [ $status = 1 ]
+            touch $out
+          '';
+
       # Quickshell's JavaScript lacks some of the language's newer methods, which
       # qmllint lets through and the shell fails on only as it runs, so the
       # shell's code calls none of them.

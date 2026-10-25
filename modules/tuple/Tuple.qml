@@ -104,7 +104,6 @@ Singleton {
     // call whose link was just copied; and copying his room's link once
     // it's known.
     readonly property var controls: {
-        const glyph = code => String.fromCodePoint(code);
         // Named and found as the launcher's vocabulary says (Words.qml),
         // never by the program's name, which only finds them.
         const said = (key, state, fill) => ({
@@ -116,7 +115,7 @@ Singleton {
         const rows = [];
         if (ringing !== "" && !calling)
             rows.push(Object.assign(said("tuple:ringing", "", { who: name(ringing) || "someone" }), {
-                glyph: glyph(0xf03f2),
+                glyph: Theme.glyph.call,
                 hue: "person",
                 note: "answer it in Tuple's window",
                 run: () => root.show()
@@ -124,27 +123,27 @@ Singleton {
         if (calling) {
             const quiet = muted === true;
             rows.push(Object.assign(said("tuple:mute", quiet ? "muted" : ""), {
-                glyph: glyph(quiet ? 0xf036c : 0xf036d),
+                glyph: quiet ? Theme.glyph.microphone : Theme.glyph.muted,
                 hue: "action",
                 later: true,
                 run: () => root.mute(!quiet)
             }));
             if (!casting)
                 rows.push(Object.assign(said("tuple:share"), {
-                    glyph: glyph(0xf1483),
+                    glyph: Theme.glyph.sharing,
                     hue: "action",
                     later: true,
                     run: () => root.share()
                 }));
             rows.push(Object.assign(said("tuple:leave"), {
-                glyph: glyph(0xf03f5),
+                glyph: Theme.glyph.hangUp,
                 hue: "action",
                 later: true,
                 run: () => root.leave()
             }));
         } else {
             rows.push(Object.assign(said("tuple:open"), {
-                glyph: glyph(0xf081c),
+                glyph: Theme.glyph.openRoom,
                 hue: "action",
                 note: "and copy its link to hand on",
                 later: true,
@@ -153,7 +152,7 @@ Singleton {
             const link = joinable;
             if (link !== "")
                 rows.push(Object.assign(said("tuple:join"), {
-                    glyph: glyph(0xf0659),
+                    glyph: Theme.glyph.joinCall,
                     hue: "action",
                     note: link.replace(/^https:\/\//, ""),
                     later: true,
@@ -162,7 +161,7 @@ Singleton {
         }
         if (room !== "")
             rows.push(Object.assign(said("tuple:link"), {
-                glyph: glyph(0xf0339),
+                glyph: Theme.glyph.link,
                 hue: "action",
                 note: room.replace(/^https:\/\//, ""),
                 run: () => root.copyRoom()
