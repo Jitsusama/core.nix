@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 # with other machines and builds, one reading took 30 seconds, and a
 # wait of 30 then fails before it can read twice.
 READING = timedelta(seconds=120)
+# The entry the boot starts, named as lanzaboote names generation 7's.
+CHOSEN = "nixos-generation-7-fixture"
 # The frame is two panels' widths and two heights of hairline, so a
 # few hundred pixels at the least.
 FRAMED = 400
@@ -217,6 +219,16 @@ def asking(machine: BaseMachine, values: dict[str, Any]) -> Boot:
         f"echo -n {boot.passphrase} | cryptsetup luksOpen -q /dev/vdb root",
         "mkfs.ext4 -q /dev/mapper/root",
         f"{boot.encrypted}/bin/switch-to-configuration boot",
+    )
+    # NixOS names its own entries by a hash of what they hold, so the next
+    # boot starts its entry under the name lanzaboote would give it, which
+    # carries the generation.
+    entry = boot.machine.succeed(
+        f"grep -l 'init={boot.encrypted}/init' /boot/loader/entries/nixos-*.conf",
+    ).strip()
+    boot.machine.succeed(
+        f"cp {entry} /boot/loader/entries/{CHOSEN}.conf",
+        f"bootctl set-oneshot {CHOSEN}.conf",
         "sync",
     )
     boot.machine.crash()
@@ -250,6 +262,12 @@ def test_the_theme_asks_for_the_disks_passphrase(asking: Boot) -> None:
     """The theme asks for the disk's passphrase."""
     asked = asking.photographed("asks")
     assert asking.alerting(asked) < FRAMED // 10, "the first ask is framed in alert"
+
+
+def test_the_splash_names_the_generation_the_boot_loader_started(asking: Boot) -> None:
+    """The splash names the generation the boot loader started."""
+    asking.machine.wait_for_text("generation 7", timeout=READING)
+    asking.photographed("generation")
 
 
 def test_each_key_shows_as_a_dot(asking: Boot) -> None:
@@ -470,7 +488,8 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
     # A service that takes its time to stop, and a program left out of
     # every unit's stop that outlasts the last stage's kill and, as
     # whatever bounds a shutdown would, says so a second later, once
-    # a splash that didn't survive the kill would have gone.
+    # a splash that didn't survive the kill would have gone. Until the
+    # kill it waits however long the shutdown takes to reach it.
     machine.succeed(
         "systemd-run --unit=slowstop -p Description='Slow Goodbye'"
         f" -p ExecStop='{sleep} 12' sleep infinity",
@@ -478,10 +497,16 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
         f"trap '{sleep} 1;"
         f" {opened.plymouth} update --status=leftovers;"
         f" exec {sleep} 25' TERM;"
-        f' {sleep} 25 & wait"',
+        f' {sleep} infinity & wait"',
     )
     mark = len(machine.get_console_log())
-    machine.reboot()
+    # Asked of systemd, as the launcher asks it: Ctrl+Alt+Delete is lost
+    # when it lands as the desktop takes the keyboard. It starts a few
+    # seconds on, once the test's shell has answered, since a shutdown
+    # ends that shell, and the connection is made again after, as the
+    # driver's own reboot leaves it.
+    machine.succeed("systemd-run --collect --on-active=5 systemctl reboot")
+    machine.connected = False
     # Every wait is bounded, so a restart that stalls fails here in
     # minutes rather than holding its VM until the hour is up.
     stopping = opened.photographs_until(
@@ -492,6 +517,10 @@ def test_a_restart_names_a_slow_stop_and_keeps_its_screen_to_the_end(opened: Boo
     )
     opened.showing(stopping, "waiting on Slow Goodbye", "stopping-slowly")
     opened.showing(last, "waiting on the last programs", "last-stage")
+    # A shutdown's splash is a new one, told the generation again: the
+    # boot's last frame says it too, so it's read beside what only the
+    # shutdown says.
+    opened.showing(stopping, r"(?s)(?=.*Slow Goodbye).*generation 7", "stopping-generation")
     # The test's machine ends at a restart rather than starting again.
     machine.wait_for_shutdown(timeout=timedelta(minutes=3))
     machine.start()

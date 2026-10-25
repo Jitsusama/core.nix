@@ -160,6 +160,11 @@ let
         lib.mapAttrsToList (key: text: lifted (file key) sans (points "sans" "large") text) under
       )}
       ${lifted (file "about") mono (points "mono" "small") about}
+      ${lifted (file "about-generation") mono (points "mono" "small") "${about}  ·  generation"}
+      ${lib.concatMapStrings (
+        digit: lifted (file "digit-${digit}") mono (points "mono" "small") digit
+      ) digits}
+      ${lifted (file "digits") mono (points "mono" "small") (lib.concatStrings digits)}
       ${framed (file "panel") roles.accent}
       ${framed (file "panel-urgent") roles.alert}
       # The lock's ink reaches past its cell, so it's drawn with room round
@@ -223,6 +228,11 @@ let
       inherit (config.boot.kernelPackages.kernel) version;
     in
     "NixOS ${release}  ·  Linux ${version}";
+  # The generation after it, which only the boot knows: the line with the
+  # word that comes before the number, and each digit, which the script puts
+  # together as it's told the number. The face is monospaced, so a digit
+  # sits a digit's width from the one before, as one line would have it.
+  digits = map toString (lib.range 0 9);
   lockGlyph = builtins.fromJSON ''"\uf023"'';
 
   script = pkgs.replaceVars ./theme.script {
@@ -250,6 +260,9 @@ let
     hintGap = space.xs;
     # A fifth of the size between dots, as Prompt.qml spaces them.
     dotSpacing = toString (points "mono" "large" * 4 / 3 * 0.2);
+    digitImages = lib.concatMapStrings (digit: ''
+      global.about.digits["${digit}"] = drawn("digit-${digit}");
+    '') digits;
     aboutLeft = space.xxl;
     aboutBottom = space.xl;
     fadeFrames = toString (theme.motion.long * 50 / 1000);
@@ -300,6 +313,21 @@ let
     "plymouth-reboot"
   ];
 
+  # Tells the splash the generation the boot loader started, from the entry
+  # systemd-boot says it chose: nixos-generation-192-<hash>.efi as
+  # lanzaboote names it. The variable is four bytes of attributes, then the
+  # name in UTF-16. NixOS's own systemd-boot entries are named by a hash of
+  # what they hold, so they and a boot systemd-boot didn't start say
+  # nothing, and the splash keeps its line without a generation.
+  tellsGeneration = plymouth: ''
+    entry=$(tail -c +5 /sys/firmware/efi/efivars/LoaderEntrySelected-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f 2>/dev/null | tr -d '\0')
+    rest=''${entry#nixos-generation-}
+    number=''${rest%%[!0-9]*}
+    if [ "$rest" != "$entry" ] && [ -n "$number" ]; then
+      ${plymouth} update --status="generation:$number"
+    fi
+  '';
+
   # The face a message is set in, the one font the initrd needs.
   sansFile =
     pkgs.runCommand "plymouth-sans"
@@ -331,6 +359,17 @@ in
     # later, and again as a shutdown began. A failure is still written.
     boot.kernelParams = [ "systemd.show_status=error" ];
 
+    # As soon as the splash is up, so the generation shows before the disk
+    # asks for its PIN.
+    boot.initrd.systemd.services.plymouth-generation = {
+      description = "Tell Plymouth the generation the boot loader started";
+      wantedBy = [ "sysinit.target" ];
+      after = [ "plymouth-start.service" ];
+      unitConfig.DefaultDependencies = false;
+      serviceConfig.Type = "oneshot";
+      script = tellsGeneration "plymouth";
+    };
+
     systemd.services =
       lib.genAttrs shutdowns (_: {
         unitConfig.SurviveFinalKillSignal = true;
@@ -347,6 +386,21 @@ in
         # From the switch to the disk's system until Plymouth quits, and
         # from a shutdown's start to its end. It needs nothing started
         # first, and stays out of the way of every other unit's order.
+        # A shutdown's splash is a new one, so it's told the generation again.
+        plymouth-generation = {
+          description = "Tell Plymouth the generation the boot loader started";
+          wantedBy = [
+            "halt.target"
+            "kexec.target"
+            "poweroff.target"
+            "reboot.target"
+          ];
+          after = map (unit: "${unit}.service") shutdowns;
+          unitConfig.DefaultDependencies = false;
+          serviceConfig.Type = "oneshot";
+          script = tellsGeneration (lib.getExe' config.boot.plymouth.package "plymouth");
+        };
+
         plymouth-waits = {
           description = "Tell Plymouth what the boot or shutdown waits on";
           wantedBy = [

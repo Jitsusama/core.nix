@@ -58,6 +58,9 @@ fun drawn_at_scale()
     global.under.images["stopping"] = drawn("stopping");
     global.under.height = global.under.images["starting"].GetHeight() - 2 * global.pad;
     global.about.image = drawn("about");
+    global.about.numbered = drawn("about-generation");
+@digitImages@
+    global.about.advance = (drawn("digits").GetWidth() - 2 * global.pad) / 10;
 
     global.panel.calm = drawn("panel");
     global.panel.urgent = drawn("panel-urgent");
@@ -151,10 +154,10 @@ fun lay_out()
                                    global.name.top - global.pad, 10);
     says(global.under.showing);
 
-    global.about.sprite = sprite_at(global.about.sprite, global.about.image,
-                                    global.shared.left + @aboutLeft@ * global.scale - global.pad,
-                                    global.shared.top + down - @aboutBottom@ * global.scale
-                                      - global.about.image.GetHeight() + global.pad, 10);
+    global.about.left = global.shared.left + @aboutLeft@ * global.scale - global.pad;
+    global.about.top = global.shared.top + down - @aboutBottom@ * global.scale
+                       - global.about.image.GetHeight() + global.pad;
+    about_shown();
 
     # The prompt's panel and what's inside it.
     global.panel.left = global.middle - @panelWidth@ * global.scale / 2;
@@ -194,6 +197,26 @@ fun lay_out()
       global.said.words = lifted(global.said.text, global.said.top + @said@ * global.scale / 2);
   }
 
+# What the boot is, small at the bottom left, and once the boot says which
+# generation it started, the line that goes on to it and its number, each
+# digit a digit's width on from the one before. The number starts a space
+# after the word, and a space is a digit's width too.
+fun about_shown()
+  {
+    if (global.generation == "")
+      local.image = global.about.image;
+    else
+      local.image = global.about.numbered;
+    global.about.sprite = sprite_at(global.about.sprite, image,
+                                    global.about.left, global.about.top, 10);
+    local.start = global.about.left + image.GetWidth() - 2 * global.pad + global.about.advance;
+    for (index = 0; global.generation.CharAt(index) != ""; index++)
+      global.about.numbers[index] = sprite_at(global.about.numbers[index],
+                                              global.about.digits[global.generation.CharAt(index)],
+                                              start + index * global.about.advance,
+                                              global.about.top, 10);
+  }
+
 # Words drawn as the boot goes, centred on a height, in the body face and
 # lifted as the pictures' words are: over the halo drawn with the theme
 # (./nixos.nix), stretched to their width, and a copy of them in the
@@ -230,6 +253,7 @@ status.waiting = "";
 status.stage = "";
 status.said = "";
 asked = 0;
+generation = "";
 
 fun status_shown()
   {
@@ -258,9 +282,27 @@ fun status_callback(text)
       global.status.stage = text;
     else if (text.SubString(0, 8) == "waiting:")
       global.status.waiting = text.SubString(8, text.Length());
+    else if (text.SubString(0, 11) == "generation:")
+      {
+        generation_told(text.SubString(11, text.Length()));
+        return;
+      }
     else
       return;
     status_shown();
+  }
+
+# The generation, as ./nixos.nix sends it from the boot loader's entry, kept
+# only when it's a number the digits can draw.
+fun generation_told(number)
+  {
+    if (number == "")
+      return;
+    for (index = 0; number.CharAt(index) != ""; index++)
+      if (!global.about.digits[number.CharAt(index)])
+        return;
+    global.generation = number;
+    about_shown();
   }
 
 Plymouth.SetUpdateStatusFunction(status_callback);
