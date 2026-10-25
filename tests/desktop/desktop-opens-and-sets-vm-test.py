@@ -6,7 +6,6 @@ the helpers every area shares, so the names it takes from there are imported onl
 checkers.
 """
 
-import datetime
 import json
 import time
 from datetime import timedelta
@@ -32,6 +31,7 @@ if TYPE_CHECKING:
         as_account,
         copied_then_closed,
         drawn_at,
+        held_still,
         in_session,
         launcher_ready,
         launcher_until,
@@ -74,7 +74,7 @@ with subtest("Super+V finds what was copied earlier, and copies it again"):
         """Say whether the clipboard holds the notes' title again."""
         return as_account("wl-paste --no-newline") == "Notes for Tuesday"
 
-    retry(copied_again, timeout_seconds=10)
+    retry(copied_again, timeout=timedelta(seconds=10))
 
 
 # Return pastes into the window Super+V opened over, with the keys it
@@ -87,7 +87,7 @@ with subtest("Super+V pastes into the window it opened over, a terminal or not")
     )
     machine.wait_until_succeeds(
         in_session("niri msg focused-window | grep -q paste-here"),
-        timeout=timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     machine.send_key("meta_l-v")
     launcher_ready()
@@ -110,7 +110,7 @@ with subtest("Super+V pastes into the window it opened over, a terminal or not")
     as_account(f"systemd-run --user --collect sh -c '{entry} > /tmp/entered'")
     machine.wait_until_succeeds(
         in_session("niri msg focused-window | grep -q paste-gtk"),
-        timeout=timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     machine.send_key("meta_l-v")
     launcher_ready()
@@ -140,7 +140,7 @@ with subtest("a copy outlives the program that made it, unless it wasn't kept"):
         """Say whether the clipboard still holds the copy its program made."""
         return as_account("wl-paste --no-newline 2>&1 || true") == "gone with its program"
 
-    retry(still_there, timeout_seconds=10)
+    retry(still_there, timeout=timedelta(seconds=10))
     # One the history didn't keep, such as a password manager's, goes
     # with its program, leaving the clipboard empty rather than handing
     # back an older copy. The helper answers the moment it empties, so
@@ -150,7 +150,9 @@ with subtest("a copy outlives the program that made it, unless it wasn't kept"):
         flags="--type x-kde-passwordManagerHint",
         served="wl-paste --list-types 2>/dev/null | grep -qx x-kde-passwordManagerHint",
     )
-    machine.wait_until_fails(in_session("wl-paste --list-types > /dev/null 2>&1"), timeout=10)
+    machine.wait_until_fails(
+        in_session("wl-paste --list-types > /dev/null 2>&1"), timeout=timedelta(seconds=10)
+    )
     machine.fail(in_session("wl-paste --list-types > /dev/null 2>&1"))
 
 with subtest("a copy made as another's program closes is the one kept"):
@@ -168,7 +170,7 @@ with subtest("a copy made as another's program closes is the one kept"):
     with told("heard copy copied meanwhile"):
         as_account("systemctl --user kill --signal=SIGCONT clipboard-history")
     # Nothing takes it back a moment later.
-    machine.sleep(1)
+    machine.sleep(timedelta(seconds=1))
     t.assertEqual(as_account("wl-paste --no-newline"), "copied meanwhile")
 
 
@@ -183,7 +185,7 @@ with subtest("a picture copied is kept, shown as it is, and copied again"):
         type_in("image", selecting="Image 256 \u00d7 256")
     photograph("launcher-copies-picture")
     machine.send_key("ret")
-    retry(pasted_the_picture, timeout_seconds=10)
+    retry(pasted_the_picture, timeout=timedelta(seconds=10))
 
 with subtest("a picture outlives the program that copied it"):
     # The helper holds the same picture already, so wl-copy serves it
@@ -196,7 +198,7 @@ with subtest("a picture outlives the program that copied it"):
             '! echo "$t" | grep -qx application/x-clipboard-history-kept && break; '
             "sleep 0.1; done; kill $p"
         )
-    retry(pasted_the_picture, timeout_seconds=10)
+    retry(pasted_the_picture, timeout=timedelta(seconds=10))
 
 with subtest("Forget the Clipboard forgets every copy, and what it held"):
     with told("heard copy kept until forgotten"):
@@ -206,7 +208,7 @@ with subtest("Forget the Clipboard forgets every copy, and what it held"):
         """Say whether the clipboard still holds the copy its program made."""
         return as_account("wl-paste --no-newline 2>&1 || true") == "kept until forgotten"
 
-    retry(still_kept, timeout_seconds=10)
+    retry(still_kept, timeout=timedelta(seconds=10))
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("forget the clip", selecting="Forget the clipboard")
@@ -243,7 +245,7 @@ with subtest("the launcher's home keeps its shelf, and a collection opens by nam
         """Say whether a window has opened since the launcher did."""
         return len(json.loads(as_account("niri msg --json windows"))) > windows
 
-    retry(another_opened, timeout_seconds=15)
+    retry(another_opened, timeout=timedelta(seconds=15))
 
 with subtest("a screenshot just taken is at the launcher's home, and opens in GIMP"):
     pictures = f"/home/{ACCOUNT}/Pictures/Screenshots"
@@ -251,7 +253,7 @@ with subtest("a screenshot just taken is at the launcher's home, and opens in GI
     # and the launcher watches it from the start.
     machine.succeed(f"test -d {pictures}")
     as_account("niri msg action screenshot-screen")
-    machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
+    machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=timedelta(seconds=15))
     picture = machine.succeed(f"ls {pictures}/*.png").strip()
     as_account("qs ipc call launcher toggle")
     launcher_ready()
@@ -267,7 +269,7 @@ with subtest("a screenshot just taken is at the launcher's home, and opens in GI
     # screenshot's subtest waits for one of its own. GIMP takes any other
     # signal as a crash, and writes its backtrace to the log.
     machine.succeed(f"pkill -KILL -u {ACCOUNT} -f '[g]imp'")
-    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[g]imp'", timeout=30)
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[g]imp'", timeout=timedelta(seconds=30))
     machine.succeed(f"rm {pictures}/*.png")
 
 # A program asks the portal what to open a picture with, as one does when
@@ -315,7 +317,7 @@ with subtest("the launcher asks what to open a picture with, for the portal"):
                 lambda shown: (
                     shown["keys"] and shown["held"] == ["apps"] and shown["selected"] is not None
                 ),
-                timeout=60,
+                timeout=timedelta(seconds=60),
             )
         except AssertionError as unheard:
             unanswered = f"{unheard}; what was said:\n{portal_told()}"
@@ -331,19 +333,21 @@ with subtest("the launcher asks what to open a picture with, for the portal"):
     photograph("open-with")
     offer_only_swayimg()
     machine.send_key("ret")
-    machine.wait_until_succeeds(f"grep -qx 0 {portal_said}", timeout=60)
-    machine.wait_until_succeeds(opened_with, timeout=60)
+    machine.wait_until_succeeds(f"grep -qx 0 {portal_said}", timeout=timedelta(seconds=60))
+    machine.wait_until_succeeds(opened_with, timeout=timedelta(seconds=60))
     launcher_until(lambda shown: not shown["open"])
-    machine.wait_until_succeeds(sockets_gone, timeout=10)
+    machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
     machine.succeed(f"pkill -KILL -u {ACCOUNT} -f '[p]ortal-picked.png'")
-    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[p]ortal-picked.png'", timeout=30)
+    machine.wait_until_fails(
+        f"pgrep -u {ACCOUNT} -f '[p]ortal-picked.png'", timeout=timedelta(seconds=30)
+    )
 
     ask_portal()
     offer_only_swayimg()
     machine.send_key("esc")
     launcher_until(lambda shown: not shown["open"])
-    machine.wait_until_succeeds(f"grep -qx 1 {portal_said}", timeout=60)
-    machine.wait_until_succeeds(sockets_gone, timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {portal_said}", timeout=timedelta(seconds=60))
+    machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
     machine.fail(opened_with)
     machine.succeed(f"rm {portal_png}")
 
@@ -364,14 +368,16 @@ with subtest("a picture opens floating in swayimg, and e takes it to GIMP"):
     assert abs(width - wide * 0.8) <= wide * 0.02, swayimg
     assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
     # The steps before leave notices, which go on their own.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     photograph("swayimg")
     machine.send_key("e")
     machine.wait_until_succeeds(f"pgrep -u {ACCOUNT} -f '[g]imp.*{looked}'", timeout=STARTING)
-    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -x swayimg", timeout=10)
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -x swayimg", timeout=timedelta(seconds=10))
     # As in the screenshot's subtest: GIMP goes before it draws.
     machine.succeed(f"pkill -KILL -u {ACCOUNT} -f '[g]imp'")
-    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[g]imp'", timeout=30)
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[g]imp'", timeout=timedelta(seconds=30))
     machine.succeed(f"rm {looked}")
 
 with subtest("a document opens in zathura, beside the rest, and q closes it"):
@@ -381,7 +387,7 @@ with subtest("a document opens in zathura, beside the rest, and q closes it"):
     assert not zathura["is_floating"], zathura
     photograph("zathura")
     machine.send_key("q")
-    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[z]athura'", timeout=10)
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[z]athura'", timeout=timedelta(seconds=10))
 
 with subtest("the launcher's Sound moves sound to another output, and back"):
     for output in ["stand-in-headphones", "stand-in-speakers"]:
@@ -392,8 +398,8 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
         type_in(kind, selecting=kind)
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
-        machine.wait_until_succeeds(in_session(used), timeout=10)
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        machine.wait_until_succeeds(in_session(used), timeout=timedelta(seconds=10))
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 
 def sound_reads(name: str, said: str) -> Callable[[Json], bool]:
@@ -416,9 +422,28 @@ def sound_device(typed: str, named: str) -> None:
     step_in()
 
 
+def sound_nodes() -> list[Json]:
+    """Give everything the sound server lists, from pw-dump.
+
+    A dump taken as pw-record's stream started came back as JSON that didn't parse, once, so a
+    dump that doesn't read is taken again.
+    """
+    dumps: list[list[Json]] = []
+
+    def dumped(_: bool) -> bool:
+        try:
+            dumps.append(json.loads(as_account("pw-dump")))
+        except json.JSONDecodeError:
+            return False
+        return True
+
+    retry(dumped, timeout=timedelta(seconds=10))
+    return dumps[-1]
+
+
 def sound_recording() -> int | None:
     """Give the id of pw-record's stream, as the sound server lists it, if it's there."""
-    nodes: list[Json] = json.loads(as_account("pw-dump"))
+    nodes = sound_nodes()
     return next(
         (
             int(node["id"])
@@ -460,8 +485,8 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
     launcher_until(lambda shown: "-18.1 dB" in shown["footer"])
     machine.send_key("ret")
     sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
-    machine.wait_until_succeeds(in_session(sink), timeout=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_succeeds(in_session(sink), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # The part says what it was set to.
     sound_device("speakers", "speakers")
     launcher_until(sound_reads("Volume", "50%"))
@@ -477,14 +502,14 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
     launcher_until(sound_selected("Mute"))
     machine.send_key("ret")
     hushed_sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"
-    machine.wait_until_succeeds(in_session(hushed_sink), timeout=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_succeeds(in_session(hushed_sink), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     sound_device("speakers", "speakers")
     launcher_until(sound_reads("Muted", "yes"))
     type_in("unmute", selecting="Unmute")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(hushed_sink), timeout=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(hushed_sink), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     # The microphone holds its own: a live Level, its Gain, whether it's
     # Muted, and who's Recording, which is nobody, though the Level's own
@@ -498,7 +523,7 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
     launcher_until(sound_reads("Recording", "nothing"))
     photograph("launcher-sound-input-parts")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     listening = f"/home/{ACCOUNT}/listening.wav"
     as_account(
         f"systemd-run --user --unit=listening pw-record --target stand-in-microphone {listening}"
@@ -510,7 +535,7 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
             print(as_account("systemctl --user status listening; pw-cli ls Node"))
         return sound_recording() is not None
 
-    retry(records, timeout=datetime.timedelta(seconds=30))
+    retry(records, timeout=timedelta(seconds=30))
     recording = sound_recording()
     sound_device("microphone", "stand-in microphone")
     launcher_until(lambda shown: "Recording" in shown["rows"])
@@ -527,8 +552,8 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
     launcher_until(sound_selected("Mute"))
     machine.send_key("ret")
     hushed = f"wpctl get-volume {recording} | grep -q MUTED"
-    machine.wait_until_succeeds(in_session(hushed), timeout=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_succeeds(in_session(hushed), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     as_account("systemctl --user stop listening")
     as_account(f"rm -f {listening}")
 
@@ -541,7 +566,7 @@ with subtest("the launcher's Sound opens an output's and a microphone's parts"):
 # always apply, as they do in a music player set to repeat.
 #
 # How long the player, PipeWire or the launcher may take to show a change.
-WAIT = datetime.timedelta(seconds=15)
+WAIT = timedelta(seconds=15)
 # How far a pixel's shade moves, of 255, to count as drawn anew rather than
 # as noise.
 CHANGED = 24
@@ -584,11 +609,11 @@ with subtest("a program's Media and Sound work its real player and its stream"):
                 and player("Metadata")["xesam:title"]["data"] == title
             )
 
-        retry(says, timeout=datetime.timedelta(seconds=15))
+        retry(says, timeout=timedelta(seconds=15))
 
     def stream() -> int:
         """Give the id of the stream mpv plays through, as PipeWire lists it."""
-        nodes: list[Json] = json.loads(as_account("pw-dump"))
+        nodes = sound_nodes()
         return next(
             int(node["id"])
             for node in nodes
@@ -768,8 +793,10 @@ with subtest("the launcher sets the power profile"):
         launcher_ready()
         type_in(typed, selecting=name)
         machine.send_key("ret")
-        machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        machine.wait_until_succeeds(
+            f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
+        )
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # And as the setting it is: one part saying which is in use, its
     # choices a step in by Return or the right arrow, each named there as
     # the part reads it.
@@ -786,8 +813,10 @@ with subtest("the launcher sets the power profile"):
         launcher_until(lambda shown: shown["rows"][:2] == ["Power saver", "Balanced"])
         type_in(name.split()[0][:3].lower(), selecting=name)
         machine.send_key("ret")
-        machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        machine.wait_until_succeeds(
+            f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
+        )
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 # The right arrow on one of a collection's members offers its own
 # actions, as on anything at the top.
@@ -829,8 +858,8 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         else:
             type_in(f"scale {percent}")
         machine.send_key("ret")
-        retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        retry(lambda _, wanted=wanted: scale() == wanted, timeout=timedelta(seconds=15))
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     # A part is asked by its words from the top: the refresh rate.
     as_account("qs ipc call launcher toggle")
@@ -843,14 +872,15 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         )
     )
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
     machine.wait_for_unit("lantern.service")
     machine.wait_for_unit("wifid.service")
     wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
     machine.wait_until_succeeds(
-        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'", timeout=60
+        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'",
+        timeout=timedelta(seconds=60),
     )
     as_account("qs ipc call launcher collection wifi")
     launcher_ready()
@@ -861,7 +891,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     step_in("ret")
     type_in("not the password")
     photograph("launcher-wifi-password")
-    with told("refused wifi Lantern", timeout=60):
+    with told("refused wifi Lantern", timeout=timedelta(seconds=60)):
         machine.send_key("ret")
     machine.succeed('journalctl -u wifid | grep -q "couldn\'t join Lantern: WrongPassword"')
     photograph("launcher-wifi-refused")
@@ -871,16 +901,18 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     # Joined means an address too, and wifid says so once it's checked
     # how far the network reaches.
     machine.wait_until_succeeds(
-        "journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=60
+        "journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=timedelta(seconds=60)
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # Once it's joined, the launcher's done.
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Lantern wants a sign-in, so Sign in to it comes first at home, and
     # Return opens the window on its front desk.
     described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
     described += " io.jitsusama.Wifi.Describe '{}'"
-    machine.wait_until_succeeds(f'{described} | grep -qF \'"reach":"signIn"\'', timeout=60)
+    machine.wait_until_succeeds(
+        f'{described} | grep -qF \'"reach":"signIn"\'', timeout=timedelta(seconds=60)
+    )
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     photograph("launcher-sign-in")
@@ -896,18 +928,25 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.wait_until_succeeds(
         "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=SIGNING_IN
     )
-    photograph("sign-in", timeout=20)
+    # Return reaches its button only once the window holds the keyboard and
+    # has drawn the page, and a window slow to start gets both later: a run
+    # that pressed it as soon as the page was served lost the key.
+    focused = 'niri msg --json focused-window | grep -qF \'"app_id":"io.jitsusama.WifiSignIn"\''
+    machine.wait_until_succeeds(in_session(focused), timeout=SIGNING_IN)
+    held_still(timedelta(seconds=20))
+    photograph("sign-in", timeout=timedelta(seconds=20))
     # Its one button signs in, and the window closes as Lantern lets
     # the machine through, its notice taken back with it.
-    with told("withdrew sign-in Lantern", timeout=60):
+    with told("withdrew sign-in Lantern", timeout=timedelta(seconds=60)):
         machine.send_key("ret")
-    machine.wait_until_fails(in_session(window), timeout=60)
+    machine.wait_until_fails(in_session(window), timeout=timedelta(seconds=60))
     machine.succeed(f'{described} | grep -qF \'"reach":"online"\'')
     # The Office asks for an account: met for the first time, it asks
     # the account's name, its server's domain and its password in
     # turn, and joins.
     machine.wait_until_succeeds(
-        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Office\"'", timeout=60
+        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Office\"'",
+        timeout=timedelta(seconds=60),
     )
     as_account("qs ipc call launcher collection wifi")
     launcher_ready()
@@ -921,9 +960,9 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     photograph("launcher-wifi-account")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        "journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=60
+        "journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=timedelta(seconds=60)
     )
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Stepped into, a network says after what can be done to it what's
     # heard of it, each a part named first, the selected row's footer
     # saying more: the card's Signal and Speed once the card has read
@@ -966,13 +1005,15 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     type_in("hardware", selecting="Hardware address")
     t.assertEqual(showing()["selected"]["side"], "02:00:00:00:02:00")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Turning Wi-Fi off is an action like any.
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("wifi off")
     machine.send_key("ret")
-    machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=15)
+    machine.wait_until_succeeds(
+        "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
+    )
     machine.succeed("rfkill unblock wifi")
 
 with subtest("the addresses name each connection, its parts a step in"):
@@ -982,7 +1023,9 @@ with subtest("the addresses name each connection, its parts a step in"):
         " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
     )
     # Wi-Fi was turned off and on again, so the card joins again first.
-    machine.wait_until_succeeds("ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=90)
+    machine.wait_until_succeeds(
+        "ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=timedelta(seconds=90)
+    )
     answer("ip")
     step_in()
     addresses = len(showing()["held"])
@@ -1011,7 +1054,7 @@ with subtest("the addresses name each connection, its parts a step in"):
     t.assertEqual(showing()["selected"]["side"], "100.100.1.2/32")
     assert "Hardware address" not in showing()["rows"], showing()
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.succeed("ip link delete tailscale0")
 
 # A binding that throws or assigns the wrong type only warns, and

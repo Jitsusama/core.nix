@@ -8,6 +8,7 @@ checkers.
 
 import json
 import re
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -96,7 +97,7 @@ with subtest("Capture records the window, and says why when niri can't share it"
     print(
         machine.wait_until_succeeds(
             in_session(kept + ' | grep -o \'"summary":"The window could not[^}]*\''),
-            timeout=10,
+            timeout=timedelta(seconds=10),
         )
     )
     windows = json.loads(as_account("niri msg --json windows"))
@@ -122,7 +123,8 @@ with subtest("A region is picked by the keys, and Escape goes back to Capture"):
     with told(f"picked {x},{y} {width}x{height}"):
         machine.send_key("ret")
     machine.wait_until_succeeds(
-        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 1}", timeout=15
+        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 1}",
+        timeout=timedelta(seconds=15),
     )
     t.assertEqual(newest_size(), (width, height))
 
@@ -133,12 +135,15 @@ with subtest("A region is picked by the keys, and Escape goes back to Capture"):
     for key in ("left", "up", "shift-right", "shift-right"):
         machine.send_key(key)
     # The pictures before leave their notices, which go on their own.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     photograph("picker")
     with told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
         machine.send_key("ret")
     machine.wait_until_succeeds(
-        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 2}", timeout=15
+        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 2}",
+        timeout=timedelta(seconds=15),
     )
     t.assertEqual(newest_size(), (width + 32, height))
 
@@ -149,7 +154,9 @@ with subtest("A region is picked by the keys, and Escape goes back to Capture"):
         machine.send_key("ret")
     with told("picker typed b"):
         machine.send_chars("aab")
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     photograph("picker-cells")
     rows = round(16 * high / wide)
     with told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
@@ -174,19 +181,19 @@ with subtest("the camera takes a picture and a video by the keys"):
     capture()
     type_in("picture from the camera", selecting="camera")
     machine.send_key("ret")
-    machine.wait_until_succeeds(in_session(camera), timeout=60)
+    machine.wait_until_succeeds(in_session(camera), timeout=timedelta(seconds=60))
     # Return before the camera wakes takes the picture once it has, and then the viewfinder
     # goes, as a screenshot's would.
-    with told("shows card Picture copied", timeout=60):
+    with told("shows card Picture copied", timeout=timedelta(seconds=60)):
         machine.send_key("ret")
-    machine.wait_until_fails(in_session(camera), timeout=10)
+    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=10))
 
     def viewfinder(opened_for: str) -> None:
         """Open the camera again from Capture's row for it."""
         capture()
         type_in(opened_for, selecting=f"A {opened_for}")
         machine.send_key("ret")
-        machine.wait_until_succeeds(in_session(camera), timeout=60)
+        machine.wait_until_succeeds(in_session(camera), timeout=timedelta(seconds=60))
 
     def probe(entries: str, files: str) -> str:
         """Give what ffprobe says of each file there, which it reads one at a time."""
@@ -238,7 +245,7 @@ with subtest("the camera takes a picture and a video by the keys"):
         A run has gone a minute without it, so what the recording was doing then is printed.
         """
         try:
-            with told("shows card Video saved", timeout=60):
+            with told("shows card Video saved", timeout=timedelta(seconds=60)):
                 machine.send_key(key)
         except AssertionError:
             print(
@@ -258,16 +265,16 @@ with subtest("the camera takes a picture and a video by the keys"):
     viewfinder("picture from the camera")
     machine.send_key("tab")
     machine.send_key("ret")
-    retry(lambda last: recording(1, last), timeout_seconds=60)
+    retry(lambda last: recording(1, last), timeout=timedelta(seconds=60))
     photograph("camera")
     saved("ret")
-    machine.wait_until_fails(in_session(camera), timeout=30)
+    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=30))
     # Escape while recording saves the video, then closes.
     viewfinder("video from the camera")
     machine.send_key("ret")
-    retry(lambda last: recording(2, last), timeout_seconds=60)
+    retry(lambda last: recording(2, last), timeout=timedelta(seconds=60))
     saved("esc")
-    machine.wait_until_fails(in_session(camera), timeout=30)
+    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=30))
     streams = probe("stream=codec_name", f"{videos}/*.mp4")
     t.assertEqual(streams.split(), ["h264", "aac"] * 2)
 
@@ -301,7 +308,7 @@ with subtest("a camera is a thing: its parts a step in, and Return its viewfinde
     step_in()
     t.assertEqual(showing()["rows"], ["Built-in camera"])
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     answer("built-in camera")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
     t.assertEqual(showing()["selected"]["side"], "in use by chrome")
@@ -321,12 +328,14 @@ with subtest("a camera is a thing: its parts a step in, and Return its viewfinde
     launcher_until(lambda shown: shown["held"] == [])
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
     machine.send_key("ret")
-    machine.wait_until_succeeds(in_session(camera), timeout=60)
+    machine.wait_until_succeeds(in_session(camera), timeout=timedelta(seconds=60))
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(camera), timeout=30)
+    machine.wait_until_fails(in_session(camera), timeout=timedelta(seconds=30))
     machine.succeed(f"rm {holders}")
     # Its notice goes before the lock screen is looked at.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
 
 with subtest("the lock screen takes only the right password"):
     with told("keys lock"):
@@ -347,7 +356,7 @@ with subtest("the lock screen takes only the right password"):
             )
         return colours > PICTURE_COLOURS
 
-    retry(pictured, timeout_seconds=30)
+    retry(pictured, timeout=timedelta(seconds=30))
     with told("released lock"):
         machine.send_chars(f"{SECRET}\n")
     as_account("qs ipc call lock isLocked | grep -q false")
@@ -368,7 +377,7 @@ with subtest("polkit's prompt lets the account start a system service"):
         as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
     photograph("polkit")
     machine.send_chars(f"{SECRET}\n")
-    machine.wait_for_file("/run/polkit-allowed", timeout=30)
+    machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
 
 with subtest("the askpass asks for a yes, a PIN and a touch"):
     with told("keys askpass"):
@@ -412,7 +421,7 @@ with subtest("the askpass finds the shell for a program started before the deskt
 with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
     with told("keys askpass"):
         ask("confirm", SIGNING)
-    with told("keys askpass", timeout=60):
+    with told("keys askpass", timeout=timedelta(seconds=60)):
         as_account("systemctl --user restart quickshell")
     machine.send_key("ret")
     answered_with("confirm", 0)
@@ -420,7 +429,7 @@ with subtest("the askpass asks a restarted shell again, and gives up on a gone o
     with told("keys askpass"):
         ask("confirm", SIGNING)
     as_account("systemctl --user stop quickshell")
-    answered_with("confirm", 1, timeout=60)
+    answered_with("confirm", 1, timeout=timedelta(seconds=60))
     as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
     as_account("systemctl --user start quickshell")
     machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=STARTING)
@@ -436,7 +445,7 @@ with subtest("the lock holds when the shell restarts, and only for its niri"):
     since = mark()
     as_account("systemctl --user restart quickshell")
     for word in ("secured lock", "keys lock"):
-        reported(word, lambda rest: rest == "", since, timeout=60)
+        reported(word, lambda rest: rest == "", since, timeout=timedelta(seconds=60))
     as_account("qs ipc call lock isLocked | grep -qx true")
     as_account(f"grep -qx locked {locked}")
     with told("released lock"):

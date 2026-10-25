@@ -405,7 +405,7 @@ with subtest(
     reading = "paint-crew \u00b7 roller"
     machine.wait_until_succeeds(
         in_session(f"niri msg --json windows | grep -q '{reading}'"),
-        timeout=dt.timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     # Still open a moment on, so the pager holds the answer.
     time.sleep(1)
@@ -465,9 +465,7 @@ with subtest("the launcher finds and opens kitty, and learns that kitty was mean
     photograph("launcher")
     machine.send_key("ret")
     # The first window opened can take as long as the first GTK one.
-    machine.wait_until_succeeds(
-        in_session("niri msg windows | grep -i kitty"), timeout=dt.timedelta(seconds=STARTING)
-    )
+    machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=STARTING)
     # What was picked for what was typed is kept for next time.
     picked = '\'"kitty":{"program:kitty"\''
     machine.wait_until_succeeds(
@@ -500,9 +498,7 @@ with subtest("a terminal opens below the focused window"):
     anchor = focused_kitty()
     as_account("qs ipc call grid below kitty")
     kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
-    machine.wait_until_succeeds(
-        in_session(f"{kitties} | grep -qx 2"), timeout=dt.timedelta(seconds=STARTING)
-    )
+    machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=STARTING)
 
     def placed(_: bool) -> bool:
         """Say whether the new terminal sits just below the one focused before."""
@@ -526,19 +522,19 @@ with subtest("the launcher loses no letter typed straight after its chord"):
     )
     machine.wait_until_succeeds(
         in_session("niri msg focused-window | grep -q type-ahead"),
-        timeout=dt.timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
-    for gap in (0.01, 0.05, 0.1):
+    for gap in (dt.timedelta(milliseconds=ms) for ms in (10, 50, 100)):
         beneath = len(as_account("cat /tmp/type-ahead"))
         machine.send_key("meta_l-spc")
         machine.send_chars("slack", delay=gap)
         launcher_ready()
 
-        def none_lost(_: bool, beneath: int = beneath, gap: float = gap) -> bool:
+        def none_lost(_: bool, beneath: int = beneath, gap: dt.timedelta = gap) -> bool:
             """Say whether every letter typed went beneath or to the launcher, in order."""
             went = as_account("cat /tmp/type-ahead")[beneath:]
             held = showing()["typed"]
-            print(f"TYPEAHEAD {gap}: '{went}' went beneath, '{held}' held")
+            print(f"TYPEAHEAD {gap.total_seconds()}: '{went}' went beneath, '{held}' held")
             return bool(went + held == "slack")
 
         retry(none_lost, timeout=dt.timedelta(seconds=10))
@@ -558,7 +554,7 @@ with subtest("the launcher switches to a window by its title"):
     as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
     machine.wait_until_succeeds(
         in_session("niri msg windows | grep -q 'Notes for Tuesday'"),
-        timeout=dt.timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     as_account("niri msg action focus-window-previous")
     machine.wait_until_fails(
@@ -597,7 +593,7 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
         )
         machine.wait_until_succeeds(
             in_session(f"niri msg windows | grep -q '{title}'"),
-            timeout=dt.timedelta(seconds=STARTING),
+            timeout=STARTING,
         )
     notes = window_titled("Notes for Tuesday")
     as_account(f"niri msg action focus-window --id {notes['id']}")
@@ -766,7 +762,7 @@ with subtest("the launcher's agents hold still as one changes, the selection on 
     as_account(f"niri msg action spawn -- kitty --title '{other}'")
     machine.wait_until_succeeds(
         in_session(f"niri msg --json windows | grep -qF '{other}'"),
-        timeout=dt.timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     as_account("qs ipc call launcher toggle")
     launcher_ready()
@@ -821,7 +817,7 @@ with subtest("a window's verbs follow it while they're shown"):
     as_account("niri msg action spawn -- kitty --title 'In front of the notes'")
     machine.wait_until_succeeds(
         in_session("niri msg focused-window | grep -q 'In front of the notes'"),
-        timeout=dt.timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     machine.send_key("meta_l-tab")
     launcher_ready()

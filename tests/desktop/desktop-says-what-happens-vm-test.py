@@ -77,7 +77,7 @@ with subtest("niri's settings failing to load is said until they load again"):
     with told("gone notifications"):
         machine.succeed(f"ln -sfn {meant} {settings}")
     machine.wait_until_fails(
-        in_session("test -e $XDG_RUNTIME_DIR/niri-settings-notice"), timeout=10
+        in_session("test -e $XDG_RUNTIME_DIR/niri-settings-notice"), timeout=timedelta(seconds=10)
     )
 
 
@@ -91,7 +91,9 @@ with subtest("a notice that came and went is found again in the launcher"):
     if not kept.strip():
         with told("drawn notifications"):
             as_account("notify-send 'Build finished' 'the laptop is ready'")
-        machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+        machine.wait_until_fails(
+            in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+        )
     # One its sender says not to keep isn't, though it's the newest match.
     as_account("notify-send --transient 'Build finished twice' 'not kept'")
     as_account("qs ipc call launcher toggle")
@@ -108,11 +110,13 @@ with subtest("a notice that came and went is found again in the launcher"):
         said = as_account("wl-paste --no-newline")
         return said == "Build finished\nthe laptop is ready"
 
-    retry(told_again, timeout_seconds=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    retry(told_again, timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # With none on screen, Super+N opens all of them, which counts
     # them seen.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     machine.send_key("meta_l-n")
     launcher_ready()
     photograph("launcher-notices-all")
@@ -120,7 +124,7 @@ with subtest("a notice that came and went is found again in the launcher"):
 
 
 with subtest("a notice's action is done by the keys, and one not acted on stays unread"):
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # It stays a minute, so it's still at the front when the keys come.
     with told("shows card Lunch"):
         as_account("notify-send --expire-time=60000 'Lunch' 'at noon'")
@@ -158,18 +162,20 @@ with subtest("a notice's action is done by the keys, and one not acted on stays 
     with told("notice verb Play it"):
         machine.send_key("right")
     machine.send_key("ret")
-    machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=15)
+    machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
     tokened()
     # Shift+Backspace lets the rest go, which gives the keys back.
     with told("lets notices go"):
         machine.send_key("shift-backspace")
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=10)
+    )
     # The history is kept on disk, the one acted on read and the one
     # that only arrived still unread.
     kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(
         in_session(kept + ' | grep -q \'"summary":"Recording saved"[^}]*"read":true\''),
-        timeout=10,
+        timeout=timedelta(seconds=10),
     )
     as_account(kept + ' | grep -q \'"summary":"Lunch"[^}]*"read":false\'')
 
@@ -200,7 +206,9 @@ with subtest("a click on a notice opens what it's about, with a token to come fo
     tokened()
 
 with subtest("Return on a notice in the launcher opens what it's about, with a token"):
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     listen()
     with told("shows card Thread with Sam"):
         as_account(
@@ -216,7 +224,7 @@ with subtest("Return on a notice in the launcher opens what it's about, with a t
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Sam")
     )
     machine.send_key("ret")
-    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=15)
+    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
     tokened()
 
 with subtest("a notice whose time is up still does what it offers from the launcher"):
@@ -249,13 +257,16 @@ with subtest("a notice whose time is up still does what it offers from the launc
 
 
 with subtest("the notices sit a step inside the window under them"):
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     # A window of its own, the only one in view, two thirds of the
     # screen wide and centred, so its edge is far from the corner's;
     # it goes again after.
     as_account("niri msg action spawn -- kitty --title 'Under the notices'")
     machine.wait_until_succeeds(
-        in_session("niri msg --json windows | grep -q '\"Under the notices\"'"), timeout=30
+        in_session("niri msg --json windows | grep -q '\"Under the notices\"'"),
+        timeout=timedelta(seconds=30),
     )
     under = window_titled("Under the notices")
     as_account(f"niri msg action focus-window --id {under['id']}")
@@ -267,7 +278,7 @@ with subtest("the notices sit a step inside the window under them"):
     # leaves the column to grow rightwards from where it was centred.
     retry(
         lambda _: window_titled("Under the notices")["layout"]["tile_size"][0] >= wide,
-        timeout_seconds=15,
+        timeout=timedelta(seconds=15),
     )
     as_account("niri msg action center-column")
     space = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))["space"]
@@ -284,7 +295,7 @@ with subtest("the notices sit a step inside the window under them"):
             t.assertIsNotNone(place, "niri doesn't say where a tiled window is")
         return place is not None and screen - (place[0] + layout["tile_size"][0]) > FROM_THE_CORNER
 
-    retry(settled, timeout_seconds=15)
+    retry(settled, timeout=timedelta(seconds=15))
     with told("shows card Inside the window"):
         as_account("notify-send --expire-time=60000 'Inside the window' 'a step from its edges'")
     photograph("notice-inside")
@@ -313,38 +324,43 @@ with subtest("the notices sit a step inside the window under them"):
     as_account("qs ipc call notices putAway")
     as_account(f"niri msg action close-window --id {under['id']}")
     machine.wait_until_fails(
-        in_session("niri msg --json windows | grep -q '\"Under the notices\"'"), timeout=30
+        in_session("niri msg --json windows | grep -q '\"Under the notices\"'"),
+        timeout=timedelta(seconds=30),
     )
 
 with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
     held = "systemd-inhibit --list --no-pager | grep Caffeinate"
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("keep awake")
     photograph("launcher-keep-awake")
     machine.send_key("ret")
-    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=10)
-    machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=timedelta(seconds=10))
+    machine.wait_until_succeeds(
+        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
+    )
     # Kept awake, a suspend asked for by the power key or the launcher
     # still goes through, and so does the lid's on battery.
     machine.fail(f"{held} | grep -q sleep")
     # Without power the lid is let go, and taken again when it's back.
     power("off")
-    machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
+    machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10))
     machine.succeed(f"{held} | grep -qw idle")
     power("on")
-    machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+    machine.wait_until_succeeds(
+        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
+    )
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     photograph("launcher-home-awake")
     type_in("let it sleep")
     machine.send_key("ret")
-    machine.wait_until_fails(held, timeout=10)
+    machine.wait_until_fails(held, timeout=timedelta(seconds=10))
 
 
 with subtest("a camera opened is said, then shows in the margin, and the launcher says by what"):
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     # What's true as the shell starts isn't news, so it's waited out.
     reported("settles arrivals", lambda rest: rest == "", "")
     # Written whole, as the camera's module writes it. A program opened
@@ -358,7 +374,7 @@ with subtest("a camera opened is said, then shows in the margin, and the launche
     photograph("notice-camera")
     # A card or a mark: once the card goes, the glyph shows, on air, so
     # strong, and the card wasn't missed, since the glyph says it.
-    machine.wait_until_fails(in_session(notices), timeout=30)
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=30))
     reported("sets margin ", margin_sets(("camera", "onAir", "strong")), since)
     photograph("margin-camera")
     as_account("qs ipc call launcher toggle")
@@ -366,7 +382,7 @@ with subtest("a camera opened is said, then shows in the margin, and the launche
     type_in("camera")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Let go, it lingers a moment, muted, then goes.
     since = mark()
     machine.succeed(
@@ -374,7 +390,7 @@ with subtest("a camera opened is said, then shows in the margin, and the launche
         " && mv /run/camera-holders/.camera /run/camera-holders/camera"
     )
     reported("sets margin ", margin_sets(("camera", "onAir", "muted")), since)
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("a USB camera's stream shows in the margin too, and leaves with the camera"):
     # A camera the machine doesn't name, written as usb-camera-holders
@@ -387,18 +403,18 @@ with subtest("a USB camera's stream shows in the margin too, and leaves with the
     type_in("camera")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by zoom")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.succeed(f"rm '{usb}'")
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("Keep Awake shows in the margin, and What's on says it and lets it sleep"):
     # Keep Awake was just let go, and the margin leaves as it fades.
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     # Its own, so it runs alone: whether something holds the machine awake.
     held = "systemd-inhibit --list --no-pager | grep Caffeinate"
     # A camera's card from before is gone first, so what changes along the
     # top is the glyph alone.
-    machine.wait_until_fails(in_session(notices), timeout=30)
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=30))
     # Left on, so muted.
     held_still()
     empty = screen_now()
@@ -418,7 +434,7 @@ with subtest("Keep Awake shows in the margin, and What's on says it and lets it 
     photograph("launcher-whats-on")
     since = mark()
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     reported("sets margin ", margin_points(""), since)
     # Another mark comes and goes, so the row slides aside and back, and
     # what takes the pointer has to follow it there.
@@ -441,11 +457,11 @@ with subtest("Keep Awake shows in the margin, and What's on says it and lets it 
         print(as_account("niri msg layers; niri msg --json focused-output"))
         raise
     machine.send_key("ret")
-    machine.wait_until_fails(held, timeout=10)
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(held, timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("do not disturb holds a notice, shows it held, and ends from the margin"):
-    machine.wait_until_fails(in_session(notices), timeout=30)
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=30))
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("do not disturb")
@@ -469,11 +485,11 @@ with subtest("do not disturb holds a notice, shows it held, and ends from the ma
     launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notifications"])
     photograph("launcher-held")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.send_key("meta_l-o")
     whats_on("Do Not Disturb")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
 
 with subtest("a missed notice shows its glyph, and What's on shows the notices"):
@@ -482,7 +498,7 @@ with subtest("a missed notice shows its glyph, and What's on shows the notices")
     since = mark()
     with told("drawn margin"), told("shows card Peter"):
         as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
-    machine.wait_until_fails(in_session(notices), timeout=15)
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=15))
     reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
     photograph("margin-waiting")
     machine.send_key("meta_l-o")
@@ -492,7 +508,7 @@ with subtest("a missed notice shows its glyph, and What's on shows the notices")
     photograph("launcher-from-margin")
     machine.send_key("esc")
     # Opening them counted them seen, so nothing's waiting.
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("waiting that lasts a minute shows in the margin, quietly"):
     # lag-watch would write its own window over a stand-in's, so it rests.
@@ -545,17 +561,21 @@ with subtest("the microphone muted shows in the margin, and Return unmutes it"):
         print(as_account("wpctl status; wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
         print(as_account("pw-dump stand-in-microphone"))
         raise
-    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
+    )
     photograph("margin-muted")
     machine.send_key("meta_l-o")
     whats_on("Microphone")
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
-    machine.wait_until_fails(in_session(muted), timeout=10)
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(muted), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     # Unmuting shows the meter a moment, which the next pictures
     # would hold for as long as the host takes to reach them.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
+    )
 
 # Dictation shows at the bottom centre, never in the margin, and says what
 # it heard, from a stand-in for its service (desktop.nix).
@@ -564,7 +584,7 @@ with subtest("dictation says what it's doing, and when it heard nothing"):
     # The volume's and the microphone's meters share the bottom centre, and
     # show for a moment as the shell first hears them, so they're let go.
     meters = "niri msg layers | grep -Eq 'Namespace: \"(volume|microphone)\"'"
-    machine.wait_until_fails(in_session(meters), timeout=15)
+    machine.wait_until_fails(in_session(meters), timeout=timedelta(seconds=15))
     since = mark()
     as_account("dictation toggle")
     reported("says dictation listening", lambda rest: rest == "", since)
@@ -579,25 +599,27 @@ with subtest("dictation says what it's doing, and when it heard nothing"):
     photograph("dictation-still-writing")
     reported("says dictation heard nothing", lambda rest: rest == "", since)
     photograph("dictation-heard-nothing")
-    machine.wait_until_fails(in_session(dictation), timeout=10)
+    machine.wait_until_fails(in_session(dictation), timeout=timedelta(seconds=10))
 
 # Any player that tells the desktop what it plays shows in the margin
 # while it plays, and the media keys' command shows what it is.
 with subtest("what's playing shows in the margin, and a media key shows what it is"):
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     # A track that starts by itself shows its card a moment, which
     # goes before the margin is photographed.
     with told("drawn notifications"), told("drawn margin"):
         as_account(f"systemd-run --user --unit=player mpv --ao=null --no-video --loop {TRACK}")
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     photograph("margin-playing")
     # The play key pauses it, and the card says what was paused.
     with told("drawn notifications"):
         as_account("qs ipc call music toggle")
     photograph("music-card")
     # Paused, nothing's playing, so the margin goes; the card goes by itself.
-    machine.wait_until_fails(in_session(margin), timeout=10)
-    machine.wait_until_fails(in_session(notices), timeout=15)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=15))
     as_account("systemctl --user stop player")
 
 
@@ -610,12 +632,12 @@ with subtest("a Tuple call shows in the margin while it lasts"):
     # Only a call writes these lines, so they're written here, with
     # the daemon stopped, since it rewrites its log as it starts.
     as_account("systemctl --user stop tuple")
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     with told("drawn margin"):
         tuple_said("call connected")
     photograph("margin-call")
     tuple_said("Caller.cpp:985|invalidating call")
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("people coming and going in a Tuple call are said, and Joel can leave"):
     # Whoever comes is "a guest", not a number, which Tuple's contacts
@@ -646,13 +668,13 @@ with subtest("people coming and going in a Tuple call are said, and Joel can lea
     launcher_ready()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(margin), timeout=15)
-    machine.wait_until_fails(offered.format("leave"), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=15))
+    machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))
     as_account("tuple stop")
 
 with subtest("a Tuple call ringing wants Joel, and one not answered is kept as missed"):
     offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action=show'"
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
     with told("shows card Someone is calling"):
         tuple_said("received incoming call: a caller")
     machine.succeed(offered)
@@ -660,16 +682,16 @@ with subtest("a Tuple call ringing wants Joel, and one not answered is kept as m
     photograph("notice-ringing")
     # The caller gives up: the ring's notice goes, and a missed call stays.
     tuple_said("Caller.cpp:985|invalidating call")
-    machine.wait_until_fails(offered, timeout=10)
+    machine.wait_until_fails(offered, timeout=timedelta(seconds=10))
     kept = "grep -q 'Missed a call from someone' ~/.local/state/quickshell/by-shell/*/notices.json"
-    machine.wait_until_succeeds(in_session(kept), timeout=10)
+    machine.wait_until_succeeds(in_session(kept), timeout=timedelta(seconds=10))
     # Once it goes by itself it waits, and the margin shows it.
-    machine.wait_until_fails(in_session(notices), timeout=15)
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=15))
     wait_for_surface("margin")
     machine.send_key("meta_l-n")
     launcher_ready()
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("a copied call's link can be joined until something else is copied"):
     link = "https://tuple.app/c/from-a-chat"
@@ -678,7 +700,7 @@ with subtest("a copied call's link can be joined until something else is copied"
     launcher_ready()
     type_in("join", selecting="Join the call")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     # A screenshot is copied as an image alone, with no text to read.
     as_account("printf '\\211PNG\\r\\n' | wl-copy --type image/png > /dev/null 2>&1")
@@ -693,7 +715,7 @@ with subtest("a copied call's link can be joined until something else is copied"
 
     launcher_until(joins_nothing)
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 with subtest("Tuple's windows find their places: the face in a corner, a shared screen wide"):
     # Through X11, as Tuple draws them, so niri starts xwayland-satellite
@@ -741,27 +763,28 @@ with subtest("Tuple's windows find their places: the face in a corner, a shared 
     as_account("pkill -f '[t]uple-window'")
     as_account(f"niri msg action close-window --id {window_titled('at work')['id']}")
     machine.wait_until_fails(
-        in_session("niri msg --json windows | grep -q 'tuple-\\|at work'"), timeout=30
+        in_session("niri msg --json windows | grep -q 'tuple-\\|at work'"),
+        timeout=timedelta(seconds=30),
     )
 
 with subtest("caps lock shows in the margin while it's on"):
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=timedelta(seconds=10))
     wait_for_surface("margin")
     photograph("margin-capitals")
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 0 {CAPITALS}", timeout=10)
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 0 {CAPITALS}", timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 with subtest("caps lock still shows after its watcher restarts"):
     # Quickshell keeps running, so it must still hear the file.
     machine.succeed("systemctl restart keyboard-lights")
     machine.wait_for_unit("keyboard-lights.service")
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=timedelta(seconds=10))
     wait_for_surface("margin")
     machine.send_key("caps_lock")
-    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=timedelta(seconds=10))
 
 # Super+Shift+N puts the cards away, and each is still there unread.
 with subtest("Super+Shift+N puts the notices away"):
@@ -772,7 +795,7 @@ with subtest("Super+Shift+N puts the notices away"):
     kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(
         in_session(kept + ' | grep -q \'"summary":"Standup"[^}]*"read":false\''),
-        timeout=10,
+        timeout=timedelta(seconds=10),
     )
 
 # A binding that throws or assigns the wrong type only warns, and

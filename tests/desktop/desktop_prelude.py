@@ -13,6 +13,7 @@ import re
 import shlex
 import tempfile
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
@@ -99,12 +100,12 @@ FROM_THE_CORNER = 100
 # ends when it does, so this is only a ceiling: on a host busy with
 # other machines and builds, a cold kitty or GIMP took past 30
 # seconds, and a wait on a program starting fails then, not the step.
-STARTING = 120
+STARTING = timedelta(seconds=120)
 # More rows than this name something across everything the launcher is asked for in its
 # survey, so the rows were looked at rather than all empty.
 ROWS_LOOKED_AT = 100
 # The same for the Wi-Fi sign-in window, which starts GTK and WebKit cold.
-SIGNING_IN = 180
+SIGNING_IN = timedelta(seconds=180)
 # How far in, in pixels, from the screen's edges and what niri keeps clear along them, a
 # window set in a corner rests at most.
 FROM_THE_EDGE = 48
@@ -159,7 +160,9 @@ def power(state: str) -> None:
 
 def wait_for_surface(namespace: str) -> None:
     """Wait until niri lists one of the shell's surfaces by its namespace."""
-    machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
+    machine.wait_until_succeeds(
+        in_session(f"niri msg layers | grep -q {namespace}"), timeout=timedelta(seconds=30)
+    )
 
 
 # The shell reports what it does to its journal (Report.qml), so the test
@@ -173,13 +176,18 @@ def mark() -> str:
     return said.rsplit("-- cursor: ", 1)[1].strip()
 
 
-def reported(prefix: str, test: Callable[[str], object], since: str, timeout: int = 30) -> None:
+def reported(
+    prefix: str,
+    test: Callable[[str], object],
+    since: str,
+    timeout: timedelta = timedelta(seconds=30),
+) -> None:
     """Wait until something said after a point starts with the prefix and passes the test.
 
     The point is one mark gave, or "" for the boot. What the shell did say is printed when it
     never says what's wanted.
     """
-    deadline = time.monotonic() + timeout * vm_helpers.pace(vm_helpers.busyness())
+    deadline = time.monotonic() + timeout.total_seconds() * vm_helpers.pace(vm_helpers.busyness())
     start = since
 
     def never() -> str:
@@ -192,7 +200,7 @@ def reported(prefix: str, test: Callable[[str], object], since: str, timeout: in
         assert left > 0, never()
         status, said = machine.execute(
             in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
-            timeout=left + 30,
+            timeout=timedelta(seconds=left + 30),
         )
         assert status == 0, never()
         for line in said.splitlines():
@@ -204,21 +212,21 @@ def reported(prefix: str, test: Callable[[str], object], since: str, timeout: in
 
 
 @contextlib.contextmanager
-def told(what: str, timeout: int = 30) -> Iterator[None]:
+def told(what: str, timeout: timedelta = timedelta(seconds=30)) -> Iterator[None]:
     """Wait, after what's done inside it, for the shell to say exactly this."""
     since = mark()
     yield
     reported(what, lambda rest: rest == "", since, timeout)
 
 
-def held_still(timeout: int = 10, span: float = 0.5) -> bool:
+def held_still(timeout: timedelta = timedelta(seconds=10), span: float = 0.5) -> bool:
     """Say whether the screen holds still for half a second before the time is up.
 
     Half a second is twice the theme's longest movement: niri composes a frame a moment after
     it's asked to, windows and surfaces move as they come, and a busy host can draw two frames
     in a row the same mid-motion.
     """
-    deadline = time.monotonic() + timeout * vm_helpers.pace(vm_helpers.busyness())
+    deadline = time.monotonic() + timeout.total_seconds() * vm_helpers.pace(vm_helpers.busyness())
     with tempfile.TemporaryDirectory() as folder:
         shot = Path(folder) / "shot.ppm"
         last: bytes | None = None
@@ -233,7 +241,7 @@ def held_still(timeout: int = 10, span: float = 0.5) -> bool:
     return False
 
 
-def photograph(name: str, timeout: int = 10) -> None:
+def photograph(name: str, timeout: timedelta = timedelta(seconds=10)) -> None:
     """Photograph the screen once it holds still, for a person to look at, in the gallery.
 
     One that never holds still is kept as it is. Outside the gallery it takes nothing and
@@ -244,7 +252,7 @@ def photograph(name: str, timeout: int = 10) -> None:
         machine.screenshot(name)
 
 
-def settled_screen(name: str, timeout: int = 10) -> Image.Image:
+def settled_screen(name: str, timeout: timedelta = timedelta(seconds=10)) -> Image.Image:
     """Give the screen once it holds still, or as it is when it never does, to measure.
 
     The gallery keeps it too, by its name, for a person to look at.
@@ -265,7 +273,9 @@ def showing() -> Json:
     return cast("Json", json.loads(as_account("qs ipc call launcher showing")))
 
 
-def launcher_until(test: Callable[[Json], object], timeout: int = 30) -> None:
+def launcher_until(
+    test: Callable[[Json], object], timeout: timedelta = timedelta(seconds=30)
+) -> None:
     """Wait until what the launcher shows passes the test.
 
     The launcher reports its state each time it changes, so a wait reads it once and then
@@ -371,7 +381,9 @@ def drawn_at(window: Json) -> tuple[int, int, int, int]:
     return left, top, width, height
 
 
-def settles_on(wanted: str, read: Callable[[], str], timeout: int = 15) -> str | None:
+def settles_on(
+    wanted: str, read: Callable[[], str], timeout: timedelta = timedelta(seconds=15)
+) -> str | None:
     """Give what a reading of the screen settles on.
 
     It's read until it gives the colour wanted, since niri moves a window to where it says it
@@ -388,7 +400,7 @@ def settles_on(wanted: str, read: Callable[[], str], timeout: int = 15) -> str |
         return readings[-1] == wanted
 
     with contextlib.suppress(Exception):
-        retry(settled, timeout_seconds=timeout)
+        retry(settled, timeout=timeout)
     return readings[-1]
 
 
@@ -400,7 +412,8 @@ def commonest_colour_in(title: str, picture: str, wanted: str) -> str | None:
     this waits longer than the rest.
     """
     machine.wait_until_succeeds(
-        in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''), timeout=120
+        in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
+        timeout=timedelta(seconds=120),
     )
     as_account(f"niri msg action move-window-to-floating --id {window_titled(title)['id']}")
 
@@ -426,7 +439,9 @@ def described() -> None:
 
     It asks without a wait of its own, and says nothing more when niri can't answer.
     """
-    _, shown = machine.execute(in_session("niri msg windows; niri msg layers"), timeout=30)
+    _, shown = machine.execute(
+        in_session("niri msg windows; niri msg layers"), timeout=timedelta(seconds=30)
+    )
     print(f"niri shows:\n{shown}")
 
 
@@ -484,7 +499,9 @@ def meter_shows(namespace: str, kind: str, change: str) -> None:
     found = re.search(r'node\.name = "([^"]+)"', said)
     assert found is not None, f"no default {kind.lower()} has a name"
     node = found.group(1)
-    reported(f"hears {namespace} {node}", lambda rest: rest == "", "", timeout=60)
+    reported(
+        f"hears {namespace} {node}", lambda rest: rest == "", "", timeout=timedelta(seconds=60)
+    )
     with told(f"drawn {namespace}"):
         as_account(change)
     photograph(namespace)
@@ -562,7 +579,7 @@ def opens_in(path: str, kind: str, app_id: str) -> None:
     try:
         machine.wait_until_succeeds(
             in_session(f'niri msg --json focused-window | grep -q \'"app_id":"{app_id}"\''),
-            timeout=60,
+            timeout=timedelta(seconds=60),
         )
     except Exception:
         print(as_account(f"xdg-mime query default {kind}; cat /tmp/opened; niri msg windows"))
@@ -581,7 +598,7 @@ def listen() -> None:
         f"{DBUS}/bin/dbus-send --session --type=signal /probe org.freedesktop.Notifications.Probe"
     )
     machine.wait_until_succeeds(
-        in_session(f"{probe}; grep -q member=Probe /tmp/signals"), timeout=10
+        in_session(f"{probe}; grep -q member=Probe /tmp/signals"), timeout=timedelta(seconds=10)
     )
 
 
@@ -604,7 +621,9 @@ def offer_to_play(picture: str, offers: str = "") -> tuple[float, float]:
     notify-send waits for the answer, so it runs on its own, and the notice stays a minute, so
     only a click closes it sooner.
     """
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
     with told(f"shows card {picture}"):
         as_account(
             f"notify-send --expire-time=60000 {offers} --action=play='Play it' '{picture}'"
@@ -630,7 +649,7 @@ def offer_to_play(picture: str, offers: str = "") -> tuple[float, float]:
             assert drawn, "the action's glyph isn't drawn"
         return bool(drawn)
 
-    retry(glyph_drawn, timeout_seconds=15)
+    retry(glyph_drawn, timeout=timedelta(seconds=15))
     xs, ys = [x for x, _ in drawn], [y for _, y in drawn]
     assert max(xs) - min(xs) < ONE_GLYPH, f"more than one glyph: {drawn}"
     assert max(ys) - min(ys) < ONE_GLYPH, f"more than one glyph: {drawn}"
@@ -663,7 +682,9 @@ def answered() -> str:
 
     That's the action if one was done, and nothing if the notice was only put away.
     """
-    machine.wait_until_fails("pgrep -f '[n]otify-send .*--action=play'", timeout=15)
+    machine.wait_until_fails(
+        "pgrep -f '[n]otify-send .*--action=play'", timeout=timedelta(seconds=15)
+    )
     return machine.succeed("cat /tmp/answer").strip()
 
 
@@ -804,7 +825,9 @@ def ask(kind: str, prompt: str) -> None:
     as_account(f"systemd-run --user --collect --quiet -- {ASKING} {kind} '{prompt}'")
 
 
-def answered_with(kind: str, code: int, answer: str = "", timeout: int = 30) -> None:
+def answered_with(
+    kind: str, code: int, answer: str = "", timeout: timedelta = timedelta(seconds=30)
+) -> None:
     """Wait until an ask is answered, and check how it exited and what it gave back."""
     exited = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
     machine.wait_until_succeeds(in_session(f"test -e {exited}"), timeout=timeout)

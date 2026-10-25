@@ -9,6 +9,7 @@ there are imported only for type checkers.
 import json
 import re
 import shlex
+from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -73,7 +74,7 @@ with subtest("niri keeps CAP_SYS_NICE to itself"):
     assert niri_caps["CapEff"] & (1 << CAP_SYS_NICE), niri_caps
     t.assertEqual((niri_caps["CapInh"], niri_caps["CapAmb"]), (0, 0))
     as_account("niri msg action spawn -- sh -c 'grep ^Cap /proc/self/status > /tmp/child-caps'")
-    machine.wait_until_succeeds("test -s /tmp/child-caps", timeout=30)
+    machine.wait_until_succeeds("test -s /tmp/child-caps", timeout=timedelta(seconds=30))
     offspring = caps_of(machine.succeed("cat /tmp/child-caps"))
     t.assertEqual(
         [offspring[name] for name in ("CapEff", "CapPrm", "CapInh", "CapAmb")], [0, 0, 0, 0]
@@ -88,13 +89,13 @@ with subtest("every user manager watches its own pressure"):
 with subtest("the power profile follows the charger from boot"):
     machine.wait_until_succeeds(
         "journalctl -b -o cat -u power-profile-follows-the-charger | grep -F 'power profile:'",
-        timeout=30,
+        timeout=timedelta(seconds=30),
     )
 
 # Only root reads the firmware's memory devices, so a unit writes them out at boot for the
 # launcher's Memory to read as the account, and QEMU lists the machine's memory as one.
 with subtest("the memory modules are written out at boot for the account to read"):
-    machine.wait_until_succeeds("test -e /run/memory-modules.json", timeout=30)
+    machine.wait_until_succeeds("test -e /run/memory-modules.json", timeout=timedelta(seconds=30))
     memory = json.loads(as_account("cat /run/memory-modules.json"))
     print(memory)
     assert memory["modules"], memory
@@ -120,17 +121,20 @@ with subtest("the wallpaper stands behind the workspaces"):
             )
         return colours > PICTURE_COLOURS
 
-    retry(painted, timeout_seconds=30)
+    retry(painted, timeout=timedelta(seconds=30))
     # The picture to look at, once its fade has finished and the
     # microphone's meter, which can show as the session starts, has
     # gone.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=30)
+    )
     photograph("workspace")
 
 with subtest("the overview draws nothing of the shell's, and the launcher says how things stand"):
     as_account("niri msg action open-overview")
     machine.wait_until_succeeds(
-        in_session("niri msg --json overview-state | grep -q '\"is_open\":true'"), timeout=10
+        in_session("niri msg --json overview-state | grep -q '\"is_open\":true'"),
+        timeout=timedelta(seconds=10),
     )
     photograph("overview")
     machine.fail(in_session("niri msg layers | grep -qw status"))
@@ -163,7 +167,7 @@ with subtest("the overview draws nothing of the shell's, and the launcher says h
     )
     photograph("launcher-glance-typing")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 with subtest("a notification appears"):
     with told("drawn notifications"):
@@ -171,22 +175,28 @@ with subtest("a notification appears"):
     photograph("notification")
     # It leaves on its own, before the meters, whose pictures it would
     # be in for as long as the host takes to reach them.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
 
 
 with subtest("the volume shows when it changes, then goes"):
     # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
     defaults = "wpctl inspect @DEFAULT_AUDIO_SINK@ && wpctl inspect @DEFAULT_AUDIO_SOURCE@"
-    machine.wait_until_succeeds(in_session(defaults), timeout=30)
+    machine.wait_until_succeeds(in_session(defaults), timeout=timedelta(seconds=30))
     meter_shows("volume", "SINK", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-")
     machine.succeed(in_session("wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q stand-in-speakers"))
-    machine.wait_until_fails(in_session("niri msg layers | grep -q volume"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q volume"), timeout=timedelta(seconds=10)
+    )
 
 # The microphone's key mutes it through the same command, which niri runs.
 with subtest("the microphone shows when it mutes, then goes"):
     toggle = "niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
     meter_shows("microphone", "SOURCE", toggle)
-    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
+    )
     # Unmuted again, which the margin hears, so it's empty for what's next.
     since = mark()
     as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
@@ -210,7 +220,9 @@ with subtest("the brightness shows when the keys' command changes it, then goes"
         machine.wait_until_succeeds(f"grep -qx {share} /sys/class/backlight/stand-in/brightness")
         reported("level brightness ", as_chosen, since)
     photograph("brightness")
-    machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q brightness"), timeout=timedelta(seconds=10)
+    )
 
 # The VM's light sensor is a stand-in whose light is what the test writes
 # to it, which it puts in the buffer udev turned on. Joel picks a dim
@@ -233,11 +245,13 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
     light(2)
     with told("drawn brightness"):
         as_account("niri msg action spawn -- brightnessctl --class=backlight set 10%")
-    retry(learned, timeout_seconds=10)
-    machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+    retry(learned, timeout=timedelta(seconds=10))
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q brightness"), timeout=timedelta(seconds=10)
+    )
     since = mark()
     light(30)
-    retry(lambda _: brightness() > FOLLOWED_THE_ROOM, timeout_seconds=30)
+    retry(lambda _: brightness() > FOLLOWED_THE_ROOM, timeout=timedelta(seconds=30))
     after = f"--after-cursor={shlex.quote(since)}"
     shell = as_account(f"journalctl --user --unit=quickshell --no-pager --output=cat {after}")
     t.assertNotIn("drawn brightness", shell, "the bar showed for the light")
@@ -252,7 +266,7 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
             in_session(
                 f"journalctl --user --unit=backlight --no-pager --output=cat | grep -qF '{said}'"
             ),
-            timeout=10,
+            timeout=timedelta(seconds=10),
         )
 
     machine.succeed("echo 1 > /sys/module/stand_in_lid/parameters/shut")
@@ -261,7 +275,7 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
     machine.succeed("echo 0 > /sys/module/stand_in_lid/parameters/shut")
     lid_says("the lid is open")
     light(1)
-    retry(lambda _: brightness() < held_at, timeout_seconds=30)
+    retry(lambda _: brightness() < held_at, timeout=timedelta(seconds=30))
 
 # The VM's monitor is a stand-in on a bus named as an MST hub's, which
 # answers DDC/CI for its brightness as the desk's does. It follows the
@@ -273,7 +287,7 @@ with subtest("the monitor follows the panel's brightness"):
             "journalctl --user --unit=backlight --no-pager --output=cat"
             " | grep -q 'the monitor on i2c-[0-9]* follows'"
         ),
-        timeout=10,
+        timeout=timedelta(seconds=10),
     )
     panel_brightest = int(machine.succeed("cat /sys/class/backlight/stand-in/max_brightness"))
 
@@ -282,11 +296,11 @@ with subtest("the monitor follows the panel's brightness"):
         shown = int(machine.succeed("cat /sys/module/stand_in_monitor/parameters/brightness"))
         return shown == round(brightness() / panel_brightest * 100)
 
-    retry(on_monitor, timeout_seconds=10)
+    retry(on_monitor, timeout=timedelta(seconds=10))
     for share in [70, 20]:
         as_account(f"niri msg action spawn -- brightnessctl --class=backlight set {share}%")
         machine.wait_until_succeeds(f"grep -qx {share} /sys/class/backlight/stand-in/brightness")
-        retry(on_monitor, timeout_seconds=10)
+        retry(on_monitor, timeout=timedelta(seconds=10))
     backlight_said = as_account("journalctl --user --unit=backlight --no-pager --output=cat")
     t.assertNotIn("can't set the monitor", backlight_said, "the monitor refused a level")
     t.assertNotIn("left alone", backlight_said, "the monitor didn't answer")
@@ -296,7 +310,9 @@ with subtest("the charge shows when power goes and comes back, then goes"):
         with told("drawn power"):
             power(state)
         photograph(f"power-{state}")
-        machine.wait_until_fails(in_session("niri msg layers | grep -q power"), timeout=10)
+        machine.wait_until_fails(
+            in_session("niri msg layers | grep -q power"), timeout=timedelta(seconds=10)
+        )
 
 # Chrome and Slack ask the desktop portal, and websites hear it from them.
 with subtest("the desktop says it prefers dark"):
@@ -346,7 +362,7 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
     as_account("niri msg action move-window-to-workspace-down")
     as_account("niri msg action focus-workspace-up")
     machine.succeed(f"systemd-run --unit=touchscreen {TOUCHSCREEN}")
-    machine.wait_for_file("/run/touchscreen", timeout=30)
+    machine.wait_for_file("/run/touchscreen", timeout=timedelta(seconds=30))
     as_account(
         "systemd-run --user --collect --quiet --unit=wev -- sh -c "
         f"'{COREUTILS}/bin/stdbuf -oL {WEV}/bin/wev > /tmp/wev.log 2>&1'"
@@ -357,7 +373,7 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
         windows = json.loads(as_account("niri msg --json windows"))
         return any(window["title"] == "wev" for window in windows)
 
-    retry(wev_open, timeout_seconds=30)
+    retry(wev_open, timeout=timedelta(seconds=30))
     as_account("niri msg action maximize-column")
 
     def touches(kind: str) -> int:
@@ -386,7 +402,7 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
         drawn = over.get(way, way)
         machine.succeed(f"echo '{fingers} {drawn} {across}' > /run/touchscreen")
         try:
-            retry(lambda _: until(), timeout_seconds=10)
+            retry(lambda _: until(), timeout=timedelta(seconds=10))
         except Exception:
             print(machine.succeed("cat /tmp/wev.log | grep wl_touch || true"))
             raise
@@ -396,7 +412,7 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
     first = focused_workspace()
     swiped(3, "DU", lambda: focused_workspace() == first + 1)
     # The two fingers wev already had are cancelled, not let go.
-    retry(lambda _: touches("cancel") >= 1, timeout_seconds=10)
+    retry(lambda _: touches("cancel") >= 1, timeout=timedelta(seconds=10))
     swiped(3, "UD", lambda: focused_workspace() == first)
     swiped(4, "DU", overview_open)
     swiped(4, "UD", lambda: not overview_open())
@@ -414,7 +430,7 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
     last = max(w["idx"] for w in workspaces)
     as_account(f"niri msg action move-column-to-workspace {last}")
     as_account(f"systemd-run --user --collect --quiet --unit=wev-right -- {WEV}/bin/wev")
-    retry(lambda _: focused() != left, timeout_seconds=30)
+    retry(lambda _: focused() != left, timeout=timedelta(seconds=30))
     right = focused()
     t.assertTrue(held_still(), "the view never settled")
     swiped(3, "LR", lambda: focused() == left)
@@ -453,10 +469,10 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
         windows = json.loads(as_account("niri msg --json windows"))
         return any(w["title"] == "touched" and w["is_focused"] for w in windows)
 
-    retry(touched_focused, timeout_seconds=60)
+    retry(touched_focused, timeout=timedelta(seconds=60))
     as_account("niri msg action set-column-width 100%")
     kitty = f"kitty @ --to unix:@kitty-{window_titled('touched')['pid']} get-text"
-    retry(lambda _: "3000" in as_account(kitty).split(), timeout_seconds=30)
+    retry(lambda _: "3000" in as_account(kitty).split(), timeout=timedelta(seconds=30))
     swiped(1, "UD", lambda: "3000" not in as_account(kitty).split())
     as_account("systemctl --user stop touched")
     machine.succeed("systemctl stop touchscreen")
@@ -469,7 +485,8 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
 with subtest("a Bluetooth agent answers for paired devices"):
     machine.succeed("modprobe bluetooth && systemctl start bluetooth.service")
     machine.wait_until_succeeds(
-        "journalctl -u bluetooth-agent | grep -q 'Default agent requested'", timeout=30
+        "journalctl -u bluetooth-agent | grep -q 'Default agent requested'",
+        timeout=timedelta(seconds=30),
     )
     machine.succeed("systemctl is-active bluetooth-agent")
 
