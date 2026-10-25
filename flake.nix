@@ -366,13 +366,13 @@
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
       # The tools for working on core's own programs, the disk guard and
       # wifid among them, with the toolchain their packages build with, so
-      # nothing but Nix has to be installed first. direnv enters it in a
-      # program's directory, or `nix develop` then cargo there. It also
-      # holds shots-changed, which compares two runs of the desktop test's
-      # pictures, changed-checks, which names and builds the checks a change
-      # touches, and on Linux run-subtests, which runs some of a VM test's
-      # subtests in seconds, and shell-preview, which shows the shell from
-      # the working copy in a niri window (docs/testing.md).
+      # nothing but Nix has to be installed first. direnv enters it anywhere in
+      # the repository (.envrc), or `nix develop` then cargo in a program's
+      # directory. It also holds shots-changed, which compares two runs of the
+      # desktop test's pictures, changed-checks, which names and builds the
+      # checks a change touches, and on Linux run-subtests, which runs some
+      # of a VM test's subtests in seconds, and shell-preview, which shows the
+      # shell from the working copy in a niri window (docs/testing.md).
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
           # wifid's sign-in window builds against GTK and WebKit, which
