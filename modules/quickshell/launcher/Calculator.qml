@@ -2,6 +2,7 @@
 // shows "= 84", "0x1f" shows 31 with its other bases as rows, and "255 in
 // hex" asks for one. Numbers.js says what counts as a sum. Its settings:
 // `decimals`, and the `group` and `point` marks numbers are written with.
+import qs
 import QtQuick
 import "Numbers.js" as Numbers
 
@@ -19,7 +20,7 @@ Provider {
                 name: row.text,
                 side: row.side,
                 copy: row.copy,
-                glyph: String.fromCodePoint(0xf03a0)
+                glyph: Theme.glyph.number
             })),
             note: ""
         };

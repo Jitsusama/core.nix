@@ -40,17 +40,22 @@ Provider {
     collection: said === null ? null : Words.collection("spend")
     examples: said?.examples ?? []
 
-    // Each row's glyph and colour by its role: money for how things stand,
-    // a trend for what was found, the warning or the alert for a finding
-    // that wants a look, a tick for one marked expected, the chart for a
-    // row standing for a report, and the door for a sign-in.
+    // Each row's mark and colour by its role: what AI use has cost for how
+    // things stand, a trend for what was found, the warning or the urgent
+    // mark for a finding that wants a look, all's fine for one marked
+    // expected, the report's for a row standing for one, and signing in's.
+    // The warning is the theme's caution, as every other warning wears.
+    readonly property var roleMarks: ({
+        "alert": "urgent",
+        "warning": "caution",
+        "found": "trend",
+        "expected": "fine",
+        "report": "report",
+        "sign-in": "signIn"
+    })
+
     function glyph(role) {
-        return String.fromCodePoint(role === "alert" ? 0xf0028
-            : role === "warning" ? 0xf0026
-            : role === "found" ? 0xf012a
-            : role === "expected" ? 0xf012c
-            : role === "report" ? 0xf0215
-            : role === "sign-in" ? 0xf0342 : 0xf01c1);
+        return Theme.glyph[roleMarks[role] ?? "cost"];
     }
 
     function hue(role) {
@@ -96,7 +101,7 @@ Provider {
             doing.push(thing({
                 key: `spend:${given.key}:expect`,
                 name: "It's expected",
-                glyph: String.fromCodePoint(0xf012c),
+                glyph: Theme.glyph.fine,
                 hue: "action",
                 run: () => Niri.spawn(given.expect)
             }));

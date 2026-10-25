@@ -4,6 +4,7 @@
 // each network to keep from being followed, has no vendor to name. The
 // list is hwdata's, split at build time into a file for each first byte,
 // named in `directory`, so a lookup reads one small file.
+import qs
 import Quickshell.Io
 import QtQuick
 import "Addresses.js" as Addresses
@@ -12,10 +13,6 @@ Provider {
     id: provider
 
     examples: ["3c:22:fb:12:34:56"]
-
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
 
     // Who made it, by the first three bytes, or "" when the list doesn't say.
     function vendor(oui) {
@@ -37,7 +34,7 @@ Provider {
             return null;
         const made = at.local ? "" : vendor(at.oui);
         const headline = at.local ? "locally set, no vendor" : made || "no vendor listed";
-        const card = glyph(0xf0200);
+        const card = Theme.glyph.card;
         // The vendor is the headline, so the rows say only the rest.
         const rows = [];
         rows.push(copyRow({

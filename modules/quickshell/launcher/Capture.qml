@@ -28,11 +28,7 @@ Provider {
     // they'd be the same window twice (Joel, 2026-10-23).
     collection: Words.collection("capture", { searched: false })
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
-    readonly property string picture: glyph(0xf0100)
+    readonly property string picture: Theme.glyph.capture
 
     // The desktop's bind that runs what a row runs. A niri action's command
     // ends its options with --, which says nothing here.
@@ -87,7 +83,9 @@ Provider {
         name: "Stop recording",
         keywords: "end finish video",
         side: Recorder.what,
-        glyph: glyph(0xf04db),
+        // The vocabulary's Stop recording wears recording's mark, so this
+        // one, the same act, does too.
+        glyph: Theme.glyph.recording,
         hue: "action",
         chord: chord("qs ipc call recording screen"),
         run: () => Recorder.stop()

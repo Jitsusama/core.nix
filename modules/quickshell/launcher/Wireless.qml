@@ -40,10 +40,6 @@ Provider {
         empty: on ? "Listening for networks\u2026" : "Wi-Fi is off"
     })
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
     // Looking for networks costs the radio's power, so the cards look only
     // while the launcher is there to show what they hear.
     Timer {
@@ -97,12 +93,11 @@ Provider {
         }
     }
 
-    // Signal in four bars, from the icon font's own: with and without a
+    // Signal in four bars, as the theme's marks draw it: with and without a
     // lock, and an outline for none heard.
     function strengthGlyph(bars, locked) {
-        const codes = locked ? [0xf092c, 0xf0921, 0xf0924, 0xf0927, 0xf092a]
-            : [0xf092f, 0xf091f, 0xf0922, 0xf0925, 0xf0928];
-        return glyph(codes[Math.max(0, Math.min(4, bars))]);
+        const kind = locked ? "lockedSignal" : "signal";
+        return Theme.glyph[`${kind}${Math.max(0, Math.min(4, bars))}`];
     }
 
     // Every network in the air, and the one joined even when it hides its
@@ -677,7 +672,7 @@ Provider {
         return holds("wifi:heard", "heard",
             bands.join(" \u00b7 ").replace(/ GHz(?= \u00b7)/g, ""), {
                 keywords: Words.keywords("wifi:heard"),
-                glyph: glyph(0xf0003)
+                glyph: Theme.glyph.accessPoint
             }, () => {
                 const now = provider.detailOf(name);
                 return now ? provider.inOrder(now.points).map(point => provider.pointRow(point,
@@ -767,13 +762,13 @@ Provider {
         const rows = [];
         if (network.connected)
             rows.push(thing(act("wifi-leave", "", {
-                glyph: glyph(0xf05aa),
+                glyph: Theme.glyph.offline,
                 run: () => Wifi.leave(network.name)
             })));
         else if (network.known || !locked.locked || locked.password)
             rows.push(thing(act("wifi-join", "", {
                 verb: "join",
-                glyph: glyph(0xf05a9),
+                glyph: Theme.glyph.wireless,
                 network: network.name,
                 stays: true,
                 state: () => provider.said(network, ""),
@@ -783,7 +778,7 @@ Provider {
         // Each is made again under its act's name, so it's found by it.
         if (locked.password === true && !network.declared)
             rows.push(thing(Object.assign({}, asking(network, ""), act("wifi-password", "", {
-                glyph: glyph(0xf0306),
+                glyph: Theme.glyph.password,
                 chip: "password"
             }))));
         if (locked.account === true && !network.declared)
@@ -791,18 +786,18 @@ Provider {
                 rows.push(thing(Object.assign({}, accountFor(network, method),
                     act("wifi-account", "", {
                         fill: { method: method.toUpperCase() },
-                        glyph: glyph(0xf0306),
+                        glyph: Theme.glyph.password,
                         chip: "account"
                     }), { key: `verb:wifi-account-${method}` })));
         if (network.known && !network.declared) {
             rows.push(thing(act("wifi-trust", network.trusted ? "trusted" : "", {
                 note: network.trusted ? "this machine stops finding others on it, and they it"
                     : "this machine finds others on it, and they it",
-                glyph: glyph(0xf0483),
+                glyph: Theme.glyph.trust,
                 run: () => Wifi.trust(network.name, !network.trusted)
             })));
             rows.push(thing(act("wifi-forget", "", {
-                glyph: glyph(0xf16c5),
+                glyph: Theme.glyph.forget,
                 run: () => Wifi.forget(network.name)
             })));
         }

@@ -69,8 +69,9 @@ Scope {
     // made Machine's "what's running" answer nothing in the desktop test,
     // with no warning, as if its Jobs were another, unfed one.
     readonly property var vocabulary: Words
-    readonly property string sparkle: String.fromCodePoint(0xf0674)
-    readonly property string ghost: String.fromCodePoint(0xf02a0)
+    // The theme's marks, handed over the same way, for a glyph Provider
+    // gives of its own.
+    readonly property var marks: Theme.glyph
 
     // The providers, made from their files as the shell starts, each given
     // its settings and weight; one that fails to load is said and skipped.
@@ -1808,8 +1809,8 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
-                        glyph: secret ? String.fromCodePoint(0xf023)
-                            : thing ? thing.lead ?? thing.glyph : String.fromCodePoint(0xf0349)
+                        glyph: secret ? Theme.glyph.secret
+                            : thing ? thing.lead ?? thing.glyph : Theme.glyph.launcher
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
@@ -1977,7 +1978,8 @@ Scope {
                                 ? root.held[root.held.length - 1].row.from ?? null : null
                             visible: root.matches.length === 0 && root.answer === null
                                 && root.asking === null
-                            glyph: root.typed === "" ? root.sparkle : root.ghost
+                            glyph: root.typed === "" ? Theme.glyph.greeting
+                                : Theme.glyph.nothingFound
                             hue: Theme.voice
                             quiet: true
                             name: root.typed !== ""

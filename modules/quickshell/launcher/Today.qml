@@ -4,6 +4,7 @@
 // many are left, the time in UTC, the zone with its offset, and the time
 // as seconds since the epoch, each copied by Return. It's all reckoned from
 // the clock, so nothing is asked.
+import qs
 import QtQuick
 import "Numbers.js" as Numbers
 import "Zones.js" as Zones
@@ -34,7 +35,7 @@ Provider {
     }
 
     function told(now) {
-        const glyph = String.fromCodePoint(0xf00ed);
+        const glyph = Theme.glyph.date;
         const day = Zones.dayOfYear(now);
         const days = new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365;
         const zone = settings.zone ?? "";

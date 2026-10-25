@@ -124,8 +124,9 @@ function apart(minutes) {
     return `${parts.filter(part => part).join(" ")} ${way} here`;
 }
 
-// Each row's glyph, by what it tells: the day, the gap, the zone.
-const glyphs = { day: 0xf_0b_67, apart: 0xf_01_50, zone: 0xf_01_e7 };
+// Each row's glyph, as the theme's mark for what it tells: the day, the
+// gap, the zone. The day wears the date's, as Today's rows do.
+const glyphs = { day: "date", apart: "clock", zone: "zone" };
 
 // Which day it is there against here, by how many days apart they are.
 function relative(dayApart) {

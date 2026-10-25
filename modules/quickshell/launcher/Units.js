@@ -8,10 +8,12 @@
 .import "Numbers.js" as Numbers
 
 // Each unit as { symbol, size, names }: how many of the base it is and the
-// names it's typed as; the symbol is typed as well, lowercased.
+// names it's typed as; the symbol is typed as well, lowercased. Each kind's
+// glyph is the name of the theme's mark for what it measures, which
+// Units.qml looks up, since a library can't reach the theme.
 const kinds = {
     length: {
-        glyph: 0xf_04_6d,
+        glyph: "distance",
         units: [
             { symbol: "nm", size: 1e-9,
                 names: ["nanometre", "nanometres", "nanometer", "nanometers"] },
@@ -32,7 +34,7 @@ const kinds = {
         ]
     },
     mass: {
-        glyph: 0xf_05_d1,
+        glyph: "mass",
         units: [
             { symbol: "mg", size: 1e-6, names: ["milligram", "milligrams"] },
             { symbol: "g", size: 1e-3, names: ["gram", "grams"] },
@@ -45,7 +47,7 @@ const kinds = {
     },
     // In litres; cups, pints, quarts and gallons are American.
     volume: {
-        glyph: 0xf_01_ab,
+        glyph: "capacity",
         units: [
             { symbol: "mL", size: 1e-3,
                 names: ["ml", "millilitre", "millilitres", "milliliter", "milliliters"] },
@@ -65,7 +67,7 @@ const kinds = {
         ]
     },
     area: {
-        glyph: 0xf_0f_e6,
+        glyph: "area",
         units: [
             { symbol: "m\u00b2", size: 1, names: ["m2", "sqm", "square metre", "square metres"] },
             { symbol: "km\u00b2", size: 1e6,
@@ -81,7 +83,7 @@ const kinds = {
     // A kilometre an hour is 1 / 3.6 metres a second, and a knot a nautical
     // mile, 1852 metres, an hour.
     speed: {
-        glyph: 0xf_04_c5,
+        glyph: "speed",
         units: [
             { symbol: "m/s", size: 1, names: ["mps", "metres per second"] },
             { symbol: "km/h", size: 0.277_777_777_777_777_8,
@@ -93,7 +95,7 @@ const kinds = {
     // In bytes: a thousand to a kilobyte, 1,024 to a kibibyte and each power
     // of it to the next, and eight bits to a byte.
     data: {
-        glyph: 0xf_02_ca,
+        glyph: "data",
         units: [
             { symbol: "bit", size: 0.125, names: ["bits"] },
             { symbol: "B", size: 1, names: ["b", "byte", "bytes"] },
@@ -116,7 +118,7 @@ const kinds = {
     },
     // In seconds; a year is a Julian one, 365.25 days.
     time: {
-        glyph: 0xf_05_1b,
+        glyph: "duration",
         units: [
             { symbol: "ns", size: 1e-9, names: ["nanosecond", "nanoseconds"] },
             { symbol: "\u00b5s", size: 1e-6, names: ["us", "microsecond", "microseconds"] },
@@ -130,7 +132,7 @@ const kinds = {
         ]
     },
     energy: {
-        glyph: 0xf_14_0b,
+        glyph: "energy",
         units: [
             { symbol: "J", size: 1, names: ["j", "joule", "joules"] },
             { symbol: "kJ", size: 1e3, names: ["kj", "kilojoule", "kilojoules"] },
@@ -141,7 +143,7 @@ const kinds = {
         ]
     },
     pressure: {
-        glyph: 0xf_02_9a,
+        glyph: "pressure",
         units: [
             { symbol: "Pa", size: 1, names: ["pa", "pascal", "pascals"] },
             { symbol: "kPa", size: 1e3, names: ["kpa", "kilopascal", "kilopascals"] },
@@ -154,7 +156,7 @@ const kinds = {
     },
     // In degrees; a radian is 180 / pi of them.
     angle: {
-        glyph: 0xf_09_37,
+        glyph: "angle",
         units: [
             { symbol: "\u00b0", size: 1, names: ["deg", "degree", "degrees"] },
             { symbol: "rad", size: 57.295_779_513_082_32, names: ["radian", "radians"] },
@@ -165,7 +167,7 @@ const kinds = {
     // In kelvin: each scale's size is the kelvin a degree of it is, 5 / 9 of
     // one for Fahrenheit's, and its zero where it starts.
     temperature: {
-        glyph: 0xf_05_0f,
+        glyph: "temperature",
         units: [
             { symbol: "\u00b0C", size: 1, zero: 273.15,
                 names: ["c", "\u00b0c", "celsius", "centigrade"] },

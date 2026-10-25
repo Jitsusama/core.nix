@@ -5,6 +5,7 @@
 // nothing did; the rows are each thing that waited, in lag-watch's words,
 // then how fast niri answered and how hard the work behind was going. A
 // machine without lag-watch has no file, and so no answer.
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -46,8 +47,8 @@ Provider {
         const window = parsed(read(status));
         if (!window || !Array.isArray(window.trouble))
             return null;
-        const waited = String.fromCodePoint(0xf051f);
-        const fine = String.fromCodePoint(0xf012c);
+        const waited = Theme.glyph.lag;
+        const fine = Theme.glyph.fine;
         const trouble = window.trouble.map(line => copyRow({ name: line, side: "", glyph: waited }));
         const niri = window.niri ?? {};
         const rows = trouble.concat([

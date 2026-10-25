@@ -4,6 +4,7 @@
 // into `list` and read a moment after the shell starts. A place tzdata
 // doesn't name is found by Open-Meteo, only when it's asked for as "time
 // in" it, and never with `lookups` off. `zone` is the machine's own.
+import qs
 import Quickshell.Io
 import QtQuick
 import "Zones.js" as Zones
@@ -69,7 +70,7 @@ Provider {
                 name: row.text,
                 side: row.side,
                 copy: row.copy,
-                glyph: String.fromCodePoint(row.glyph)
+                glyph: Theme.glyph[row.glyph]
             })),
             note: note
         };

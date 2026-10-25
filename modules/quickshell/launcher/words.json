@@ -1834,7 +1834,7 @@
       "id": "shortcuts:desktop:programs",
       "in": "shortcuts",
       "name": "Programs",
-      "glyph": "below",
+      "glyph": "program",
       "words": [
         "apps",
         "applications"
@@ -2814,7 +2814,7 @@
       "id": "applications",
       "name": "Programs",
       "noun": "programs",
-      "glyph": "windows"
+      "glyph": "program"
     },
     {
       "id": "windows",
@@ -3097,7 +3097,7 @@
       "id": "wifi:sign-in",
       "name": "Sign in to {network}",
       "verb": "open",
-      "glyph": "wireless",
+      "glyph": "signIn",
       "words": [
         "portal",
         "captive",

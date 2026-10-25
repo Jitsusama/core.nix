@@ -51,7 +51,7 @@ Provider {
         verbs: Quiet.on ? null : () => [60, 0].map(minutes => provider.said(
             `session:quiet:${minutes}`, "", {
                 verb: "hold",
-                glyph: minutes > 0 ? String.fromCodePoint(0xf1862) : Theme.glyph.quiet,
+                glyph: minutes > 0 ? Theme.glyph.timed : Theme.glyph.quiet,
                 hue: "action",
                 run: () => Quiet.keep(minutes)
             }))

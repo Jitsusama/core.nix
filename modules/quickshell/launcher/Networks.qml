@@ -35,10 +35,6 @@ Provider {
     // How long what ip said stands before it's asked again.
     readonly property int stands: 5000
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
     function grouped(value) {
         return Numbers.format(value, 0, settings.group, settings.point);
     }
@@ -170,7 +166,7 @@ Provider {
 
     function linkGlyph(kind) {
         return kind === "wifi" ? Theme.glyph.wireless
-            : kind === "wired" ? Theme.glyph.wired : glyph(0xf0582);
+            : kind === "wired" ? Theme.glyph.wired : Theme.glyph.tunnel;
     }
 
     function addressOf(link) {

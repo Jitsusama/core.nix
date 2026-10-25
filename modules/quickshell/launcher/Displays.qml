@@ -27,10 +27,6 @@ Provider {
 
     collection: Words.collection("displays")
 
-    function glyph(code) {
-        return String.fromCodePoint(code);
-    }
-
     // What niri says of each display, by its connector's name.
     property var outputs: ({})
 
@@ -108,7 +104,7 @@ Provider {
             verb: on ? "focus" : "turn on",
             name: named(output),
             keywords: output.name,
-            glyph: glyph(builtIn(output) ? 0xf0322 : 0xf0379),
+            glyph: builtIn(output) ? Theme.glyph.computer : Theme.glyph.display,
             hue: "machine",
             side: !on ? "off" : focused ? "focused" : "",
             note: described(output),
@@ -121,11 +117,12 @@ Provider {
     readonly property var all: shown.map(output => made(output))
     onAllChanged: changed()
 
-    function choice(key, name, glyphCode, inUse, run) {
+    // A choice wears the theme's mark of the setting it's for, by name.
+    function choice(key, name, mark, inUse, run) {
         return thing({
             key: `verb:display-${key}`,
             name: name,
-            glyph: glyph(glyphCode),
+            glyph: Theme.glyph[mark],
             hue: "action",
             side: inUse ? "in use" : "",
             run: run
@@ -167,18 +164,19 @@ Provider {
     // another is on, then what its EDID says.
     function verbs(output) {
         if (output.logical === null)
-            return [choice("on", "Turn it on", 0xf0425, false, () => change(output, "On"))]
+            return [choice("on", "Turn it on", "display", false, () => change(output, "On"))]
                 .concat(factRows(output));
         const rows = setUp(output);
         // The last display on stays on, or nothing would show the launcher.
         if (lit.length > 1)
-            rows.push(choice("off", "Turn it off", 0xf0d90, false, () => change(output, "Off")));
+            rows.push(choice("off", "Turn it off", "displayOff", false,
+                () => change(output, "Off")));
         return rows.concat(factRows(output));
     }
 
     // A setting as a part: its name, how it's set, and the choices a step
     // in, or only how it's set when there's nothing else to choose.
-    function setting(output, id, side, glyphCode, choices) {
+    function setting(output, id, side, mark, choices) {
         const fields = {
             key: `displays:${output.name}:${id}`,
             name: partName(id),
@@ -186,7 +184,7 @@ Provider {
         };
         if (choices.length === 0)
             return copyRow(Object.assign(fields, { copy: "", hue: "machine", glyph: "" }));
-        return holderRow(Object.assign(fields, { glyph: glyph(glyphCode), offers: true }),
+        return holderRow(Object.assign(fields, { glyph: Theme.glyph[mark], offers: true }),
             () => choices);
     }
 
@@ -209,14 +207,14 @@ Provider {
     function setUp(output) {
         const now = mode(output);
         const scale = output.logical.scale;
-        const rows = [setting(output, "scale", percent(scale), 0xf06ed, scales.map(each =>
-            choice(`scale-${each}`, `Scale to ${percent(each)}`, 0xf06ed,
+        const rows = [setting(output, "scale", percent(scale), "scale", scales.map(each =>
+            choice(`scale-${each}`, `Scale to ${percent(each)}`, "scale",
                 Math.abs(each - scale) < 0.01,
                 () => change(output, { Scale: { scale: { Specific: each } } }))))];
         if (now !== null) {
             const rates = output.modes.filter(m => m.width === now.width && m.height === now.height);
             const refreshes = rates.length < 2 ? [] : rates.map(each =>
-                choice(`rate-${hertz(each)}`, `Refresh at ${hertz(each)} Hz`, 0xf095b,
+                choice(`rate-${hertz(each)}`, `Refresh at ${hertz(each)} Hz`, "refresh",
                     each === now, () => change(output, { Mode: { mode: { Specific: {
                         width: each.width,
                         height: each.height,
@@ -225,20 +223,21 @@ Provider {
             if (output.vrr_supported) {
                 const vrr = { vrr: !output.vrr_enabled, on_demand: false };
                 refreshes.push(choice("vrr", output.vrr_enabled ? "Stop variable refresh"
-                    : "Use variable refresh", 0xf095b, false,
+                    : "Use variable refresh", "refresh", false,
                     () => change(output, { Vrr: { vrr } })));
             }
             const variable = output.vrr_enabled ? ", variable" : "";
-            rows.push(setting(output, "refresh", `${hertz(now)} Hz${variable}`, 0xf095b,
+            rows.push(setting(output, "refresh", `${hertz(now)} Hz${variable}`, "refresh",
                 refreshes));
             const sizes = [];
             for (const each of output.modes)
                 if (!sizes.some(size => size.width === each.width && size.height === each.height))
                     sizes.push(each);
-            rows.push(setting(output, "resolution", `${now.width} \u00d7 ${now.height}`, 0xf0a24,
+            rows.push(setting(output, "resolution", `${now.width} \u00d7 ${now.height}`,
+                "resolution",
                 sizes.length < 2 ? [] : sizes.map(each =>
                     choice(`size-${each.width}x${each.height}`,
-                        `Use ${each.width} \u00d7 ${each.height}`, 0xf0a24,
+                        `Use ${each.width} \u00d7 ${each.height}`, "resolution",
                         each.width === now.width && each.height === now.height,
                         () => change(output, { Mode: { mode: { Specific: {
                             width: each.width,
@@ -247,8 +246,8 @@ Provider {
                         } } } })))));
         }
         const turned = turns.find(each => each.transform === output.logical.transform);
-        rows.push(setting(output, "rotation", turned ? turned.side : "flipped", 0xf0475,
-            turns.map(each => choice(`turn-${each.transform}`, each.name, 0xf0475,
+        rows.push(setting(output, "rotation", turned ? turned.side : "flipped", "rotation",
+            turns.map(each => choice(`turn-${each.transform}`, each.name, "rotation",
                 output.logical.transform === each.transform,
                 () => change(output, { Transform: { transform: each.transform } })))));
         return rows;

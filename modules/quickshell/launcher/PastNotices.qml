@@ -76,6 +76,8 @@ Provider {
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
             // The whole of what it said, summary over body.
             reads: said,
+            // Its sender's, which the history keeps as a code point
+            // (Notices.qml).
             glyph: String.fromCodePoint(notice.glyph),
             hue: notice.hue,
             note: notice.app,
@@ -116,7 +118,7 @@ Provider {
         })).map(action => thing({
             key: `verb:notice:${action.identifier}`,
             name: action.text,
-            glyph: String.fromCodePoint(/reply/i.test(action.text) ? 0xf045a : 0xf0ce0),
+            glyph: /reply/i.test(action.text) ? Theme.glyph.reply : Theme.glyph.offer,
             hue: "action",
             now: true,
             run: () => {
@@ -133,7 +135,7 @@ Provider {
         return offered.concat([thing({
             key: "verb:notice:copy",
             name: "Copy what it said",
-            glyph: String.fromCodePoint(0xf018f),
+            glyph: Theme.glyph.copy,
             hue: "action",
             now: true,
             run: () => {
@@ -143,13 +145,13 @@ Provider {
         }), thing({
             key: "verb:notice:mark",
             name: notice.read ? "Mark it unread" : "Mark it read",
-            glyph: String.fromCodePoint(notice.read ? 0xf0b92 : 0xf01ef),
+            glyph: notice.read ? Theme.glyph.unread : Theme.glyph.read,
             hue: "action",
             run: () => Notices.mark(notice.id, !notice.read)
         })], live ? [thing({
             key: "verb:notice:dismiss",
             name: "Let it go",
-            glyph: String.fromCodePoint(0xf0a91),
+            glyph: Theme.glyph.dismiss,
             hue: "action",
             run: () => {
                 const still = Notices.live[notice.id] ?? null;

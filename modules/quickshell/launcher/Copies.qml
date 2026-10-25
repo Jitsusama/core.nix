@@ -75,21 +75,21 @@ Provider {
         return `${Math.floor(seconds / 86400)} d ago`;
     }
 
-    // What a copy is, by its glyph, so a link, a path or a number stands
-    // out from the text around it.
+    // What a copy is, by the theme's mark for it, so a link, a path or a
+    // number stands out from the text around it.
     function kind(text, lines) {
         const one = text.trim();
         if (lines > 1)
-            return 0xf09aa;
+            return Theme.glyph.lines;
         if (/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(one))
-            return 0xf0337;
+            return Theme.glyph.link;
         if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(one))
-            return 0xf01f0;
+            return Theme.glyph.email;
         if (/^(~|\.{0,2})\/\S*$/.test(one))
-            return 0xf0224;
+            return Theme.glyph.path;
         if (/^[-+]?[\d,_ ]*\.?\d+$/.test(one))
-            return 0xf03a0;
-        return 0xf0a38;
+            return Theme.glyph.number;
+        return Theme.glyph.clipboard;
     }
 
     function made(copy) {
@@ -97,7 +97,7 @@ Provider {
         const row = member({
             key: `copy:${shown(copy.text)}`,
             name: shown(copy.text),
-            glyph: String.fromCodePoint(kind(copy.text, lines)),
+            glyph: kind(copy.text, lines),
             hue: "text",
             at: copy.at,
             text: copy.text,
@@ -163,7 +163,7 @@ Provider {
         const row = member({
             key: `picture:${copy.picture}`,
             name: `Image${size}`,
-            glyph: String.fromCodePoint(0xf02e9),
+            glyph: Theme.glyph.picture,
             hue: "text",
             at: copy.at,
             id: copy.picture,
