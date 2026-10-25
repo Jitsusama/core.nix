@@ -10,6 +10,10 @@ Row {
 
     // Each a key and what it does: [["↵", "unlock"], ["Esc", "clear"]].
     property var keys: []
+    // How wide each one's place is, when it keeps one wider than what it
+    // says now, so the keys hold still as what they say changes; a key of
+    // "" leaves its place empty.
+    property var widths: []
     // The type's step, large in a prompt and smaller in a notice, whose
     // footer is smaller; the space between them follows it.
     property real size: Theme.mono.large
@@ -21,8 +25,11 @@ Row {
 
         Text {
             required property var modelData
+            required property int index
 
-            text: `<font color="${Theme.text}">${modelData[0]}</font> ${modelData[1]}`
+            width: Math.max(implicitWidth, hints.widths[index] ?? 0)
+            text: modelData[0] === "" ? ""
+                : `<font color="${Theme.text}">${modelData[0]}</font> ${modelData[1]}`
             textFormat: Text.StyledText
             color: Theme.muted
             font.family: Theme.mono.family
