@@ -908,8 +908,14 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         " && mv $XDG_RUNTIME_DIR/desk/.d $XDG_RUNTIME_DIR/desk/displays.json"
     )
 
-    for wanted, inside in [(1.5, True), (scale(), False)]:
-        desktop.as_account("qs ipc call launcher collection displays")
+    # Opened the first time by the launcher's own call, and the second by
+    # the laptop's projection key, as Win+P: Super with what keyd's Colemak
+    # makes a semicolon, which this machine takes as it comes.
+    for wanted, inside, by_key in [(1.5, True, False), (scale(), False, True)]:
+        if by_key:
+            machine.send_key("meta_l-semicolon")
+        else:
+            desktop.as_account("qs ipc call launcher collection displays")
         desktop.launcher_ready()
         desktop.step_in()
         # Its settings lead, each saying how it's set, their choices a step
