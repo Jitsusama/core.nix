@@ -87,9 +87,9 @@ pkgs.testers.runNixOSTest {
       theme = nodes.machine.home-manager.users.${account}.jitsusama.theme;
       inherit (nodes.machine.console) font;
       kmscon = nodes.machine.services.kmscon.config;
-      # What the script needs from Nix, which it reads from this file at its
-      # top. ImageMagick runs beside the driver, and the other programs are
-      # named by their paths in the store, as the script always named them,
+      # What the tests need from Nix, as their values fixture. ImageMagick
+      # runs beside the driver, and the other programs are named by their
+      # paths in the store, as the tests always named them,
       # so none of them needs the machine's PATH.
       values = pkgs.writeText "plymouth-values.json" (
         builtins.toJSON {
@@ -110,10 +110,14 @@ pkgs.testers.runNixOSTest {
           plymouth = "${pkgs.plymouth}/bin/plymouth";
         }
       );
-      script = builtins.readFile ./plymouth-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./plymouth-vm-test.py}", values="${values}")
+    '';
+  # What VM tests share (tests/lib), pytest and its runner among them.
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }

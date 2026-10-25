@@ -12,7 +12,7 @@ let
   account = "jitsusama";
   secret = "correct-horse";
 
-  # What the script needs of the above, which it reads at its top.
+  # What the tests need of the above, as their values fixture.
   values = pkgs.writeText "greeter-values.json" (builtins.toJSON { inherit account secret; });
 
   # Stands in for niri's session, which the VM can't run on its screen: it
@@ -99,11 +99,15 @@ pkgs.testers.runNixOSTest {
       };
     };
 
-  # The script reads the values from the file put in place of its marker.
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./greeter-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests share (tests/lib), pytest and its runner among them.
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  # pytest runs the tests inside the driver, with the values as their fixture.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./greeter-vm-test.py}", values="${values}")
+  '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
