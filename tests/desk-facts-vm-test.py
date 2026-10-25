@@ -4,7 +4,8 @@ tests/desk-facts.nix runs this through pytest inside the driver (tests/lib/vm_py
 machine with an xHCI controller named desk and nothing plugged into it. QEMU's monitor plugs its
 USB audio device in and takes it out, and each time sound.json, which desk-facts rewrites only
 on what it hears, must name the card or no longer name it. snd-dummy's card, which isn't on USB,
-stands in for a laptop's own, named by each of its devices. Each state, booted, plugged in,
+stands in for a laptop's own, named by each of its devices, and QEMU's USB keyboard must be named
+in keyboards.json while it's plugged in. Each state, booted, plugged in,
 pulled out and plugged in again, is a fixture made from the one before, so any test runs alone
 with `-k`. The tests need no value from Nix.
 """
@@ -123,6 +124,20 @@ def test_a_device_not_on_usb_says_what_it_plays_at_while_it_plays(desk: Desk) ->
     assert facts["playing"].startswith("48 kHz, 16 bit, period ")
     desk.machine.succeed("systemctl stop playing")
     desk.machine.wait_until_fails(f"grep -q '\"playing\"' {FACTS}", timeout=HEARING)
+
+
+def test_a_usb_keyboard_is_named_with_its_polling_rate_until_it_s_pulled_out(desk: Desk) -> None:
+    """A USB keyboard plugged in is named with its polling rate, and no longer once pulled out."""
+    keyboards = "/run/user/1000/desk/keyboards.json"
+    named = f"grep -q '\"QEMU QEMU USB Keyboard\"' {keyboards}"
+    desk.machine.send_monitor_command("device_add usb-kbd,id=keys,bus=desk.0")
+    desk.machine.wait_until_succeeds(named, timeout=HEARING)
+    said = json.loads(as_account(desk.machine, f"cat {keyboards}"))
+    facts = {fact["name"]: fact["value"] for fact in said["QEMU QEMU USB Keyboard"]}
+    assert facts["polling rate"].endswith(" a second")
+    assert int(facts["keys"]) > 0
+    desk.machine.send_monitor_command("device_del keys")
+    desk.machine.wait_until_fails(named, timeout=HEARING)
 
 
 def test_plugged_in_again_it_s_named_again(desk: Desk, replugged: list[str]) -> None:

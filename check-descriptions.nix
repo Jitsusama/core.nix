@@ -122,9 +122,9 @@
   '';
   desk-facts-read-the-desk = ''
     desk-facts reads a monitor's EDID and USB-C cable, a USB sound card's modes, a built-in
-    card's jacks and chips, a camera's formats, a loopback camera's mode and sensor, and a
-    Bluetooth input device's link and inputs as the devices' own report them, and writes the
-    launcher's JSON in order
+    card's jacks and chips, a camera's formats, a loopback camera's mode and sensor, a
+    Bluetooth input device's link and inputs, and a wired keyboard's or mouse's polling rate and
+    inputs as the devices' own report them, and writes the launcher's JSON in order
   '';
   device-check-passes-clippy = ''
     clippy finds nothing in device-check, device-check-disk or their tests
@@ -869,8 +869,9 @@
   '';
   vm-desk-facts-follow-a-replug = ''
     desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
-    pulled out, and names it again when it's plugged back in; and names a card not on USB by
-    each of its devices, saying what one plays at only while it plays
+    pulled out, and names it again when it's plugged back in; names a card not on USB by each of
+    its devices, saying what one plays at only while it plays; and names a USB keyboard with its
+    polling rate until it's pulled out
   '';
   vm-desktop-captures-and-locks = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures by the

@@ -7,8 +7,9 @@
 # a built-in card's jacks and chips, and, while either plays or records,
 # what it runs at; a USB camera's formats, field of view, USB speed,
 # firmware and what it streams, and a loopback camera's mode, sensor, which
-# way it faces and whether it's powered; and a Bluetooth input device's
-# link, buttons, wheels or keys and ids. desk-facts, run as the person at
+# way it faces and whether it's powered; a Bluetooth input device's link,
+# buttons, wheels or keys and ids; and another keyboard's or a USB mouse's
+# polling rate, keys or buttons and wheel, and firmware. desk-facts, run as the person at
 # the machine, keeps them as JSON in $XDG_RUNTIME_DIR/desk, one file a kind,
 # rewriting a file only when a uevent, a sound device opening or closing, a
 # jack, a camera's holders changing or a monitor's facts being kept alters
