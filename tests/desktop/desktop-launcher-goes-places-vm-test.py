@@ -837,10 +837,11 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # Each says what it holds after its name, by name, from the
     # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:tools"].startswith("Tools \u00b7 Agents, AI spend, Calls"), (
+    assert reads["category:tools"].startswith("Tools \u00b7 Agents, AI spend, brightness, Calls"), (
         f"tools reads {reads['category:tools']!r}"
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
+    assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
     # Home holds still while something it answers changes: the
     # machine's queue, which a busy machine writes all the time, once
     # made it again and moved it from under the selection.

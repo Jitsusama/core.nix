@@ -501,9 +501,11 @@ Scope {
 
     // The one order every list a category holds keeps: by name, numbers
     // counting up first, capitals ignored (RSCH-20261025-U7566F), so where
-    // a thing is never has to be remembered, only its name.
+    // a thing is never has to be remembered, only its name. A command's
+    // form counts by its words, so "\u27e8sum\u27e9" is among the S's.
     function byName(a, b) {
-        return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+        const bare = name => name.replace(/[\u27e8\u27e9]/g, "");
+        return bare(a).localeCompare(bare(b), undefined, { numeric: true, sensitivity: "base" });
     }
 
     // What a category holds, by name: each thing the vocabulary names as
@@ -1052,8 +1054,8 @@ Scope {
         return rows;
     }
 
-    // One of home's rows: a category, saying what it holds, or a
-    // collection whole, Now saying what's in it by name.
+    // One of home's rows: a category, or a collection whole, Now and
+    // Programs, each saying what it holds by name.
     function homeRow(id, room) {
         const category = categories.find(row => row.category.id === id);
         if (category)
@@ -1064,12 +1066,10 @@ Scope {
         const source = collections.find(one => one.settings.name === id);
         if (!source)
             return null;
-        const row = whole(source, false);
-        if (id !== "on")
-            return row;
+        const row = whole(source, false, false);
         const names = source.everything().map(one => one.name);
         return Object.assign({}, row, {
-            count: names.length === 0 ? Words.of("on").empty ?? ""
+            count: names.length === 0 ? source.collection.empty ?? ""
                 : listed(names, room > 0 ? room - row.name.length : Infinity)
         });
     }

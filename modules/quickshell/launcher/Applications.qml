@@ -16,14 +16,45 @@
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
 // pressed, and again as its player or its streams change while it's open,
 // never as letters are typed, and nothing is read from a file.
+//
+// Programs is a collection too, home's row for them: every program by
+// name, as every list is. It adds no row of its own to a search, where
+// each program is found by itself.
 import Quickshell
 import qs
 import QtQuick
+import "../Fuzzy.js" as Fuzzy
 
 Provider {
     id: provider
 
     what: "program"
+
+    collection: Words.collection("applications", { searched: false })
+
+    function everything() {
+        return things.slice().sort((a, b) => a.name.localeCompare(b.name, undefined,
+            { numeric: true, sensitivity: "base" }));
+    }
+
+    // Inside Programs, by its name or what it is, the best grade first.
+    function search(typed) {
+        const words = Fuzzy.words(typed);
+        const need = Fuzzy.letters(words);
+        const found = [];
+        for (const row of things) {
+            const byName = (row.prepared.mask & need) === need
+                ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
+            const byWord = row.keywords && (row.keywords.mask & need) === need
+                ? Fuzzy.match(row.keywords, words, false) : { score: -1 };
+            const best = byName.score >= byWord.score ? byName : byWord;
+            if (best.score >= 0)
+                found.push({ score: best.score, grade: best.grade, row: row });
+        }
+        const grade = Math.min(3, ...found.map(f => f.grade));
+        const kept = found.filter(f => f.grade === grade).sort((a, b) => b.score - a.score);
+        return { rows: kept.map(f => f.row), grade: grade };
+    }
 
     // Held from the start, so the streams it binds say which program each
     // is before a program is first stepped into.
