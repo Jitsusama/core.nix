@@ -279,6 +279,7 @@
         tpm = ./modules/tpm/nixos.nix;
         usb-camera-holders = ./modules/usb-camera-holders/nixos.nix;
         usb-wake = ./modules/usb-wake/nixos.nix;
+        v4l2loopback = ./modules/v4l2loopback/nixos.nix;
         wifid = ./modules/wifid/nixos.nix;
         wpa_supplicant = ./modules/wpa_supplicant/nixos.nix;
         yubikey = ./modules/yubikey/system.nix;

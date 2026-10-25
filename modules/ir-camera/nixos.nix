@@ -44,7 +44,6 @@ in
   imports = [ ../v4l2loopback/nixos.nix ];
 
   options.jitsusama.irCamera = {
-    enable = lib.mkEnableOption "the IR camera, as a camera programs can open";
     source = lib.mkOption {
       type = lib.types.str;
       example = "/run/ir-camera/source";
@@ -80,9 +79,7 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    jitsusama.v4l2loopback.enable = true;
-
+  config = {
     # Tagged for systemd, so the relay can wait on it as a device unit.
     services.udev.extraRules = ''
       SUBSYSTEM=="video4linux", ATTR{name}=="${name}", SYMLINK+="ir-camera", TAG+="systemd"

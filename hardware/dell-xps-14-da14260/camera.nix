@@ -199,7 +199,6 @@ in
 
   # The IR camera, for any program that reads one. Its sensor's single mode.
   jitsusama.irCamera = {
-    enable = true;
     source = "/run/ir-camera/source";
     format = "Y10";
     width = 648;
@@ -299,7 +298,6 @@ in
   ];
   jitsusama.kernel.packageOverlays = [ psys ];
 
-  jitsusama.v4l2loopback.enable = true;
   # Which programs have the camera open, for the shell to show.
   jitsusama.v4l2loopback.holders.camera = {
     inherit device;

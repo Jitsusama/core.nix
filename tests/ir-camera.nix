@@ -49,7 +49,6 @@ pkgs.testers.runNixOSTest {
     {
       imports = [ self.nixosModules.ir-camera ];
       jitsusama.irCamera = {
-        enable = true;
         source = "/run/ir-camera/source";
         format = "Y16";
         inherit width height prepare;
