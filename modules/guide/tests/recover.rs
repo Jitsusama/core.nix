@@ -5,7 +5,8 @@
 use guide::Machine;
 use guide::fake::Fake;
 use guide::recover::{
-    AlreadyThere, BootGeneration, FindMachine, OpenDisk, STOPPED, already_there, the_machine,
+    AlreadyThere, BootGeneration, FindMachine, OpenDisk, STOPPED, STOPPED_EARLY, already_there,
+    the_machine,
 };
 use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
@@ -183,6 +184,27 @@ fn an_install_of_this_machine_stopped_part_way_is_offered_to_carry_on() {
     assert_eq!(disk, "/dev/vda");
     assert!(facts.contains(&("enrol-nano".into(), "opened:abc".into())));
     assert_eq!(STOPPED, &["Carry it on", "Start again, wiping the disk"]);
+}
+
+#[test]
+fn an_install_stopped_before_any_key_was_enrolled_is_offered_only_to_start_again() {
+    let copy = [
+        line("confirm-disk", "/dev/vda"),
+        line("lay-out-disk", "laptop"),
+    ]
+    .concat();
+    let mut fake = laid_out_holding(Some(&copy));
+    let Some(AlreadyThere::StoppedEarly { question }) = already_there(&mut fake, "laptop").unwrap()
+    else {
+        panic!("a stopped install nothing can open")
+    };
+    assert!(
+        question.contains("The install of laptop onto")
+            && question.contains("serial root")
+            && question.contains("before a YubiKey was enrolled"),
+        "{question}"
+    );
+    assert_eq!(STOPPED_EARLY, &["Start again, wiping the disk"]);
 }
 
 #[test]

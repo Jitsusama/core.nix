@@ -84,6 +84,10 @@ pub const ALREADY_THERE: &[&str] = &["Recover it", "Install it again, wiping the
 /// way: to carry it on, or to start again.
 pub const STOPPED: &[&str] = &["Carry it on", "Start again, wiping the disk"];
 
+/// What it offers when this machine's install stopped before any YubiKey
+/// was enrolled: only to start again, since nothing here opens that disk.
+pub const STOPPED_EARLY: &[&str] = &["Start again, wiping the disk"];
+
 /// Where the stick reads a disk's boot partition, before anything on the
 /// disk is opened.
 const BOOT: &str = "/run/guide/boot";
@@ -101,6 +105,10 @@ pub enum AlreadyThere {
         disk: String,
         facts: BTreeSet<Fact>,
     },
+    /// This machine's install, stopped before any YubiKey was enrolled, so
+    /// only the install key it held in memory opened the disk, and that
+    /// went with the restart.
+    StoppedEarly { question: String },
 }
 
 /// What the copy of an install's journal on a disk's boot partition says,
@@ -146,6 +154,14 @@ pub fn already_there(
     if let Some(facts) = stopped_install(machine, found)?
         && facts.contains(&("lay-out-disk".into(), installing.into()))
     {
+        if !facts.iter().any(|(step, _)| step.starts_with("enrol-")) {
+            return Ok(Some(AlreadyThere::StoppedEarly {
+                question: format!(
+                    "The install of {installing} onto {} stopped before a YubiKey was enrolled, so nothing can open what it wrote. Start again, wiping the disk?",
+                    described(&found.disk)
+                ),
+            }));
+        }
         return Ok(Some(AlreadyThere::Stopped {
             question: format!(
                 "The install of {installing} onto {} stopped before it finished. Carry it on from where it stopped, or start again, wiping the disk?",
