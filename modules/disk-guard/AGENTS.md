@@ -75,15 +75,17 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   is above urgent, or by `disk-guard thaw`, after which it's never frozen
   again.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
-  moment, and deletes them oldest
-  first, keeping three days' within a budget of 10% of
-  the filesystem. It expires generations, never the current, running or
-  booted one, the newest five, or one with a boot entry. It links the
-  store's identical files weekly in a scope of its own at idle priority,
-  only while nothing stalls on the disk or memory, since it can wait
-  without cost, stopping when the moment ends. An account's guard on the same filesystem
-  asks it to collect rather than collecting itself; with no system daemon
-  answering, it collects with `nix store gc --max` from urgent.
+  moment, and deletes them oldest first, keeping three days' within a budget
+  of 10% of the filesystem. A path a running build or evaluation holds as a
+  temporary root, and every dead path it reaches, is left for a later pass,
+  since Nix refuses it and each refusal costs a delete its whole look for
+  roots. It expires generations, never the current, running or booted one,
+  the newest five, or one with a boot entry. It links the store's identical
+  files weekly in a scope of its own at idle priority, only while nothing
+  stalls on the disk or memory, since it can wait without cost, stopping
+  when the moment ends. An account's guard on the same filesystem asks it to
+  collect rather than collecting itself; with no system daemon answering, it
+  collects with `nix store gc --max` from urgent.
 - **A Mac.** The same daemons run under launchd, asking macOS through
   `crate::sys`, which is `linux.rs` or `macos.rs`. Nothing hears who opens a
   file there without Apple's entitlement, so no older build is dated or

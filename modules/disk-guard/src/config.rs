@@ -396,6 +396,10 @@ pub struct Nix {
     /// Where the store lies, whose filesystem collecting frees.
     #[serde(default = "Nix::store")]
     pub store: PathBuf,
+    /// Where Nix keeps the temporary roots of each process using the
+    /// store, which hold what a build or an evaluation has in hand.
+    #[serde(default = "Nix::temp_roots")]
+    pub temp_roots: PathBuf,
     /// The directory of profiles whose generations expire: the machine's
     /// for the system daemon unless told, and an account's only if told.
     #[serde(default)]
@@ -411,6 +415,9 @@ impl Nix {
     fn store() -> PathBuf {
         PathBuf::from("/nix/store")
     }
+    fn temp_roots() -> PathBuf {
+        PathBuf::from("/nix/var/nix/temproots")
+    }
 }
 
 impl Default for Nix {
@@ -418,6 +425,7 @@ impl Default for Nix {
         Nix {
             bin: Nix::bin(),
             store: Nix::store(),
+            temp_roots: Nix::temp_roots(),
             profiles: None,
             generations: Generations::default(),
         }

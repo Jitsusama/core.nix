@@ -1085,8 +1085,12 @@ impl Guard {
             return Vec::new();
         };
         let keep = garbage.keep.0.as_secs_f64();
+        let held = listing.held_back(&crate::garbage::temp_roots(&self.config.nix.temp_roots));
         listing.batches(
-            |dead| Path::new(&dead.path).symlink_metadata().is_ok(),
+            |dead| {
+                !held.contains(dead.path.as_str())
+                    && Path::new(&dead.path).symlink_metadata().is_ok()
+            },
             now,
             keep,
             garbage.budget.of(space.total),

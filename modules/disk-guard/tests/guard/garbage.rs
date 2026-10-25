@@ -1,4 +1,4 @@
-use disk_guard::garbage::{Batch, Dead, Listing, delete, list, parse};
+use disk_guard::garbage::{Batch, Dead, Listing, delete, list, parse, temp_roots};
 use disk_guard::units::float;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -252,6 +252,43 @@ fn a_listing_holds_each_path_s_references_among_the_dead_by_place() {
     assert_eq!(listing.dead[0].refers, [1]);
     assert_eq!(listing.dead[1].refers, Vec::<u32>::new());
     assert_eq!(listing.dead[1].path, store("lib"));
+}
+
+#[test]
+fn what_a_temporary_root_holds_is_held_back_with_all_it_reaches() {
+    // An evaluation holds the derivation it wrote, which refers to the
+    // derivation it builds from, so Nix would refuse both. What refers to
+    // the held one, and what's apart from it, can still go.
+    let listing = Listing::new(
+        0.0,
+        vec![
+            dead("app.drv", 1.0, 1, &["lib.drv"]),
+            dead("lib.drv", 2.0, 1, &["source"]),
+            dead("source", 3.0, 1, &[]),
+            dead("wrapper.drv", 1.0, 1, &["app.drv"]),
+            dead("apart", 1.0, 1, &[]),
+        ],
+    );
+    let held = std::collections::HashSet::from([store("app.drv"), store("elsewhere")]);
+    let mut back: Vec<&str> = listing.held_back(&held).into_iter().collect();
+    back.sort_unstable();
+    assert_eq!(back, [store("app.drv"), store("lib.drv"), store("source")]);
+}
+
+#[test]
+fn temporary_roots_are_read_from_each_process_s_file() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("101"), "/nix/store/a\0/nix/store/b\0").unwrap();
+    // A file the process is still writing ends with a path cut short.
+    fs::write(dir.path().join("102"), "/nix/store/c\0/nix/st").unwrap();
+    fs::write(dir.path().join("103"), "").unwrap();
+    let mut roots: Vec<String> = temp_roots(dir.path()).into_iter().collect();
+    roots.sort_unstable();
+    assert_eq!(
+        roots,
+        ["/nix/st", "/nix/store/a", "/nix/store/b", "/nix/store/c"]
+    );
+    assert!(temp_roots(&dir.path().join("nowhere")).is_empty());
 }
 
 #[test]

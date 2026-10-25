@@ -12,7 +12,7 @@ use crate::commands::{self, Job, Ran};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Duration;
@@ -101,6 +101,28 @@ fn among(index: &HashMap<&str, u32>, at: u32, references: &[String]) -> Vec<u32>
     places.dedup();
     places.shrink_to_fit();
     places
+}
+
+/// Every store path a process using the store holds as a temporary root,
+/// from the files in `dir` Nix keeps for them, each a list of paths ended
+/// by a NUL. A file of a process since gone may linger until Nix collects,
+/// so what it names is held too: holding back a dead path costs only the
+/// wait for a later pass. A folder that can't be read holds nothing.
+pub fn temp_roots(dir: &Path) -> HashSet<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return HashSet::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| std::fs::read(entry.path()).ok())
+        .flat_map(|roots| {
+            roots
+                .split(|&byte| byte == 0)
+                .filter(|root| !root.is_empty())
+                .filter_map(|root| String::from_utf8(root.to_vec()).ok())
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// How long one step of `nix store gc --max` may take, when there is no
@@ -337,6 +359,37 @@ fn name(argv: &[&OsStr]) -> String {
 }
 
 impl Listing {
+    /// The listed paths Nix would call alive while `held` holds them: each
+    /// one held, and every dead path it refers to, all the way down. Nix
+    /// refuses any of them, and each refusal costs a delete its whole look
+    /// for roots, so they're left for a pass after their holder lets go.
+    /// An evaluation holds every derivation it writes until it ends, and
+    /// writes the same ones again each time it runs, so on a busy machine
+    /// most of a listing's derivations are held at any moment.
+    pub fn held_back(&self, held: &HashSet<String>) -> HashSet<&str> {
+        let mut back: Vec<bool> = self
+            .dead
+            .iter()
+            .map(|dead| held.contains(&dead.path))
+            .collect();
+        let mut reach: Vec<usize> = (0..self.dead.len()).filter(|&at| back[at]).collect();
+        while let Some(at) = reach.pop() {
+            for &refers in &self.dead[at].refers {
+                let refers = refers as usize;
+                if back.get(refers) == Some(&false) {
+                    back[refers] = true;
+                    reach.push(refers);
+                }
+            }
+        }
+        self.dead
+            .iter()
+            .zip(back)
+            .filter(|(_, back)| *back)
+            .map(|(dead, _)| dead.path.as_str())
+            .collect()
+    }
+
     /// The garbage `there` says is still there, in the order it goes, in
     /// batches of at most `most` paths that close once they hold
     /// `BATCH_BYTES`: first what is older than `keep`, oldest first; then
