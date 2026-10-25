@@ -125,6 +125,7 @@ let
     "launcher/Steady.js"
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
+    "launcher/Keyboards.js"
   ];
 
   # A service holding one of logind's locks for as long as it runs, with a

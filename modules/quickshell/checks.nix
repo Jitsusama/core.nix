@@ -412,9 +412,10 @@ onLinux {
   # addresses and networks with the kind of range each is in, hardware
   # addresses, measures, the time in any zone tzdata names and the
   # machine's figures from its files, its parts' heat from their sensors,
-  # how each Bluetooth link is doing from what bluetooth-links writes, what
-  # Sound makes of a sound device's properties, as tests/answers.qml lists
-  # them, and leaves alone what isn't one, in Qt's
+  # the keyboards in the kernel's list of input devices, how each Bluetooth
+  # link is doing from what bluetooth-links writes, what Sound makes of a
+  # sound device's properties, as tests/answers.qml lists them, and leaves
+  # alone what isn't one, in Qt's
   # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
@@ -435,6 +436,7 @@ onLinux {
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js
+      cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1

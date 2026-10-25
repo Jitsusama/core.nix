@@ -1017,6 +1017,73 @@
       ]
     },
     {
+      "id": "keyboards:laptop",
+      "in": "keyboards",
+      "name": "The laptop's keyboard"
+    },
+    {
+      "id": "keyboards:caps",
+      "in": "keyboards",
+      "name": "Caps lock"
+    },
+    {
+      "id": "keyboards:num",
+      "in": "keyboards",
+      "name": "Num lock"
+    },
+    {
+      "id": "keyboards:scroll",
+      "in": "keyboards",
+      "name": "Scroll lock"
+    },
+    {
+      "id": "keyboards:layer",
+      "in": "keyboards",
+      "name": "Layer"
+    },
+    {
+      "id": "keyboards:repeat",
+      "in": "keyboards",
+      "name": "Repeat"
+    },
+    {
+      "id": "keyboards:lights",
+      "in": "keyboards",
+      "name": "Lights"
+    },
+    {
+      "id": "keyboards:lights:to",
+      "in": "keyboards:lights",
+      "name": "Lights to {n} of {most}",
+      "verb": "set",
+      "states": {
+        "off": {
+          "name": "Lights off",
+          "verb": "turn off"
+        }
+      }
+    },
+    {
+      "id": "keyboards:timeout",
+      "in": "keyboards",
+      "name": "Lights out after"
+    },
+    {
+      "id": "keyboards:connection",
+      "in": "keyboards",
+      "name": "Connection"
+    },
+    {
+      "id": "keyboards:maker",
+      "in": "keyboards",
+      "name": "Maker"
+    },
+    {
+      "id": "keyboards:model",
+      "in": "keyboards",
+      "name": "Model"
+    },
+    {
       "id": "networks",
       "name": "Addresses",
       "answers": [
@@ -1408,6 +1475,101 @@
         "shortcuts"
       ],
       "ask": "which key?"
+    },
+    {
+      "id": "keyboard:show",
+      "in": "keyboard",
+      "name": "Show the keyboard's layout",
+      "verb": "show",
+      "words": [
+        "map",
+        "layers",
+        "overlay",
+        "keys"
+      ]
+    },
+    {
+      "id": "keyboard:flash",
+      "in": "keyboard",
+      "name": "Flash the keyboard",
+      "verb": "flash",
+      "words": [
+        "firmware",
+        "write",
+        "update",
+        "ergodox"
+      ]
+    },
+    {
+      "id": "keyboard:release",
+      "in": "keyboard",
+      "name": "Let {layer} go",
+      "verb": "release",
+      "words": [
+        "unlock",
+        "layer",
+        "release"
+      ]
+    },
+    {
+      "id": "keyboard:lock",
+      "in": "keyboard",
+      "name": "Lock {layer} on",
+      "verb": "lock",
+      "words": [
+        "layer",
+        "hold",
+        "keep"
+      ]
+    },
+    {
+      "id": "keyboard:key",
+      "in": "keyboard",
+      "verb": "show"
+    },
+    {
+      "id": "keyboard:lights",
+      "in": "keyboard",
+      "name": "Lights",
+      "words": [
+        "backlight",
+        "leds"
+      ]
+    },
+    {
+      "id": "keyboard:lights-off",
+      "in": "keyboard:lights",
+      "name": "Turn off the keyboard's lights",
+      "verb": "turn off",
+      "words": [
+        "dark"
+      ]
+    },
+    {
+      "id": "keyboard:lights-on",
+      "in": "keyboard:lights",
+      "name": "Turn on the keyboard's lights",
+      "verb": "turn on"
+    },
+    {
+      "id": "keyboard:brighter",
+      "in": "keyboard:lights",
+      "name": "Brighten the keyboard's lights",
+      "verb": "brighten",
+      "words": [
+        "brighter",
+        "more"
+      ]
+    },
+    {
+      "id": "keyboard:dimmer",
+      "in": "keyboard:lights",
+      "name": "Dim the keyboard's lights",
+      "verb": "dim",
+      "words": [
+        "dimmer",
+        "less"
+      ]
     },
     {
       "id": "shortcuts",
@@ -3683,6 +3845,14 @@
         "bluetooth"
       ],
       "why": "Both list devices: sound's outputs and inputs, and what's paired."
+    },
+    {
+      "word": "layer",
+      "things": [
+        "keyboard:lock",
+        "keyboard:release"
+      ],
+      "why": "Both lock the board on a layer or let it go, as the word found each before."
     },
     {
       "word": "tuple",

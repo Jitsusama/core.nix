@@ -14,6 +14,7 @@ import "Asking.js" as Asking
 import "Machine.js" as Machine
 import "Heat.js" as Heat
 import "Links.js" as Links
+import "Keyboards.js" as Keyboards
 import "Standing.js" as Standing
 import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
@@ -756,6 +757,80 @@ QtObject {
         machine("a camera's other facts", cameraSplit.rest.map(fact => fact.name),
             ["streaming", "field of view", "USB", "firmware"]);
         machine("a camera with no facts", Cameras.formats(undefined), { modes: [], rest: [] });
+
+        // The keyboards in the kernel's list of input devices, as the
+        // laptop's and an ErgoDox's read, with the hotkeys and keyd's own
+        // keyboard left out.
+        const keyboardsListed = [
+            "I: Bus=0011 Vendor=0001 Product=0001 Version=ab83",
+            "N: Name=\"AT Translated Set 2 keyboard\"",
+            "P: Phys=isa0060/serio0/input0",
+            "S: Sysfs=/devices/platform/i8042/serio0/input/input0",
+            "U: Uniq=",
+            "H: Handlers=sysrq kbd event0 leds ",
+            "B: EV=120013",
+            "B: LED=7",
+            "",
+            "I: Bus=0019 Vendor=0000 Product=0006 Version=0000",
+            "N: Name=\"Video Bus\"",
+            "P: Phys=LNXVIDEO/video/input0",
+            "S: Sysfs=/devices/pci0000:00/acpi.video_bus.0/input/input2",
+            "H: Handlers=kbd event1 ",
+            "",
+            "I: Bus=0003 Vendor=3297 Product=4974 Version=0111",
+            "N: Name=\"ZSA Technology Labs ErgoDox EZ\"",
+            "P: Phys=usb-0000:00:14.0-3.4/input0",
+            "S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4/3-3.4:1.0/"
+                + "0003:3297:4974.0001/input/input5",
+            "U: Uniq=",
+            "H: Handlers=sysrq kbd leds event4 ",
+            "B: LED=1f",
+            "",
+            "I: Bus=0003 Vendor=0fac Product=0ade Version=0000",
+            "N: Name=\"keyd virtual keyboard\"",
+            "S: Sysfs=/devices/virtual/input/input42",
+            "H: Handlers=sysrq kbd event12 leds rfkill ",
+            "B: LED=1ff",
+            ""
+        ].join("\n");
+        const keyboardsFound = Keyboards.keyboards(keyboardsListed);
+        machine("the keyboards", keyboardsFound.map(device => device.name),
+            ["AT Translated Set 2 keyboard", "ZSA Technology Labs ErgoDox EZ"]);
+        const [keyboardsLaptop, keyboardsErgodox] = keyboardsFound;
+        machine("how each is joined", keyboardsFound.map(device => Keyboards.joined(device)),
+            ["built in", "by USB"]);
+        machine("by Bluetooth", Keyboards.joined({ phys: "f4:4e:fd:00:11:22" }), "by Bluetooth");
+        machine("the built-in one", keyboardsFound.map(device => Keyboards.builtIn(device)),
+            [true, false]);
+        machine("ZSA's board", keyboardsFound.map(device => Keyboards.zsa(device)), [false, true]);
+        machine("the laptop's locks", Keyboards.locks(keyboardsLaptop), [
+            { id: "caps", light: "input0::capslock" },
+            { id: "num", light: "input0::numlock" },
+            { id: "scroll", light: "input0::scrolllock" }
+        ]);
+        machine("caps lock alone", Keyboards.locks(Object.assign({}, keyboardsLaptop, { leds: 2 }))
+            .map(lock => lock.id), ["caps"]);
+        machine("no USB folder for the laptop's", Keyboards.usbFolder(keyboardsLaptop), "");
+        machine("a USB board's folder", Keyboards.usbFolder(keyboardsErgodox),
+            "/sys/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4");
+        machine("the laptop's connection", Keyboards.connection(keyboardsLaptop, null), "PS/2");
+        machine("a USB board's connection", Keyboards.connection(keyboardsErgodox,
+            { version: " 2.00", speed: "12" }), "USB 2.0 at 12 Mb/s");
+        machine("a fast USB board's", Keyboards.connection(keyboardsErgodox,
+            { version: " 3.20", speed: "5000" }), "USB 3.2 at 5 Gb/s");
+        machine("a USB board unread", Keyboards.connection(keyboardsErgodox, null), "USB");
+        machine("a Bluetooth board's", Keyboards.connection({ bus: "0005",
+            uniq: "f4:4e:fd:00:11:22" }, null), "Bluetooth, F4:4E:FD:00:11:22");
+        machine("lights at a level", Keyboards.lit(2, 2), "2 of 2");
+        machine("lights off", Keyboards.lit(0, 2), "off");
+        machine("a minute's timeout", Keyboards.timeout("1m\n"), "1 minute");
+        machine("seconds' timeout", Keyboards.timeout("30s"), "30 seconds");
+        machine("no timeout", Keyboards.timeout("0"), "never");
+        machine("what lights them again", Keyboards.wakers("+keyboard +touchpad"),
+            "lit again by a key or the touchpad");
+        machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
+        machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 }),
+            "after 200 ms, 40 a second");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

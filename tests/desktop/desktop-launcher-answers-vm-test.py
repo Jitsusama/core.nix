@@ -529,6 +529,47 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         as_account("wl-paste --no-newline"),
         r"^(one keyboard|[1-9]\d* keyboards), caps lock off$",
     )
+    # The keyboards are a step into the answer, and each holds its parts,
+    # named first, a step further by Return as by the right arrow. QEMU's
+    # own is the laptop's kind, with all three lock lights and a PS/2 port.
+    # desk-facts doesn't run here, so what it would say of it is written
+    # for it, and reads as a part.
+    board_facts = {"AT Translated Set 2 keyboard": [{"name": "keys", "value": "105"}]}
+    as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/desk"
+        f" && echo '{json.dumps(board_facts)}' > $XDG_RUNTIME_DIR/desk/.k"
+        " && mv $XDG_RUNTIME_DIR/desk/.k $XDG_RUNTIME_DIR/desk/keyboards.json"
+    )
+    board = "The laptop's keyboard"
+    answer("keyboards")
+    step_in()
+    launcher_until(lambda shown: board in shown["rows"])
+    for _ in range(showing()["rows"].index(board)):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    step_in("ret")
+    launcher_until(
+        lambda shown: (
+            shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
+            and {"Repeat", "Connection", "Keys"} <= set(shown["rows"])
+        ),
+    )
+    photograph("launcher-keyboard-parts")
+    t.assertEqual(showing()["selected"]["side"], "off")
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,
+    )
+    step_in()
+    launcher_until(lambda shown: "Repeat" in shown["rows"])
+    for _ in range(showing()["rows"].index("Repeat")):
+        machine.send_key("down")
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("side", "").startswith("after "),
+    )
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    t.assertRegex(as_account("wl-paste --no-newline"), r"^after \d+ ms, \d+ a second$")
     answer("350 f in c")
     photograph("launcher-units")
     machine.send_key("esc")

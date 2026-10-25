@@ -3,7 +3,9 @@
 // Quickshell itself, over the ErgoDox's own description and a board locked
 // on Numb, with niri stood in for: a symbol is found by its name with its
 // layer and where it sits, an action by what it does, a layer by its name,
-// the locked layer offers to be let go rather than locked again, and the
+// the locked layer offers to be let go rather than locked again, the
+// board's lights are one setting whose choices are still found by their
+// words, and the
 // overlay shows what the launcher chose. It exits 0 once every case holds,
 // and otherwise 1, saying which case didn't.
 import qs
@@ -73,6 +75,26 @@ ShellRoot {
             expect("the locked layer let go", names.includes("Let Numb go")
                 && !names.includes("Lock Numb on") && names.includes("Lock Punk on"),
                 names.filter(name => /Lock|Let/.test(name)).join(", "));
+            const lights = keyboard.everything().find(row => row.name === "Lights");
+            expect("the lights as one setting", lights !== undefined
+                && !names.some(name => /keyboard's lights/.test(name)), names.join(", "));
+            const choices = lights.verbs().map(row => row.name);
+            expect("the lights' choices a step in", choices.join(", ") === "Turn off the "
+                + "keyboard's lights, Turn on the keyboard's lights, Brighten the keyboard's "
+                + "lights, Dim the keyboard's lights", choices.join(", "));
+            const brighter = first("brighten keyboard");
+            expect("a choice found by its words", brighter.name === "Brighten the keyboard's lights"
+                && brighter.verb === "brighten", `${brighter.name}, ${brighter.verb}`);
+            expect("a choice found by the lights' words",
+                first("backlight dark").name === "Turn off the keyboard's lights",
+                first("backlight dark").name);
+            brighter.run();
+            expect("brightening runs ergodox", Niri.spawned.join(" ") === "ergodox brighter",
+                Niri.spawned.join(" "));
+            const flash = first("flash");
+            expect("an act's verb", flash.verb === "flash" && first("keypad 7").verb === "show",
+                `${flash.verb}, ${first("keypad 7").verb}`);
+
             const punk = keyboard.search("punk").rows;
             expect("a layer's keys by its name", punk.length > 20, `${punk.length} rows`);
 
