@@ -34,7 +34,7 @@
         FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = machine.config.fonts.packages; };
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/boot-lock-is-whole.sh} ${
+        ${lib.getExe pkgs.bash} ${./tests/boot-lock-is-whole.sh} ${
           lib.escapeShellArgs [
             "${lib.head themePackages}/share/plymouth/themes/jitsusama"
             "${theme.font.mono.family} ${toString theme.type.mono.large}"

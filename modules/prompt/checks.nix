@@ -26,7 +26,7 @@ onLinux {
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/the-prompt-starts-nothing.sh} ${(account workstation).jitsusama.prompt.file}
+        ${lib.getExe pkgs.bash} ${./tests/the-prompt-starts-nothing.sh} ${(account workstation).jitsusama.prompt.file}
         touch $out
       '';
 }
@@ -55,7 +55,7 @@ onLinux {
           echo 2 > repo/.git/rebase-merge/msgnum
           echo 5 > repo/.git/rebase-merge/end
           zsh -f -i -c \
-            "source ${../../tests/prompt.zsh} $PWD/prompt.zsh $PWD/repo/modules/btop jitsusama/prompt-collapse"
+            "source ${./tests/prompt.zsh} $PWD/prompt.zsh $PWD/repo/modules/btop jitsusama/prompt-collapse"
         done
         touch $out
       '';

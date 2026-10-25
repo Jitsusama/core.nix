@@ -43,7 +43,7 @@
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/the-shell-starts-nothing.sh} ${(account machine).home-files}
+        ${lib.getExe pkgs.bash} ${./tests/the-shell-starts-nothing.sh} ${(account machine).home-files}
         touch $out
       '';
 }
