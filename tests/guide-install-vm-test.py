@@ -396,8 +396,8 @@ def stopped(stick_back: QemuMachine) -> QemuMachine:
 # install's key and journal with it, and the disk let go. The system's own
 # copies in /run/stick stay, as a restarted stick makes them again.
 @pytest.fixture(scope="module")
-def carried_on(stopped: QemuMachine, values: dict[str, Any]) -> QemuMachine:
-    """Restart the guide with what the stick held gone, and carry the install on."""
+def carried_on(stopped: QemuMachine, rig: Rig, values: dict[str, Any]) -> QemuMachine:
+    """Restart the guide with what the stick held gone, and carry the install on, stick out."""
     machine = stopped
     machine.succeed("umount --recursive /mnt && cryptsetup close system")
     machine.succeed("find /run/guide -maxdepth 1 -type f -delete")
@@ -411,9 +411,14 @@ def carried_on(stopped: QemuMachine, values: dict[str, Any]) -> QemuMachine:
     enter(machine, values["passphrase"])
     on_screen(machine, "Open the install that stopped")
     on_screen(machine, "Plug in the Nano or the 5C, which opened the disk")
+    # The stick out for the key, as on a laptop whose one port takes either,
+    # so the disk opens from what the guide held when the vault opened.
+    unplug_stick(machine)
     enter(machine, "")
     on_screen(machine, "its PIN")
     enter(machine, values["pin"])
+    on_screen(machine, "Put the stick back in", timeout=STEP, stopped="try again")
+    plug_stick_back(machine, rig)
     on_screen(
         machine,
         r"Copying it off the stick: [0-9.]+ [KMG]B of ",
