@@ -1024,10 +1024,6 @@
         "brighter",
         "dim",
         "dimmer",
-        "keyboard light",
-        "keyboard backlight",
-        "keyboard brightness",
-        "key light",
         "room light",
         "ambient light",
         "light sensor",
@@ -1054,16 +1050,6 @@
       "id": "light:room",
       "in": "light",
       "name": "Room light"
-    },
-    {
-      "id": "light:keyboard",
-      "in": "light",
-      "name": "Keyboard light",
-      "states": {
-        "numbered": {
-          "name": "Keyboard light {n}"
-        }
-      }
     },
     {
       "id": "light:desk",
@@ -1237,7 +1223,13 @@
     {
       "id": "keyboards:lights",
       "in": "keyboards",
-      "name": "Lights"
+      "name": "Lights",
+      "answers": [
+        "keyboard light",
+        "keyboard backlight",
+        "keyboard brightness",
+        "key light"
+      ]
     },
     {
       "id": "keyboards:lights:to",
@@ -1250,6 +1242,24 @@
           "verb": "turn off"
         }
       }
+    },
+    {
+      "id": "keyboards:lights:on",
+      "in": "keyboards:lights",
+      "name": "Lights on",
+      "verb": "turn on"
+    },
+    {
+      "id": "keyboards:lights:brighter",
+      "in": "keyboards:lights",
+      "name": "Brighter",
+      "verb": "brighter"
+    },
+    {
+      "id": "keyboards:lights:dimmer",
+      "in": "keyboards:lights",
+      "name": "Dimmer",
+      "verb": "dimmer"
     },
     {
       "id": "keyboards:timeout",

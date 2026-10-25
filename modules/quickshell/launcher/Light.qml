@@ -1,16 +1,17 @@
-// How bright the screen, the room and the keyboard are, answered in the
-// field: "brightness", "backlight", "screen light", "room light" or
-// "keyboard light". The headline is the screen's brightness; the rows are
-// parts named as the vocabulary names them (Words.qml): each Screen as a
-// setting, its share as a bar with its levels a step in, the Room light the
-// screen's sensor hears, as a figure, and each keyboard's light with the
-// steps its driver counts. With a number, "brightness 40", Return sets the
-// screen to that share, as the brightness keys do, and so does a level
-// chosen a step into Screen, so the backlight daemon (modules/backlight),
-// which follows the room, learns it as Joel's pick. Read from the kernel's
-// files when asked, their folders listed once by Qt, so nothing is spawned
-// and nothing is watched; the room's light, which the sensor takes a tenth
-// of a second to say, is read in the background and shown once it's come.
+// How bright the screen and the room are, answered in the field:
+// "brightness", "backlight", "screen light" or "room light". The headline
+// is the screen's brightness; the rows are parts named as the vocabulary
+// names them (Words.qml): each Screen as a setting, its share as a bar with
+// its levels a step in, and the Room light the screen's sensor hears, as a
+// figure. A keyboard's lights are the keyboard's own (Keyboards.qml), and
+// "keyboard light" asks them there. With a number, "brightness 40",
+// Return sets the screen to that share, as the brightness keys do, and so
+// does a level chosen a step into Screen, so the backlight daemon
+// (modules/backlight), which follows the room, learns it as Joel's pick.
+// Read from the kernel's files when asked, their folders listed once by
+// Qt, so nothing is spawned and nothing is watched; the room's light,
+// which the sensor takes a tenth of a second to say, is read in the
+// background and shown once it's come.
 // While the answer shows, it's asked again once a second, never more, so
 // the screen following the room and the room itself move as they do.
 //
@@ -327,17 +328,15 @@ Provider {
 
     function told() {
         const screens = lights("/sys/class/backlight", backlights, /./);
-        const keyboards = lights("/sys/class/leds", leds, /kbd_backlight$/);
         const desk = deskRows();
         const sensed = askRoom();
-        if (screens.length === 0 && keyboards.length === 0 && desk.length === 0)
+        if (screens.length === 0 && desk.length === 0)
             return null;
         const share = light => `${Math.round(light.now / light.most * 100)}%`;
         // Named by what it lights, numbered only when there's more than
         // one, so no two rows read alike.
         const part = (id, lights, i) => Words.name(id, lights.length > 1 ? "numbered" : "",
             { n: i + 1 });
-        const keyed = light => light.now === 0 ? "off" : `${light.now} of ${light.most}`;
         const rows = screens.map((light, i) => {
             const now = Math.round(light.now / light.most * 100);
             // One screen is set as the keys set it; of several, each by
@@ -365,15 +364,8 @@ Provider {
                 note: "as the screen's sensor hears it, from dark to daylight"
             }));
         return {
-            headline: screens.length > 0 ? `${share(screens[0])} bright`
-                : keyboards.length > 0 ? keyed(keyboards[0]) : deskLit(),
-            rows: rows.concat(keyboards.map((light, i) => copyRow({
-                name: part("light:keyboard", keyboards, i),
-                side: keyed(light),
-                copy: keyed(light),
-                glyph: String.fromCodePoint(0xf030c),
-                graph: level(light.now, light.most)
-            })), desk),
+            headline: screens.length > 0 ? `${share(screens[0])} bright` : deskLit(),
+            rows: rows.concat(desk),
             note: "the screen follows the room; the keys set it",
             // Until the room's first reading comes, the answer is still
             // being asked, so Return waits for it.
@@ -397,13 +389,6 @@ Provider {
     FolderListModel {
         id: backlights
         folder: "file:///sys/class/backlight"
-        showFiles: false
-        showDotAndDotDot: false
-    }
-
-    FolderListModel {
-        id: leds
-        folder: "file:///sys/class/leds"
         showFiles: false
         showDotAndDotDot: false
     }

@@ -1035,6 +1035,16 @@ QtObject {
         machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
         machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 }),
             "after 200 ms, 40 a second");
+        // A board's layers to move to: the one it's locked on let go, then
+        // each above the first but that one locked on; held by a key, every
+        // layer above the first.
+        const keyboardsLayers = ["Coal", "Punk", "Numb"];
+        machine("a locked board's layers", Keyboards.layerChoices(keyboardsLayers, "Numb", true), [
+            { id: "keyboard:release", key: "keyboard:release", layer: "Numb", index: 0 },
+            { id: "keyboard:lock", key: "keyboard:lock:Punk", layer: "Punk", index: 1 }
+        ]);
+        machine("a held board's layers", Keyboards.layerChoices(keyboardsLayers, "Numb", false)
+            .map(choice => `${choice.layer} ${choice.index}`), ["Punk 1", "Numb 2"]);
 
         // The battery's and the room's figures, from their files as the
         // kernel writes them.

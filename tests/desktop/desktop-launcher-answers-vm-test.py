@@ -288,6 +288,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             )
         )
     )
+    # The keyboard's light is the keyboard's own, so the light's answer
+    # holds none of it.
+    t.assertFalse(
+        [name for name in showing()["rows"] if name.startswith("Keyboard")],
+        "the light's answer holds the keyboard's light",
+    )
     step_in("ret")
     launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
     type_in("40", selecting="Screen to 40%")
@@ -296,6 +302,28 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
         timeout=10,
     )
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # "keyboard light" asks the keyboard's lights alone, as the stand-in's
+    # files say: its levels are the answer's rows, a step in by the right
+    # arrow, and Return on one sets it, through logind as the screen's is.
+    kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
+    kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
+    kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
+    kbd_levels = ["Lights off", "Lights to 1 of 2", "Lights to 2 of 2"]
+    answer("keyboard light")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name") == f"the keyboard's lights are {kbd_said}"
+        )
+    )
+    step_in()
+    launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
+    for _ in range(kbd_levels.index("Lights to 2 of 2")):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights to 2 of 2")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=10)
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
@@ -591,11 +619,35 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     launcher_until(
         lambda shown: (
             shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
-            and {"Repeat", "Connection", "Keys"} <= set(shown["rows"])
+            and {"Repeat", "Lights", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
     photograph("launcher-keyboard-parts")
     t.assertEqual(showing()["selected"]["side"], "off")
+    # Its Lights are a setting saying how lit they are, the level set
+    # above; Return steps into its levels, and on one, sets it.
+    for _ in range(showing()["rows"].index("Lights")):
+        machine.send_key("down")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Lights"
+            and shown["selected"]["side"] == "2 of 2"
+        ),
+    )
+    step_in("ret")
+    launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights off")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    answer("keyboards")
+    step_in()
+    launcher_until(lambda shown: board in shown["rows"])
+    for _ in range(showing()["rows"].index(board)):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    step_in("ret")
+    launcher_until(lambda shown: "Repeat" in shown["rows"])
     machine.send_key("left")
     launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,

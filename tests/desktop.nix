@@ -184,8 +184,8 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.wifid
       ];
 
-      # The VM has no backlight, light sensor, lid or sound card, so it gets
-      # one of each that drives nothing, which the kernel and PipeWire report
+      # The VM has no backlight, keyboard light, light sensor, lid or sound
+      # card, so it gets one of each that drives nothing, which the kernel and PipeWire report
       # as they do the laptop's. The lid shut asks nothing of logind, which
       # would otherwise suspend the machine.
       services.logind.settings.Login.HandleLidSwitch = "ignore";
