@@ -11,7 +11,7 @@
 // for every program, each row there only when it applies: what can be done
 // first (Switch, New window, New window below, its other windows by title,
 // its desktop entry's own actions, Quit), then its parts (Media while it
-// has a player, Sound while it has a stream open, Notifications while the
+// has a player, Sound while it plays or records, Notifications while the
 // history holds any of its), then any part another provider gives it, such
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
 // pressed, and again as its player or its streams change while it's open,
@@ -42,7 +42,7 @@ Provider {
     readonly property string playingNow: Playing.players.map(player => [player.dbusName,
         player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
         player.canGoPrevious, player.trackTitle, player.trackArtist].join("\u241f"))
-        .concat(Playing.streams.map(node => node.audio
+        .concat((Playing.streams.concat(Playing.recorders ?? [])).map(node => node.audio
             ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
         .join("\u241e")
 
@@ -278,10 +278,23 @@ Provider {
     // Its streams open to play sound through, by the name each gives, as
     // the Sound collection finds them. A filter's own stream, such as the
     // speakers' tuning, is no program's: it carries its filter's link group.
-    function streamsOf(same) {
-        return Playing.streams.filter(node => !!node.audio && !node.properties["node.link-group"]
+    function streamsOf(same, from) {
+        return (from ?? Playing.streams).filter(node => !!node.audio
+            && !node.properties["node.link-group"]
             && (same(node.properties["application.name"])
                 || same(node.properties["application.process.binary"]) || same(node.name)));
+    }
+
+    // Its streams open to record from a microphone, the same way; a level
+    // meter's monitor records nothing.
+    function recordersOf(same) {
+        return streamsOf(same, Playing.recorders ?? [])
+            .filter(node => node.properties["stream.monitor"] !== "true");
+    }
+
+    // What its Sound says, as the vocabulary words it: "now {level}".
+    function soundSaid(id, level) {
+        return ((Words.of("program:sound").said ?? {})[id] ?? id).replace("{level}", level ?? "");
     }
 
     // Those of its streams still open: a row read once its program has
@@ -301,7 +314,7 @@ Provider {
     }
 
     function loudness(streams) {
-        return muted(streams) ? "muted" : `${Math.round(level(streams) * 100)}%`;
+        return muted(streams) ? soundSaid("muted") : `${Math.round(level(streams) * 100)}%`;
     }
 
     // Its volume as a bar, empty while muted. Loud wants nothing, so it
@@ -325,32 +338,66 @@ Provider {
         }
     }
 
+    // Its Microphone, while it records: whether it's heard, saying so, and
+    // muting or unmuting what it records a step in.
+    function microphone(recorders) {
+        const hears = () => provider.muted(recorders) ? provider.soundSaid("muted")
+            : provider.soundSaid("recording");
+        const row = said("program:microphone", muted(recorders) ? "muted" : "", {
+            hue: "program",
+            targets: () => [provider.said("verb:program:mute",
+                provider.muted(recorders) ? "muted" : "", {
+                    key: "verb:program:mute:microphone",
+                    run: () => {
+                        const hushed = provider.muted(recorders);
+                        for (const node of provider.live(recorders))
+                            node.audio.muted = !hushed;
+                    }
+                })]
+        });
+        Object.defineProperty(row, "side", { enumerable: true, get: hears });
+        return row;
+    }
+
     // Sound: muting or unmuting, by how it stands, Louder and Quieter, which
-    // keep the launcher to be pressed again, and its volume.
-    function sound(streams) {
+    // keep the launcher to be pressed again, and its volume, while it plays;
+    // then its Microphone, while it records.
+    function sound(streams, recorders) {
         const row = said("program:sound", "", {
             hue: "program",
             targets: () => {
                 const stepping = by => ({
                     stays: true,
-                    state: () => `now ${provider.loudness(streams)}`,
+                    state: () => provider.soundSaid("now", provider.loudness(streams)),
                     run: () => provider.turn(streams, by)
                 });
-                return [provider.said("verb:program:mute", provider.muted(streams) ? "muted" : "", {
-                    run: () => {
-                        const hushed = provider.muted(streams);
-                        for (const node of provider.live(streams))
-                            node.audio.muted = !hushed;
-                    }
-                }), provider.said("verb:program:louder", "", stepping(step)),
+                const rows = streams.length === 0 ? [] : [provider.said("verb:program:mute",
+                    provider.muted(streams) ? "muted" : "", {
+                        run: () => {
+                            const hushed = provider.muted(streams);
+                            for (const node of provider.live(streams))
+                                node.audio.muted = !hushed;
+                        }
+                    }), provider.said("verb:program:louder", "", stepping(step)),
                 provider.said("verb:program:quieter", "", stepping(-step)),
                 provider.figure("program:volume", () => Words.name("program:volume"),
                     () => provider.loudness(streams), () => provider.bar(streams))];
+                return recorders.length === 0 ? rows
+                    : rows.concat([provider.microphone(recorders)]);
             }
         });
+        // A program only recording says so, where one playing says how loud.
         Object.defineProperties(row, {
-            side: { enumerable: true, get: () => provider.loudness(streams) },
-            graph: { enumerable: true, get: () => provider.bar(streams) }
+            side: {
+                enumerable: true,
+                get: () => streams.length > 0 ? provider.loudness(streams)
+                    : provider.muted(recorders) ? provider.soundSaid("muted")
+                    : provider.soundSaid("recording")
+            },
+            graph: {
+                enumerable: true,
+                get: () => streams.length > 0 ? provider.bar(streams) : undefined
+            }
         });
         return row;
     }
@@ -392,8 +439,10 @@ Provider {
             .map(key => Words.name(key).toLowerCase());
         const player = playerOf(same);
         const streams = streamsOf(same);
+        const recorders = recordersOf(same);
         return acts.concat(menu(entry, taken), latest ? [quit(entry, windows)] : [],
-            player ? [media(player)] : [], streams.length > 0 ? [sound(streams)] : [],
+            player ? [media(player)] : [],
+            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             notices(same));
     }
 

@@ -1,10 +1,12 @@
 // The keyboard, a collection: what can be done to the board first (show its
-// layout, flash it, lock a layer or let one go, its lights), then every key
+// layout, flash it, lock a layer or let one go, and its Lights, a setting
+// whose choices are a step in and found from anywhere), then every key
 // on every layer (KeyboardLayout.qml), found by its cap or by what it types
 // in words, each with its layer, where it sits in the footer, and what
 // holding it does. Return on a key shows the layout on that key's layer,
 // the key marked, so finding where a symbol lives is typing its name. With
 // no layout, as on a machine without a keyboard's module, it holds nothing.
+// Every name, verb and word is the vocabulary's (Words.qml).
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -26,93 +28,75 @@ Provider {
     readonly property var showing: Shortcuts.actions
         .find(action => action.run.join(" ") === "qs ipc call keyboard toggle") ?? { chord: [] }
 
-    readonly property var actions: !KeyboardLayout.present ? [] : [
-        member({
-            key: "keyboard:show",
-            // An act, not a key, so it says no kind (docs/design.md).
+    // An act on the board, named, done and found as the vocabulary says
+    // (Words.qml), with what it fills into its name ({layer}). An act,
+    // not a key, so it says no kind (docs/design.md).
+    function act(id, key, fields, fill, more) {
+        return member(Object.assign({
+            key: key,
             what: "",
-            verb: "show",
-            name: "Show the keyboard's layout",
-            keywords: "map layers overlay keys",
-            glyph: glyph(0xf030c),
-            hue: "machine",
+            verb: Words.verb(id),
+            name: Words.name(id, "", fill),
+            keywords: [more ?? "", Words.keywords(id)].join(" ").trim(),
+            hue: "machine"
+        }, fields));
+    }
+
+    readonly property var acts: !KeyboardLayout.present ? [] : [
+        act("keyboard:show", "keyboard:show", {
+            glyph: Theme.glyph.keyboard,
             chord: showing.chord,
             later: true,
             run: () => KeyboardLayout.toggle()
         }),
-        member({
-            key: "keyboard:flash",
-            what: "",
-            verb: "flash",
-            name: "Flash the keyboard",
-            keywords: "firmware write update ergodox",
+        act("keyboard:flash", "keyboard:flash", {
             glyph: glyph(0xf0241),
-            hue: "machine",
             later: true,
             run: () => KeyboardLayout.flash()
         })
-    ].concat(KeyboardLayer.locked ? [member({
-        key: "keyboard:release",
-        what: "",
-        verb: "release",
-        name: `Let ${KeyboardLayer.name} go`,
-        keywords: "unlock layer release",
+    ].concat(KeyboardLayer.locked ? [act("keyboard:release", "keyboard:release", {
         glyph: glyph(0xf0329),
-        hue: "machine",
         run: () => KeyboardLayout.lock(0)
-    })] : [], KeyboardLayout.layers.slice(1)
+    }, { layer: KeyboardLayer.name })] : [], KeyboardLayout.layers.slice(1)
         .filter(layer => !(KeyboardLayer.locked && layer.name === KeyboardLayer.name))
-        .map(layer => member({
-            key: `keyboard:lock:${layer.name}`,
-            what: "",
-            verb: "lock",
-            name: `Lock ${layer.name} on`,
-            keywords: "layer hold keep",
-            glyph: glyph(0xf0328),
-            hue: "machine",
+        .map(layer => act("keyboard:lock", `keyboard:lock:${layer.name}`, {
+            glyph: Theme.glyph.layer,
             run: () => KeyboardLayout.lock(KeyboardLayout.layers.indexOf(layer))
-        })), [
-        member({
-            key: "keyboard:lights-off",
-            what: "",
-            verb: "turn off",
-            name: "Turn off the keyboard's lights",
-            keywords: "backlight leds dark",
+        }, { layer: layer.name })))
+
+    // The board's lights, a setting with what can be done to them a step
+    // in. The board can be told to change them but never asked how they
+    // are, so the setting says nothing of how they're set. Each choice is
+    // still found by its own words from anywhere ("brighten keyboard"),
+    // the lights' own words beside them.
+    readonly property var lights: !KeyboardLayout.present ? [] : [
+        act("keyboard:lights-off", "keyboard:lights-off", {
             glyph: glyph(0xf0e4f),
-            hue: "machine",
             run: () => KeyboardLayout.lights(false)
-        }),
-        member({
-            key: "keyboard:lights-on",
-            what: "",
-            verb: "turn on",
-            name: "Turn on the keyboard's lights",
-            keywords: "backlight leds",
+        }, {}, Words.keywords("keyboard:lights")),
+        act("keyboard:lights-on", "keyboard:lights-on", {
             glyph: glyph(0xf06e8),
-            hue: "machine",
             run: () => KeyboardLayout.lights(true)
-        }),
-        member({
-            key: "keyboard:brighter",
-            what: "",
-            verb: "brighten",
-            name: "Brighten the keyboard's lights",
-            keywords: "backlight leds brighter more",
-            glyph: glyph(0xf00e0),
-            hue: "machine",
+        }, {}, Words.keywords("keyboard:lights")),
+        act("keyboard:brighter", "keyboard:brighter", {
+            glyph: Theme.glyph.brightness,
             run: () => KeyboardLayout.brighter(true)
-        }),
-        member({
-            key: "keyboard:dimmer",
-            what: "",
-            verb: "dim",
-            name: "Dim the keyboard's lights",
-            keywords: "backlight leds dimmer less",
+        }, {}, Words.keywords("keyboard:lights")),
+        act("keyboard:dimmer", "keyboard:dimmer", {
             glyph: glyph(0xf00de),
-            hue: "machine",
             run: () => KeyboardLayout.brighter(false)
-        })
-    ])
+        }, {}, Words.keywords("keyboard:lights"))
+    ]
+
+    readonly property var lit: !KeyboardLayout.present ? [] : [holderRow({
+        key: "keyboard:lights",
+        what: "",
+        name: Words.name("keyboard:lights"),
+        glyph: Theme.glyph.brightness,
+        offers: true
+    }, () => provider.lights)]
+
+    readonly property var actions: acts.concat(lit)
 
     // Every key with something of its own on each layer: a key that falls
     // through is found on the layer it falls to.
@@ -121,12 +105,12 @@ Provider {
             .filter(found => found.key.cap !== undefined)
             .map(found => member({
                 key: `keyboard:key:${layer.name}:${found.index}`,
-                verb: "show",
+                verb: Words.verb("keyboard:key"),
                 name: provider.named(found.key),
                 side: found.key.holds ? `${layer.name}, held ${found.key.holds}` : layer.name,
                 keywords: `${layer.name} ${found.key.holds ?? ""}`,
                 note: found.key.where,
-                glyph: glyph(0xf030c),
+                glyph: Theme.glyph.keyboard,
                 hue: "machine",
                 later: true,
                 run: () => KeyboardLayout.show(number, found.index)
@@ -142,6 +126,9 @@ Provider {
     }
 
     readonly property var all: actions.concat(keys)
+    // What a search looks through: the lights' choices rather than the
+    // setting holding them, so what's typed reaches them without a step in.
+    readonly property var pool: acts.concat(lights, keys)
 
     onAllChanged: changed()
 
@@ -162,7 +149,7 @@ Provider {
     function search(typed) {
         const words = Fuzzy.words(typed);
         const found = [];
-        for (const row of all) {
+        for (const row of pool) {
             const m = matched(row, words);
             if (m.score >= 0)
                 found.push({ item: row.prepared, score: m.score, grade: m.grade, row: row });

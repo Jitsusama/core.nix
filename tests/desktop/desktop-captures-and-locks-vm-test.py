@@ -15,10 +15,12 @@ if TYPE_CHECKING:
         ACCOUNT,
         ASKING,
         FFMPEG_HEADLESS,
+        LAUNCHER_OPEN,
         PICTURE_COLOURS,
         SECRET,
         SIGNING,
         STARTING,
+        answer,
         answered_with,
         as_account,
         ask,
@@ -33,6 +35,7 @@ if TYPE_CHECKING:
         pictures,
         reported,
         showing,
+        step_in,
         told,
         type_in,
     )
@@ -285,6 +288,45 @@ with subtest("the camera takes a picture and a video by the keys"):
         return float(found.group(1))
 
     t.assertGreater(likeness(""), likeness("hflip,") + 3)
+
+with subtest("a camera is a thing: its parts a step in, and Return its viewfinder"):
+    camera = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
+    holders = "/run/camera-holders/camera"
+    # Written whole, as a loopback's holders are, so the stand-in is the machine's own camera,
+    # held by a program.
+    machine.succeed(f"echo chrome > {holders}.1 && mv {holders}.1 {holders}")
+    # The answer leads to the camera, rather than saying its parts again.
+    answer("who has the camera")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
+    step_in()
+    t.assertEqual(showing()["rows"], ["Built-in camera"])
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    answer("built-in camera")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
+    t.assertEqual(showing()["selected"]["side"], "in use by chrome")
+    step_in()
+    # Who has it first, then what it gives, from the loopback's own file in sysfs.
+    # The rate is the loopback's own, whatever the stand-in's writer asks.
+    parts = [thing["reads"] for thing in showing()["things"]]
+    t.assertEqual(len(parts), 2, parts)
+    t.assertEqual(parts[0], "In use \u00b7 chrome")
+    t.assertRegex(parts[1], "^Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+$")
+    photograph("launcher-camera")
+    step_in()
+    t.assertEqual(showing()["rows"], ["chrome"])
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == 1)
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == [])
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(in_session(camera), timeout=60)
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(camera), timeout=30)
+    machine.succeed(f"rm {holders}")
+    # Its notice goes before the lock screen is looked at.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
 
 with subtest("the lock screen takes only the right password"):
     with told("keys lock"):

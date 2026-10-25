@@ -15,6 +15,7 @@
         "waits",
         "light",
         "displays",
+        "cameras",
         "keyboard",
         "session:Lock",
         "session:Suspend",
@@ -22,9 +23,7 @@
         "session:Power Off",
         "session:Log Out",
         "session:awake",
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
+        "session:profile"
       ]
     },
     {
@@ -604,6 +603,16 @@
         "energy",
         "watt",
         "ac"
+      ],
+      "parts": [
+        "power:rate",
+        "power:voltage",
+        "power:health",
+        "power:cycles",
+        "power:type",
+        "power:limit",
+        "power:temperature",
+        "power:made"
       ]
     },
     {
@@ -631,6 +640,11 @@
       "name": "Charger"
     },
     {
+      "id": "power:port",
+      "in": "power:charger",
+      "name": "Port {n}"
+    },
+    {
       "id": "power:charge",
       "in": "power",
       "name": "Charge"
@@ -643,27 +657,76 @@
         "charging": {
           "name": "Charging"
         }
-      }
+      },
+      "answers": [
+        "power draw"
+      ]
+    },
+    {
+      "id": "power:energy",
+      "in": "power",
+      "name": "Energy"
+    },
+    {
+      "id": "power:voltage",
+      "in": "power",
+      "name": "Voltage",
+      "answers": [
+        "battery voltage"
+      ]
     },
     {
       "id": "power:health",
       "in": "power",
-      "name": "Health"
+      "name": "Health",
+      "answers": [
+        "battery health",
+        "battery wear"
+      ]
     },
     {
       "id": "power:cycles",
       "in": "power",
-      "name": "Cycles"
+      "name": "Cycles",
+      "answers": [
+        "battery cycles",
+        "charge cycles",
+        "cycle count"
+      ]
+    },
+    {
+      "id": "power:type",
+      "in": "power",
+      "name": "Charge type",
+      "answers": [
+        "charge type",
+        "charging mode"
+      ]
     },
     {
       "id": "power:limit",
       "in": "power",
-      "name": "Charge limit"
+      "name": "Charge limit",
+      "answers": [
+        "charge limit",
+        "charging limit",
+        "charge threshold"
+      ]
+    },
+    {
+      "id": "power:limit:stop",
+      "in": "power:limit",
+      "name": "Stop at {n}%",
+      "verb": "set"
     },
     {
       "id": "power:temperature",
       "in": "power",
-      "name": "Temperature"
+      "name": "Temperature",
+      "answers": [
+        "battery temperature",
+        "battery temp"
+      ]
     },
     {
       "id": "power:model",
@@ -671,8 +734,18 @@
       "name": "Model"
     },
     {
+      "id": "power:made",
+      "in": "power",
+      "name": "Made",
+      "answers": [
+        "battery age",
+        "battery made"
+      ]
+    },
+    {
       "id": "heat",
       "name": "Heat",
+      "glyph": "heat",
       "answers": [
         "temperature",
         "temp",
@@ -686,6 +759,187 @@
         "cooling",
         "cpu temperature",
         "cpu temp"
+      ]
+    },
+    {
+      "id": "heat:processor",
+      "in": "heat",
+      "name": "Processor",
+      "hidden": [
+        "cpu",
+        "coretemp"
+      ]
+    },
+    {
+      "id": "heat:cores",
+      "in": "heat:processor",
+      "name": "Cores"
+    },
+    {
+      "id": "heat:core",
+      "in": "heat:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:throttled",
+      "in": "heat",
+      "name": "Throttled",
+      "answers": [
+        "throttling",
+        "throttled",
+        "thermal throttling"
+      ],
+      "hidden": [
+        "throttle",
+        "slowed"
+      ]
+    },
+    {
+      "id": "heat:package",
+      "in": "heat:throttled",
+      "name": "Whole processor",
+      "hidden": [
+        "package"
+      ]
+    },
+    {
+      "id": "heat:throttled-cores",
+      "in": "heat:throttled",
+      "name": "Cores"
+    },
+    {
+      "id": "heat:throttled-core",
+      "in": "heat:throttled-cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:graphics",
+      "in": "heat",
+      "name": "Graphics",
+      "hidden": [
+        "gpu"
+      ]
+    },
+    {
+      "id": "heat:disk",
+      "in": "heat",
+      "name": "Disk",
+      "hidden": [
+        "ssd",
+        "nvme",
+        "drive"
+      ]
+    },
+    {
+      "id": "heat:sensor",
+      "in": "heat:disk",
+      "name": "Sensor {n}"
+    },
+    {
+      "id": "heat:memory",
+      "in": "heat",
+      "name": "Memory",
+      "hidden": [
+        "ram",
+        "sodimm"
+      ]
+    },
+    {
+      "id": "heat:wifi",
+      "in": "heat",
+      "name": "Wi-Fi card",
+      "hidden": [
+        "wireless"
+      ]
+    },
+    {
+      "id": "heat:chipset",
+      "in": "heat",
+      "name": "Chipset"
+    },
+    {
+      "id": "heat:board",
+      "in": "heat",
+      "name": "Board",
+      "hidden": [
+        "motherboard"
+      ]
+    },
+    {
+      "id": "heat:battery",
+      "in": "heat",
+      "name": "Battery"
+    },
+    {
+      "id": "heat:air",
+      "in": "heat",
+      "name": "Air inside",
+      "hidden": [
+        "ambient",
+        "case"
+      ]
+    },
+    {
+      "id": "heat:video-fan",
+      "in": "heat",
+      "name": "Video fan",
+      "hidden": [
+        "gpu fan",
+        "graphics fan"
+      ]
+    },
+    {
+      "id": "heat:cpu-fan",
+      "in": "heat",
+      "name": "CPU fan",
+      "hidden": [
+        "processor fan"
+      ]
+    },
+    {
+      "id": "heat:fan",
+      "in": "heat",
+      "name": "Fan {n}"
+    },
+    {
+      "id": "heat:lately",
+      "in": "heat",
+      "name": "Lately",
+      "hidden": [
+        "history"
+      ]
+    },
+    {
+      "id": "heat:high",
+      "in": "heat",
+      "name": "High",
+      "hidden": [
+        "warns"
+      ]
+    },
+    {
+      "id": "heat:critical",
+      "in": "heat",
+      "name": "Critical",
+      "hidden": [
+        "most",
+        "limit"
+      ]
+    },
+    {
+      "id": "heat:power",
+      "in": "heat",
+      "name": "Power",
+      "hidden": [
+        "pwm"
+      ]
+    },
+    {
+      "id": "heat:aiming",
+      "in": "heat",
+      "name": "Aiming for",
+      "hidden": [
+        "target"
       ]
     },
     {
@@ -724,7 +978,11 @@
         "keyboard light",
         "keyboard backlight",
         "keyboard brightness",
-        "key light"
+        "key light",
+        "room light",
+        "ambient light",
+        "light sensor",
+        "lux"
       ]
     },
     {
@@ -736,6 +994,17 @@
           "name": "Screen {n}"
         }
       }
+    },
+    {
+      "id": "light:screen:level",
+      "in": "light:screen",
+      "name": "Screen to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "light:room",
+      "in": "light",
+      "name": "Room light"
     },
     {
       "id": "light:keyboard",
@@ -764,26 +1033,48 @@
       ]
     },
     {
-      "id": "verb:brighter",
+      "id": "light:desk:brightness",
       "in": "light:desk",
+      "name": "Brightness"
+    },
+    {
+      "id": "light:desk:warmth",
+      "in": "light:desk",
+      "name": "Warmth"
+    },
+    {
+      "id": "light:desk:level",
+      "in": "light:desk:brightness",
+      "name": "Brightness to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "light:desk:kelvin",
+      "in": "light:desk:warmth",
+      "name": "Warmth to {k} K",
+      "verb": "set"
+    },
+    {
+      "id": "verb:brighter",
+      "in": "light:desk:brightness",
       "name": "Brighter",
       "verb": "brighter"
     },
     {
       "id": "verb:dimmer",
-      "in": "light:desk",
+      "in": "light:desk:brightness",
       "name": "Dimmer",
       "verb": "dimmer"
     },
     {
       "id": "verb:warmer",
-      "in": "light:desk",
+      "in": "light:desk:warmth",
       "name": "Warmer",
       "verb": "warmer"
     },
     {
       "id": "verb:cooler",
-      "in": "light:desk",
+      "in": "light:desk:warmth",
       "name": "Cooler",
       "verb": "cooler"
     },
@@ -834,6 +1125,73 @@
       ]
     },
     {
+      "id": "keyboards:laptop",
+      "in": "keyboards",
+      "name": "The laptop's keyboard"
+    },
+    {
+      "id": "keyboards:caps",
+      "in": "keyboards",
+      "name": "Caps lock"
+    },
+    {
+      "id": "keyboards:num",
+      "in": "keyboards",
+      "name": "Num lock"
+    },
+    {
+      "id": "keyboards:scroll",
+      "in": "keyboards",
+      "name": "Scroll lock"
+    },
+    {
+      "id": "keyboards:layer",
+      "in": "keyboards",
+      "name": "Layer"
+    },
+    {
+      "id": "keyboards:repeat",
+      "in": "keyboards",
+      "name": "Repeat"
+    },
+    {
+      "id": "keyboards:lights",
+      "in": "keyboards",
+      "name": "Lights"
+    },
+    {
+      "id": "keyboards:lights:to",
+      "in": "keyboards:lights",
+      "name": "Lights to {n} of {most}",
+      "verb": "set",
+      "states": {
+        "off": {
+          "name": "Lights off",
+          "verb": "turn off"
+        }
+      }
+    },
+    {
+      "id": "keyboards:timeout",
+      "in": "keyboards",
+      "name": "Lights out after"
+    },
+    {
+      "id": "keyboards:connection",
+      "in": "keyboards",
+      "name": "Connection"
+    },
+    {
+      "id": "keyboards:maker",
+      "in": "keyboards",
+      "name": "Maker"
+    },
+    {
+      "id": "keyboards:model",
+      "in": "keyboards",
+      "name": "Model"
+    },
+    {
       "id": "networks",
       "name": "Addresses",
       "answers": [
@@ -844,6 +1202,48 @@
         "my ip address"
       ]
     },
+    { "id": "networks:wifi", "in": "networks", "name": "Wi-Fi" },
+    { "id": "networks:wired", "in": "networks", "name": "Wired", "hidden": ["ethernet", "cable"] },
+    { "id": "networks:tunnel", "in": "networks", "name": "Tunnel", "hidden": ["vpn"] },
+    {
+      "id": "networks:bridge",
+      "in": "networks",
+      "name": "Virtual bridge",
+      "hidden": ["virtual machines"]
+    },
+    { "id": "networks:virtual", "in": "networks", "name": "Virtual network" },
+    { "id": "networks:address", "in": "networks", "name": "Address" },
+    { "id": "networks:ipv6", "in": "networks", "name": "IPv6 address" },
+    {
+      "id": "networks:gateway",
+      "in": "networks",
+      "name": "Gateway",
+      "hidden": ["router"],
+      "answers": ["gateway", "default gateway", "router address"]
+    },
+    {
+      "id": "networks:dns",
+      "in": "networks",
+      "name": "DNS",
+      "hidden": ["name servers", "resolver"],
+      "answers": ["dns", "dns servers", "name servers", "nameservers"]
+    },
+    { "id": "networks:hardware", "in": "networks", "name": "Hardware address", "hidden": ["mac"] },
+    { "id": "networks:mtu", "in": "networks", "name": "MTU", "hidden": ["packet size"] },
+    { "id": "networks:state", "in": "networks", "name": "State" },
+    { "id": "networks:device", "in": "networks", "name": "Device name", "hidden": ["interface"] },
+    { "id": "networks:public", "in": "networks", "name": "Public address", "hidden": ["ipify"] },
+    { "id": "networks:public6", "in": "networks", "name": "Public IPv6 address" },
+    { "id": "networks:usable", "in": "networks", "name": "Usable", "hidden": ["hosts"] },
+    { "id": "networks:mask", "in": "networks", "name": "Mask", "hidden": ["netmask"] },
+    { "id": "networks:broadcast", "in": "networks", "name": "Broadcast" },
+    { "id": "networks:network", "in": "networks", "name": "Network" },
+    { "id": "networks:range", "in": "networks", "name": "Range" },
+    { "id": "networks:full", "in": "networks", "name": "Written in full" },
+    { "id": "networks:kind", "in": "networks", "name": "Kind", "hidden": ["rfc"] },
+    { "id": "networks:holder", "in": "networks", "name": "Held by", "hidden": ["owner", "rdap"] },
+    { "id": "networks:block", "in": "networks", "name": "Block" },
+    { "id": "networks:registered", "in": "networks", "name": "Registered range" },
     {
       "id": "weather",
       "name": "Weather",
@@ -937,7 +1337,251 @@
         "song",
         "track",
         "music"
+      ],
+      "said": {
+        "output": "output",
+        "input": "input",
+        "in-use": "in use",
+        "muted": "muted",
+        "none": "none",
+        "on": "on",
+        "off": "off",
+        "running": "running",
+        "waiting": "waiting",
+        "silent": "silent",
+        "paused": "paused",
+        "nothing": "nothing",
+        "playing": "playing",
+        "recording": "recording",
+        "open": "has sound open",
+        "nothing-playing": "nothing playing",
+        "nothing-out": "nothing to play through",
+        "out": "out \u00b7 {level}",
+        "in": "in \u00b7 {level}",
+        "through": "{level}, through {device}",
+        "set": "set {device} to {level}",
+        "now": "now {level}",
+        "mono": "mono",
+        "stereo": "stereo",
+        "channels": "{count} channels",
+        "amplifiers": "{count} \u00d7 {chip}",
+        "digital": "{chip}, digital",
+        "bits": "{count} bit",
+        "delay": "{frames} at {rate}, {ms}",
+        "level-out": "the loudest of each moment going out, of full scale",
+        "level-in": "listening while this shows, the loudest of each moment, of full scale",
+        "recording-none": "no program is listening",
+        "tuning": "the filter sound goes through on its way out",
+        "voice": "the filter programs hear it through",
+        "delay-note": "what it asks to be given at once"
+      }
+    },
+    {
+      "id": "sound:level",
+      "in": "sound",
+      "name": "Level",
+      "words": [
+        "peak",
+        "meter"
       ]
+    },
+    {
+      "id": "sound:volume",
+      "in": "sound",
+      "name": "Volume",
+      "words": [
+        "loudness"
+      ]
+    },
+    {
+      "id": "sound:gain",
+      "in": "sound",
+      "name": "Gain",
+      "words": [
+        "input volume",
+        "sensitivity"
+      ]
+    },
+    {
+      "id": "sound:mute",
+      "in": "sound",
+      "name": "Mute"
+    },
+    {
+      "id": "sound:programs",
+      "in": "sound",
+      "name": "Programs",
+      "words": [
+        "streams",
+        "apps"
+      ]
+    },
+    {
+      "id": "sound:recorders",
+      "in": "sound",
+      "name": "Recording",
+      "words": [
+        "listening",
+        "who's listening"
+      ]
+    },
+    {
+      "id": "sound:tuning",
+      "in": "sound",
+      "name": "Tuning",
+      "words": [
+        "equaliser",
+        "equalizer",
+        "eq"
+      ]
+    },
+    {
+      "id": "sound:voice",
+      "in": "sound",
+      "name": "Voice processing",
+      "words": [
+        "voice filter"
+      ]
+    },
+    {
+      "id": "sound:filter",
+      "in": "sound",
+      "name": "Filter"
+    },
+    {
+      "id": "sound:channels",
+      "in": "sound",
+      "name": "Channels",
+      "words": [
+        "balance"
+      ]
+    },
+    {
+      "id": "sound:hardware",
+      "in": "sound",
+      "name": "Hardware",
+      "words": [
+        "chips"
+      ]
+    },
+    {
+      "id": "sound:card",
+      "in": "sound",
+      "name": "Card"
+    },
+    {
+      "id": "sound:amplifiers",
+      "in": "sound",
+      "name": "Amplifiers"
+    },
+    {
+      "id": "sound:codec",
+      "in": "sound",
+      "name": "Codec"
+    },
+    {
+      "id": "sound:microphones",
+      "in": "sound",
+      "name": "Microphones"
+    },
+    {
+      "id": "sound:resolution",
+      "in": "sound",
+      "name": "Resolution"
+    },
+    {
+      "id": "sound:usb-id",
+      "in": "sound",
+      "name": "USB id"
+    },
+    {
+      "id": "sound:profile",
+      "in": "sound",
+      "name": "Profile"
+    },
+    {
+      "id": "sound:rate",
+      "in": "sound",
+      "name": "Rate"
+    },
+    {
+      "id": "sound:delay",
+      "in": "sound",
+      "name": "Delay",
+      "words": [
+        "latency"
+      ]
+    },
+    {
+      "id": "sound:lighting",
+      "in": "sound",
+      "name": "Lighting"
+    },
+    {
+      "id": "sound:playing",
+      "in": "sound",
+      "name": "Playing at"
+    },
+    {
+      "id": "sound:recording",
+      "in": "sound",
+      "name": "Recording at"
+    },
+    {
+      "id": "sound:measured-rate",
+      "in": "sound",
+      "name": "Measured rate"
+    },
+    {
+      "id": "sound:offers",
+      "in": "sound",
+      "name": "Offers"
+    },
+    {
+      "id": "sound:clock",
+      "in": "sound",
+      "name": "Clock"
+    },
+    {
+      "id": "sound:usb",
+      "in": "sound",
+      "name": "USB"
+    },
+    {
+      "id": "sound:firmware",
+      "in": "sound",
+      "name": "Firmware"
+    },
+    {
+      "id": "verb:sound-louder",
+      "in": "sound",
+      "name": "Louder",
+      "verb": "louder",
+      "words": [
+        "turn up",
+        "volume up"
+      ]
+    },
+    {
+      "id": "verb:sound-quieter",
+      "in": "sound",
+      "name": "Quieter",
+      "verb": "quieter",
+      "words": [
+        "turn down",
+        "volume down"
+      ]
+    },
+    {
+      "id": "verb:sound-to",
+      "in": "sound",
+      "name": "Volume to {level}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "name": "Gain to {level}"
+        }
+      }
     },
     {
       "id": "verb:sound-use",
@@ -981,6 +1625,101 @@
         "shortcuts"
       ],
       "ask": "which key?"
+    },
+    {
+      "id": "keyboard:show",
+      "in": "keyboard",
+      "name": "Show the keyboard's layout",
+      "verb": "show",
+      "words": [
+        "map",
+        "layers",
+        "overlay",
+        "keys"
+      ]
+    },
+    {
+      "id": "keyboard:flash",
+      "in": "keyboard",
+      "name": "Flash the keyboard",
+      "verb": "flash",
+      "words": [
+        "firmware",
+        "write",
+        "update",
+        "ergodox"
+      ]
+    },
+    {
+      "id": "keyboard:release",
+      "in": "keyboard",
+      "name": "Let {layer} go",
+      "verb": "release",
+      "words": [
+        "unlock",
+        "layer",
+        "release"
+      ]
+    },
+    {
+      "id": "keyboard:lock",
+      "in": "keyboard",
+      "name": "Lock {layer} on",
+      "verb": "lock",
+      "words": [
+        "layer",
+        "hold",
+        "keep"
+      ]
+    },
+    {
+      "id": "keyboard:key",
+      "in": "keyboard",
+      "verb": "show"
+    },
+    {
+      "id": "keyboard:lights",
+      "in": "keyboard",
+      "name": "Lights",
+      "words": [
+        "backlight",
+        "leds"
+      ]
+    },
+    {
+      "id": "keyboard:lights-off",
+      "in": "keyboard:lights",
+      "name": "Turn off the keyboard's lights",
+      "verb": "turn off",
+      "words": [
+        "dark"
+      ]
+    },
+    {
+      "id": "keyboard:lights-on",
+      "in": "keyboard:lights",
+      "name": "Turn on the keyboard's lights",
+      "verb": "turn on"
+    },
+    {
+      "id": "keyboard:brighter",
+      "in": "keyboard:lights",
+      "name": "Brighten the keyboard's lights",
+      "verb": "brighten",
+      "words": [
+        "brighter",
+        "more"
+      ]
+    },
+    {
+      "id": "keyboard:dimmer",
+      "in": "keyboard:lights",
+      "name": "Dim the keyboard's lights",
+      "verb": "dim",
+      "words": [
+        "dimmer",
+        "less"
+      ]
     },
     {
       "id": "shortcuts",
@@ -1890,14 +2629,131 @@
         "print",
         "grab"
       ],
+      "ask": "of what?"
+    },
+    {
+      "id": "cameras",
+      "name": "Cameras",
+      "glyph": "camera",
+      "said": "the {name}",
       "answers": [
         "camera",
         "webcam",
         "camera in use",
         "is the camera on",
         "who has the camera"
-      ],
-      "ask": "of what?"
+      ]
+    },
+    {
+      "id": "cameras:camera",
+      "in": "cameras",
+      "name": "Built-in camera",
+      "verb": "open",
+      "said": "the camera",
+      "words": [
+        "webcam",
+        "front camera",
+        "laptop camera",
+        "viewfinder"
+      ]
+    },
+    {
+      "id": "cameras:ir-camera",
+      "in": "cameras",
+      "name": "IR camera",
+      "said": "the infrared camera",
+      "words": [
+        "infrared",
+        "infrared camera",
+        "face camera"
+      ]
+    },
+    {
+      "id": "cameras:plugged",
+      "in": "cameras",
+      "name": "{name}",
+      "words": [
+        "camera",
+        "usb camera",
+        "external camera"
+      ]
+    },
+    {
+      "id": "cameras:holders",
+      "in": "cameras",
+      "name": "In use"
+    },
+    {
+      "id": "cameras:privacy",
+      "in": "cameras",
+      "name": "Privacy light",
+      "answers": [
+        "privacy light",
+        "camera light"
+      ]
+    },
+    {
+      "id": "cameras:flood",
+      "in": "cameras",
+      "name": "IR light",
+      "answers": [
+        "ir light",
+        "infrared light",
+        "flood light",
+        "ir flood light"
+      ]
+    },
+    {
+      "id": "cameras:streaming",
+      "in": "cameras",
+      "name": "Streaming"
+    },
+    {
+      "id": "cameras:sensor",
+      "in": "cameras",
+      "name": "Sensor"
+    },
+    {
+      "id": "cameras:sensor:ovti08f4",
+      "in": "cameras:sensor",
+      "name": "OmniVision OV08X40",
+      "camera": "camera"
+    },
+    {
+      "id": "cameras:sensor:himx1092",
+      "in": "cameras:sensor",
+      "name": "Himax HM1092",
+      "camera": "ir-camera"
+    },
+    {
+      "id": "cameras:where",
+      "in": "cameras",
+      "name": "Where"
+    },
+    {
+      "id": "cameras:powered",
+      "in": "cameras",
+      "name": "Powered"
+    },
+    {
+      "id": "cameras:modes",
+      "in": "cameras",
+      "name": "Modes"
+    },
+    {
+      "id": "cameras:usb",
+      "in": "cameras",
+      "name": "Connection"
+    },
+    {
+      "id": "cameras:firmware",
+      "in": "cameras",
+      "name": "Firmware"
+    },
+    {
+      "id": "cameras:field-of-view",
+      "in": "cameras",
+      "name": "Field of view"
     },
     {
       "id": "emoji",
@@ -2066,14 +2922,25 @@
       ]
     },
     {
+      "id": "session:profile",
+      "name": "Power profile",
+      "glyph": "balanced",
+      "words": [
+        "mode",
+        "energy",
+        "power mode",
+        "performance mode",
+        "profile"
+      ]
+    },
+    {
       "id": "session:power:Power Saver",
+      "of": "session:profile",
       "name": "Power saver",
+      "part": "Power saver",
       "verb": "use",
       "glyph": "saver",
       "words": [
-        "power profile",
-        "mode",
-        "energy",
         "eco",
         "low power",
         "battery saver",
@@ -2088,13 +2955,12 @@
     },
     {
       "id": "session:power:Balanced Power",
+      "of": "session:profile",
       "name": "Balanced power",
+      "part": "Balanced",
       "verb": "use",
       "glyph": "balanced",
       "words": [
-        "power profile",
-        "mode",
-        "energy",
         "normal",
         "default",
         "balanced"
@@ -2105,13 +2971,12 @@
     },
     {
       "id": "session:power:Performance",
+      "of": "session:profile",
       "name": "Full performance",
+      "part": "Full performance",
       "verb": "use",
       "glyph": "performance",
       "words": [
-        "power profile",
-        "mode",
-        "energy",
         "turbo",
         "fast",
         "boost",
@@ -2243,6 +3108,61 @@
         "cafe"
       ]
     },
+    { "id": "verb:wifi-leave", "in": "wifi", "name": "Leave it", "hidden": ["disconnect"] },
+    { "id": "verb:wifi-join", "in": "wifi", "name": "Join it", "hidden": ["connect"] },
+    { "id": "verb:wifi-password", "in": "wifi", "name": "Join it with a new password" },
+    { "id": "verb:wifi-account", "in": "wifi", "name": "Join it with an account over {method}" },
+    {
+      "id": "verb:wifi-trust",
+      "in": "wifi",
+      "name": "Trust it",
+      "states": { "trusted": { "name": "Stop trusting it" } }
+    },
+    { "id": "verb:wifi-forget", "in": "wifi", "name": "Forget it" },
+    { "id": "wifi:card", "in": "wifi", "name": "Card {n}" },
+    { "id": "wifi:signal", "in": "wifi", "name": "Signal", "hidden": ["dbm", "strength"] },
+    { "id": "wifi:antenna", "in": "wifi:signal", "name": "Antenna {n}", "hidden": ["chain"] },
+    { "id": "wifi:average", "in": "wifi:signal", "name": "Average" },
+    { "id": "wifi:beacons", "in": "wifi:signal", "name": "Access point's beacons" },
+    { "id": "wifi:margin", "in": "wifi:signal", "name": "Over the noise", "hidden": ["snr"] },
+    { "id": "wifi:power", "in": "wifi:signal", "name": "Transmit power", "hidden": ["tx power"] },
+    { "id": "wifi:speed", "in": "wifi", "name": "Speed", "hidden": ["bitrate", "rate"] },
+    { "id": "wifi:in", "in": "wifi:speed", "name": "In" },
+    { "id": "wifi:out", "in": "wifi:speed", "name": "Out" },
+    {
+      "id": "wifi:generation",
+      "in": "wifi:speed",
+      "name": "Generation",
+      "hidden": ["wi-fi 6", "standard"]
+    },
+    { "id": "wifi:coding", "in": "wifi:speed", "name": "Coding", "hidden": ["mcs", "streams"] },
+    { "id": "wifi:width", "in": "wifi:speed", "name": "Width", "hidden": ["mhz"] },
+    { "id": "wifi:channel", "in": "wifi:speed", "name": "Channel", "hidden": ["band"] },
+    { "id": "wifi:retries", "in": "wifi:speed", "name": "Retries", "hidden": ["failures"] },
+    { "id": "wifi:retried", "in": "wifi:retries", "name": "Sent again" },
+    { "id": "wifi:failed", "in": "wifi:retries", "name": "Never sent" },
+    { "id": "wifi:missed", "in": "wifi:retries", "name": "Beacons missed" },
+    { "id": "wifi:dropped", "in": "wifi:retries", "name": "Dropped coming in" },
+    {
+      "id": "wifi:protection",
+      "in": "wifi",
+      "name": "Protection",
+      "hidden": ["security", "encryption"]
+    },
+    { "id": "wifi:standard", "in": "wifi:protection", "name": "Standard", "hidden": ["wpa"] },
+    { "id": "wifi:proof", "in": "wifi:protection", "name": "Joined by", "hidden": ["sae", "psk"] },
+    { "id": "wifi:cipher", "in": "wifi:protection", "name": "Encryption" },
+    { "id": "wifi:group", "in": "wifi:protection", "name": "Encryption to all" },
+    { "id": "wifi:frames", "in": "wifi:protection", "name": "Management frames" },
+    { "id": "wifi:connected", "in": "wifi", "name": "Connected for", "hidden": ["uptime"] },
+    { "id": "wifi:heard", "in": "wifi", "name": "Access points", "hidden": ["bssid", "aps"] },
+    { "id": "wifi:point", "in": "wifi:heard", "name": "{band}, channel {channel}" },
+    { "id": "wifi:estimate", "in": "wifi:point", "name": "Speed" },
+    { "id": "wifi:busy", "in": "wifi:point", "name": "Busy" },
+    { "id": "wifi:stations", "in": "wifi:point", "name": "On it" },
+    { "id": "wifi:heard-ago", "in": "wifi:point", "name": "Last heard" },
+    { "id": "wifi:fastest", "in": "wifi:point", "name": "Fastest because" },
+    { "id": "wifi:bssid", "in": "wifi:point", "name": "Hardware address", "hidden": ["bssid"] },
     {
       "id": "bluetooth:radio",
       "name": "Bluetooth off",
@@ -2288,7 +3208,10 @@
     {
       "id": "bluetooth:quality",
       "in": "bluetooth",
-      "name": "Link"
+      "name": "Link quality",
+      "hidden": [
+        "link"
+      ]
     },
     {
       "id": "bluetooth:codec",
@@ -2299,6 +3222,162 @@
       "id": "bluetooth:channels",
       "in": "bluetooth",
       "name": "Channels"
+    },
+    {
+      "id": "bluetooth:battery",
+      "in": "bluetooth",
+      "name": "Battery"
+    },
+    {
+      "id": "bluetooth:profile",
+      "in": "bluetooth",
+      "name": "Profile"
+    },
+    {
+      "id": "bluetooth:rate",
+      "in": "bluetooth",
+      "name": "Sample rate"
+    },
+    {
+      "id": "bluetooth:sound-channels",
+      "in": "bluetooth",
+      "name": "Audio channels"
+    },
+    {
+      "id": "bluetooth:held",
+      "in": "bluetooth",
+      "name": "Connection",
+      "hidden": [
+        "encrypted",
+        "central"
+      ]
+    },
+    {
+      "id": "bluetooth:input",
+      "in": "bluetooth",
+      "name": "Input"
+    },
+    {
+      "id": "bluetooth:id",
+      "in": "bluetooth",
+      "name": "Ids"
+    },
+    {
+      "id": "bluetooth:trusted",
+      "in": "bluetooth",
+      "name": "Reconnects by itself",
+      "hidden": [
+        "trusted"
+      ]
+    },
+    {
+      "id": "bluetooth:wake",
+      "in": "bluetooth",
+      "name": "Wakes the machine"
+    },
+    {
+      "id": "bluetooth:address",
+      "in": "bluetooth",
+      "name": "Address",
+      "hidden": [
+        "mac"
+      ]
+    },
+    {
+      "id": "bluetooth:adapter",
+      "in": "bluetooth",
+      "name": "Adapter",
+      "hidden": [
+        "radio",
+        "this machine",
+        "discoverable",
+        "pairable"
+      ]
+    },
+    {
+      "id": "bluetooth:powered",
+      "in": "bluetooth",
+      "name": "Radio"
+    },
+    {
+      "id": "bluetooth:discoverable",
+      "in": "bluetooth",
+      "name": "Visible to others"
+    },
+    {
+      "id": "bluetooth:pairable",
+      "in": "bluetooth",
+      "name": "Pairable"
+    },
+    {
+      "id": "bluetooth:traffic",
+      "in": "bluetooth",
+      "name": "Traffic"
+    },
+    {
+      "id": "bluetooth:name",
+      "in": "bluetooth",
+      "name": "Name"
+    },
+    {
+      "id": "bluetooth:version",
+      "in": "bluetooth",
+      "name": "Version"
+    },
+    {
+      "id": "bluetooth:chip",
+      "in": "bluetooth",
+      "name": "Chip"
+    },
+    {
+      "id": "verb:bluetooth-trust",
+      "in": "bluetooth",
+      "name": "Let it reconnect by itself"
+    },
+    {
+      "id": "verb:bluetooth-untrust",
+      "in": "bluetooth",
+      "name": "Only connect it when asked"
+    },
+    {
+      "id": "verb:bluetooth-wake",
+      "in": "bluetooth",
+      "name": "Let it wake the machine"
+    },
+    {
+      "id": "verb:bluetooth-no-wake",
+      "in": "bluetooth",
+      "name": "Keep it from waking the machine"
+    },
+    {
+      "id": "verb:bluetooth-radio-on",
+      "in": "bluetooth",
+      "name": "Turn the radio on"
+    },
+    {
+      "id": "verb:bluetooth-radio-off",
+      "in": "bluetooth",
+      "name": "Turn the radio off"
+    },
+    {
+      "id": "verb:bluetooth-visible",
+      "in": "bluetooth",
+      "name": "Let others find it"
+    },
+    {
+      "id": "verb:bluetooth-hidden",
+      "in": "bluetooth",
+      "name": "Keep it hidden"
+    },
+    {
+      "id": "verb:bluetooth-pairable",
+      "in": "bluetooth",
+      "name": "Let others pair with it"
+    },
+    {
+      "id": "verb:bluetooth-unpairable",
+      "in": "bluetooth",
+      "name": "Refuse new pairings"
     },
     {
       "id": "verb:bluetooth-connect",
@@ -2549,7 +3628,12 @@
         "audio",
         "volume",
         "loudness"
-      ]
+      ],
+      "said": {
+        "muted": "muted",
+        "now": "now {level}",
+        "recording": "recording"
+      }
     },
     {
       "id": "verb:program:mute",
@@ -2600,6 +3684,22 @@
         "level",
         "how loud"
       ]
+    },
+    {
+      "id": "program:microphone",
+      "in": "program:sound",
+      "name": "Microphone",
+      "verb": "more",
+      "words": [
+        "mic",
+        "recording"
+      ],
+      "states": {
+        "muted": {
+          "name": "Microphone",
+          "glyph": "muted"
+        }
+      }
     },
     {
       "id": "program:notices",
@@ -2961,6 +4061,14 @@
       "why": "Both list devices: sound's outputs and inputs, and what's paired."
     },
     {
+      "word": "layer",
+      "things": [
+        "keyboard:lock",
+        "keyboard:release"
+      ],
+      "why": "Both lock the board on a layer or let it go, as the word found each before."
+    },
+    {
       "word": "tuple",
       "things": [
         "people",
@@ -3021,33 +4129,6 @@
         "session:quiet"
       ],
       "why": "Do not disturb holds the notifications, so it's found beside them."
-    },
-    {
-      "word": "power profile",
-      "things": [
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
-      ],
-      "why": "Each power profile is one of a set; the word lists all three."
-    },
-    {
-      "word": "mode",
-      "things": [
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
-      ],
-      "why": "Each power profile is one of a set; the word lists all three."
-    },
-    {
-      "word": "energy",
-      "things": [
-        "session:power:Power Saver",
-        "session:power:Balanced Power",
-        "session:power:Performance"
-      ],
-      "why": "Each power profile is one of a set; the word lists all three."
     },
     {
       "word": "record",

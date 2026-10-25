@@ -1,9 +1,10 @@
 # How each connected Bluetooth link is doing, for the launcher's Bluetooth
-# to say beside a device: its signal, how well it carries, and which of the
-# radio's 79 channels it skips as noisy. BlueZ says none of it for a
-# connected device, so bluetooth-links asks the controller every five
-# seconds while a link is up, and only lists the connections while none is
-# (src/main.rs says how). It writes /run/bluetooth-links/links.json,
+# to say beside a device: its signal and how well it carries, with their
+# last reads, which of the radio's 79 channels it skips as noisy, and how
+# it's held; and each adapter's traffic, address and version. BlueZ says
+# none of it for a connected device, so bluetooth-links asks the controller
+# every five seconds while a link is up, and while none is only lists the
+# adapters and connections, writing only what's new (src/main.rs says how). It writes /run/bluetooth-links/links.json,
 # readable by everyone, which /run/bluetooth-links.json points at, so the
 # file goes when the reader does rather than saying how things stood.
 { lib, pkgs, ... }:
@@ -29,8 +30,8 @@ in
       Nice = 19;
       CPUWeight = 10;
       IOWeight = 10;
-      # The kernel lets a socket with no capability list the connections
-      # and send the four commands asked (hci_sec_filter in
+      # The kernel lets a socket with no capability list the adapters and
+      # connections and send the five commands asked (hci_sec_filter in
       # net/bluetooth/hci_sock.c), which an account with none was seen to
       # do, so it runs as nobody in particular, holding none.
       DynamicUser = true;

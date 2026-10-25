@@ -12,9 +12,15 @@ import "Zones.js" as Zones
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
+import "Heat.js" as Heat
+import "Power.js" as Power
 import "Links.js" as Links
+import "Keyboards.js" as Keyboards
 import "Standing.js" as Standing
 import "Traffic.js" as Traffic
+import "Sounds.js" as Sounds
+import "Cameras.js" as Cameras
+import "Interfaces.js" as Interfaces
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -437,6 +443,98 @@ QtObject {
             "Core 8");
         machine("a processor's only sensor", Machine.processor([{ label: "", value: 1 }]).value, 1);
 
+        // Heat's parts, from the chips as Sensors.qml reads the laptop's,
+        // in degrees: the processor's, its cores numbered by the logical
+        // processor each is, the disk's with its hidden second sensor,
+        // dell_ddv's named sensors and fans, dell_smm's unnamed fans
+        // telling their most and power, and the battery's.
+        const heatTemp = (n, label, value, high, crit) => ({ n, label, value, high, crit });
+        const heatFan = (n, label, value, more) => Object.assign({ n, label, value }, more ?? {});
+        const heatChips = [
+            { part: "disk", temps: [heatTemp(1, "Composite", 52.85, 82.85, 84.85),
+                heatTemp(2, "Sensor 1", 53.85, null, null),
+                heatTemp(3, "Sensor 2", 68.85, null, null)], fans: [] },
+            { part: "processor", temps: [heatTemp(1, "Package id 0", 83, 100, 100),
+                heatTemp(2, "Core 0", 82, 100, 100), heatTemp(6, "Core 8", 84, 100, 100),
+                heatTemp(10, "Core 22", 79, 100, 100)], fans: [] },
+            { part: "", temps: [heatTemp(1, "CPU", 84, null, null),
+                heatTemp(6, "SODIMM", 56, null, null), heatTemp(7, "Ambient", 45, null, null)],
+                fans: [heatFan(1, "Video Fan", 5420), heatFan(2, "CPU Fan", 5385)] },
+            { part: "", temps: [], fans: [
+                heatFan(1, "", 5420, { max: 4800, target: 4800, power: 1 }),
+                heatFan(2, "", 5385, { max: 4800, target: 4800, power: 0.5 })] },
+            { part: "battery", temps: [heatTemp(1, "temp", 36.9, null, null)], fans: [] }
+        ];
+        const heatParts = Heat.gather(heatChips, [], Heat.coreCpus([{ cpu: 0, core: 0 },
+            { cpu: 1, core: 22 }, { cpu: 8, core: 8 }]));
+        machine("heat's parts, the processor first", heatParts.temps.map(part => part.id),
+            ["processor", "disk", "memory", "battery", "air"]);
+        const heatProcessor = heatParts.temps[0];
+        machine("the processor's heat, as its package reads",
+            [heatProcessor.value, heatProcessor.high, heatProcessor.crit], [83, 100, 100]);
+        machine("each core's heat, by its logical processor", heatProcessor.cores,
+            [{ cpu: 0, value: 82 }, { cpu: 1, value: 79 }, { cpu: 8, value: 84 }]);
+        const heatDisk = heatParts.temps[1];
+        machine("the disk's heat, as its composite reads",
+            [heatDisk.value, heatDisk.high, heatDisk.crit], [52.85, 82.85, 84.85]);
+        machine("the disk's other sensors, the hotter hidden one too",
+            heatDisk.sensors.map(s => [s.label, s.value]),
+            [["Sensor 1", 53.85], ["Sensor 2", 68.85]]);
+        machine("the fans by name, with what the unnamed chip says of them", heatParts.fans,
+            [{ id: "video-fan", n: 1, label: "Video Fan", value: 5420, max: 4800, target: 4800,
+                power: 1 },
+                { id: "cpu-fan", n: 2, label: "CPU Fan", value: 5385, max: 4800, target: 4800,
+                    power: 0.5 }]);
+        machine("fans no chip names, by number", Heat.fans([heatChips[3]]).map(f => [f.id, f.n]),
+            [["fan", 1], ["fan", 2]]);
+        machine("no fans", Heat.fans([heatChips[0]]), []);
+        machine("a thermal zone for a part no chip gives",
+            Heat.gather([heatChips[4]], [{ part: "processor", value: 78 }], {}).temps
+                .map(p => p.id), ["processor", "battery"]);
+        machine("a thermal zone for a part a chip gives",
+            Heat.gather(heatChips, [{ part: "processor", value: 78 }], {}).temps
+                .filter(p => p.id === "processor").map(p => p.value), [83]);
+        machine("whether a chip gives a part", [Heat.gives(heatChips, "air"),
+            Heat.gives(heatChips, "wifi")], [true, false]);
+        machine("a thermal zone by its type", ["x86_pkg_temp", "acpitz", "iwlwifi_1", "SEN1",
+            "INT3400 Thermal"].map(Heat.zonePart), ["processor", "board", "wifi", "", ""]);
+        machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps
+            .map(p => p.nth), [1, 2]);
+        machine("a lone disk, unnumbered", heatDisk.nth, 0);
+        machine("a processor well below its most", Heat.level(83, 100, 100, "processor"),
+            { value: 0.83, warn: false });
+        machine("a processor near its most", Heat.level(92, 100, 100, "processor").warn, true);
+        machine("a disk past its own high point", Heat.level(83, 82.85, 84.85, "disk").warn, true);
+        machine("a disk below its own high point", Heat.level(80, 82.85, 84.85, "disk").warn,
+            false);
+        machine("a battery with no limits said", Heat.level(30, null, null, "battery"),
+            { value: 0.5, warn: false });
+        machine("a part past its most, drawn full", Heat.level(110, null, 100, "processor").value,
+            1);
+        machine("a steady temperature's spark", Heat.spark([83, 83]), [0.5, 0.5]);
+        machine("a climbing temperature's spark", Heat.spark([80, 85, 90]), [0, 0.5, 1]);
+        machine("a spark with nothing read", Heat.spark([]), []);
+        machine("a fan's spark, drawn across its span", Heat.fanSpark([5000, 5250]), [0.25, 0.75]);
+        // The laptop's own counts: the package's events as each processor
+        // saw them, and two processors sharing a core, counting it once.
+        const heatThrottled = Heat.throttled([
+            { cpu: 0, core: 0, cores: 24, package: 3191 },
+            { cpu: 1, core: 22, cores: 8, package: 265 },
+            { cpu: 2, core: 0, cores: 0, package: 3202, packageMs: 19016, packageLongest: 125 }
+        ]);
+        machine("the processor throttled, as the package", [heatThrottled.times, heatThrottled.ms,
+            heatThrottled.longest], [3202, 19016, 125]);
+        machine("each core throttled, once a core", [heatThrottled.cores, heatThrottled.total],
+            [[{ cpu: 0, count: 24 }, { cpu: 1, count: 8 }], 32]);
+        machine("no throttling counted", Heat.throttled([]), null);
+        machine("each core's first processor", Heat.coreCpus([{ cpu: 0, core: 0 },
+            { cpu: 1, core: 0 }, { cpu: 2, core: 4 }]), { 0: 0, 4: 2 });
+        machine("a part's name in a sentence", ["Processor", "Wi-Fi card", "Air inside", "CPU fan"]
+            .map(Heat.phrase), ["processor", "Wi-Fi card", "air inside", "CPU fan"]);
+        machine("a fan's id", Heat.fanId("Video Fan"), "video-fan");
+        machine("a sensor whose label says nothing", [Heat.labelled("CPU"), Heat.labelled("Other"),
+            Heat.labelled("SODIMM")], ["", "", "memory"]);
+
         // How things stand in the foot, as room runs short: the least of
         // each, then each its glyph by rank, then each gives way, each a
         // character wide here, two between.
@@ -516,6 +614,131 @@ QtObject {
         machine("the middle of an even count", Traffic.typical([{ ms: 10 }, { ms: 20 }]), 15);
         machine("no round trips", Traffic.typical([]), null);
 
+        // The machine's connections, from ip, the routing tables and
+        // resolv.conf, each by what it is.
+        const networkListed = [{
+            ifname: "lo", flags: ["LOOPBACK", "UP", "LOWER_UP"], mtu: 65536,
+            link_type: "loopback", address: "00:00:00:00:00:00",
+            addr_info: [{ family: "inet", local: "127.0.0.1", prefixlen: 8, scope: "host" }]
+        }, {
+            ifname: "wlp0s20f3", flags: ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"], mtu: 1500,
+            link_type: "ether", address: "02:00:00:00:01:00", parentbus: "pci",
+            addr_info: [
+                { family: "inet", local: "192.168.4.48", prefixlen: 22, scope: "global" },
+                { family: "inet6", local: "fe80::ff:fe00:100", prefixlen: 64,
+                    scope: "link" }
+            ]
+        }, {
+            ifname: "enp1s0", flags: ["NO-CARRIER", "BROADCAST", "UP"], mtu: 1500,
+            link_type: "ether", address: "3c:22:fb:12:34:56", permaddr: "3c:22:fb:00:00:01",
+            parentbus: "pci", addr_info: []
+        }, {
+            ifname: "virbr0", flags: ["NO-CARRIER", "BROADCAST", "MULTICAST", "UP"], mtu: 1500,
+            link_type: "ether", address: "52:54:00:62:19:d2", linkinfo: { info_kind: "bridge" },
+            addr_info: [{ family: "inet", local: "192.168.122.1", prefixlen: 24, scope: "global" }]
+        }, {
+            ifname: "tailscale0", flags: ["POINTOPOINT", "UP", "LOWER_UP"], mtu: 1280,
+            link_type: "none", linkinfo: { info_kind: "tun" },
+            addr_info: [
+                { family: "inet", local: "100.101.102.103", prefixlen: 32, scope: "global" },
+                { family: "inet6", local: "fd7a:115c:a1e0::1", prefixlen: 128, scope: "global" }
+            ]
+        }, {
+            ifname: "ifb4wlp0s20f3", flags: ["UP"], mtu: 1500, link_type: "ether",
+            linkinfo: { info_kind: "ifb" }, addr_info: []
+        }, {
+            ifname: "veth0", flags: ["UP"], mtu: 1500, link_type: "ether",
+            linkinfo: { info_kind: "veth" }, addr_info: []
+        }];
+        const networkLinks = Interfaces.interfaces(networkListed, ["wlp0s20f3"]);
+        const networkKinds = {};
+        for (const each of networkLinks)
+            networkKinds[each.name] = each.kind;
+        machine("each connection by what it is", networkKinds, {
+            wlp0s20f3: "wifi", enp1s0: "wired", virbr0: "bridge", tailscale0: "tunnel",
+            veth0: "virtual"
+        });
+        const networkLink = name => networkLinks.find(each => each.name === name);
+        machine("a card's address, past its own link only", networkLink("wlp0s20f3").four,
+            [{ address: "192.168.4.48", prefix: 22 }]);
+        machine("no link-local IPv6 address", networkLink("wlp0s20f3").six, []);
+        machine("a tunnel's IPv6 address", networkLink("tailscale0").six[0].address,
+            "fd7a:115c:a1e0::1");
+        machine("a tunnel has no hardware address", networkLink("tailscale0").mac, "");
+        machine("a card on its own address", networkLink("wlp0s20f3").own, "");
+        machine("a card on another address than its own", networkLink("enp1s0").own,
+            "3c:22:fb:00:00:01");
+        machine("how each stands", ["wlp0s20f3", "enp1s0"].map(name => networkLink(name).state),
+            ["up", "no link"]);
+        machine("a card turned off", Interfaces.state({ flags: ["BROADCAST"] }), "off");
+        machine("what isn't ip's", Interfaces.interfaces({}, []), []);
+        machine("where a hardware address came from", ["0", "1", "3", ""].map(Interfaces.assigned),
+            ["own", "random", "set", ""]);
+        const networkRoute = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t"
+            + "\tMTU\tWindow\tIRTT\n"
+            + "wlp0s20f3\t00000000\t0104A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n"
+            + "enp1s0\t00000000\t0100000A\t0003\t0\t0\t100\t00000000\t0\t0\t0\n"
+            + "wlp0s20f3\t0004A8C0\t00000000\t0001\t0\t0\t600\t00FCFFFF\t0\t0\t0\n";
+        const networkGateways = Interfaces.gateways(networkRoute);
+        machine("each default gateway", networkGateways, {
+            wlp0s20f3: { address: "192.168.4.1", metric: 600 },
+            enp1s0: { address: "10.0.0.1", metric: 100 }
+        });
+        machine("the way out, costing least", Interfaces.wayOut(networkGateways), "enp1s0");
+        machine("no way out", Interfaces.wayOut({}), "");
+        const networkZeros = "00000000000000000000000000000000";
+        const networkSix = `${networkZeros} 00 ${networkZeros} 00 `
+            + "fe800000000000000000000000000001 00000400 00000001 00000000 00450003 wlp0s20f3\n"
+            + "fd7a115ca1e000000000000000000000 30 00000000000000000000000000000000 00 "
+            + "00000000000000000000000000000000 00000100 00000001 00000000 00000001 tailscale0\n";
+        machine("an IPv6 default gateway", Interfaces.gateways6(networkSix), {
+            wlp0s20f3: { address: "fe80:0000:0000:0000:0000:0000:0000:0001", metric: 1024 }
+        });
+        const networkResolv = "# written by resolved\nnameserver 127.0.2.2\nnameserver 127.0.2.3\n"
+            + "search .\noptions edns0\n";
+        machine("the name servers", Interfaces.servers(networkResolv), ["127.0.2.2", "127.0.2.3"]);
+        machine("resolved's stub",
+            Interfaces.stubbed(Interfaces.servers("nameserver 127.0.0.53\n")), true);
+        machine("name servers of their own", Interfaces.stubbed(["127.0.2.2"]), false);
+
+        // A Wi-Fi card's link as iw reads it.
+        const networkIw = "@@ link\nConnected to 02:00:00:00:02:00 (on wlp0s20f3)\n"
+            + "\tSSID: Lantern\n\tfreq: 5745.0\n\tsignal: -43 dBm\n"
+            + "@@ station\nStation 02:00:00:00:02:00 (on wlp0s20f3)\n"
+            + "\tMFP:\t\tno\n\ttx retries:\t12\n\ttx failed:\t1\n\tbeacon loss:\t0\n"
+            + "\trx drop misc:\t5451\n\tsignal:  \t-43 [-52, -43] dBm\n\tsignal avg:\t-40 dBm\n"
+            + "\tbeacon signal avg:\t-35 dBm\n"
+            + "\ttx bitrate:\t1134.2 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 1 HE-DCM 0\n"
+            + "\trx bitrate:\t1200.9 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 0 HE-DCM 0\n"
+            + "\tconnected time:\t11744 seconds\n"
+            + "@@ info\nInterface wlp0s20f3\n\tifindex 2\n"
+            + "\tchannel 149 (5745 MHz), width: 80 MHz, center1: 5775 MHz\n\ttxpower 22.00 dBm\n";
+        const networkRadio = Interfaces.radio(networkIw);
+        machine("the signal at each antenna", [networkRadio.signal, networkRadio.antennas],
+            [-43, [-52, -43]]);
+        machine("the signal on average and of the beacons",
+            [networkRadio.average, networkRadio.beacons], [-40, -35]);
+        machine("what the card sends at", networkRadio.power, 22);
+        machine("what was sent again, never sent, missed and dropped", [networkRadio.retries,
+            networkRadio.failed, networkRadio.missed, networkRadio.dropped], [12, 1, 0, 5451]);
+        machine("how long it's been on", networkRadio.connected, 11744);
+        machine("its management frames unprotected", networkRadio.protected, false);
+        machine("its channel and frequency", [networkRadio.channel, networkRadio.frequency],
+            [149, 5745]);
+        machine("a Wi-Fi 6 rate", networkRadio.receive,
+            { mbps: 1200.9, width: 80, generation: 6, mcs: 11, streams: 2 });
+        machine("a Wi-Fi 7 rate", Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")
+            .generation, 7);
+        machine("a Wi-Fi 4 rate's streams", Interfaces.rate("144.4 MBit/s MCS 15 short GI"),
+            { mbps: 144.4, width: null, generation: 4, mcs: 7, streams: 2 });
+        machine("an older rate", Interfaces.rate("54.0 MBit/s").generation, null);
+        machine("a card on no network", Interfaces.radio("@@ link\nNot connected.\n@@ station\n"),
+            null);
+        machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
+        machine("how long, in days", Interfaces.lasted(200000), "2 d 7 h");
+        machine("how long, only just", Interfaces.lasted(20), "under a minute");
+        machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
+
         // How each Bluetooth link is doing, from what bluetooth-links writes.
         const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;
         const btClassic = { address: "00:1B:66:AA:BB:CC", rssi: -6, quality: 230, power: 4,
@@ -557,6 +780,221 @@ QtObject {
         machine("any Opus", Links.codec("opus_05_51").name, "Opus");
         machine("a codec not known", Links.codec("new_one").name, "NEW_ONE");
         machine("no codec", Links.codec(undefined), null);
+        machine("what music's codec carries", Links.carried({ "api.bluez5.profile": "a2dp-sink",
+            "node.rate": "1/44100" }, 2), { profile: "music", rate: "44.1 kHz",
+            channels: "2, stereo" });
+        machine("what a call's codec carries", Links.carried({
+            "api.bluez5.profile": "headset-head-unit", "audio.rate": 16000,
+            "audio.channels": 1 }, 0), { profile: "calls", rate: "16 kHz", channels: "1, mono" });
+        machine("a node saying nothing", Links.carried(null, 0),
+            { profile: "", rate: "", channels: "" });
+        machine("an old reader's link has its one read", Links.signals(btClassic), [0.85]);
+        machine("a link held unencrypted", Links.held({ le: true, held: { central: false,
+            outgoing: true, security: "authenticated" } }), {
+            side: "Low Energy, peripheral, not encrypted",
+            note: "this machine started it, though the device proved who it is" });
+        machine("an old reader's link says nothing of how", Links.held(btClassic), null);
+        machine("the version of Bluetooth", Links.version(14), "Bluetooth 6.0");
+        machine("a version not known", Links.version(99), "");
+        machine("a chip's maker", [Links.maker(2), Links.maker(9999)], ["Intel", ""]);
+        machine("an adapter by its name", Links.adapter(Links.adapters(JSON.stringify({
+            adapters: [{ name: "hci0" }], links: [] })), "hci0").name, "hci0");
+        machine("an old reader's file has no adapters", Links.adapters(btFile), []);
+        machine("an adapter read once has no traffic", Links.traffic({ received: null,
+            sent: null, traffic: [] }), null);
+        machine("a busy adapter's traffic", Links.traffic({ received: 2.5e6, sent: 0,
+            traffic: [2.5e6] }), { side: "2.5 MB/s", values: [1],
+            note: "2.5 MB/s in, 0 B/s out" });
+
+        // What Sound makes of what a device and a stream say of themselves.
+        const soundTuning = Sounds.target("{\n  node.name = \"alsa_output.speaker\"\n}");
+        machine("what a filter aims at", soundTuning, { "node.name": "alsa_output.speaker" });
+        machine("a filter aiming at two things", Sounds.target(
+            "{ alsa.components = \"USB14ed:1012\" media.class = \"Audio/Source\" }"),
+            { "alsa.components": "USB14ed:1012", "media.class": "Audio/Source" });
+        machine("a filter's aim written as JSON", Sounds.target('{"node.name":"mic"}'),
+            { "node.name": "mic" });
+        machine("the device a filter aims at",
+            Sounds.aims(soundTuning, { "node.name": "alsa_output.speaker", "node.nick": "Speaker" }),
+            true);
+        machine("a device it doesn't", Sounds.aims(soundTuning, { "node.name": "headphones" }),
+            false);
+        machine("a filter aiming at nothing", Sounds.aims(Sounds.target(""), {}), false);
+        machine("the laptop's chips", Sounds.components("HDA:80862822,80860101,00100000  "
+            + "cfg-amp:4 iec61937-pcm:7,6,5 hs:cs42l45 mic:cs42l45-dmic spk:cs35l56"),
+            { amplifiers: 4, speaker: "CS35L56", headset: "CS42L45", microphone: "CS42L45",
+                digital: true, usb: "" });
+        machine("a USB card's ids", Sounds.components("USB041e:329a").usb, "041e:329a");
+        machine("a card that names nothing", Sounds.components(undefined).speaker, "");
+        machine("a stream's rate", Sounds.rate("1/44100"), "44.1 kHz");
+        machine("a rate in whole kilohertz", Sounds.kilohertz(48000), "48 kHz");
+        machine("no rate said", Sounds.rate(undefined), "");
+        const soundAsked = Sounds.fraction("8192/44100");
+        machine("what a stream asks for at once", [soundAsked.frames, soundAsked.hertz,
+            soundAsked.ms.toFixed(1)], [8192, 44100, "185.8"]);
+        machine("nothing asked", Sounds.fraction(""), null);
+        machine("a channel's name", Sounds.channel("FrontLeft"), "Front left");
+        machine("a lone channel", Sounds.channel("Mono"), "Mono");
+        machine("each program's streams together", Sounds.grouped(["a1", "b1", "a2"],
+            stream => stream.charAt(0)), [{ name: "a", streams: ["a1", "a2"] },
+            { name: "b", streams: ["b1"] }]);
+        machine("a step louder", Sounds.stepped(0.42, 0.05, 0.05), 0.45);
+        machine("never past the whole", Sounds.stepped(0.98, 0.05, 0.05), 1);
+        machine("never below nothing", Sounds.stepped(0.02, -0.05, 0.05), 0);
+
+        // What each camera says of itself, from sysfs and desk-facts.
+        machine("a loopback's format at a fraction of frames",
+            Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");
+        machine("a loopback's format at whole frames", Cameras.loopback("GREY:648x368@30"),
+            "GREY 648 \u00d7 368 at 30");
+        machine("a loopback's format as usually written", Cameras.loopback("MJPG:640x480@15/1"),
+            "MJPEG 640 \u00d7 480 at 15");
+        machine("no loopback format", Cameras.loopback(""), "");
+        machine("a sensor on the bus", Cameras.sensor("i2c-OVTI08F4:00"),
+            { id: "OVTI08F4", lights: "OVTI08F4_00::" });
+        machine("not a sensor", Cameras.sensor("i2c-17"), null);
+        const cameraColour = "OVTI08F4_00::";
+        const cameraInfrared = "HIMX1092_00::";
+        machine("a sensor's privacy light",
+            Cameras.light(`${cameraColour}privacy_led`, cameraColour), "privacy");
+        machine("a sensor's IR light",
+            Cameras.light(`${cameraInfrared}ir_flood_led`, cameraInfrared), "flood");
+        machine("another sensor's light",
+            Cameras.light(`${cameraInfrared}ir_flood_led`, cameraColour), "");
+        machine("the keyboard's light", Cameras.light("dell::kbd_backlight", "OVTI08F4_00::"), "");
+        machine("where the laptop's cameras sit", Cameras.place({ panel: "front", vertical: "center",
+            horizontal: "right", lid: "no" }), "front, centre right");
+        machine("a camera dead centre, in the lid", Cameras.place({ panel: "front",
+            vertical: "center", horizontal: "center", lid: "yes" }), "front, centre, in the lid");
+        machine("a camera the firmware doesn't place", Cameras.place({ panel: "unknown",
+            vertical: "", horizontal: "", lid: "" }), "");
+        machine("powered a moment", Cameras.lasted(999), "0 s");
+        machine("powered for minutes", Cameras.lasted(678291), "11 min");
+        machine("powered for hours", Cameras.lasted(7500000), "2 h 5 min");
+        machine("powered for whole hours", Cameras.lasted(7200000), "2 h");
+        const cameraFacts = [{ name: "streaming", value: "MJPEG 1920 \u00d7 1080 at 30" },
+            { name: "MJPEG", value: "3840 \u00d7 2160 at 30; 1920 \u00d7 1080 at 60" },
+            { name: "YUYV", value: "640 \u00d7 480 at 30" },
+            { name: "H.264", value: "1920 \u00d7 1080 at 30" },
+            { name: "field of view", value: "90\u00b0" }, { name: "USB", value: "5 Gbit/s" },
+            { name: "firmware", value: "release 3.17" }];
+        const cameraSplit = Cameras.formats(cameraFacts);
+        machine("a camera's formats", cameraSplit.modes.map(fact => fact.name),
+            ["MJPEG", "YUYV", "H.264"]);
+        machine("a camera's other facts", cameraSplit.rest.map(fact => fact.name),
+            ["streaming", "field of view", "USB", "firmware"]);
+        machine("a camera with no facts", Cameras.formats(undefined), { modes: [], rest: [] });
+
+        // The keyboards in the kernel's list of input devices, as the
+        // laptop's and an ErgoDox's read, with the hotkeys and keyd's own
+        // keyboard left out.
+        const keyboardsListed = [
+            "I: Bus=0011 Vendor=0001 Product=0001 Version=ab83",
+            "N: Name=\"AT Translated Set 2 keyboard\"",
+            "P: Phys=isa0060/serio0/input0",
+            "S: Sysfs=/devices/platform/i8042/serio0/input/input0",
+            "U: Uniq=",
+            "H: Handlers=sysrq kbd event0 leds ",
+            "B: EV=120013",
+            "B: LED=7",
+            "",
+            "I: Bus=0019 Vendor=0000 Product=0006 Version=0000",
+            "N: Name=\"Video Bus\"",
+            "P: Phys=LNXVIDEO/video/input0",
+            "S: Sysfs=/devices/pci0000:00/acpi.video_bus.0/input/input2",
+            "H: Handlers=kbd event1 ",
+            "",
+            "I: Bus=0003 Vendor=3297 Product=4974 Version=0111",
+            "N: Name=\"ZSA Technology Labs ErgoDox EZ\"",
+            "P: Phys=usb-0000:00:14.0-3.4/input0",
+            "S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4/3-3.4:1.0/"
+                + "0003:3297:4974.0001/input/input5",
+            "U: Uniq=",
+            "H: Handlers=sysrq kbd leds event4 ",
+            "B: LED=1f",
+            "",
+            "I: Bus=0003 Vendor=0fac Product=0ade Version=0000",
+            "N: Name=\"keyd virtual keyboard\"",
+            "S: Sysfs=/devices/virtual/input/input42",
+            "H: Handlers=sysrq kbd event12 leds rfkill ",
+            "B: LED=1ff",
+            ""
+        ].join("\n");
+        const keyboardsFound = Keyboards.keyboards(keyboardsListed);
+        machine("the keyboards", keyboardsFound.map(device => device.name),
+            ["AT Translated Set 2 keyboard", "ZSA Technology Labs ErgoDox EZ"]);
+        const [keyboardsLaptop, keyboardsErgodox] = keyboardsFound;
+        machine("how each is joined", keyboardsFound.map(device => Keyboards.joined(device)),
+            ["built in", "by USB"]);
+        machine("by Bluetooth", Keyboards.joined({ phys: "f4:4e:fd:00:11:22" }), "by Bluetooth");
+        machine("the built-in one", keyboardsFound.map(device => Keyboards.builtIn(device)),
+            [true, false]);
+        machine("ZSA's board", keyboardsFound.map(device => Keyboards.zsa(device)), [false, true]);
+        machine("the laptop's locks", Keyboards.locks(keyboardsLaptop), [
+            { id: "caps", light: "input0::capslock" },
+            { id: "num", light: "input0::numlock" },
+            { id: "scroll", light: "input0::scrolllock" }
+        ]);
+        machine("caps lock alone", Keyboards.locks(Object.assign({}, keyboardsLaptop, { leds: 2 }))
+            .map(lock => lock.id), ["caps"]);
+        machine("no USB folder for the laptop's", Keyboards.usbFolder(keyboardsLaptop), "");
+        machine("a USB board's folder", Keyboards.usbFolder(keyboardsErgodox),
+            "/sys/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4");
+        machine("the laptop's connection", Keyboards.connection(keyboardsLaptop, null), "PS/2");
+        machine("a USB board's connection", Keyboards.connection(keyboardsErgodox,
+            { version: " 2.00", speed: "12" }), "USB 2.0 at 12 Mb/s");
+        machine("a fast USB board's", Keyboards.connection(keyboardsErgodox,
+            { version: " 3.20", speed: "5000" }), "USB 3.2 at 5 Gb/s");
+        machine("a USB board unread", Keyboards.connection(keyboardsErgodox, null), "USB");
+        machine("a Bluetooth board's", Keyboards.connection({ bus: "0005",
+            uniq: "f4:4e:fd:00:11:22" }, null), "Bluetooth, F4:4E:FD:00:11:22");
+        machine("lights at a level", Keyboards.lit(2, 2), "2 of 2");
+        machine("lights off", Keyboards.lit(0, 2), "off");
+        machine("a minute's timeout", Keyboards.timeout("1m\n"), "1 minute");
+        machine("seconds' timeout", Keyboards.timeout("30s"), "30 seconds");
+        machine("no timeout", Keyboards.timeout("0"), "never");
+        machine("what lights them again", Keyboards.wakers("+keyboard +touchpad"),
+            "lit again by a key or the touchpad");
+        machine("nothing lights them again", Keyboards.wakers("-keyboard -touchpad"), "");
+        machine("how a held key repeats", Keyboards.repeats({ delay: 200, rate: 40 }),
+            "after 200 ms, 40 a second");
+
+        // The battery's and the room's figures, from their files as the
+        // kernel writes them.
+        machine("the charge type in use", Power.chosen("Trickle Fast Standard Adaptive [Custom]"),
+            { now: "Custom", all: ["Trickle", "Fast", "Standard", "Adaptive", "Custom"] });
+        machine("an older kernel's one charge type", Power.chosen("Fast").now, "Fast");
+        machine("no charge type", Power.chosen(""), { now: "", all: [] });
+        machine("power delivery", Power.protocol("C [PD] PD_PPS"), "USB PD");
+        machine("programmable power", Power.protocol("C PD [PD_PPS]"), "USB PD PPS");
+        machine("Type-C's own current", Power.protocol("[C] PD PD_PPS"), "USB-C");
+        machine("a plain USB port", Power.protocol("[SDP] DCP CDP"), "USB");
+        const powerPort = { online: true, volts: 20, amps: 5, protocol: "USB PD" };
+        machine("a port charging", Power.port(powerPort, number), "100 W, 20 V at 5.0 A, USB PD");
+        machine("a port charging, its figures unsaid",
+            Power.port({ online: true, volts: null, amps: null, protocol: "" }, number),
+            "charging");
+        machine("a port powering a phone", Power.port({ online: false, giving: true }, number),
+            "powering what's plugged in");
+        machine("a port with something in", Power.port({ online: false, partner: true }, number),
+            "plugged in, giving nothing");
+        machine("an empty port", Power.port({ online: false }, number), "empty");
+        machine("made on a day", Power.made(2026, 7, 20), "2026-07-20");
+        machine("made in a month", Power.made(2026, 7, 0), "2026-07");
+        machine("a date that isn't", Power.made(0, 13, 40), "");
+        machine("a limit raised moves its stop first", Power.limitWrites(75, 80, 90, 5),
+            [["charge_control_end_threshold", "90"], ["charge_control_start_threshold", "85"]]);
+        machine("a limit lowered moves its start first", Power.limitWrites(75, 80, 60, 5),
+            [["charge_control_start_threshold", "55"], ["charge_control_end_threshold", "60"]]);
+        machine("a limit with no start", Power.limitWrites(null, 80, 90, 5),
+            [["charge_control_end_threshold", "90"]]);
+        machine("the room's lux", Power.lux("20000", "0.001000000", "0"), 20);
+        machine("a sensor with no scale", Power.lux("17", "", ""), 17);
+        machine("a sensor not read", Power.lux("", "0.001", "0"), null);
+        machine("a dark room", Power.roomLevel(0), 0);
+        machine("daylight", Power.roomLevel(10000), 1);
+        machine("a room a hundredth of daylight", Math.round(Power.roomLevel(100) * 100) / 100,
+            0.5);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

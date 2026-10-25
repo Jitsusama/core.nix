@@ -1,11 +1,12 @@
 //! The controller, through the kernel's HCI sockets: one, bound to no
-//! adapter, for the ioctls that list the adapters and their connections,
-//! and one bound to each adapter asked a command, kept open between ticks.
-//! The kernel lets a socket with no capability list them and send the four
-//! commands asked here (`hci_sec_filter` in `net/bluetooth/hci_sock.c`), so
-//! nothing here needs root. Its bytes are read in `reply`.
+//! adapter, for the ioctls that list the adapters, say what each is and
+//! list their connections, and one bound to each adapter asked a command,
+//! kept open between ticks. The kernel lets a socket with no capability use
+//! those ioctls and send the five commands asked here (`hci_sec_filter` in
+//! `net/bluetooth/hci_sock.c`), so nothing here needs root. Its bytes are
+//! read in `reply`.
 
-use crate::reply::{self, Connection, Heard};
+use crate::reply::{self, Adapter, Connection, Heard};
 use std::collections::HashMap;
 use std::io;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -23,6 +24,7 @@ const fn reads(number: libc::Ioctl) -> libc::Ioctl {
     (2 << 30) | (4 << 16) | (0x48 << 8) | number
 }
 const HCIGETDEVLIST: libc::Ioctl = reads(210);
+const HCIGETDEVINFO: libc::Ioctl = reads(211);
 const HCIGETCONNLIST: libc::Ioctl = reads(212);
 
 /// How long a command's answer is waited for. The controller answers in a
@@ -88,6 +90,14 @@ fn bound(adapter: u16) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
+/// What one look at the adapters found: each adapter, and every adapter's
+/// connections that carry data, each with its adapter's id.
+#[derive(Debug, Default, Clone)]
+pub struct Seen {
+    pub adapters: Vec<Adapter>,
+    pub connections: Vec<(u16, Connection)>,
+}
+
 /// The machine's Bluetooth adapters, asked through the kernel.
 #[derive(Default)]
 pub struct Radio {
@@ -96,9 +106,9 @@ pub struct Radio {
 }
 
 impl Radio {
-    /// Every adapter's connections that carry data, each with its adapter.
-    /// With no Bluetooth at all, there are none.
-    pub fn connections(&mut self) -> io::Result<Vec<(u16, Connection)>> {
+    /// Every adapter and its connections. With no Bluetooth at all, there
+    /// are none.
+    pub fn look(&mut self) -> io::Result<Seen> {
         let fd = match &self.lister {
             Some(fd) => fd.as_raw_fd(),
             None => self.lister.insert(open()?).as_raw_fd(),
@@ -109,18 +119,27 @@ impl Radio {
             self.lister = None;
             return Err(error);
         }
-        let mut found = Vec::new();
+        let mut seen = Seen::default();
         for adapter in reply::adapters(&adapters) {
+            // An adapter going away as it's asked says nothing, and has no
+            // connections.
+            let mut info = reply::device_info_request(adapter);
+            if listed(fd, HCIGETDEVINFO, &mut info).is_ok()
+                && let Some(said) = reply::device_info(&info)
+            {
+                seen.adapters.push(said);
+            }
             let mut list = reply::connection_request(adapter);
-            // An adapter going away as it's asked has no connections.
             if listed(fd, HCIGETCONNLIST, &mut list).is_ok() {
-                found.extend(reply::connections(&list).into_iter().map(|c| (adapter, c)));
+                let found = reply::connections(&list).into_iter();
+                seen.connections.extend(found.map(|c| (adapter, c)));
             }
         }
-        // An adapter gone is let go of.
-        let listed: Vec<u16> = found.iter().map(|(adapter, _)| *adapter).collect();
-        self.bound.retain(|adapter, _| listed.contains(adapter));
-        Ok(found)
+        // An adapter gone, or with nothing connected, is let go of: its
+        // socket is opened again when it has a link to ask of.
+        let linked: Vec<u16> = seen.connections.iter().map(|(id, _)| *id).collect();
+        self.bound.retain(|adapter, _| linked.contains(adapter));
+        Ok(seen)
     }
 
     /// Asks one of a connection's commands, giving its return parameters.

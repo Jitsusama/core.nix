@@ -143,6 +143,23 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     )
     # Its charge among them, drawn as a bar, and none of them a glyph.
     photograph("launcher-charger-parts")
+    # Each part is named first, then what it says: the stand-in's health
+    # is good, and its temperature has a bar.
+    launcher_until(
+        lambda shown: (
+            {"Charger", "Charge", "Health", "Temperature"} <= set(shown["rows"])
+            and any(thing["reads"].startswith("Health \u00b7 Good, ") for thing in shown["things"])
+        )
+    )
+    machine.send_key("esc")
+    # A part is asked by its own words, its figure the headline.
+    answer("battery health")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name", "").startswith("Good, ")
+        )
+    )
     machine.send_key("esc")
     # A collection is found by what a person calls it, not only its
     # title, and Return goes straight into it.
@@ -206,6 +223,32 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
+    # Each part reads name first, a step in; Return opens one, its
+    # history first, and so does the right arrow, once back out.
+    answer("temperature")
+    launcher_until(lambda shown: shown["kind"] == "answer")
+    step_in()
+    launcher_until(lambda shown: "Battery" in shown["rows"])
+    type_in("battery", "Battery")
+    t.assertRegex(showing()["selected"]["side"], r"^-?\d+ \u00b0C$")
+
+    def in_battery(shown: Json) -> bool:
+        """Say whether the launcher holds the battery's heat, its history selected."""
+        return bool(
+            shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
+        )
+
+    step_in("ret")
+    launcher_until(in_battery)
+    photograph("launcher-heat-part")
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
+    )
+    step_in()
+    launcher_until(in_battery)
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The date in full, as the machine's clock has it; the day may
     # turn while it's asked, so either will do.
     before = machine.succeed("date '+%A %-d %B %Y'").strip()
@@ -228,6 +271,29 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
+        timeout=10,
+    )
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # A step into its answer, the screen is a setting: its share, its
+    # levels a step in by Return, and beside it the room's light as the
+    # stand-in sensor hears it.
+    answer("room light")
+    step_in()
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Screen"
+            and any(
+                thing["reads"].startswith("Room light \u00b7 ") and thing["reads"].endswith(" lx")
+                for thing in shown["things"]
+            )
+        )
+    )
+    step_in("ret")
+    launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
+    type_in("40", selecting="Screen to 40%")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
         timeout=10,
     )
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
@@ -503,6 +569,47 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         as_account("wl-paste --no-newline"),
         r"^(one keyboard|[1-9]\d* keyboards), caps lock off$",
     )
+    # The keyboards are a step into the answer, and each holds its parts,
+    # named first, a step further by Return as by the right arrow. QEMU's
+    # own is the laptop's kind, with all three lock lights and a PS/2 port.
+    # desk-facts doesn't run here, so what it would say of it is written
+    # for it, and reads as a part.
+    board_facts = {"AT Translated Set 2 keyboard": [{"name": "keys", "value": "105"}]}
+    as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/desk"
+        f" && echo '{json.dumps(board_facts)}' > $XDG_RUNTIME_DIR/desk/.k"
+        " && mv $XDG_RUNTIME_DIR/desk/.k $XDG_RUNTIME_DIR/desk/keyboards.json"
+    )
+    board = "The laptop's keyboard"
+    answer("keyboards")
+    step_in()
+    launcher_until(lambda shown: board in shown["rows"])
+    for _ in range(showing()["rows"].index(board)):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    step_in("ret")
+    launcher_until(
+        lambda shown: (
+            shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
+            and {"Repeat", "Connection", "Keys"} <= set(shown["rows"])
+        ),
+    )
+    photograph("launcher-keyboard-parts")
+    t.assertEqual(showing()["selected"]["side"], "off")
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == board,
+    )
+    step_in()
+    launcher_until(lambda shown: "Repeat" in shown["rows"])
+    for _ in range(showing()["rows"].index("Repeat")):
+        machine.send_key("down")
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("side", "").startswith("after "),
+    )
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    t.assertRegex(as_account("wl-paste --no-newline"), r"^after \d+ ms, \d+ a second$")
     answer("350 f in c")
     photograph("launcher-units")
     machine.send_key("esc")

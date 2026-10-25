@@ -411,9 +411,12 @@ onLinux {
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, hardware
   # addresses, measures, the time in any zone tzdata names and the
-  # machine's figures from its files, how each Bluetooth link is doing from
-  # what bluetooth-links writes, as tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
-  # own JavaScript engine.
+  # machine's figures from its files, its parts' heat from their sensors,
+  # the keyboards in the kernel's list of input devices, how each Bluetooth
+  # link is doing from what bluetooth-links writes, what Sound makes of a
+  # sound device's properties, the machine's connections from what ip, the
+  # routing tables, resolv.conf and iw say, as tests/answers.qml lists them,
+  # and leaves alone what isn't one, in Qt's own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -427,9 +430,15 @@ onLinux {
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
       cp ${./launcher/Machine.js} Machine.js
+      cp ${./launcher/Heat.js} Heat.js
+      cp ${./launcher/Power.js} Power.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
+      cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Links.js} Links.js
+      cp ${./launcher/Sounds.js} Sounds.js
+      cp ${./launcher/Cameras.js} Cameras.js
+      cp ${./launcher/Keyboards.js} Keyboards.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -771,6 +780,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Light.qml} launcher/Light.qml
+      cp ${./launcher/Power.js} launcher/Power.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/desk-light.qml} shell.qml
@@ -838,10 +848,12 @@ onLinux {
       '';
       # The tester's player, found by its desktop entry, a radio's, found
       # only by its identity, and one nobody's; the tester's two streams, a
-      # filter's carrying its name too, and another program's.
+      # filter's carrying its name too, and another program's; and the
+      # radio recording from a microphone, beside a level meter of its own.
       playing = singleton "Playing.qml" ''
         property var players: [tester, radio, nobody]
         property var streams: [first, second, filter, other]
+        property var recorders: [listening, meter]
         QtObject {
           id: tester
           property string desktopEntry: "tester"
@@ -907,6 +919,12 @@ onLinux {
           name: "Other"
           properties: ({ "application.name": "Other" })
           volume: 0.7
+        }
+        Stream { id: listening; name: "Radio"; properties: ({ "application.name": "Radio" }) }
+        Stream {
+          id: meter
+          name: "Radio"
+          properties: ({ "application.name": "Radio", "stream.monitor": "true" })
         }
       '';
       entry =
@@ -1328,8 +1346,9 @@ onLinux {
   # through Quickshell itself with stand-in devices
   # (tests/bluetooth-pairing.qml), with the facts desk-facts would write
   # for a connected mouse, and how its link and some headphones' are doing,
-  # as bluetooth-links would write it: the headphones' skipping channels 22
-  # to 39, where a Wi-Fi network on its channel 6 sits.
+  # with their last reads and how each is held, and the adapter's traffic
+  # and version, as bluetooth-links would write it: the headphones'
+  # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -1344,11 +1363,18 @@ onLinux {
         EOF
         map=$(printf '1%.0s' {1..22}; printf '0%.0s' {1..18}; printf '1%.0s' {1..39})
         cat > runtime/bluetooth-links.json <<EOF
-        {"at": 1761350400, "links": [
+        {"at": 1761350400,
+         "adapters": [{"name": "hci9", "address": "02:00:00:00:00:01", "up": true,
+           "version": 14, "maker": 2, "received": 1200, "sent": 300,
+           "traffic": [0, 750, 1500]}],
+         "links": [
           {"address": "00:1B:66:AA:BB:CC", "rssi": 0, "quality": 230, "power": 4,
-           "channels": 61, "map": "$map", "le": false},
+           "channels": 61, "map": "$map", "le": false,
+           "held": {"central": true, "outgoing": false, "security": "secure"},
+           "history": {"rssi": [-20, null, 0], "quality": [204, 230]}},
           {"address": "C3:9C:E3:2A:F3:6E", "rssi": -58, "quality": null, "power": 4,
-           "channels": null, "map": null, "le": true}
+           "channels": null, "map": null, "le": true,
+           "held": {"central": false, "outgoing": true, "security": "none"}}
         ]}
         EOF
         cp ${./Fuzzy.js} Fuzzy.js

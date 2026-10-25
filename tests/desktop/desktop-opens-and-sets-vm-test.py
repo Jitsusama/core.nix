@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         STARTING,
         ZENITY,
         Json,
+        answer,
         as_account,
         copied_then_closed,
         drawn_at,
@@ -394,6 +395,120 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
         machine.wait_until_succeeds(in_session(used), timeout=10)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
+
+def sound_reads(name: str, said: str) -> Callable[[Json], bool]:
+    """Make a test of whether the launcher shows a row by this name reading this."""
+    return lambda shown: any(
+        thing["reads"].startswith(name) and said in thing["reads"] for thing in shown["things"]
+    )
+
+
+def sound_selected(name: str) -> Callable[[Json], bool]:
+    """Make a test of whether the launcher's selected row is this one."""
+    return lambda shown: (shown["selected"] or {}).get("name") == name
+
+
+def sound_device(typed: str, named: str) -> None:
+    """Open the launcher's Sound, and step into a device's parts by the right arrow."""
+    as_account("qs ipc call launcher collection sound")
+    launcher_ready()
+    type_in(typed, selecting=named)
+    step_in()
+
+
+def sound_recording() -> int | None:
+    """Give the id of pw-record's stream, as the sound server lists it, if it's there."""
+    nodes: list[Json] = json.loads(as_account("pw-dump"))
+    return next(
+        (
+            int(node["id"])
+            for node in nodes
+            if node.get("type") == "PipeWire:Interface:Node"
+            and node["info"]["props"].get("media.class") == "Stream/Input/Audio"
+            and "pw-record"
+            in {
+                node["info"]["props"].get("application.name"),
+                node["info"]["props"].get("node.name"),
+            }
+        ),
+        None,
+    )
+
+
+with subtest("the launcher's Sound opens an output's and a microphone's parts"):
+    # The speakers, in use, hold their Level, Volume and Channels, named
+    # first; the null sink has no card, so nothing more.
+    sound_device("speakers", "speakers")
+    launcher_until(lambda shown: shown["rows"][:2] == ["Level", "Volume"])
+    launcher_until(lambda shown: "Channels" in shown["rows"])
+    launcher_until(sound_reads("Channels", "stereo"))
+    # Nothing plays, so the Level reads silent, and no program is listed.
+    launcher_until(sound_reads("Level", "silent"))
+    t.assertNotIn("Programs", showing()["rows"])
+    photograph("launcher-sound-output-parts")
+    # Return on Volume steps into its choices, Mute among them.
+    machine.send_key("down")
+    launcher_until(sound_selected("Volume"))
+    step_in("ret")
+    launcher_until(lambda shown: shown["rows"][:3] == ["Louder", "Quieter", "Mute it"])
+    photograph("launcher-sound-volume")
+    type_in("50", selecting="Volume to 50%")
+    machine.send_key("ret")
+    sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
+    machine.wait_until_succeeds(in_session(sink), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # The part says what it was set to.
+    sound_device("speakers", "speakers")
+    launcher_until(sound_reads("Volume", "50%"))
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+
+    # The microphone holds its own: a live Level, its Gain, its Mute, and
+    # who's Recording, which is nobody, though the Level's own stream is
+    # reading it while it shows.
+    sound_device("microphone", "stand-in microphone")
+    launcher_until(
+        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Mute", "Recording"],
+    )
+    launcher_until(sound_reads("Level", "%"))
+    launcher_until(sound_reads("Mute", "off"))
+    launcher_until(sound_reads("Recording", "nothing"))
+    photograph("launcher-sound-input-parts")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    listening = f"/home/{ACCOUNT}/listening.wav"
+    as_account(
+        f"systemd-run --user --unit=listening pw-record --target stand-in-microphone {listening}"
+    )
+
+    def records(last: bool) -> bool:
+        """Say whether pw-record's stream is there, and on the last try, what is."""
+        if last:
+            print(as_account("systemctl --user status listening; pw-cli ls Node"))
+        return sound_recording() is not None
+
+    retry(records, timeout=datetime.timedelta(seconds=30))
+    recording = sound_recording()
+    sound_device("microphone", "stand-in microphone")
+    launcher_until(lambda shown: "Recording" in shown["rows"])
+    launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
+    # The right arrow on Recording, then on the program, and Return mutes
+    # what it records.
+    for _down in range(3):
+        machine.send_key("down")
+    launcher_until(sound_selected("Recording"))
+    step_in()
+    step_in()
+    launcher_until(lambda shown: shown["rows"][:3] == ["Mute", "Louder", "Quieter"])
+    photograph("launcher-sound-recording")
+    launcher_until(sound_selected("Mute"))
+    machine.send_key("ret")
+    hushed = f"wpctl get-volume {recording} | grep -q MUTED"
+    machine.wait_until_succeeds(in_session(hushed), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    as_account("systemctl --user stop listening")
+    as_account(f"rm -f {listening}")
+
 # A program's own Media and Sound, against a real player playing real
 # sound: mpv, through its MPRIS script, playing two tones in turn through
 # PipeWire to the speakers. What each act does is read back from the
@@ -632,6 +747,24 @@ with subtest("the launcher sets the power profile"):
         machine.send_key("ret")
         machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # And as the setting it is: one part saying which is in use, its
+    # choices a step in by Return or the right arrow, each named there as
+    # the part reads it.
+    for key, profile, name, was in [
+        ("ret", "balanced", "Balanced", "Power saver"),
+        ("right", "power-saver", "Power saver", "Balanced"),
+    ]:
+        as_account("qs ipc call launcher toggle")
+        launcher_ready()
+        type_in("power profile", selecting="Power profile")
+        # The wait ends before the loop moves on, so it reads this pass's name.
+        launcher_until(lambda shown: (shown["selected"] or {}).get("side") == was)  # noqa: B023
+        step_in(key)
+        launcher_until(lambda shown: shown["rows"][:2] == ["Power saver", "Balanced"])
+        type_in(name.split()[0][:3].lower(), selecting=name)
+        machine.send_key("ret")
+        machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 # The right arrow on one of a collection's members offers its own
 # actions, as on anything at the top.
@@ -769,27 +902,46 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     )
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Stepped into, a network says after what can be done to it what's
-    # heard of it, a row each, the selected row's footer saying more:
-    # the card's link to it once the card has read it, and its access
-    # points a step further in.
+    # heard of it, each a part named first, the selected row's footer
+    # saying more: the card's Signal and Speed once the card has read
+    # them, each holding more, and its access points a step further in.
     as_account("qs ipc call launcher collection wifi")
     launcher_ready()
     type_in("office", selecting="Office")
     step_in()
-    # The link's row by its signal, which is always read; its rates
-    # say in and out only while they differ, which the simulated
-    # radio's don't always.
-    type_in("dbm", selecting="dBm \u00b7")
+    office = len(showing()["held"])
+    # The Signal says its dBm, always read, and how far over the noise
+    # below; Return opens it, where iw, read while the network shows,
+    # says what the card sends at.
+    type_in("signal", selecting="Signal")
+    launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     launcher_until(lambda shown: "over the noise" in shown["footer"])
-    for _ in "dbm":
-        machine.send_key("backspace")
-    launcher_until(lambda shown: shown["typed"] == "")
+    step_in("ret")
+    launcher_until(lambda shown: "Transmit power" in shown["rows"])
+    # The left arrow steps out with the word put back, and again takes
+    # the word.
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "signal")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     photograph("launcher-wifi-detail")
-    type_in("access", selecting="1 access point")
+    # The Speed holds each way and the retries, the right arrow into it.
+    type_in("speed", selecting="Speed")
     step_in()
-    launcher_until(lambda shown: shown["footer"].startswith("02:00:00:00:02:00 \u00b7 "))
-    assert showing()["selected"]["name"].startswith("2.4 GHz ch 1\u00a0"), showing()
+    launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
+    # The access points, each named by its band and channel, and each
+    # holding its own parts, its hardware address among them.
+    type_in("access", selecting="Access points")
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, channel 1"])
     photograph("launcher-wifi-points")
+    step_in("ret")
+    type_in("hardware", selecting="Hardware address")
+    t.assertEqual(showing()["selected"]["side"], "02:00:00:00:02:00")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Turning Wi-Fi off is an action like any.
@@ -799,6 +951,46 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.send_key("ret")
     machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=15)
     machine.succeed("rfkill unblock wifi")
+
+with subtest("the addresses name each connection, its parts a step in"):
+    # A tunnel beside the Wi-Fi, as the laptop has.
+    machine.succeed(
+        "ip tuntap add dev tailscale0 mode tun"
+        " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
+    )
+    # Wi-Fi was turned off and on again, so the card joins again first.
+    machine.wait_until_succeeds("ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=90)
+    answer("ip")
+    step_in()
+    addresses = len(showing()["held"])
+    # Each is named by what it is, never by the kernel's name for it.
+    launcher_until(lambda shown: {"Wi-Fi", "Tunnel"} <= set(shown["rows"]))
+    assert not {"wlan1", "tailscale0"} & set(showing()["rows"]), showing()
+    # Return opens the Wi-Fi's parts, the kernel's name a figure among them.
+    type_in("wi-fi", selecting="Wi-Fi")
+    step_in("ret")
+    launcher_until(
+        lambda shown: (
+            {"Address", "Hardware address", "MTU", "State", "Device name"} <= set(shown["rows"])
+        )
+    )
+    type_in("device", selecting="Device name")
+    t.assertEqual(showing()["selected"]["side"], "wlan1")
+    photograph("launcher-addresses-wifi")
+    machine.send_key("left")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
+    # The right arrow opens the tunnel's, which has no hardware address.
+    type_in("tunnel", selecting="Tunnel")
+    step_in()
+    type_in("address", selecting="Address")
+    t.assertEqual(showing()["selected"]["side"], "100.100.1.2/32")
+    assert "Hardware address" not in showing()["rows"], showing()
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.succeed("ip link delete tailscale0")
 
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.

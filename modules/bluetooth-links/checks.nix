@@ -9,12 +9,17 @@
 }:
 onLinux {
   # Its tests run as it builds: the kernel's lists of adapters and
-  # connections are read, keeping only the data links that are up; each
+  # connections are read, keeping only the data links that are up, with
+  # who leads each, who started it and how it's secured, and what the
+  # kernel says of each adapter, its address and bytes carried; each
   # command is written as the controller takes it, and its answer picked
-  # out of the events, refused or not; the signal, link quality, power and
-  # channel map are read from reply bytes, a failed one leaving its field
-  # null; nothing connected is written once; and the file is replaced
-  # whole, readable by everyone.
+  # out of the events, refused or not; the signal, link quality, power,
+  # channel map and the adapter's version are read from reply bytes, a
+  # failed one leaving its field null; each link keeps its last twenty
+  # reads, starting afresh when it comes back, and each adapter its
+  # traffic, a counter starting again counting from nothing; the version
+  # is asked once; nothing new is written while nothing is connected; and
+  # the file is replaced whole, readable by everyone.
   bluetooth-links-reads-the-replies = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in it, its tests included.
   bluetooth-links-passes-clippy = passesClippy "bluetooth-links-passes-clippy" (

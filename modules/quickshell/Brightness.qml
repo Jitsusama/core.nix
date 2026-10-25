@@ -84,7 +84,7 @@ Scope {
 
     Meter {
         name: "desk-light"
-        glyph: String.fromCodePoint(0xf095f)
+        glyph: Theme.glyph.lamp
         visible: root.shown === "desk"
         level: DeskLight.light === null ? 0 : DeskLight.light.percent / 100
     }

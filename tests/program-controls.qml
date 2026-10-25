@@ -10,7 +10,8 @@
 // the program's streams only, and its figures follow what they did. A
 // program with nothing of the sort holds only New window and New window
 // below, and one whose player is found by its identity holds Media with
-// only what that player can do. It exits 0 once every case holds, and
+// only what that player can do, and Sound with only its Microphone while
+// it records and plays nothing, Mute there reaching what it records alone. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -178,9 +179,24 @@ ShellRoot {
                 names(program("quiet").verbs()), "New window, New window below");
 
             const radio = program("radio").verbs();
-            same("a player found by its identity", names(radio),
-                "New window, New window below, Media");
+            same("a player found by its identity, and a program recording", names(radio),
+                "New window, New window below, Media, Sound");
             same("Media holds only what the player can do", names(radio[2].targets()), "Play");
+            const recording = radio[3];
+            same("Sound says it records, with nothing to draw",
+                `${recording.side} ${recording.graph}`, "recording undefined");
+            const [microphone] = recording.targets();
+            same("its Microphone alone, as it plays nothing", names(recording.targets()),
+                "Microphone");
+            same("saying it's heard", microphone.side, "recording");
+            const [hush] = microphone.targets();
+            same("its Microphone holds Mute", hush.name, "Mute");
+            hush.run();
+            const [listening, meter] = Launcher.Playing.recorders;
+            same("Mute mutes what it records, and not a level meter",
+                `${listening.muted} ${meter.muted}`, "true false");
+            same("its Microphone says so", `${microphone.side} ${recording.side}`, "muted muted");
+            same("then it says Unmute", microphone.targets()[0].name, "Unmute");
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);

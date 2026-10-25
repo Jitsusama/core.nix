@@ -109,8 +109,13 @@ let
     "launcher/Playing.qml"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
+    "launcher/Heat.js"
+    "launcher/Power.js"
     "launcher/Traffic.js"
+    "launcher/Cameras.js"
+    "launcher/Interfaces.js"
     "launcher/Links.js"
+    "launcher/Sounds.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Units.js"
@@ -122,6 +127,7 @@ let
     "launcher/Steady.js"
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
+    "launcher/Keyboards.js"
   ];
 
   # A service holding one of logind's locks for as long as it runs, with a
@@ -520,6 +526,7 @@ let
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
+    cameras = ./launcher/Cameras.qml;
     spend = ./launcher/Spend.qml;
     agents = ./launcher/Agents.qml;
     quests = ./launcher/Quests.qml;
@@ -556,6 +563,17 @@ let
   processList = pkgs.writeShellScript "process-list" ''
     ${lib.getExe' pkgs.getconf "getconf"} PAGESIZE
     exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat /proc/[0-9]*/stat 2>/dev/null
+  '';
+
+  # A Wi-Fi card's link as iw reads it, for a network's detail in the
+  # launcher: the link, the access point as the card hears it, and what
+  # the card sends at, each headed so the launcher reads them apart, in one
+  # spawn every few seconds while the network is shown.
+  wifiLink = pkgs.writeShellScript "wifi-link" ''
+    iw=${lib.getExe pkgs.iw}
+    echo "@@ link"; "$iw" dev "$1" link
+    echo "@@ station"; "$iw" dev "$1" station dump
+    echo "@@ info"; "$iw" dev "$1" info
   '';
 
   # The IEEE's hardware address vendors, from hwdata, in a file for each
@@ -964,6 +982,7 @@ in
         Bluetooth = "device";
         sound = "device";
         display = "display";
+        camera = "camera";
         person = "person";
         call = "call";
       };
@@ -1209,6 +1228,17 @@ in
       on = {
         order = 113;
         source = "on";
+      };
+      # Each camera with its parts, and whether one is in use. Return opens
+      # the viewfinder on the camera the machine calls camera, the one
+      # pictures are taken with; the loopbacks' cards find their nodes in
+      # sysfs, so what they give is read without opening them.
+      cameras = {
+        order = 114;
+        source = "cameras";
+        weight = 0.9;
+        viewfinder = config.jitsusama.camera.device;
+        cards = lib.mapAttrs (_: holder: holder.card) (osConfig.jitsusama.v4l2loopback.holders or { });
       };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
@@ -1487,6 +1517,14 @@ in
                       processes = "${processList}";
                       busctl = lib.getExe' pkgs.systemd "busctl";
                       stat = lib.getExe' pkgs.coreutils "stat";
+                    }
+                    # What each connection is, from ip, and a Wi-Fi link
+                    # in detail, from iw.
+                    // lib.optionalAttrs (provider.source == "networks") {
+                      ip = lib.getExe' pkgs.iproute2 "ip";
+                    }
+                    // lib.optionalAttrs (provider.source == "wifi") {
+                      iw = "${wifiLink}";
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {

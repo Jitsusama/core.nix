@@ -1,7 +1,8 @@
 //! What goes to the controller and what comes back, as bytes, in pure
 //! functions a test can hand fixtures to: the kernel's lists of adapters and
-//! connections, an HCI command, the event that answers it, and each of the
-//! four answers read into a figure. Nothing here touches a socket.
+//! connections, what it says of an adapter, an HCI command, the event that
+//! answers it, and each of the answers read into a figure. Nothing here
+//! touches a socket.
 //!
 //! The layouts are the Bluetooth Core Specification's (volume 4, part E)
 //! and the kernel's `include/net/bluetooth/hci_sock.h`, every field
@@ -28,11 +29,24 @@ pub const READ_RSSI: u16 = opcode(0x05, 0x0005);
 pub const READ_LINK_QUALITY: u16 = opcode(0x05, 0x0003);
 pub const READ_AFH_MAP: u16 = opcode(0x05, 0x0006);
 pub const READ_TRANSMIT_POWER: u16 = opcode(0x03, 0x002d);
+/// Read Local Version Information is the adapter's own, naming no link, and
+/// a socket with no capability may send it too.
+pub const READ_LOCAL_VERSION: u16 = opcode(0x04, 0x0001);
 
 /// The kernel's names for a connection's kind and its state.
 const ACL_LINK: u8 = 0x01;
 const LE_LINK: u8 = 0x80;
 const CONNECTED: u16 = 1;
+
+/// What the kernel says of a connection's link mode (`get_link_mode` in
+/// `net/bluetooth/hci_conn.c`): this end leads it, the other end proved
+/// who it is, it's encrypted, and its keys are Secure Connections'.
+const LEADS: u32 = 0x0001;
+const AUTHENTICATED: u32 = 0x0002;
+const ENCRYPTED: u32 = 0x0004;
+const SECURE: u32 = 0x0020;
+/// An adapter's flags say whether it's up, in their lowest bit.
+const UP: u32 = 0x0001;
 
 /// The classic radio's channels, each a megahertz apart from 2402 MHz.
 pub const CHANNELS: usize = 79;
@@ -47,22 +61,101 @@ pub const MOST_CONNECTIONS: usize = 32;
 const LIST_HEADER: usize = 4;
 const ADAPTER_ENTRY: usize = 8;
 const CONNECTION_ENTRY: usize = 16;
+/// `hci_dev_info`: an adapter's id, its name, its address, its flags, and
+/// after them its counters, of which the bytes received and sent are last.
+pub const DEVICE_INFO: usize = 92;
+const INFO_NAME: usize = 2;
+const INFO_ADDRESS: usize = 10;
+const INFO_FLAGS: usize = 16;
+const INFO_RECEIVED: usize = 84;
+const INFO_SENT: usize = 88;
 
 pub const ADAPTER_LIST: usize = LIST_HEADER + MOST_ADAPTERS * ADAPTER_ENTRY;
 pub const CONNECTION_LIST: usize = LIST_HEADER + MOST_CONNECTIONS * CONNECTION_ENTRY;
 
 /// One connection the kernel lists: the handle commands name it by, the
-/// device at its other end, and whether it's Low Energy rather than the
-/// classic radio.
+/// device at its other end, whether it's Low Energy rather than the
+/// classic radio, whether this end started it, and its link mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Connection {
     pub handle: u16,
     pub address: String,
     pub le: bool,
+    pub outgoing: bool,
+    pub mode: u32,
+}
+
+impl Connection {
+    /// This end leads the link: the classic radio's central, which it
+    /// once called its master.
+    pub const fn central(&self) -> bool {
+        self.mode & LEADS != 0
+    }
+
+    pub const fn authenticated(&self) -> bool {
+        self.mode & AUTHENTICATED != 0
+    }
+
+    pub const fn encrypted(&self) -> bool {
+        self.mode & ENCRYPTED != 0
+    }
+
+    pub const fn secure(&self) -> bool {
+        self.mode & SECURE != 0
+    }
+}
+
+/// One adapter as the kernel says it: its id, its own name (hci0), its
+/// address, whether it's up, and how many bytes it's received and sent
+/// since it was last brought up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Adapter {
+    pub id: u16,
+    pub name: String,
+    pub address: String,
+    pub up: bool,
+    pub received: u32,
+    pub sent: u32,
+}
+
+/// What Read Local Version Information says: the version of the
+/// specification the controller follows, as its number (14 for 6.0), and
+/// who made it, as the Bluetooth SIG numbers companies (2 for Intel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Version {
+    pub version: u8,
+    pub maker: u16,
 }
 
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_le_bytes([*bytes.get(at)?, *bytes.get(at + 1)?]))
+}
+
+fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+}
+
+/// An empty `hci_dev_info` for `HCIGETDEVINFO` to fill: the adapter asked
+/// of, first.
+pub fn device_info_request(adapter: u16) -> [u8; DEVICE_INFO] {
+    let mut request = [0; DEVICE_INFO];
+    request[..2].copy_from_slice(&adapter.to_le_bytes());
+    request
+}
+
+/// An adapter from its filled `hci_dev_info`, or nothing when it's cut
+/// short.
+pub fn device_info(info: &[u8]) -> Option<Adapter> {
+    let named = info.get(INFO_NAME..INFO_ADDRESS)?;
+    let name = named.split(|&byte| byte == 0).next().unwrap_or_default();
+    Some(Adapter {
+        id: u16_at(info, 0)?,
+        name: String::from_utf8_lossy(name).into_owned(),
+        address: address(info.get(INFO_ADDRESS..INFO_FLAGS)?),
+        up: u32_at(info, INFO_FLAGS)? & UP != 0,
+        received: u32_at(info, INFO_RECEIVED)?,
+        sent: u32_at(info, INFO_SENT)?,
+    })
 }
 
 /// An empty list of adapters for `HCIGETDEVLIST` to fill: how many it has
@@ -106,10 +199,13 @@ pub fn connections(list: &[u8]) -> Vec<Connection> {
             let kind = entry[8];
             let up = u16_at(entry, 10)? == CONNECTED;
             let handle = u16_at(entry, 0)?;
+            let mode = u32_at(entry, 12)?;
             (up && (kind == ACL_LINK || kind == LE_LINK)).then(|| Connection {
                 handle,
                 address: address(&entry[2..8]),
                 le: kind == LE_LINK,
+                outgoing: entry[9] != 0,
+                mode,
             })
         })
         .collect()
@@ -136,8 +232,12 @@ pub fn command(opcode: u16, parameters: &[u8]) -> Vec<u8> {
 }
 
 /// The parameters of each command: the connection's handle, and for the
-/// transmit power, which of its levels (0, as it is now).
+/// transmit power, which of its levels (0, as it is now). The adapter's
+/// version names no connection, so it has none.
 pub fn asking(opcode: u16, handle: u16) -> Vec<u8> {
+    if opcode == READ_LOCAL_VERSION {
+        return Vec::new();
+    }
     let mut parameters = handle.to_le_bytes().to_vec();
     if opcode == READ_TRANSMIT_POWER {
         parameters.push(0);
@@ -233,6 +333,18 @@ pub fn channel_map(parameters: &[u8], handle: u16) -> Option<String> {
     )
 }
 
+/// What Read Local Version Information says, past its status: the HCI
+/// version, its revision, the LMP version, then who made the controller.
+pub fn version(parameters: &[u8]) -> Option<Version> {
+    let [0, version, ..] = parameters else {
+        return None;
+    };
+    Some(Version {
+        version: *version,
+        maker: u16_at(parameters, 5)?,
+    })
+}
+
 /// How many channels a map hops over.
 pub fn in_use(map: &str) -> usize {
     map.chars().filter(|&channel| channel == '1').count()
@@ -244,13 +356,14 @@ mod tests {
 
     /// A connection's entry as the kernel lays it out: its handle, its
     /// address backwards, its kind, whether this end made it, its state and
-    /// its link mode.
+    /// its link mode: here, started by the other end, this end leading it,
+    /// encrypted.
     fn entry(handle: u16, address: [u8; 6], kind: u8, state: u16) -> Vec<u8> {
         let mut entry = handle.to_le_bytes().to_vec();
         entry.extend_from_slice(&address);
-        entry.extend_from_slice(&[kind, 1]);
+        entry.extend_from_slice(&[kind, 0]);
         entry.extend_from_slice(&state.to_le_bytes());
-        entry.extend_from_slice(&0u32.to_le_bytes());
+        entry.extend_from_slice(&(LEADS | ENCRYPTED).to_le_bytes());
         entry
     }
 
@@ -311,15 +424,78 @@ mod tests {
                 Connection {
                     handle: 0x000b,
                     address: "00:1B:66:AA:BB:CC".into(),
-                    le: false
+                    le: false,
+                    outgoing: false,
+                    mode: 0x0005,
                 },
                 Connection {
                     handle: 0x0040,
                     address: "C3:9C:E3:2A:F3:6E".into(),
-                    le: true
+                    le: true,
+                    outgoing: false,
+                    mode: 0x0005,
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_connections_mode_says_who_leads_and_how_it_is_kept() {
+        let mut entry = entry(0x000b, [0; 6], ACL_LINK, CONNECTED);
+        entry[9] = 1;
+        entry[12..16].copy_from_slice(&(AUTHENTICATED | ENCRYPTED | SECURE).to_le_bytes());
+        let link = &connections(&listed(&[entry]))[0];
+        assert!(link.outgoing, "this end started it");
+        assert!(!link.central(), "the other end leads it");
+        assert!(link.authenticated() && link.encrypted() && link.secure());
+    }
+
+    /// An adapter's `hci_dev_info`, as the kernel fills it.
+    fn info() -> Vec<u8> {
+        let mut info = device_info_request(0).to_vec();
+        info[INFO_NAME..INFO_NAME + 4].copy_from_slice(b"hci0");
+        info[INFO_ADDRESS..INFO_FLAGS].copy_from_slice(&[0x01, 0x00, 0x00, 0x00, 0x00, 0x02]);
+        // Up and running, as its flags' two lowest bits say.
+        info[INFO_FLAGS..INFO_FLAGS + 4].copy_from_slice(&0x0005u32.to_le_bytes());
+        info[INFO_RECEIVED..INFO_SENT].copy_from_slice(&123_456u32.to_le_bytes());
+        info[INFO_SENT..].copy_from_slice(&7_890u32.to_le_bytes());
+        info
+    }
+
+    #[test]
+    fn an_adapters_info_says_its_name_address_and_bytes() {
+        assert_eq!(u16_at(&device_info_request(3), 0), Some(3));
+        assert_eq!(
+            device_info(&info()),
+            Some(Adapter {
+                id: 0,
+                name: "hci0".into(),
+                address: "02:00:00:00:00:01".into(),
+                up: true,
+                received: 123_456,
+                sent: 7_890,
+            })
+        );
+        assert_eq!(device_info(&info()[..60]), None, "cut short");
+    }
+
+    #[test]
+    fn the_local_version_says_the_specification_and_its_maker() {
+        assert_eq!(
+            command(READ_LOCAL_VERSION, &asking(READ_LOCAL_VERSION, 0)),
+            [0x01, 0x01, 0x10, 0]
+        );
+        // Bluetooth 6.0, from Intel.
+        let said = [0x00, 0x0e, 0x00, 0x01, 0x0e, 0x02, 0x00, 0x00, 0x01];
+        assert_eq!(
+            version(&said),
+            Some(Version {
+                version: 14,
+                maker: 2
+            })
+        );
+        assert_eq!(version(&[0x01, 0x0e]), None, "refused");
+        assert_eq!(version(&[0x00, 0x0e, 0x00]), None, "cut short");
     }
 
     #[test]
