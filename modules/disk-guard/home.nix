@@ -55,29 +55,7 @@ let
 
   # Whether a checkout's branch was merged as it stands: a merged pull
   # request whose head is the checkout's. More work on top isn't finished.
-  merged = pkgs.writeShellApplication {
-    name = "disk-guard-merged-on-github";
-    runtimeInputs = [
-      config.programs.gh.package
-      pkgs.gnugrep
-      pkgs.gnused
-    ];
-    text = ''
-      repository=$(printf '%s' "$DISK_GUARD_REMOTE" |
-        sed -E 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)##; s#\.git$##')
-      if [ -z "$DISK_GUARD_BRANCH" ]; then
-        echo '{"finished": false}'
-        exit
-      fi
-      heads=$(gh pr list --repo "$repository" --head "$DISK_GUARD_BRANCH" \
-        --state merged --json headRefOid --jq '.[].headRefOid')
-      if printf '%s\n' "$heads" | grep -qxF "$DISK_GUARD_HEAD"; then
-        echo '{"finished": true}'
-      else
-        echo '{"finished": false}'
-      fi
-    '';
-  };
+  merged = pkgs.callPackage ./merged-on-github.nix { gh = config.programs.gh.package; };
 
   podman = osConfig.virtualisation.podman or { };
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
