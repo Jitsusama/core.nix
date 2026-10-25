@@ -3,9 +3,10 @@
 # without. A VM has neither, so two silent sinks stand in for them under the
 # laptop's own names. 631 Hz sits in the tuning's deepest cut and 1356 Hz on
 # one of its peaks, so through the tuning the first falls about 10 dB further
-# than the second (18.6 and 8.6 dB, the limiter's input gain taking 5.3 dB off
-# both). The headphones should hear both as they were played. The script is
-# speakers-vm-test.py.
+# than the second (9.6 dB down and 0.4 dB up, the limiter's input gain adding
+# 3.7 dB to both). Full-scale tones at the bass peak and that peak must reach
+# the speakers no louder than the limiter's ceiling. The headphones should
+# hear both as they were played. The script is speakers-vm-test.py.
 { pkgs }:
 let
   speakers = "alsa_output.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Speaker__sink";
