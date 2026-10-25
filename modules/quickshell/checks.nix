@@ -16,6 +16,21 @@
   ...
 }:
 let
+  # A stand-in for one of the shell's singletons, holding only what a check
+  # needs of it.
+  singleton =
+    name: body:
+    pkgs.writeText name ''
+      pragma Singleton
+      import Quickshell
+      import QtQuick
+      Singleton { ${body} }
+    '';
+  # Quickshell's runner, the one the account's shell runs on.
+  qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # Fonts for a shell drawn offscreen, which needs none of its own.
+  noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
+
   # The account's notices on its real niri, with its own configuration,
   # nested in a headless sway in the sandbox rather than in a machine
   # (tests/nested-niri.sh): a script run against them, given the shell's
@@ -263,7 +278,7 @@ onLinux {
     cp ${../../tests/fuzzy.qml} fuzzy.qml
     cp ${./Fuzzy.js} Fuzzy.js
     export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    export FONTCONFIG_FILE=${noFonts}
     ${timedQml "fuzzy.qml"}
     touch $out
   '';
@@ -329,7 +344,7 @@ onLinux {
     pkgs.runCommandLocal "the-launcher-groups-every-shortcut" { } ''
       export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       mkdir groups shell
       cd $TMPDIR/groups
       cp ${../../tests/key-groups.qml} key-groups.qml
@@ -354,7 +369,7 @@ onLinux {
       cp ${niri} Niri.qml
       export XDG_RUNTIME_DIR=$TMPDIR/shell/runtime
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -369,7 +384,7 @@ onLinux {
       cp ${../../tests/ranking.qml} ranking.qml
       cp ${./launcher/Rank.js} Rank.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ranking.qml
       touch $out
@@ -386,7 +401,7 @@ onLinux {
       cp ${../../tests/steady.qml} steady.qml
       cp ${./launcher/Steady.js} Steady.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml steady.qml
       touch $out
@@ -407,7 +422,7 @@ onLinux {
       cp ${emoji} emoji.jsonl
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export QML_XHR_ALLOW_FILE_READ=1
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${timedQml "emoji.qml"}
       touch $out
     '';
@@ -449,7 +464,7 @@ onLinux {
       # A zone with summer time, for the day of the year.
       export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       # A script error never reaches Qt.exit, so without a limit the check
       # would wait forever rather than fail.
@@ -467,7 +482,7 @@ onLinux {
       cp ${../../tests/picking.qml} picking.qml
       cp ${./Picking.js} Picking.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml picking.qml
       touch $out
@@ -483,7 +498,7 @@ onLinux {
       cp ${../../tests/askpass.qml} askpass.qml
       cp ${./Askpass.js} Askpass.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml askpass.qml
       touch $out
@@ -528,14 +543,6 @@ onLinux {
   # for.
   do-not-disturb-holds-while-sharing =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       options = singleton "Options.qml" "readonly property var quiet: ({ whileSharing: true })";
     in
     pkgs.runCommandLocal "do-not-disturb-holds-while-sharing" { } ''
@@ -547,9 +554,9 @@ onLinux {
       cp ${singleton "Recorder.qml" "property var windowSession: null"} Recorder.qml
       cp ${options} Options.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -576,9 +583,9 @@ onLinux {
       cp ${niri} Niri.qml
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -591,9 +598,9 @@ onLinux {
     cp ${./Lights.qml} Lights.qml
     cp ${../../tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
-    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+    timeout 60 ${qs} -p shell.qml
     touch $out
   '';
 
@@ -604,14 +611,6 @@ onLinux {
   the-shell-reads-the-spend-watch =
     let
       watch = pkgs.callPackage ../spend-watch/package.nix { };
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
@@ -648,9 +647,9 @@ onLinux {
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       cp ${shortcuts} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -660,14 +659,6 @@ onLinux {
   # in.
   the-launcher-finds-the-quests =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       niri = singleton "Niri.qml" ''
         property var spawned: []
         property var acted: null
@@ -702,9 +693,9 @@ onLinux {
       # At home here, so a folder here reads from ~.
       export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -725,9 +716,9 @@ onLinux {
     cp ${../../tests/weather.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     mkdir -m 700 $XDG_RUNTIME_DIR
-    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
-    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+    timeout 60 ${qs} -p shell.qml
     touch $out
   '';
 
@@ -759,9 +750,9 @@ onLinux {
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
-        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}
-        timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+        timeout 60 ${qs} -p shell.qml
         touch $out
       '';
 
@@ -772,14 +763,6 @@ onLinux {
   # it's run, and the queue and niri stood in for.
   the-machine-lists-processes-for-its-parts =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       listing = pkgs.writeShellScript "process-list" ''
         echo listed >> "$XDG_RUNTIME_DIR/listed"
         echo 4096
@@ -804,9 +787,9 @@ onLinux {
       cp ${../../tests/machine.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PROCESSES=${listing}
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -816,14 +799,6 @@ onLinux {
   # over stand-in devices, with niri and the music stood in for.
   sound-hears-only-what-can-be-heard =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       niri = singleton "Niri.qml" ''
         property var workspaces: ({ "1": { id: 1, output: "eDP-1" } })
       '';
@@ -848,9 +823,9 @@ onLinux {
       cp ${music} Music.qml
       cp ${../../tests/sound.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -916,9 +891,9 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${litra}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -929,14 +904,6 @@ onLinux {
   # and one of each another's.
   the-launcher-holds-a-programs-controls =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       # Two of the tester's windows, the one on the workspace in front
       # used last.
       niri = singleton "Niri.qml" ''
@@ -1111,9 +1078,9 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -1124,14 +1091,6 @@ onLinux {
   # stood in. pi-runs gives the answer whole, for the pager.
   the-launcher-finds-the-runs =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       niri = singleton "Niri.qml" ''
         property var spawned: []
         property var acted: null
@@ -1175,9 +1134,9 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PI_STATE=$state PATH=${runs}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       kill $live
       touch $out
     '';
@@ -1194,14 +1153,6 @@ onLinux {
   # command would start a daemon.
   the-launcher-finds-the-people =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
@@ -1299,9 +1250,9 @@ onLinux {
       ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork,unlink-close=0 /dev/null &
       echo $! > $XDG_RUNTIME_DIR/daemon
       while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       if [ -e $XDG_RUNTIME_DIR/asked ]; then
         echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
       fi
@@ -1339,7 +1290,7 @@ onLinux {
       cp ${shell} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml > log 2>&1 || true
+      timeout 60 ${qs} -p shell.qml > log 2>&1 || true
       cat log
       # Each warning names the line its FileView is on: the quiet one's
       # 5, the loud one's 6.
@@ -1360,9 +1311,9 @@ onLinux {
     cp ${./pieces/StatusFile.qml} StatusFile.qml
     cp ${../../tests/watched.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
-    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+    timeout 60 ${qs} -p shell.qml
     touch $out
   '';
 
@@ -1386,7 +1337,7 @@ onLinux {
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -1416,7 +1367,7 @@ onLinux {
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -1428,14 +1379,6 @@ onLinux {
   # the shell's lights stood in for.
   the-launcher-finds-the-keyboards-keys =
     let
-      singleton =
-        name: body:
-        pkgs.writeText name ''
-          pragma Singleton
-          import Quickshell
-          import QtQuick
-          Singleton { ${body} }
-        '';
       firmware = import ../ergodox/firmware.nix pkgs {
         firmware = self.inputs.qmk;
         inherit (self.inputs) lufa printf;
@@ -1475,9 +1418,9 @@ onLinux {
       cp ${lights} Lights.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -1535,9 +1478,9 @@ onLinux {
           Singleton { function spawn(command) {} }
         ''} Niri.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}
-        timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+        timeout 60 ${qs} -p shell.qml
         touch $out
       '';
 
@@ -1553,7 +1496,7 @@ onLinux {
       cp ${../../tests/music.qml} music.qml
       cp ${./Music.js} Music.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
       touch $out
@@ -1571,7 +1514,7 @@ onLinux {
       cp ${../../tests/marks.qml} marks.qml
       cp ${./Marks.js} Marks.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml marks.qml
       touch $out
@@ -1600,7 +1543,7 @@ onLinux {
       cp ${../../tests/drawings.qml} drawings.qml
       cp ${drawings} Drawings.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml drawings.qml
       touch $out
@@ -1617,7 +1560,7 @@ onLinux {
       cp ${../../tests/stack.qml} stack.qml
       cp ${./Stack.js} Stack.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml stack.qml
       touch $out
@@ -1633,7 +1576,7 @@ onLinux {
       cp ${../../tests/levels.qml} levels.qml
       cp ${./Levels.js} Levels.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml levels.qml
       touch $out
@@ -1650,7 +1593,7 @@ onLinux {
       cp ${../../tests/tuple.qml} tuple.qml
       cp ${../tuple/Tuple.js} Tuple.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml tuple.qml
       touch $out
@@ -1718,9 +1661,9 @@ onLinux {
       mkdir -m 700 $XDG_RUNTIME_DIR
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${qs} -p shell.qml
       touch $out
     '';
 
@@ -1799,10 +1742,10 @@ onLinux {
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export FONTCONFIG_FILE=${noFonts}
       mkdir -m 700 $XDG_RUNTIME_DIR
       timeout 120 ${lib.getExe pkgs.python3} ${../../tests/dictation-watch.py} \
-        ${lib.getExe' graphical.pkgs.quickshell "qs"}
+        ${qs}
       touch $out
     '';
 }
