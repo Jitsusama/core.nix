@@ -25,21 +25,7 @@ let
       pkgs.coreutils
       pkgs.sbctl
     ];
-    text = ''
-      scratch="$(mktemp -d)"
-      trap 'rm -rf "$scratch"' EXIT
-      if ! output="$(cd "$scratch" && sbctl enroll-keys --export auth 2>&1)"; then
-        printf '%s\n' "$output" >&2
-        case "$output" in
-        *"Found OptionROM"*)
-          echo "The firmware ran an option ROM, so no keys were enrolled. Set" \
-            "boot.lanzaboote.autoEnrollKeys.includeChecksumsFromTPM to keep running it," \
-            "or includeMicrosoftKeys for a graphics card." >&2
-          ;;
-        esac
-        exit 1
-      fi
-    '';
+    text = builtins.readFile ./option-rom-check.sh;
   };
 
   # Where lanzaboote leaves the keys' files for systemd-boot to enrol.
@@ -63,22 +49,12 @@ let
       pkgs.jq
       pkgs.sbctl
     ];
-    text = ''
-      started='[.[] | select(.file_name | test("/EFI/BOOT/BOOTX64\\.EFI$|/EFI/systemd/systemd-bootx64\\.efi$|/EFI/Linux/[^/]+\\.efi$"; "i"))]'
-      # Named, or sbctl looks for it with lsblk; and it says why it
-      # failed on its standard output.
-      if ! verified="$(ESP_PATH=${lib.escapeShellArg config.boot.loader.efi.efiSysMountPoint} sbctl verify --json)"; then
-        echo "sbctl couldn't check the ESP, so the keys aren't enrolled: $verified" >&2
-        rm -r ${lib.escapeShellArg autoKeys}
-        exit 1
-      fi
-      if ! jq -e "$started | length > 0 and all(.[]; .is_signed == 1)" <<< "$verified" > /dev/null; then
-        echo "A program the firmware starts isn't signed, so the keys aren't enrolled:" >&2
-        jq -r "$started | .[] | select(.is_signed != 1) | .file_name" <<< "$verified" >&2
-        rm -r ${lib.escapeShellArg autoKeys}
-        exit 1
-      fi
-    '';
+    runtimeEnv = {
+      # Named, or sbctl looks for the ESP with lsblk.
+      ESP_PATH = config.boot.loader.efi.efiSysMountPoint;
+      AUTO_KEYS = autoKeys;
+    };
+    text = builtins.readFile ./signed-check.sh;
   };
 
   # How many boots a new generation gets to reach multi-user.target before
@@ -90,30 +66,20 @@ let
   fellBack = "/run/boot-fell-back";
 
   # Says when the generation booted isn't the newest because a newer one ran
-  # out of tries, in the journal as a warning and in a file the session reads.
-  # systemd-boot keeps an entry's tries in its file name, so only bootctl,
-  # which reads the ESP, can say.
-  fellBackSaid = pkgs.writeText "boot-fell-back.jq" ''
-    def generation: capture("^nixos-generation-(?<n>[0-9]+)").n | tonumber;
-    ([.[] | select(.isSelected) | .id | generation?] | first) as $booted
-    | select($booted != null)
-    | [.[] | select(.triesLeft == 0) | .id | generation? | select(. > $booted)]
-    | max // empty
-    | "Generation \(.) failed to boot ${toString tries} times, so this is \($booted)."
-  '';
+  # out of tries, in the journal as a warning and in a file the session reads
+  # (fell-back.sh).
   fellBackCheck = pkgs.writeShellApplication {
     name = "boot-fell-back";
     runtimeInputs = [
       config.systemd.package
       pkgs.jq
     ];
-    text = ''
-      said=$(bootctl list --json=short | jq -r -f ${fellBackSaid})
-      if [ -n "$said" ]; then
-        echo "<4>$said"
-        printf '%s\n' "$said" > ${fellBack}
-      fi
-    '';
+    runtimeEnv = {
+      TRIES = tries;
+      FELL_BACK = fellBack;
+      FELL_BACK_SAID = "${./fell-back.jq}";
+    };
+    text = builtins.readFile ./fell-back.sh;
   };
 
   # What the first boot does to have systemd-boot enrol the keys, as a
@@ -269,10 +235,8 @@ in
               pkgs.glib.bin
               pkgs.libnotify
             ];
-            text = ''
-              gdbus wait --session org.freedesktop.Notifications
-              notify-send --urgency=critical --app-name=Boot "Booted the last good generation" "$(< ${fellBack})"
-            '';
+            runtimeEnv.FELL_BACK = fellBack;
+            text = builtins.readFile ./fell-back-told.sh;
           }
         );
       };
