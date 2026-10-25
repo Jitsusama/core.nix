@@ -40,11 +40,11 @@ Piece {
     }
     context: reach === "signIn" ? card.signIn : ""
     actions: (reach === "signIn" ? [{
-        glyph: String.fromCodePoint(0xf05a9),
+        glyph: Theme.glyph.wireless,
         name: `Sign in to ${card.network}`,
         run: () => SignIn.open()
     }] : []).concat(card === null ? [] : [{
-        glyph: String.fromCodePoint(0xf0450),
+        glyph: Theme.glyph.retry,
         name: "Check it again",
         run: () => Wifi.check()
     }])

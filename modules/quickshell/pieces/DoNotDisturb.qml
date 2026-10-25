@@ -21,15 +21,15 @@ Piece {
     hint: `Quiet ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{
-        glyph: String.fromCodePoint(0xf009f),
+        glyph: Theme.glyph.ringing,
         name: Quiet.kept ? "End it now" : "Let notices show",
         run: () => Quiet.end()
     }].concat(ends !== "" ? [{
-        glyph: String.fromCodePoint(0xf1862),
+        glyph: Theme.glyph.timed,
         name: "An hour more",
         run: () => Quiet.more(60)
     }] : [], held > 0 ? [{
-        glyph: String.fromCodePoint(0xf009c),
+        glyph: Theme.glyph.notifications,
         name: "Show what's held",
         chord: opening.chord,
         run: shell => shell.launcher.into("notices")

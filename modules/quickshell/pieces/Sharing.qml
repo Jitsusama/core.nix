@@ -26,7 +26,7 @@ Piece {
     context: casts.length === 1 ? Quiet.shared ? "notices are held" : "notices still show"
         : seen.join(", ")
     actions: [{
-        glyph: String.fromCodePoint(0xf0d90),
+        glyph: Theme.glyph.displayOff,
         name: casts.length === 1 ? "Stop sharing" : "Stop sharing all of it",
         verb: "stop sharing",
         run: () => {

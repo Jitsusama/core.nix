@@ -1,5 +1,6 @@
 // The microphone: true while the default source is muted, so nothing reaches
 // a call. Pipewire says when it changes, so nothing is asked.
+import qs
 import Quickshell.Services.Pipewire
 import QtQuick
 
@@ -17,7 +18,7 @@ Piece {
     hint: "Microphone muted"
     context: node ? node.description || node.name : ""
     actions: [{
-        glyph: String.fromCodePoint(0xf036c),
+        glyph: Theme.glyph.microphone,
         name: "Unmute it",
         run: () => {
             if (piece.audio)

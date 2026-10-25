@@ -13,7 +13,7 @@ Piece {
     hint: `The keyboard is locked on ${KeyboardLayer.name}`
     context: "the layer lock key lets it go"
     actions: KeyboardLayer.locked ? [{
-        glyph: String.fromCodePoint(0xf0329),
+        glyph: Theme.glyph.layerOff,
         name: "Let it go",
         verb: "release",
         run: () => Niri.spawn(["ergodox", "layer", "0"])
