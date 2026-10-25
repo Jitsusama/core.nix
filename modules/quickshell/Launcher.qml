@@ -194,7 +194,13 @@ Scope {
     function compose(fresh) {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         answer = answering(typed, fresh);
-        const rows = parted(answer) ? [answered(answer)] : [];
+        // An answer still being asked for holds its row from the keystroke,
+        // saying so, and one that held a row keeps it until a key, even if
+        // it comes to nothing: added only once it came, its row pushed
+        // every row below it down a moment after typing, twice for the
+        // weather (Joel, 2026-10-25: "it needs to be fucking stable").
+        const holds = !!answer && (answer.asking === true || (!fresh && before === 1));
+        const rows = parted(answer) || holds ? [answered(answer)] : [];
         // A category named as a thing is, or as an answer asks, gives way to
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
@@ -238,14 +244,14 @@ Scope {
     // copied the same way. Its kind says it's an answer.
     function answered(said) {
         // One whose parts wait to be looked at says its own glyph and hue.
-        const first = said.parted === true ? {} : said.rows[0];
+        const first = said.parted === true ? {} : said.rows[0] ?? {};
         const asked = said.question ?? Fuzzy.plainly(said.heard ?? typed);
         return {
             // Nothing to learn: an answer is always first for its question.
             key: "",
             is: "answer",
             answered: true,
-            nested: true,
+            nested: parted(said),
             // Named by what it says, not by what was typed, so nothing in
             // it is marked as matched.
             plain: true,
@@ -271,7 +277,8 @@ Scope {
                 if (copy !== "")
                     Quickshell.clipboardText = copy;
             }),
-            verbs: () => said.rows
+            // One held while it's still asked for has nothing in it yet.
+            verbs: parted(said) ? () => said.rows : undefined
         };
     }
 
@@ -792,8 +799,8 @@ Scope {
     readonly property int likely: Providers.launcher.home.likely
     readonly property var pinned: Providers.launcher.home.pinned
 
-    // How tall the list is while the launcher's open: as tall as home was
-    // when it opened.
+    // How tall the list is while the launcher's open: always its rows, and
+    // home's gap when it has one.
     property int tall: rows * Theme.space.xxxl
 
     // What kind of thing a row is, as it says at its right edge, by what
@@ -827,7 +834,8 @@ Scope {
     // word each: Return's verb, Shift+Return where it can, where the arrows
     // step, and Tab at home.
     function keysFor(choice) {
-        if (!choice)
+        // A row whose thing has gone does nothing, so it says no key.
+        if (!choice || choice.gone)
             return [];
         const keys = [["\u21b5", verbOf(choice)]];
         if (held.length === 0 && choice.below)
@@ -875,7 +883,29 @@ Scope {
 
     readonly property var footPlaces: footOrder.filter(key => footWidest[key] !== undefined)
 
-    onMatchesChanged: noteKeys()
+    // The widest that graphed rows have said at their right in this step,
+    // in characters, so the graphs' column only ever widens until a key
+    // changes the step: worked out afresh from the rows shown, it moved
+    // every graph and cut every name somewhere else each time a figure
+    // grew or shrank by a digit.
+    property int figuresWidest: 0
+    property string figuresStep: ""
+
+    function noteFigures() {
+        const step = `${held.map(each => steadyId(each.row)).join("/")}|${typed}`;
+        const now = Math.max(0, ...matches.filter(row => !!row.graph).map(row => ((held.length === 0
+            ? kindOf(row) : "") || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length));
+        if (step !== figuresStep) {
+            figuresStep = step;
+            figuresWidest = now;
+        } else if (now > figuresWidest)
+            figuresWidest = now;
+    }
+
+    onMatchesChanged: {
+        noteKeys();
+        noteFigures();
+    }
     onAskingChanged: noteKeys()
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
@@ -1152,7 +1182,7 @@ Scope {
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
     function enter(row) {
-        if (!row)
+        if (!row || row.gone)
             return false;
         if (held.length > 0 && row.given) {
             ask(row);
@@ -1359,7 +1389,18 @@ Scope {
     // for it, what's picked most and the better match. One found only with
     // its keywords, beside its name or alone, is in the last tier, but for a
     // collection's own words, which are what it's called.
+    // Rows gone since they were shown leave every step once a key searches
+    // afresh, so a refresh after it doesn't keep them on as gone again.
+    function forgetGone() {
+        if (held.some(step => step.rows.some(row => row.gone)))
+            held = held.map(step => Object.assign({}, step, {
+                rows: step.rows.filter(row => !row.gone)
+            }));
+    }
+
     function search(letters) {
+        if (!steadying)
+            forgetGone();
         const narrowing = typed !== "" && letters.startsWith(typed);
         // Inside a step, the row selected as what's typed is taken away,
         // to stay on.
@@ -1572,6 +1613,9 @@ Scope {
             open = false;
             return;
         }
+        // Its thing has gone, so there's nothing left to do it to.
+        if (choice.gone)
+            return;
         // A command puts its start in the field, to be finished there.
         if (choice.start !== undefined) {
             fill(choice.start);
@@ -1703,6 +1747,7 @@ Scope {
             // test can say no thing is listed twice.
             things: root.matches.slice(0, 20).map(row => ({
                 is: Rank.identity(row),
+                gone: !!row.gone,
                 reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                     .filter(part => part !== "").join(" \u00b7 ")
             })),
@@ -1786,12 +1831,14 @@ Scope {
         if (open) {
             pointer = Qt.point(-1, -1);
             footWidest = {};
+            figuresStep = "";
             held = [];
             often = picks.counts();
             restart("");
-            // Home's height, which the list keeps until it closes.
-            const shown = Math.max(1, Math.min(matches.length, rows));
-            tall = shown * Theme.space.xxxl + (matches.slice(0, shown).some(row => row.gap)
+            // Always the same height, eight rows and home's gap, kept until
+            // it closes, so the card is the same shape however much home
+            // holds.
+            tall = rows * Theme.space.xxxl + (matches.slice(0, rows).some(row => row.gap)
                 ? Theme.space.m : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
@@ -2002,12 +2049,10 @@ Scope {
                             readonly property int apart: root.matches.some(row => row.gap)
                                 ? Theme.space.m : 0
                             // How many characters the widest of what graphed rows
-                            // say at their right runs to, as Choice says it, so
-                            // their graphs stand in one column.
-                            readonly property int figures: Math.max(0, ...root.matches
-                                .filter(row => !!row.graph).map(row => ((root.held.length === 0
-                                    ? root.kindOf(row) : "") || ((row.chord ?? []).length > 0 ? ""
-                                    : row.side ?? "")).length))
+                            // have said at their right in this step, as Choice
+                            // says it, so their graphs stand in one column that
+                            // holds still as 9% becomes 10% (root.figuresWidest).
+                            readonly property int figures: root.figuresWidest
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
                             model: root.matches
@@ -2056,6 +2101,9 @@ Scope {
                                     count: entry.modelData.count ?? ""
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
                                     also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
+                                    // Gone since it was shown, it stays dimmed
+                                    // in its place until a key (Steady.js).
+                                    quiet: !!entry.modelData.gone
                                     onClicked: root.run(entry.modelData, false)
                                     onPointed: at => root.pointed(entry.index, at)
                                 }

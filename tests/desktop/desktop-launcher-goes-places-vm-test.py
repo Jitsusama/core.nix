@@ -937,6 +937,49 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     )
 
 
+# A window closed while Super+Tab shows it stays in its place, gone, until
+# a key: rows closing up under the cursor was one of the ways the launcher
+# moved with nothing pressed.
+
+
+def test_a_window_closed_while_shown_stays_in_its_place_until_a_key(desktop: Desktop) -> None:
+    """A window closed while shown stays in its place until a key."""
+    machine = desktop.machine
+    # Opened first, so it isn't the focused window, which Super+Tab leaves out.
+    leaving = desktop.opened("Leaving soon")
+    desktop.notes_window()
+    machine.wait_until_succeeds(
+        desktop.in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.send_key("meta_l-tab")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["windows"] and "Leaving soon" in shown["rows"]
+    )
+    before = desktop.showing()
+    desktop.close(leaving)
+
+    def gone(shown: Json) -> bool:
+        return any(thing["gone"] for thing in shown["things"])
+
+    desktop.launcher_until(gone)
+    after = desktop.showing()
+    assert after["rows"] == before["rows"], f"the rows moved: {before['rows']} to {after['rows']}"
+    assert after["selected"]["name"] == before["selected"]["name"], "the selection moved"
+    left = next(thing for thing in after["things"] if thing["gone"])
+    assert left["reads"].startswith("Leaving soon"), left
+    # A key searches afresh, and the window's row goes.
+    desktop.type_in("n")
+    machine.send_key("backspace")
+    desktop.launcher_until(
+        lambda shown: shown["typed"] == "" and "Leaving soon" not in shown["rows"]
+    )
+    assert not gone(desktop.showing()), desktop.showing()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 # A window's verbs, stepped into from Super+Tab, follow it as it changes
 # while its row reads the same: floated, its Float says Tile.
 

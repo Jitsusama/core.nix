@@ -1,16 +1,18 @@
 // How a list the launcher shows takes what's changed under it while Joel
 // looks at it: a session starting to work, a window renamed. Its rows
 // stay in the order they're shown, each with what it says now, those new
-// come at the end and those gone go, and the selection stays on its row,
-// so nothing moves under the cursor. Only a search Joel types orders by
-// rank (Rank.js). Apart from the launcher, so tests/steady.qml can hold
-// it in Qt's own engine.
+// come at the end and those gone stay where they were, dimmed, until a key
+// makes the list afresh, and the selection stays on its row, so nothing
+// moves under the cursor (Joel, 2026-10-25: "it needs to be fucking stable
+// and always make sense"). Only a search Joel types orders by rank
+// (Rank.js). Apart from the launcher, so tests/steady.qml can hold it in
+// Qt's own engine.
 .pragma library
 
 // The rows as they read now, in the order of those shown: each row shown
-// that's still there, as it is now, then each new one in its own order.
-// A row is known by `id`; rows alike in it pair off in their order, so
-// two windows titled alike keep their places.
+// as it is now, or as it was and `gone` where it's no longer there, then
+// each new one in its own order. A row is known by `id`; rows alike in it
+// pair off in their order, so two windows titled alike keep their places.
 function kept(shown, now, id) {
     const waiting = {};
     now.forEach((row, at) => {
@@ -28,6 +30,8 @@ function kept(shown, now, id) {
             const at = left.shift();
             taken[at] = true;
             out.push(now[at]);
+        } else {
+            out.push(row.gone ? row : Object.assign({}, row, { gone: true }));
         }
     }
     now.forEach((row, at) => {

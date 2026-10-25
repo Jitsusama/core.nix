@@ -1038,6 +1038,38 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
 # only once a surface draws it, which can be long after the start.
 
 
+# An answer that has to be asked for holds its row from the keystroke, so
+# the rows below it never move down when it comes, or when it doesn't.
+
+
+def test_an_answer_asked_for_holds_its_row_from_the_keystroke(desktop: Desktop) -> None:
+    """An answer asked for holds its row from the keystroke."""
+    machine = desktop.machine
+    typed = "weather lima"
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    since = desktop.mark()
+    machine.send_chars(typed)
+    seen: list[Json] = []
+
+    def settled(said: str) -> bool:
+        shown = json.loads(said)
+        if shown["typed"] != typed:
+            return False
+        seen.append(shown)
+        return bool((shown["selected"] or {}).get("settled"))
+
+    desktop.reported("showing ", settled, since)
+    # Each time it's shown whole, still asking or answered, the answer is
+    # the first row and the rows below it are the same.
+    firsts = [shown["things"][0]["is"] if shown["things"] else "" for shown in seen]
+    assert set(firsts) == {"answer"}, f"the answer's row came and went: {firsts}"
+    below = {tuple(shown["rows"][1:]) for shown in seen}
+    assert len(below) == 1, f"the rows below the answer moved: {below}"
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
     """Quickshell warned of nothing it drew all along."""
     # Quickshell colours its levels and categories even in the journal,
