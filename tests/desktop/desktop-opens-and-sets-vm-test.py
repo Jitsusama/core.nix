@@ -642,6 +642,15 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         outputs = json.loads(as_account("niri msg --json outputs"))
         return cast("float", next(iter(outputs.values()))["logical"]["scale"])
 
+    # What desk-facts would say of the display, which this machine doesn't
+    # run: each fact reads by the vocabulary's name for it, the depth first.
+    shown_as = next(iter(json.loads(as_account("niri msg --json outputs"))))
+    said = {shown_as: [{"name": "EDID", "value": "1.4"}, {"name": "depth", "value": "8 bit"}]}
+    as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/desk && echo '{json.dumps(said)}' > $XDG_RUNTIME_DIR/desk/.d"
+        " && mv $XDG_RUNTIME_DIR/desk/.d $XDG_RUNTIME_DIR/desk/displays.json"
+    )
+
     for wanted, inside in [(1.5, True), (scale(), False)]:
         as_account("qs ipc call launcher collection displays")
         launcher_ready()
@@ -650,7 +659,10 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         # in, there by Return on the setting, or found from here by what's
         # typed.
         launcher_until(
-            lambda shown: shown["rows"][:4] == ["Scale", "Refresh", "Resolution", "Rotation"]
+            lambda shown: (
+                shown["rows"][:6]
+                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
+            )
         )
         photograph("launcher-displays")
         percent = round(wanted * 100)

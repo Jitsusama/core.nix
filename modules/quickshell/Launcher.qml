@@ -63,6 +63,12 @@ Scope {
     // How many results show at once; the rest are a scroll away.
     readonly property int rows: 8
 
+    // The vocabulary (Words.qml), handed to the providers' common code
+    // (Provider.qml), which can't import qs itself: Provider is the type
+    // every provider is made from, and importing the shell's module there
+    // made Machine's "what's running" answer nothing in the desktop test,
+    // with no warning, as if its Jobs were another, unfed one.
+    readonly property var vocabulary: Words
     readonly property string sparkle: String.fromCodePoint(0xf0674)
     readonly property string ghost: String.fromCodePoint(0xf02a0)
 

@@ -149,25 +149,15 @@ Provider {
     // Colour depth "10 bit", Colours, then who made it and when, the depth
     // first since it's what's asked.
     function factRows(output) {
-        const said = (facts[output.name] ?? [])
-            .map(fact => ({ id: fact.name.toLowerCase(), value: fact.value }));
-        const first = said.filter(fact => askedFirst.includes(fact.id));
-        return first.concat(said.filter(fact => !askedFirst.includes(fact.id))).map(fact => copyRow({
-            key: `fact:displays:${output.name}:${fact.id}`,
-            name: partName(fact.id),
-            side: fact.value,
-            copy: fact.value
-        }));
+        return factParts("displays", output.name, facts[output.name], askedFirst);
     }
 
     // The facts asked of a display most, which lead the rest.
     readonly property var askedFirst: ["depth", "colours", "hdr"]
 
-    // A part's name, as the vocabulary says it (displays:depth is "Colour
-    // depth"), or the fact's own, capitalised, for one it doesn't know.
+    // A part's name, as the vocabulary says it (Provider's partNamed).
     function partName(id) {
-        const named = Words.name(`displays:${id}`);
-        return named !== `displays:${id}` ? named : id.charAt(0).toUpperCase() + id.slice(1);
+        return partNamed("displays", id);
     }
 
     // A display's right arrow: turning it on while it's off; while it's
