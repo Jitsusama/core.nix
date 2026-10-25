@@ -123,6 +123,13 @@ carries, with no network, and puts the Secure Boot keys back from its rescue
 bundle, so the firmware needs no visit. It makes a new recovery key for the
 new disk: keep its seven words in place of the old key.
 
+An install that stops part way, say from a flat battery, isn't lost. Boot
+the stick again and it says the install stopped part way, offering to carry
+it on or start again, wiping the disk. Carrying on asks for a YubiKey the
+install had already enrolled, and its PIN, then goes on from where it
+stopped. If it stopped before any YubiKey was enrolled, nothing opens that
+disk, and the guide says so: boot the stick again and start again.
+
 The TPM's keys were files on the old disk, so the first boot makes new ones:
 the everyday SSH key and both signing keys. GitHub still holds the old public
 keys until they're replaced:
