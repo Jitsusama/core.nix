@@ -1,6 +1,6 @@
 use disk_guard::band::{Band, Thresholds};
 use disk_guard::clock::{Awake, Tick};
-use disk_guard::decide::{Decision, Fill, Situation, decide, spare};
+use disk_guard::decide::{Decision, Fill, Situation, calm, decide, spare};
 use disk_guard::moments::{Power, Pressure, Stall};
 use disk_guard::units::{float, whole};
 
@@ -137,10 +137,6 @@ fn awake_for(seconds: f64) -> Awake {
     awake
 }
 
-fn calm() -> Pressure {
-    Pressure::default()
-}
-
 const MAINS: Power = Power {
     mains: true,
     battery: Some(20),
@@ -149,32 +145,29 @@ const MAINS: Power = Power {
 #[test]
 fn routine_work_waits_for_power() {
     let awake = awake_for(HOUR);
-    assert!(spare(MAINS, false, &awake, 1_000_000.0, calm()));
+    assert!(spare(MAINS, false, &awake, 1_000_000.0));
     let charged = Power {
         mains: false,
         battery: Some(51),
     };
-    assert!(spare(charged, false, &awake, 1_000_000.0, calm()));
+    assert!(spare(charged, false, &awake, 1_000_000.0));
     let low = Power {
         mains: false,
         battery: Some(50),
     };
-    assert!(!spare(low, false, &awake, 1_000_000.0, calm()));
-    assert!(
-        !spare(MAINS, true, &awake, 1_000_000.0, calm()),
-        "power saver"
-    );
+    assert!(!spare(low, false, &awake, 1_000_000.0));
+    assert!(!spare(MAINS, true, &awake, 1_000_000.0), "power saver");
     let desktop = Power {
         mains: true,
         battery: None,
     };
-    assert!(spare(desktop, false, &awake, 1_000_000.0, calm()));
+    assert!(spare(desktop, false, &awake, 1_000_000.0));
 }
 
 #[test]
 fn routine_work_waits_ten_minutes_after_boot_or_resume() {
-    assert!(!spare(MAINS, false, &awake_for(599.0), 1_000_000.0, calm()));
-    assert!(spare(MAINS, false, &awake_for(600.0), 1_000_000.0, calm()));
+    assert!(!spare(MAINS, false, &awake_for(599.0), 1_000_000.0));
+    assert!(spare(MAINS, false, &awake_for(600.0), 1_000_000.0));
     let mut resumed = awake_for(HOUR);
     resumed.observe(&Tick {
         wall: 1_000_000.0 + 8.0 * HOUR,
@@ -182,41 +175,35 @@ fn routine_work_waits_ten_minutes_after_boot_or_resume() {
         suspended: 8.0 * HOUR - 60.0,
         boot: "b".into(),
     });
-    assert!(!spare(
-        MAINS,
-        false,
-        &resumed,
-        1_000_000.0 + 8.0 * HOUR,
-        calm()
-    ));
+    assert!(!spare(MAINS, false, &resumed, 1_000_000.0 + 8.0 * HOUR));
 }
 
 #[test]
-fn routine_work_waits_while_tasks_stall_on_the_disk_or_memory() {
-    let awake = awake_for(HOUR);
+fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
+    assert!(calm(Pressure::default()));
     let disk = Pressure {
         io: Stall {
             some: 15.0,
             full: 2.0,
         },
-        ..calm()
+        ..Pressure::default()
     };
-    assert!(!spare(MAINS, false, &awake, 1_000_000.0, disk));
+    assert!(!calm(disk));
     let memory = Pressure {
         memory: Stall {
             some: 15.0,
             full: 0.0,
         },
-        ..calm()
+        ..Pressure::default()
     };
-    assert!(!spare(MAINS, false, &awake, 1_000_000.0, memory));
-    // Busy processors aren't a reason: routine work runs at idle priority.
+    assert!(!calm(memory));
+    // Busy processors aren't a reason: such work runs at idle priority.
     let cpu = Pressure {
         cpu: Stall {
             some: 90.0,
             full: 0.0,
         },
-        ..calm()
+        ..Pressure::default()
     };
-    assert!(spare(MAINS, false, &awake, 1_000_000.0, cpu));
+    assert!(calm(cpu));
 }

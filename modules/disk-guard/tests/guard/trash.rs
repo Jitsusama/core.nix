@@ -105,8 +105,15 @@ fn reclaiming_takes_the_file_then_its_info() {
         .find(|item| item.path.ends_with("report.pdf"))
         .unwrap();
     let made = candidate(item, &Awake::default(), 0.0);
-    let outcome = trashed(&Dir::open(root.path()).unwrap(), root.path(), &made);
+    let mut unlinked = 0;
+    let outcome = trashed(
+        &Dir::open(root.path()).unwrap(),
+        root.path(),
+        &made,
+        &mut || unlinked += 1,
+    );
     assert_eq!(outcome, Outcome::Reclaimed);
+    assert_eq!(unlinked, 1, "its file, told so a pacer can rest");
     assert!(!root.path().join("files/report.pdf").exists());
     assert!(!root.path().join("info/report.pdf.trashinfo").exists());
     assert!(root.path().join("files/other.pdf").exists());
@@ -125,7 +132,12 @@ fn reclaiming_something_outside_the_trash_fails_untouched() {
         size: 0,
     };
     let made = candidate(&stray, &Awake::default(), 0.0);
-    let outcome = trashed(&Dir::open(root.path()).unwrap(), root.path(), &made);
+    let outcome = trashed(
+        &Dir::open(root.path()).unwrap(),
+        root.path(),
+        &made,
+        &mut || {},
+    );
     assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
     assert!(root.path().join("elsewhere/keep").exists());
 }

@@ -5,15 +5,18 @@ use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
 use crate::band::{Band, Space};
 use crate::commands::{self, Job, Output, Ran};
+use crate::pace::{Pacer, Settling};
 use crate::pass::{Disk, Outcome, Reclaimer};
 use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
 use crate::survey::{Action, Offer};
 use crate::vouch::{self, Answer};
 use crate::{garbage, logs, socket, workspaces};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 /// How long a scan of every process is trusted for. One takes about
@@ -174,10 +177,12 @@ impl Looker for Scan {
     }
 }
 
-/// One filesystem, measured and settled through a path on it.
+/// One filesystem, measured and settled through a path on it. It settles
+/// hurried, asking for a commit, unless it's patient.
 pub struct Filesystem {
     path: PathBuf,
     started: Instant,
+    settling: Settling,
 }
 
 impl Filesystem {
@@ -185,22 +190,38 @@ impl Filesystem {
         Filesystem {
             path: path.to_owned(),
             started: Instant::now(),
+            settling: Settling::Hurried,
         }
+    }
+
+    /// Settles by waiting for the filesystem's own commit, for a pass that
+    /// can wait.
+    #[must_use]
+    pub fn patient(mut self) -> Self {
+        self.settling = Settling::Patient;
+        self
     }
 }
 
 impl Disk for Filesystem {
     fn space(&mut self) -> io::Result<Space> {
-        crate::sys::space(&self.path)
+        crate::sys::space(&self.path).map_err(|error| doing("measuring its space", &error))
     }
 
     fn settle(&mut self) -> io::Result<()> {
-        crate::sys::settle(&self.path)
+        crate::sys::settle(&self.path, self.settling)
+            .map_err(|error| doing("settling what went", &error))
     }
 
     fn now(&self) -> f64 {
         self.started.elapsed().as_secs_f64()
     }
+}
+
+/// An error that says what the pass was doing when it came, so the
+/// journal's "failed" tells measuring from settling.
+fn doing(what: &str, error: &io::Error) -> io::Error {
+    io::Error::new(error.kind(), format!("{what}: {error}"))
 }
 
 /// Reclaims what a survey offered, each as its action says, anchored to
@@ -211,6 +232,7 @@ pub struct Reclaim<'a> {
     notes: Vec<String>,
     gentle: bool,
     band: Band,
+    pacer: Option<Rc<RefCell<Pacer>>>,
 }
 
 /// How long the system daemon may take over the garbage a user daemon asks
@@ -229,7 +251,16 @@ impl<'a> Reclaim<'a> {
             notes: Vec::new(),
             gentle: false,
             band: Band::Healthy,
+            pacer: None,
         }
+    }
+
+    /// Tells `pacer` of every entry a removal unlinks, so it can rest
+    /// between batches.
+    #[must_use]
+    pub fn paced(mut self, pacer: Rc<RefCell<Pacer>>) -> Self {
+        self.pacer = Some(pacer);
+        self
     }
 
     /// For a pass in `band`, which what it asks of the system daemon says.
@@ -265,17 +296,32 @@ impl Reclaimer for Reclaim<'_> {
                 return Outcome::Failed(format!("opening {}: {error}", root_path.display()));
             }
         };
+        let pacer = self.pacer.clone();
+        let mut unlinked = move || {
+            if let Some(pacer) = &pacer {
+                pacer.borrow_mut().unlinked();
+            }
+        };
         match action {
             Action::Target { .. } => {
                 let checkout = candidate.checkout.clone();
-                reclaim::target(&root, root_path, candidate, checkout.as_deref(), self.scan)
+                reclaim::target(
+                    &root,
+                    root_path,
+                    candidate,
+                    checkout.as_deref(),
+                    self.scan,
+                    &mut unlinked,
+                )
             }
             Action::Variant { .. } => {
                 reclaim::variant(&root, root_path, candidate, SystemTime::now())
             }
             Action::Build { target, .. } => reclaim::build(&root, root_path, target, candidate),
-            Action::Entry { .. } => reclaim::entry(&root, root_path, candidate, self.scan),
-            Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
+            Action::Entry { .. } => {
+                reclaim::entry(&root, root_path, candidate, self.scan, &mut unlinked)
+            }
+            Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate, &mut unlinked),
             Action::Run { argv, timeout, .. } => run(argv, *timeout, self.gentle),
             // Nix judges liveness itself, under its own lock.
             // What it freed is measured, like any command's.
@@ -317,7 +363,7 @@ impl Reclaimer for Reclaim<'_> {
             Action::Workspace { .. } => {
                 // Read before it goes: its .git files name the repositories.
                 let linked = workspaces::linked(&candidate.path);
-                let outcome = reclaim::entry(&root, root_path, candidate, self.scan);
+                let outcome = reclaim::entry(&root, root_path, candidate, self.scan, &mut unlinked);
                 if outcome == Outcome::Reclaimed {
                     for common in linked {
                         if let Err(error) = workspaces::prune(&common) {

@@ -89,10 +89,33 @@ fn a_user_config_is_read() {
 #[test]
 fn bands_default_to_shares_of_the_filesystem() {
     let config = Config::parse(r#"{"version": 1, "scope": "user", "sources": {}}"#).unwrap();
-    assert_eq!(config.bands.pressure, Size::Percent(15.0));
-    assert_eq!(config.bands.urgent, Size::Percent(8.0));
-    assert_eq!(config.bands.critical, Size::Percent(3.0));
-    assert_eq!(config.bands.target, Size::Percent(20.0));
+    assert_eq!(config.bands.pressure, Size::Percent(25.0));
+    assert_eq!(config.bands.urgent, Size::Percent(10.0));
+    assert_eq!(config.bands.critical, Size::Percent(4.0));
+    assert_eq!(config.bands.target, Size::Percent(35.0));
+}
+
+#[test]
+fn pacing_defaults_to_a_rest_past_btrfss_commit_every_two_thousand_files() {
+    let config = Config::parse(r#"{"version": 1, "scope": "user", "sources": {}}"#).unwrap();
+    assert_eq!(config.pacing.files, 2000);
+    assert_eq!(config.pacing.rest, Span(Duration::from_secs(30)));
+    let quick = Config::parse(
+        r#"{"version": 1, "scope": "user", "pacing": {"rest": "1s"}, "sources": {}}"#,
+    )
+    .unwrap();
+    assert_eq!(quick.pacing.rest, Span(Duration::from_secs(1)));
+    assert_eq!(quick.pacing.files, 2000);
+}
+
+#[test]
+fn pacing_refuses_a_batch_of_no_files() {
+    let refused =
+        Config::parse(r#"{"version": 1, "scope": "user", "pacing": {"files": 0}, "sources": {}}"#);
+    assert_eq!(
+        refused.unwrap_err(),
+        "pacing needs at least one file a batch"
+    );
 }
 
 #[test]

@@ -38,6 +38,7 @@ mod nix_builds;
 mod notices;
 #[cfg(target_os = "linux")]
 mod opens;
+mod pace;
 mod pass;
 mod plan;
 mod pmset;
@@ -64,6 +65,14 @@ mod vouch;
 mod workspaces;
 #[cfg(target_os = "linux")]
 mod writers;
+
+/// A config whose passes never rest, so a scenario never waits out a
+/// commit. How a pass rests is `pace.rs`'s to show, on a clock of its own.
+#[cfg(target_os = "linux")]
+fn unpaced(mut config: disk_guard::config::Config) -> disk_guard::config::Config {
+    config.pacing.rest = disk_guard::units::Span(std::time::Duration::ZERO);
+    config
+}
 
 /// Asserts a float is exactly the one expected, as `assert_eq!` would, for
 /// a value worked out without rounding or carried through unchanged.

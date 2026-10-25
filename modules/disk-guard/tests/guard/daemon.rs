@@ -122,7 +122,7 @@ impl Home {
     }
 
     fn guard(&self, config: Config) -> Guard {
-        Guard::new(config, &self.places()).unwrap()
+        Guard::new(crate::unpaced(config), &self.places()).unwrap()
     }
 
     fn places(&self) -> Places {
@@ -207,7 +207,7 @@ fn a_user_daemon_asks_the_system_for_the_store_garbage_in_its_turn() {
         system: Some(socket),
         ..home.places()
     };
-    let mut healthy = Guard::new(home.config("0%", "0%"), &places).unwrap();
+    let mut healthy = Guard::new(crate::unpaced(home.config("0%", "0%")), &places).unwrap();
     healthy.step(&tick(), &CALM).unwrap();
     let asked: Vec<Request> = heard.try_iter().collect();
     let [Request::Watching { paths }] = asked.as_slice() else {
@@ -215,7 +215,7 @@ fn a_user_daemon_asks_the_system_for_the_store_garbage_in_its_turn() {
     };
     let mount = paths[0].clone();
     assert!(home.root.starts_with(&mount), "{mount:?}");
-    let mut pressed = Guard::new(home.config("100%", "100%"), &places).unwrap();
+    let mut pressed = Guard::new(crate::unpaced(home.config("100%", "100%")), &places).unwrap();
     pressed.step(&tick(), &CALM).unwrap();
     let asked: Vec<Request> = heard.try_iter().collect();
     let collect = Request::Collect {
@@ -246,7 +246,7 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
         system: Some(socket),
         ..home.places()
     };
-    let mut vouched = Guard::new(home.config("100%", "100%"), &places).unwrap();
+    let mut vouched = Guard::new(crate::unpaced(home.config("100%", "100%")), &places).unwrap();
     vouched.step(&tick(), &CALM).unwrap();
     assert!(
         !cold.exists(),
@@ -391,36 +391,56 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     assert_eq!(ran["outcome"], "reclaimed");
 }
 
+/// Senses a disk and memory stalling half the time, as a machine building
+/// all day does.
+fn busy() -> Senses {
+    let stalling = disk_guard::moments::Stall {
+        some: 50.0,
+        full: 5.0,
+    };
+    Senses {
+        pressure: Pressure {
+            io: stalling,
+            memory: stalling,
+            ..CALM.pressure
+        },
+        ..CALM
+    }
+}
+
+/// A machine's pressure files, stalling as `busy` says, so whatever reads
+/// them rather than the senses finds the machine busy too.
+fn stalling(home: &Home) {
+    let pressure = home.root.join("proc/pressure");
+    fs::create_dir_all(&pressure).unwrap();
+    for resource in ["io", "memory"] {
+        fs::write(
+            pressure.join(resource),
+            "some avg10=50.00 avg60=50.00 avg300=50.00 total=0\n\
+             full avg10=5.00 avg60=5.00 avg300=5.00 total=0\n",
+        )
+        .unwrap();
+    }
+}
+
 #[test]
-fn a_routine_pass_gives_way_when_the_disk_gets_busy_and_comes_back_later() {
+fn routine_upkeep_takes_what_is_due_however_busy_the_machine() {
+    // A workstation that's always busy would never be tidied if upkeep
+    // waited for calm, so it paces its deletes instead.
     let home = Home::new();
     let old = home.trashed("old.txt", "2001-09-09T01:46:40");
     let older = home.trashed("older.txt", "2001-09-08T01:46:40");
-    let busy = home.root.join("proc/pressure");
-    fs::create_dir_all(&busy).unwrap();
-    fs::write(
-        busy.join("io"),
-        "some avg10=50.00 avg60=0.00 avg300=0.00 total=0\n\
-         full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
-    )
-    .unwrap();
+    stalling(&home);
     let mut guard = home.guard(home.config("0%", "0%"));
-    guard.step(&tick(), &CALM).unwrap();
-    assert!(old.exists() && older.exists(), "given way");
-    let kept: Vec<_> = home
+    guard.step(&tick(), &busy()).unwrap();
+    assert!(!old.exists() && !older.exists());
+    let outcomes: Vec<_> = home
         .journal()
         .into_iter()
         .filter(|line| line["event"] == "action")
+        .map(|line| line["outcome"].clone())
         .collect();
-    assert_eq!(kept.len(), 2, "{kept:?}");
-    assert!(kept.iter().all(|line| line["outcome"] == "kept"
-        && line["reason"] == "the machine got busy; left for a calmer moment"));
-    fs::remove_dir_all(&busy).unwrap();
-    guard.step(&tick(), &CALM).unwrap();
-    assert!(
-        !old.exists() && !older.exists(),
-        "upkeep that gave way isn't done"
-    );
+    assert_eq!(outcomes, ["reclaimed", "reclaimed"]);
 }
 
 /// The scheduling policy a producer ran under in one step of a guard
@@ -517,30 +537,37 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 }
 
 #[test]
-fn a_pressed_disk_gives_way_to_a_busy_machine_for_twenty_minutes_at_most() {
-    // Builds stall IO all night, so a pressure pass that always gave way
-    // would take nothing until the disk fell to urgent.
+fn a_routine_pass_rests_after_each_batch_it_unlinks() {
     let home = Home::new();
     let old = home.trashed("old.txt", "2001-09-09T01:46:40");
-    let busy = home.root.join("proc/pressure");
-    fs::create_dir_all(&busy).unwrap();
-    fs::write(
-        busy.join("io"),
-        "some avg10=50.00 avg60=0.00 avg300=0.00 total=0\n",
-    )
-    .unwrap();
+    let older = home.trashed("older.txt", "2001-09-08T01:46:40");
+    let mut config = home.config("0%", "0%");
+    // Not through `guard`, which takes the rest away: a batch of one
+    // file, and a second's rest after each.
+    config.pacing = disk_guard::config::Pacing {
+        files: 1,
+        rest: disk_guard::units::Span(std::time::Duration::from_secs(1)),
+    };
+    let mut guard = Guard::new(config, &home.places()).unwrap();
+    let began = std::time::Instant::now();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!old.exists() && !older.exists());
+    let took = began.elapsed();
+    assert!(took >= std::time::Duration::from_secs(2), "{took:?}");
+}
+
+#[test]
+fn a_pressed_disk_is_reclaimed_at_once_however_busy_the_machine() {
+    let home = Home::new();
+    let old = home.trashed("old.txt", "2001-09-09T01:46:40");
+    stalling(&home);
     let mut guard = home.guard(home.config("100%", "100%"));
-    // Each past the rest the one before earned.
-    for at in [3600.0, 3700.0, 3900.0, 4200.0] {
-        guard.step(&tick_at(at), &CALM).unwrap();
-        assert!(old.exists(), "given way at {at}");
-    }
-    guard.step(&tick_at(4900.0), &CALM).unwrap();
-    assert!(!old.exists(), "twenty minutes on");
+    guard.step(&tick(), &busy()).unwrap();
+    assert!(!old.exists());
     let pass = home
         .journal()
         .into_iter()
-        .rfind(|line| line["event"] == "pass")
+        .find(|line| line["event"] == "pass")
         .unwrap();
     assert_eq!(pass["band"], "pressure");
 }
@@ -593,7 +620,7 @@ fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
         system: Some(home.root.join("no-system.sock")),
         ..home.places()
     };
-    let mut guard = Guard::new(home.config("0%", "100%"), &places).unwrap();
+    let mut guard = Guard::new(crate::unpaced(home.config("0%", "100%")), &places).unwrap();
     guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
     let (unread, why) = guard.unread();
     assert_eq!(unread, 1);

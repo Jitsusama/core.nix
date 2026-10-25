@@ -45,13 +45,15 @@ fn refusal(used: Use, planned_occupied: bool) -> Option<String> {
 /// everything back. Then the locks go and the trash is emptied. When the
 /// disk is too full even to make the trash, the target is deleted in place
 /// under the locks. A build that opens the lock between the move and the
-/// check finds an empty target and rebuilds it.
+/// check finds an empty target and rebuilds it. Emptying the trash tells
+/// `unlinked` of each entry that goes.
 pub fn target(
     root: &Dir,
     root_path: &Path,
     candidate: &Candidate,
     checkout: Option<&Path>,
     looker: &mut impl Looker,
+    unlinked: &mut dyn FnMut(),
 ) -> Outcome {
     let Ok(relative) = candidate.path.strip_prefix(root_path) else {
         return Outcome::Failed(format!("outside its root {}", root_path.display()));
@@ -98,7 +100,7 @@ pub fn target(
     }
     drop(held);
     let trash = detached.name().to_owned();
-    match detached.empty() {
+    match detached.empty_paced(unlinked) {
         Ok(()) => Outcome::Reclaimed,
         Err(error) => Outcome::Failed(format!("emptying {}: {error}", trash.to_string_lossy())),
     }
@@ -240,8 +242,13 @@ pub fn variant(root: &Dir, root_path: &Path, candidate: &Candidate, now: SystemT
 /// Reclaims one thing in a trash that `trash` opens and `trash_path`
 /// names: the thing under `files/`, then its `.trashinfo`, so an
 /// interrupted removal leaves an info file that's tidied next time rather
-/// than a file nothing dates.
-pub fn trashed(trash: &Dir, trash_path: &Path, candidate: &Candidate) -> Outcome {
+/// than a file nothing dates. Each entry that goes is told to `unlinked`.
+pub fn trashed(
+    trash: &Dir,
+    trash_path: &Path,
+    candidate: &Candidate,
+    unlinked: &mut dyn FnMut(),
+) -> Outcome {
     let relative = candidate.path.strip_prefix(trash_path.join("files"));
     let name = match relative.map(|relative| (relative.parent(), relative.file_name())) {
         Ok((Some(parent), Some(name))) if parent.as_os_str().is_empty() => name,
@@ -251,7 +258,7 @@ pub fn trashed(trash: &Dir, trash_path: &Path, candidate: &Candidate) -> Outcome
     info.push(".trashinfo");
     let removed = trash
         .child(Path::new("files"))
-        .and_then(|files| files.remove_entry(name))
+        .and_then(|files| files.remove_entry_paced(name, unlinked))
         .and_then(|()| match trash.child(Path::new("info")) {
             Ok(dir) => dir.remove_entry(&info),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -269,11 +276,13 @@ pub fn trashed(trash: &Dir, trash_path: &Path, candidate: &Candidate) -> Outcome
 /// contents are moved aside into a trash inside it and it's judged again,
 /// so a process that arrived meanwhile gets everything back; then the
 /// trash is emptied and the directory removed if nothing new is in it.
+/// Each entry the trash loses is told to `unlinked`.
 pub fn entry(
     root: &Dir,
     root_path: &Path,
     candidate: &Candidate,
     looker: &mut impl Looker,
+    unlinked: &mut dyn FnMut(),
 ) -> Outcome {
     let Ok(relative) = candidate.path.strip_prefix(root_path) else {
         return Outcome::Failed(format!("outside its root {}", root_path.display()));
@@ -328,7 +337,7 @@ pub fn entry(
             Err(error) => Outcome::Failed(format!("{reason}, and putting it back failed: {error}")),
         };
     }
-    if let Err(error) = detached.empty() {
+    if let Err(error) = detached.empty_paced(unlinked) {
         return failed("emptying it", error);
     }
     drop(dir);

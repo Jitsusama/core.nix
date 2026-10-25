@@ -91,6 +91,7 @@ fn reclaimed(script: &mut Script, occupied: bool) -> (tempfile::TempDir, PathBuf
         &candidate(&path, occupied),
         None,
         script,
+        &mut || {},
     );
     (root, path, outcome)
 }
@@ -151,6 +152,7 @@ fn a_target_whose_lock_cargo_holds_is_kept() {
         &candidate(&path, false),
         None,
         &mut Script::default(),
+        &mut || {},
     );
     assert!(matches!(outcome, Outcome::Kept(_)), "{outcome:?}");
     assert_eq!(names(&path), ["CACHEDIR.TAG", "criterion", "debug"]);
@@ -197,6 +199,7 @@ fn a_target_reached_through_a_symlink_fails_untouched() {
         &candidate(&through, false),
         None,
         &mut Script::default(),
+        &mut || {},
     );
     assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
     assert_eq!(names(&real), ["CACHEDIR.TAG", "criterion", "debug"]);

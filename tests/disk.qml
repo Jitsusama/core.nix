@@ -1,9 +1,11 @@
 // Drives the disk piece (modules/quickshell/pieces/Disk.qml) through
 // Quickshell itself, over status files written where the test tells the
 // piece the guards write theirs, with niri stood in for: healthy disks are
-// shown but not true, a disk under pressure is a warning with how much is
-// free and the pass that left it short, a critical one wants Joel, the worse
-// of the two guards' words wins for a disk both watch, a disk only the
+// shown but not true, a disk under pressure says how much is free and the
+// pass that left it short but asks for nothing, an urgent one is a warning
+// that still asks for nothing, a critical one wants Joel with nothing slow
+// to run, the worse of the two guards' words wins for a disk both watch, a
+// disk only the
 // machine's guard watches counts, a writer frozen wants Joel with a way to let
 // it go on, a guard that stopped writing is a warning
 // of its own with a way to start it, as is one whose heartbeat ages past
@@ -49,7 +51,7 @@ ShellRoot {
         account: status([disk("/", "pressure", 120.5, 5400)],
             { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
-        holds: piece => piece.active && piece.role === "warning" && piece.wants && !piece.now
+        holds: piece => !piece.active && piece.role === "text" && !piece.wants && !piece.now
             && piece.value === "120.5 GiB free on /, pressure"
             && piece.context === "the next band in 1:30; nothing more is safe to take"
     }, {
@@ -61,11 +63,13 @@ ShellRoot {
             && piece.value === "8.2 GiB free on /, critical"
             && piece.hint === "/ is short of room: 8.2 GiB free"
             && piece.context === "freed 3.0 GiB on /"
+            && piece.actions.length === 0
     }, {
         what: "the worse of two words",
         account: status([disk("/", "healthy", 200)]),
         machine: status([disk("/", "urgent", 60)]),
-        holds: piece => piece.active && piece.value === "60.0 GiB free on /, urgent"
+        holds: piece => piece.active && piece.role === "warning" && !piece.wants
+            && piece.value === "60.0 GiB free on /, urgent"
     }, {
         what: "a disk only the machine watches",
         account: status([disk("/", "healthy", 400)]),

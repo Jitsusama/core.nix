@@ -1,6 +1,7 @@
 //! What Linux says about the machine.
 
 use crate::band::{BtrfsSpace, Space};
+use crate::pace::Settling;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
@@ -77,10 +78,49 @@ pub fn give_back() {
 }
 
 /// Waits until what was deleted on `path`'s filesystem shows as free.
-/// Btrfs frees extents only when its transaction commits, about 30 s
-/// later, so it's asked to commit. That took 6 to 10 ms on a laptop's NVMe
-/// disk under a 3 GB write, against 33 ms for `syncfs`, and it writes no one
-/// else's dirty data. Anywhere else, `syncfs` does it.
+/// Btrfs frees extents only when its transaction commits, within its
+/// commit interval of 30 s. A patient pass waits for that commit and asks
+/// nothing sooner, since a commit asked for is a commit of everyone's
+/// writes that every save on the disk then waits behind. A hurried one
+/// asks for it at once (`commit_now`). Anywhere else, `syncfs` does it.
+pub fn settle(path: &Path, settling: Settling) -> io::Result<()> {
+    let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
+    let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
+    if !is_btrfs(&rustix::fs::fstatfs(&fd)?) {
+        return sync_filesystem(&fd);
+    }
+    match settling {
+        Settling::Patient => wait_for_commit(&fd),
+        Settling::Hurried => commit_now(&fd),
+    }
+}
+
+/// Waits for the transaction running now to commit in its own time. Only
+/// `BTRFS_IOC_START_SYNC` makes Btrfs commit early; `BTRFS_IOC_WAIT_SYNC`
+/// on a transaction's id only waits for it, and on one already committed
+/// returns at once. The filesystem's generation names either the running
+/// transaction or the last committed, so the one after it is waited for
+/// first, and when Btrfs knows no such transaction, the generation itself.
+fn wait_for_commit(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
+    let generation = btrfs_generation(fd)?;
+    for transaction in [generation + 1, generation] {
+        // SAFETY: WAIT_SYNC only reads the u64, which outlives the call.
+        let waited =
+            unsafe { libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_WAIT_SYNC as _, &transaction) } == 0;
+        if waited {
+            return Ok(());
+        }
+        let error = io::Error::last_os_error();
+        if error.raw_os_error() != Some(libc::EINVAL) {
+            return Err(error);
+        }
+    }
+    // Nothing by either id is waiting, so nothing deleted is.
+    Ok(())
+}
+
+/// Asks Btrfs to commit now and waits for it. That took 6 to 10 ms on a
+/// laptop's NVMe disk under a 3 GB write, against 33 ms for `syncfs`.
 ///
 /// Btrfs's commit is begun by its transaction thread, and a request that
 /// reaches the thread while it's busy with another commit can wait out
@@ -88,13 +128,8 @@ pub fn give_back() {
 /// half of ten runs, in `btrfs_commit_transaction_async`. So a commit not
 /// back within a second gives way to `syncfs`, which commits in the
 /// caller's own time and so frees the one waiting too.
-pub fn settle(path: &Path) -> io::Result<()> {
-    let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
-    let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
-    if !is_btrfs(&rustix::fs::fstatfs(&fd)?) {
-        return Ok(rustix::fs::syncfs(&fd)?);
-    }
-    let committing = rustix::io::fcntl_dupfd_cloexec(&fd, 0)?;
+fn commit_now(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
+    let committing = rustix::io::fcntl_dupfd_cloexec(fd, 0)?;
     patiently(
         &COMMITTING,
         COMMIT_PATIENCE,
@@ -120,8 +155,19 @@ pub fn settle(path: &Path) -> io::Result<()> {
                 Err(io::Error::last_os_error())
             }
         },
-        || Ok(rustix::fs::syncfs(&fd)?),
+        || sync_filesystem(fd),
     )
+}
+
+/// `syncfs`, or nothing where it isn't offered: Nix's build sandbox answers
+/// it with ENOSYS, and a scenario settling there failed its pass whenever a
+/// Btrfs commit took past its second. Unsettled, the frees show at the
+/// filesystem's next commit instead.
+fn sync_filesystem(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
+    match rustix::fs::syncfs(fd) {
+        Err(rustix::io::Errno::NOSYS) => Ok(()),
+        other => Ok(other?),
+    }
 }
 
 /// Whether a Btrfs commit this process asked for hasn't come back.
@@ -516,12 +562,39 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
     let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
     // struct btrfs_ioctl_fs_info_args is 1024 bytes: max_id and
     // num_devices, then the 16-byte fsid.
+    let args = btrfs_fs_info(&fd, 0)?;
+    Ok(args[16..32].try_into().unwrap())
+}
+
+/// `BTRFS_FS_INFO_FLAG_GENERATION`: asks `BTRFS_IOC_FS_INFO` for the
+/// filesystem's generation too.
+const BTRFS_FS_INFO_FLAG_GENERATION: u64 = 1 << 1;
+
+/// A Btrfs filesystem's generation, the id of its newest transaction.
+fn btrfs_generation(fd: &rustix::fd::OwnedFd) -> io::Result<u64> {
+    // The flags asked for and answered are the u64 at 48, after the fsid
+    // and the sizes, and the generation the u64 after them.
+    let args = btrfs_fs_info(fd, BTRFS_FS_INFO_FLAG_GENERATION)?;
+    let answered = u64::from_ne_bytes(args[48..56].try_into().unwrap());
+    if answered & BTRFS_FS_INFO_FLAG_GENERATION == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "the kernel doesn't say a Btrfs filesystem's generation",
+        ));
+    }
+    Ok(u64::from_ne_bytes(args[56..64].try_into().unwrap()))
+}
+
+/// `struct btrfs_ioctl_fs_info_args`, all 1024 bytes of it, asked for with
+/// `flags`.
+fn btrfs_fs_info(fd: &rustix::fd::OwnedFd, flags: u64) -> io::Result<[u8; 1024]> {
     let mut args = [0u8; 1024];
+    args[48..56].copy_from_slice(&flags.to_ne_bytes());
     // SAFETY: args is as large as the kernel writes, and outlives the call.
     if unsafe { libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_FS_INFO as _, args.as_mut_ptr()) } != 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(args[16..32].try_into().unwrap())
+    Ok(args)
 }
 use std::ffi::OsString;
 use std::fmt::Write as _;

@@ -34,14 +34,17 @@ pub struct Bands {
 }
 
 impl Bands {
+    // Routine reclaiming starts at a quarter free and reaches for over a
+    // third, so a workstation keeps room for its next builds, and the
+    // urgent bands begin well before the disk is full.
     fn pressure() -> Size {
-        Size::Percent(15.0)
+        Size::Percent(25.0)
     }
     fn urgent() -> Size {
-        Size::Percent(8.0)
+        Size::Percent(10.0)
     }
     fn critical() -> Size {
-        Size::Percent(3.0)
+        Size::Percent(4.0)
     }
     /// Refuses bands out of order where their units let it show: each
     /// band under the one before, and the target over pressure. Bytes
@@ -83,7 +86,38 @@ impl Bands {
     }
 
     fn target() -> Size {
-        Size::Percent(20.0)
+        Size::Percent(35.0)
+    }
+}
+
+/// How a pass that can wait paces its deletes: a rest after every `files`
+/// unlinks of at least `rest`. The default rest outlasts Btrfs's commit
+/// interval of thirty seconds, so each batch goes in a commit of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pacing {
+    #[serde(default = "Pacing::files")]
+    pub files: usize,
+    #[serde(default = "Pacing::rest")]
+    pub rest: Span,
+}
+
+impl Pacing {
+    fn files() -> usize {
+        2000
+    }
+
+    fn rest() -> Span {
+        Span(Duration::from_secs(30))
+    }
+}
+
+impl Default for Pacing {
+    fn default() -> Pacing {
+        Pacing {
+            files: Pacing::files(),
+            rest: Pacing::rest(),
+        }
     }
 }
 
@@ -467,6 +501,7 @@ pub struct System {
 pub struct Config {
     pub scope: Scope,
     pub bands: Bands,
+    pub pacing: Pacing,
     pub notify: bool,
     pub status_file: bool,
     /// Whether a runaway writer may be frozen at critical.
@@ -483,6 +518,8 @@ struct Rendered {
     scope: Scope,
     #[serde(default)]
     bands: Bands,
+    #[serde(default)]
+    pacing: Pacing,
     #[serde(default = "yes")]
     notify: bool,
     #[serde(default)]
@@ -511,6 +548,9 @@ impl Config {
             ));
         }
         rendered.bands.check()?;
+        if rendered.pacing.files == 0 {
+            return Err("pacing needs at least one file a batch".to_owned());
+        }
         for (name, source) in &rendered.sources {
             if !source.owned_by(rendered.scope) {
                 return Err(format!(
@@ -562,6 +602,7 @@ impl Config {
         Ok(Config {
             scope: rendered.scope,
             bands: rendered.bands,
+            pacing: rendered.pacing,
             notify: rendered.notify,
             status_file: rendered.status_file,
             freeze: rendered.freeze,

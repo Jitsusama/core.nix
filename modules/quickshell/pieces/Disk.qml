@@ -2,12 +2,13 @@
 // the worst of them has left and how the guard stands. It reads the status
 // files the account's guard and the machine's write in their runtime
 // directories, so it asks nothing, and a disk both watch is as the worse of
-// them says. It's true while a disk is short of room, below healthy, and
-// takes the warning colour then and wants a look, and the alert colour at
-// critical, when it wants Joel now: the guard is taking all it safely can. A
-// writer the guard froze for filling a disk wants him now too, with a way to
-// let it go on. It's true as
-// well when a guard has stopped writing, since then nothing watches the disks.
+// them says. Under pressure the guard is only doing its routine work, so
+// the piece just says how much is free. From urgent it's true and takes the
+// warning colour, and at critical the alert colour, when it wants Joel now:
+// the guard is taking all it safely can. A writer the guard froze for
+// filling a disk wants him now too, with a way to let it go on. It's true
+// as well when a guard has stopped writing, since then nothing watches the
+// disks. Nothing else asks for him, since nothing else needs him.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -30,6 +31,7 @@ Piece {
     readonly property var worst: disks.reduce(
         (worst, disk) => worst === null || worse(disk, worst) ? disk : worst, null)
     readonly property bool short: worst !== null && worst.band !== "healthy"
+    readonly property bool pressed: short && worst.band !== "pressure"
     readonly property bool critical: short && worst.band === "critical"
     // Each guard writes its status at least every 30 seconds while it runs.
     readonly property bool silent: account.silent || machine.silent
@@ -38,11 +40,11 @@ Piece {
     readonly property var frozen: account.said?.frozen ?? []
 
     present: said.length > 0
-    active: short || silent || frozen.length > 0
+    active: pressed || silent || frozen.length > 0
     role: critical || frozen.length > 0 ? "alert" : active ? "warning" : "text"
-    // Short of room, it wants a look; critical or frozen, it wants Joel now.
-    wants: short || frozen.length > 0
-    now: critical || frozen.length > 0
+    // Only critical or frozen wants Joel, and then at once.
+    wants: critical || frozen.length > 0
+    now: wants
     value: frozen.length > 0 ? "froze " + frozen.map(writer => writer.name).join(", ")
         : short || !silent
         ? (worst === null ? "" : `${shown(worst.free)} free on ${worst.path}`
@@ -72,12 +74,7 @@ Piece {
         name: "Let it go on",
         verb: "resume",
         run: () => Niri.spawn(["disk-guard", "thaw"])
-    }] : []).concat([{
-        glyph: String.fromCodePoint(0xf0349),
-        name: "See what it would take",
-        verb: "see",
-        run: () => Niri.spawn(["kitty", "--hold", "disk-guard", "plan"])
-    }]).concat(silent ? [{
+    }] : []).concat(silent ? [{
         glyph: String.fromCodePoint(0xf040a),
         name: "Start the guard",
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])

@@ -46,8 +46,32 @@ fn reclaimed(script: &mut Script, name: &str) -> (Sandbox, PathBuf, Outcome) {
     let root = Sandbox::new();
     let dir = scratch(root.path());
     let anchor = Dir::open(root.path()).unwrap();
-    let outcome = entry(&anchor, root.path(), &candidate(&dir.join(name)), script);
+    let outcome = entry(
+        &anchor,
+        root.path(),
+        &candidate(&dir.join(name)),
+        script,
+        &mut || {},
+    );
     (root, dir, outcome)
+}
+
+#[test]
+fn every_entry_the_trash_loses_is_told_so_a_pacer_can_rest() {
+    let root = Sandbox::new();
+    let dir = scratch(root.path());
+    let anchor = Dir::open(root.path()).unwrap();
+    let mut unlinked = 0;
+    let outcome = entry(
+        &anchor,
+        root.path(),
+        &candidate(&dir.join("run-1")),
+        &mut Script::default(),
+        &mut || unlinked += 1,
+    );
+    assert_eq!(outcome, Outcome::Reclaimed);
+    // The file, the two directories above it, and the trash that held them.
+    assert_eq!(unlinked, 4);
 }
 
 #[test]
@@ -81,6 +105,7 @@ fn an_entry_directly_in_its_root_goes() {
             &dir,
             &candidate(&dir.join(name)),
             &mut Script::default(),
+            &mut || {},
         );
         assert_eq!(outcome, Outcome::Reclaimed, "{name}");
     }
@@ -98,6 +123,7 @@ fn a_symlink_goes_and_what_it_names_stays() {
         root.path(),
         &candidate(&dir.join("link")),
         &mut Script::default(),
+        &mut || {},
     );
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(names(&dir), ["notes.txt", "run-1", "run-2"]);
@@ -144,6 +170,7 @@ fn an_entry_reached_through_a_symlink_fails_untouched() {
         root.path(),
         &candidate(&through),
         &mut Script::default(),
+        &mut || {},
     );
     assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
     assert_eq!(names(&dir.join("run-1")), ["locked"]);
@@ -160,6 +187,7 @@ fn an_entry_outside_the_root_fails_untouched() {
         root.path(),
         &candidate(&elsewhere.path().join("keep")),
         &mut Script::default(),
+        &mut || {},
     );
     assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
     assert!(elsewhere.path().join("keep").exists());

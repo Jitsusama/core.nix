@@ -197,7 +197,7 @@ impl Store {
 
     fn guard(&self, config: Config) -> Guard {
         Guard::new(
-            config,
+            crate::unpaced(config),
             &Places {
                 state: self.root.join("state"),
                 status: Some(self.root.join("status.json")),
@@ -416,17 +416,18 @@ fn a_healthy_store_is_listed_again_six_hours_on_in_a_spare_moment() {
 }
 
 #[test]
-fn a_listing_a_day_old_is_taken_again_however_busy_the_machine() {
-    // A machine that builds all day is never calm.
+fn a_listing_is_taken_again_six_hours_on_however_busy_the_machine() {
+    // A machine that builds all day is never calm, and its upkeep needs a
+    // listing as fresh as a calm one's.
     let store = Store::new();
     store.dead("aaa-young", 3600.0, 4096);
     let mut guard = store.guard(store.config("0%", "0%"));
     listed_later(&store, &mut guard, 0.0, &CALM);
-    step_later(&mut guard, 7.0 * 3600.0, &BUSY);
-    assert_eq!(lists(&store), 1, "not while busy, within a day");
-    listed_later(&store, &mut guard, 25.0 * 3600.0, &BUSY);
-    assert_eq!(lists(&store), 2, "a day on");
-    assert_eq!(store.log()[1], "list 5", "still at idle priority");
+    step_later(&mut guard, 5.0 * 3600.0, &BUSY);
+    assert_eq!(lists(&store), 1, "five hours on");
+    listed_later(&store, &mut guard, 7.0 * 3600.0, &BUSY);
+    assert_eq!(lists(&store), 2, "seven hours on");
+    assert_eq!(store.log()[1], "list 5", "at idle priority");
 }
 
 #[test]
@@ -661,7 +662,7 @@ fn a_user_daemon_with_no_system_daemon_collects_garbage_itself_from_urgent() {
 fn a_user_daemon_collects_itself_while_the_system_daemon_is_down() {
     let store = Store::new();
     let mut guard = Guard::new(
-        user_config(&store, "100%"),
+        crate::unpaced(user_config(&store, "100%")),
         &Places {
             state: store.root.join("state"),
             status: None,
@@ -682,7 +683,7 @@ fn a_user_daemon_leaves_garbage_to_a_system_daemon_that_answers() {
     let socket = sockets.path().join("system.socket");
     let _heard = crate::daemon::fake_system(&socket, false);
     let mut guard = Guard::new(
-        user_config(&store, "100%"),
+        crate::unpaced(user_config(&store, "100%")),
         &Places {
             state: store.root.join("state"),
             status: None,
