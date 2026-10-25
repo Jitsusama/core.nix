@@ -163,14 +163,17 @@ let
 
   # A mark from the icon font by its code point.
   nerd = import ../theme/nerd.nix { inherit lib; };
+  # A mark from the theme, by its name.
+  mark = name: config.jitsusama.theme.glyphs.${name}.glyph;
 
   # How a chord's keys are drawn: a key's own glyph where a proper one
   # exists, its name where none does, and a letter as itself (docs/design.md,
-  # Shape and Kinds). Icon marks draw wider than a letter, so they're
-  # marked to be given room.
+  # Shape and Kinds). A key's glyph is the theme's mark for what it
+  # prints, or for the one meaning it shares with the rest of the desktop.
+  # Icon marks draw wider than a letter, so they're marked to be given room.
   keyFaces = {
     Super = {
-      text = nerd "f313";
+      text = mark "superKey";
       wide = true;
     };
     Shift.text = "⇧";
@@ -196,49 +199,49 @@ let
     WheelScrollLeft.text = "Wheel ←";
     WheelScrollRight.text = "Wheel →";
     XF86AudioRaiseVolume = {
-      text = nerd "f075d";
+      text = mark "louder";
       wide = true;
     };
     XF86AudioLowerVolume = {
-      text = nerd "f075e";
+      text = mark "quieter";
       wide = true;
     };
     XF86AudioMute = {
-      text = nerd "f075f";
+      text = mark "silent";
       wide = true;
     };
     XF86AudioMicMute = {
-      text = nerd "f036d";
+      text = mark "muted";
       wide = true;
     };
     XF86MonBrightnessUp = {
-      text = nerd "f00e0";
+      text = mark "brightness";
       wide = true;
     };
     XF86MonBrightnessDown = {
-      text = nerd "f00de";
+      text = mark "dimmer";
       wide = true;
     };
     XF86AudioPrev = {
-      text = nerd "f04ae";
+      text = mark "previous";
       wide = true;
     };
     XF86AudioNext = {
-      text = nerd "f04ad";
+      text = mark "next";
       wide = true;
     };
     XF86AudioPlay = {
-      text = nerd "f040e";
+      text = mark "playPause";
       wide = true;
     };
     # The lock key and the Do Not Disturb key, as a padlock and the moon a
     # Mac keyboard prints on its Focus key, rather than their long names.
     XF86ScreenSaver = {
-      text = nerd "f033e";
+      text = mark "session";
       wide = true;
     };
     XF86DoNotDisturb = {
-      text = nerd "f0594";
+      text = mark "quietKey";
       wide = true;
     };
   };
@@ -351,10 +354,10 @@ let
     ) config.jitsusama.swipes;
   };
   swipeGlyphs = {
-    up = nerd "f0740";
-    down = nerd "f073d";
-    left = nerd "f073e";
-    right = nerd "f073f";
+    up = mark "swipeUp";
+    down = mark "swipeDown";
+    left = mark "swipeLeft";
+    right = mark "swipeRight";
   };
 
   # The glyph an action wears in the launcher, by what it runs: the theme's
@@ -368,7 +371,6 @@ let
       program = if run == [ ] then "" else lib.head run;
       action = if program == "niri" then lib.elemAt run 3 else "";
       says = lib.concatStringsSep " " run;
-      mark = name: config.jitsusama.theme.glyphs.${name}.glyph;
       asks = word: program == "qs" && lib.elem word run;
     in
     if lib.hasInfix "kitty" says then
