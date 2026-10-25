@@ -159,11 +159,11 @@ build stops, which is the sign to drop it.
 
 7.3 adds and fixes a good deal for this laptop's parts, and none of it is
 tagged for 7.2's stable releases. Rather than wait for the kernel to move,
-`backports.nix` carries what matters here: 18 patches in `backports/`, 87
-mainline commits, each patch naming its commits in order. They were picked
-from every commit between 7.2 and 7.3 touching a driver this laptop binds or
-could bind, and apply to 7.2.12 after the kernel's own patches with no
-offset or fuzz. One, the Thunderbolt fix, had a hunk moved onto 7.2's
+`kernel/backports.nix` carries what matters here: 18 patches in
+`kernel/backports/`, 87 mainline commits, each patch naming its commits in
+order. They were picked from every commit between 7.2 and 7.3 touching a
+driver this laptop binds or could bind, and apply to 7.2.12 after the
+kernel's own patches with no offset or fuzz. One, the Thunderbolt fix, had a hunk moved onto 7.2's
 context, which its header says.
 
 | Patch                           | What it gives                                       |
@@ -199,14 +199,15 @@ engine at `00:18.0` (`8086:e45d`), as Dell's `issei.sys` does on Windows, with
 nothing in userspace talks to it yet.
 
 An assertion fails once the kernel is 7.3, which has them all, and the way
-through is to drop `backports.nix` and its directory.
+through is to drop `kernel/backports.nix` and its directory.
 
 ### linux-next's Fixes, Taken Early
 
 Some fixes this laptop needs are in no release yet, and two are in no tree
-at all. `next.nix` carries them in `next/`, applied after the backports from
-7.3 with no offset or fuzz, each patch's header naming where it comes from:
-linux-next's commits and their series, a posting to a list, or a local fix.
+at all. `kernel/next.nix` carries them in `kernel/next/`, applied after the
+backports from 7.3 with no offset or fuzz, each patch's header naming where
+it comes from: linux-next's commits and their series, a posting to a list,
+or a local fix.
 
 | Patch                                | What it gives                                          |
 | ------------------------------------ | ------------------------------------------------------ |
@@ -227,7 +228,7 @@ back, so a key let go of read late and repeated.
 The default of 8 wasn't enough here. Under a kernel build, traced for 5
 minutes at each: at 8, kswapd backed up 141 window buffers, and niri waited
 over 10 ms on a buffer lock 25 times; at 64, with kswapd scanning as much,
-it backed up none, and no wait passed 4 ms. A udev rule in `next.nix` sets
+it backed up none, and no wait passed 4 ms. A udev rule in `kernel/next.nix` sets
 64 as the GPU binds.
 
 `dp-byte-reads-only-when-longer` is Chia-Lin Kao's posting to intel-gfx of
@@ -256,7 +257,7 @@ draws waiting on a client's buffer lock for 122 to 250 ms, three times in
 five minutes; whether reclaim held them there is still to be measured.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
-through is to drop each patch that kernel has, then `next.nix`.
+through is to drop each patch that kernel has, then `kernel/next.nix`.
 
 ### The Boot Clock
 
