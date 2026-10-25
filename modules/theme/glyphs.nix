@@ -133,6 +133,13 @@ in
       "M4.5 10.5H7.5A1.5 1.5 0 0 1 4.5 10.5Z"
     ];
   };
+  # The Do Not Disturb key, as the moon a Mac keyboard prints on its Focus
+  # key: the key's own print, where the bell is how things stand.
+  quietKey = {
+    glyph = nerd "f0594";
+    console = "z";
+    means = "the key that holds notices, or lets them show";
+  };
   quiet = {
     # The bell struck through, since the bell asleep, with its small z,
     # reads as a plain bell at the margin's size, beside the notices'.
@@ -239,6 +246,12 @@ in
     glyph = nerd "f03e4";
     console = "=";
     means = "pausing what's playing";
+  };
+  # The play key, which pauses too, as keyboards print it.
+  playPause = {
+    glyph = nerd "f040e";
+    console = "p";
+    means = "playing what's paused, or pausing what's playing";
   };
   next = {
     glyph = nerd "f04ad";
@@ -372,6 +385,17 @@ in
     console = "s";
     means = "how loud sound goes out";
   };
+  # The sound keys, as keyboards print them.
+  louder = {
+    glyph = nerd "f075d";
+    console = "+";
+    means = "turning the sound up";
+  };
+  quieter = {
+    glyph = nerd "f075e";
+    console = "-";
+    means = "turning the sound down";
+  };
   silent = {
     glyph = nerd "f0581";
     console = "_";
@@ -406,6 +430,34 @@ in
     glyph = nerd "f418";
     console = "b";
     means = "a git branch, named after it";
+  };
+  # The Super key, drawn as the system's own logo, as its keyboards' Super
+  # keys print theirs.
+  superKey = {
+    glyph = nerd "f313";
+    console = "S";
+    means = "the Super key, in a chord";
+  };
+  # A swipe on the touchscreen, by the way it goes, in a chord.
+  swipeUp = {
+    glyph = nerd "f0740";
+    console = "^";
+    means = "a swipe up";
+  };
+  swipeDown = {
+    glyph = nerd "f073d";
+    console = "v";
+    means = "a swipe down";
+  };
+  swipeLeft = {
+    glyph = nerd "f073e";
+    console = "<";
+    means = "a swipe to the left";
+  };
+  swipeRight = {
+    glyph = nerd "f073f";
+    console = ">";
+    means = "a swipe to the right";
   };
   shell = {
     glyph = nerd "f313";
@@ -551,6 +603,11 @@ in
     glyph = nerd "f00e0";
     console = "*";
     means = "how bright the screen is, or the lights";
+  };
+  dimmer = {
+    glyph = nerd "f00de";
+    console = ".";
+    means = "turning the screen's brightness down";
   };
   lamp = {
     glyph = nerd "f095f";
