@@ -7,9 +7,9 @@
 # they share a filesystem, and to vouch for processes the account can't
 # read. AGENTS.md beside this says how it decides.
 #
-# jitsusama.disk-guard.settings is the guard's own config, rendered as it is.
-# Each source core gives is a default, replaced whole by a machine's own, or
-# dropped by setting it null.
+# jitsusama.disk-guard.settings is the guard's own config, declared and
+# rendered in system.nix. Each source core gives is a default, replaced whole
+# by a machine's own, or dropped by setting it null.
 {
   config,
   lib,
@@ -18,26 +18,7 @@
 }:
 let
   package = pkgs.callPackage ./package.nix { };
-  json = pkgs.formats.json { };
-  settings = config.jitsusama.disk-guard.settings;
-
-  rendered = settings // {
-    version = 1;
-    scope = "system";
-    sources = lib.filterAttrs (_: source: source != null) settings.sources;
-  };
-
-  # The config as the guard reads it, refused at build by the guard itself.
-  configFile =
-    pkgs.runCommandLocal "disk-guard-system.json"
-      {
-        text = builtins.toJSON rendered;
-        passAsFile = [ "text" ];
-      }
-      ''
-        ${lib.getExe package} check-config "$textPath"
-        cp "$textPath" $out
-      '';
+  inherit (config.jitsusama.disk-guard) configFile;
 
   # The machine's own Nix: nix-darwin's when it manages Nix, and otherwise
   # the installer's, as Determinate's is, never another beside it.
@@ -48,15 +29,7 @@ let
       "/nix/var/nix/profiles/default/bin/nix";
 in
 {
-  options.jitsusama.disk-guard.settings = lib.mkOption {
-    type = lib.types.submodule { freeformType = json.type; };
-    default = { };
-    description = ''
-      The machine's guard's config: its bands, its sources, and its policy
-      for Nix's garbage, generations and linking. A source set to null is
-      dropped.
-    '';
-  };
+  imports = [ ./system.nix ];
 
   config = {
     jitsusama.disk-guard.settings = {

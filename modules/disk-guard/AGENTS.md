@@ -4,8 +4,9 @@ A Rust daemon that keeps a machine's disks from filling, taking only what
 regenerates, cheapest first, and never what a build or a person is using. It
 runs twice: `disk-guard system`, a root service that owns what lies outside
 every home, and `disk-guard user` in each account, which owns the home.
-[`nixos.nix`][1] and [`darwin.nix`][3] render the machine's config and run
-it under systemd or launchd, and [`home.nix`][2] the account's.
+[`nixos.nix`][1] and [`darwin.nix`][3] fill in the machine's config, which
+[`system.nix`][4] declares and renders for both, and run it under systemd
+or launchd, and [`home.nix`][2] the account's.
 
 ## How It Decides
 
@@ -147,3 +148,4 @@ else.
 [1]: nixos.nix
 [2]: home.nix
 [3]: darwin.nix
+[4]: system.nix
