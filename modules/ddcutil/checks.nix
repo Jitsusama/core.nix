@@ -31,7 +31,7 @@ onLinux {
         echo "i2c-dev isn't loaded, so no bus is offered"
         exit 1
       ''}
-      ${lib.getExe pkgs.bash} ${../../tests/only-external-monitors-reach-the-seat.sh} ${rules}/${file}
+      ${lib.getExe pkgs.bash} ${./tests/only-external-monitors-reach-the-seat.sh} ${rules}/${file}
       touch $out
     '';
 }

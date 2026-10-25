@@ -46,7 +46,7 @@
       }
       ''
         avr-objcopy -I ihex -O binary ${firmware}/ergodox.hex image
-        python3 ${../../tests/ergodox-answers-with-its-serial.py} image ${firmware}/serial
+        python3 ${./tests/ergodox-answers-with-its-serial.py} image ${firmware}/serial
         touch $out
       '';
 
@@ -62,7 +62,7 @@
       ) (throw "No ergodox command.") (account workstation).home.packages;
     in
     pkgs.runCommandLocal "the-ergodox-command-reaches-the-board" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/ergodox-command-reaches-the-board.sh} ${ergodox}/bin/ergodox
+      ${lib.getExe pkgs.bash} ${./tests/ergodox-command-reaches-the-board.sh} ${ergodox}/bin/ergodox
       touch $out
     '';
 
