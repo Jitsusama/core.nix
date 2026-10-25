@@ -45,10 +45,12 @@ pkgs.testers.runNixOSTest {
       # a Quickshell edit makes only the rest again: about 330 MiB of the
       # 8.8 GiB closure, where one image made all of it every time. Both
       # are packed as NixOS packs one (nixos/lib/erofs-store-image.nix),
-      # but in the tar's own order and compressed: sorting by path,
-      # mkfs.erofs's default for a tar, first copies every file aside,
-      # which wrote twice the image. The registration the machine loads at
-      # boot goes in the rest.
+      # uncompressed, but in the tar's own order. Sorting by path,
+      # mkfs.erofs's default for a tar, or compressing first copies every
+      # file aside: packing the rest wrote 474 MiB for a 174 MiB image with
+      # lz4, and 309 MiB for a 290 MiB one without. The images are bigger,
+      # but the drive is spared what a build writes and throws away. The
+      # registration the machine loads at boot goes in the rest.
       registration =
         (import "${pkgs.path}/nixos/lib/store-registration-info.nix" {
           hostPkgs = pkgs;
@@ -86,7 +88,7 @@ pkgs.testers.runNixOSTest {
             tar --create --absolute-names --verbatim-files-from \
               --transform 'flags=rSh;s|/nix/store/||' \
               --files-from ${paths} \
-              | mkfs.erofs --quiet --sort=none -zlz4 --force-uid=0 --force-gid=0 -L ${label} \
+              | mkfs.erofs --quiet --sort=none --force-uid=0 --force-gid=0 -L ${label} \
                 -U ${uuid} -T 0 --hard-dereference --tar=f "$out"
           '';
       baseImage =
