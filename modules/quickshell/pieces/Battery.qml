@@ -3,6 +3,7 @@
 // It's true while it runs low on battery, below `low` percent, when it wants
 // Joel to plug in and takes the warning colour, and below `critical` it
 // wants him now, in the alert colour. It offers to save power.
+import qs
 import Quickshell.Services.UPower
 import QtQuick
 
@@ -49,7 +50,7 @@ Piece {
     context: battery.changeRate >= 0.05
         ? `drawing ${battery.changeRate.toFixed(1)} W` : "plug in to keep going"
     actions: PowerProfiles.profile === PowerProfile.PowerSaver ? [] : [{
-        glyph: String.fromCodePoint(0xf032a),
+        glyph: Theme.glyph.saver,
         name: "Save power",
         run: () => PowerProfiles.profile = PowerProfile.PowerSaver
     }]

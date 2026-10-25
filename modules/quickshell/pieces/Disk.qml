@@ -70,12 +70,12 @@ Piece {
         return parts.join("; ");
     }
     actions: (frozen.length > 0 ? [{
-        glyph: String.fromCodePoint(0xf040a),
+        glyph: Theme.glyph.resume,
         name: "Let it go on",
         verb: "resume",
         run: () => Niri.spawn(["disk-guard", "thaw"])
     }] : []).concat(silent ? [{
-        glyph: String.fromCodePoint(0xf040a),
+        glyph: Theme.glyph.resume,
         name: "Start the guard",
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])

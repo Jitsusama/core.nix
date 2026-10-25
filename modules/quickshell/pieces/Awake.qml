@@ -11,17 +11,17 @@ Piece {
     hint: Caffeinate.lid ? "Staying awake, the lid shut too" : "Staying awake while the lid is open"
     context: Caffeinate.lid ? "until the power goes" : "the lid still sleeps it"
     actions: [{
-        glyph: String.fromCodePoint(0xf04b2),
+        glyph: Theme.glyph.suspend,
         name: "Let it sleep",
         // One word for Return, as the launcher's Let it sleep says it.
         verb: "stop",
         run: () => Caffeinate.release()
     }].concat(Caffeinate.lid ? [{
-        glyph: String.fromCodePoint(0xf06ca),
+        glyph: Theme.glyph.lidOpen,
         name: "Only while the lid is open",
         run: () => Caffeinate.open()
     }] : Caffeinate.plugged ? [{
-        glyph: String.fromCodePoint(0xf0176),
+        glyph: Theme.glyph.awake,
         name: "With the lid shut too",
         run: () => Caffeinate.keep()
     }] : [])

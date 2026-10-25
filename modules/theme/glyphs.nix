@@ -107,6 +107,11 @@ in
     console = "W";
     means = "something floats above the layout";
   };
+  lidOpen = {
+    glyph = nerd "f06ca";
+    console = "c";
+    means = "staying awake only while the lid is open";
+  };
   awake = {
     glyph = nerd "f0176";
     console = "C";
@@ -142,6 +147,11 @@ in
       "L5.25 11.8 L5.6 11.95 L6 12 L6.4 11.95 L6.75 11.8 L7.05 11.55 L7.3 11.25 L7.45 10.9"
       "L7.5 10.5 L4.5 10.5 L4.55 10.9 L4.7 11.25Z M12 10.6 L1.4 0 L0 1.4 L10.6 12Z"
     ];
+  };
+  ringing = {
+    glyph = nerd "f009f";
+    console = "!";
+    means = "letting notices show again";
   };
   dictating = {
     glyph = nerd "f05cb";
@@ -209,6 +219,37 @@ in
     means = "music is playing";
     drawn = "M1 0L11 6L1 12Z";
   };
+  # What music, or anything else that runs on, is asked to do.
+  pause = {
+    glyph = nerd "f03e4";
+    console = "=";
+    means = "pausing what's playing";
+  };
+  next = {
+    glyph = nerd "f04ad";
+    console = ">";
+    means = "going on to the next track";
+  };
+  previous = {
+    glyph = nerd "f04ae";
+    console = "<";
+    means = "going back to the track before";
+  };
+  resume = {
+    glyph = nerd "f040a";
+    console = "P";
+    means = "starting something stopped again: a track, a watch or a guard";
+  };
+  ask = {
+    glyph = nerd "f0369";
+    console = "?";
+    means = "asking for more: a cap raised, or an override";
+  };
+  retry = {
+    glyph = nerd "f0450";
+    console = "~";
+    means = "checking something again, as a network that wants a sign-in";
+  };
   capitals = {
     glyph = nerd "f0632";
     console = "A";
@@ -222,6 +263,11 @@ in
     means = "the keyboard is locked on another layer";
     # One layer above another.
     drawn = "M6 0L12 3.5L6 7L0 3.5Z M0 8.5L1.75 7.5L6 10L10.25 7.5L12 8.5L6 12Z";
+  };
+  layerOff = {
+    glyph = nerd "f0329";
+    console = "l";
+    means = "letting the keyboard back off its locked layer";
   };
   low = {
     glyph = nerd "f0083";

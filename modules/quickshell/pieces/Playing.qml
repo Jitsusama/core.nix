@@ -23,17 +23,17 @@ Piece {
         .filter(said => said !== "").join(" · ")
     hue: "program"
     actions: Music.player === null ? [] : [{
-        glyph: String.fromCodePoint(0xf03e4),
+        glyph: Theme.glyph.pause,
         name: "Pause",
         chord: chord("toggle"),
         run: () => Music.toggle()
     }].concat(Music.player.canGoNext ? [{
-        glyph: String.fromCodePoint(0xf04ad),
+        glyph: Theme.glyph.next,
         name: "Next track",
         chord: chord("next"),
         run: () => Music.next()
     }] : [], Music.player.canGoPrevious ? [{
-        glyph: String.fromCodePoint(0xf04ae),
+        glyph: Theme.glyph.previous,
         name: "Previous track",
         chord: chord("previous"),
         run: () => Music.previous()
@@ -42,7 +42,7 @@ Piece {
         name: `Show ${Music.from}`,
         run: () => Music.reveal(Music.player)
     }] : [], Music.others.map(other => ({
-        glyph: String.fromCodePoint(0xf03e4),
+        glyph: Theme.glyph.pause,
         name: `Pause ${Music.name(other)} too`,
         run: () => other.pause()
     })))

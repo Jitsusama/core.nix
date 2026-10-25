@@ -31,7 +31,7 @@ Piece {
         : `and ${wanting.length - 1} more`
     // Each one's window, the oldest want first, as many as fit.
     actions: wanting.slice(0, 3).map(session => ({
-        glyph: String.fromCodePoint(0xf05b2),
+        glyph: Theme.glyph.windows,
         name: `Go to ${session.title}`,
         run: () => Niri.act({ FocusWindow: { id: session.window.id } })
     }))
