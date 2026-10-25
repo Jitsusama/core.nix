@@ -281,6 +281,16 @@
       "empty": "Nothing spent yet."
     },
     {
+      "id": "spend:copy",
+      "in": "spend",
+      "name": "Copy what it found"
+    },
+    {
+      "id": "spend:expect",
+      "in": "spend",
+      "name": "It's expected"
+    },
+    {
       "id": "jobs",
       "name": "Jobs",
       "provider": "machine",
@@ -2873,7 +2883,18 @@
       "answers": [
         "rotation",
         "orientation"
-      ]
+      ],
+      "said": {
+        "Normal": "upright",
+        "90": "a quarter turn left",
+        "180": "upside down",
+        "270": "a quarter turn right"
+      }
+    },
+    {
+      "id": "displays:rotate",
+      "in": "displays",
+      "name": "Rotate {way}"
     },
     {
       "id": "displays:depth",
@@ -2956,6 +2977,51 @@
         "grab"
       ],
       "ask": "of what?"
+    },
+    {
+      "id": "capture:stop",
+      "in": "capture",
+      "name": "Stop recording"
+    },
+    {
+      "id": "capture:screen",
+      "in": "capture",
+      "name": "The whole screen"
+    },
+    {
+      "id": "capture:window",
+      "in": "capture",
+      "name": "This window \u00b7 {title}"
+    },
+    {
+      "id": "capture:region",
+      "in": "capture",
+      "name": "A region"
+    },
+    {
+      "id": "capture:record-screen",
+      "in": "capture",
+      "name": "Record the whole screen"
+    },
+    {
+      "id": "capture:record-window",
+      "in": "capture",
+      "name": "Record this window \u00b7 {title}"
+    },
+    {
+      "id": "capture:record-region",
+      "in": "capture",
+      "name": "Record a region"
+    },
+    {
+      "id": "capture:camera-picture",
+      "in": "capture",
+      "name": "A picture from the camera"
+    },
+    {
+      "id": "capture:camera-video",
+      "in": "capture",
+      "name": "A video from the camera"
     },
     {
       "id": "cameras",
