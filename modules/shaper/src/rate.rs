@@ -116,6 +116,9 @@ pub struct Settings {
     /// Seconds after a cut within which a queue back again is the same
     /// spell's, not a new one's.
     pub spell_gap_s: f64,
+    /// Seconds a busy direction held at its floor may meet a queue that
+    /// never drains before its best comes down a cut's share.
+    pub floored_s: f64,
     /// The share of the best rate a direction has held that no cut goes
     /// under; none lets a cut follow the line down to its floor.
     pub least_of_best: f64,
@@ -158,6 +161,9 @@ impl Default for Settings {
             // late and early by turns, and each turn read as a new spell
             // cut the upload from 1.8 Mbit/s to 1.0 within three seconds.
             spell_gap_s: 2.0,
+            // The air's late pings came a second of every three, so a
+            // queue standing for six seconds running is the line's own.
+            floored_s: 6.0,
             // A cable's line does fall, to half on a busy evening, and a
             // cut that follows it keeps its queue short.
             least_of_best: 0.0,
@@ -223,6 +229,9 @@ pub struct Direction {
     /// The rate at which the line's queue last came back on a trial's way
     /// up: a cut from near it isn't tried again, since the line is there.
     confirmed: Option<u64>,
+    /// Since when it has been busy at its floor with the line's queue
+    /// standing, without a quiet window between.
+    floored_since: Option<f64>,
 }
 
 impl Direction {
@@ -241,6 +250,7 @@ impl Direction {
             busy_since: None,
             on_trial: None,
             confirmed: None,
+            floored_since: None,
         }
     }
 
@@ -271,6 +281,7 @@ impl Direction {
     /// A busy step on a quiet line: climbs back to the held rate, past it
     /// once it has been busy a while, and proves a peak put back.
     fn climb(&mut self, s: &Settings, now: f64) {
+        self.floored_since = None;
         // A peak put back is proved by carrying the line, whether or not
         // it may climb past it yet.
         if self.forgot {
@@ -322,6 +333,7 @@ impl Direction {
     /// A resting step: forgets a cut long past, and settles towards the
     /// held rate. Gives whether it forgot one.
     fn rest(&mut self, s: &Settings, now: f64) -> bool {
+        self.floored_since = None;
         self.proving = None;
         self.busy_since = None;
         let old = self.cut_at.is_some_and(|at| now - at >= s.forget_s);
@@ -332,6 +344,33 @@ impl Direction {
         }
         self.set(float(self.rate) + (float(self.held) - float(self.rate)) * s.settle);
         forgot
+    }
+
+    /// A step of the line's queue standing: lowers the best by a cut's
+    /// share, and the held rate with it, when this direction has been busy
+    /// at its floor, the queue never draining, for `floored_s`. A queue
+    /// that stands full no longer grows, so no cut would come of it. The
+    /// floor keeps cuts off a line whose late pings are the air's, which come and go; a queue that
+    /// stands for as long as this direction fills its rate is its own, and
+    /// live the floor held an upload at 11.7 Mbit/s over a line of 9.3,
+    /// its queue at 60 to 70 ms. A climb puts the best back once the line
+    /// carries more.
+    fn pinned(&mut self, s: &Settings, now: f64, carried: f64) {
+        let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+        if carried < float(self.rate) * s.busy || self.held > least {
+            self.floored_since = None;
+            return;
+        }
+        let since = *self.floored_since.get_or_insert(now);
+        if now - since >= s.floored_s {
+            self.best = whole(float(self.best) * s.cut).max(self.bounds.min);
+            self.peak = self.peak.min(self.best);
+            let floor = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+            self.held = whole(float(self.held) * s.cut).max(floor);
+            self.set(float(self.held));
+            self.learned = true;
+            self.floored_since = Some(now);
+        }
     }
 }
 
@@ -552,6 +591,9 @@ impl Controller {
                     dir.busy_since = None;
                     cuts[i] = true;
                 }
+            }
+            for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
+                dir.pinned(&s, now, carried);
             }
             if cuts[0] || cuts[1] {
                 self.cut_in_spell[0] |= cuts[0];
@@ -941,6 +983,68 @@ mod tests {
         assert!(c.down.peak < 50_000, "{}", c.down.peak);
         assert_eq!(c.down.remembered(&s), 50_000);
         assert_eq!(c.up.remembered(&s), 10_000);
+    }
+
+    fn wi_fi(up: u64) -> Controller {
+        Controller::new(
+            Settings::for_link(true),
+            Direction::new(
+                Bounds {
+                    min: 1_000,
+                    max: 1_000_000,
+                },
+                up,
+            ),
+            Direction::new(
+                Bounds {
+                    min: 5_000,
+                    max: 1_000_000,
+                },
+                50_000,
+            ),
+        )
+    }
+
+    #[test]
+    fn a_wi_fi_line_slower_than_its_floor_is_followed_down() {
+        // Live, an upload learned 12.3 Mbit/s, so its floor held it at 11.7
+        // when the line carried 9.3: the queue stood at 60 to 70 ms in the
+        // router, ahead of every ping and call. The queue was this
+        // machine's: it stayed for as long as the upload ran.
+        let mut c = wi_fi(12_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Line {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        line.run(&mut c, 9_000.0, 90.0);
+        // Then it holds just under the line, losing little of it.
+        let (mut lowest, mut worst) = (u64::MAX, 0.0_f64);
+        for _ in 0..30 {
+            worst = worst.max(line.run(&mut c, 9_000.0, 1.0));
+            lowest = lowest.min(c.up.rate);
+        }
+        assert!(c.up.rate < 9_000, "{}", c.up.rate);
+        assert!(lowest >= 8_100, "{lowest}");
+        assert!(worst < 50.0, "{worst} ms");
+    }
+
+    #[test]
+    fn a_busy_wi_fi_upload_keeps_its_best_through_the_air_s_late_pings() {
+        // The floor's reason: pings late for the air's sake, a second of
+        // every three, while the upload fills its rate on a faster line.
+        let mut c = wi_fi(10_000);
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut lowest) = (0.0, u64::MAX);
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, float(c.up.rate), 0.0);
+            lowest = lowest.min(c.up.rate);
+        }
+        assert!(lowest >= 9_500, "{lowest}");
+        assert!(c.up.best >= 10_000, "{}", c.up.best);
     }
 
     #[test]
