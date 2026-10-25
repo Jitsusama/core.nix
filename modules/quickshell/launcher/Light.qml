@@ -1,10 +1,11 @@
 // How bright the screen and the room are, answered in the field:
-// "brightness", "backlight", "screen light" or "room light". The headline
+// "brightness", "screen light" or "room light". The headline
 // is the screen's brightness; the rows are parts named as the vocabulary
 // names them (Words.qml): each Screen as a setting, its share as a bar with
 // its levels a step in, and the Room light the screen's sensor hears, as a
-// figure. A keyboard's lights are the keyboard's own (Keyboards.qml), and
-// "keyboard light" asks them there. With a number, "brightness 40",
+// figure. A keyboard's backlight is the keyboard's own (Keyboards.qml), and
+// "backlight" asks it there: Joel, 2026-10-25, "backlight should refer to any
+// keyboard". With a number, "brightness 40",
 // Return sets the screen to that share, as the brightness keys do, and so
 // does a level chosen a step into Screen, so the backlight daemon
 // (modules/backlight), which follows the room, learns it as Joel's pick.
@@ -66,7 +67,7 @@ Provider {
             return stepDesk(text);
         if (desks.includes(asks(text)))
             return deskTold();
-        const asked = /^(?:brightness|backlight|screen (?:light|brightness))\s+(?:to\s+)?(\d{1,3})\s*%?$/
+        const asked = /^(?:brightness|screen (?:light|brightness))\s+(?:to\s+)?(\d{1,3})\s*%?$/
             .exec(text);
         if (asked)
             return set(Math.min(100, Number(asked[1])));
