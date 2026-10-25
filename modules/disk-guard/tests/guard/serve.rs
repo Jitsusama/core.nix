@@ -135,7 +135,7 @@ fn guard_at(root: &Path, pressure: &str) -> Guard {
     .unwrap();
     fs::create_dir_all(root.join("proc")).unwrap();
     Guard::new(
-        config,
+        crate::unpaced(config),
         &Places {
             state: root.to_owned(),
             status: Some(root.join("status.json")),

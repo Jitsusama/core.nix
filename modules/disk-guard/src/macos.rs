@@ -37,7 +37,7 @@ pub fn space(path: &Path) -> io::Result<Space> {
 }
 
 /// Nothing to wait for: APFS shows what was deleted as free at once.
-pub fn settle(_path: &Path) -> io::Result<()> {
+pub fn settle(_path: &Path, _settling: crate::pace::Settling) -> io::Result<()> {
     Ok(())
 }
 

@@ -45,6 +45,7 @@ pub mod opens;
 #[cfg(target_os = "macos")]
 #[path = "unwatched.rs"]
 pub mod opens;
+pub mod pace;
 pub mod pass;
 pub mod plan;
 pub mod pmset;

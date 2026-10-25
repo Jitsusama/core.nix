@@ -10,8 +10,8 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
 ## How It Decides
 
 - **Bands.** Each filesystem a source or the store lies on is healthy, under
-  pressure, urgent or critical by its free space (15%, 8% and 3% by default),
-  and a pass reclaims towards the target (20%). A forecast starts a pass
+  pressure, urgent or critical by its free space (25%, 10% and 4% by
+  default), and a pass reclaims towards the target (35%). A forecast starts a pass
   before the next band arrives. Btrfs pools are one filesystem however many
   subvolumes they hold.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
@@ -19,12 +19,15 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   garbage, idle build variants and cold scratch, producers' own collection,
   caches cheapest to refill first, idle targets and installs, older builds a
   newer one of their crate replaced, and last what is occupied. While
-  healthy, routine upkeep runs at most every six hours, only in a spare
-  moment: on mains or a battery over half, ten minutes after
-  boot or resume, with nothing stalling on the disk or memory.
+  healthy, routine upkeep takes what's due every six hours: on mains or a
+  battery over half, ten minutes after boot or resume, however busy the
+  machine, since a workstation that's always busy would otherwise never
+  be tidied.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
-  each band, and counts only time the machine was awake. `src/plan.rs` holds
-  the table.
+  each band, and counts only time the machine was awake. Even while healthy,
+  waste goes, and so does what nobody has used for long: a build after a
+  week, an install after two, a replaced build after three days, a core
+  after a week. `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables
@@ -32,14 +35,25 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   it can't read keeps everything it might use, unless the system daemon
   vouches for it or it has exited since the scan, as most of a build's do
   within a second.
-- **Pacing.** A pass reclaims a batch, lets it settle and measures it. A
+- **Measuring.** A pass reclaims a batch, lets it settle and measures it. A
   group whose batches free under a tenth of what they predict, three times
   running, is left for the next group; a batch predicting under a gigabyte
   measures whatever is writing, so it neither counts nor teaches. A pass
-  under pressure gives way to a disk or memory that's stalling, for twenty
-  minutes at most; urgent and critical never do. A pass that falls short
-  rests before the next, doubling from a minute to fifteen under pressure,
-  five at urgent and one at critical.
+  that falls short rests before the next, doubling from a minute to fifteen
+  under pressure, five at urgent and one at critical.
+- **Pacing.** A busy machine never stops a pass; deleting slowly is how it
+  spares the machine. Btrfs frees what's unlinked only when it commits, and
+  saves wait behind a commit carrying a big delete, which no I/O priority
+  reaches. So upkeep and a pass under pressure rest after every 2,000
+  unlinks for 30 seconds, past Btrfs's own commit, and longer while the
+  guard's probe, a page beside its state synced once a second, comes back
+  slow more than three times in two minutes, until two minutes pass
+  without. Before measuring, they wait for Btrfs's own commit rather than
+  ask for one, since a commit asked for holds up every save on the disk. A
+  disk falling to urgent ends the resting. Urgent and critical passes never
+  rest, and ask for their commits. Either keeps the status file's
+  heartbeat. `src/pace.rs` holds it; `pacing` in the config sets the batch
+  and the rest.
 - **Removal.** Everything is reached through directories opened beneath the
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a
@@ -58,12 +72,13 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   is above urgent, or by `disk-guard thaw`, after which it's never frozen
   again.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
-  moment, or after a day whenever there's power, and deletes them oldest
+  moment, and deletes them oldest
   first, keeping three days' within a budget of 10% of
   the filesystem. It expires generations, never the current, running or
   booted one, the newest five, or one with a boot entry. It links the
   store's identical files weekly in a scope of its own at idle priority,
-  stopping when the moment ends. An account's guard on the same filesystem
+  only while nothing stalls on the disk or memory, since it can wait
+  without cost, stopping when the moment ends. An account's guard on the same filesystem
   asks it to collect rather than collecting itself; with no system daemon
   answering, it collects with `nix store gc --max` from urgent.
 - **A Mac.** The same daemons run under launchd, asking macOS through
@@ -79,6 +94,7 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
 | `src/config.rs`           | the config each daemon reads, and what it refuses        |
 | `src/band.rs`, `decide.rs` | bands, the forecast and the moment                      |
 | `src/plan.rs`, `pass.rs`  | the order, the windows, and a pass that measures as it goes |
+| `src/pace.rs`             | resting between batches, by the disk's own feel          |
 | `src/survey.rs`           | each source's candidates                                 |
 | `src/anchor.rs`           | removal that never leaves its root                       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
@@ -95,9 +111,12 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
 ## Working on It
 
 `direnv` enters the flake's development shell in this directory, with cargo,
-clippy and rustfmt. `cargo test` runs every scenario in about ten seconds,
-and the package runs them again as it builds. `nix fmt` from the repository
-root formats the Rust as it formats everything else.
+clippy and rustfmt, and points `TMPDIR` at the account's runtime tmpfs.
+`cargo test` runs every scenario in about ten seconds there, and the package
+runs them again as it builds, on `/dev/shm`. On Btrfs instead, every pass a
+scenario steps would commit the machine's own disk, or wait for its commit.
+`nix fmt` from the repository root formats the Rust as it formats everything
+else.
 
 - Write a scenario's test first, against the crate's public surface, and see
   it fail on its assertion before making it pass.

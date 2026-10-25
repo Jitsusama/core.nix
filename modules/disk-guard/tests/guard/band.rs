@@ -4,8 +4,19 @@ use disk_guard::units::Size;
 
 const TOTAL: u64 = 1000;
 
+/// Bands of their own, so what these show of bands holds whatever the
+/// defaults are.
+fn bands() -> Bands {
+    Bands {
+        pressure: Size::Percent(15.0),
+        urgent: Size::Percent(8.0),
+        critical: Size::Percent(3.0),
+        target: Size::Percent(20.0),
+    }
+}
+
 fn thresholds() -> Thresholds {
-    Thresholds::new(&Bands::default(), TOTAL)
+    Thresholds::new(&bands(), TOTAL)
 }
 
 fn space(free: u64) -> Space {
@@ -29,7 +40,7 @@ fn shares_resolve_against_the_filesystem() {
 fn bytes_resolve_as_they_are() {
     let bands = Bands {
         urgent: Size::Bytes(100),
-        ..Bands::default()
+        ..bands()
     };
     assert_eq!(Thresholds::new(&bands, TOTAL).urgent, 100);
 }
@@ -42,7 +53,7 @@ fn bands_out_of_order_fold_and_the_target_lies_past_pressure() {
         urgent: Size::Bytes(500),
         critical: Size::Bytes(600),
         target: Size::Bytes(10),
-        ..Bands::default()
+        ..bands()
     };
     let t = Thresholds::new(&bands, TOTAL);
     assert_eq!((t.pressure, t.urgent, t.critical), (150, 150, 150));

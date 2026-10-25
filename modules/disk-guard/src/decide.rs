@@ -129,19 +129,21 @@ const SETTLING: f64 = 600.0;
 /// The battery charge routine work needs off mains, in percent.
 const BATTERY_FLOOR: u8 = 50;
 /// The share of time tasks may stall on the disk or on memory, in
-/// percent over ten seconds, before routine work holds off. Processors
-/// aren't counted: routine work runs at idle priority and yields them.
+/// percent over ten seconds, before work that can be skipped holds off.
+/// Processors aren't counted: such work runs at idle priority and yields
+/// them.
 const STALL_CEILING: f64 = 10.0;
 
 /// Whether the machine can spare routine work: on mains or a battery over
-/// half charged, not saving power, awake for ten minutes, and not stalling
-/// on the disk or memory.
-pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64, pressure: Pressure) -> bool {
+/// half charged, not saving power, and awake for ten minutes. How busy it
+/// is doesn't count, since a workstation that's always busy would never be
+/// tidied; routine passes pace their deletes instead (`pace.rs`).
+pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64) -> bool {
     let settled = awake
         .spans()
         .last()
         .is_some_and(|(start, _)| now - start >= SETTLING);
-    powered(power, saver) && settled && calm(pressure)
+    powered(power, saver) && settled
 }
 
 /// Whether the power allows work that can wait: on mains or a battery
@@ -152,7 +154,7 @@ pub fn powered(power: Power, saver: bool) -> bool {
 }
 
 /// Whether tasks stall on the disk and on memory little enough for work
-/// that can wait.
+/// that can be skipped altogether, such as deduplicating the store.
 pub fn calm(pressure: Pressure) -> bool {
     pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING
 }

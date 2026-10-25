@@ -26,6 +26,9 @@ let
         critical = "10%";
         target = "50%";
       };
+      # Paced as a workstation's is, but resting a second rather than a
+      # commit's thirty, so the test waits on what it proves.
+      pacing.rest = "1s";
       sources = {
         src = {
           kind = "cargo";
@@ -139,6 +142,7 @@ pkgs.testers.runNixOSTest {
               critical = "0%";
               target = "100%";
             };
+            pacing.rest = "1s";
           }
         )
       );

@@ -6,7 +6,7 @@ use crate::anchor::Dir;
 use crate::band::{Band, Space, Thresholds};
 use crate::clock::Tick;
 use crate::config::{Config, Source};
-use crate::decide::{Decision, Fill, Situation, decide, powered, spare};
+use crate::decide::{Decision, Fill, Situation, calm, decide, powered, spare};
 use crate::dedupe::{self, Deduped};
 use crate::discover;
 use crate::finished::{self, Answers, Predicate};
@@ -16,6 +16,7 @@ use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::opens::Seen;
+use crate::pace::{Monotonic, Pacer, Probe};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::{Candidate, Class};
 use crate::pool::pool;
@@ -26,7 +27,7 @@ use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::{Size, float, whole};
 use crate::writers::{self, Frozen, Writers};
 use serde::Serialize;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
@@ -57,9 +58,6 @@ struct Watched {
     /// After a pass that fell short: no other until this monotonic time,
     /// unless the band gets worse than it was.
     rest: Option<Rest>,
-    /// When a pass short of its target first gave way to a busy machine,
-    /// in monotonic time, until one doesn't or the disk is healthy.
-    giving_way: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -82,11 +80,6 @@ fn longest_rest(band: Band) -> f64 {
         _ => 900.0,
     }
 }
-
-/// How long passes short of their target give way to a busy machine
-/// before one doesn't: a machine building all night is always busy, and a
-/// disk under pressure that's left to fall to urgent is worse for it.
-const PATIENCE: f64 = 1200.0;
 
 /// How long a pass is assumed to take before one has been timed.
 const FIRST_PASS_SECONDS: f64 = 60.0;
@@ -179,13 +172,11 @@ type DedupeOut = (f64, Arc<AtomicBool>, Receiver<Result<Option<u64>, String>>);
 const GENERATIONS: &str = "generations";
 const YOUNG_GENERATIONS: &str = "generations:young";
 /// How old Nix's garbage listing may grow on a healthy disk before a spare
-/// moment lists it again, as often as upkeep comes; how old before it's
-/// listed however busy the machine, which one building all day always is;
-/// and how old under pressure. Then how long a listing that failed waits
-/// for the next, on a healthy disk and under pressure, where a listing is
-/// all garbage can be collected by.
+/// moment lists it again, as often as upkeep comes, and how old under
+/// pressure. Then how long a listing that failed waits for the next, on a
+/// healthy disk and under pressure, where a listing is all garbage can be
+/// collected by.
 const LISTING_FRESH: f64 = 6.0 * 3600.0;
-const LISTING_STALE: f64 = 86400.0;
 const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
@@ -699,13 +690,7 @@ impl Guard {
         self.mark(tick);
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
-        let spare_moment = spare(
-            senses.power,
-            senses.saver,
-            &self.memory.awake,
-            tick.wall,
-            senses.pressure,
-        );
+        let spare_moment = spare(senses.power, senses.saver, &self.memory.awake, tick.wall);
         let mut due = Vec::new();
         for (&device, watched) in &mut self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
@@ -718,7 +703,6 @@ impl Guard {
             watched.space = Some(space);
             if watched.band == Band::Healthy {
                 watched.rest = None;
-                watched.giving_way = None;
             }
             let decision = decide(&Situation {
                 band: watched.band,
@@ -742,11 +726,17 @@ impl Guard {
                 due.push((device, decision, thresholds));
             }
         }
-        self.list_garbage(tick.wall, spare_moment, powered(senses.power, senses.saver));
-        self.dedupe(tick, spare_moment, powered(senses.power, senses.saver))?;
+        self.list_garbage(tick.wall, spare_moment);
+        // Deduplicating reads every file not yet linked and relinks its
+        // twins, and nothing is lost by putting it off, so it alone still
+        // waits for a calm disk.
+        let calm_moment = spare_moment && calm(senses.pressure);
+        self.dedupe(tick, calm_moment, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let passed = !due.is_empty();
         if passed {
+            // So a pass's heartbeat starts from what the disks are now.
+            self.write_status(tick.wall)?;
             self.passes(tick, &due)?;
         }
         let frozen = self.memory.frozen.len();
@@ -939,7 +929,7 @@ impl Guard {
     /// hours on at a spare moment, or a day on whenever there's power, at
     /// idle priority; and at once when the store's filesystem is under
     /// pressure and the listing is an hour old.
-    fn list_garbage(&mut self, now: f64, spare: bool, powered: bool) {
+    fn list_garbage(&mut self, now: f64, spare: bool) {
         if self.listing_out.is_some() {
             return;
         }
@@ -962,7 +952,7 @@ impl Guard {
                 && if pressed {
                     listed >= LISTING_PRESSED
                 } else {
-                    spare && listed >= LISTING_FRESH || powered && listed >= LISTING_STALE
+                    spare && listed >= LISTING_FRESH
                 };
         if !due {
             return;
@@ -1264,7 +1254,6 @@ impl Guard {
                 fill: Fill::default(),
                 space: None,
                 rest: None,
-                giving_way: None,
             });
             seen.insert(device, watched);
         }
@@ -1390,27 +1379,15 @@ impl Guard {
         };
         let started = Instant::now();
         let gentle = band < Band::Urgent;
-        let giving_way = self
-            .watched
-            .get(&device)
-            .and_then(|watched| watched.giving_way);
-        let patient = goal == Goal::Upkeep
-            || giving_way.is_none_or(|since| tick.monotonic - since < PATIENCE);
-        let pressure = self.processes.join("pressure");
-        let reclaimer = Reclaim::new(here, scan).during(band);
+        let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
+        let reclaimer = Reclaim::new(here, scan)
+            .during(band)
+            .paced(Rc::clone(&pacer));
         let mut reclaim = Journaled {
-            inner: Yielding {
-                inner: if gentle {
-                    reclaimer.gently()
-                } else {
-                    reclaimer
-                },
-                busy: move || {
-                    gentle
-                        && patient
-                        && !crate::decide::calm(crate::sys::pressure(&pressure).unwrap_or_default())
-                },
-                yielded: false,
+            inner: if gentle {
+                reclaimer.gently()
+            } else {
+                reclaimer
             },
             journal: &mut self.journal,
             roots: here
@@ -1420,8 +1397,12 @@ impl Guard {
             at: tick.wall,
             band,
         };
+        // A pass that can wait waits for the filesystem's own commits; one
+        // that can't asks for them.
+        let disk = Filesystem::new(&path);
+        let mut disk = if gentle { disk.patient() } else { disk };
         let report = pass(
-            &mut Filesystem::new(&path),
+            &mut disk,
             &mut reclaim,
             &candidates,
             &thresholds,
@@ -1429,19 +1410,13 @@ impl Guard {
             goal,
             &mut self.memory.learned,
         );
-        let yielded = reclaim.inner.yielded;
-        if goal == Goal::Reach
-            && let Some(watched) = self.watched.get_mut(&device)
-        {
-            watched.giving_way = yielded.then(|| giving_way.unwrap_or(tick.monotonic));
-        }
         if goal == Goal::Reach {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
                 None => seconds,
             });
-        } else if !yielded {
+        } else {
             self.memory.upkept = Some(tick.wall);
         }
         // Whatever came of it, so a failing command waits its window too.
@@ -1600,6 +1575,74 @@ impl Guard {
         }
     }
 
+    /// The pacer for a pass in `band` on the filesystem at `path`. Below
+    /// urgent it rests between batches, feeling the disk through a probe
+    /// beside the guard's state when that lies on the same filesystem, and
+    /// hurries once the disk falls to urgent; from urgent on it never
+    /// rests. Either keeps the status file's heartbeat.
+    fn pacer(&self, path: &Path, band: Band, thresholds: Thresholds) -> Pacer {
+        let clock = Box::new(Monotonic::new());
+        if band >= Band::Urgent {
+            return Pacer::hurried(clock, self.beat());
+        }
+        let watched = path.to_owned();
+        let pressed = move || {
+            crate::sys::space(&watched)
+                .is_ok_and(|space| thresholds.band(&space, band) >= Band::Urgent)
+        };
+        Pacer::paced(
+            self.config.pacing,
+            clock,
+            self.probe(path),
+            self.beat(),
+            Box::new(pressed),
+        )
+    }
+
+    /// A probe in the guard's state directory, when that lies on the same
+    /// filesystem as `path`. Only on Linux: a Mac's sync flushes the drive's
+    /// own cache, which a probe once a second has no business doing.
+    fn probe(&self, path: &Path) -> Option<Box<dyn Probe>> {
+        if cfg!(not(target_os = "linux")) {
+            return None;
+        }
+        let state = self.memory_path.parent()?;
+        if pool(state).ok()? != pool(path).ok()? {
+            return None;
+        }
+        match crate::pace::SyncedWrite::open(state, "probe") {
+            Ok(probe) => Some(Box::new(probe)),
+            Err(error) => {
+                eprintln!("disk-guard: opening its probe: {error}");
+                None
+            }
+        }
+    }
+
+    /// Says the guard is alive while a pass holds it: the status last
+    /// written, with a fresh heartbeat and each filesystem's free space as
+    /// it is now, so the desktop neither calls it silent nor shows stale
+    /// room.
+    fn beat(&self) -> Box<dyn FnMut()> {
+        let (Some(path), Some((_, mut status))) = (self.status_path.clone(), self.written.clone())
+        else {
+            return Box::new(|| {});
+        };
+        Box::new(move || {
+            status.heartbeat = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0.0, |since| since.as_secs_f64());
+            for filesystem in &mut status.filesystems {
+                if let Ok(space) = crate::sys::space(&filesystem.path) {
+                    filesystem.free = space.free;
+                }
+            }
+            if let Err(error) = state::save(&path, &status) {
+                eprintln!("disk-guard: writing its status: {error}");
+            }
+        })
+    }
+
     fn write_status(&mut self, now: f64) -> io::Result<()> {
         let Some(path) = self.status_path.clone() else {
             return Ok(());
@@ -1657,27 +1700,6 @@ fn spoken_for(hearing: Option<&Hearing>, device: u64) -> bool {
             .get(&device)
             .is_some_and(|at| at.elapsed() < SPOKEN_FOR)
     })
-}
-
-/// A reclaimer for a pass that can wait, which gives way once the disk or
-/// memory gets busy, keeping all that's left for a calmer moment. Asked
-/// between candidates, so a delete under way finishes. Urgent and
-/// critical passes never give way, and nor does a pressure pass once
-/// those before it have given way for `PATIENCE`.
-struct Yielding<R, B> {
-    inner: R,
-    busy: B,
-    yielded: bool,
-}
-
-impl<R: Reclaimer, B: FnMut() -> bool> Reclaimer for Yielding<R, B> {
-    fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
-        if self.yielded || (self.busy)() {
-            self.yielded = true;
-            return Outcome::Kept("the machine got busy; left for a calmer moment".to_owned());
-        }
-        self.inner.reclaim(candidate)
-    }
 }
 
 /// Where the filesystem holding `path`, the pool `device`, is mounted:

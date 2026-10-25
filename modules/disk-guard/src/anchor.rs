@@ -82,7 +82,13 @@ impl Detached<'_> {
     /// followed, and a read-only directory is made writable first, since
     /// the guard only ever empties a trash its own account owns.
     pub fn empty(self) -> io::Result<()> {
-        remove(self.dir, &self.name, 0)
+        self.empty_paced(&mut || {})
+    }
+
+    /// Empties the trash as `empty` does, calling `unlinked` after each
+    /// entry goes, so a pacer can rest between batches.
+    pub fn empty_paced(self, unlinked: &mut dyn FnMut()) -> io::Result<()> {
+        remove(self.dir, &self.name, 0, unlinked)
     }
 }
 
@@ -97,18 +103,25 @@ fn rename(from: &Dir, name: &OsStr, to: &Dir, new: &OsStr) -> io::Result<()> {
 }
 
 /// Removes one entry of `parent`, all the way down, never leaving its
-/// filesystem. Whatever vanishes on the way was already gone.
-fn remove(parent: &Dir, name: &OsStr, depth: usize) -> io::Result<()> {
-    let gone = |result: Result<(), Errno>| match result {
-        Err(Errno::NOENT) => Ok(()),
-        other => other.map_err(io::Error::from),
+/// filesystem. Whatever vanishes on the way was already gone. Each unlink
+/// is told to `unlinked` once it's made.
+fn remove(parent: &Dir, name: &OsStr, depth: usize, unlinked: &mut dyn FnMut()) -> io::Result<()> {
+    let gone = |result: Result<(), Errno>, unlinked: &mut dyn FnMut()| {
+        unlinked();
+        match result {
+            Err(Errno::NOENT) => Ok(()),
+            other => other.map_err(io::Error::from),
+        }
     };
     let stat = match rustix::fs::statat(&parent.fd, name, AtFlags::SYMLINK_NOFOLLOW) {
         Err(Errno::NOENT) => return Ok(()),
         other => other?,
     };
     if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
-        return gone(rustix::fs::unlinkat(&parent.fd, name, AtFlags::empty()));
+        return gone(
+            rustix::fs::unlinkat(&parent.fd, name, AtFlags::empty()),
+            unlinked,
+        );
     }
     if stat.st_dev != parent.dev {
         return Err(io::Error::new(
@@ -125,14 +138,17 @@ fn remove(parent: &Dir, name: &OsStr, depth: usize) -> io::Result<()> {
     };
     let mut failed = None;
     for entry in child.names()? {
-        if let Err(error) = remove(&child, OsStr::from_bytes(&entry), depth + 1) {
+        if let Err(error) = remove(&child, OsStr::from_bytes(&entry), depth + 1, unlinked) {
             failed.get_or_insert(error);
         }
     }
     drop(child);
     match failed {
         Some(error) => Err(error),
-        None => gone(rustix::fs::unlinkat(&parent.fd, name, AtFlags::REMOVEDIR)),
+        None => gone(
+            rustix::fs::unlinkat(&parent.fd, name, AtFlags::REMOVEDIR),
+            unlinked,
+        ),
     }
 }
 
@@ -249,7 +265,17 @@ impl Dir {
 
     /// Removes one entry all the way down, as emptying a trash does.
     pub(crate) fn remove_entry(&self, name: &OsStr) -> io::Result<()> {
-        remove(self, name, 0)
+        remove(self, name, 0, &mut || {})
+    }
+
+    /// Removes one entry all the way down, calling `unlinked` after each
+    /// entry goes.
+    pub(crate) fn remove_entry_paced(
+        &self,
+        name: &OsStr,
+        unlinked: &mut dyn FnMut(),
+    ) -> io::Result<()> {
+        remove(self, name, 0, unlinked)
     }
 
     /// Removes a directory only if nothing is in it: true if it went.

@@ -1,5 +1,5 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{boot, btrfs_allocation, patiently, power, pressure, settle, space, tick};
+use disk_guard::linux::{boot, btrfs_allocation, patiently, power, pressure, space, tick};
 use disk_guard::moments::{Power, Stall};
 use std::cell::Cell;
 use std::fs;
@@ -116,40 +116,6 @@ fn space_reads_the_filesystem_a_path_is_on() {
     } else if !btrfs {
         assert_eq!(space.btrfs, None);
     }
-}
-
-#[test]
-fn settling_shows_what_a_delete_freed() {
-    let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
-    let file = dir.path().join("noise");
-    let mut state: u64 = 0x2545_f491_4f6c_dd1d;
-    let data: Vec<u8> = (0..256 * MIB)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            crate::low_byte(state)
-        })
-        .collect();
-    // The filesystem is shared with whatever else the machine is writing,
-    // which can use up some of the freed space between the two readings,
-    // so the best of three tries counts. Without settling, none shows.
-    let mut best = 0;
-    for _ in 0..3 {
-        // What the guard deletes has long been written out, as this has
-        // once synced; data still in memory is accounted for differently.
-        fs::write(&file, &data).unwrap();
-        fs::File::open(&file).unwrap().sync_all().unwrap();
-        settle(dir.path()).unwrap();
-        let before = space(dir.path()).unwrap().free;
-        fs::remove_file(&file).unwrap();
-        settle(dir.path()).unwrap();
-        best = best.max(space(dir.path()).unwrap().free.saturating_sub(before));
-        if best >= 200 * MIB {
-            break;
-        }
-    }
-    assert!(best >= 200 * MIB, "only {} MiB showed as freed", best / MIB);
 }
 
 #[test]

@@ -174,8 +174,11 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             _ => (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE]),
         },
         _ if tree && candidate.spent => (Group::Waste, [AT_ONCE; 4]),
-        Class::Target => (Group::Idle, [NEVER, hours(6.0), hours(2.0), AT_ONCE]),
-        Class::Install => (Group::Idle, [NEVER, NEVER, hours(2.0), AT_ONCE]),
+        // Even a healthy disk sheds a build or an install nobody has used
+        // for a week or two of awake time: one wanted again costs a build,
+        // and keeping every one ever made is how a disk fills.
+        Class::Target => (Group::Idle, [days(7.0), hours(6.0), hours(2.0), AT_ONCE]),
+        Class::Install => (Group::Idle, [days(14.0), days(3.0), hours(2.0), AT_ONCE]),
         Class::Variant => (
             Group::Variants,
             [days(7.0), days(1.0), hours(2.0), hours(2.0)],
@@ -205,10 +208,15 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         Class::Coredump if candidate.idle < DAY => {
             (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE])
         }
-        Class::Coredump => (Group::Waste, [NEVER, NEVER, days(1.0), AT_ONCE]),
+        Class::Coredump => (Group::Waste, [days(7.0), days(3.0), days(1.0), AT_ONCE]),
         Class::Replaced => (
             Group::Replaced,
-            [NEVER, Some(DAY + HOUR), Some(DAY + HOUR), Some(DAY + HOUR)],
+            [
+                Some(3.0 * DAY),
+                Some(DAY + HOUR),
+                Some(DAY + HOUR),
+                Some(DAY + HOUR),
+            ],
         ),
         // Their own policies decide how much each takes.
         // What's young and within budget waits for pressure.
