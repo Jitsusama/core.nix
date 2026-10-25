@@ -180,8 +180,14 @@ const LISTING_FRESH: f64 = 6.0 * 3600.0;
 const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
-/// The most paths deleted in one go, so one refused path costs little.
-const MOST_PER_BATCH: usize = 300;
+/// The most paths deleted in one go. Each delete costs Nix a whole look
+/// for roots, most of a second on a busy machine, which batches of 300 paid
+/// almost twice a second, most of a core, while a backlog drained. Nix
+/// deletes nothing of a batch it refuses, so a smaller one saves nothing
+/// then, and paths something holds are left out before it's made. Its
+/// arguments, at most about 500 kB however long the names, stay under the
+/// megabyte a Mac's command line carries.
+const MOST_PER_BATCH: usize = 2000;
 /// How long a user daemon waits for the system daemon to hear its
 /// heartbeat.
 const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
