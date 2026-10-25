@@ -60,6 +60,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
 | BIOS     | the thermal mode and four other settings held where they were chosen   |
 | Wi-Fi    | runs as Wi-Fi 6; see below                                             |
+| Devices  | each one Windows binds a driver to, named by device-check if it's gone |
 
 ### The CVS Patch
 
