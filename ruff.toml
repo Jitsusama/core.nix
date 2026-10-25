@@ -26,6 +26,11 @@ ignore = [
 # A test's name is the sentence it proves, so a docstring would repeat it,
 # and a test says what has to hold with assert, which is never run with -O.
 "*-test.py" = ["D103", "S101"]
+# A unittest suite, named test_*.py as unittest finds them, says what has to
+# hold through its TestCase's assertions, since that's how unittest reports
+# what each side held. Repositories built on core read this file too, and
+# may keep such a suite until it moves to pytest.
+"test_*.py" = ["PT009", "PT027"]
 # A VM test's script imports the driver's names only for type checkers
 # (driver_names.pyi), since the driver gives them to it as globals. The
 # driver's retry hands each try whether it's the last as a plain positional
