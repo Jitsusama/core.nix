@@ -26,13 +26,8 @@
 }:
 let
   truetype = "${pkgs.mona-sans}/share/fonts/truetype";
-  account = if options ? jitsusama.login.account then config.jitsusama.login.account else null;
-  home =
-    if account != null && options ? home-manager then
-      config.home-manager.users.${account} or null
-    else
-      null;
-  font = lib.attrByPath [ "jitsusama" "theme" "font" ] null home;
+  inherit (import ../greetd/account.nix { inherit config lib options; }) theme;
+  font = lib.attrByPath [ "font" ] null theme;
   # The faces a page names for a Mac's system font and its monospaced one.
   macNames = {
     sans = [

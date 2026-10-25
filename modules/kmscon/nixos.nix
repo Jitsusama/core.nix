@@ -30,13 +30,7 @@
 let
   cfg = config.jitsusama.kmscon;
 
-  account = if options ? jitsusama.login.account then config.jitsusama.login.account else null;
-  home =
-    if account != null && options ? home-manager then
-      config.home-manager.users.${account} or null
-    else
-      null;
-  theme = lib.attrByPath [ "jitsusama" "theme" ] null home;
+  inherit (import ../greetd/account.nix { inherit config lib options; }) theme;
 
   repeat = import ../keyboard/repeat.nix;
 
