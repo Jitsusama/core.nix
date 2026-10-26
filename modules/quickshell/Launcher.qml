@@ -1209,7 +1209,7 @@ Scope {
             });
         const source = collections.find(one => one.settings.name === id);
         if (!source)
-            return null;
+            return answerPlace(id);
         const row = whole(source, false, false);
         // In Now, what waits on Joel leads, named by the first of it, since
         // it's the one thing there only he can move; the rest follow by name.
@@ -1223,6 +1223,33 @@ Scope {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
         });
+    }
+
+    // A place that's one answer, as Disk is: named as the vocabulary names
+    // it, what it says now after its name, and its parts a step in. Until
+    // the machine can say, as before its first reading is back, it's there
+    // by name with nothing after it, so home never gains a row while it's
+    // open, and Return leaves it open rather than closing on nothing.
+    function answerPlace(id) {
+        const entry = Words.of(id);
+        if (!entry.name)
+            return null;
+        const row = resolved(id);
+        if (row)
+            return Object.assign({}, row, { name: entry.name, count: row.side ?? "", side: "" });
+        return {
+            key: `place:${id}`,
+            name: entry.name,
+            glyph: Words.glyph(id),
+            hue: "voice",
+            plain: true,
+            chord: [],
+            side: "",
+            count: "",
+            verb: "open",
+            stays: true,
+            run: () => {}
+        };
     }
 
     // A collection as one row at home: Return or the right arrow opens all

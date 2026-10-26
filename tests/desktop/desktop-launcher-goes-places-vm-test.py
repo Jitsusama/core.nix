@@ -927,7 +927,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
     # the approved proposal gives them.
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
+    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Disk", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:

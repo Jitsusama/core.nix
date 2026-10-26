@@ -242,9 +242,8 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    assert rows == ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"], (
-        rows
-    )
+    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Disk", "Keyboard"]
+    assert rows == home, rows
     # A page down stops on the last.
     machine.send_key("pgdn")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keyboard")
