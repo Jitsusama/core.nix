@@ -1,12 +1,12 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
-// What the agents have waiting on Joel. The agent steering the others, the
-// steward, keeps one file of what
+// What the agents have waiting on Joel. The orchestrator, the session
+// handing out the others' work, keeps one file of what
 // waits on him, ~/.local/state/mission/queue.json, and each quest keeps its
 // own beside it, waiting/<quest>.json, each replaced whole as it changes:
-// the steward's address and each item's title, why it waits, how many
+// the orchestrator's address and each item's title, why it waits, how many
 // minutes it takes, when, the title of the window it's done in (or none,
-// when it's done with the steward itself), its quest, and whether Joel can
+// when it's done with the orchestrator itself), its quest, and whether Joel can
 // do it now. An item that can be done now is said once as a notice, the
 // moment it's heard, and remembered as said across restarts, so the
 // agents never have to wait on a turn to tell him. All of it is heard
@@ -26,12 +26,16 @@ Singleton {
     readonly property string queue: `${state}/mission/queue.json`
     readonly property string quests: `${state}/mission/waiting`
 
-    // The steward's file as written, or null when there's none that reads.
+    // The orchestrator's file as written, or null when there's none that reads.
     property var said: null
     // Each quest's file as written, by its path.
     property var kept: ({})
-    // The steward's address, whose window an item with none is done in.
-    readonly property string steward: typeof said?.steward === "string" ? said.steward : ""
+    // The orchestrator's address, whose window an item with none is done
+    // in. The file said "steward" before the harness named it orchestrator
+    // (RSCH-20261025-JQ4RZG), and either is read until every writer says
+    // the new.
+    readonly property string orchestrator: [said?.orchestrator, said?.steward]
+        .find(address => typeof address === "string") ?? ""
 
     // A file's items, each with a title and the quest it's from: the
     // item's own, else the file's, else the file's name.
@@ -46,11 +50,11 @@ Singleton {
             }));
     }
 
-    // What waits on Joel: the steward's first, in its order, then each
-    // quest's, by its file's name, so the first is the steward's choice.
+    // What waits on Joel: the orchestrator's first, in its order, then each
+    // quest's, by its file's name, so the first is the orchestrator's choice.
     readonly property var items: Object.keys(kept).sort().reduce((all, path) => all.concat(
         itemsOf(kept[path], path.replace(/^.*\//, "").replace(/\.json$/, ""))),
-        itemsOf(said, steward))
+        itemsOf(said, orchestrator))
     // The first Joel can do now, or else the first.
     readonly property var foremost: items.find(item => item.ready) ?? items[0] ?? null
 
@@ -70,15 +74,15 @@ Singleton {
         return `${item.quest}:${item.id ?? item.title}`;
     }
 
-    // The steward's own session, by its address or another it answers to.
+    // The orchestrator's own session, by its address or another it answers to.
     function session() {
-        const presence = Sessions.present[steward] ?? null;
-        return Sessions.running.find(one => one.address === steward
+        const presence = Sessions.present[orchestrator] ?? null;
+        return Sessions.running.find(one => one.address === orchestrator
             || (presence !== null && one.presence === presence)) ?? null;
     }
 
     // Where an item is done: the window it names, by its title, or the
-    // steward's own when it names none; null when neither is open.
+    // orchestrator's own when it names none; null when neither is open.
     function windowOf(item) {
         const titled = typeof item.window === "string" && item.window !== ""
             ? Object.values(Niri.windows).find(window => window.title === item.window) : undefined;
