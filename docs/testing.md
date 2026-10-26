@@ -17,11 +17,14 @@ subtests it touches. `changed-checks`, in the dev shell, finds them all: it
 evaluates every check at the change's merge base with origin's main and in
 the working tree, and names each whose derivation was added, changed or
 removed, or no longer evaluates. A check whose derivation is the same
-proves what it proved before, so `--build` builds only the others, and
+proves what it proved before, so only the others need building, and
 `--no-vm` leaves out the VM tests, for `run-subtests` to take a piece of.
-`nix flake check` runs once, before pushing, not after each edit: on a
-machine shared with other work, a whole run each time is what makes the
-loop slow, and the load it adds is what makes VM tests time out.
+Build what it names as a command of its own rather than with `--build`: a
+queue that lets short builds go first sees a build of named checks, and
+sees `--build` only as one long command. `nix flake check` runs only for a
+change every check reads, such as `flake.lock`: on a machine shared with
+other work, a whole run is what makes the loop slow, and the load it adds
+is what makes VM tests time out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
@@ -45,9 +48,12 @@ where it is, with its reason: `#[expect(..., reason = ...)]` in Rust, a
 `biome-ignore` comment in JavaScript, `qmllint disable` in QML.
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
-didn't change, so a change pays only for the checks it can affect. With the
-builds already done, what's left is evaluation, under a minute on a 16-core
-laptop busy with other builds.
+didn't change, so a change pays only for the builds it can affect. It still
+evaluates every check, and that is what a whole run costs: on 2026-10-25 the
+305 checks took 1,006 s to evaluate uncached and 771 s from Nix's
+evaluation cache, on a 16-core laptop busy with other builds, and one run
+held 24.5 GB. `changed-checks` keeps the base's derivations, so it pays for
+one evaluation, the working tree's.
 
 `--keep-going` lets every check finish when one fails, so the run names all
 the failures rather than the first. Determinate Nix needs it besides: when a

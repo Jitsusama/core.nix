@@ -151,8 +151,8 @@ is installed system-wide only when it's worth having outside any project.
 
 ## Checks Before Switches
 
-Nothing is applied to a machine until `nix flake check` passes locally, which
-is the only place the checks run. Before switching, compare what changes:
+Nothing is applied to a machine until the checks its change touched pass
+locally, which is the only place the checks run. Before switching, compare what changes:
 
 ```sh
 nix store diff-closures /run/current-system ./result
