@@ -1509,7 +1509,12 @@ Scope {
                 list.positionViewAtBeginning();
             return;
         }
+        // What the search spends its time on, said with a key that's slow
+        // (Trials.qml): every collection searched, every row matched, then
+        // the answers and the list made of them.
+        const began = Date.now();
         gathered = gathering(letters);
+        const listed = Date.now();
         latch = "";
         foundHere = {};
         if (words.length === 0) {
@@ -1584,8 +1589,36 @@ Scope {
                 kept: !!learned[f.choice.key]
             }, f.choice));
         }
+        const matched = Date.now();
         compose(true);
         list.positionViewAtBeginning();
+        searchParts = { lists: listed - began, rows: matched - listed,
+            answers: Date.now() - matched };
+    }
+
+    // What the last search at the top level spent its time on, or null for
+    // one inside a step.
+    property var searchParts: null
+
+    // Times each key from its search to the first frame shown after it,
+    // the one its new rows are in: the window says when a frame's been
+    // swapped onto the screen, and it's listened to only while a key waits
+    // for one.
+    property bool keyWaits: false
+    property real keyBegan: 0
+    property real keySearched: 0
+    property string keyText: ""
+
+    function keyTimed(typed, began) {
+        keyBegan = began;
+        keySearched = Date.now() - began;
+        keyText = typed;
+        keyWaits = true;
+    }
+
+    function keyDrawn() {
+        keyWaits = false;
+        trials.timed(keySearched, Date.now() - keyBegan, searchParts, keyText);
     }
 
     onCurrentChanged: {
@@ -1954,6 +1987,15 @@ Scope {
         WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
 
+        Connections {
+            target: card.Window.window
+            enabled: root.keyWaits
+
+            function onFrameSwapped() {
+                root.keyDrawn();
+            }
+        }
+
         Floating {
             id: card
             x: reach
@@ -2005,7 +2047,11 @@ Scope {
                         leftClears: true
                         onTextChanged: {
                             trials.retyped(root.typed, text);
+                            const began = Date.now();
+                            root.searchParts = null;
                             root.search(text);
+                            if (!root.asking)
+                                root.keyTimed(text, began);
                         }
                         onAccepted: below => {
                             trials.pressed("returns");

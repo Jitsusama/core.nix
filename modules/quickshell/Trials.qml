@@ -34,6 +34,18 @@ Scope {
         trial = Trials.retyped(trial, was, now);
     }
 
+    // One key's search and the time to the frame that drew it, and what the
+    // search spent its time on. A key slow enough to feel is said in the
+    // journal too, with what was typed, so what's slow can be read as Joel
+    // types. Nothing asked for, such as a password, is ever timed.
+    function timed(searched, drawn, parts, typed) {
+        trial = Trials.timed(trial, searched, drawn, parts);
+        if (Trials.felt(drawn))
+            console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
+                + " searching" + (parts ? ` (lists ${parts.lists}, rows ${parts.rows},`
+                    + ` answers ${parts.answers})` : ""));
+    }
+
     function picked(row, typed, depth) {
         trial = Trials.picked(trial, Date.now(), row, { typed: typed, depth: depth });
     }

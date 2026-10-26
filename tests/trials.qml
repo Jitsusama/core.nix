@@ -68,6 +68,25 @@ QtObject {
         expect("the last pick kept", deeper.picked === "wifi:home" && deeper.depth === 1
             && deeper.ms === 30, JSON.stringify(deeper));
 
+        // Each key's search and frame are summed and their worst kept, and a
+        // key slow enough to feel is kept with what took its time.
+        let keyed = Trials.timed(Trials.begun(0, "today"), 2, 5, null);
+        keyed = Trials.timed(keyed, 14, 20, { lists: 11, rows: 2, answers: 1 });
+        expect("keys timed", keyed.timed.count === 2 && keyed.timed.searched === 16
+            && keyed.timed.searchedMost === 14 && keyed.timed.drawn === 25
+            && keyed.timed.drawnMost === 20, JSON.stringify(keyed.timed));
+        expect("the felt key kept with its parts", keyed.timed.felt.length === 1
+            && keyed.timed.felt[0].parts.lists === 11 && keyed.timed.felt[0].drawn === 20,
+            JSON.stringify(keyed.timed.felt));
+        expect("a frame's worth isn't felt", !Trials.felt(8) && Trials.felt(9), "felt");
+        let many = Trials.begun(0, "today");
+        for (let key = 0; key < 30; key += 1)
+            many = Trials.timed(many, 20, 30, null);
+        expect("only the first felt keys kept", many.timed.felt.length === 20
+            && many.timed.count === 30, many.timed.felt.length);
+        expect("a trial from before the timing",
+            Trials.timed({ keys: {} }, 1, 2, null).timed.count === 1, "lost");
+
         // The oldest go once there are too many; none while there aren't.
         const three = Trials.kept(Trials.kept(Trials.kept([], { at: 1 }, 2), { at: 2 }, 2),
             { at: 3 }, 2);
