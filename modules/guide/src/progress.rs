@@ -2,9 +2,11 @@
 //! as it moves bytes, and the screen reads it once a second, from another
 //! thread, to say how much is done, how fast, and how long is left. A step
 //! that moves nothing it can count is still said to be running, and for
-//! how long, so a wait never looks like a hang. How fast is over the last
-//! few seconds, so a step that slows down says so rather than showing an
-//! average that drifts.
+//! how long, so a wait never looks like a hang. How fast, and so how long
+//! is left, is over the last minute: long enough to span a disk taking
+//! what's written in bursts as its cache fills and empties, and short
+//! enough that a step that slows down says so rather than showing an
+//! average that drifts. A step that stops for ten seconds says so at once.
 
 use std::collections::VecDeque;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -29,23 +31,56 @@ struct Reading {
     looked: VecDeque<(Instant, u64)>,
 }
 
-/// How far back the pace is reckoned from.
+/// How far back a step is seen to have stopped.
 const PACE: Duration = Duration::from_secs(10);
 
-/// Bytes a second over the last `PACE`, from what was done each time it
-/// was looked at, which keeps what it needs; none until there's a second
-/// to go by.
-fn pace(looked: &mut VecDeque<(Instant, u64)>, now: Instant, done: u64) -> Option<f64> {
+/// How far back how fast it goes, and how long is left, is reckoned from.
+/// A copy under load reckoned over only `PACE` said 2 hours 20 minutes
+/// left, then 21 minutes, then about a minute, within 30 seconds.
+const STEADY: Duration = Duration::from_secs(60);
+
+/// Bytes a second, over the last `PACE` and the last `STEADY`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Pace {
+    lately: f64,
+    steadily: f64,
+}
+
+impl Pace {
+    /// One rate, for a reckoning with nothing but an average to go by.
+    fn even(rate: f64) -> Pace {
+        Pace {
+            lately: rate,
+            steadily: rate,
+        }
+    }
+}
+
+/// The pace from what was done each time it was looked at, which keeps
+/// what it needs; none until there's a second to go by.
+fn pace(looked: &mut VecDeque<(Instant, u64)>, now: Instant, done: u64) -> Option<Pace> {
     looked.push_back((now, done));
     while looked
         .get(1)
-        .is_some_and(|(then, _)| now.duration_since(*then) >= PACE)
+        .is_some_and(|(then, _)| now.duration_since(*then) >= STEADY)
     {
         looked.pop_front();
     }
-    let (then, was) = *looked.front()?;
-    let over = now.duration_since(then).as_secs_f64();
-    (over >= 1.0).then(|| approximately(done.saturating_sub(was)) / over)
+    let over = |(then, was): (Instant, u64)| {
+        let over = now.duration_since(then).as_secs_f64();
+        (over >= 1.0).then(|| approximately(done.saturating_sub(was)) / over)
+    };
+    // The newest look at least `PACE` back, or the oldest kept.
+    let lately = looked
+        .iter()
+        .rev()
+        .find(|(then, _)| now.duration_since(*then) >= PACE)
+        .or(looked.front())
+        .copied()?;
+    Some(Pace {
+        lately: over(lately)?,
+        steadily: over(*looked.front()?)?,
+    })
 }
 
 /// A count of bytes as a float, for the rates and units a person reads
@@ -163,7 +198,7 @@ impl Meter {
         match reading.stage {
             Some((stage, since)) => {
                 let pace = match pace {
-                    Some(rate) => told(reading.done, reading.total, Some(rate)),
+                    Some(pace) => told(reading.done, reading.total, Some(pace)),
                     None => said(reading.done, reading.total, elapsed(Some(since))),
                 };
                 // Before a byte of it is counted, how long the whole step has
@@ -176,7 +211,7 @@ impl Meter {
                 format!("{stage}: {}", lowered(&pace))
             }
             None => match pace {
-                Some(rate) if reading.done > 0 => told(reading.done, reading.total, Some(rate)),
+                Some(pace) if reading.done > 0 => told(reading.done, reading.total, Some(pace)),
                 _ => said(reading.done, reading.total, elapsed(reading.started)),
             },
         }
@@ -285,23 +320,22 @@ pub fn said(done: u64, total: Option<u64>, elapsed: Duration) -> String {
         return format!("Running for {}", duration(elapsed));
     }
     let rate = (elapsed.as_secs_f64() >= 1.0).then(|| approximately(done) / elapsed.as_secs_f64());
-    told(done, total, rate)
+    told(done, total, rate.map(Pace::even))
 }
 
-/// How far along, and at `rate` bytes a second how fast and how long is
-/// left.
-fn told(done: u64, total: Option<u64>, rate: Option<f64>) -> String {
+/// How far along, and at its pace how fast and how long is left.
+fn told(done: u64, total: Option<u64>, pace: Option<Pace>) -> String {
     let mut parts = vec![match total {
         Some(total) => format!("{} of {}", bytes(done), bytes(total.max(done))),
         None => format!("{} so far", bytes(done)),
     }];
-    match rate.filter(|rate| rate.is_finite()) {
-        // Nothing moved over the pace's whole span, as while a step closes
-        // what it wrote: how long is left can't be reckoned from that.
-        Some(rate) if rate < 1.0 => {
+    match pace.filter(|pace| pace.lately.is_finite() && pace.steadily.is_finite()) {
+        // Nothing moved over the last `PACE`, as while a step closes what
+        // it wrote: how long is left can't be reckoned from that.
+        Some(pace) if pace.lately < 1.0 => {
             parts.push(format!("nothing more in the last {}", duration(PACE)));
         }
-        Some(rate) => {
+        Some(Pace { steadily: rate, .. }) => {
             parts.push(format!("{} a second", bytes(whole(rate))));
             // A pace from under a hundredth of the work says nothing of
             // the rest, as a copy's slow start said 72 hours for five
@@ -413,11 +447,15 @@ mod tests {
         // A copy off a stick starts slowly while nix lists what it has to
         // copy: 575 KB in 20 seconds of 7.8 GB said 72 hours left.
         assert_eq!(
-            told(575_000, Some(7_800_000_000), Some(30_000.0)),
+            told(575_000, Some(7_800_000_000), Some(Pace::even(30_000.0))),
             "575 KB of 7.8 GB, 30 KB a second"
         );
         assert_eq!(
-            told(78_000_000, Some(7_800_000_000), Some(22_000_000.0)),
+            told(
+                78_000_000,
+                Some(7_800_000_000),
+                Some(Pace::even(22_000_000.0))
+            ),
             "78.0 MB of 7.8 GB, 22.0 MB a second, about 6 minutes left"
         );
     }
@@ -439,12 +477,12 @@ mod tests {
     }
 
     #[test]
-    fn the_pace_is_the_last_few_seconds_not_the_whole_stage() {
+    fn the_pace_is_the_last_minute_not_the_whole_stage() {
         let start = Instant::now();
         let mut looked = VecDeque::new();
         let mut paced = None;
         // 100 MB a second for five seconds, then 1 MB a second.
-        for second in 0..=20u64 {
+        for second in 0..=80u64 {
             let done = if second <= 5 {
                 second * 100_000_000
             } else {
@@ -453,21 +491,80 @@ mod tests {
             paced = pace(&mut looked, start + Duration::from_secs(second), done);
         }
         let paced = paced.unwrap();
-        assert!(
-            (900_000.0..1_100_000.0).contains(&paced),
-            "{paced} bytes a second"
+        for rate in [paced.lately, paced.steadily] {
+            assert!(
+                (900_000.0..1_100_000.0).contains(&rate),
+                "{rate} bytes a second"
+            );
+        }
+        assert!(looked.len() <= 61, "{} kept", looked.len());
+    }
+
+    #[test]
+    fn a_disk_taking_writes_in_bursts_keeps_a_steady_time_left() {
+        // As a copy under load did: a disk takes what's written in bursts
+        // as its cache fills and empties, here 300 MB a second for 3
+        // seconds in every 30, and 1 MB a second between.
+        let start = Instant::now();
+        let mut looked = VecDeque::new();
+        let mut done = 0u64;
+        let mut lately = vec![];
+        let mut steadily = vec![];
+        for second in 0..=240u64 {
+            done += if second % 30 < 3 {
+                300_000_000
+            } else {
+                1_000_000
+            };
+            let paced = pace(&mut looked, start + Duration::from_secs(second), done);
+            if let Some(paced) = paced.filter(|_| second >= 60) {
+                lately.push(paced.lately);
+                steadily.push(paced.steadily);
+            }
+        }
+        let spread = |rates: &[f64]| {
+            let most = rates.iter().copied().fold(f64::MIN, f64::max);
+            let least = rates.iter().copied().fold(f64::MAX, f64::min);
+            most / least
+        };
+        assert_eq!(
+            steadily.len(),
+            181,
+            "a pace every second from the first minute"
         );
-        assert!(looked.len() <= 11, "{} kept", looked.len());
+        assert!(spread(&lately) > 10.0, "the last seconds swing");
+        assert!(
+            spread(&steadily) < 1.2,
+            "the last minute swings by {}",
+            spread(&steadily)
+        );
+    }
+
+    #[test]
+    fn how_fast_and_how_long_go_by_the_last_minute() {
+        let pace = Pace {
+            lately: 100_000_000.0,
+            steadily: 15_500_000.0,
+        };
+        assert_eq!(
+            told(3_100_000_000, Some(9_500_000_000), Some(pace)),
+            "3.1 GB of 9.5 GB, 15.5 MB a second, about 7 minutes left"
+        );
     }
 
     #[test]
     fn a_pace_that_stopped_says_so_rather_than_a_time_left() {
+        // Stopped for the last ten seconds, though the last minute moved.
+        let stopped = |lately| Pace {
+            lately,
+            steadily: 20_000_000.0,
+        };
         assert_eq!(
-            told(10_000_000_000, Some(10_100_000_000), Some(0.0)),
+            told(10_000_000_000, Some(10_100_000_000), Some(stopped(0.0))),
             "10.0 GB of 10.1 GB, nothing more in the last 10 seconds"
         );
         assert_eq!(
-            told(10_000_000_000, Some(10_100_000_000), Some(1e-300)),
+            told(10_000_000_000, Some(10_100_000_000), Some(stopped(1e-300))),
             "10.0 GB of 10.1 GB, nothing more in the last 10 seconds"
         );
     }
