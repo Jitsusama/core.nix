@@ -1111,7 +1111,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
-    # Power comes first, saying what it holds.
+    # Power comes first, saying what it holds, and Memory is a row of its
+    # own, before Heat, as the processor is.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
@@ -1119,6 +1120,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
                 str(thing["reads"]).startswith("Power \u00b7 Battery, Power profile")
                 for thing in shown["things"]
             )
+            and "Memory" in shown["rows"]
+            and shown["rows"][shown["rows"].index("Memory") + 1 :][:1] == ["Heat"]
         )
     )
     desktop.step_in("ret")

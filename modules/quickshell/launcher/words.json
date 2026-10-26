@@ -56,11 +56,10 @@
       "holds": [
         "energy",
         "bluetooth",
-        "bluetooth:radio",
-        "bluetooth:links",
         "sound",
         "cameras",
         "machine",
+        "machine:memory",
         "heat",
         "jobs"
       ],
@@ -248,6 +247,8 @@
       "id": "machine:memory",
       "name": "Memory",
       "term": "Machine/memory",
+      "provider": "machine",
+      "question": "memory",
       "glyph": "memory",
       "answers": [
         "memory",
@@ -3072,6 +3073,7 @@
     },
     {
       "id": "bluetooth:radio",
+      "in": "bluetooth",
       "name": "Bluetooth off",
       "verb": "off",
       "glyph": "bluetoothOff",
@@ -3085,6 +3087,7 @@
     },
     {
       "id": "bluetooth:links",
+      "in": "bluetooth",
       "name": "Bluetooth performance",
       "provider": "bluetooth",
       "question": "bluetooth performance",
