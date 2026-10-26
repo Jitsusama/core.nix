@@ -822,6 +822,9 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     assert held[0] == "Agents", held
     assert held.index("\u27e8amount\u27e9 \u27e8unit\u27e9 in \u27e8unit\u27e9") > 0, held
     assert held.index("brightness \u27e8percent\u27e9") < held.index("Calls"), held
+    # An answer is named as what it is, what it says beside, so it keeps
+    # its place: the date is Date, never today's date.
+    assert held.index("colour \u27e8colour\u27e9") < held.index("Date"), held
     desktop.photograph("launcher-category")
     desktop.type_in("tas", selecting="Tasks")
     # The left arrow takes what's typed, then steps out with the word
