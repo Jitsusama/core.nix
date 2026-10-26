@@ -98,15 +98,51 @@
         env | sed 's/^/env /' >> "$SAID"
       '';
       program = lib.getExe (import ./claude.nix { inherit pkgs claude; });
+      onOwnLogin = lib.getExe (
+        import ./claude.nix {
+          inherit pkgs claude;
+          ownLogin = true;
+        }
+      );
     in
     assert lib.assertMsg (lib.any (
       package: lib.getName package == "pi-claude"
     ) home.home.packages) "An account with pi doesn't get pi-claude.";
     pkgs.runCommandLocal "pi-claude-keeps-to-the-plan" { } ''
       ${lib.getExe pkgs.bash} ${../../tests/pi-claude-keeps-to-the-plan.sh} ${program} \
-        ${lib.getExe claude}
+        ${lib.getExe claude} ${onOwnLogin}
       touch $out
     '';
+
+  # A machine on the Claude plan has one pi, on it: the provider is an
+  # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
+  # is the one it drives, and there is no pi-claude beside it. The Ask row
+  # follows, on the machine's own login. A work machine has none of this.
+  pi-runs-on-the-machines-plan =
+    let
+      onClaude = account (
+        workstation.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.pi.plan = "claude"; } ];
+        }
+      );
+      onPi = account workstation;
+      names = home: map lib.getName home.home.packages;
+      provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
+    in
+    holds "pi-runs-on-the-machines-plan"
+      "A machine's pi isn't on the plan it names, or a work machine's pi changed."
+      (
+        builtins.pathExists "${provider}/index.ts"
+        && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
+        && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
+        && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
+        && !(lib.elem "pi-claude" (names onClaude))
+        && onClaude.jitsusama.pi.ask.plan == "claude"
+        && !(onPi.home.file ? ".pi/agent/extensions/claude-code")
+        && !(onPi.jitsusama.pi.settings ? defaultProvider)
+        && lib.elem "pi-claude" (names onPi)
+        && onPi.jitsusama.pi.ask.plan == "pi"
+      );
 
   # pi-ask starts pi for the Ask row with nothing loaded but the machine's
   # extensions, on the machine's plan and model: pi's own by default, with

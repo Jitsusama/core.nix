@@ -4,12 +4,15 @@
 # unless a model is asked for, the mesh off, and Claude Code and the plan's
 # own login folder, with nothing in its environment that would bill
 # something other than the plan; `pi-claude login` signs Claude Code in to
-# that folder and nowhere else.
+# that folder and nowhere else. Claude Code's own folder is never named.
+# On a machine whose own login is the plan's, that login is the one read.
 # usage: pi-claude-keeps-to-the-plan.sh <pi-claude> <the stand-in Claude Code>
+#          <pi-claude on the machine's own login>
 set -euo pipefail
 
 program=$1
 claude=$2
+own=$3
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/bin" "$work/home"
@@ -58,3 +61,20 @@ has "arg status"
 has "env CLAUDE_CONFIG_DIR=$HOME/.claude-personal"
 lacks "^env ANTHROPIC_"
 [ -d "$HOME/.claude-personal" ] || fail "login didn't make the plan's login folder"
+
+# A machine whose only login is the plan's names Claude Code's own folder,
+# which is then named to Claude Code not at all, so its own login is read.
+: > "$said"
+PI_CLAUDE_CONFIG_DIR=$HOME/.claude "$program"
+lacks "^env PI_CLAUDE_CODE_CONFIG_DIR="
+lacks "^env CLAUDE_CONFIG_DIR="
+: > "$said"
+PI_CLAUDE_CONFIG_DIR=$HOME/.claude/ "$program" login > /dev/null
+has "arg login"
+lacks "^env CLAUDE_CONFIG_DIR="
+
+: > "$said"
+"$own"
+has "env PI_CLAUDE_CODE_COMMAND=$claude"
+lacks "^env PI_CLAUDE_CODE_CONFIG_DIR="
+lacks "^env CLAUDE_CONFIG_DIR="
