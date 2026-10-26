@@ -1240,9 +1240,9 @@
     sharing one PIN so no boot costs either a try
   '';
   vm-guide-recovers = ''
-    a repair stick finds a machine's disk, opens it with a YubiKey's PIN, mounts it whole, sets
-    which generation boots next, replaces a lost key, reinstalls a boot loader gone from the ESP,
-    and gives a root shell inside
+    a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
+    without changing it, mounts it whole, sets which generation boots next, replaces a lost key,
+    reinstalls a boot loader gone from the ESP, and gives a root shell inside
   '';
   vm-guide-writes-a-stick = ''
     the guide writes a stick as the person, holding the host awake, through UDisks2, unmounting what

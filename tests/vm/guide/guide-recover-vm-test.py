@@ -224,10 +224,14 @@ def test_repair_stick_boots_into_recovery(recovering: QemuMachine) -> None:
 
 
 def test_everything_the_machine_mounts_is_under_mnt(opened: QemuMachine) -> None:
-    """Everything the machine mounts is mounted under /mnt, its disk opened with a key's PIN."""
+    """Everything the machine mounts is under /mnt, its disk opened with a key's PIN and checked."""
     for at in ["/mnt", "/mnt/nix", "/mnt/home", "/mnt/var/log", "/mnt/boot"]:
         opened.succeed(f"findmnt {at}")
     opened.succeed("test -e /mnt/etc/NIXOS")
+    # Checked before it was mounted, and found clean, so mounted to write.
+    assert opened.succeed("cat /run/guide/checked") == "clean"
+    options = opened.succeed("findmnt --noheadings --output OPTIONS /mnt").split(",")
+    assert "rw" in options, options
     # What bootctl lists from outside the machine, for the guide's fixtures (qemu-canokey).
     listed = opened.succeed("bootctl --esp-path=/mnt/boot list --json=short")
     print("FIXTURE bootctl-list-from-the-stick.json " + listed.replace("\n", "\\n"))
