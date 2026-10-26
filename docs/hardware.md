@@ -689,6 +689,35 @@ only while
 a video or game is showing, as niri's on-demand setting does, rather than
 everywhere.
 
+### The Panel's Self Refresh
+
+The panel can refresh itself from its own memory while the screen is still,
+and update only the part that changed, which eDP calls PSR2; this one adds
+Early Transport, sending the changed part as it's drawn. On 2026-10-26, on
+7.2.12, the whole screen began flashing after a monitor on the dock was
+unplugged and plugged back in, and it stopped the moment self refresh was
+turned off through `i915_edp_psr_debug`. Forced to PSR1, which refreshes
+the whole panel rather than part of it, it flashed again within seconds,
+and with self refresh off once more it flashed on. xe keeps frame buffer
+compression off the panel while either self refresh is on, so turning
+self refresh off let compression take the panel, which the kernel logged
+as a reduced compressed buffer. The boot had logged "Selective fetch area
+calculation failed in pipe A", and the panel's own pipe had no modeset all
+the while; only the monitor's pipe changed, joining and splitting the
+display buffer between the pipes. Each of the three shows the panel from a
+buffer other than the frame just drawn.
+
+It came back the same day on a boot made with the lid shut, once the lid
+was opened and the panel came on: on PSR1, with no niri change, and it
+stopped again the moment self refresh was turned off. That boot logged no
+selective fetch failure, and it logged a reduced compressed buffer at
+boot, which the steady boots didn't, so a lid-shut boot sets the panel up
+differently. `xe.enable_psr=0` and `xe.enable_fbc=0` leave both off, at
+the cost of what they save while the screen is still, which is yet to be
+measured on battery. Which of them flashes is still to be told apart: self
+refresh comes back alone once a lid-shut boot and a replug with both off
+hold steady.
+
 ### The Panel's Brightness
 
 The panel takes its brightness in nits over the display's AUX channel, as
