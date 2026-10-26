@@ -104,13 +104,16 @@ impl Store {
                  [ \"$*\" = '--gc --print-dead' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
                  [ -e {broken} ] && {{ echo 'error: a temporary file went' >&2; exit 1; }}\n\
-                 for p in {store}/*; do [ -e \"$p/meta\" ] && echo \"$p\"; done\n\
-                 exit 0\n",
+                 for p in {store}/*; do [ -e \"$p/meta\" ] || continue\n\
+                   [ -e \"$p/alive\" ] && [ ! -e {stale} ] || echo \"$p\"\n\
+                 done\n\
+                 rm -f {stale}; exit 0\n",
                 log = log.display(),
                 store = root.join("store").display(),
                 linked = linked.display(),
                 slow = root.join("slow").display(),
                 broken = root.join("listing-broken").display(),
+                stale = root.join("listing-stale").display(),
             ),
         );
         script(
@@ -124,7 +127,10 @@ impl Store {
                      printf '%s\"%s\":{{\"narSize\":%s,\"registrationTime\":%s,\"references\":[]}}' \
                        \"$sep\" \"$p\" \"$s\" \"$t\"; sep=,\n\
                    done; printf '}}' ;;\n\
-                 'store delete') shift 2; echo \"delete $*\" >> {log}; rm -r \"$@\" ;;\n\
+                 'store delete') shift 2; echo \"delete $*\" >> {log}\n\
+                   for p in \"$@\"; do [ -e \"$p/alive\" ] || continue\n\
+                     echo \"error: Cannot delete path '$p' since it is still alive.\" >&2; exit 1\n\
+                   done; rm -r \"$@\" ;;\n\
                  'store gc') shift 2; echo \"gc $* {policy}\" >> {log} ;;\n\
                  *) exit 9 ;;\n\
                  esac\n",
@@ -364,6 +370,27 @@ fn many_small_paths_go_in_one_delete() {
         .filter(|line| line.starts_with("delete"))
         .count();
     assert_eq!(deletes, 1, "a thousand small paths took {deletes} deletes");
+}
+
+#[test]
+fn a_batch_that_meets_garbage_come_alive_has_the_store_listed_again() {
+    // A build that roots a closure the listing called garbage makes Nix
+    // refuse its batch a path at a time, each refusal a whole look for
+    // roots; a batch made again from the same listing met them again, and
+    // the guard spent most of a core for hours freeing nothing.
+    let store = Store::new();
+    let alive: Vec<PathBuf> = (0..4)
+        .map(|n| store.dead(&format!("{n}-revived"), 10.0 * DAY, 4096))
+        .collect();
+    for path in &alive {
+        fs::write(path.join("alive"), "").unwrap();
+    }
+    let free = store.dead("zzz-free", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-stale"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !free.exists());
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+    assert!(alive.iter().all(|path| path.exists()), "a root holds them");
 }
 
 #[test]
