@@ -479,6 +479,7 @@ let
     colours = ./launcher/Colours.qml;
     time = ./launcher/Clocks.qml;
     weather = ./launcher/Weather.qml;
+    ask = ./launcher/Ask.qml;
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
     heat = ./launcher/Heat.qml;
@@ -1133,6 +1134,16 @@ in
       shortcuts = {
         order = 120;
         source = "shortcuts";
+      };
+      # A quick question to a model, asked last so any other answer comes
+      # first, through the pi module's pi-ask, which picks the machine's
+      # plan, where the account has the pi module; and carried on in pi.
+      ask = {
+        order = 130;
+        source = "ask";
+        enable = lib.hasAttrByPath [ "pi" "ask" ] config.jitsusama;
+        command = "pi-ask";
+        session = "pi";
       };
       # A keyboard's layout and what can be done to it, where a keyboard's
       # module describes one (KeyboardLayout.qml), and empty elsewhere.
