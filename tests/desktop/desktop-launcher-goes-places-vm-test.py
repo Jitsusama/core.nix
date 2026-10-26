@@ -313,23 +313,31 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
-    # Found from the root by its name, which lands on it in Orchestrators,
-    # busy as its presence says.
-    desktop.as_account("qs ipc call launcher toggle")
+    # Listed busy, as its presence says.
+    desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
-    desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Orchestrators"]
-            and (shown["selected"] or {}).get("name") == "Lighthouse"
+            (shown["selected"] or {}).get("name") == "Lighthouse"
             and str(shown["selected"]["side"]).startswith("busy")
         )
     )
-    # Inside it, Talk asks for words, which go to its session's inbox as
-    # Joel's, opening a talk its session follows.
-    desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: {"Talk", "Pause", "Stop"} <= set(shown["rows"]))
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Found from the root by its name, Return lands inside it, its
+    # collection's crumb before its own.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Orchestrators", "Lighthouse"]
+            and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
+        )
+    )
+    # Talk asks for words, which go to its session's inbox as Joel's,
+    # opening a talk its session follows.
     desktop.type_in("talk", selecting="Talk")
     desktop.step_in("ret")
     machine.send_chars("keep the lamp lit")
