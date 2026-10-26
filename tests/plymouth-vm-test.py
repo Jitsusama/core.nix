@@ -28,11 +28,13 @@ from test_driver.machine.ocr import perform_ocr_variants_on_screenshot
 if TYPE_CHECKING:
     from test_driver.machine import BaseMachine, QemuMachine
 
-# The longest a wait may take to read words off the screen. A wait
-# ends when they show, so this is only a ceiling: on a host busy
-# with other machines and builds, one reading took 30 seconds, and a
-# wait of 30 then fails before it can read twice.
-READING = timedelta(seconds=120)
+# The longest a wait may take for what it waits on: words to show on
+# the screen, a shell to start or stop, a photograph to change. A wait
+# ends when it happens, so this is only a ceiling: on a host busy with
+# other machines and builds, one reading took over a minute, and a
+# login shell over 30 seconds, so a shorter wait fails before it can
+# look twice.
+READING = timedelta(seconds=300)
 # The entry the boot starts, named as lanzaboote names generation 7's.
 CHOSEN = "nixos-generation-7-fixture"
 # The frame is two panels' widths and two heights of hairline, so a
@@ -194,7 +196,7 @@ class Boot:
             """Say whether a new photograph differs from the one before."""
             return not filecmp.cmp(before, self.photographed(name), shallow=False)
 
-        retry(differs, timeout=timedelta(seconds=30))
+        retry(differs, timeout=READING)
 
     def wears_the_face(self, console: str) -> None:
         """Check a console's glyphs are the theme's font, bitmap for bitmap.
@@ -302,7 +304,7 @@ def test_a_wrong_one_is_refused_in_the_alert_frame(asking: Boot) -> None:
     asking.machine.send_chars("0000\n")
     retry(
         lambda _: asking.alerting(asking.photographed("wrong")) >= FRAMED,
-        timeout=timedelta(seconds=60),
+        timeout=READING,
     )
 
 
@@ -356,7 +358,7 @@ def test_a_console_greets_by_name_and_signs_in_told_its_kmscon(on_kmscon: Boot) 
     machine.send_chars(f"{account}\n")
     machine.wait_for_text("Password", timeout=READING)
     machine.send_chars(f"{boot.password}\n")
-    machine.wait_until_succeeds(f"pgrep -u {account} -x zsh", timeout=timedelta(seconds=30))
+    machine.wait_until_succeeds(f"pgrep -u {account} -x zsh", timeout=READING)
     # The prompt draws stand-ins only on a console that calls itself
     # linux, whose font can't hold its marks; kmscon calls itself by
     # its own name, which the machine's terminfo describes.
@@ -368,7 +370,7 @@ def test_a_console_greets_by_name_and_signs_in_told_its_kmscon(on_kmscon: Boot) 
     # Signing out clears the console and greets again, ready for the
     # next, and the restarts below stop no more than they did before.
     machine.send_chars("exit\n")
-    machine.wait_until_fails(f"pgrep -u {account} -x zsh", timeout=timedelta(seconds=30))
+    machine.wait_until_fails(f"pgrep -u {account} -x zsh", timeout=READING)
 
     def greeted_afresh(_: bool) -> bool:
         """Say whether the console greets again, with no password asked for."""
@@ -394,7 +396,7 @@ def test_a_console_kmscon_cant_draw_still_asks_in_the_themes_face(opened: Boot) 
     # first, which loses the face first. While the greeter starts or
     # stops, the first console can refuse to be opened for a moment.
     machine.succeed("chvt 1")
-    machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=timedelta(seconds=30))
+    machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=READING)
     # Drop-ins apply in their names' order, so this one comes after
     # the one that sets kmscon's command.
     machine.succeed(
@@ -470,7 +472,7 @@ def test_a_security_key_waiting_for_a_touch_is_asked_for_until_it_is_touched(
         shots.append(opened.photographed(f"before-touch-{len(shots)}"))
         return opened.differing(shots[-2], shots[-1]) == 0
 
-    retry(settled, timeout=timedelta(seconds=60))
+    retry(settled, timeout=READING)
     before = shots[-1]
     # What systemd sends Plymouth while a key waits for a touch, then the empty
     # message it ends that with once the key's been touched.
@@ -509,10 +511,10 @@ def test_the_emergency_shell_wears_the_face_and_says_what_failed(opened: Boot) -
         "systemd-run --unit=breaks --description='Breaks on purpose' "
         "sh -c 'echo the disk was not there; exit 1'"
     )
-    machine.wait_until_succeeds("systemctl is-failed breaks.service", timeout=timedelta(seconds=30))
+    machine.wait_until_succeeds("systemctl is-failed breaks.service", timeout=READING)
     # A boot has one console, the first, which the splash draws on.
     opened.bare()
-    machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=timedelta(seconds=30))
+    machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=READING)
     machine.succeed(
         "printf '\\033[H\\033[2J' > /dev/tty1",
         "systemctl restart plymouth-start.service",
