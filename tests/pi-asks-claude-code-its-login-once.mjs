@@ -9,7 +9,7 @@ import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const provider = process.argv[2];
+const [, , provider] = process.argv;
 const work = mkdtempSync(join(tmpdir(), "claude-login-"));
 cpSync(join(provider, "src"), join(work, "src"), { recursive: true });
 
@@ -41,16 +41,17 @@ const asks = join(work, "asks");
 const answer = join(work, "answer");
 const claude = join(work, "claude");
 writeFileSync(asks, "");
-writeFileSync(
-  claude,
-  `#!/bin/sh\necho ask >> "${asks}"\nsleep 0.2\ncat "${answer}"\n`,
-);
+writeFileSync(claude, `#!/bin/sh\necho ask >> "${asks}"\nsleep 0.2\ncat "${answer}"\n`);
 chmodSync(claude, 0o755);
 const loggedIn = (yes) =>
-  writeFileSync(answer, JSON.stringify({ loggedIn: yes, authMethod: "claude.ai", subscriptionType: "pro" }));
+  writeFileSync(
+    answer,
+    JSON.stringify({ loggedIn: yes, authMethod: "claude.ai", subscriptionType: "pro" }),
+  );
 const asked = () => readFileSync(asks, "utf8").split("\n").filter(Boolean).length;
 
 const { getClaudeStatus } = await import(join(work, "src", "claude-cli.ts"));
+// biome-ignore lint/style/useNamingConvention: the environment's names are upper case.
 const env = { PATH: process.env.PATH, HOME: work, PI_CLAUDE_CODE_COMMAND: claude };
 
 loggedIn(false);
@@ -66,6 +67,7 @@ assert.equal(asked(), 3, "asks made at once each started Claude Code");
 assert.equal((await getClaudeStatus(env)).loggedIn, true);
 assert.equal(asked(), 3, "a logged-in answer wasn't kept");
 
+// biome-ignore lint/style/useNamingConvention: the environment's names are upper case.
 const elsewhere = { ...env, HOME: join(work, "elsewhere") };
 await getClaudeStatus(elsewhere);
 assert.equal(asked(), 4, "another login was answered from this one");
