@@ -13,7 +13,6 @@ import subprocess
 import sys
 import threading
 import time
-from pathlib import Path
 
 from jeepney import DBusAddress, message_bus, new_method_call, new_method_return
 from jeepney.io.blocking import DBusConnection, open_dbus_connection
@@ -27,6 +26,9 @@ HANDLE = "/org/freedesktop/portal/desktop/request/1_1/files"
 TITLE = "Open a note"
 GTKS_FILE = "file:///from/gtk.md"
 
+# A portal's answer: its response code, and its results by name.
+Answer = tuple[int, dict[str, tuple[str, object]]]
+
 
 class StandInGtk:
     """GTK's portal's file chooser, answering each call with its own file."""
@@ -35,7 +37,7 @@ class StandInGtk:
         """Take GTK's portal's name on the bus, and answer on a thread of its own."""
         self.connection = open_dbus_connection(bus="SESSION")
         self.connection.send_and_get_reply(message_bus.RequestName(GTK))
-        self.asked: list[tuple] = []
+        self.asked: list[tuple[object, ...]] = []
         threading.Thread(target=self.answer, daemon=True).start()
 
     def answer(self) -> None:
@@ -54,8 +56,8 @@ def owned(connection: DBusConnection, name: str) -> bool:
     return bool(reply.body[0])
 
 
-def opened(connection: DBusConnection, open_with: str, qs: str) -> tuple[int, dict]:
-    """What open-with answers to opening a file, run with this qs."""
+def opened(connection: DBusConnection, open_with: str, qs: str) -> Answer:
+    """Ask open-with, run with this qs, to open a file, and return its answer."""
     # Both are the check's own, from Nix.
     portal = subprocess.Popen([open_with, qs], env=os.environ)  # noqa: S603
     try:
@@ -66,11 +68,10 @@ def opened(connection: DBusConnection, open_with: str, qs: str) -> tuple[int, di
         else:
             sys.exit("open-with never took its name on the bus.")
         address = DBusAddress(PATH, bus_name=LAUNCHER, interface=CHOOSER)
-        call = new_method_call(
-            address, "OpenFile", "osssa{sv}", (HANDLE, "notes", "", TITLE, {})
-        )
+        call = new_method_call(address, "OpenFile", "osssa{sv}", (HANDLE, "notes", "", TITLE, {}))
         reply: Message = connection.send_and_get_reply(call, timeout=30)
-        return reply.body
+        code, results = reply.body
+        return int(code), dict(results)
     finally:
         portal.terminate()
         portal.wait(timeout=10)
@@ -81,7 +82,6 @@ def opened(connection: DBusConnection, open_with: str, qs: str) -> tuple[int, di
 def main(argv: list[str]) -> None:
     """Fail, saying why, unless a file is chosen by whichever can choose it."""
     open_with, refusing, answering, answered = argv
-    Path(os.environ["XDG_RUNTIME_DIR"]).mkdir(mode=0o700, exist_ok=True)
     gtk = StandInGtk()
     connection = open_dbus_connection(bus="SESSION")
 

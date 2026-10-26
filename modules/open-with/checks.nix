@@ -30,6 +30,7 @@ onLinux {
     in
     pkgs.runCommandLocal "files-are-chosen-with-or-without-the-picker" { } ''
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
+      mkdir -m 700 "$XDG_RUNTIME_DIR"
       ${lib.getExe' pkgs.coreutils "timeout"} 120 ${lib.getExe' pkgs.dbus "dbus-run-session"} \
         --dbus-daemon=${lib.getExe' pkgs.dbus "dbus-daemon"} \
         --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
@@ -39,9 +40,54 @@ onLinux {
       touch $out
     '';
 
+  # A GTK 3 program's own dialog for choosing a file never shows: the
+  # module (dialogs-ask-the-portal.c) asks the portal in its place, and the
+  # dialog answers with what the portal chose, or as closed when it's
+  # cancelled. The program (dialog-of-its-own.c) runs in a headless cage,
+  # with a stand-in for the portal on a session bus of its own
+  # (dialogs-asked.py).
+  gtk-3-dialogs-ask-the-portal =
+    let
+      python = pkgs.python3.withPackages (python: [ python.jeepney ]);
+      gtk = "${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}";
+      dialog =
+        pkgs.runCommandCC "dialog-of-its-own"
+          {
+            nativeBuildInputs = [ pkgs.pkg-config ];
+            buildInputs = [ pkgs.gtk3 ];
+          }
+          ''
+            mkdir -p "$out/bin"
+            # shellcheck disable=SC2046 # pkg-config's flags are words.
+            $CC -O2 -Wall -Wextra -Werror $(pkg-config --cflags gtk+-3.0) ${./dialog-of-its-own.c} \
+              -o "$out/bin/dialog-of-its-own" $(pkg-config --libs gtk+-3.0)
+          '';
+      module = pkgs.callPackage ./dialogs-ask-the-portal.nix { };
+    in
+    pkgs.runCommandLocal "gtk-3-dialogs-ask-the-portal" { nativeBuildInputs = [ pkgs.cage ]; } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_DIRS=${gtk}
+      export GDK_BACKEND=wayland GSETTINGS_BACKEND=memory
+      export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      export GTK_USE_PORTAL=1 GTK3_MODULES=${module}/lib/libdialogs-ask-the-portal.so
+      mkdir -m 700 "$XDG_RUNTIME_DIR"
+      mkdir drafts
+      # cage ends when the script does, so only a script that got to its end
+      # leaves its mark.
+      ${lib.getExe' pkgs.coreutils "timeout"} 180 ${lib.getExe' pkgs.dbus "dbus-run-session"} \
+        --dbus-daemon=${lib.getExe' pkgs.dbus "dbus-daemon"} \
+        --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
+        cage -- ${lib.getExe pkgs.bash} -c \
+        '${lib.getExe python} ${./dialogs-asked.py} ${dialog}/bin/dialog-of-its-own "$PWD/drafts" && touch passed'
+      [ -e passed ]
+      touch $out
+    '';
+
   # A graphical machine's portal asks the launcher for a file to open or
   # save, which hands it to GTK's dialog while the shell has no picker
-  # (src/files.rs), and open-with's description says it answers that.
+  # (src/files.rs), open-with's description says it answers that, and GTK
+  # 3's native chooser is told to ask the portal, its own dialogs asking
+  # through the native one (dialogs-ask-the-portal.c).
   the-launcher-chooses-files =
     let
       niri = graphical.config.xdg.portal.config.niri;
@@ -54,6 +100,10 @@ onLinux {
       "A graphical machine's file chooser isn't the launcher's, or open-with doesn't say it answers it."
       (
         niri."org.freedesktop.impl.portal.FileChooser" or null == "launcher"
+        && graphical.config.environment.sessionVariables.GTK_USE_PORTAL or null == "1"
+        && lib.hasInfix "/lib/libdialogs-ask-the-portal.so" (
+          graphical.config.environment.sessionVariables.GTK3_MODULES or ""
+        )
         && lib.hasInfix "org.freedesktop.impl.portal.FileChooser;" described
       );
 
