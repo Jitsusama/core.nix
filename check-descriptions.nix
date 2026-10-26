@@ -1180,6 +1180,10 @@
     close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of
     another name
   '';
+  vm-machines-find-each-other-at-home = ''
+    a machine on a network it trusts finds another there by its .local name through both
+    firewalls, and nobody finds a machine with mDNS off, though the port is open
+  '';
   vm-mv7-voice-is-levelled = ''
     an MV7's voice comes up 12 dB, its room and s sounds less, its peaks under -1 dBFS; another
     mic's are untouched
