@@ -354,7 +354,7 @@
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
   '';
-  machines-yield-to-what-the-user-works-in = ''
+  machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
   '';
@@ -428,8 +428,8 @@
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE
   '';
-  nix-builds-yield-to-the-user = ''
-    Nix's builds run at a lower weight than the user's programs
+  nix-builds-yield-to-the-person = ''
+    Nix's builds run at a lower weight than the person's programs
   '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
@@ -460,7 +460,7 @@
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
   '';
-  only-external-monitors-reach-the-seat = ''
+  only-external-screens-reach-the-seat = ''
     ddcutil's rules give the seat a DisplayPort connector's AUX bus and an MST branch's, and keep
     the panel's eDP, HDMI's, the GPU's own and the touchpad's buses root's, ahead of seat-late
   '';
@@ -1185,15 +1185,15 @@
   vm-swap-comes-down-while-probed = ''
     the compressed swap comes down, its reset waiting out udev's probe
   '';
+  vm-the-connection-stays-quick = ''
+    under four uploads on an 8 Mbit/s connection 20 ms away, an app's ping stays under 80 ms with
+    the shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it
+    sends; the shaper follows the connection down to 4 Mbit/s and back, and down again when the
+    uploads ride a second link to the same router
+  '';
   vm-the-desk-lights-come-back = ''
     a Litra plugged back in while a camera streams is told to light again, and the camera stopping
     puts it out; a Pebble X Plus plugged back in still has its lighting put out at a lock
-  '';
-  vm-the-line-stays-quick = ''
-    under four uploads on an 8 Mbit/s line 20 ms away, an app's ping stays under 80 ms with the
-    shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it
-    sends; the shaper follows the line down to 4 Mbit/s and back, and down again when the uploads
-    ride a second link to the same router
   '';
   vm-the-network-keeps-its-order = ''
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
@@ -1249,7 +1249,7 @@
   work-swaps-its-own-memory = ''
     jobs is slowed past half of memory, with no hard limit that would end its work
   '';
-  work-yields-to-what-the-user-works-in = ''
+  work-yields-to-what-the-person-works-in = ''
     jobs is idle beside app.slice, pi finds it, and a window's scope is not idle
   '';
   writes-go-out-sooner = ''

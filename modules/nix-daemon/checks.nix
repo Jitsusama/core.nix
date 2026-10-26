@@ -10,16 +10,16 @@
   ...
 }:
 {
-  # Nix's builds yield to the user's programs only if their slice sits beside
+  # Nix's builds yield to the person's programs only if their slice sits beside
   # user.slice, at a lower weight. A dash in its name nests it in a parent at
   # the default weight, and nothing says so.
-  nix-builds-yield-to-the-user =
+  nix-builds-yield-to-the-person =
     let
       inherit (workstation.config) systemd;
       slice = systemd.services.nix-daemon.serviceConfig.Slice;
       name = lib.removeSuffix ".slice" slice;
     in
-    holds "nix-builds-yield-to-the-user"
+    holds "nix-builds-yield-to-the-person"
       "The Nix daemon's slice, ${slice}, isn't beside user.slice at a lower weight."
       (
         !(lib.hasInfix "-" name)

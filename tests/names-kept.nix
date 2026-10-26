@@ -24,17 +24,12 @@
     icon-marks-past-the-basic-plane = "Launcher (Y2YBTS): icon to mark";
     the-margins-glyphs-stand-level = "Launcher (Y2YBTS): glyph to mark";
     "jitsusama.theme.glyphs" = "Look and programs (QGB4ON): glyph to mark";
-    only-external-monitors-reach-the-seat = "Repos (Y9XISP): monitor to screen";
     palette-graphs-draw-in-braille = "Launcher (Y2YBTS): palette to launcher";
     palette-rows-keep-their-words-apart = "Launcher (Y2YBTS): palette to launcher";
     "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
     "jitsusama.dellXps14.cameraModule" = "Repos (Y9XISP): camera module to camera board";
     "jitsusama.spend-watch.detectors.quiet" = "Repos (Y9XISP): quiet, for notes only";
     "jitsusama.spend-watch.notices.budget" = "Repos (Y9XISP): budget, for notices a week";
-    machines-yield-to-what-the-user-works-in = "Repos (Y9XISP): user to person";
-    nix-builds-yield-to-the-user = "Repos (Y9XISP): user to person";
-    work-yields-to-what-the-user-works-in = "Repos (Y9XISP): user to person";
-    vm-the-line-stays-quick = "Repos (Y9XISP): line to connection";
     xdg-open-opens-each-kind-in-its-app = "Look and programs (QGB4ON): app to program";
   };
 }
