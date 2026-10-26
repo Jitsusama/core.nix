@@ -1,10 +1,13 @@
 """Stand in for pi-ask, which would ask a model, speaking pi's RPC on stdin and stdout.
 
 It speaks what the launcher's Ask row expects (modules/quickshell/launcher/Ask.qml): a
-new session is answered at once; a prompt is answered in two pieces a moment apart, then
-settled; an abort settles what's being answered as stopped. It starts with the harmless
-extension error the work machine's pi prints, which the row has to pass over. A question
-holding "fail" is answered with the error a model's provider gives instead.
+prompt is answered in two pieces a moment apart, then settled; an abort settles what's
+being answered as stopped. It starts with the harmless extension error the work machine's
+pi prints, which the row has to pass over. A question holding "fail" is answered with the
+error a model's provider gives instead. As the work machine's pi does, a prompt after a
+new session is started and then never answered, since its proxy extension keeps the
+session it began with; and a second question to one pi is answered as carrying the
+first, so the row is seen giving each question a pi of its own.
 """
 
 import json
@@ -14,6 +17,8 @@ import threading
 # How long each piece of an answer takes, in seconds, so the row is seen being answered.
 PIECE = 0.5
 ANSWER = ["A fjord is a long, narrow inlet of the sea. ", "Glaciers carved its steep sides."]
+# What a second question to one pi is answered with.
+CARRIED = "It carries the last question."
 
 
 class Pi:
@@ -24,6 +29,8 @@ class Pi:
         self.lock = threading.Lock()
         self.stopped = threading.Event()
         self.answering: threading.Thread | None = None
+        self.renewed = False
+        self.asked = 0
 
     def say(self, event: dict[str, object]) -> None:
         """Write one event as a line."""
@@ -46,7 +53,8 @@ class Pi:
             )
             self.say({"type": "agent_settled", "aborted": False})
             return
-        for piece in ANSWER:
+        self.asked += 1
+        for piece in ANSWER if self.asked == 1 else [CARRIED]:
             if self.stopped.wait(PIECE):
                 break
             self.say(
@@ -66,6 +74,8 @@ class Pi:
         ident = command.get("id")
         if kind == "prompt":
             self.say({"type": "response", "id": ident, "success": True})
+            if self.renewed:
+                return
             self.stopped.clear()
             self.answering = threading.Thread(
                 target=self.answer,
@@ -79,6 +89,7 @@ class Pi:
                 self.answering.join()
             self.say({"type": "response", "id": ident, "success": True})
         else:
+            self.renewed = self.renewed or kind == "new_session"
             self.say({"type": "response", "id": ident, "success": True})
 
 

@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # pi-ask: pi as the launcher's Ask row asks it, a quick question and a short
-# answer. The launcher keeps one running per login and speaks pi's RPC
-# protocol over its stdin and stdout, starting each question with a fresh
-# session, so pi's start, about a second and a half, is paid once.
+# answer. The launcher speaks pi's RPC protocol over its stdin and stdout,
+# one question to each, and keeps the next started before it's asked, so
+# pi's start, about a second and a half, is never waited on.
 #
 # It loads nothing it doesn't need to answer: no tools, skills, context files
 # or prompt templates, no session file, no thinking, and no extensions but the
