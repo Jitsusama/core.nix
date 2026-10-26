@@ -147,7 +147,7 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | session | a pi working for Joel, in a window of its own | | | |
 | peer | another session on the same machine, reached over the mesh | | instance, swarm | |
 | mesh | how sessions on one machine message each other | | | `mesh_send` |
-| turn | a mesh message that starts a peer's turn at once, the mesh's loudest attention level | | | `wake`, to be renamed |
+| turn | a mesh message that starts a peer's turn at once, the mesh's loudest attention level | | | |
 | glance | a mesh message given to a peer as one line, since it's another peer's own business | | | |
 | hold | a peer asking every other to put something off, such as a switch, until it says it's over | | | `intent: hold` |
 | steer | Joel's words, delivered to a session from outside its window | | | `steer/<ADDRESS>/` |
