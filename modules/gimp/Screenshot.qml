@@ -1,7 +1,5 @@
-// The newest screenshot, opened in GIMP from the launcher: at home, just
-// below the window in front, for a couple of minutes after it's taken,
-// since opening the launcher then is when marking it up is wanted, and
-// found by typing after that. Every
+// The newest screenshot, opened in GIMP from the launcher, found by typing
+// or in Tools. Every
 // screenshot lands in one folder, niri's own and the region ones the shell
 // takes with grim alike, so the folder is watched rather than niri, which
 // tells the shell only of its own. One that was only copied has no file, so
@@ -12,9 +10,6 @@ import Qt.labs.folderlistmodel
 
 Provider {
     id: provider
-
-    // How long a new screenshot stays at home.
-    readonly property int fresh: 2 * 60 * 1000
 
     readonly property url folder: "file://" + settings.folder
 
@@ -42,11 +37,7 @@ Provider {
         run: () => Niri.spawn(["gimp", newest.path])
     })
 
-    things: editing ? [editing] : []
-
     // The folder is there from login (home.nix), so it's watched from the
     // start.
-    function home() {
-        return editing && Date.now() - newest.at.getTime() < fresh ? [editing] : [];
-    }
+    things: editing ? [editing] : []
 }

@@ -91,7 +91,7 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.as_account("notify-send --transient 'Build finished twice' 'not kept'")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Its row at home counts the one missed earlier, since it left by itself.
+    # Home's Now says one was missed earlier, since it left by itself.
     desktop.photograph("launcher-home-missed")
     desktop.type_in("build fin", selecting="the laptop is ready")
     desktop.photograph("launcher-notices")

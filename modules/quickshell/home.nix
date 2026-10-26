@@ -902,34 +902,6 @@ in
         and the check that no word is ambiguous reads the file.
       '';
     };
-    home = {
-      likely = lib.mkOption {
-        type = lib.types.ints.unsigned;
-        default = 3;
-        description = "How many of the likeliest picks home shows.";
-      };
-      pinned = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [ "program:slack" ];
-        description = ''
-          Rows that lead home's likely picks, by the key each is learned by,
-          whether picked or not.
-        '';
-      };
-      shelf = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "windows"
-          "clipboard"
-          "notices"
-        ];
-        description = ''
-          The collections home ends with, by provider, in this order. The
-          rest are found by their names.
-        '';
-      };
-    };
     kinds = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = {
@@ -1503,7 +1475,7 @@ in
                 )
               }
               readonly property var learning: ${object launcher.learning}
-              readonly property var launcher: ${object { inherit (launcher) synonyms home kinds; }}
+              readonly property var launcher: ${object { inherit (launcher) synonyms kinds; }}
           }
         '';
         "quickshell/Options.qml".text = ''

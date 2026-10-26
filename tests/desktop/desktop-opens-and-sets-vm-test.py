@@ -228,27 +228,24 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     assert desktop.as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history") == ""
 
 
-# Home is a shelf that keeps its shape: what's in front and the likely
-# picks, then the same three collections, in the same order, then the
-# categories to browse. The rest are a word away.
+# Home keeps one shape: Now, then the four places by name. The rest are
+# a word away.
 
 
-def test_the_launchers_home_keeps_its_shelf_and_a_collection_opens_by_name(
+def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop: Desktop,
 ) -> None:
-    """The launcher's home keeps its shelf, and a collection opens by name."""
+    """The launcher's home keeps its shape, and a collection opens by name."""
     machine = desktop.machine
     windows = len(json.loads(desktop.as_account("niri msg --json windows")))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    shelf = rows.index("Windows")
-    assert rows[shelf : shelf + 4] == ["Windows", "Clipboard", "Notifications", "Computer"]
-    # A page down stops on the last of the categories.
-    for _page in range(6):
-        machine.send_key("pgdn")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Commands")
+    assert rows == ["Now", "Computer", "Programs", "Session", "Tools"], rows
+    # A page down stops on the last.
+    machine.send_key("pgdn")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tools")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
     desktop.type_in("shortcuts", selecting="Shortcuts")
@@ -263,10 +260,10 @@ def test_the_launchers_home_keeps_its_shelf_and_a_collection_opens_by_name(
     retry(another_opened, timeout=timedelta(seconds=15))
 
 
-def test_a_screenshot_just_taken_is_at_the_launchers_home_and_opens_in_gimp(
+def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop: Desktop,
 ) -> None:
-    """A screenshot just taken is at the launcher's home, and opens in GIMP."""
+    """A screenshot just taken is found by typing, and opens in GIMP."""
     machine = desktop.machine
     desktop.pictures = f"/home/{desktop.account}/Pictures/Screenshots"
     # Made at login, since niri makes it only with its first screenshot
@@ -277,11 +274,7 @@ def test_a_screenshot_just_taken_is_at_the_launchers_home_and_opens_in_gimp(
     picture = machine.succeed(f"ls {desktop.pictures}/*.png").strip()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # Just below the window in front, which home always puts first.
-    machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Edit the screenshot in GIMP"
-    )
+    desktop.type_in("edit the screenshot", selecting="Edit the screenshot in GIMP")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"pgrep -u {desktop.account} -f '[g]imp.*{picture}'", timeout=STARTING
@@ -996,7 +989,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # Once it's joined, the launcher's done.
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    # Lantern wants a sign-in, so Sign in to it comes first at home, and
+    # Lantern wants a sign-in, so Sign in to it is found by typing, and
     # Return opens the window on its front desk.
     described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
     described += " io.jitsusama.Wifi.Describe '{}'"

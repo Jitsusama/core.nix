@@ -76,10 +76,6 @@ Provider {
         run: () => SignIn.open()
     })
 
-    function home() {
-        return SignIn.network !== "" ? [signIn] : [];
-    }
-
     // How a network is joined, in words, and what's typed here to open it:
     // a password, or an account with its server and password.
     function security(network) {

@@ -806,6 +806,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
+    # The same five rows every time: Now first, then the rest by name.
+    home = ["Now", "Computer", "Programs", "Session", "Tools"]
+    desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
         """Give what the launcher's selected row is, or nothing."""
@@ -816,13 +819,12 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         shown = desktop.showing()
         return shown["keysAt"], len(shown["glance"])
 
-    # Down past what's in front, the likely picks and the shelf, into
-    # the categories, the first of them first. The foot holds still on
-    # the way, whatever each row's keys say: the keys in their places,
-    # and how things stand beside them as long (a minute turning keeps
-    # its length).
+    # Down through every row to the last. The foot holds still on the
+    # way, whatever each row's keys say: the keys in their places, and
+    # how things stand beside them as long (a minute turning keeps its
+    # length).
     feet = {selected_is(): foot()}
-    while not selected_is().startswith("category:"):
+    for _row in home[1:]:
         before = selected_is()
         machine.send_key("down")
         # The wait ends before the loop moves on, so it reads this pass's row.
@@ -830,25 +832,20 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
             lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
         )
         feet[selected_is()] = foot()
-    assert selected_is() == "category:computer"
+    assert selected_is() == "category:tools"
     assert len(set(feet.values())) == 1, f"the foot moved as the arrows went: {feet}"
-    # Each says what it holds after its name, from the vocabulary.
+    # Each says what it holds after its name, by name, from the
+    # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:ai"].startswith("AI · Agents, Tasks, Helpers, AI spend"), (
-        f"ai reads {reads['category:ai']!r}"
+    assert reads["category:tools"].startswith("Tools \u00b7 Agents, AI spend, brightness, Calls"), (
+        f"tools reads {reads['category:tools']!r}"
     )
-    # Further down, past what the list shows at once, home holds still
-    # while something it answers changes: the machine's queue, which a
-    # busy machine writes all the time, made it again and scrolled it to
-    # the top, with the selection out of sight below.
-    for _row in range(6):
-        before = selected_is()
-        machine.send_key("down")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
-        )
+    assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
+    assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
+    # Home holds still while something it answers changes: the
+    # machine's queue, which a busy machine writes all the time, once
+    # made it again and moved it from under the selection.
     scrolled = desktop.showing()
-    assert scrolled["scrolled"] > 0, f"home never scrolled: {scrolled}"
     since = desktop.mark()
     queued = {"v": 1, "heartbeat": float(machine.succeed("date +%s")), "machine": {}, "jobs": []}
     desktop.as_account(
@@ -869,11 +866,11 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_ready()
     machine.send_key("tab")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:computer")
-    for _row in range(4):
+    for _step in range(3):
         machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:ai")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:tools")
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["ai"] and "Agents" in shown["rows"])
+    desktop.launcher_until(lambda shown: shown["held"] == ["tools"] and "Agents" in shown["rows"])
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
 

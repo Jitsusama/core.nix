@@ -29,6 +29,9 @@ Singleton {
         }
     }
     readonly property var categories: all.categories ?? []
+    // What home lists, top to bottom, each a category's id or a thing's:
+    // Now first, in the one place it always has, then the rest by name.
+    readonly property var home: all.home ?? []
     readonly property var commands: all.commands ?? []
     readonly property var things: {
         const out = {};
