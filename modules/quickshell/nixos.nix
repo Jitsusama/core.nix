@@ -16,8 +16,11 @@
 # FileView watching a file lost it for good once the file's directory went
 # or if it wasn't there yet, as a service's runtime directory is each time
 # systemd restarts the service, so fileview-watch-nearest.patch watches the
-# nearest directory that is. All three are laid over the machine's
-# packages, so the shell, the greeter and the lock all run them.
+# nearest directory that is. An IPC call's connection was deleted as soon
+# as its reply was handed over, cutting off a reply longer than the
+# socket's buffer, so ipc-replies-whole.patch closes it only once the reply
+# is written. All four are laid over the machine's packages, so the shell,
+# the greeter and the lock all run them.
 #
 # The launcher works out sums and measures with libqalculate, in the shell's
 # own process rather than a calculator program started for each key, as a
@@ -60,6 +63,7 @@ in
           ./activation-token.patch
           ./fileview-quiet.patch
           ./fileview-watch-nearest.patch
+          ./ipc-replies-whole.patch
         ];
         qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
           "--prefix"
