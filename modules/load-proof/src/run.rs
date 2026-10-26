@@ -189,7 +189,7 @@ pub fn run(plan: &Plan, program: &Path, folder: &Path, out: &mut dyn Write) -> R
                     && free < stop_free
                 {
                     stop(
-                        &units
+                        &mut units
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner),
                     );
@@ -231,6 +231,10 @@ fn steps(
     let mut running = 0;
     let started = Instant::now();
     for &builds in &plan.steps {
+        // Once the guard has stopped the load, nothing more starts.
+        if stopped.lock().is_ok_and(|stopped| stopped.is_some()) {
+            break;
+        }
         let ends = left.saturating_sub(started.elapsed());
         while running < builds {
             running += 1;
@@ -396,7 +400,7 @@ impl Load {
 impl Drop for Load {
     fn drop(&mut self) {
         stop(
-            &self
+            &mut self
                 .units
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
@@ -405,13 +409,15 @@ impl Drop for Load {
     }
 }
 
-fn stop(units: &[String]) {
+/// Stops `units` and forgets them, so what's stopped once isn't stopped
+/// again.
+fn stop(units: &mut Vec<String>) {
     if units.is_empty() {
         return;
     }
     let _ = Command::new("systemctl")
         .args(["--user", "stop"])
-        .args(units)
+        .args(units.drain(..))
         .stdin(Stdio::null())
         .status();
 }
