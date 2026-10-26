@@ -454,6 +454,10 @@
     pebble-lights finds the speakers' control and sound card, keeps their lighting on while sound
     plays and a while after unless the screen is locked, and lets the speakers' own button win
   '';
+  pi-claude-keeps-to-the-plan = ''
+    pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
+    mesh, signed in to the plan's own folder and with nothing that would bill an API instead
+  '';
   pi-keeps-its-own-settings = ''
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched

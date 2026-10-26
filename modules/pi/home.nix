@@ -6,7 +6,8 @@
 # core's few and a machine's own (settings.nix). Its
 # keys come from keys.nix, written where pi reads them and into the key map.
 # Its status line tells a folder and git as the prompt does, by the prompt's
-# root markers, its git-engine and the theme's marks.
+# root markers, its git-engine and the theme's marks. pi-claude runs it on
+# Joel's own Claude plan (claude.nix).
 {
   config,
   lib,
@@ -105,6 +106,14 @@ let
   };
   keys = import ./keys.nix;
 
+  # The Claude Code the claude module installs, so pi-claude drives the one
+  # Joel signs in with, or nixpkgs' own on a machine without that module.
+  claude =
+    if config.programs.claude-code.package != null then
+      config.programs.claude-code.package
+    else
+      pkgs.claude-code;
+
   # Each action named in keys.nix, with every chord listed for it.
   keybindings = lib.mapAttrs (_: map (key: key.chord)) (
     lib.groupBy (key: key.action) (
@@ -136,6 +145,8 @@ in
 
   config = {
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
+
+    home.packages = [ (import ./claude.nix { inherit pkgs claude; }) ];
 
     # The room kept for what a compaction writes. pi's default, 16,384
     # tokens, runs out summarising a long session, which then compacts
