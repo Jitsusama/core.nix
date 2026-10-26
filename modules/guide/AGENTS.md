@@ -146,7 +146,11 @@ driven on; the installed machine's steps come later.
   about the machine to `/etc/guide/machine.json`. The module's
   `guide-installed` unit runs it as root on the first console at every
   boot, before the sign-in, so nothing has to be remembered: it shows
-  only when something needs doing, and otherwise leaves at once. It's
+  only when something needs doing, and otherwise leaves at once. It runs
+  once a boot: started again after the sign-in, as a switch does, its
+  hang-up of the first console ended the session there (2026-10-26), so
+  a stamp in /run skips it for the rest of the boot, and a switch never
+  restarts it. It's
   after lanzaboote's unit that restarts the first boot to enrol the keys
   and the one that makes the disk's policy. While it runs, systemd holds
   its lines about the units still starting, which would otherwise land
