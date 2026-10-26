@@ -424,6 +424,11 @@
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
   '';
+  no-name-says-a-replaced-word = ''
+    no check's name and no jitsusama.* option's says a name docs/glossary.md replaces, but the
+    other senses and the renames still waiting that tests/names.py lists, each printed with its
+    word, and the check refuses a stand-in name breaking each of its rules
+  '';
   nothing-names-its-own-look = ''
     no module but the theme's names a colour or a face
   '';

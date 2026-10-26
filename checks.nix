@@ -402,13 +402,43 @@ let
     _: text: lib.concatStringsSep " " (lib.splitString "\n" (lib.trim text))
   ) (import ./check-descriptions.nix);
 
+  # Every jitsusama.* option a Linux machine can set, NixOS's and
+  # home-manager's, read from the two Linux examples, which between them
+  # import every module Linux has.
+  optionNames =
+    let
+      machines =
+        map
+          (
+            example:
+            (import example {
+              core = self;
+              inherit nixpkgs;
+            }).options
+          )
+          [
+            ./examples/nixos.nix
+            ./examples/laptop.nix
+          ];
+      spelled =
+        options:
+        map (option: lib.showOption (lib.remove "<name>" option.loc)) (
+          lib.collect lib.isOption (options.jitsusama or { })
+        );
+      home = options: options.home-manager.users.type.getSubOptions [ ];
+    in
+    lib.unique (lib.concatMap (options: spelled options ++ spelled (home options)) machines);
+
   # Gives every check what it proves as its meta.description, so a query of the
   # checks lists them, and holds that every check says it and every description
   # names a check. Only Linux has every check, so only it holds that.
   describe =
     checks:
     let
-      named = lib.attrNames checks ++ [ "every-check-says-what-it-proves" ];
+      named = lib.attrNames checks ++ [
+        "every-check-says-what-it-proves"
+        "no-name-says-a-replaced-word"
+      ];
       undescribed = lib.subtractLists (lib.attrNames descriptions) named;
       unchecked = lib.subtractLists named (lib.attrNames descriptions);
       wrong =
@@ -423,6 +453,21 @@ let
           every-check-says-what-it-proves =
             holds "every-check-says-what-it-proves" "Of the checks, ${lib.concatStringsSep "; and " wrong}."
               (wrong == [ ]);
+
+          # Every check's name and every jitsusama.* option's says the
+          # glossary's words, never a name it replaces (tests/names.py).
+          no-name-says-a-replaced-word =
+            pkgs.runCommandLocal "no-name-says-a-replaced-word"
+              {
+                names = builtins.toJSON (named ++ optionNames);
+                passAsFile = [ "names" ];
+              }
+              ''
+                cp ${./tests/glossary.py} glossary.py
+                cp ${./tests/names.py} names.py
+                ${lib.getExe pkgs.python3} names.py ${./docs/glossary.md} "$namesPath"
+                touch $out
+              '';
         };
     in
     lib.mapAttrs (

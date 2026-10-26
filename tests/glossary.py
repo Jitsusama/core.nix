@@ -33,6 +33,7 @@ class Thing:
     word: str
     means: str
     not_: tuple[str, ...]
+    code: str = ""
 
 
 def plainly(text: str) -> str:
@@ -63,10 +64,10 @@ def thing(row: list[str], number: int, context: str) -> Thing | str:
     """Give the thing a row of a table of words holds, or what's wrong with it."""
     if len(row) != len(COLUMNS):
         return f"Line {number}: a row has {len(row)} cells, not {len(COLUMNS)}."
-    word, means, not_, _ = row
+    word, means, not_, code = row
     if not word or not means:
         return f"Line {number}: a thing needs a name and what it means: {row}."
-    return Thing(context, plainly(word), means, words(not_))
+    return Thing(context, plainly(word), means, words(not_), code)
 
 
 def read(text: str) -> tuple[list[Thing], list[str]]:
