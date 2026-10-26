@@ -353,6 +353,9 @@ let
     # Whether polkit lets an account switch the machine shows only with
     # polkit, systemd and a system to switch to.
     vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
+    # Whether polkit lets an administrator tune the work slices shows only
+    # with polkit and systemd.
+    vm-admins-tune-the-work-slices = import ./tests/work-slices.nix { inherit self pkgs; };
   };
   vmTests = vmTestsOn vmHostPkgs;
 
