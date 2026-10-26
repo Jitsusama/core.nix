@@ -257,6 +257,7 @@ let
       "swayimg"
       "inlyne"
       "zathura"
+      "mpv"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -433,6 +434,8 @@ let
     inlyne = nerd "f0219";
     # The theme's book, as the viewer shows documents of pages.
     zathura = nerd "f05da";
+    # The theme's film, as the player plays films.
+    mpv = nerd "f0381";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

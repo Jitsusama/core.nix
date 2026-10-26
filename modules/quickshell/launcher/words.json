@@ -1812,6 +1812,12 @@
       "glyph": "book"
     },
     {
+      "id": "shortcuts:mpv",
+      "in": "shortcuts",
+      "name": "Player",
+      "glyph": "film"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2387,6 +2393,21 @@
       "id": "shortcuts:zathura:fitting",
       "in": "shortcuts",
       "name": "Fitting the page"
+    },
+    {
+      "id": "shortcuts:mpv:seeking",
+      "in": "shortcuts",
+      "name": "Seeking"
+    },
+    {
+      "id": "shortcuts:mpv:speed",
+      "in": "shortcuts",
+      "name": "Playback speed"
+    },
+    {
+      "id": "shortcuts:mpv:loudness",
+      "in": "shortcuts",
+      "name": "Loudness"
     },
     {
       "id": "on",
