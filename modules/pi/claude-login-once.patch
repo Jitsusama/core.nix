@@ -1,0 +1,81 @@
+Ask Claude Code for its login once a minute rather than every time pi
+wants to know: each ask starts a whole Claude Code, and pi asks several
+times as it starts and again before its first request.
+
+--- a/src/claude-cli.ts
++++ b/src/claude-cli.ts
+@@ -151,15 +151,54 @@
+   }
+ }
+ 
++const STATUS_TTL_MS = 60_000;
++const statusCache = new Map<string, { expires: number; status: Promise<ClaudeStatus> }>();
++
++function statusKey(env: Record<string, string | undefined>): string {
++  return JSON.stringify([configuredCommand(env), env.PATH, env.HOME, env.CLAUDE_CONFIG_DIR]);
++}
++
++/**
++ * Claude Code's login, as `claude auth status` reports it. Each ask starts a
++ * whole Claude Code, about a quarter of a second, and pi asks several times
++ * as it starts and again before its first request, so a logged-in answer is
++ * kept for a minute and callers asking at once share one ask. An answer
++ * that isn't logged in is never kept, so a login is seen at the next ask.
++ */
+ export async function getClaudeStatus(
+   envInput: Record<string, string | undefined> = process.env,
+   signal?: AbortSignal,
+ ): Promise<ClaudeStatus> {
++  signal?.throwIfAborted();
+   const env = withConfigDirectory(envInput);
++  const key = statusKey(env);
++  let entry = statusCache.get(key);
++  if (!entry || entry.expires <= Date.now()) {
++    const status = askClaudeStatus(env);
++    const asked = { expires: Date.now() + STATUS_TTL_MS, status };
++    statusCache.set(key, asked);
++    void status.then((answer) => {
++      if (!answer.loggedIn && statusCache.get(key) === asked) statusCache.delete(key);
++    });
++    entry = asked;
++  }
++  return untilAborted(entry.status, signal);
++}
++
++function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
++  if (!signal) return promise;
++  return new Promise<T>((resolve, reject) => {
++    const abort = () => reject(signal.reason);
++    signal.addEventListener("abort", abort, { once: true });
++    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
++  });
++}
++
++async function askClaudeStatus(env: Record<string, string>): Promise<ClaudeStatus> {
+   const command = await resolveClaudeExecutable(env);
+   if (!command) return { available: false, loggedIn: false, subscription: false, detail: INSTALL_HINT };
+   try {
+-    const result = await captureProcess(command, ["auth", "status"], env, signal);
++    const result = await captureProcess(command, ["auth", "status"], env);
+     const payload = result.stdout.trim().startsWith("{")
+       ? (JSON.parse(result.stdout) as { loggedIn?: unknown; authMethod?: unknown; subscriptionType?: unknown })
+       : {};
+@@ -174,8 +213,7 @@
+       plan,
+       detail: loggedIn ? undefined : LOGIN_HINT,
+     };
+-  } catch (error) {
+-    if (signal?.aborted) throw error;
++  } catch {
+     return { available: true, loggedIn: false, subscription: false, command, detail: LOGIN_HINT };
+   }
+ }
+@@ -193,7 +231,7 @@
+   signal?: AbortSignal,
+ ): Promise<string> {
+   const env = withConfigDirectory(envInput);
+-  const key = JSON.stringify([configuredCommand(env), env.PATH, env.HOME, env.CLAUDE_CONFIG_DIR]);
++  const key = statusKey(env);
+   const cached = readyStatusCache.get(key);
+   if (cached && cached.expires > Date.now()) return cached.command;
+ 

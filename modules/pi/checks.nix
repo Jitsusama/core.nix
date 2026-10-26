@@ -158,6 +158,18 @@
     touch $out
   '';
 
+  # The patched provider starts Claude Code to ask for its login once for any
+  # number of asks within a minute, and asks again while it isn't logged in.
+  pi-asks-claude-code-its-login-once =
+    pkgs.runCommandLocal "pi-asks-claude-code-its-login-once" { }
+      ''
+        ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
+          ${../../tests/pi-asks-claude-code-its-login-once.mjs} ${
+            import ./claude-provider.nix { inherit pkgs; }
+          }
+        touch $out
+      '';
+
   # A machine on the Claude plan has one pi, on it: the provider is an
   # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
   # is the one it drives, and there is no pi-claude beside it. The Ask row
