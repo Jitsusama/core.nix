@@ -1,11 +1,11 @@
 """An account in wheel traces its own niri off the CPU with no password, and nobody else does.
 
 tests/niri-off-cpu.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
-A stand-in named as niri's session is runs as an account in wheel, waiting in epoll and then
-sleeping outside it, over and over. Its trace says each sleep, with the kernel stack it slept
-in and a time on the machine's monotonic clock, and leaves the waits in epoll out. An account
-outside wheel can't trace, an account can't start another's trace, and a trace is read only
-by the account it's of.
+A stand-in named as niri's session is runs as an account in wheel, waiting in epoll for an
+eventfd its waker thread writes and then sleeping outside it, over and over. Its trace says
+each, with the kernel stack it slept in, a time on the machine's monotonic clock, and who woke
+it: the waker through the eventfd, or the timer. An account outside wheel can't trace, an
+account can't start another's trace, and a trace is read only by the account it's of.
 """
 
 from __future__ import annotations
@@ -21,10 +21,11 @@ if TYPE_CHECKING:
 TRACE = "/run/niri-off-cpu/someone.txt"
 # The least time off the CPU the trace says, in microseconds.
 LEAST_US = 8000
-# Three seconds of 50 ms sleeps, each between two 50 ms waits, give about thirty; ten leaves
-# room for a slow machine.
+# Three seconds of 50 ms waits in epoll, each followed by a 50 ms sleep, give about thirty of
+# each; ten leaves room for a slow machine.
 LEAST_SLEEPS = 10
 SLEEP = re.compile(r"^off at \d+ for (\d+) us, asleep, lock held by nobody$", re.MULTILINE)
+WOKEN_THROUGH = re.compile(r"^woken by waker \d+ through fd \d+ \[eventfd\]$", re.MULTILINE)
 
 
 @pytest.fixture(scope="module")
@@ -49,9 +50,25 @@ def test_each_sleep_is_said_with_its_kernel_stack(traced: str) -> None:
     assert "nanosleep" in traced, traced
 
 
-def test_waiting_in_epoll_is_left_out(traced: str) -> None:
-    """Waiting in epoll is left out."""
-    assert "epoll" not in traced, traced
+def spells(traced: str, slept_in: str) -> list[str]:
+    """Give each spell off the CPU the trace says whose own stack names where it slept."""
+    return [spell for spell in traced.split("off at ")[1:] if slept_in in spell.split("woken")[0]]
+
+
+def test_a_wait_in_epoll_says_who_woke_it_and_through_which_file(traced: str) -> None:
+    """A wait in epoll says who woke it and through which file."""
+    waits = spells(traced, "do_epoll_wait")
+    assert len(waits) >= LEAST_SLEEPS, traced
+    woken = [wait for wait in waits if WOKEN_THROUGH.search(wait)]
+    assert len(woken) >= LEAST_SLEEPS, traced
+    assert all("eventfd_write" in wait.split("woken")[1] for wait in woken), traced
+
+
+def test_a_sleep_says_the_timer_that_woke_it(traced: str) -> None:
+    """A sleep says the timer that woke it."""
+    sleeps = spells(traced, "nanosleep")
+    assert sleeps, traced
+    assert all("hrtimer_wakeup" in sleep.split("woken")[1] for sleep in sleeps), traced
 
 
 def test_times_are_on_the_machines_monotonic_clock(machine: BaseMachine, traced: str) -> None:

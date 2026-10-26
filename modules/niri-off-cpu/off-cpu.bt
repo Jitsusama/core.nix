@@ -2,30 +2,16 @@
 // when it left, on CLOCK_MONOTONIC in nanoseconds, as load-proof's frames
 // are timed; for how long; whether it slept, blocked or was preempted; who
 // held the buffer lock it waited on, if it waited on one; and the kernel
-// stack it left from. Waiting in epoll for its next event, asleep, is niri
-// idle between frames, so it isn't said; blocking inside epoll is.
+// stack it left from. Then who woke it, with their kernel stack, and the
+// file whose event woke it when it was waiting in epoll. When it waited on
+// a lock, what the holder did meanwhile: where it ran, sampled, and where
+// it waited off the CPU itself, by time.
 //
 // usage: bpftrace off-cpu.bt <tid>
 
 BEGIN
 {
   printf("niri's main thread %d, off the CPU 8 ms or more; times are CLOCK_MONOTONIC ns\n", $1);
-}
-
-tracepoint:syscalls:sys_enter_epoll_wait,
-tracepoint:syscalls:sys_enter_epoll_pwait,
-tracepoint:syscalls:sys_enter_epoll_pwait2
-/tid == $1/
-{
-  @polling = 1;
-}
-
-tracepoint:syscalls:sys_exit_epoll_wait,
-tracepoint:syscalls:sys_exit_epoll_pwait,
-tracepoint:syscalls:sys_exit_epoll_pwait2
-/tid == $1/
-{
-  @polling = 0;
 }
 
 // The lock's owner is read as the wait starts, from the mutex's own word,
@@ -37,6 +23,31 @@ kprobe:__ww_mutex_lock_interruptible_slowpath
   $lock = (struct ww_mutex *)arg0;
   $owner = (struct task_struct *)((uint64)$lock->base.owner.counter & ~(uint64)7);
   @holder = $owner->comm;
+  @holder_tid = $owner->pid;
+}
+
+// An epoll's waiters are woken from its callback, in whoever's context
+// made the event, so the file is known there. A callback can wake another
+// epoll's, so the first file is kept: the one the event was on.
+kprobe:ep_poll_callback
+{
+  if (@callbacks[tid] == 0) {
+    $entry = (struct eppoll_entry *)((uint64)arg0 - offsetof(struct eppoll_entry, wait));
+    $item = $entry->base;
+    @event_fd[tid] = $item->ffd.fd;
+    @event_file[tid] = str($item->ffd.file->f_path.dentry->d_name.name);
+  }
+  @callbacks[tid]++;
+}
+
+kretprobe:ep_poll_callback
+{
+  @callbacks[tid]--;
+  if (@callbacks[tid] == 0) {
+    delete(@callbacks, tid);
+    delete(@event_fd, tid);
+    delete(@event_file, tid);
+  }
 }
 
 tracepoint:sched:sched_switch
@@ -47,27 +58,101 @@ tracepoint:sched:sched_switch
   @stack = kstack;
 }
 
+// The first waking counts; any after it find niri already waking. An
+// interrupt on an idle processor wakes it as swapper, thread 0.
+tracepoint:sched:sched_waking
+/args.pid == $1 && @left != 0 && @woken == 0/
+{
+  @woken = 1;
+  @waker = comm;
+  @waker_tid = tid;
+  @waker_stack = kstack;
+  if (has_key(@event_fd, tid)) {
+    @woken_through = 1;
+    @woken_fd = @event_fd[tid];
+    @woken_file = @event_file[tid];
+  }
+}
+
+// While niri waits on its lock, where the holder runs, sampled, and where
+// it waits off the CPU, by time.
+profile:hz:199
+/@holder_tid != 0 && tid == @holder_tid/
+{
+  @holder_ran[kstack] = count();
+}
+
+tracepoint:sched:sched_switch
+/@holder_tid != 0 && args.prev_pid == @holder_tid/
+{
+  @holder_left = nsecs;
+  @holder_stack = kstack;
+}
+
+tracepoint:sched:sched_switch
+/@holder_tid != 0 && args.next_pid == @holder_tid && @holder_left != 0/
+{
+  @holder_waited[@holder_stack] = sum((nsecs - @holder_left) / 1000);
+  @holder_left = 0;
+}
+
 tracepoint:sched:sched_switch
 /args.next_pid == $1 && @left != 0/
 {
   $away = nsecs(monotonic) - @left;
-  if ($away >= 8000000 && !(@polling && @state == 1)) {
+  if ($away >= 8000000) {
     printf("off at %llu for %llu us, %s, lock held by %s%s\n",
       @left,
       $away / 1000,
       @state == 1 ? "asleep" : (@state == 2 ? "blocked" : "preempted"),
       @holder == "" ? "nobody" : @holder,
       @stack);
+    if (@woken == 0) {
+      printf("woken by nobody\n\n");
+    } else if (@woken_through) {
+      printf("woken by %s %d through fd %d %s%s\n",
+        @waker, @waker_tid, @woken_fd, @woken_file, @waker_stack);
+    } else {
+      printf("woken by %s %d%s\n", @waker, @waker_tid, @waker_stack);
+    }
+    if (@holder_tid != 0) {
+      printf("while %s %d held the lock, it ran in, by samples at 199 Hz:\n",
+        @holder, @holder_tid);
+      print(@holder_ran, 3);
+      printf("and waited off the CPU in, by us:\n");
+      print(@holder_waited, 3);
+      printf("\n");
+    }
   }
   @left = 0;
   @holder = "";
+  @holder_tid = 0;
+  @holder_left = 0;
+  @woken = 0;
+  @woken_through = 0;
+  clear(@holder_ran);
+  clear(@holder_waited);
 }
 
 END
 {
-  clear(@polling);
+  clear(@callbacks);
+  clear(@event_fd);
+  clear(@event_file);
   clear(@left);
   clear(@state);
   clear(@stack);
   clear(@holder);
+  clear(@holder_tid);
+  clear(@holder_left);
+  clear(@holder_stack);
+  clear(@holder_ran);
+  clear(@holder_waited);
+  clear(@waker);
+  clear(@woken);
+  clear(@waker_tid);
+  clear(@waker_stack);
+  clear(@woken_through);
+  clear(@woken_fd);
+  clear(@woken_file);
 }
