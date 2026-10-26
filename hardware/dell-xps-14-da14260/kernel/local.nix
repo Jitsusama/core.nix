@@ -1,9 +1,11 @@
-# The XPS 14's kernel patches applied in this order, beside the camera's
-# (../camera/camera.nix) and before the backports and next: the ones written here,
-# and four taken from elsewhere that wait to be filed by where they stand
-# upstream (cvs-wake-irq into next/; dm-crypt-status-after-last-reference,
-# cs35l56-suspend-before-attach and bluetooth-sar-rev2 into backports/) at
-# the stack's next regeneration, since filing them reorders the patches.
+# The XPS 14's kernel patches applied in this order, after the camera's
+# (../camera/camera.nix) and before the backports and next: the ones written
+# here, and four taken from elsewhere that wait to be filed by where they
+# stand upstream (cvs-wake-irq into next/; dm-crypt-status-after-last-reference,
+# cs35l56-suspend-before-attach and bluetooth-sar-rev2 into backports/) at the
+# stack's next regeneration, since filing them reorders the patches. The
+# camera's list holds four more that wait the same way, which kernel/README
+# names.
 { lib, pkgs, ... }:
 {
   # After the camera's own, which take the default place, and before the
