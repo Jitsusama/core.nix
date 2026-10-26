@@ -794,7 +794,16 @@
       "term": "Desktop/lag",
       "answers": [
         "lag"
-      ]
+      ],
+      "said": {
+        "calm": "nothing's slowing the desktop",
+        "several": "{count} things are slowing it",
+        "answers": "in {typical}, at worst {worst}",
+        "answersNote": "how long the desktop takes to answer a program, as a rule and at its slowest",
+        "workNote": "how hard builds and jobs are running; Return shows the queue",
+        "fresh": "the last ten seconds",
+        "stale": "ten seconds that ended {ago}"
+      }
     },
     {
       "id": "waits:typical",
@@ -802,14 +811,32 @@
       "name": "Desktop answers"
     },
     {
-      "id": "waits:slowest",
-      "in": "waits",
-      "name": "Slowest answers"
-    },
-    {
       "id": "waits:work",
       "in": "waits",
-      "name": "Heavy work"
+      "name": "Heavy work",
+      "verb": "see",
+      "glyph": "timed"
+    },
+    {
+      "id": "waits:see:cpu",
+      "in": "waits",
+      "name": "See what's using the processor",
+      "verb": "see",
+      "glyph": "processor"
+    },
+    {
+      "id": "waits:see:memory",
+      "in": "waits",
+      "name": "See what's using memory",
+      "verb": "see",
+      "glyph": "memory"
+    },
+    {
+      "id": "waits:see:disk",
+      "in": "waits",
+      "name": "See what's filling the disk",
+      "verb": "see",
+      "glyph": "disk"
     },
     {
       "id": "light",
