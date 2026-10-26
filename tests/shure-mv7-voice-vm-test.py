@@ -93,6 +93,22 @@ class Session:
         )
 
 
+def feeding(links: str, port: str) -> list[str]:
+    """Give the ports pw-link -l shows linked into each port whose name starts as given.
+
+    pw-link -l prints each port on a line of its own, and below it a line for each link, an
+    input's beginning `|<-`.
+    """
+    found = []
+    current = ""
+    for line in links.splitlines():
+        if not line.startswith(" "):
+            current = line
+        elif current.startswith(port) and line.strip().startswith("|<-"):
+            found.append(line.strip().removeprefix("|<-").strip())
+    return found
+
+
 @pytest.fixture(scope="module")
 def session(machine: BaseMachine) -> Session:
     """Give Joel's session, its PipeWire running, the tones made and the filter ready."""
@@ -157,6 +173,32 @@ def test_the_filter_turns_s_sounds_down_and_leaves_the_voice(session: Session) -
     _, voice = session.level("tone", MV7, filtered=True)
     assert abs(voice - (TONE + BOOST)) < STRAY
     assert s_sound < voice - DE_ESSED
+
+
+def test_without_the_mv7_the_filter_takes_no_other_microphone(session: Session) -> None:
+    """Without the MV7, the filter takes no other microphone, and takes the MV7 when it comes.
+
+    Once a recording of the other microphone is linked, WirePlumber has placed every stream
+    since that microphone appeared, the filter's among them, so the filter's input having no
+    link then means it is waiting for the MV7 rather than holding another microphone open.
+    pw-link -l prints only ports with a link, so the filter's input is looked for among the
+    nodes instead.
+    """
+    # Each wait gives up after 20 s, stopping the player and the recording so
+    # the command returns and the test fails rather than hangs.
+    give_up = " [ $n -lt 200 ] || { kill $player $recording; exit 1; }; sleep 0.1;"
+    links = session.run(
+        f"pw-play -P '{HEADSET}' quiet.wav & player=$!; recording=;"
+        " n=0; until pw-cli ls Node | grep -q 'node.name = \"headset\"'; do n=$((n + 1));"
+        + give_up
+        + " done; pw-record --target headset heard.wav & recording=$!;"
+        " n=0; until pw-link -l | grep -q '<- headset:'; do n=$((n + 1));" + give_up + " done;"
+        " pw-link -l; kill -INT $recording; wait $recording; kill $player; wait $player; true"
+    )
+    assert "shure_mv7_voice_input" in session.run("pw-cli ls Node"), "the filter is gone"
+    assert feeding(links, "shure_mv7_voice_input:") == [], links
+    _, rms = session.level("quiet", MV7, filtered=True)
+    assert rms > QUIET + BOOST - STRAY
 
 
 def test_another_microphone_is_heard_as_played(session: Session) -> None:
