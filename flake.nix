@@ -362,6 +362,12 @@
       # path from one of its top folders that names nothing.
       lib.docsNameWhatExists = pkgs: pkgs.callPackage ./tests/docs-name-what-exists.nix { };
 
+      # How a repository built on core holds its names to core's glossary:
+      # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
+      # waiting = ...; }` is a check that no name says a name the glossary
+      # replaces, but those it keeps, each with why.
+      lib.namesSayTheGlossary = pkgs: pkgs.callPackage ./tests/names.nix { };
+
       # What VM tests' scripts share, for a repository built on core to give
       # its own: `extraPythonPackages = core.lib.vmHelpers pkgs;` lets a
       # script import vm_helpers, and core's linters read its types.

@@ -161,6 +161,21 @@ It fails on a relative link that resolves to nothing, and on a backticked
 path starting with one of the repository's own top folders that names
 nothing, read from the root or the doc's folder. Code blocks aren't read.
 
+Its names say the glossary's words, as core's do, through a check that reads
+the glossary of the core it locks:
+
+```nix
+no-name-says-a-replaced-word = core.lib.namesSayTheGlossary pkgs {
+  names = [ "my-tool-passes-clippy" ];
+  otherSenses."vm-apps-come-first" = "app is systemd's app.slice, by its name";
+  waiting."the-line-stays-quick" = "Repos: line to connection";
+};
+```
+
+`names` is every check's and option's name. A name kept as another sense or
+as a waiting rename says why, and one no longer found fails, so what's kept
+only shrinks. The [glossary][4] says what each word means.
+
 ## Taking New Pins
 
 The machine repository follows core.nix's pins, so updating is one input:
@@ -172,3 +187,4 @@ nix flake update core
 [1]: ../examples/
 [2]: hardware.md
 [3]: testing.md
+[4]: glossary.md

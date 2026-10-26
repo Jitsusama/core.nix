@@ -26,8 +26,9 @@ The-glossary-names-each-thing-once holds every table to that: no word names two
 things in one context, and no replaced name is written for anything.
 No-name-says-a-replaced-word holds core's own names to it: no check's name
 and no `jitsusama.*` option's says a replaced name, but the ones
-`tests/names.py` lists as another sense of the word or as a rename still
-waiting on its owner, and that list only shrinks.
+`tests/names-kept.nix` keeps as another sense of the word or as a rename still
+waiting on its owner, and what it keeps only shrinks. A repository built on
+core holds its own names the same way, through `core.lib.namesSayTheGlossary`.
 
 ## The Context Map
 
