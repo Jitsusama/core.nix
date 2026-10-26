@@ -13,7 +13,7 @@ fixes and why.
 
 Four patches in `local/` came from elsewhere and wait to move at the
 stack's next regeneration, as `local.nix` says; the camera's own kernel
-patches are applied from `../camera.nix`.
+patches are applied from `../camera/camera.nix`.
 
 ## How a Patch Moves
 

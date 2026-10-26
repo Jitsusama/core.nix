@@ -68,12 +68,12 @@ in
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
-    ./camera.nix
+    ./camera/camera.nix
     ./kernel/backports.nix
     ./kernel/local.nix
     ./kernel/next.nix
-    ./microphones.nix
-    ./speakers.nix
+    ./sound/microphones.nix
+    ./sound/speakers.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";

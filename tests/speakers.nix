@@ -34,7 +34,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "speakers";
 
   nodes.machine = {
-    imports = [ ../hardware/dell-xps-14-da14260/speakers.nix ];
+    imports = [ ../hardware/dell-xps-14-da14260/sound/speakers.nix ];
 
     users.users.joel.isNormalUser = true;
     environment.systemPackages = [

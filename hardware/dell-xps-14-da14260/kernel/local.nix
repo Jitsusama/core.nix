@@ -1,5 +1,5 @@
 # The XPS 14's kernel patches applied in this order, beside the camera's
-# (../camera.nix) and before the backports and next: the ones written here,
+# (../camera/camera.nix) and before the backports and next: the ones written here,
 # and four taken from elsewhere that wait to be filed by where they stand
 # upstream (cvs-wake-irq into next/; dm-crypt-status-after-last-reference,
 # cs35l56-suspend-before-attach and bluetooth-sar-rev2 into backports/) at

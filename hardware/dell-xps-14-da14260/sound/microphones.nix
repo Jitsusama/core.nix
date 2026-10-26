@@ -6,7 +6,7 @@
 # audio DSP itself powered didn't shorten it; keeping the source running
 # does. Until a program first opens it after sign-in it still starts slowly.
 {
-  imports = [ ../../modules/pipewire/nixos.nix ];
+  imports = [ ../../../modules/pipewire/nixos.nix ];
 
   services.pipewire.wireplumber.extraConfig."50-microphones-stay-ready"."monitor.alsa.rules" = [
     {

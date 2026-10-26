@@ -94,7 +94,7 @@ let
       # and unbinding the driver oopses holding the device's lock, so suspend
       # and reboot hang. Written here; the patch says why.
       name = "ipu7-survives-resume";
-      patch = ./ipu7-survives-resume.patch;
+      patch = ../kernel/local/ipu7-survives-resume.patch;
     }
   ];
 
@@ -187,11 +187,11 @@ let
 in
 {
   imports = [
-    ./camera-module.nix
-    ../../modules/camera/nixos.nix
-    ../../modules/ir-camera/nixos.nix
-    ../../modules/kernel/nixos.nix
-    ../../modules/v4l2loopback/nixos.nix
+    ./module.nix
+    ../../../modules/camera/nixos.nix
+    ../../../modules/ir-camera/nixos.nix
+    ../../../modules/kernel/nixos.nix
+    ../../../modules/v4l2loopback/nixos.nix
   ];
 
   # Pictures and videos are taken from the loopback, which the file names.
@@ -238,7 +238,7 @@ in
       # clears, so the camera gave black frames until the next boot. Written
       # here; the patch says why.
       name = "cvs-link-owner-wait";
-      patch = ./cvs-link-owner-wait.patch;
+      patch = ../kernel/local/cvs-link-owner-wait.patch;
     }
     # The IR camera, made for signing in by face: an HM1092 on one of the IPU7's
     # CSI-2 ports, powered by its own INT3472. The four patches below, three
@@ -248,52 +248,52 @@ in
       # Gives the sensor its link frequencies, without which it never binds.
       # From mainline.
       name = "ipu-bridge-hm1092";
-      patch = ./ipu-bridge-hm1092.patch;
+      patch = ../kernel/local/ipu-bridge-hm1092.patch;
     }
     {
       # The colour sensor is mounted upside down, but the firmware says 0,
       # so its rotation control said so too. Written here, after the quirk
       # linux-next has for the Pro 14 Premium, the same sensor.
       name = "ipu-bridge-da14260-upside-down";
-      patch = ./ipu-bridge-da14260-upside-down.patch;
+      patch = ../kernel/local/ipu-bridge-da14260-upside-down.patch;
     }
     {
       # The sensor's driver, which no release has yet.
       name = "hm1092-ir-sensor";
-      patch = ./hm1092-ir-sensor.patch;
+      patch = ../kernel/local/hm1092-ir-sensor.patch;
       structuredExtraConfig.VIDEO_HM1092 = lib.kernel.module;
     }
     {
       # Lights the IR flood LED while the sensor streams, and only then, so
       # its frames aren't dark. Written here; the patch says why.
       name = "hm1092-ir-flood";
-      patch = ./hm1092-ir-flood.patch;
+      patch = ../kernel/local/hm1092-ir-flood.patch;
     }
     {
       # The capture side's greyscale formats, without which a mono sensor
       # can't stream.
       name = "ipu7-mono-formats";
-      patch = ./ipu7-mono-formats.patch;
+      patch = ../kernel/local/ipu7-mono-formats.patch;
     }
     {
       # Unbinding the IPU frees the capture side while WirePlumber still
       # holds its nodes open, and the kernel oopses as they close. Written
       # here; the patch says why.
       name = "ipu7-outlives-open-files";
-      patch = ./ipu7-outlives-open-files.patch;
+      patch = ../kernel/local/ipu7-outlives-open-files.patch;
     }
     {
       # The capture side's probe fails without 4 MiB of contiguous memory for
       # a firmware log nothing reads, so a rebind on fragmented memory loses
       # the camera. Written here; the patch says why.
       name = "ipu7-isys-skips-unread-log";
-      patch = ./ipu7-isys-skips-unread-log.patch;
+      patch = ../kernel/local/ipu7-isys-skips-unread-log.patch;
     }
     {
       # Each unbind, the recovery rebind included, left the capture side's
       # firmware boot memory allocated. From linux-next.
       name = "ipu7-isys-releases-firmware";
-      patch = ./ipu7-isys-releases-firmware.patch;
+      patch = ../kernel/local/ipu7-isys-releases-firmware.patch;
     }
   ];
   jitsusama.kernel.packageOverlays = [ psys ];

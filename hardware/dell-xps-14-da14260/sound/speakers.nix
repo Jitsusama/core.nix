@@ -4,7 +4,7 @@
 # and restarts with it.
 { config, pkgs, ... }:
 {
-  imports = [ ../../modules/pipewire/nixos.nix ];
+  imports = [ ../../../modules/pipewire/nixos.nix ];
 
   systemd.user.services.speaker-tuning = {
     description = "The XPS 14's speaker tuning";
