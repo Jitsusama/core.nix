@@ -332,10 +332,11 @@
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
   '';
-  load-proof-counts-frames-missed = ''
+  load-proof-reads-its-signals = ''
     load-proof counts a refresh with the probe's frame ready and none shown as a frame niri missed,
     one that passed before the probe committed as the probe's own, none when a frame lands at every
-    refresh, and a frame niri dropped for a later one apart
+    refresh, and a frame niri dropped for a later one apart; a key typed into a pty in raw mode comes
+    back, and its echoes' middle, 99th percentile and worst are read from them
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests

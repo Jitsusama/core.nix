@@ -12,8 +12,9 @@ onLinux {
   # load-proof's tests run as it builds: a frame shown at every refresh
   # misses none, a refresh skipped with the probe's frame ready is niri's
   # miss and one passed before the probe committed is the probe's, and a
-  # frame niri dropped for a later one is counted apart.
-  load-proof-counts-frames-missed = pkgs.callPackage ./package.nix { };
+  # frame niri dropped for a later one is counted apart; a key typed into a
+  # pty comes back from a shell's stand-in, and its echoes are summed.
+  load-proof-reads-its-signals = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in load-proof, its tests included.
   load-proof-passes-clippy = passesClippy "load-proof-passes-clippy" (
     pkgs.callPackage ./package.nix { }
