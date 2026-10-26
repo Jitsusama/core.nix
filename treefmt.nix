@@ -2,8 +2,8 @@
 # check holds it to: every linter core shares (treefmtModules.treefmt, from
 # modules/treefmt/treefmt.nix), at its strictest, test code's included, and
 # what only core has besides. ruff.toml and mypy.ini say how for Python,
-# .luacheckrc for Lua, biome.jsonc for JavaScript and .rumdl.toml for
-# Markdown.
+# .luacheckrc for Lua, biome.jsonc for JavaScript and TypeScript and
+# .rumdl.toml for Markdown.
 { pkgs, ... }:
 {
   # The libraries core's own Python imports.
@@ -31,5 +31,22 @@
     # The launcher is being redesigned, its matcher with it, which comes
     # under biome as it's rewritten.
     excludes = [ "modules/quickshell/Fuzzy.js" ];
+  };
+
+  # biome formats and lints Node's JavaScript, the .mjs tests and pi's
+  # TypeScript extensions, as biome.jsonc's overrides for them say.
+  settings.formatter.biome = {
+    command = pkgs.lib.getExe pkgs.biome;
+    options = [
+      "check"
+      "--write"
+      "--error-on-warnings"
+      "--max-diagnostics=none"
+      "--config-path=biome.jsonc"
+    ];
+    includes = [
+      "*.mjs"
+      "*.ts"
+    ];
   };
 }

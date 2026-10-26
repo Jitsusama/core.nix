@@ -1,8 +1,9 @@
-// biome lints the JavaScript the shell runs in Qt's engine, through
-// tests/qt-javascript-lint.sh, with every rule on but those below, each with
-// the reason it doesn't fit. Qt's engine (QV4) parses neither an object
-// spread nor a catch with no binding, so the rules asking for those are off.
-// Nothing here is formatted by biome.
+// biome lints two kinds of JavaScript, with every rule on but those below,
+// each with the reason it doesn't fit. The shell's runs in Qt's engine and
+// is read through tests/qt-javascript-lint.sh, unformatted. Qt's engine
+// (QV4) parses neither an object spread nor a catch with no binding, so the
+// rules asking for those are off for it. Node's, the .mjs tests and pi's
+// TypeScript extensions, is formatted too, by `nix fmt` (treefmt.nix).
 {
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
@@ -30,5 +31,51 @@
         "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 500 } }
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      // Node's JavaScript, at core's line width, with what Qt's engine
+      // can't parse asked for again.
+      "includes": ["**/*.mjs", "**/*.ts"],
+      "formatter": { "enabled": true, "indentStyle": "space", "lineWidth": 100 },
+      "linter": {
+        "rules": {
+          "complexity": { "noUselessCatchBinding": "error" },
+          "correctness": {
+            // Node's programs import Node's own modules and read its process.
+            "noNodejsModules": "off",
+            "noProcessGlobal": "off"
+          },
+          "performance": { "noNamespaceImport": "error" },
+          "style": {
+            // A program here is configured by its environment, as pi is.
+            "noProcessEnv": "off",
+            "useFilenamingConvention": "error",
+            "useObjectSpread": "error"
+          },
+          "suspicious": {
+            // A test here is a script that asserts as it goes, with no
+            // framework around its asserts.
+            "noMisplacedAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      // A test's numbers are its example's, read where they're used.
+      "includes": ["tests/**/*.mjs"],
+      "linter": { "rules": { "style": { "noMagicNumbers": "off" } } }
+    },
+    {
+      "includes": ["modules/pi/**/*.ts"],
+      "linter": {
+        "rules": {
+          // pi loads an extension by its default export, and gives it pi's
+          // own packages as it loads it, so core installs none.
+          "style": { "noDefaultExport": "off" },
+          "correctness": { "noUndeclaredDependencies": "off", "noUnresolvedImports": "off" }
+        }
+      }
+    }
+  ]
 }

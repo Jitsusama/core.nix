@@ -31,7 +31,8 @@ included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
 `mypy.ini`), shellcheck for shell, luacheck for Lua, each file read as the
 Lua of the program that runs it (`.luacheckrc`), biome with every rule that
 fits for the JavaScript QML imports (`biome.jsonc`, read through
-`tests/qt-javascript-lint.sh`), rumdl for Markdown (`.rumdl.toml`), zsh
+`tests/qt-javascript-lint.sh`) and, formatting it too, for Node's `.mjs`
+tests and pi's TypeScript, rumdl for Markdown (`.rumdl.toml`), zsh
 itself for what it can't parse, since nothing lints zsh further, statix and
 deadnix for Nix, and the `formatting` check holds the repository to it.
 
