@@ -165,8 +165,12 @@ driven on; the installed machine's steps come later.
   with its PIN to do so, prefers the TPM's slot and proves it opens. The
   TPM's PIN is typed at every start, so it's one the person remembers,
   such as their account password, and never the YubiKeys': theirs was
-  forgotten (2026-10-26). The boot tries what's typed on each key, so a
-  start the TPM refuses costs a plugged-in YubiKey one try. The seal counts as done only while the
+  forgotten (2026-10-26). So each PIN goes only to its own device: core's
+  disk module turns off systemd-cryptsetup's token plugins in the initrd,
+  whose first prompt ("LUKS2 token PIN") tried one PIN on every token and
+  so handed the TPM's to a plugged-in YubiKey, which three such tries
+  blocked. Without them the boot asks "TPM2 PIN" once, then "security
+  token PIN". The seal counts as done only while the
   policy follows the boot: the TPM holds its NV index, and lanzaboote's
   unit remade it this boot. A cleared TPM loses the index, and a firmware
   update changes PCR 0 past what the policy can follow, so that unit

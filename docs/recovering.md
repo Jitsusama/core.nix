@@ -40,8 +40,7 @@ guide wrote can recover a machine; only the machine's own can install it.
 The TPM didn't release its key. A prompt for the "TPM2 PIN" still wants the
 TPM's PIN; one for the "security token PIN" has moved on to the YubiKey.
 Type the YubiKey's PIN there and touch it, and the disk opens. On a machine the
-guide installed that's a PIN of its own, not the TPM's: the TPM's PIN was
-tried on the YubiKey first, which cost it one wrong try. [When the TPM
+guide installed that's a PIN of its own, not the TPM's. [When the TPM
 Refuses][2] says why that happens and how to seal the disk to the TPM again.
 Anything it doesn't name means the laptop didn't boot what it should: find
 out why before typing the recovery key.

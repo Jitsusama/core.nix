@@ -173,10 +173,9 @@ def keep_the_recovery_key(machine: QemuMachine) -> str:
     return words
 
 
-# systemd-cryptsetup asks through libcryptsetup's token plugin first and
-# then its own FIDO2 code, and a key that's not there yet at the first
-# leaves the second asking, so each prompt is answered until the disk
-# opens.
+# systemd-cryptsetup asks for the TPM's PIN and then a YubiKey's, each
+# through its own code, and a key that's not there yet at its prompt
+# leaves it asking, so each prompt is answered until the disk opens.
 def unlock(machine: QemuMachine, secret: str) -> None:
     """Answer the disk's prompts with the secret until it opens."""
     machine.wait_for_console_text("Please enter")
@@ -193,16 +192,22 @@ def unlock(machine: QemuMachine, secret: str) -> None:
 def unlock_as_asked(machine: QemuMachine, tpm_pin: str, key_pin: str) -> str:
     """Answer each of the disk's prompts with the PIN it names, and say which opened it.
 
-    A security token's prompt takes the key's PIN; the token plugins' and
-    the TPM's own take the TPM's, since a wrong PIN counts towards the
-    TPM's lockout even when its policy would refuse the boot anyway.
+    A security token's prompt takes the key's PIN and the TPM's prompt the
+    TPM's, since a wrong PIN counts towards the TPM's lockout even when its
+    policy would refuse the boot anyway. Neither PIN may reach the other
+    device: the token plugins' prompt, which tries one PIN on every token,
+    would hand the TPM's to a plugged-in key, which three such tries block.
     """
     asked = r"Please enter (LUKS2 token|TPM2|security token) PIN"
+    crossed = r"Please enter LUKS2 token PIN|PIN of security token (incorrect|is blocked)"
     since = len(machine.get_console_log())
     answered = 0
     for _ in range(8):
         machine.wait_for_console_text(f"{asked}|{OPENED}")
         boot = machine.get_console_log()[since:]
+        if found := re.search(crossed, boot):
+            message = f"a PIN reached a device it isn't for: {found.group(0)}"
+            raise RuntimeError(message)
         if re.search(OPENED, boot):
             # systemd asks a YubiKey only once the TPM has refused.
             return "the key" if "Asking FIDO2 token" in boot else "the TPM"
@@ -1060,7 +1065,7 @@ def test_after_the_restart_the_tpm_opens_the_disk(signed_in: QemuMachine, restar
     assert signed_in.succeed("systemctl show -P Result guide-installed").strip() == "success"
     # One prompt, and the TPM opened the disk: systemd asks a YubiKey
     # only once the TPM has refused.
-    assert prompts(restarted) == ["Please enter LUKS2 token PIN:"], prompts(restarted)
+    assert prompts(restarted) == ["Please enter TPM2 PIN:"], prompts(restarted)
     assert "Asking FIDO2 token" not in restarted
 
 
@@ -1084,7 +1089,7 @@ def test_cleared_tpm_is_sealed_again(
         token for token in header(machine)["tokens"].values() if token["type"] == "systemd-tpm2"
     ]
     assert len(sealed) == 1, sealed
-    assert prompts(cleared.boot) == ["Please enter LUKS2 token PIN:"], prompts(cleared.boot)
+    assert prompts(cleared.boot) == ["Please enter TPM2 PIN:"], prompts(cleared.boot)
     assert "Asking FIDO2 token" not in cleared.boot
 
 

@@ -277,14 +277,15 @@ impl Step for SealTpm {
         // The TPM has a PIN of its own, since it's the one typed at every
         // start and so has to be one the person remembers, such as their
         // account password; a YubiKey's PIN, typed only when the TPM won't
-        // open the disk, was forgotten (2026-10-26). The disk tries what's
-        // typed on the TPM, then on a plugged-in YubiKey, so a start the
-        // TPM can't open costs a plugged-in key one wrong try, said here.
+        // open the disk, was forgotten (2026-10-26). Core's disk module has
+        // the boot ask for each PIN on its own device, so neither reaches
+        // the other: when the TPM can't open the disk, the YubiKey's own
+        // prompt follows.
         Ok(Standing::Needed {
             asks: vec![
                 Ask::Act {
                     id: "key",
-                    what: "Plug in a YubiKey, which opens the disk for the TPM's slot to be made. Touch it when it blinks. Then the TPM gets a PIN of its own, which the disk asks for at every start: your account password will do, and changing that password later doesn't change this PIN. When the TPM can't open the disk, what you type is tried on a plugged-in YubiKey too, which costs it one wrong try before it asks for its own PIN.".into(),
+                    what: "Plug in a YubiKey, which opens the disk for the TPM's slot to be made. Touch it when it blinks. Then the TPM gets a PIN of its own, which the disk asks for at every start: your account password will do, and changing that password later doesn't change this PIN. When the TPM can't open the disk, the disk asks next for your YubiKey's own PIN.".into(),
                 },
                 Ask::Secret {
                     id: "key-pin",

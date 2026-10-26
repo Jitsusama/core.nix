@@ -68,6 +68,20 @@ in
     fileSystems = [ "/" ];
   };
 
+  # The TPM and the YubiKeys each have a PIN of their own, so each PIN must
+  # reach only its own device. systemd's first pass through libcryptsetup's
+  # token plugins asks once ("LUKS2 token PIN") and tries what's typed on
+  # every token. When the TPM refuses a start with a YubiKey plugged in,
+  # the TPM's PIN goes to the key as well, is asked for again as wrong, and
+  # three tries block the key. Without the plugins, systemd asks "TPM2 PIN"
+  # for the TPM alone, once, then "security token PIN" for the key alone,
+  # through its own TPM2 and FIDO2 support, as it does when it's built
+  # without them.
+  config.boot.initrd.systemd.services."systemd-cryptsetup@" = {
+    overrideStrategy = "asDropin";
+    environment.SYSTEMD_CRYPTSETUP_USE_TOKEN_MODULE = "0";
+  };
+
   config.disko.devices.disk.main = {
     type = "disk";
     inherit (cfg) device;
