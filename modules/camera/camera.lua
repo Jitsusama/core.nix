@@ -486,12 +486,25 @@ end
 mp.add_forced_key_binding('ENTER', 'camera-act', act)
 mp.add_forced_key_binding('KP_ENTER', 'camera-act-pad', act)
 mp.add_forced_key_binding('SPACE', 'camera-act-space', act)
-mp.add_forced_key_binding('TAB', 'camera-mode', function()
+-- Which Return makes, chosen while nothing records: Tab the other one, as
+-- Tab is the one used last everywhere, and the arrows that way, a picture
+-- on the left and a video on the right.
+local function choose(chosen)
   if recording then
     return
   end
-  mode = mode == 'picture' and 'video' or 'picture'
+  mode = chosen or (mode == 'picture' and 'video' or 'picture')
   draw()
+end
+
+mp.add_forced_key_binding('TAB', 'camera-mode', function()
+  choose()
+end)
+mp.add_forced_key_binding('LEFT', 'camera-picture', function()
+  choose('picture')
+end)
+mp.add_forced_key_binding('RIGHT', 'camera-video', function()
+  choose('video')
 end)
 mp.add_forced_key_binding('ESC', 'camera-close', close)
 mp.add_forced_key_binding('q', 'camera-quit', close)

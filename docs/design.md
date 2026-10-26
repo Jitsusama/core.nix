@@ -820,18 +820,18 @@ comes along, and what to do.
   Ctrl reaches across to another screen.
 - **What to do is the same word in every layer:**
 
-  | Key          | Means                                    | Desktop        | Terminal        | Neovim, after Space |
-  | ------------ | ---------------------------------------- | -------------- | --------------- | ------------------- |
-  | arrows       | that way                                 | windows        |                 | splits              |
-  | Tab          | the one used last, the others by typing  | windows        | the next tab    | the file used last  |
-  | Page Up Down | the level above                          | workspaces     | tabs            |                     |
-  | 1 to 9       | that one, by number                      | workspaces     | tabs            | tabs                |
-  | Return       | open a new one                           | a terminal     |                 | a terminal          |
-  | T            | tabs                                     | column as tabs | a new tab       | tabs                |
-  | W            | close the one in focus                   | the window     | the tab         | the split           |
-  | Space        | find anything here                       | the launcher   | the scrollback  | anything            |
-  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's  | Neovim's            |
-  | Escape       | back out                                 | everywhere     | everywhere      | everywhere          |
+  | Key          | Means                                    | Desktop        | Terminal          | Neovim, after Space |
+  | ------------ | ---------------------------------------- | -------------- | ----------------- | ------------------- |
+  | arrows       | that way                                 | windows        |                   | splits              |
+  | Tab          | the one used last, the others by typing  | windows        | the tab used last | the file used last  |
+  | Page Up Down | the level above                          | workspaces     | tabs              |                     |
+  | 1 to 9       | that one, by number                      | workspaces     | tabs              | tabs                |
+  | Return       | open a new one                           | a terminal     |                   | a terminal          |
+  | T            | tabs                                     | column as tabs | a new tab         | tabs                |
+  | W            | close the one in focus                   | the window     | the tab           | the split           |
+  | Space        | find anything here                       | the launcher   | the scrollback    | anything            |
+  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's    | Neovim's            |
+  | Escape       | back out                                 | everywhere     | everywhere        | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
