@@ -143,21 +143,21 @@ in
         && lib.hasInfix "ignore_adaptive" (systemd.services.thermald.serviceConfig.ExecStartPre or "")
       );
 
-  # The XPS 14's camera takes Dell's tuning only for a module a machine names,
+  # The XPS 14's camera takes Dell's tuning only for a board a machine names,
   # and otherwise keeps Intel's, fetching nothing from Dell.
-  the-camera-takes-its-modules-tuning =
+  the-camera-takes-its-boards-tuning =
     let
       camera =
-        module:
+        board:
         (bareNixos [
           self.nixosModules.dell-xps-14-da14260
-          { jitsusama.dellXps14.cameraModule = module; }
+          { jitsusama.dellXps14.cameraBoard = board; }
         ]).config.systemd.services.camera.environment;
       named = camera "CJFOE90";
       unnamed = camera null;
     in
-    holds "the-camera-takes-its-modules-tuning"
-      "The camera doesn't read Dell's tuning for the module named, or reads one unasked."
+    holds "the-camera-takes-its-boards-tuning"
+      "The camera doesn't read Dell's tuning for the board named, or reads one unasked."
       (
         lib.hasSuffix "-camera-config-CJFOE90/" (named.CAMERA_CFG_PATH or "")
         && !(unnamed ? CAMERA_CFG_PATH)

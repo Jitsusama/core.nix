@@ -28,11 +28,11 @@ let
   });
   icamerasrc = pkgs.gst_all_1.icamerasrc-ipu75xa.override { ipu7x-camera-hal = hal; };
 
-  # The HAL's configuration with Dell's tuning for the laptop's camera module
+  # The HAL's configuration with Dell's tuning for the laptop's camera board
   # in place of Intel's, from Dell's driver pack, which can't be shared, so
   # it's fetched as the system builds. The HAL reads the tuning the sensor's
   # file names, and Dell's file is in the format the HAL reads.
-  module = config.jitsusama.dellXps14.cameraModule;
+  module = config.jitsusama.dellXps14.cameraBoard;
   driverPack = pkgs.fetchurl {
     url = "https://downloads.dell.com/FOLDER14363593M/1/XPS-14-DA14260-10KF7_Win11_1.0_A01.exe";
     hash = "sha256-xt2uMrziirUj2G5M/1XFhz8HvUFtgPTKvqIrX7K+xCA=";
@@ -187,7 +187,7 @@ let
 in
 {
   imports = [
-    ./module.nix
+    ./board.nix
     ../../../modules/camera/nixos.nix
     ../../../modules/ir-camera/nixos.nix
     ../../../modules/kernel/nixos.nix

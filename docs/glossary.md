@@ -191,7 +191,7 @@ machine can sleep, lock, log out, reboot and power off.
 | lid | the laptop's lid, whose closing puts it to sleep away from a desk | | `lid-docked` |
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
 | Bluetooth | the radio that reaches headphones, keyboards and mice | | BlueZ |
-| camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraModule` |
+| camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
 | desk light | the light on the monitor, lit while a camera is in use | | Litra |

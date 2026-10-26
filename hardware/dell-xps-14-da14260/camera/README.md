@@ -8,7 +8,7 @@ says why each piece is there.
 | File                           | Holds                                                    |
 | ------------------------------ | -------------------------------------------------------- |
 | `camera.nix`                   | the module: the HAL, the driver, the IR pipeline, and which kernel patches the camera takes |
-| `module.nix`                   | the option naming which colour camera module is fitted, for its tuning |
+| `board.nix`                    | the option naming which colour camera board is fitted, for its tuning |
 | `ir-camera-pipeline.sh`        | the IR sensor's link, set up at each boot                |
 | `camera-cvs.patch`             | the HAL, made to route this sensor through the CVS bridge |
 | `ipu7-psys-*.patch`            | the out-of-tree IPU7 driver, as its processing module needs it |
