@@ -846,7 +846,8 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
         """Give the name of the launcher's selected row, or nothing."""
         return cast("str", (desktop.showing()["selected"] or {}).get("name", ""))
 
-    # Down past the first row to a collection's.
+    # Down past the first row to Programs, a collection the VM always has
+    # some of (Agents, above it, is empty here).
     while True:
         before = selected()
         machine.send_key("down")
@@ -854,7 +855,7 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name", "") != before  # noqa: B023
         )
-        if desktop.showing()["selected"]["is"].startswith("collection:"):
+        if desktop.showing()["selected"]["is"] == "collection:applications":
             break
     chosen = selected()
     desktop.step_in()

@@ -298,15 +298,15 @@ Scope {
     // 2026-10-25: "jumpy ... at home arrowing around"). An answer asked
     // again keeps the list where it was scrolled, as a refresh does.
     function reanswer(source) {
-        if (!open)
+        // At home nothing is asked again, even of a place that's one answer
+        // (Disk), so home is never made again under him.
+        if (!open || (held.length === 0 && typed.trim() === ""))
             return;
         Report.say(`asked again by ${source.settings.name}`);
         if (held.length > 0) {
             relive(source);
             return;
         }
-        if (typed.trim() === "")
-            return;
         const scroll = list.contentY;
         compose(false);
         if (list.contentY !== scroll)

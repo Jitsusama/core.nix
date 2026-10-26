@@ -109,8 +109,7 @@ Singleton {
         const said = (key, state, fill) => ({
             key: key,
             verb: Words.verb(key, state),
-            name: Words.name(key, state, fill),
-            keywords: Words.keywords(key, state)
+            name: Words.name(key, state, fill)
         });
         const rows = [];
         if (ringing !== "" && !calling)
