@@ -1,0 +1,15 @@
+# The Google account, for the desktop: one resident program that asks
+# Google's own API for the calendar and hands what it holds to the shell
+# over a socket (src/main.rs says how).
+[package]
+name = "google"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+jiff = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", features = ["json"] }

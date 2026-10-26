@@ -162,13 +162,15 @@ Provider {
         const usb = ports().map(port => ({ n: port.n, said: portSaid(port) }));
         const charging = usb.find(port => port.said.online && port.said.volts > 0
             && port.said.amps > 0);
-        const mains = devices.some(device => device.type === UPowerDeviceType.LinePower
+        // A charger on a barrel or the dock rather than a USB-C port, said
+        // as plugged in, the glossary's word being charger, never mains.
+        const plugged = devices.some(device => device.type === UPowerDeviceType.LinePower
             && device.nativePath !== "" && !/USBC/.test(device.nativePath)
             && supplied(device.nativePath, "online") === "1");
         const online = usb.find(port => port.said.online);
         const side = charging ? `${number(charging.said.volts * charging.said.amps, 0)} W `
             + `on port ${charging.n}`
-            : online ? `on port ${online.n}` : mains ? "mains" : "none plugged in";
+            : online ? `on port ${online.n}` : plugged ? "plugged in" : "none plugged in";
         const fields = { key: "power:charger", name: named("charger"), side: side, copy: side };
         if (usb.length === 0)
             return copyRow(Object.assign(fields, { glyph: "" }));

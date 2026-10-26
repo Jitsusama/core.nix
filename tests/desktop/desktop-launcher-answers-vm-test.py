@@ -130,7 +130,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
-    # Then what feeds it: the stand-in's mains, plugged in, a step
+    # Then what feeds it: the stand-in's charger, plugged in, a step
     # into the answer's row.
     desktop.answer("charger")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
@@ -138,7 +138,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Charger"
-            and shown["selected"]["side"] == "mains"
+            and shown["selected"]["side"] == "plugged in"
         )
     )
     # Its charge among them, drawn as a bar, and none of them a glyph.

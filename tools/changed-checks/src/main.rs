@@ -5,7 +5,7 @@
 //! derivation at the base, the merge base with origin's main unless told
 //! otherwise, and in the working tree, and names each check added, changed
 //! or removed, and each that no longer evaluates. With `--build` it builds
-//! those added and changed. With `--keep-base` it only evaluates the base
+//! those added and changed, from the derivations it evaluated. With `--keep-base` it only evaluates the base
 //! and keeps its derivations, comparing nothing, so a run after each merge
 //! leaves every later comparison against that commit one evaluation to pay.
 //!
@@ -33,7 +33,7 @@ mod checks;
 mod runs;
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Instant;
 
@@ -173,7 +173,8 @@ fn compare(
     }
     eprintln!("comparing {system}'s checks at {short} with the working tree");
     let before = kept(noted)?;
-    let comparison = checks::compare(&before, &derivations(flake, system, "tree", noted)?);
+    let after = derivations(flake, system, "tree", noted)?;
+    let comparison = checks::compare(&before, &after);
     let mut named = 0;
     for (kind, names) in comparison.kinds() {
         for name in names {
@@ -190,13 +191,19 @@ fn compare(
         return Ok(ExitCode::SUCCESS);
     }
     let began = Instant::now();
-    // A failing build is reported by its status, as nix reports it.
+    // Each check is built from the derivation just evaluated, so no
+    // evaluator runs beside the builds: one holds its whole heap until its
+    // last build ends, 1.4 to 4 GiB through a VM test. A derivation the
+    // store has collected since is built from the flake, as before.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
         .args(
             targets
                 .iter()
-                .map(|name| format!("{flake}#checks.{system}.{name}")),
+                .map(|name| match after.get(*name).and_then(Option::as_deref) {
+                    Some(derivation) if Path::new(derivation).exists() => format!("{derivation}^*"),
+                    _ => format!("{flake}#checks.{system}.{name}"),
+                }),
         )
         .status()
         .map_err(|error| format!("running nix: {error}"))?;

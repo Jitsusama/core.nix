@@ -1,6 +1,10 @@
 // A quick question answered in the field by a model, in a sentence or two:
 // what's typed ending in "?", or starting with a question's word, three
-// words or more. Other answers are asked first, so a sum or "is 10.0.0.1
+// words or more. A request in plain words, two or more that aren't a
+// question, is offered too, when nothing else is found: pi-ask does it
+// through the launcher's catalogue, so "brightness to 40%" sets it, which
+// the search alone can't (Joel, 2026-10-26: "i thought the point was to use
+// an llm for that?"). Other answers are asked first, so a sum or "is 10.0.0.1
 // in 10.0.0.0/8" never reaches it. Nothing is asked as Joel types: the row
 // offers to ask, and Return asks, the launcher staying open while the
 // answer is written in place, the whole of it below the rows. The right
@@ -36,6 +40,9 @@ Provider {
     readonly property var askingWords: ["what", "whats", "how", "why", "who", "when", "where",
         "which", "can", "could", "should", "would", "does", "do", "is", "are", "will"]
     readonly property int fewestWords: 3
+    // A request takes two, so "dim screen" is one and a word alone is
+    // left to the search.
+    readonly property int fewestRequestWords: 2
 
     // The question asked last, what's been said to it, and how it's going:
     // "" before any, "asking", "answering", "answered", "stopped" or
@@ -75,13 +82,19 @@ Provider {
             && askingWords.includes(Fuzzy.plainly(words[0]).replace(/'/g, ""));
     }
 
+    function isRequest(text) {
+        return /[a-z]/i.test(text) && Fuzzy.words(text).length >= fewestRequestWords;
+    }
+
     function answer(typed) {
         const question = typed.trim();
-        if (!isQuestion(question))
+        const asked = isQuestion(question);
+        if (!asked && !isRequest(question))
             return null;
-        const row = question === posed && stage !== "" ? reply(question) : offer(question);
-        // Asked by a question's word rather than "?", it gives way to
-        // anything found, so "do not disturb" is Do not disturb.
+        const row = question === posed && stage !== "" ? reply(question)
+            : offer(question, asked);
+        // Asked by a question's word rather than "?", or a request, it gives
+        // way to anything found, so "do not disturb" is Do not disturb.
         return question.endsWith("?") ? row : Object.assign(row, { fallback: true });
     }
 
@@ -91,7 +104,7 @@ Provider {
 
     // Before it's asked: Return asks, and the launcher stays to show it.
     // While pi can't start, it says why, and Return tries again at once.
-    function offer(question) {
+    function offer(question, asked) {
         return {
             headline: Words.name("ask"),
             verb: Words.verb("ask"),
@@ -100,7 +113,8 @@ Provider {
             run: () => provider.pose(question),
             rows: talkOn(question, "").concat([onward(question, "")]),
             note: down ? `it can't start: ${lastError || "pi ended"}`
-                : "a quick answer, in a sentence or two",
+                : asked ? "a quick answer, in a sentence or two"
+                : "done through the launcher, where it can be",
             glyph: Words.glyph("ask"),
             hue: down ? "alert" : "voice"
         };
@@ -283,6 +297,12 @@ Provider {
             && event.assistantMessageEvent?.type === "text_delta") {
             said += event.assistantMessageEvent.delta ?? "";
             stage = "answering";
+            told();
+        } else if (event.type === "tool_execution_start") {
+            // What came before a call is only about making it ("Let me set
+            // it to 40%"), which the prompt alone didn't stop, so the row
+            // says what was done.
+            said = "";
             told();
         } else if (event.type === "message_end" && event.message?.role === "assistant"
             && event.message.stopReason === "error") {

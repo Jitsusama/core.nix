@@ -1175,7 +1175,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
     # Power comes first, saying what it holds, and Memory is a row of its
-    # own, before Heat, as the processor is.
+    # own, before Heat, as the processor is, and Disk after it.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
@@ -1184,7 +1184,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
                 for thing in shown["things"]
             )
             and "Memory" in shown["rows"]
-            and shown["rows"][shown["rows"].index("Memory") + 1 :][:1] == ["Heat"]
+            and shown["rows"][shown["rows"].index("Memory") + 1 :][:2] == ["Heat", "Disk"]
         )
     )
     desktop.step_in("ret")
@@ -1314,8 +1314,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
-    # the approved proposal gives them.
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Disk", "Keyboard"]
+    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26).
+    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:

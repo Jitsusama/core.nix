@@ -841,6 +841,7 @@ gather (
     ./modules/gimp/checks.nix
     ./modules/git/checks.nix
     ./modules/git-engine/checks.nix
+    ./modules/google/checks.nix
     ./modules/gtk/checks.nix
     ./modules/guide/checks.nix
     ./modules/inkscape/checks.nix
@@ -869,6 +870,7 @@ gather (
     ./modules/open-with/checks.nix
     ./modules/panel/checks.nix
     ./modules/pi/checks.nix
+    ./modules/pi-packages/checks.nix
     ./modules/pipewire/checks.nix
     ./modules/plymouth/checks.nix
     ./modules/pnpm/checks.nix

@@ -1,0 +1,284 @@
+//! The program's look at the account, against a stand-in for Google on
+//! this machine: what it asks, what it tells the shell, and that the
+//! harness's file is left as it was.
+
+use std::fs;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpListener;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+use google::api::{Google, Origins};
+use google::state::Standing;
+use google::watch::Watch;
+use jiff::Zoned;
+
+/// One request the stand-in heard: its first line and its Authorization.
+#[derive(Clone, Debug)]
+struct Heard {
+    line: String,
+    authorization: String,
+}
+
+/// A stand-in for Google's token endpoint and Calendar API, answering each
+/// request by `answer`, given its first line and body, with a status and a
+/// JSON body.
+struct StandIn {
+    origin: String,
+    heard: Arc<Mutex<Vec<Heard>>>,
+}
+
+impl StandIn {
+    fn new(answer: fn(&str, &str) -> (u16, String)) -> StandIn {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let kept = Arc::clone(&heard);
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let (mut authorization, mut length) = (String::new(), 0);
+                loop {
+                    let mut header = String::new();
+                    reader.read_line(&mut header).unwrap();
+                    let header = header.trim_end();
+                    if header.is_empty() {
+                        break;
+                    }
+                    let (name, value) = header.split_once(": ").unwrap_or((header, ""));
+                    match name.to_ascii_lowercase().as_str() {
+                        "authorization" => value.clone_into(&mut authorization),
+                        "content-length" => length = value.parse().unwrap(),
+                        _ => {}
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).unwrap();
+                let body = String::from_utf8(body).unwrap();
+                let (status, reply) = answer(line.trim_end(), &body);
+                kept.lock().unwrap().push(Heard {
+                    line: line.trim_end().to_owned(),
+                    authorization,
+                });
+                let mut stream = stream;
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                    reply.len()
+                )
+                .unwrap();
+            }
+        });
+        StandIn { origin, heard }
+    }
+
+    fn origins(&self) -> Origins {
+        Origins {
+            token: format!("{}/token", self.origin),
+            api: self.origin.clone(),
+        }
+    }
+
+    fn heard(&self) -> Vec<Heard> {
+        self.heard.lock().unwrap().clone()
+    }
+}
+
+/// The harness's file, in a folder of the test's own, with pi's access
+/// token ending at `expires`.
+fn credentials(test: &str, expires: i64) -> PathBuf {
+    let folder = std::env::temp_dir().join(format!("google-{test}-{}", std::process::id()));
+    fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("credentials.json");
+    fs::write(
+        &path,
+        format!(
+            r#"{{"oauthApp": {{"clientId": "app", "clientSecret": "secret"}},
+                "accounts": [{{"name": "work", "isDefault": true}}],
+                "tokens": {{"work": {{"access_token": "pis", "refresh_token": "refresh",
+                    "expiry_date": {expires}, "token_type": "Bearer", "scope": "calendar"}}}}}}"#
+        ),
+    )
+    .unwrap();
+    path
+}
+
+fn now() -> Zoned {
+    "2026-10-26T15:20:00-04:00[-04:00]".parse().unwrap()
+}
+
+const EVENTS: &str = r#"{"items": [{"id": "e1", "summary": "Standup",
+    "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+    "end": {"dateTime": "2026-10-26T16:15:00-04:00"},
+    "hangoutLink": "https://meet.google.com/abc-defg-hij"}]}"#;
+
+fn google(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("POST /token") {
+        assert!(body.contains("grant_type=refresh_token"), "{body}");
+        assert!(body.contains("refresh_token=refresh"), "{body}");
+        return (
+            200,
+            r#"{"access_token": "mine", "expires_in": 3599}"#.into(),
+        );
+    }
+    (200, EVENTS.into())
+}
+
+#[test]
+fn a_stale_token_is_refreshed_and_the_meetings_are_told() {
+    let stand_in = StandIn::new(google);
+    let path = credentials("refreshed", 0);
+    let before = fs::read(&path).unwrap();
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert_eq!(state.meetings.len(), 1);
+    assert_eq!(state.meetings[0].title, "Standup");
+    let heard = stand_in.heard();
+    assert!(heard[0].line.starts_with("POST /token"));
+    let asked = &heard[1];
+    assert_eq!(asked.authorization, "Bearer mine");
+    assert!(
+        asked
+            .line
+            .starts_with("GET /calendar/v3/calendars/primary/events?")
+    );
+    assert!(
+        asked.line.contains("timeMin=2026-10-26T04%3A00%3A00Z"),
+        "{}",
+        asked.line
+    );
+    assert!(asked.line.contains("singleEvents=true"));
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        before,
+        "the harness's file was written"
+    );
+}
+
+#[test]
+fn pis_fresh_token_is_used_without_a_refresh() {
+    let stand_in = StandIn::new(google);
+    let path = credentials("fresh", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    assert_eq!(watch.look(&now()).account, Standing::Ready);
+    let heard = stand_in.heard();
+    assert_eq!(heard.len(), 1);
+    assert_eq!(heard[0].authorization, "Bearer pis");
+}
+
+#[test]
+fn a_refused_sign_in_is_signed_out_and_not_asked_again() {
+    let stand_in = StandIn::new(|path, _| {
+        if path.starts_with("POST /token") {
+            (400, r#"{"error": "invalid_grant"}"#.into())
+        } else {
+            (200, EVENTS.into())
+        }
+    });
+    let mut watch = Watch::new(
+        Google::new(stand_in.origins()),
+        credentials("refused", 0),
+        None,
+    );
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::SignedOut);
+    assert!(state.meetings.is_empty());
+    watch.look(&now());
+    assert_eq!(
+        stand_in.heard().len(),
+        1,
+        "a refused sign-in was offered again"
+    );
+}
+
+#[test]
+fn a_revoked_token_is_refreshed_past_once_then_waits_for_a_new_sign_in() {
+    let stand_in = StandIn::new(|path, _| {
+        if path.starts_with("POST /token") {
+            (
+                200,
+                r#"{"access_token": "mine", "expires_in": 3599}"#.into(),
+            )
+        } else if path.starts_with("GET") && !path.contains("pageToken") {
+            (401, "{}".into())
+        } else {
+            (200, EVENTS.into())
+        }
+    });
+    let path = credentials("revoked", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    assert_eq!(watch.look(&now()).account, Standing::SignedOut);
+    let lines: Vec<_> = stand_in
+        .heard()
+        .into_iter()
+        .map(|heard| heard.authorization)
+        .collect();
+    assert_eq!(lines, vec!["Bearer pis", "", "Bearer mine"]);
+    watch.look(&now());
+    assert_eq!(
+        stand_in.heard().len(),
+        3,
+        "a refused sign-in was offered again"
+    );
+}
+
+#[test]
+fn every_page_of_meetings_is_joined() {
+    let stand_in = StandIn::new(|path, _| {
+        if path.contains("pageToken=two") {
+            (200, EVENTS.replace("e1", "e2"))
+        } else {
+            (
+                200,
+                EVENTS.replace(r#""items""#, r#""nextPageToken": "two", "items""#),
+            )
+        }
+    });
+    let path = credentials("pages", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let ids: Vec<_> = watch
+        .look(&now())
+        .meetings
+        .iter()
+        .map(|m| m.id.clone())
+        .collect();
+    assert_eq!(ids, vec!["e1", "e2"]);
+}
+
+#[test]
+fn an_unreachable_google_keeps_what_was_heard() {
+    let stand_in = StandIn::new(google);
+    let path = credentials("unreachable", 0);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    let heard = watch.look(&now()).heard;
+    // A port nothing listens on, as Google is to a laptop offline.
+    let closed = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    watch.google = Google::new(Origins {
+        token: format!("http://{closed}/token"),
+        api: format!("http://{closed}"),
+    });
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::Unreachable);
+    assert_eq!(state.meetings.len(), 1);
+    assert_eq!(state.heard, heard);
+}
+
+#[test]
+fn no_file_is_no_account_and_google_is_never_asked() {
+    let stand_in = StandIn::new(google);
+    let mut watch = Watch::new(
+        Google::new(stand_in.origins()),
+        PathBuf::from("/nonexistent/credentials.json"),
+        None,
+    );
+    assert_eq!(watch.look(&now()).account, Standing::None);
+    assert!(stand_in.heard().is_empty());
+}

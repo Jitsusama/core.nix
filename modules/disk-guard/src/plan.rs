@@ -148,6 +148,11 @@ fn hours(n: f64) -> Option<f64> {
     Some(n * HOUR)
 }
 
+#[expect(clippy::unnecessary_wraps, reason = "a window, as hours and days are")]
+fn minutes(n: f64) -> Option<f64> {
+    Some(n * 60.0)
+}
+
 #[expect(
     clippy::unnecessary_wraps,
     reason = "a window in the table is an Option, where None is never"
@@ -189,9 +194,10 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         ),
         // Of a log, what's trimmed is history nobody reads; the rest stays.
         Class::Snapshot | Class::NixBuild | Class::Log => (Group::Waste, [AT_ONCE; 4]),
-        Class::Workspace | Class::Trash => {
-            (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE])
-        }
+        // A quest that's over owns nothing: its scratch goes once nothing
+        // has written to it for a few minutes, whatever the disk's band.
+        Class::Workspace => (Group::Waste, [minutes(10.0); 4]),
+        Class::Trash => (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE]),
         Class::Temp => (Group::Waste, [days(1.0), days(1.0), hours(6.0), hours(2.0)]),
         Class::Cache { from, .. } => {
             let from = |band: Band| if band >= from { AT_ONCE } else { NEVER };

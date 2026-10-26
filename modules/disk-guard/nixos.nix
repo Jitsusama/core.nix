@@ -1,6 +1,6 @@
 # The machine's disk guard: the daemon that owns what lies outside every
-# home. It collects Nix's garbage by its own policy, oldest first and within
-# a budget for what's young; expires generations, never one that runs, boots
+# home. It collects Nix's garbage once something lets it go, oldest first;
+# expires generations, never one that runs, boots
 # or has a boot entry; links the store's identical files weekly in a spare
 # moment; and takes old cores, the build directories Nix left and root's
 # caches. Each account's guard asks it to collect when they share a

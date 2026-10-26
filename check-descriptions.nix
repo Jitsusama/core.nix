@@ -267,6 +267,14 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  google-passes-clippy = ''
+    clippy finds nothing in google or its tests
+  '';
+  google-reads-the-calendar = ''
+    google reads the harness's Google account without writing its file, refreshes a stale token in
+    memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
+    can't be reached, and tells the shell each meeting's times, answer and the one link it's joined by
+  '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere
@@ -504,12 +512,17 @@
   '';
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
-    extensions, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
+    extensions, the digest of what's true on the machine and, on Linux, the launcher's tool as its
+    one tool, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
   '';
   pi-ask-knows-the-machine = ''
     pi-ask's digest says what's true on the machine as each question starts: the time, its
     battery, disk and network, what waits on the person and the quests being worked, from the
     machine's own files alone
+  '';
+  pi-ask-runs-the-launcher = ''
+    pi-ask's one tool lists the launcher's places and actions and runs one, passing on what was
+    done, or that a disruptive one only waits for Return
   '';
   pi-asks-claude-code-its-login-once = ''
     pi starts Claude Code to ask for its login once for any number of asks within a minute, so a
@@ -525,12 +538,20 @@
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
   pi-loads-its-packages = ''
-    pi's package list is the harness and neovim.pi on every machine, and a package a machine
-    adds comes after them rather than in their place
+    pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
+    after them rather than in their place, and pi is given each git package as its current link
   '';
   pi-measures-each-day-in-the-background = ''
     the harness's measure runs each morning in background.slice with the store's node, catching up on
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
+  '';
+  pi-packages-passes-clippy = ''
+    clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
+    through an update and never swap in a build that fails or leaves a native module unbuilt
+  '';
+  pi-packages-swap-in-the-background = ''
+    pi's git packages are updated at a switch before pi's settings name their links, and every
+    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with

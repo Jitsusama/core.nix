@@ -256,8 +256,12 @@ const _: () = assert!(size_of::<ProcRegionWithPathInfo>() == 1272);
 /// `PROC_PIDFDVNODEPATHINFO`: an open file's vnode and path.
 const PROC_PIDFDVNODEPATHINFO: c_int = 2;
 
-/// `PROC_PIDREGIONPATHINFO`: the region at or after an address, and its path.
-const PROC_PIDREGIONPATHINFO: c_int = 8;
+/// `PROC_PIDREGIONPATHINFO2`: the first region at or after an address that
+/// a file backs, and its path, from xnu's `proc_info_private.h`. Walking
+/// every region instead asks once for each piece of anonymous memory too:
+/// on a Mac with 746 processes that was 275,501 calls against 12,686, for
+/// the same 11,940 mapped files, and 0.81 s against 0.07 s.
+const PROC_PIDREGIONPATHINFO2: c_int = 22;
 
 /// How many regions are walked at most, against a process whose map keeps
 /// changing under the walk.
@@ -453,14 +457,16 @@ fn files(pid: libc::pid_t) -> io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// The files it has mapped, region by region. A process that can't be
-/// asked about its first region is hidden; past that, the walk ends at
-/// the last region.
+/// The files it has mapped, region by region, skipping memory no file
+/// backs. A process that can't be asked about its first such region is
+/// hidden, as one with no file mapped, not even its program, can only be
+/// one gone or not yet started; past that, the walk ends at the last.
 fn maps(pid: libc::pid_t) -> io::Result<Vec<PathBuf>> {
     let mut maps = Vec::new();
     let mut address = 0u64;
     for walked in 0..REGIONS_AT_MOST {
-        let region = match pidinfo::<ProcRegionWithPathInfo>(pid, PROC_PIDREGIONPATHINFO, address) {
+        let region = match pidinfo::<ProcRegionWithPathInfo>(pid, PROC_PIDREGIONPATHINFO2, address)
+        {
             Ok(region) => region,
             Err(error) if walked == 0 => return Err(error),
             Err(_) => break,

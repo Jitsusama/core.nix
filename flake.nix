@@ -148,6 +148,7 @@
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
+        google = ./modules/google/home.nix;
         gtk = ./modules/gtk/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
@@ -169,6 +170,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         pi = ./modules/pi/home.nix;
+        pi-packages = ./modules/pi-packages/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
         prompt = ./modules/prompt/home.nix;
@@ -454,52 +456,5 @@
           formatting = (treefmt pkgs).config.build.check self;
         }
       );
-
-      # What machine repositories imported before the modules above existed:
-      # every module of each class, in the order they were imported then, so
-      # their machines build exactly as they did. The three that
-      # take an input are applied directly rather than through moduleFrom,
-      # whose extra level of imports would reorder lists such as Neovim's
-      # plugins. These go once both import the modules and roles instead.
-      home-manager.imports = [
-        self.homeModules.bat
-        self.homeModules.btop
-        self.homeModules.broot
-        self.homeModules.claude
-        self.homeModules.curl
-        self.homeModules.dig
-        self.homeModules.direnv
-        self.homeModules.fd
-        self.homeModules.fzf
-        self.homeModules.gh
-        (import ./modules/ghostty/home.nix { inherit wallpapers; })
-        self.homeModules.git
-        self.homeModules.glow
-        self.homeModules.gnupg
-        self.homeModules.homebrew
-        self.homeModules.jq
-        self.homeModules.lsd
-        (import ./modules/neovim/home.nix { inherit neovim-pi; })
-        self.homeModules.nixfmt
-        self.homeModules.opencode
-        self.homeModules.openssl
-        self.homeModules.ripgrep
-        self.homeModules.telnet
-        self.homeModules.tree
-        self.homeModules.tree-sitter
-        (import ./modules/wezterm/home.nix { inherit wallpapers; })
-        self.homeModules.yq
-        self.homeModules.zoxide
-        self.homeModules.zsh
-        self.homeModules.prompt
-        self.homeModules.home-manager
-      ];
-      nix-darwin.imports = [
-        self.darwinModules.fonts
-        self.darwinModules.homebrew
-        self.darwinModules.macos-defaults
-        self.darwinModules.zsh
-      ];
-      inherit wallpapers neovim-pi;
     };
 }
