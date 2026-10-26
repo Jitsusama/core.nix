@@ -219,7 +219,7 @@
     {
       "id": "machine",
       "name": "Machine",
-      "question": "cpu",
+      "question": "processor",
       "parts": [
         "machine:memory",
         "machine:cpu",

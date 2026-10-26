@@ -328,12 +328,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # The session's actions answer to what people call them; Escape,
+    # The power actions answer to their names, and only those; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
-        ("shut down", "Power off", "Power off"),
-        ("restart", "Reboot", "Reboot"),
-        ("sign out", "Log out", "Log out"),
+        ("power off", "Power off", "Power off"),
+        ("reboot", "Reboot", "Reboot"),
+        ("log out", "Log out", "Log out"),
     ]:
         desktop.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
