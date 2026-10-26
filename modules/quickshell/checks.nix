@@ -446,7 +446,9 @@ onLinux {
     '';
 
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
-  # addresses and networks with the kind of range each is in, hardware
+  # addresses and networks with the kind of range each is in, subnet maths
+  # (a network's parts, what holds an address, a prefix alone and a network
+  # split), characters and their codes, named as Unicode names them, hardware
   # addresses, measures, the time in any zone tzdata names and the
   # machine's figures from its files, its parts' heat from their sensors,
   # the keyboards in the kernel's list of input devices, how each Bluetooth
@@ -462,6 +464,9 @@ onLinux {
       cp ${../../tests/answers.qml} answers.qml
       cp ${./launcher/Numbers.js} Numbers.js
       cp ${./launcher/Addresses.js} Addresses.js
+      cp ${./launcher/Subnets.js} Subnets.js
+      cp ${./launcher/Characters.js} Characters.js
+      cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
       cp ${./launcher/Units.js} Units.js
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Colours.js} Colours.js
@@ -745,9 +750,10 @@ onLinux {
   '';
 
   # The launcher's answers that build their parts' ids as they answer, the
-  # calculator's bases, the time's, today's, the waits' and a hardware
-  # address's, name every part as the vocabulary does (tests/part-names.qml),
-  # with tzdata's zones kept and lag-watch's last ten seconds written here.
+  # calculator's bases, the time's, today's, the waits', a hardware
+  # address's, a network's and a character's, name every part as the
+  # vocabulary does (tests/part-names.qml), with tzdata's zones and
+  # Unicode's names kept and lag-watch's last ten seconds written here.
   the-launcher-names-the-parts-it-builds =
     pkgs.runCommandLocal "the-launcher-names-the-parts-it-builds" { }
       ''
@@ -765,6 +771,12 @@ onLinux {
         cp ${./launcher/Today.qml} launcher/Today.qml
         cp ${./launcher/Waits.qml} launcher/Waits.qml
         cp ${./launcher/Vendors.qml} launcher/Vendors.qml
+        cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+        cp ${./launcher/Subnets.js} launcher/Subnets.js
+        cp ${./launcher/Networks.qml} launcher/Networks.qml
+        cp ${./launcher/Characters.js} launcher/Characters.js
+        cp ${./launcher/Characters.qml} launcher/Characters.qml
+        cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json

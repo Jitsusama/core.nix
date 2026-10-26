@@ -5,8 +5,12 @@
 // its Address, Gateway, DNS (on the way out, as the machine asks names
 // there), Hardware address, MTU, State and the Device name the kernel
 // knows it by, which finds it too. "gateway" and "dns" ask those parts
-// alone. An IPv4 or IPv6 address or network says its size, range, mask
-// and the kind of range it's in; and a public one says who holds it, asked
+// alone. An IPv4 or IPv6 address or network, written with its prefix or
+// its mask, says its size, range, mask and the rest of a subnet's parts
+// (Subnets.js works them out), or which network holds the address typed,
+// and the kind of range it's in; "is 10.1.2.3 in 10.0.0.0/16" says yes or
+// no, "/22" a prefix's mask and size, and "10.0.0.0/22 in /24s" the
+// subnets it splits into. A public one says who holds it, asked
 // of the regional registries through rdap.org. A private, shared, local or
 // documentation address is never asked about, and with `lookups` set false
 // nothing leaves the machine. Every row is a part named first, its value
@@ -22,11 +26,12 @@ import QtQuick
 import "Addresses.js" as Addresses
 import "Interfaces.js" as Interfaces
 import "Numbers.js" as Numbers
+import "Subnets.js" as Subnets
 
 Provider {
     id: provider
 
-    examples: ["ip", "10.0.0.0/22", "8.8.8.8", "2001:db8::/48"]
+    examples: ["ip", "10.0.0.0/22", "8.8.8.8", "2001:db8::/48", "10.0.0.0/22 in /24s"]
 
     readonly property bool lookups: settings.lookups !== false
     // How long what a registry or ipify said is kept, in milliseconds.
@@ -37,12 +42,6 @@ Provider {
 
     function grouped(value) {
         return Numbers.format(value, 0, settings.group, settings.point);
-    }
-
-    // How many of something there are in 2^bits, written whole while it can
-    // be, and as a power of two past that.
-    function counted(bits) {
-        return bits <= 52 ? grouped(Math.pow(2, bits)) : `2^${bits}`;
     }
 
     // A part's name, as the vocabulary says it: "Gateway" for
@@ -73,10 +72,8 @@ Provider {
             return alone(partsAsked[question]);
         if (question !== "" || wholly.includes(plainly(text)))
             return mine();
-        // The command's word may lead it, as the commands list it:
-        // "ip 10.0.0.0/22".
-        const read = Addresses.read(text.replace(/^ip\s+(?=\S)/i, ""));
-        return read ? about(read) : null;
+        const said = Subnets.answer(text, settings);
+        return said ? about(said) : null;
     }
 
     // What ip last said of every connection, made sense of
@@ -316,46 +313,30 @@ Provider {
         };
     }
 
-    // An address or network: its size and range, and who holds it.
-    function about(at) {
-        const rows = [];
-        let headline = "";
-        let copy = at.text;
-        const network = at.prefix !== null && at.prefix < (at.version === 4 ? 32 : 128);
-        const key = id => `networks:about:${id}`;
-        if (at.version === 4 && network) {
-            headline = `${grouped(at.usable)} ${at.usable === 1 ? "host" : "hosts"}`;
-            copy = at.network;
-            rows.push(part(key("usable"), "usable", `${at.first} \u2013 ${at.last}`));
-            rows.push(part(key("mask"), "mask", at.mask));
-            if (at.prefix <= 30)
-                rows.push(part(key("broadcast"), "broadcast", at.broadcast));
-            if (!at.aligned)
-                rows.push(part(key("network"), "network", at.network));
-        } else if (at.version === 6 && network) {
-            headline = at.bits === 64 ? "one /64"
-                : at.bits > 64 ? `${counted(at.bits - 64)} /64s`
-                : `${counted(at.bits)} addresses`;
-            copy = at.network;
-            rows.push(part(key("range"), "range", `${at.first} \u2013 ${at.last}`, "",
-                at.network));
-            rows.push(part(key("full"), "full", at.full));
-            if (!at.aligned)
-                rows.push(part(key("network"), "network", at.network));
-        } else if (at.version === 6) {
-            rows.push(part(key("full"), "full", at.full));
-        }
+    // An address or network as Subnets.js tells it, with the kind of range
+    // it's in and, for a public one, who holds it; or what Subnets.js
+    // worked out of no address in particular, as it said it.
+    function about(said) {
+        const rows = said.rows.map((row, i) => row.id
+            ? part(`networks:about:${row.id}`, row.id, row.side, "", row.copy)
+            : copyRow({ key: `networks:about:${i}:${row.name}`, name: row.name,
+                side: row.side, copy: row.copy, hue: "machine", glyph: "" }));
+        const at = said.at ?? null;
+        if (at === null)
+            return { headline: said.headline, copy: said.copy, rows: rows, note: said.note };
+        let headline = said.headline;
+        const copy = said.copy;
         const kind = at.kind;
         // A network part public and part not is said as what it starts in.
         if (!kind.public) {
             if (headline === "")
                 headline = kind.kind;
-            rows.push(part(key("kind"), "kind", kind.kind, kind.rfc, kind.kind));
+            rows.push(part("networks:about:kind", "kind", kind.kind, kind.rfc, kind.kind));
             return { headline: headline, copy: copy, rows: rows, note: "" };
         }
         if (!lookups)
             return { headline: headline || "public", copy: copy, rows: rows, note: "" };
-        const held = holderOf(at, network ? at.network : at.text);
+        const held = holderOf(at, said.network ? at.network : at.text);
         // A lone address's headline is its holder, so its row isn't repeated.
         if (headline === "")
             return { headline: held.name, copy: copy, rows: held.rows.slice(1).concat(rows),

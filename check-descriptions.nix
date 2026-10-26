@@ -709,7 +709,8 @@
     is, by its position, ahead of the place set and then the time zone, and the footer says which
   '';
   the-launcher-answers-what-is-asked = ''
-    sums, addresses, measures, zones, colours, the machine's figures and its parts' heat answer
+    sums, addresses, subnets, characters, measures, zones, colours, the machine's figures and its
+    parts' heat answer
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
@@ -762,8 +763,8 @@
     printed, and the check refuses a stand-in vocabulary breaking each rule of what Joel reads
   '';
   the-launcher-names-the-parts-it-builds = ''
-    every part the calculator, the time, today, the waits and a hardware address show is named as
-    the vocabulary names it
+    every part the calculator, the time, today, the waits, a hardware address, a network and a
+    character show is named as the vocabulary names it
   '';
   the-litra-follows-the-cameras = ''
     `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only

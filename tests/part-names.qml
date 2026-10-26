@@ -1,13 +1,14 @@
 // Drives the launcher's answers that name their parts from ids they build
-// as they answer (Calculator.qml, Clocks.qml, Today.qml, Waits.qml and
-// Vendors.qml) through Quickshell itself, so every part each can show is
-// named as the vocabulary names it (launcher/words.json, Words.qml): an id
-// the vocabulary doesn't know shows as the id itself, as "calculator:hex"
-// would, so a typo on either side fails here rather than on screen. The
-// time is told with tzdata's zones kept beside it, and Waits reads what
-// lag-watch would write. Currency names its parts by the currencies alone,
-// so it builds no id to check. It exits 0 once every case holds, and
-// otherwise 1, saying which case didn't.
+// as they answer (Calculator.qml, Clocks.qml, Today.qml, Waits.qml,
+// Vendors.qml, Networks.qml and Characters.qml) through Quickshell itself,
+// so every part each can show is named as the vocabulary names it
+// (launcher/words.json, Words.qml): an id the vocabulary doesn't know shows
+// as the id itself, as "calculator:hex" would, so a typo on either side
+// fails here rather than on screen. The time is told with tzdata's zones
+// kept beside it, a character with Unicode's names, a network with no
+// lookups, and Waits reads what lag-watch would write. Currency names its
+// parts by the currencies alone, so it builds no id to check. It exits 0
+// once every case holds, and otherwise 1, saying which case didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -45,6 +46,18 @@ ShellRoot {
         id: vendors
     }
 
+    Launcher.Networks {
+        id: networks
+
+        settings: ({ lookups: false })
+    }
+
+    Launcher.Characters {
+        id: characters
+
+        settings: ({ names: Quickshell.shellPath("names.txt") })
+    }
+
     // Each answer, what's typed to show every part it can, and the ids of
     // those parts within its scope.
     readonly property var asked: [
@@ -55,7 +68,14 @@ ShellRoot {
             ids: ["day", "epoch", "utc", "week", "zone"] },
         { scope: "waits", from: waits, typed: ["lag"], ids: ["slowest", "typical", "work"] },
         { scope: "vendors", from: vendors, typed: ["3c:22:fb:12:34:56"],
-            ids: ["colons", "dotted", "kind"] }
+            ids: ["colons", "dotted", "kind"] },
+        { scope: "networks", from: networks,
+            typed: ["10.0.0.5/22", "2001:db8::1/48", "/22", "is 10.0.0.1 in 10.0.0.0/8"],
+            ids: ["broadcast", "first", "full", "hosts", "kind", "last", "mask", "network",
+                "range", "size", "subnets", "wildcard"] },
+        { scope: "characters", from: characters, typed: ["ascii 65", "utf8 \u00e9"],
+            ids: ["binary", "bits", "decimal", "escaped", "hex", "length", "name", "percent",
+                "point", "points", "utf8"] }
     ]
 
     // Quickshell hears Qt.exit only once the shell has loaded, so the cases
