@@ -145,7 +145,7 @@
     {
       "id": "agents:works",
       "in": "agents",
-      "name": "Works on"
+      "name": "Working on"
     },
     {
       "id": "agents:hears",

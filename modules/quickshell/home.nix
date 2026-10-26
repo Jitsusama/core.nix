@@ -868,7 +868,7 @@ in
         "Wi-Fi" = "network";
         Bluetooth = "device";
         sound = "device";
-        display = "display";
+        display = "screen";
         camera = "camera";
         person = "person";
         call = "call";
