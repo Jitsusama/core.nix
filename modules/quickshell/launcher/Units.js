@@ -266,6 +266,10 @@ const MEASURE_START = /^[-+]?(?:\d|\.\d|\()/;
 const INTO_END = /^(.*\S)\s+(?:in|to|as|into)\s+(\S.*)$/i;
 // An operator between measures, after a sign the first might carry.
 const BETWEEN = /[+\-*/^\u00d7\u00f7]/;
+// What the launcher's other answers own, as Numbers.js leaves them: a
+// colon, as an IPv6 network has ("2001:db8::/48" is no measure of bits),
+// and a colour's #.
+const OTHERS = /[:#]/;
 // A name in a measure, which the table may know.
 const WORD = /[a-z\u00b5\u00b0]+/gi;
 
@@ -346,7 +350,7 @@ function forMaths(measure) {
 // working something out, and coming to a measure in the unit asked for,
 // is answered, said in the field with no rows, since there's no one rate.
 function worked(typed, options, maths) {
-    if (!(maths && MEASURE_START.test(typed))) {
+    if (!(maths && MEASURE_START.test(typed)) || OTHERS.test(typed)) {
         return null;
     }
     const into = INTO_END.exec(typed);
