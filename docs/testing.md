@@ -236,8 +236,8 @@ nix develop -c shots-changed "$main" "$here" changed
 pixels, and draws it in `changed/` before, after and their difference, cut
 to where it changed. A picture that should have changed and isn't named
 matters as much as one named that shouldn't have. The pictures that move by
-themselves are named in [`tests/shots-that-move.txt`][5], each with what
-moves in it, and listed apart. One joins that list only once two runs of
+themselves are named in [`tools/shots-changed/shots-that-move.txt`][5],
+each with what moves in it, and listed apart. One joins that list only once two runs of
 unchanged code show it moving, for a cause the test can't hold still; a
 picture caught before its state was drawn is a fault in the test instead.
 
@@ -292,7 +292,7 @@ isn't restored by accident.
 [2]: kernel.md
 [3]: installing.md
 [4]: ../tests/secure-boot.nix
-[5]: ../tests/shots-that-move.txt
+[5]: ../tools/shots-changed/shots-that-move.txt
 [6]: ../AGENTS.md#commands
 [7]: decisions/0012-no-ci.md
 [8]: ../check-descriptions.nix

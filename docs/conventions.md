@@ -81,11 +81,11 @@ language (`.py`, `.sh`, `.qml`), and Nix reads it in or runs it by path.
 Inside a Nix string it can't be linted, imported, run alone or tested, and
 an editor reads it as text. Store paths reach it as arguments, the
 environment, or a placeholder swapped in by `builtins.replaceStrings`, as
-`tests/shots-changed.nix` does. A file is held to its language's strictest
+`tools/shots-changed/shots-changed.nix` does. A file is held to its language's strictest
 linter through `nix fmt`, as [testing.md][1] lists them, so a writer
 that lints as it builds, such as `writers.writePython3`, has that turned
 off. Its tests are a file of their own that a check runs, as
-`tests/run-subtests-test.py` is. A build phase of a line or two stays
+`tools/run-subtests/run-subtests-test.py` is. A build phase of a line or two stays
 inline, since it reads as part of the derivation.
 
 ## Applications That Write Their Own Settings

@@ -14,7 +14,8 @@ no framework, and nothing found by scanning the file tree.
 | `roles/<role>/`     | what a machine is for: imports only, one file per system  |
 | `hardware/<model>/` | one machine model's needs, and the kernel it runs         |
 | `examples/`         | machines built only from the outputs, as a consumer would |
-| `tests/`            | VM tests, the shell's QML cases, check scripts, stand-ins, dev tools |
+| `tests/`            | VM tests, the shell's QML cases, check scripts, stand-ins |
+| `tools/`            | the dev shell's own programs, for changing core.nix       |
 | `checks.nix`        | what `nix flake check` runs: every folder's `checks.nix`  |
 | `check-descriptions.nix` | what each check proves, by its name                  |
 | `treefmt.nix`       | what `nix fmt` runs                                       |
