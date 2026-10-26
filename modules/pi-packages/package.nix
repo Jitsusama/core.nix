@@ -29,7 +29,7 @@ rustPlatform.buildRustPackage {
     pnpm
   ];
   meta = {
-    description = "Installs each of pi's packages as a whole release and swaps it in";
+    description = "Installs each of pi's packages as a whole version and swaps it in";
     license = lib.licenses.mit;
     mainProgram = "pi-packages";
     platforms = lib.platforms.unix;

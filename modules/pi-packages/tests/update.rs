@@ -11,8 +11,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::SystemTime;
 
 use pi_packages::config::Config;
-use pi_packages::release::Place;
 use pi_packages::run::{self, Done};
+use pi_packages::version::Place;
 use serde_json::json;
 
 /// A program on the PATH, by name.
@@ -126,7 +126,7 @@ impl Fixture {
 
     /// Write the lockfile an install is held to.
     fn lock(&self) {
-        let env = pi_packages::release::build_env(&self.config);
+        let env = pi_packages::version::build_env(&self.config);
         let status = Command::new(&self.config.pnpm)
             .args([
                 "install",
@@ -191,9 +191,9 @@ impl Drop for Session {
 }
 
 /// A node that loaded the package's dependency through `current` and
-/// stands in the release it found, as a running pi does.
+/// stands in the version it found, as a running pi does.
 fn session(place: &Place) -> Session {
-    let release = fs::canonicalize(place.current()).expect("current resolves");
+    let version = fs::canonicalize(place.current()).expect("current resolves");
     Session(
         Command::new("node")
             .args([
@@ -201,7 +201,7 @@ fn session(place: &Place) -> Session {
                 "require(process.argv[1]); setInterval(() => {}, 1000)",
             ])
             .arg(place.current().join("node_modules/dep"))
-            .current_dir(release)
+            .current_dir(version)
             .stdout(Stdio::null())
             .spawn()
             .expect("a session starts"),
@@ -209,7 +209,7 @@ fn session(place: &Place) -> Session {
 }
 
 #[test]
-fn a_live_session_keeps_its_release_through_an_update() {
+fn a_live_session_keeps_its_version_through_an_update() {
     let fixture = Fixture::new();
     let place = fixture.place();
     let first = fixture.update();
@@ -244,13 +244,49 @@ fn a_live_session_keeps_its_release_through_an_update() {
     assert_eq!(files(&old), before, "a file the session loaded changed");
     assert_eq!(
         second.removed, 0,
-        "the release the session runs was removed"
+        "the version the session runs was removed"
     );
 
     drop(live);
     let third = fixture.update();
     assert_eq!(third.removed, 1, "{third:?}");
-    assert!(!old.exists(), "a release nothing uses was kept");
+    assert!(!old.exists(), "a version nothing uses was kept");
+}
+
+#[test]
+fn a_version_in_the_former_folder_goes_once_nothing_uses_it() {
+    let fixture = Fixture::new();
+    let place = fixture.place();
+    fixture.update();
+    // As an install from before versions were called that left it.
+    let commit = place.current_commit().expect("a commit");
+    fs::create_dir_all(place.former_versions()).expect("the former folder");
+    let former = place.former_versions().join(&commit);
+    fs::rename(place.versions().join(&commit), &former).expect("moved back");
+    let staged = place.dir.join(".current.new");
+    std::os::unix::fs::symlink(Path::new("releases").join(&commit), &staged).expect("a link");
+    fs::rename(&staged, place.current()).expect("current");
+    let live = session(&place);
+
+    fixture.commit("second");
+    let second = fixture.update();
+
+    assert!(matches!(second.done, Done::Moved { .. }), "{second:?}");
+    assert!(
+        fs::read_link(place.current())
+            .expect("current")
+            .starts_with("versions"),
+        "current is not in versions/"
+    );
+    assert!(former.exists(), "a version a session runs was removed");
+
+    drop(live);
+    let third = fixture.update();
+    assert_eq!(third.removed, 1, "{third:?}");
+    assert!(
+        !place.former_versions().exists(),
+        "the former folder was kept"
+    );
 }
 
 #[test]
@@ -266,12 +302,12 @@ fn a_build_that_fails_leaves_current_as_it_was() {
 
     assert!(matches!(broken.done, Done::Failed { .. }), "{broken:?}");
     assert_eq!(place.current_commit(), installed);
-    let left: Vec<_> = fs::read_dir(place.releases())
-        .expect("releases")
+    let left: Vec<_> = fs::read_dir(place.versions())
+        .expect("versions")
         .flatten()
         .map(|entry| entry.file_name())
         .collect();
-    assert_eq!(left.len(), 1, "a half-built release was kept: {left:?}");
+    assert_eq!(left.len(), 1, "a half-built version was kept: {left:?}");
 }
 
 #[test]

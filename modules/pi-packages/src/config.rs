@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-/// How long a release `current` has left is kept, at least.
+/// How long a version `current` has left is kept, at least.
 const KEEP_DAYS: u64 = 2;
 
 /// One package pi loads, and where it comes from.
@@ -51,7 +51,7 @@ impl Package {
 /// One update's settings.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Where every package's mirror, releases and `current` live.
+    /// Where every package's mirror, versions and `current` live.
     pub root: PathBuf,
     pub packages: Vec<Package>,
     /// The programs a build runs, by absolute path.
@@ -64,7 +64,7 @@ pub struct Config {
     /// Variables a build is given, over those it keeps from where it
     /// was started.
     pub env: Vec<(String, String)>,
-    /// How long a release `current` has left is kept, at least.
+    /// How long a version `current` has left is kept, at least.
     pub keep: Duration,
 }
 

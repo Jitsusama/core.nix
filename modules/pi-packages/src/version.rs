@@ -1,6 +1,6 @@
-//! One package's releases: its mirror, the build of a commit into a
+//! One package's versions: its mirror, the build of a commit into a
 //! folder of its own, the swap of `current` onto it, and the removal of
-//! releases nothing uses any more.
+//! versions nothing uses any more.
 
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -30,7 +30,7 @@ const KEPT: [&str; 12] = [
     "GIT_SSH_COMMAND",
 ];
 
-/// How pnpm installs a release: as pi installs a git package, production
+/// How pnpm installs a version: as pi installs a git package, production
 /// dependencies only and peers left to pi, and besides that with this
 /// machine's pnpm whatever one the package names, and every dependency's
 /// build run, whatever its manifest allows. The lockfile is followed
@@ -48,7 +48,7 @@ const INSTALL: [&str; 8] = [
     "--config.dangerously-allow-all-builds=true",
 ];
 
-/// Where one package's mirror, releases and `current` are.
+/// Where one package's mirror, versions and `current` are.
 #[derive(Debug, Clone)]
 pub struct Place {
     pub dir: PathBuf,
@@ -74,11 +74,19 @@ impl Place {
     }
 
     #[must_use]
-    pub fn releases(&self) -> PathBuf {
+    pub fn versions(&self) -> PathBuf {
+        self.dir.join("versions")
+    }
+
+    /// Where versions were kept while they were called releases, a word
+    /// that names giving a tree back here. Only read, so each goes once
+    /// nothing uses it, and running sessions keep theirs until then.
+    #[must_use]
+    pub fn former_versions(&self) -> PathBuf {
         self.dir.join("releases")
     }
 
-    /// When each release `current` left was retired, as a file's time.
+    /// When each version `current` left was retired, as a file's time.
     #[must_use]
     pub fn retired(&self) -> PathBuf {
         self.dir.join("retired")
@@ -197,7 +205,7 @@ pub fn fetch(
     Ok((commit, unfetched))
 }
 
-/// Build `commit` into its release folder and check it whole, leaving
+/// Build `commit` into its version folder and check it whole, leaving
 /// nothing behind when it fails.
 ///
 /// # Errors
@@ -210,13 +218,13 @@ pub fn build(
     commit: &str,
     env: &[(String, String)],
 ) -> Result<PathBuf, String> {
-    let release = place.releases().join(commit);
-    if release.is_dir() {
-        return Ok(release);
+    let version = place.versions().join(commit);
+    if version.is_dir() {
+        return Ok(version);
     }
-    fs::create_dir_all(place.releases())
-        .map_err(|error| format!("{}: {error}", place.releases().display()))?;
-    let building = place.releases().join(format!(".{commit}.building"));
+    fs::create_dir_all(place.versions())
+        .map_err(|error| format!("{}: {error}", place.versions().display()))?;
+    let building = place.versions().join(format!(".{commit}.building"));
     if building.exists() {
         fs::remove_dir_all(&building)
             .map_err(|error| format!("{}: {error}", building.display()))?;
@@ -227,8 +235,8 @@ pub fn build(
         let _ = fs::remove_dir_all(&building);
         return Err(why);
     }
-    fs::rename(&building, &release).map_err(|error| format!("{}: {error}", release.display()))?;
-    Ok(release)
+    fs::rename(&building, &version).map_err(|error| format!("{}: {error}", version.display()))?;
+    Ok(version)
 }
 
 fn build_into(
@@ -277,9 +285,9 @@ fn build_into(
     }
 }
 
-/// Point `current` at `commit`'s release by renaming a new link over it,
-/// so a reader finds the old release or the new and never neither, and
-/// start the clock on the release it left.
+/// Point `current` at `commit`'s version by renaming a new link over it,
+/// so a reader finds the old version or the new and never neither, and
+/// start the clock on the version it left.
 ///
 /// # Errors
 ///
@@ -288,7 +296,7 @@ pub fn swap(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> 
     let left = place.current_commit();
     let staged = place.dir.join(".current.new");
     let _ = fs::remove_file(&staged);
-    symlink(Path::new("releases").join(commit), &staged)
+    symlink(Path::new("versions").join(commit), &staged)
         .map_err(|error| format!("{}: {error}", staged.display()))?;
     fs::rename(&staged, place.current())
         .map_err(|error| format!("{}: {error}", place.current().display()))?;
@@ -308,17 +316,36 @@ fn retire(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> {
         .map_err(|error| format!("{}: {error}", marker.display()))
 }
 
-/// Remove each release `current` left more than `keep` ago that no
-/// process uses, and anything a stopped build left. Says how many went.
+/// Remove each version `current` left more than `keep` ago that no
+/// process uses, and anything a stopped build left, in the versions'
+/// folder and the one they were kept in before, which goes once empty.
+/// Says how many went.
 ///
 /// # Errors
 ///
-/// Says which release could not be read or removed.
+/// Says which version could not be read or removed.
 pub fn prune(config: &Config, place: &Place, now: SystemTime) -> Result<usize, String> {
-    let Ok(entries) = fs::read_dir(place.releases()) else {
+    // By where `current` leads rather than its commit's name, since one
+    // commit can sit in both folders.
+    let current = fs::canonicalize(place.current()).ok();
+    let mut removed = prune_in(config, place, &place.versions(), current.as_deref(), now)?;
+    let former = place.former_versions();
+    removed += prune_in(config, place, &former, current.as_deref(), now)?;
+    // Not there, or still holding a version something uses: both fine.
+    let _ = fs::remove_dir(&former);
+    Ok(removed)
+}
+
+fn prune_in(
+    config: &Config,
+    place: &Place,
+    folder: &Path,
+    current: Option<&Path>,
+    now: SystemTime,
+) -> Result<usize, String> {
+    let Ok(entries) = fs::read_dir(folder) else {
         return Ok(0);
     };
-    let current = place.current_commit();
     let mut removed = 0;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -329,7 +356,7 @@ pub fn prune(config: &Config, place: &Place, now: SystemTime) -> Result<usize, S
             fs::remove_dir_all(&path).map_err(|error| format!("{}: {error}", path.display()))?;
             continue;
         }
-        if current.as_deref() == Some(name.as_str()) {
+        if current.is_some() && fs::canonicalize(&path).ok().as_deref() == current {
             continue;
         }
         let marker = place.retired().join(&name);

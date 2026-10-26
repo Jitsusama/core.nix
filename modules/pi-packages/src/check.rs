@@ -1,10 +1,10 @@
-//! Whether a built release is whole, asked before it is swapped in.
+//! Whether a built version is whole, asked before it is swapped in.
 //!
 //! Three things have gone wrong with an install that nothing caught
 //! until a session loaded it: a dependency missing, a native module's
 //! build skipped (pnpm 10 runs only the builds a package allows, and on
 //! 26 October sqlite3 arrived without its binding), and a binding that
-//! is there but will not load. So a release must have every dependency
+//! is there but will not load. So a version must have every dependency
 //! its manifest names, no native module without a binding, and every
 //! native module must load in a node of its own.
 
@@ -17,19 +17,19 @@ use serde_json::Value;
 /// Where a native module's install puts what it built or fetched.
 const BINDING_DIRS: [&str; 2] = ["build", "prebuilds"];
 
-/// What is wrong with a release, each said so a person can act on it,
+/// What is wrong with a version, each said so a person can act on it,
 /// or nothing when it is whole.
 ///
 /// # Errors
 ///
-/// Says why the release could not be read at all.
+/// Says why the version could not be read at all.
 pub fn problems(
-    release: &Path,
+    version: &Path,
     node: &Path,
     env: &[(String, String)],
 ) -> Result<Vec<String>, String> {
-    let mut found = missing_dependencies(release)?;
-    for module in native_modules(release) {
+    let mut found = missing_dependencies(version)?;
+    for module in native_modules(version) {
         let name = module_name(&module);
         if !has_binding(&module) {
             found.push(format!(
@@ -37,7 +37,7 @@ pub fn problems(
             ));
             continue;
         }
-        if let Err(why) = loads(release, &module, node, env) {
+        if let Err(why) = loads(version, &module, node, env) {
             found.push(format!("{name} does not load: {why}"));
         }
     }
@@ -45,8 +45,8 @@ pub fn problems(
 }
 
 /// The dependencies the manifest names that `node_modules` lacks.
-fn missing_dependencies(release: &Path) -> Result<Vec<String>, String> {
-    let manifest = release.join("package.json");
+fn missing_dependencies(version: &Path) -> Result<Vec<String>, String> {
+    let manifest = version.join("package.json");
     let Ok(text) = fs::read_to_string(&manifest) else {
         // No manifest: a package of files alone, with nothing to install.
         return Ok(Vec::new());
@@ -58,16 +58,16 @@ fn missing_dependencies(release: &Path) -> Result<Vec<String>, String> {
     };
     Ok(dependencies
         .keys()
-        .filter(|name| !release.join("node_modules").join(name).exists())
+        .filter(|name| !version.join("node_modules").join(name).exists())
         .map(|name| format!("{name} is not installed"))
         .collect())
 }
 
 /// Every package in pnpm's store folder with a native part to build,
 /// which is what a `binding.gyp` says.
-fn native_modules(release: &Path) -> Vec<PathBuf> {
+fn native_modules(version: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    let Ok(stored) = fs::read_dir(release.join("node_modules").join(".pnpm")) else {
+    let Ok(stored) = fs::read_dir(version.join("node_modules").join(".pnpm")) else {
         return found;
     };
     for entry in stored.flatten() {
@@ -143,9 +143,9 @@ fn holds_binding(dir: &Path) -> bool {
     })
 }
 
-/// Load a native module in a node of its own, from the release.
+/// Load a native module in a node of its own, from the version.
 fn loads(
-    release: &Path,
+    version: &Path,
     module: &Path,
     node: &Path,
     env: &[(String, String)],
@@ -153,7 +153,7 @@ fn loads(
     let output = Command::new(node)
         .args(["-e", "require(process.argv[1])"])
         .arg(module)
-        .current_dir(release)
+        .current_dir(version)
         .env_clear()
         .envs(env.iter().map(|(key, value)| (key, value)))
         .output()

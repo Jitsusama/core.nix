@@ -90,7 +90,7 @@ const PROC_PIDREGIONPATHINFO2: c_int = 22;
 const REGIONS_AT_MOST: usize = 100_000;
 
 /// Whether any process stands in, holds open or maps a path `inside` says
-/// is in the release.
+/// is in the version.
 pub fn any_process(inside: &dyn Fn(&str) -> bool) -> bool {
     let within = |path: Option<PathBuf>| {
         path.as_deref()

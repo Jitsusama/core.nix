@@ -121,7 +121,7 @@ let
 
   onClaude = config.jitsusama.pi.plan == "claude";
 
-  # Where pi-packages keeps the harness's current release, and the script in
+  # Where pi-packages keeps the harness's current version, and the script in
   # it a timer runs.
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
 
