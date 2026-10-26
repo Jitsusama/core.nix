@@ -1811,10 +1811,12 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     )
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
     # Tab, with nothing typed, does nothing and says nothing, since the
-    # arrows reach every category; Return on one steps into it.
+    # arrows reach every category; Return on one steps into it. The foot
+    # names no Tab either.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     first = desktop.showing()["selected"]
+    assert not any(key.startswith("\u21e5") for key in first["told"]), first
     machine.send_key("tab")
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")

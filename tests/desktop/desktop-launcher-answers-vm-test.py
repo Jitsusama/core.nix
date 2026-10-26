@@ -178,12 +178,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
         machine.send_key("esc")
     # Half a word asks its question too: "batt" is the battery, and
-    # Tab finishes the word.
+    # Tab finishes the word, the foot saying so.
+    tab = "\u21e5 complete"
     desktop.answer("batt")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
+            and tab in (shown["selected"] or {}).get("told", [])
         )
     )
     machine.send_key("tab")
@@ -1171,12 +1173,12 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
     # The left arrow takes what's typed away, the selection staying on
-    # the tunnel, and Tab steps into it as the right arrow would.
+    # the VPN, and the right arrow steps into it.
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "VPN"
     )
-    desktop.step_in("tab")
+    desktop.step_in()
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
     # Stepping back out lands on the row it came from.
     machine.send_key("left")
