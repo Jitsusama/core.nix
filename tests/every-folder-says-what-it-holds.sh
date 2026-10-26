@@ -4,13 +4,15 @@
 # default.nix, a crate's manifest or root, or a file named after the folder)
 # opening with a comment, no file beside it of its name doing the same
 # (backports.nix for backports/), no line of its own in its parent's README.md
-# or AGENTS.md opening with its name, and, at the top, no row in AGENTS.md's
-# map. A folder named tests holds the tests of the folder it's in, so it says
-# what it holds when that folder does. A crate's src/bin is Cargo's folder of
-# the crate's other programs, so it says what it holds when each of them opens
+# or AGENTS.md opening with its name, and, at the top, no line of the map in
+# README.md or AGENTS.md, a table's row or a tree's line with a comment. A
+# folder named tests holds the tests of the folder it's in, so it says what it
+# holds when that folder does. A crate's src/bin is Cargo's folder of the
+# crate's other programs, so it says what it holds when each of them opens
 # with a comment saying what it is. A folder still waiting for its note may be
 # named in the waiting list, which fails in turn once the folder has its note
-# or is gone, so the list only shrinks.
+# or is gone, so the list only shrinks. Core runs it on itself, and gives it to
+# the repositories built on it as `core.lib.everyFolderSaysWhatItHolds`.
 # usage: every-folder-says-what-it-holds.sh <tree> <waiting list, a path a line>
 set -euo pipefail
 
@@ -55,6 +57,18 @@ parent_says() {
   return 1
 }
 
+# Whether the repository's map describes a top folder: a row of a table in
+# README.md or AGENTS.md opening with its name, as core's does, or a line of a
+# tree drawn in one, its name and then a comment, as `checks/   # the scripts`.
+map_says() {
+  local name=${1//./\\.} map
+  for map in README.md AGENTS.md; do
+    [ -f "$map" ] || continue
+    grep -qE "^\| \`$name/|^$name/ +# " "$map" && return 0
+  done
+  return 1
+}
+
 # Whether a folder says what it holds.
 says() {
   local folder=$1 entry first
@@ -63,7 +77,7 @@ says() {
     */tests) says "${folder%/tests}" && return 0 ;;
     */src/bin) programs_say "$folder" && return 0 ;;
     */*) parent_says "$folder" && return 0 ;;
-    *) grep -qF "| \`$folder/" AGENTS.md && return 0 ;;
+    *) map_says "$folder" && return 0 ;;
   esac
   for entry in "${entries[@]/#/$folder/}" "$folder/${folder##*/}.nix" "$folder.nix"; do
     [ -f "$entry" ] || continue
@@ -95,7 +109,8 @@ if [ "${#silent[@]}" -gt 0 ]; then
   printf '%s\n' "These folders don't say what they hold: give each a README.md, or an" \
     "entry file (home.nix, nixos.nix, checks.nix, package.nix, main.rs, lib.rs" \
     "and the like) whose first line is a comment saying what goes in it, or a" \
-    "line in its parent's README.md opening with its name, as - \`launcher/\`: ..." \
+    "line in its parent's README.md opening with its name, as - \`launcher/\`: ...," \
+    "or, for a top folder, a line of the map in README.md, as checks/   # ..." \
     "${silent[@]/#/  }" >&2
 fi
 if [ "${#spoken[@]}" -gt 0 ]; then
