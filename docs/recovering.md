@@ -135,7 +135,7 @@ stopped. If it stopped before any YubiKey was enrolled, nothing opens that
 disk, so the stick says so and offers only to start again, wiping the disk.
 
 The TPM's keys were files on the old disk, so the first boot makes new ones:
-the everyday SSH key and both signing keys. GitHub still holds the old public
+the login key and both signing keys. GitHub still holds the old public
 keys until they're replaced:
 
 1. Delete the old `<account>@<machine>` SSH key and the two signing keys

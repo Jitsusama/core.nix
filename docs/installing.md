@@ -238,7 +238,7 @@ holding none. On any other machine, make them by hand, as below.
 Run this step as the account, never under sudo. Every key here belongs in the
 account's home, and under sudo they land in root's.
 
-The everyday SSH key lives in the TPM, and a spare lives on the YubiKey for
+The login key lives in the TPM, and a spare lives on the YubiKey for
 when the TPM is wiped or the laptop is gone:
 
 ```sh

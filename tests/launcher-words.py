@@ -96,11 +96,12 @@ def clashes(vocabulary: Entry) -> list[str]:
     return out
 
 
-def stray(category: Entry, things: dict[str, Entry]) -> list[str]:
+def stray(category: Entry, things: dict[str, Entry], places: set[str]) -> list[str]:
     """Say what a category holds that isn't named, and words of its that others say."""
     holds = category.get("holds", [])
+    # A category may hold another, as Machine holds Power.
     out = [f"The {category['id']} category holds {held}, which isn't named." for held in holds
-           if held not in things]  # fmt: skip
+           if held not in things and held not in places]  # fmt: skip
     # A word of one it holds would list the category beside it.
     said = {word: held for held in holds if held in things for _, word in spoken(things[held])}
     out.extend(
@@ -136,7 +137,7 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
     )
     for category in vocabulary["categories"]:
         placed.update(category.get("holds", []))
-        out.extend(stray(category, things))
+        out.extend(stray(category, things, categories))
     for entry in things.values():
         for part in entry.get("parts", []):
             placed.add(part)

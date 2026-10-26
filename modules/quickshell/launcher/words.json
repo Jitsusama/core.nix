@@ -54,14 +54,7 @@
       "name": "Machine",
       "term": "Machine",
       "holds": [
-        "power",
-        "session:profile",
-        "session:awake",
-        "session:Suspend",
-        "session:Lock",
-        "session:Log Out",
-        "session:Reboot",
-        "session:Power Off",
+        "energy",
         "bluetooth",
         "bluetooth:radio",
         "bluetooth:links",
@@ -73,6 +66,20 @@
       ],
       "commands": [
         "command:volume"
+      ]
+    },
+    {
+      "id": "energy",
+      "name": "Power",
+      "holds": [
+        "power",
+        "session:profile",
+        "session:awake",
+        "session:Suspend",
+        "session:Lock",
+        "session:Log Out",
+        "session:Reboot",
+        "session:Power Off"
       ]
     },
     {
@@ -2859,22 +2866,22 @@
     {
       "id": "verb:wifi-leave",
       "in": "wifi",
-      "name": "Leave it"
+      "name": "Disconnect it"
     },
     {
       "id": "verb:wifi-join",
       "in": "wifi",
-      "name": "Join it"
+      "name": "Connect it"
     },
     {
       "id": "verb:wifi-password",
       "in": "wifi",
-      "name": "Join it with a new password"
+      "name": "Connect it with a new password"
     },
     {
       "id": "verb:wifi-account",
       "in": "wifi",
-      "name": "Join it with an account over {method}"
+      "name": "Connect it with an account over {method}"
     },
     {
       "id": "verb:wifi-trust",
@@ -2890,6 +2897,13 @@
       "id": "verb:wifi-forget",
       "in": "wifi",
       "name": "Forget it"
+    },
+    {
+      "id": "verb:wifi-sign-in",
+      "in": "wifi",
+      "name": "Sign in to it",
+      "verb": "open",
+      "glyph": "signIn"
     },
     {
       "id": "wifi:card",

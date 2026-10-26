@@ -51,7 +51,7 @@ chmod +x "$work/stand-in"
   printf 'set -euo pipefail\n'
   printf 'name=sign real=%q joel_key=%q agent_key=%q makes_keys=se-keys\n' \
     "$work/stand-in" "$work/joel-signing" "$work/agent-signing"
-  # The agent's key needs nothing more to reach here.
+  # The agents' key needs nothing more to reach here.
   printf 'agent_environment() {\n  :\n}\n'
   cat "$program"
 } > "$work/sign"
@@ -98,7 +98,7 @@ sign env SIGN_AS=joel STAND_IN_SIGNS=empty setsid -w "$BASH" -c "$signing < /dev
 [[ ! -e $work/message.sig ]] || fails "left the empty signature for git"
 grep -qF "joel's signature doesn't verify, so nothing was signed." "$work/said" \
   || fails "refused the empty signature without saying why: $(cat "$work/said")"
-grep -qF "SIGN_AS=agent" "$work/said" || fails "didn't say the agent's key signs without asking"
+grep -qF "SIGN_AS=agent" "$work/said" || fails "didn't say the agents' key signs without asking"
 
 sign env SIGN_AS=nobody setsid -w "$BASH" -c "$signing < /dev/null"
 ((status == 2)) || fails "took SIGN_AS=nobody"

@@ -1098,6 +1098,61 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
+    desktop: Desktop,
+) -> None:
+    """Machine holds Power, which holds the battery, its profile and what ends a session."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    power = [
+        "Battery", "Power profile", "Keep awake", "Sleep", "Lock", "Log out", "Reboot",
+        "Power off",
+    ]  # fmt: skip
+    desktop.answer("machine")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
+    desktop.step_in("ret")
+    # Power comes first, saying what it holds.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Power"
+            and any(
+                str(thing["reads"]).startswith("Power \u00b7 Battery, Power profile")
+                for thing in shown["things"]
+            )
+        )
+    )
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Found by its name from the top, it opens where it lives, and the
+    # left arrow climbs out through Machine.
+    desktop.answer("power")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
+    )
+    machine.send_key("left")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Machine"] and (shown["selected"] or {}).get("name") == "Power"
+        )
+    )
+    # A name going on from the word and a space is searched for where it's
+    # typed, so "power off" never steps into Power under the keys.
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.answer("power off")
+    desktop.launcher_until(
+        lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Power off"
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
     desktop: Desktop,
 ) -> None:
@@ -1139,6 +1194,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
     assert reads["category:desktop"].startswith("Desktop \u00b7 This window, Windows, Screens, "), (
         f"desktop reads {reads['category:desktop']!r}"
+    )
+    assert reads["category:computer"].startswith("Machine \u00b7 Power, Bluetooth, "), (
+        f"machine reads {reads['category:computer']!r}"
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads

@@ -51,11 +51,16 @@ def traced(machine: BaseMachine, asked: str) -> str:
 
 
 def test_graphics_buffers_read_back_are_counted_beside_it(machine: BaseMachine, asked: str) -> None:
-    """The graphics buffers reclaim backed up and read back are counted beside the trace."""
+    """The graphics buffers reclaim backed up, read back and kept are counted beside the trace."""
     assert asked.split()[-2:] == [RESTORES, TRACE], asked
     counted = machine.succeed(f"runuser -u someone -- cat {RESTORES}")
     assert "backed up, by shared and caching" in counted, counted
     assert "read back, by thread, shared and caching" in counted, counted
+    assert "kept resident by the shrinker as busy, by caching" in counted, counted
+    # The Intel driver is loaded, so none of its probes went missing, which bpftrace would have
+    # warned of in the unit's journal.
+    said = machine.succeed("journalctl --boot --unit 'niri-off-cpu@*'")
+    assert "xe_bo_shrink" not in said, said
 
 
 def test_each_sleep_is_said_with_its_kernel_stack(traced: str) -> None:

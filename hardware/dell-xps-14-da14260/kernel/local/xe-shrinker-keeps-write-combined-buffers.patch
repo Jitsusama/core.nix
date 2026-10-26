@@ -1,0 +1,49 @@
+drm/xe: don't back up write-combined buffers on an integrated GPU
+
+Under machine-wide memory reclaim, the bo shrinker backs up
+non-purgeable buffers to shmem. On an integrated GPU most of a client's
+private buffers are write-combined, and backing one up and reading it
+back each change its pages' caching: set_pages_array_wc() on the read
+back flushes every CPU's TLB per chunk, which is slow on a busy machine.
+The read back happens in the client's next exec, in
+xe_vm_validate_rebind under drm_gpuvm_exec_lock, with the reservations
+of every buffer the exec uses held, its window's among them, so the
+compositor's own commit, which locks that window, waits behind it.
+
+On a Panther Lake laptop under a build, a compositor's main thread was
+seen waiting 57 to 304 ms on such locks, held by the clients whose
+windows it showed, each in ttm_tt_restore() and mostly in cpa_flush(),
+and it missed frames for as long. Counting the buffers read back over
+nine 30 s rounds found every one private, not exported, and nearly all
+write-combined: in one round a client read back 105 write-combined
+buffers in 223 ms, against 33 cached ones in under 1 ms. The few
+hundred megabytes they take are worth keeping resident to spare the
+desktop those stalls.
+
+Skip a non-purgeable buffer that isn't cached on an integrated GPU.
+Purgeable buffers are still purged, since their owner has said it can
+recreate them, and discrete GPUs, whose system buffers back VRAM
+evictions, are left as they were.
+
+diff --git a/drivers/gpu/drm/xe/xe_bo.c b/drivers/gpu/drm/xe/xe_bo.c
+--- a/drivers/gpu/drm/xe/xe_bo.c
++++ b/drivers/gpu/drm/xe/xe_bo.c
+@@ -1396,6 +1396,18 @@
+ 		goto out_unref;
+ 	}
+ 
++	/*
++	 * Backing up a write-combined or uncached buffer, and reading it
++	 * back, change its pages' caching, which flushes every CPU's TLB.
++	 * The read back runs in the owner's next exec with the reservations
++	 * of its windows held, so a compositor waits behind it. On an
++	 * integrated GPU leave such buffers resident.
++	 */
++	if (!IS_DGFX(xe) && tt->caching != ttm_cached) {
++		lret = -EBUSY;
++		goto out_unref;
++	}
++
+ 	/* System CCS needs gpu copy when moving PL_TT -> PL_SYSTEM */
+ 	needs_rpm = (!IS_DGFX(xe) && bo->resource->mem_type != XE_PL_SYSTEM &&
+ 		     xe_bo_needs_ccs_pages(xe_bo));

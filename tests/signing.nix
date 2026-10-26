@@ -1,6 +1,6 @@
 # Makes Joel's two signing keys in a virtual machine's TPM, as
 # docs/installing.md does, and commits the ways he and his harnesses do. A
-# commit made over pipes is signed with the agent's key and asks nothing; one
+# commit made over pipes is signed with the agents' key and asks nothing; one
 # made at a terminal is signed with Joel's key, after its PIN and a
 # confirmation; a refused confirmation leaves no commit, and one left
 # unanswered holds up no harness's commit. git verifies each

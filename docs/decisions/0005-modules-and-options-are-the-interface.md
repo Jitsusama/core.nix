@@ -8,8 +8,8 @@ Accepted, 2026-10-07.
 
 core.nix is a library. Machine repositories build on it, and it has to serve
 personal and work laptops on NixOS and macOS, and perhaps servers later. Each
-repository adds its own layer and changes some of what core sets: a layer may
-set a different email, add its own zsh start-up code, or drop a tool a role
+repository adds modules of its own and changes some of what core sets: they
+may set a different email, add its own zsh start-up code, or drop a tool a role
 brought in.
 
 So the library needs an interface: what it hands its consumers, and how they
@@ -21,8 +21,8 @@ and every change a consumer makes should be traceable by opening files.
 - **Configuration is handed over as modules,** in `homeModules`,
   `darwinModules` and `nixosModules`. Modules and roles alike are plain
   modules a machine imports.
-- **Settings a layer is expected to change are options** under `jitsusama.*`,
-  declared by core's modules. Identity is the first.
+- **Settings a machine repository is expected to change are options**
+  under `jitsusama.*`, declared by core's modules. Identity is the first.
 - **Machine repositories build their own machines** with the stock
   `nixosSystem` and `darwinSystem`. core exports no function that builds one.
 - **Every module has a fixed identity.** Modules imported by path have one
@@ -42,8 +42,9 @@ and every change a consumer makes should be traceable by opening files.
 - **Functions that build machines,** such as a `mkHost` taking a list of
   roles, or roles called with arguments. Short to use, but the arguments are
   a second configuration language without types, documentation or merging,
-  which a later layer can't change. The builder owns the call to
-  `nixosSystem`, so NixOS's own documentation no longer applies as written.
+  which a machine repository's own modules can't change. The builder owns
+  the call to `nixosSystem`, so NixOS's own documentation no longer applies
+  as written.
 - **Every core value wrapped in `lib.mkDefault`,** so a consumer's plain
   setting always wins. A machine setting one key of a settings group would
   silently drop core's other values in that group, unless every value were
@@ -56,10 +57,10 @@ and every change a consumer makes should be traceable by opening files.
 
 - A machine repository reads like any NixOS or nix-darwin configuration, and
   its machines can be built and applied with the stock commands.
-- Changes a layer makes are visible where it makes them, as ordinary module
-  definitions.
-- core has to declare an option before a layer can change a setting cleanly,
-  and `lib.mkForce` is the stopgap until it does.
+- Changes a machine repository makes are visible where it makes them, as
+  ordinary module definitions.
+- core has to declare an option before a machine repository can change a
+  setting cleanly, and `lib.mkForce` is the stopgap until it does.
 - The `examples/` machines use only the outputs, so `nix flake check` tests
   the interface from a consumer's side.
 - A module given its identity by `moduleFrom` sits one level deeper in the
