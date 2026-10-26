@@ -20,7 +20,8 @@
 # colour with the text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
 # mpv's own: Space pauses, the arrows seek, f fills the screen, q quits and
-# ? lists every key, on the statistics' page of them. It reports what
+# ? lists every key, on the statistics' page of them; the launcher lists the
+# ones worth knowing over its window, in their own words. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it.
 # umpv, the package's second entry, which queues files into one window,
 # stays out of the launcher, where it would sit beside mpv as a second mpv.
@@ -44,12 +45,107 @@ let
       2
       0
     ];
+
+  # The keys worth knowing, as niri spells them, each as mpv binds it by
+  # default: the launcher lists them over mpv's window, those that move
+  # through what's playing as Seeking, those that change how fast as
+  # Playback speed, those that change how loud as Loudness, and the rest
+  # loose.
+  grouped = group: map (key: key // { inherit group; });
+  keys =
+    grouped "seeking" [
+      {
+        chord = "Left";
+        does = "Back 5 seconds";
+      }
+      {
+        chord = "Right";
+        does = "On 5 seconds";
+      }
+      {
+        chord = "Down";
+        does = "Back a minute";
+      }
+      {
+        chord = "Up";
+        does = "On a minute";
+      }
+      {
+        chord = "Page_Down";
+        does = "The chapter before";
+      }
+      {
+        chord = "Page_Up";
+        does = "The next chapter";
+      }
+    ]
+    ++ grouped "speed" [
+      {
+        chord = "bracketleft";
+        does = "Slower";
+      }
+      {
+        chord = "bracketright";
+        does = "Faster";
+      }
+      {
+        chord = "BackSpace";
+        does = "At its own speed";
+      }
+    ]
+    ++ grouped "loudness" [
+      {
+        chord = "9";
+        does = "Quieter";
+      }
+      {
+        chord = "0";
+        does = "Louder";
+      }
+      {
+        chord = "m";
+        does = "Silent, or heard again";
+      }
+    ]
+    ++ [
+      {
+        chord = "Space";
+        does = "Pause, or play on";
+      }
+      {
+        chord = "f";
+        does = "Fill the screen, or not";
+      }
+      {
+        chord = "Return";
+        does = "The next in the list";
+      }
+      {
+        chord = "s";
+        does = "Save the frame as a picture";
+      }
+      {
+        chord = "Shift+slash";
+        does = "The player's keys";
+      }
+      {
+        chord = "q";
+        does = "Close the player";
+      }
+    ];
 in
 {
   imports = [
+    ../keys/home.nix
     ../theme/home.nix
     ../unlisted/home.nix
   ];
+
+  # The launcher lists these over mpv's window, by the same words.
+  jitsusama.keys.mpv = map (key: {
+    inherit (key) chord does;
+    group = key.group or "";
+  }) keys;
 
   jitsusama.unlisted = [ "umpv" ];
 

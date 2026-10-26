@@ -974,6 +974,11 @@ in
     console = "b";
     means = "a document of pages, turned one by one";
   };
+  film = {
+    glyph = nerd "f0381";
+    console = "v";
+    means = "a video, and what plays one";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";
