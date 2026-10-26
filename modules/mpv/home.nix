@@ -20,7 +20,10 @@
 # colour with the text's colour on it, and its console, right-click menu
 # and statistics on the deepest colour, a choice in the accent. The keys are
 # mpv's own: Space pauses, the arrows seek, f fills the screen, q quits and
-# ? lists every key, on the statistics' page of them; the launcher lists the
+# ? lists every key, on the statistics' page of them, and 1 to 9 play that
+# one in the list, as numbers choose that one everywhere, rather than change
+# the picture's contrast, brightness, gamma and saturation as mpv has them;
+# the launcher lists the
 # ones worth knowing over its window, in their own words. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it.
 # umpv, the package's second entry, which queues files into one window,
@@ -49,8 +52,9 @@ let
   # The keys worth knowing, as niri spells them, each as mpv binds it by
   # default: the launcher lists them over mpv's window, those that move
   # through what's playing as Seeking, those that change how fast as
-  # Playback speed, those that change how loud as Loudness, and the rest
-  # loose.
+  # Playback speed, those that change how loud as Loudness, those that
+  # choose from what it was given as In the list, and the rest loose; a key
+  # with a run is bound to it here, the rest are mpv's own.
   grouped = group: map (key: key // { inherit group; });
   keys =
     grouped "seeking" [
@@ -116,10 +120,26 @@ let
         chord = "f";
         does = "Fill the screen, or not";
       }
-      {
-        chord = "Return";
-        does = "The next in the list";
-      }
+    ]
+    # The list mpv was given, by number and in turn.
+    ++ grouped "list" (
+      map (number: {
+        chord = toString number;
+        does = "Number ${toString number} in the list";
+        run = "set playlist-pos ${toString (number - 1)}";
+      }) (lib.range 1 9)
+      ++ [
+        {
+          chord = "Return";
+          does = "The next in the list";
+        }
+        {
+          chord = "Shift+comma";
+          does = "The one before in the list";
+        }
+      ]
+    )
+    ++ [
       {
         chord = "s";
         does = "Save the frame as a picture";
@@ -152,6 +172,10 @@ in
   programs.mpv = {
     enable = true;
     scripts = [ pkgs.mpvScripts.mpris ];
+    # The keys whose meaning is ours rather than mpv's, from the list above.
+    bindings = lib.listToAttrs (
+      map (key: lib.nameValuePair key.chord key.run) (lib.filter (key: key ? run) keys)
+    );
     config = {
       profile = "high-quality";
       vo = "gpu-next";

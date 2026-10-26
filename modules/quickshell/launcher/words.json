@@ -2511,6 +2511,11 @@
       "name": "Loudness"
     },
     {
+      "id": "shortcuts:mpv:list",
+      "in": "shortcuts",
+      "name": "In the list"
+    },
+    {
       "id": "on",
       "once": ["What's on"],
       "name": "Now",
