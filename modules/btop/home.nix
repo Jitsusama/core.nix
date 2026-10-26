@@ -12,6 +12,11 @@
 # gives way rather than refusing to draw: the network box goes, then the
 # memory box, keeping the processor and the processes, and they come back
 # when the window grows (gives-way.patch).
+#
+# Escape backs out a step, as it does everywhere else: off the process
+# chosen, then out of its details, then out of btop, and m alone opens the
+# menu Escape used to (escape-backs-out.patch). Left and Right choose what
+# the processes are sorted by, that way along their columns.
 {
   config,
   lib,
@@ -82,7 +87,10 @@ in
   programs.btop = {
     enable = true;
     package = pkgs.btop.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./gives-way.patch ];
+      patches = (old.patches or [ ]) ++ [
+        ./gives-way.patch
+        ./escape-backs-out.patch
+      ];
     });
     themes.theme = lib.concatLines (
       lib.mapAttrsToList (slot: color: ''theme[${slot}]="${color}"'') slots

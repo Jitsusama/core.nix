@@ -88,6 +88,10 @@
   booted-generation-stays-installed = ''
     a switch never removes the generation the machine booted
   '';
+  btop-backs-out-on-escape = ''
+    btop's Escape backs out a step, off a process chosen and then out of btop, rather than opening its
+    menu
+  '';
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
   '';
