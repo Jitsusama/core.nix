@@ -732,6 +732,69 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
 
 
+def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
+    desktop: Desktop,
+) -> None:
+    """Super+Tab finds a pi window by its work, and puts one waiting on Joel next."""
+    machine = desktop.machine
+    desktop.pi_session()
+    pi = desktop.window_titled(PI_WINDOW)
+    between = desktop.opened("Between the two")
+    # Used in this order, so the pi window is the oldest of the three
+    # Super+Tab lists, and Elsewhere is where Joel is.
+    for window in [pi, between, desktop.notes_window(), desktop.window_titled("Elsewhere")]:
+        desktop.as_account(f"niri msg action focus-window --id {window['id']}")
+        focused = f"'\"id\":{window['id']},'"
+        machine.wait_until_succeeds(
+            desktop.in_session(f"niri msg --json focused-window | grep -q {focused}"),
+            timeout=dt.timedelta(seconds=10),
+        )
+    closed = desktop.in_session(LAUNCHER_OPEN)
+
+    def tabbed() -> None:
+        """Open the windows with Super+Tab, and wait until they're listed."""
+        machine.send_key("meta_l-tab")
+        desktop.launcher_ready()
+        desktop.launcher_until(lambda shown: shown["held"] == ["windows"])
+
+    def shut() -> None:
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    # Its session's words, "Tidy the tests", find it, and so does its
+    # quest's whole title, though its window says neither.
+    for typed in ["tidy the", "whole"]:
+        tabbed()
+        desktop.type_in(typed)
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is") == f"window:{pi['id']}"
+        )
+        shut()
+    # Waiting on Joel, it comes straight after the window used last, and
+    # says so beside its name.
+    question = {
+        "kind": "question",
+        "since": machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip(),
+        "said": "Which way?",
+    }
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    tabbed()
+    desktop.launcher_until(lambda shown: shown["selected"]["name"] == "Notes for Tuesday")
+    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["selected"]["is"] == f"window:{pi['id']}"
+            and any(
+                thing["is"] == f"window:{pi['id']}" and "waiting on you" in thing["reads"]
+                for thing in shown["things"]
+            )
+        )
+    )
+    shut()
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
+    desktop.close(between)
+
+
 # The right arrow steps into what can be done to a window, and a verb
 # that needs a target asks for it in the same field.
 

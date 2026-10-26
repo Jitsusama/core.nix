@@ -6,14 +6,17 @@
 // finds the program, not each of its windows, so "kitty" is one row and
 // not every terminal open (Joel, 2026-10-23). Return goes to it, and
 // Shift+Return opens another of its program below it. Its verbs move it to
-// another workspace, float or tile it, copy its title or close it. What niri
+// another workspace, float or tile it, copy its title or close it. A pi
+// window is found by its work too, its quest's title and what its session
+// says it's on, and one waiting on Joel says so beside its name. What niri
 // says of its windows comes through Niri, from niri's own event stream, so
 // finding a window costs no process.
 //
 // They're also a collection, which Super+Tab opens on its own: every window
 // but this one, the one used last first, so Super+Tab and Return go back to
 // it and a few letters find any other, there by its program's name too,
-// since everything there is a window. It adds no row of its own to the
+// since everything there is a window. Those waiting on Joel come next,
+// before the rest, so what needs him is a key away. It adds no row of its own to the
 // search, where each window is already found by itself.
 import Quickshell
 import qs
@@ -32,29 +35,59 @@ Provider {
     onThingsChanged: changedTo(things)
 
     function everything() {
-        return things.filter(window => !window.focused);
+        const others = things.filter(window => !window.focused);
+        const rest = others.slice(1);
+        return others.slice(0, 1).concat(rest.filter(window => window.waiting),
+            rest.filter(window => !window.waiting));
     }
 
-    // Found by title, or by program more loosely; the tidiest matches kept,
-    // and among equals the one used last.
+    // What a pi window is about, ready to match, kept while it reads the
+    // same, so a key prepares nothing new.
+    property var abouts: new Map()
+    readonly property int aboutsKept: 64
+    function about(id) {
+        const text = Sessions.aboutOf(id);
+        if (text === "")
+            return null;
+        let prepared = abouts.get(text);
+        if (prepared === undefined) {
+            if (abouts.size > aboutsKept)
+                abouts.clear();
+            prepared = Fuzzy.prepare(text);
+            abouts.set(text, prepared);
+        }
+        return prepared;
+    }
+
+    // How a window matches the words: by its title, else by its program or
+    // its work, each worth a quarter as much, or not at all.
+    function matched(window, words, need) {
+        const tries = [
+            { item: window.prepared, worth: 1 },
+            { item: window.owner, worth: 4 },
+            { item: about(window.id), worth: 4 }
+        ];
+        for (const one of tries) {
+            if (one.item !== null && (one.item.mask & need) === need) {
+                const hit = Fuzzy.match(one.item, words, false);
+                if (hit.score >= 0)
+                    return { score: hit.score / one.worth, grade: hit.grade };
+            }
+        }
+        return null;
+    }
+
+    // Found by title, or by program or work more loosely; the tidiest
+    // matches kept, and among equals the one used last.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const others = everything();
         const found = [];
         others.forEach((window, recency) => {
-            const byName = (window.prepared.mask & need) === need
-                ? Fuzzy.match(window.prepared, words, false) : { score: -1 };
-            if (byName.score >= 0) {
-                found.push({ item: window.prepared, score: byName.score, grade: byName.grade,
-                    recency: recency, choice: window });
-                return;
-            }
-            if ((window.owner.mask & need) !== need)
-                return;
-            const byWord = Fuzzy.match(window.owner, words, false);
-            if (byWord.score >= 0)
-                found.push({ item: window.prepared, score: byWord.score / 4, grade: byWord.grade,
+            const hit = matched(window, words, need);
+            if (hit !== null)
+                found.push({ item: window.prepared, score: hit.score, grade: hit.grade,
                     recency: recency, choice: window });
         });
         const grade = Math.min(3, ...found.map(f => f.grade));
@@ -65,6 +98,7 @@ Provider {
 
     things: {
         Niri.revision;
+        const waiting = Sessions.waitingWindows.split(" ");
         const here = Niri.workspace();
         const when = window => {
             const stamp = window.focus_timestamp;
@@ -114,6 +148,8 @@ Provider {
                         .filter(part => part !== "").join(" \u00b7 "),
                     context: workspace ? `on workspace ${workspace.idx}` : "",
                     focused: window.id === Niri.current,
+                    waiting: waiting.includes(String(window.id)),
+                    count: waiting.includes(String(window.id)) ? "waiting on you" : "",
                     run: () => Niri.act({ FocusWindow: { id: window.id } }),
                     below: below,
                     verbs: () => provider.verbs(window, title, program, below)
