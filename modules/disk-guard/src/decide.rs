@@ -7,12 +7,26 @@ use crate::clock::Awake;
 use crate::moments::{Power, Pressure};
 use crate::units::float;
 
-/// How a filesystem's free space is being used up, in bytes a second,
-/// averaged over about two minutes so one burst doesn't set it.
+/// How a filesystem's free space is being used up, in bytes a second:
+/// averaged over about two minutes, so one burst doesn't set it but a
+/// pass can answer a band before it arrives; and over about two hours, the
+/// trend a person is told, since a disk whose builds write and free
+/// gigabytes every few minutes swings by tens of gigabytes an hour over
+/// two.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Fill {
     rate: Option<f64>,
     last: Option<(f64, u64)>,
+    trend: Trend,
+}
+
+/// The two-hour average, its weights summed so that before two hours have
+/// passed it is the average of what was seen, not pulled towards zero.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Trend {
+    weighted: f64,
+    weight: f64,
+    watched: f64,
 }
 
 impl Fill {
@@ -23,6 +37,13 @@ impl Fill {
     /// jumps by what a writer flushes, so two readings moments apart, as
     /// steps come right after a pass, measure the flush, not the fill.
     const SHORTEST: f64 = 1.0;
+
+    /// The time over which the trend follows a change, in seconds.
+    const TREND: f64 = 7200.0;
+
+    /// How long the trend is watched before it's told: less is the last
+    /// few minutes' swing.
+    const TREND_FIRST: f64 = 600.0;
 
     /// Takes a reading of free space at a monotonic time. One too soon
     /// after the last counted is passed over, and the next is measured
@@ -41,6 +62,11 @@ impl Fill {
                 Some(rate) => rate + weight * (sample - rate),
                 None => sample,
             });
+            let kept = (-seconds / Self::TREND).exp();
+            let trend = &mut self.trend;
+            trend.weighted = trend.weighted * kept + sample * (1.0 - kept);
+            trend.weight = trend.weight * kept + (1.0 - kept);
+            trend.watched += seconds;
         }
         self.last = Some((now, free));
     }
@@ -48,6 +74,31 @@ impl Fill {
     /// Bytes a second being used up; negative while space is coming back.
     pub fn rate(&self) -> Option<f64> {
         self.rate
+    }
+
+    /// Bytes a second being used up over the last two hours or so,
+    /// negative while space is coming back; none until it's been watched
+    /// ten minutes.
+    pub fn trend(&self) -> Option<f64> {
+        let trend = &self.trend;
+        (trend.watched >= Self::TREND_FIRST && trend.weight > 0.0)
+            .then(|| trend.weighted / trend.weight)
+    }
+
+    /// Seconds until free space falls below `below` at the trend, or none
+    /// while it isn't falling, either over the trend or now: a disk getting
+    /// room back isn't told it fills, however the last two hours went.
+    pub fn steady_until(&self, free: u64, below: u64) -> Option<f64> {
+        if !self.rate.is_some_and(|rate| rate > 0.0) {
+            return None;
+        }
+        if free < below {
+            return Some(0.0);
+        }
+        match self.trend() {
+            Some(trend) if trend > 0.0 => Some(float(free - below) / trend),
+            _ => None,
+        }
     }
 
     /// Seconds until free space falls below `below` at the present rate,

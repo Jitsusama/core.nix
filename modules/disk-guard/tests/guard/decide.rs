@@ -64,6 +64,85 @@ fn readings_moments_apart_are_too_close_to_measure_a_rate_by() {
     assert!((rate - 100.0 * f64::from(1 << 20)).abs() < 1.0, "{rate}");
 }
 
+/// A disk whose builds write 6 GiB over five minutes and free it again in
+/// one, over and over, observed every 5 s for `hours`, ending as a write
+/// finishes: as a Nix store and its build folders churn while checks run.
+fn churning(hours: u32) -> (Fill, u64) {
+    let mut fill = Fill::default();
+    let mut now = 0.0;
+    let mut left = float(120 * GIB);
+    fill.observe(now, whole(left));
+    for _ in 0..hours * 10 {
+        for _ in 0..60 {
+            now += 5.0;
+            left -= float(6 * GIB) / 60.0;
+            fill.observe(now, whole(left));
+        }
+        for _ in 0..12 {
+            now += 5.0;
+            left += float(6 * GIB) / 12.0;
+            fill.observe(now, whole(left));
+        }
+    }
+    for _ in 0..60 {
+        now += 5.0;
+        left -= float(6 * GIB) / 60.0;
+        fill.observe(now, whole(left));
+    }
+    (fill, whole(left))
+}
+
+#[test]
+fn a_churning_disk_trends_flat_however_its_last_minutes_swung() {
+    let (fill, free) = churning(4);
+    let swing = fill.rate().unwrap() * HOUR;
+    assert!(
+        swing > 50e9,
+        "the last five minutes filled at {swing} an hour"
+    );
+    let trend = fill.trend().unwrap() * HOUR;
+    assert!(trend.abs() < 2.5e9, "{trend} an hour");
+    let told = fill.steady_until(free, 0);
+    assert!(
+        told.is_none_or(|seconds| seconds > 2.0 * 86400.0),
+        "{told:?}"
+    );
+}
+
+#[test]
+fn a_steady_fill_trends_as_its_rate() {
+    let (fill, free) = filling(500 * GIB, 10e6, 1800);
+    let trend = fill.trend().unwrap();
+    assert!((trend - 10e6).abs() < 0.5e6, "{trend}");
+    let until = fill.steady_until(free, 0).unwrap();
+    let expected = float(free) / 10e6;
+    assert!(
+        (until - expected).abs() < expected * 0.05,
+        "{until} against {expected}"
+    );
+}
+
+#[test]
+fn a_trend_waits_for_ten_minutes_of_watching() {
+    let (fill, free) = filling(500 * GIB, 10e6, 540);
+    assert_eq!(fill.trend(), None);
+    assert_eq!(fill.steady_until(free, 0), None);
+    assert!(fill.rate().is_some());
+}
+
+#[test]
+fn a_disk_getting_room_back_is_not_told_it_fills_however_it_trends() {
+    let (mut fill, mut free) = filling(500 * GIB, 10e6, 3600);
+    let mut now = 3600.0;
+    for _ in 0..120 {
+        now += 5.0;
+        free += 10 << 20;
+        fill.observe(now, free);
+    }
+    assert!(fill.trend().unwrap() > 0.0);
+    assert_eq!(fill.steady_until(free, 0), None);
+}
+
 #[test]
 fn freeing_space_forecasts_nothing() {
     let (fill, free) = filling(200 * GIB, -100e6, 600);
