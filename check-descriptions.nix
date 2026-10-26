@@ -340,7 +340,8 @@
     one that passed before the probe committed as the probe's own, none when a frame lands at every
     refresh, and a frame niri dropped for a later one apart; a key typed into a pty in raw mode comes
     back; a careful save leaves its newest text whole, nothing half written, and no file once the
-    probe is done; and the middle, 99th percentile and worst of echoes and saves are read from them
+    probe is done; a STUN request a stand-in server answers is timed and one it never answers is
+    lost; and the middle, 95th and 99th percentiles and worst of the times are read from them
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
