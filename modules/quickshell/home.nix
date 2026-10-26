@@ -253,6 +253,7 @@ let
       "terminal"
       "neovim"
       "pi"
+      "swayimg"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -423,6 +424,8 @@ let
     terminal = nerd "f489";
     neovim = nerd "e6ae";
     pi = nerd "f03ff";
+    # The theme's picture, as the viewer shows pictures.
+    swayimg = nerd "f02e9";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };
