@@ -107,7 +107,7 @@ Provider {
     }
 
     // Each is learned by the name it had first (was), so renaming one keeps
-    // what Joel taught it, and its old name, a hidden word, still finds it.
+    // what Joel taught it; its old name no longer finds it.
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], [profile], profiles, [
         { was: "Lock", does: locks, run: () => provider.launcher.lock.lock() },
         { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]) },

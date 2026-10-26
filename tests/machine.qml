@@ -55,7 +55,7 @@ ShellRoot {
     // looks at their rows.
     function headlines() {
         try {
-            processors = machine.answer("cpu");
+            processors = machine.answer("processor");
             memory = machine.answer("memory");
             expect("the processors' headline", processors !== null
                 && /^\d+% busy$/.test(processors.headline), processors?.headline);
@@ -76,7 +76,7 @@ ShellRoot {
         interval: 1500
         onTriggered: {
             try {
-                machine.answer("cpu");
+                machine.answer("processor");
                 machine.answer("memory");
                 root.expect("the headlines started nothing", root.listed() === 0
                     && machine.programs === null, `${root.listed()} listings`);

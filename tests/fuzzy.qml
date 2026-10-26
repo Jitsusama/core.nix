@@ -94,7 +94,8 @@ QtObject {
         "Suspend the machine",
         "Log out",
         "Reboot the machine",
-        "Power off the machine"
+        "Power off the machine",
+        "Join a Wi-Fi network"
     ].concat([1, 2, 3, 4, 5, 6, 7, 8, 9].reduce((all, n) => all.concat([
         `Go to workspace ${n}`,
         `Move the column to workspace ${n}`,
@@ -116,6 +117,10 @@ QtObject {
         "open term": "Open a terminal",
         "term below": "Open a terminal below this window",
         "kit": "kitty",
+        // A word written with a hyphen, typed without it, is the same word.
+        "wifi": "Join a Wi-Fi network",
+        "join wifi": "Join a Wi-Fi network",
+        "wi-fi": "Join a Wi-Fi network",
         "chr": "Google Chrome",
         "chrome": "Google Chrome",
         "sl": "Slack",

@@ -67,24 +67,24 @@ ShellRoot {
         try {
             const all = runs.everything();
             expect("running first, then the newest, none older than a day",
-                names(all) === "fleet-live, review on core.nix#380, fleet-dead", names(all));
+                names(all) === "fleet-live, council on core.nix#380, fleet-dead", names(all));
             const [live, council, dead] = all;
             expect("a running one's mark", live.glyph === Theme.glyph.running, live.glyph);
             expect("how far along it is, and for how long",
-                /^helpers · 1 of 2 done · 1[01] min$/.test(live.side), live.side);
+                /^fleet · 1 of 2 done · 1[01] min$/.test(live.side), live.side);
             expect("a finished council's mark", council.glyph === Theme.glyph.done, council.glyph);
             expect("what it cost, and how long it ran", council.side === "$1.25 · 3 min", council.side);
             expect("its id below", council.note === "council-20261022T100000000-000001", council.note);
             expect("one whose process is gone has failed",
-                dead.glyph === Theme.glyph.failed && dead.side === "helpers", `${dead.glyph} ${dead.side}`);
+                dead.glyph === Theme.glyph.failed && dead.side === "fleet", `${dead.glyph} ${dead.side}`);
             expect("one with no session copies its id", council.verb === "copy", council.verb);
             expect("the foot's count", runs.counted() === "1 running, 3 today", runs.counted());
 
             const byChange = runs.search("380").rows;
-            expect("found by its change", names(byChange) === "review on core.nix#380", names(byChange));
-            // pi's word for its kind finds it, but never names it.
+            expect("found by its change", names(byChange) === "council on core.nix#380", names(byChange));
+            // Its kind finds it, and names it.
             const byKind = runs.search("council").rows;
-            expect("found by pi's word", names(byKind) === "review on core.nix#380", names(byKind));
+            expect("found by its kind", names(byKind) === "council on core.nix#380", names(byKind));
             const byId = runs.search("dead").rows;
             expect("found by its id", names(byId) === "fleet-dead", names(byId));
 

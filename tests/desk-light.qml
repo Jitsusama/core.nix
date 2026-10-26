@@ -107,7 +107,7 @@ ShellRoot {
         expect("its row", told.rows.length === 1 && told.rows[0].name === "Desk light"
             && told.rows[0].side === "40%, 4000 K",
             JSON.stringify(told.rows.map(row => [row.name, row.side])));
-        expect("the litra answers too", light.answer("litra")?.headline === told.headline,
+        expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);
         expect("nothing told the bar at first", root.brightened === 0 && root.warmed === 0,
             `${root.brightened} ${root.warmed}`);

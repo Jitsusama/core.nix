@@ -20,8 +20,7 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    // Named Tasks in Joel's words (Words.qml), a part of Agents; pi's word
-    // for them finds them but never names them.
+    // Quests, Agents' one word for them (Words.qml), a part of Agents.
     what: Words.of("quests").what
 
     collection: Words.collection("quests")

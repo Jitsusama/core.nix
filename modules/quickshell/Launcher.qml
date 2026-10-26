@@ -750,10 +750,10 @@ Scope {
     // Rows found by what's typed, inside a step, a category or a
     // collection's parts, in the top level's tiers (Rank.js): a name that
     // is what's typed, then one starting with it, then one with a later
-    // word starting with it, and then a row found only by its hidden words
-    // (hiddenWords), each tier best match first. A hidden word isn't said beside
-    // the row, since it may be a name the machine knows a thing by, such as
-    // tailscale0, that Joel never sees.
+    // word starting with it, and then a row found only by what it holds of
+    // its own (hiddenWords), each tier best match first. Such a word isn't
+    // said beside the row, since it may be a name the machine knows a thing
+    // by, such as tailscale0, that Joel never sees.
     function within(rows, letters) {
         const typedWords = Fuzzy.words(letters);
         const need = Fuzzy.letters(typedWords);
@@ -1617,7 +1617,7 @@ Scope {
             // typed, then those it finds, best first, and with them the
             // choices of a part that offers them (a display's Scale), so
             // what's typed reaches them without a step in: "scale 150".
-            // Found by name or by hidden word, in the top level's tiers.
+            // Found by name or by what it holds, in the top level's tiers.
             else if (words.length === 0)
                 found = offered.slice();
             else

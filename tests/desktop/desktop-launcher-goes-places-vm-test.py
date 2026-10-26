@@ -307,7 +307,7 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
     # The one driving first, naming the session that has it loaded.
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["tasks"]
+            shown["held"] == ["quests"]
             and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
             and shown["selected"]["side"] == "driving \u00b7 TESTQA"
         )
@@ -397,10 +397,10 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["helpers"]
+            shown["held"] == ["subagents"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
-                r"helpers \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
+                r"fleet \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
                 shown["selected"]["side"],
             )
         )

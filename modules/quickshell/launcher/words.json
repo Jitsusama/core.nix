@@ -1305,8 +1305,7 @@
         "rain"
       ],
       "started": [
-        "rain",
-        "umbrella"
+        "rain"
       ]
     },
     {
@@ -3621,106 +3620,12 @@
       "why": "Both list devices: sound's outputs and inputs, and what's paired."
     },
     {
-      "word": "layer",
-      "things": [
-        "keyboard:lock",
-        "keyboard:release"
-      ],
-      "why": "Both lock the board on a layer or let it go, as the word found each before."
-    },
-    {
-      "word": "tuple",
-      "things": [
-        "people",
-        "tuple",
-        "tuple:ringing",
-        "tuple:mute",
-        "tuple:share",
-        "tuple:leave",
-        "tuple:open",
-        "tuple:join",
-        "tuple:link"
-      ],
-      "why": "The program's name finds the calls and everything done in one, the way its name did."
-    },
-    {
-      "word": "pair",
-      "things": [
-        "people",
-        "bluetooth",
-        "tuple:ringing",
-        "tuple:mute",
-        "tuple:share",
-        "tuple:leave",
-        "tuple:open",
-        "tuple:join",
-        "tuple:link"
-      ],
-      "why": "Joel pairs with a colleague in a call and pairs a device by Bluetooth; both are pairing."
-    },
-    {
-      "word": "pairing",
-      "things": [
-        "people",
-        "bluetooth"
-      ],
-      "why": "As for pair."
-    },
-    {
-      "word": "notifications",
-      "things": [
-        "notices",
-        "session:quiet"
-      ],
-      "why": "Do not disturb holds the notifications, so it's found beside them."
-    },
-    {
-      "word": "notices",
-      "things": [
-        "notices",
-        "session:quiet"
-      ],
-      "why": "Do not disturb holds the notifications, so it's found beside them."
-    },
-    {
       "word": "alerts",
       "things": [
         "notices",
         "session:quiet"
       ],
       "why": "Do not disturb holds the notifications, so it's found beside them."
-    },
-    {
-      "word": "record",
-      "things": [
-        "capture",
-        "session:recording"
-      ],
-      "why": "While something records, stopping it is found beside starting another."
-    },
-    {
-      "word": "recording",
-      "things": [
-        "capture",
-        "session:recording"
-      ],
-      "why": "While something records, stopping it is found beside starting another."
-    },
-    {
-      "word": "video",
-      "things": [
-        "capture",
-        "session:recording"
-      ],
-      "why": "While something records, stopping it is found beside starting another."
-    },
-    {
-      "word": "microphone",
-      "things": [
-        "sound",
-        "tuple:mute"
-      ],
-      "why": "In a call, muting the microphone there is found beside the microphones themselves."
     },
     {
       "word": "tabs",
