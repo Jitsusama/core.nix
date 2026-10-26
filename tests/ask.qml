@@ -7,7 +7,9 @@
 // a question is thought about at once and answered in place; a second gets
 // a pi of its own, never one that carries the first; and closing the
 // launcher while it answers stops it, the next answered whole. It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// once every case holds, and otherwise 1, saying which didn't. A request in
+// plain words is offered after anything found, and a word alone isn't; one
+// done through a tool says what was done, not what was said before the call.
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
@@ -93,7 +95,22 @@ ShellRoot {
         });
     }
 
+    // A request in plain words is offered, giving way to anything found; a
+    // word alone is left to the search, and a question keeps its own note.
+    function offers() {
+        const request = ask.answer("brightness to 40%");
+        expect("a request is offered, after anything found",
+            request !== null && request.fallback === true
+            && request.note === "done through the launcher, where it can be", request);
+        expect("a word alone is left to the search", ask.answer("brightness") === null,
+            ask.answer("brightness"));
+        const question = ask.answer("what is a fjord?");
+        expect("a question is answered", question.fallback !== true
+            && question.note === "a quick answer, in a sentence or two", question);
+    }
+
     function answers() {
+        offers();
         ask.answer("what is a fjord?").run();
         const thinking = ask.answer("what is a fjord?");
         expect("a question is thought about at once", thinking.note === "thinking"
@@ -122,8 +139,19 @@ ShellRoot {
             until("the next is answered", () => ask.stage === "answered", () => {
                 const said = ask.answer("what is a tarn?");
                 expect("the next is answered whole", said.headline === root.fjord, said);
-                Qt.callLater(() => Qt.exit(0));
+                acts();
             });
+        });
+    }
+
+    // A request done through a tool says what was done, not what the model
+    // said it would do before the call.
+    function acts() {
+        ask.answer("open kitty").run();
+        until("the request is done", () => ask.stage === "answered", () => {
+            const said = ask.answer("open kitty");
+            expect("it says only what was done", said.copy === "It's open.", said);
+            Qt.callLater(() => Qt.exit(0));
         });
     }
 
