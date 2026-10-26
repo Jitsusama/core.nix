@@ -867,6 +867,56 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
+    desktop: Desktop,
+) -> None:
+    """A detail inside a thing is found from the root, and Return goes there."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    where = "Machine \u203a Screens \u203a "
+
+    def spot(shown: Json) -> int:
+        """Give where the screen's Refresh is listed, saying where it lives, or -1."""
+        for at, thing in enumerate(shown["things"]):
+            if thing["reads"].startswith("Refresh ") and where in thing["reads"]:
+                return at
+        return -1
+
+    # The screen's refresh rate is a step inside a screen, inside Screens,
+    # inside Machine; from the root it's found by its name, saying so.
+    desktop.answer("refresh")
+    desktop.launcher_until(lambda shown: spot(shown) >= 0)
+    for _ in range(spot(desktop.showing())):
+        machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Refresh"
+            and str((shown["selected"] or {}).get("side", "")).startswith(where)
+        )
+    )
+    # Return goes there: the crumbs say each step, and the spot is selected.
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["path"][:2] == ["Machine", "Screens"]
+            and len(shown["path"]) == len(["Machine", "Screens", "a screen"])
+            and (shown["selected"] or {}).get("name") == "Refresh"
+        )
+    )
+    screen = desktop.showing()["path"][-1]
+    # The left arrow goes back up, onto the screen it was inside.
+    machine.send_key("left")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Machine", "Screens"]
+            and (shown["selected"] or {}).get("name") == screen
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
     desktop: Desktop,
 ) -> None:
