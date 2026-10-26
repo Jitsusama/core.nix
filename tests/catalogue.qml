@@ -121,6 +121,9 @@ QtObject {
         expect("or by how its name starts", names(Catalogue.leading({ name: "Quarry",
             verb: "copy", run: does, verbs: opens }, [{ name: "Play it", run: does },
             { name: "Copy what it said", run: does }])), "Copy what it said, Play it");
+        expect("not a figure copying its own value", names(Catalogue.leading({ name: "Disk",
+            verb: "copy", run: does, verbs: opens }, [{ name: "Space", verb: "copy",
+            run: does }, { name: "Busy", verb: "copy", run: does }])), "Copy, Space, Busy");
         expect("read without what it's done to", names(Catalogue.leading({ name: "Radio",
             verb: "turn off", run: does, verbs: opens }, [{ name: "Turn it off", run: does }])),
             "Turn it off");

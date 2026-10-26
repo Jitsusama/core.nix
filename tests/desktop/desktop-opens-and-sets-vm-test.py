@@ -541,7 +541,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Volume", "50%"))
     # The right arrow on Muted holds Mute and Unmute, Unmute in use, and
     # Return on Mute mutes the speakers; then Unmute, its Return, unmutes.
-    for _down in range(2):
+    # Muted is the fourth row, after Return's own Mute, Level and Volume.
+    for _down in range(3):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Muted"))
     desktop.step_in()

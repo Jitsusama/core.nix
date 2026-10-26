@@ -785,9 +785,11 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.photograph("notice-alone")
     # Leaving runs tuple call leave, which starts the stopped daemon,
     # whose new log ends the call. Super+N again opens the history on the
-    # newest notice's offers.
+    # newest notice's offers, Return's own Open first.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the call"])
+    machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))

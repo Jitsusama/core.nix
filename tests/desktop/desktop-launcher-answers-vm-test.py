@@ -422,9 +422,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
     )
     desktop.photograph("launcher-disks")
-    # Its first part, a step in, is the space the headline's disk has,
-    # and the disk's speed, how busy it is and its latency come after.
+    # Its first part, a step in after Return's own Copy, is the space the
+    # headline's disk has, and the disk's speed, how busy it is and its
+    # latency come after.
     desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy", "Space"])
+    machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Space"

@@ -73,9 +73,11 @@ function kindOf(row) {
 const DONE_TO = / (?:it|them)\b/;
 
 // Whether a row inside does this act: its verb is it, or its name is it
-// or starts with it ("Disconnect it", "Copy what it said").
+// or starts with it ("Disconnect it", "Copy what it said"). Every figure
+// copies its own value, which isn't copying the row it's in, so a copy is
+// known by its name alone.
 function saysAct(one, said) {
-    if (verbOf(one).toLowerCase() === said) {
+    if (said !== "copy" && verbOf(one).toLowerCase() === said) {
         return true;
     }
     const name = String(one.name ?? "").toLowerCase().replace(DONE_TO, "");
