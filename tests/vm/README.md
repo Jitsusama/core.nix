@@ -15,5 +15,6 @@ They are grouped by what they prove, a folder an area:
 
 The VM tests not yet grouped are still in `../`, and move into a folder
 here as their owners free them. Shared helpers are in `../lib/`, and
-stand-ins several tests use are in `../`. A check that needs no VM goes
+stand-ins several tests use are in `../`, each saying what it stands in
+for. A check that needs no VM goes
 beside its module instead.

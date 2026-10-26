@@ -732,13 +732,6 @@ gather (
             "modules/neovim/probes"
             # The desk's keyboard.
             "modules/ergodox/keymap"
-            # tests/, given notes as it's grouped by level.
-            "tests/battery-stand-ins"
-            "tests/lib"
-            "tests/stand-in-backlight"
-            "tests/stand-in-lid"
-            "tests/stand-in-light"
-            "tests/stand-in-monitor"
           ];
         in
         pkgs.runCommandLocal "every-folder-says-what-it-holds" { } ''
