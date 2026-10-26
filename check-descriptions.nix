@@ -830,8 +830,9 @@
     doing it, and lists no figure, copy or command's start
   '';
   the-launcher-chooses-files = ''
-    a graphical machine's portal asks the launcher's chooser for a file to open or save, and
-    open-with's description says it answers it
+    a graphical machine's portal asks the launcher's chooser for a file to open or save, GTK 3
+    programs ask the portal, their own dialogs included, and open-with's description says it
+    answers it
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
