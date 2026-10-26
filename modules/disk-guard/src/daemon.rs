@@ -251,7 +251,7 @@ pub struct Guard {
     /// heartbeat.
     system_heard: bool,
     /// Whether garbage is to be listed again at once, generations having
-    /// expired since the listing began.
+    /// expired since the listing began, or a batch having found it stale.
     relist: bool,
     /// A run linking the store's identical files: when it began, what
     /// stops it, and where it tells how it ended.
@@ -1521,6 +1521,15 @@ impl Guard {
                 }
                 // What they kept is garbage now, which no listing holds.
                 Some(Action::Expire { .. }) if *outcome == Outcome::Reclaimed => {
+                    self.relist = true;
+                }
+                // A batch made again from the same listing meets the same
+                // paths alive, each refusal a whole look for roots, so the
+                // store is listed again; a listing under way is new enough.
+                Some(Action::Collect { .. })
+                    if matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
+                        && self.listing_out.is_none() =>
+                {
                     self.relist = true;
                 }
                 _ => {}

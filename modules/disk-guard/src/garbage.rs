@@ -324,8 +324,16 @@ const DELETE_TIMEOUT: Duration = Duration::from_mins(10);
 /// How many paths may come alive since the batch was made before it's
 /// taken as too stale to go on with. Each refusal costs Nix a whole look
 /// for roots and deletes nothing, so a batch that keeps meeting them is
-/// left for a pass that makes its batches afresh.
+/// left for a pass that makes its batches from a new listing.
 const REVIVALS: usize = 3;
+/// How a delete that gave up on a batch says so.
+const STALE: &str = "came alive since the listing";
+
+/// Whether a delete failed because the listing its batch came from is
+/// stale, which only listing the store again mends.
+pub fn stale(why: &str) -> bool {
+    why.ends_with(STALE)
+}
 
 /// Deletes the batch's `paths` that still exist through `nix store
 /// delete`, whose dead referrers are among them or gone. Nix refuses the
@@ -358,7 +366,7 @@ pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
             .filter(|path| left.contains(&path));
         match revived {
             Some(path) if alive.len() < REVIVALS => alive.push(path),
-            Some(_) => return Err(format!("{REVIVALS} paths came alive since the listing")),
+            Some(_) => return Err(format!("{REVIVALS} paths {STALE}")),
             None => return Err(failed(&argv, &said)),
         }
     }
