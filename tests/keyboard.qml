@@ -119,13 +119,10 @@ ShellRoot {
             expect("a choice found by its words",
                 brighter.name === "Brighten the keyboard's backlight"
                 && brighter.verb === "brighten", `${brighter.name}, ${brighter.verb}`);
-            expect("a choice found by the backlight's words",
-                first("leds dark").name === "Turn off the keyboard's backlight",
-                first("leds dark").name);
-            // Its old name, Lights, still finds it.
-            expect("a choice found by the old name",
-                first("lights dark").name === "Turn off the keyboard's backlight",
-                first("lights dark").name);
+            // One word each: an old word for the backlight finds nothing.
+            const old = keyboard.search("leds dark").rows;
+            expect("an old word finds nothing", old.length === 0,
+                old.map(row => row.name).join(", "));
             brighter.run();
             expect("brightening runs ergodox", Niri.spawned.join(" ") === "ergodox brighter",
                 Niri.spawned.join(" "));
