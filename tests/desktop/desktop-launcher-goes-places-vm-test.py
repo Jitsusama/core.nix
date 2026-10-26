@@ -1276,17 +1276,19 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
-# The agent steering the others keeps what waits on Joel in one file,
-# and each quest keeps its own beside it.
+# The orchestrator keeps what waits on Joel in one file, and each quest
+# keeps its own beside it.
 
 
 def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     """Now leads with what waits on Joel, and Return goes to where it's done."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
+    # pi's session is the orchestrator, by the name the harness gives it.
+    desktop.pi_session()
     desktop.opened("Waiting room")
     queue = {
-        "steward": "STEWRD",
+        "orchestrator": "TESTQA",
         "items": [
             {
                 "id": "try",
@@ -1344,6 +1346,19 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled("Waiting room")["is_focused"],
+        timeout=dt.timedelta(seconds=10),
+    )
+    # One naming no window is done with the orchestrator, in its window.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("waiting on you", selecting="Waiting on you")
+    desktop.step_in()
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Pick a bucket")
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    retry(
+        lambda _: desktop.window_titled(PI_WINDOW)["is_focused"],
         timeout=dt.timedelta(seconds=10),
     )
     # Put back as it was, for the tests after.
