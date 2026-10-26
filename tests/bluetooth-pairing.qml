@@ -122,8 +122,8 @@ ShellRoot {
             "Connection=Classic, central, encrypted", "Reconnects by itself=yes",
             `Address=${at}`].join(","), said(parts));
         const figures = parts.slice(0, 5);
-        expect("figures wear no glyph", figures.every(row => row.glyph === ""
-            && row.verb === "close"), "a figure wears a glyph or copies");
+        expect("figures wear no glyph, and copy what they show", figures.every(row =>
+            row.glyph === "" && row.verb === "copy"), "a figure wears a glyph or copies nothing");
         expect("the battery warns low", parts[0].graph.shape === "bar" && parts[0].graph.warn
             && parts[0].note === "running low", JSON.stringify(parts[0].graph));
         expect("the signal's note says the power", parts[1].note
