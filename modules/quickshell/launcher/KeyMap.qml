@@ -203,6 +203,15 @@ Provider {
 
     // The chord opens on the program's own layer, its groups showing, the
     // path saying which program it is; over the desktop, on the layers.
+    // A program's own keys, by its windows' app id, as the layer it has here,
+    // or null for one with none of its own, so a program's row can hold
+    // them (Applications.qml) without knowing which layer is whose.
+    function layerOf(app) {
+        const own = KeyGroups.over(app, "")[0];
+        const layer = own === "desktop" ? null : ranked.find(one => one.name === own) ?? null;
+        return layer === null ? null : layer.row;
+    }
+
     function leading() {
         return ranked.length > 0 && ranked[0].name !== "desktop" ? ranked[0].row : null;
     }
