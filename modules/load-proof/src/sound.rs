@@ -140,7 +140,7 @@ fn play_silence(length: Duration) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    // Two iterations of `pw-top -b`, as optimus printed them, cut short.
+    // Two iterations of `pw-top -b`, as a laptop printed them, cut short.
     const TOP: &str = "\
 S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT           NAME 
 S   31      0      0    ---     ---   ---   ---     0                  Dummy-Driver
