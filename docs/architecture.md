@@ -46,8 +46,8 @@ nixosSystem, in a machine repository           file it opens
 - **[`flake.nix`][1]** is the index. It names every module and role, by module
   system, and gives each one what it takes.
 - **Machines** live in the machine repositories. They call the stock builders
-  with core's roles, their layer and their own settings, and nothing stands in
-  between.
+  with core's roles, their repository's own modules and their own settings,
+  and nothing stands in between.
 
 ## Module Systems
 
@@ -170,7 +170,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.disk.swapSize`          | the swap file's size, at least the memory's              |
 | `jitsusama.git.programIncludes`    | files programs include from git's global file themselves |
 | `jitsusama.identity.name`          | the name Joel's work is attributed to                    |
-| `jitsusama.identity.email`         | the email address it's attributed to, set per layer      |
+| `jitsusama.identity.email`         | the email address it's attributed to, set per repository |
 | `jitsusama.kernel.cpu`             | the CPU the kernel is compiled for, set per hardware     |
 | `jitsusama.kernel.profile`         | the kernel's AutoFDO profile, recorded per machine       |
 | `jitsusama.keyboard.builtIn`       | the machine's own keyboard, set per hardware             |

@@ -8,7 +8,7 @@ core.nix itself. This is how one is defined, changed and applied.
 ## Defining One
 
 A machine is a call to the stock builder in its repository's `flake.nix`,
-with the roles it plays, the repository's layer and a directory of the
+with the roles it plays, the repository's own modules and a directory of the
 machine's own settings:
 
 ```nix
@@ -16,7 +16,7 @@ nixosConfigurations.laptop = nixpkgs.lib.nixosSystem {
   modules = [
     core.nixosModules.workstation
     core.nixosModules.graphical
-    self.nixosModules.layer
+    self.nixosModules.personal
     ./machines/laptop
   ];
 };
@@ -29,15 +29,15 @@ whose model core.nix knows also imports that hardware, such as
 each brings. A Mac is the same with `nix-darwin.lib.darwinSystem` and
 `core.darwinModules`.
 
-## The Layer
+## The Repository's Own Modules
 
-The layer is what a machine repository adds to every machine of its own,
-such as an identity or the apps no role brings. It's a set of modules in the
-machine repository, imported beside core's roles, and it sets core's options
-rather than repeating what core does:
+A machine repository's own modules are what it adds to every machine of its
+own, such as an identity or the apps no role brings. They're imported beside
+core's roles, named for the machines they're for (`personal` here), and they
+set core's options rather than repeating what core does:
 
 ```nix
-# layer/home.nix
+# personal/home.nix
 {
   jitsusama.identity.email = "joel@example.com";
 }
@@ -66,8 +66,8 @@ to check after installing.
 
 ## Changing What core Sets
 
-A machine or a layer changes what core sets with the module system alone, in
-this order of preference:
+A machine or its repository's own modules change what core sets with the
+module system alone, in this order of preference:
 
 | To                                    | Write                                         |
 | ------------------------------------- | --------------------------------------------- |
