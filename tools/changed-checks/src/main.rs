@@ -208,6 +208,12 @@ fn compare(
     })
 }
 
+/// Each evaluation goes past nix's evaluation cache. Evaluated through
+/// `--apply`, a result can't be kept there, so the cache saved nothing (one
+/// chunk took 115 s with it and 108 to 127 s without), while two evaluations
+/// at once, or two runs, found its database busy.
+const UNCACHED: &str = "--no-eval-cache";
+
 /// Evaluate each of a flake's checks for a system to its derivation's path,
 /// noting in the run what each chunk of them took, as the side named.
 fn derivations(
@@ -220,7 +226,14 @@ fn derivations(
     let checks = format!("{flake}#checks.{system}");
     let listed = run(
         "nix",
-        &["eval", "--json", &checks, "--apply", "builtins.attrNames"],
+        &[
+            "eval",
+            "--json",
+            &checks,
+            "--apply",
+            "builtins.attrNames",
+            UNCACHED,
+        ],
     )?;
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
@@ -228,7 +241,10 @@ fn derivations(
     let evaluated = checks::each_at_once(&chunks, checks::AT_ONCE, |chunk| {
         let selecting = checks::selecting(chunk)?;
         let began = Instant::now();
-        let evaluated = run("nix", &["eval", "--json", &checks, "--apply", &selecting])?;
+        let evaluated = run(
+            "nix",
+            &["eval", "--json", &checks, "--apply", &selecting, UNCACHED],
+        )?;
         let took = began.elapsed();
         let derivations: Derivations = serde_json::from_str(&evaluated)
             .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;

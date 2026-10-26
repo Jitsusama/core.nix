@@ -35,13 +35,16 @@ esac
 
 /// nix as changed-checks asks it: a side's checks by name, then their
 /// derivations, the base's being any flake at a revision; and a build,
-/// which it records. Once a test writes `meet`, an evaluation of
+/// which it records. It refuses an evaluation through its evaluation
+/// cache, which two at once would find busy. Once a test writes `meet`, an
+/// evaluation of
 /// derivations waits for another to be under way beside it before
 /// answering, and fails if none comes within ten seconds.
 const NIX: &str = r#"#!/bin/sh
 case "$1" in
   build) shift; echo "$@" >> "$STAND_IN/built"; exit 0 ;;
 esac
+[ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
 side=working
 case "$3" in *'?rev='*) side=base ;; esac
 under_way() { find "$STAND_IN" -maxdepth 1 -name 'evaluating.*' | wc -l; }
