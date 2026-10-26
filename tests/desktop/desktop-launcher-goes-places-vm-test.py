@@ -523,6 +523,11 @@ def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     assert trial["keys"]["returns"] == 1, trial
     assert trial["ms"] > 0, trial
     assert not trial["missed"], trial
+    # Each key timed from its search to its frame, which comes after; keys
+    # typed faster than frames share one, timed by the last.
+    timed = trial["timed"]
+    assert 1 <= timed["count"] <= len("kitty"), timed
+    assert timed["drawnMost"] >= timed["searchedMost"] >= 0, timed
 
 
 # The border is all that marks the focused window, and niri leaves

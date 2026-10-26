@@ -12,6 +12,10 @@
 // keys, steps in by the right arrow, steps back by the left, Tab, and
 // Return.
 const KINDS = ["letters", "erased", "arrows", "steps", "backs", "tabs", "returns"];
+// A key slower than this to its frame is felt: a frame at 120 Hz.
+const FELT_MS = 8;
+// How many of an opening's felt keys are kept, each with what took the time.
+const FELT_KEPT = 20;
 
 // An opening at `at` milliseconds, on the home called `home`.
 function begun(at, home) {
@@ -20,7 +24,37 @@ function begun(at, home) {
         keys[kind] = 0;
     }
     return { at, home, keys, picked: "", kind: "", typed: "", depth: 0,
-        ms: -1, open: -1, missed: false };
+        ms: -1, open: -1, missed: false,
+        timed: { count: 0, searched: 0, searchedMost: 0, drawn: 0, drawnMost: 0, felt: [] } };
+}
+
+// Whether a key that took `drawn` milliseconds to its frame was one Joel
+// could feel.
+function felt(drawn) {
+    return drawn > FELT_MS;
+}
+
+// The trial with one more key timed: how long its search took and how long
+// until the frame that drew it, both in milliseconds, and `parts` what the
+// search spent its time on ({ lists, rows, answers }) or null. Each felt key
+// is kept with its parts, the first few of an opening, so what's slow is
+// named by Joel's own use rather than guessed (Joel, 2026-10-25: "i felt a
+// bit of lag btw with the launcher").
+function timed(trial, searched, drawn, parts) {
+    if (!trial) {
+        return trial;
+    }
+    const was = trial.timed ?? begun(0, "").timed;
+    const keptFelt = felt(drawn) && was.felt.length < FELT_KEPT
+        ? was.felt.concat([{ searched, drawn, parts: parts ?? null }]) : was.felt;
+    return Object.assign({}, trial, { timed: {
+        count: was.count + 1,
+        searched: was.searched + searched,
+        searchedMost: Math.max(was.searchedMost, searched),
+        drawn: was.drawn + drawn,
+        drawnMost: Math.max(was.drawnMost, drawn),
+        felt: keptFelt
+    } });
 }
 
 // The trial with one more key of this kind, or as it was for a kind not
