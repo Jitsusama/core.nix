@@ -3488,6 +3488,7 @@
       "id": "orchestrators",
       "in": "agents",
       "name": "Orchestrators",
+      "term": "Agents/orchestrator",
       "noun": "orchestrators",
       "what": "orchestrator",
       "glyph": "agent",
@@ -3506,6 +3507,7 @@
       "id": "orchestrators:talk",
       "in": "orchestrators",
       "name": "Talks",
+      "term": "Agents/talk",
       "said": {
         "delivered": "delivered",
         "reading": "reading",
