@@ -107,4 +107,54 @@
         ${lib.getExe claude}
       touch $out
     '';
+
+  # pi-ask starts pi for the Ask row with nothing loaded but the machine's
+  # extensions, on the machine's plan and model: pi's own by default, with
+  # its quick model, or pi-claude's; and an account gets it.
+  pi-ask-answers-on-the-machines-plan =
+    let
+      home = account workstation;
+      # pi-claude as pi-ask starts it, writing down how.
+      piClaude = pkgs.writeShellScriptBin "pi-claude" ''
+        { echo "started pi-claude"; printf 'arg %s\n' "$@"; } > "$SAID"
+      '';
+      asking =
+        ask:
+        lib.getExe (
+          import ./ask.nix {
+            inherit
+              pkgs
+              lib
+              piClaude
+              ask
+              ;
+          }
+        );
+      # The workstation's defaults, with a machine's extensions.
+      onPi = asking (
+        home.jitsusama.pi.ask
+        // {
+          extensions = [
+            "/extensions/a-proxy"
+            "/extensions/another"
+          ];
+        }
+      );
+      onClaude = asking {
+        plan = "claude";
+        model = "claude-code/claude-haiku-4-5-20251001";
+        extensions = [ ];
+      };
+    in
+    assert lib.assertMsg (lib.any (
+      package: lib.getName package == "pi-ask"
+    ) home.home.packages) "An account with pi doesn't get pi-ask.";
+    assert lib.assertMsg (
+      home.jitsusama.pi.ask.plan == "pi"
+    ) "pi-ask's plan isn't pi's own by default.";
+    pkgs.runCommandLocal "pi-ask-answers-on-the-machines-plan" { } ''
+      ${lib.getExe pkgs.bash} ${../../tests/pi-ask-answers-on-the-machines-plan.sh} \
+        ${onPi} ${onClaude} ${lib.getExe piClaude}
+      touch $out
+    '';
 }

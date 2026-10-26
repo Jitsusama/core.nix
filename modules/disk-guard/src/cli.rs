@@ -7,6 +7,7 @@ use crate::config::{Config, Scope};
 use crate::daemon::{Explained, Guard, Places};
 use crate::serve::{answering, hold, steps, stopping};
 use crate::units::{Size, Span, shown as size};
+use crate::words::span;
 use serde_json::Value;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
@@ -545,21 +546,9 @@ fn wall() -> f64 {
         .map_or(0.0, |since| since.as_secs_f64())
 }
 
-/// A length of time as people read one.
-fn span(seconds: f64) -> String {
-    let seconds = seconds.max(0.0);
-    if seconds < 90.0 {
-        format!("{seconds:.0} s")
-    } else if seconds < 90.0 * 60.0 {
-        format!("{:.0} min", seconds / 60.0)
-    } else if seconds < 48.0 * 3600.0 {
-        format!("{:.1} h", seconds / 3600.0)
-    } else if seconds < 730.0 * 86400.0 {
-        format!("{:.1} d", seconds / 86400.0)
-    } else {
-        format!("{:.0} y", seconds / (365.25 * 86400.0))
-    }
-}
+/// How many of the things a guard last cleared `status` shows; the
+/// journal has the rest.
+const CLEARED_SHOWN: usize = 3;
 
 /// How old a heartbeat may be before its guard is taken to have stopped.
 const STOPPED_AFTER: f64 = 120.0;
@@ -588,6 +577,9 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
             writeln!(out, "{name} guard, not heard from for {}", span(age)).map_err(failed)?;
         } else {
             writeln!(out, "{name} guard, heard from {} ago", span(age)).map_err(failed)?;
+        }
+        if let Some(says) = status["says"].as_str() {
+            writeln!(out, "  {says}").map_err(failed)?;
         }
         for filesystem in status["filesystems"].as_array().into_iter().flatten() {
             let band = filesystem["band"].as_str().unwrap_or("unknown");
@@ -621,6 +613,16 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
                 size(last["freed"].as_u64().unwrap_or(0)),
             )
             .map_err(failed)?;
+        }
+        for cleared in status["cleared"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(CLEARED_SHOWN)
+        {
+            let when = span(now - cleared["at"].as_f64().unwrap_or(0.0));
+            let says = cleared["says"].as_str().unwrap_or("?");
+            writeln!(out, "  {when} ago: {says}").map_err(failed)?;
         }
     }
     Ok(FINE)

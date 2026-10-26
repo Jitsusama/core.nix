@@ -871,22 +871,34 @@ Scope {
         return keys;
     }
 
-    // The foot's keys in the order it says them.
-    // Where the foot's keys start and how wide Return's place is, so they
-    // hold still. Said for the selected row alone, the keys moved as the
-    // arrows went from a row that opens to one with more behind it, and
-    // squeezed how things stand beside them from words to glyphs and back
-    // (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So Return,
-    // always first, keeps a place as wide as the longest word it's said
-    // since the launcher opened, and the keys start where the widest of
-    // them has needed. The rest follow Return close by, each as wide as it
-    // is: a place kept for every key any row had left holes between them as
-    // soon as Joel typed ("the whitespacing ... is all fucked up"), and took
-    // room from how things stand that no row used. Both only grow while the
+    // How far in the foot's keys may reach and how wide Return's place is,
+    // so they hold still. Said for the selected row alone, the keys moved
+    // as the arrows went from a row that opens to one with more behind it,
+    // and squeezed how things stand beside them from words to glyphs and
+    // back (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So
+    // Return, last at the right end, keeps a place as wide as the longest
+    // word it's said since the launcher opened, and how things stand keeps
+    // clear of where the widest set of keys has reached. The rest sit just
+    // before Return, each as wide as it is: a place kept for every key any
+    // row had left holes between them as soon as Joel typed ("the
+    // whitespacing ... is all fucked up"), and took room from how things
+    // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
-    // under the selection.
-    property string footVerbWidest: ""
+    // under the selection. They open as wide as most rows need, Return's
+    // place as wide as "connect" and the keys as wide as a program's at
+    // the top, so the first letter typed doesn't move them: grown only as
+    // rows came, Return moved in as soon as Joel typed, since home's rows
+    // say less than what a letter finds.
+    readonly property string footVerbRoom: "connect"
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["\u21e7\u21b5", "below"],
+        ["\u2192", "see all"]]
+    property string footVerbWidest: footVerbRoom
     property real footKeysWidest: 0
+
+    function footReset() {
+        footVerbWidest = footVerbRoom;
+        footKeysWidest = keysWide(footKeysRoom);
+    }
 
     // How wide a row's keys are, Return in its place.
     function keysWide(told) {
@@ -1782,6 +1794,52 @@ Scope {
         function showing(): string {
             return root.showing();
         }
+
+        // Where every word on the card is drawn, for the check that nothing
+        // moves without changing.
+        function laidOut(): string {
+            return root.laidOut();
+        }
+    }
+
+    // Every word drawn in an item, the item itself and all inside it, each
+    // with where it's drawn on the card: its box's left and top and where
+    // its letters start, which an aligned text moves within its box.
+    function wordsIn(item, into) {
+        if (!item || !item.visible || item.opacity === 0)
+            return [];
+        const words = [];
+        if (typeof item.text === "string" && typeof item.contentWidth === "number"
+            && item.text !== "" && item.width > 0) {
+            const at = item.mapToItem(into, 0, 0);
+            const spare = Math.max(0, item.width - item.contentWidth);
+            const inset = item.horizontalAlignment === Qt.AlignRight ? spare
+                : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
+            words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
+                starts: Math.round(at.x + inset) });
+        }
+        for (const child of item.children)
+            for (const word of wordsIn(child, into))
+                words.push(word);
+        return words;
+    }
+
+    // Where the card's words are, as JSON: the field's, the foot's, and each
+    // row's shown, with what the row is and how it reads, so a test can say
+    // a row that reads the same was drawn in the same place (Joel,
+    // 2026-10-25: "text alignment and shit constantly shifting around").
+    function laidOut() {
+        const rows = [];
+        for (let at = 0; at < root.matches.length; at += 1) {
+            const drawn = list.itemAtIndex(at);
+            const row = root.matches[at];
+            if (drawn && drawn.visible)
+                rows.push({ at, is: Rank.identity(row), selected: at === root.current,
+                    reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
+                        .join(" \u00b7 "), words: wordsIn(drawn, card) });
+        }
+        return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
+            foot: wordsIn(foot, card), rows });
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
@@ -1821,8 +1879,8 @@ Scope {
             kind: root.kind,
             footer: foot.said,
             glance: standing.said,
-            // Where the keys start, which holds still as the arrows go.
-            keysAt: Math.round(keys.x),
+            // Where Return's key starts, which holds still as the arrows go.
+            keysAt: Math.round(foot.returnAt),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY)
         });
@@ -1886,8 +1944,7 @@ Scope {
         if (open) {
             trials.opened();
             pointer = Qt.point(-1, -1);
-            footVerbWidest = "";
-            footKeysWidest = 0;
+            footReset();
             footStage = 0;
             figuresStep = "";
             held = [];
@@ -2334,8 +2391,22 @@ Scope {
 
                         readonly property var choice: root.selected ?? root.asking
                         readonly property var told: root.keysFor(choice)
-                        // Where the keys start: as far in as the widest of
-                        // them has needed since the launcher opened.
+                        // As the foot says them: Return last, at the right
+                        // end, the rest before it. Return first, in a place
+                        // kept for the widest set, left holes after the keys
+                        // a row didn't have; at the end, what Return says
+                        // keeps to the right edge and the others come and
+                        // go only to its left, as an action bar's main act
+                        // does.
+                        readonly property var shown: told.length === 0 ? []
+                            : told.slice(1).concat([told[0]])
+                        readonly property real returnPlace: told.length === 0 ? 0
+                            : root.returnPlace(told[0])
+                        // Where Return's place starts, which holds still.
+                        readonly property real returnAt: width - Theme.space.l - returnPlace
+                        // How far in the keys may reach: as far as the
+                        // widest of them has needed since the launcher
+                        // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.l
                             - Math.max(root.footKeysWidest, keys.implicitWidth)
                         // The room the left has, short of the keys.
@@ -2453,12 +2524,14 @@ Scope {
 
                         KeyHints {
                             id: keys
-                            x: foot.keysFrom
+                            x: foot.width - Theme.space.l - implicitWidth
                             anchors.verticalCenter: parent.verticalCenter
-                            // The selected row's keys, Return first in its
+                            // The selected row's keys, Return last in its
                             // place (footVerbWidest), the rest close by.
-                            keys: foot.told
-                            widths: foot.told.length > 0 ? [root.returnPlace(foot.told[0])] : []
+                            keys: foot.shown
+                            endsRight: true
+                            widths: foot.shown.map((key, at) => at === foot.shown.length - 1
+                                ? foot.returnPlace : 0)
                         }
                     }
                 }

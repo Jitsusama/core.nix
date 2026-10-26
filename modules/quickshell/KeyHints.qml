@@ -14,6 +14,10 @@ Row {
     // says now, so the keys hold still as what they say changes; a key of
     // "" leaves its place empty.
     property var widths: []
+    // Whether the last key's words keep to its place's right end, for keys
+    // set against the right edge: what it says ends there however wide the
+    // place has grown.
+    property bool endsRight: false
     // The type's step, large in a prompt and smaller in a notice, whose
     // footer is smaller; the space between them follows it.
     property real size: Theme.mono.large
@@ -28,6 +32,8 @@ Row {
             required property int index
 
             width: Math.max(implicitWidth, hints.widths[index] ?? 0)
+            horizontalAlignment: hints.endsRight && index === hints.keys.length - 1
+                ? Text.AlignRight : Text.AlignLeft
             text: modelData[0] === "" ? ""
                 : `<font color="${Theme.text}">${modelData[0]}</font> ${modelData[1]}`
             textFormat: Text.StyledText

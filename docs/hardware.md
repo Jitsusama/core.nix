@@ -953,9 +953,10 @@ below, so the module adds no patches.
 | CPU      | the kernel compiled for `znver2`, microcode, KVM                          |
 | Keyboard | named as the built-in one, `045e:09ae`, and its drivers in the initrd     |
 | Boot     | NVMe and USB drivers in the initrd                                        |
-| Graphics | named as the GPU the desktop waits for                                    |
+| Graphics | named as the GPU the desktop waits for, its driver in the initrd          |
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
+| RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
 
 ### The Keyboard at the Disk Prompt
 
@@ -997,6 +998,31 @@ refined calibration replaces it whenever HPET or the PM timer is there, and
 only a frequency the CPU reports skips it, which AMD's don't. So the module
 marks the TSC unstable and the clock runs on HPET, which costs every read of
 the time a system call.
+
+### The Real-Time Clock
+
+The firmware describes one clock, an ACPI Time and Alarm Device (`acpi_tad`,
+`ACPI000E`), and the kernel adds the CMOS clock (`rtc_cmos`) as a fallback.
+The first registered as rtc0, and every read of its date, time and seconds
+gave an I/O error, so the kernel set no time at boot ("hctosys: unable to
+read the hardware clock") and `timedatectl` failed. Each boot then began at
+systemd's fallback date, seven months back, until NTP answered: files made
+before that carried the old date, and `uptime` counted from it, at 222 days.
+
+The CMOS clock read 2025-05-12 early in that boot, and the true time to the
+second once NTP had answered, since the kernel writes it to keep it in step.
+The module keeps `acpi_tad` from loading, so the CMOS clock is rtc0 and the
+kernel sets the time from it at boot. Whether it holds the time across a
+shutdown is still to be seen; when it doesn't, boots start at systemd's
+fallback date as before.
+
+### The Graphics Driver
+
+Without `amdgpu` in the initrd, the driver loaded after the disk opened and
+took the console from the firmware's framebuffer. udev started the console's
+setup again for the new console, and `loadkeys` ran as the driver took it,
+failing with an I/O error, so `systemd-vconsole-setup` was left failed. The
+module loads it in the initrd, as the XPS 14's does with its GPU.
 
 ### Sleep
 

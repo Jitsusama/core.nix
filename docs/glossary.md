@@ -140,6 +140,7 @@ What Joel sees and reaches for on the desktop.
 | Do not disturb | the setting that holds notices back while it's on | | dnd, quiet | `session:quiet` |
 | brightness | how bright a screen is, which follows the room's light | | | the `backlight` program |
 | backlight | the keyboards' light | | | |
+| here | where the weather is when no place is typed: where the laptop is, else the place set, else the time zone's city | | | the `whereabouts` program; the weather provider's `place` |
 
 ## The Harness
 

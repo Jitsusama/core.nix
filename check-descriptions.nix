@@ -332,10 +332,11 @@
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests
   '';
-  load-proof-counts-frames-missed = ''
+  load-proof-reads-its-signals = ''
     load-proof counts a refresh with the probe's frame ready and none shown as a frame niri missed,
     one that passed before the probe committed as the probe's own, none when a frame lands at every
-    refresh, and a frame niri dropped for a later one apart
+    refresh, and a frame niri dropped for a later one apart; a key typed into a pty in raw mode comes
+    back, and its echoes' middle, 99th percentile and worst are read from them
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
@@ -366,6 +367,10 @@
   neovim-draws-its-status-line = ''
     Neovim's status line names the file from its repository's root, the branch and its unsaved mark,
     a change, an error, the mode, a version and a terminal, and fits 35 columns
+  '';
+  neovim-finds-a-documents-pictures = ''
+    Neovim finds a markdown file's picture by its path relative to the file, for the terminal to
+    draw, with ImageMagick there for pictures other than PNG
   '';
   neovim-finds-in-every-group = ''
     every key group in Neovim has its own Space, which lists in one column, titled, the group's keys
@@ -456,6 +461,10 @@
   pebble-lights-follow-the-sound = ''
     pebble-lights finds the speakers' control and sound card, keeps their lighting on while sound
     plays and a while after unless the screen is locked, and lets the speakers' own button win
+  '';
+  pi-ask-answers-on-the-machines-plan = ''
+    pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
+    extensions, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
   '';
   pi-claude-keeps-to-the-plan = ''
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
@@ -587,6 +596,10 @@
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
     and pictures open in it
   '';
+  swayimg-moves-by-its-keys = ''
+    in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
+    End and Home to the last and first
+  '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
     s after the shell goes unless it comes back
@@ -675,7 +688,8 @@
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
-    or "when will it rain" answer when it next rains, here or in a place
+    or "when will it rain" answer when it next rains, here or in a place; here is where the laptop
+    is, by its position, ahead of the place set and then the time zone, and the footer says which
   '';
   the-launcher-answers-what-is-asked = ''
     sums, addresses, measures, zones, colours, the machine's figures and its parts' heat answer
@@ -862,6 +876,10 @@
   the-splash-reads-the-generation-from-the-entry = ''
     the splash is told the generation only from an entry whose name carries one
   '';
+  the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
+    the Surface Laptop 4 loads its GPU's driver in the initrd, and keeps the firmware's
+    unreadable clock from taking rtc0
+  '';
   the-surface-keyboard-types-at-the-disk-prompt = ''
     the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that
     keyboard out there
@@ -970,8 +988,9 @@
     keys, and its lock screen, polkit's prompt and the askpass answer and hold
   '';
   vm-desktop-launcher-answers = ''
-    the launcher lists each thing once for everything Joel types, copies what it answers, and keeps
-    emoji in their own place
+    the launcher lists each thing once for everything Joel types, copies what it answers, keeps
+    emoji in their own place, and takes the weather's here from where whereabouts says the laptop
+    is
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, sets
@@ -1123,9 +1142,9 @@
   '';
   vm-the-network-keeps-its-order = ''
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
-    tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls and
-    Tuple's daemon video, even what it leaves to send as it ends, names and the shaper's pings
-    voice; a call's packets turn real-time on; a slice made again keeps its class; the client's
+    tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls, its
+    UDP to Meet's media servers on 443 and Tuple's daemon video, even what it leaves to send as
+    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made again keeps its class; the client's
     own network isn't slowed; inside a WireGuard tunnel the same classes reach the tunnel's own
     CAKE; the queues follow the default route, a link unplugged and plugged back in is shaped
     afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
@@ -1144,6 +1163,9 @@
     one fails; a VM test written for pytest gets the driver's machines as fixtures, each test is a
     subtest named by its docstring, a failure fails it with pytest's account of why, and the
     driver ends as a failed subtest ends it
+  '';
+  whereabouts-passes-clippy = ''
+    clippy finds nothing in whereabouts or its tests
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests

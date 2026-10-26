@@ -733,6 +733,53 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     assert "Error:" not in log, "an answer raised an error"
 
 
+def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
+    """The weather's here follows the laptop."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+
+    def asked(test: Callable[[Json], bool]) -> None:
+        desktop.answer("rain")
+        desktop.launcher_until(test)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    def nowhere(shown: Json) -> bool:
+        return (shown["selected"] or {}).get("name") == "where?"
+
+    # whereabouts runs, GeoClue having taken it as a client without a
+    # word against it, and with no geolocation service to ask, it has found
+    # nothing.
+    machine.wait_until_succeeds(desktop.in_session("systemctl --user is-active whereabouts"))
+    refused = desktop.as_account("journalctl --user -u whereabouts -p err --no-pager -o cat")
+    assert refused.strip() == "", f"whereabouts was refused: {refused}"
+    desktop.as_account(f"test ! -e {fix}")
+    # The VM sets no time zone and no place, so here is nowhere until
+    # whereabouts says where the laptop is. This writes the file in its
+    # stead, as it does: whole, under another name, then renamed.
+    asked(nowhere)
+    said = {"v": 1, "latitude": 10.123, "longitude": -20.456, "accuracy": 3000, "when": 1}
+    desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+    # Here is the laptop's position now, heard as the file changes,
+    # and its forecast is asked by it. Built as a check, the VM has no
+    # network, so Open-Meteo didn't answer; run by hand it may, and then
+    # the footer says how here was found.
+    found = "10.12\u00b0 N 20.46\u00b0 W, from where the laptop is \u00b7 Open-Meteo"
+    asked(
+        lambda shown: (
+            (
+                (shown["selected"] or {}).get("name") == "no forecast"
+                and shown["footer"] == "Open-Meteo didn't answer"
+            )
+            or shown["footer"] == found
+        )
+    )
+    # And once the file goes, here is nowhere again.
+    desktop.as_account(f"rm {fix}")
+    asked(nowhere)
+
+
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
     """The launcher finds emoji in their own place, and only there."""
     machine = desktop.machine

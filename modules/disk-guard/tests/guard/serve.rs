@@ -211,7 +211,7 @@ fn stepped(guard: &mut Guard, count: usize, desk: &mut Fake) -> String {
 }
 
 #[test]
-fn the_desktop_is_told_once_when_a_disk_comes_under_pressure() {
+fn the_desktop_is_told_once_when_a_disk_becomes_critically_full() {
     let dir = tempfile::tempdir().unwrap();
     let mut guard = guard_at(dir.path(), "100%");
     let mut desk = Fake::default();
@@ -227,7 +227,10 @@ fn the_desktop_is_told_once_when_a_disk_comes_under_pressure() {
         .collect();
     // The first pass finds nothing in the empty trash, so it ends short.
     assert_eq!(summaries.len(), 1, "{summaries:?} {said}");
-    assert!(summaries[0].ends_with("short of room"), "{summaries:?}");
+    assert!(
+        summaries[0].ends_with("is still critically full"),
+        "{summaries:?}"
+    );
 }
 
 #[test]

@@ -35,4 +35,18 @@
         && lib.hasInfix "045e:09ae" keyd
         && boot.initrd.systemd.contents ? "/etc/keyd/built-in.conf"
       );
+
+  # The GPU's driver loads in the initrd, before the console is set up, and
+  # the firmware's unreadable clock never becomes rtc0.
+  the-surface-boots-with-its-gpu-and-a-clock-that-reads =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      inherit (surface.config) boot;
+    in
+    holds "the-surface-boots-with-its-gpu-and-a-clock-that-reads"
+      "The Surface Laptop 4 loads amdgpu only after its initrd, or lets acpi_tad's unreadable clock take rtc0."
+      (lib.elem "amdgpu" boot.initrd.kernelModules && lib.elem "acpi_tad" boot.blacklistedKernelModules);
 }

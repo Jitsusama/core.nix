@@ -8,6 +8,11 @@
 // rain's own words answer with the next rain, here or "in" a place, and
 // say when it's raining now, might, or won't; every word that asked for
 // the weather before still does; and with lookups off it answers nothing.
+// Here is where the laptop is once whereabouts has said, its forecast asked
+// by its position with no geocoder and said by it, ahead of the place set
+// and the time zone; then the place set, ahead of the time zone; and the
+// footer says which. The laptop's file is written beside the shell by the
+// check, and a file of another version is no laptop.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -51,9 +56,11 @@ ShellRoot {
         };
     }
 
-    // Keeps what a URL would say, as if it had just answered.
-    function kept(url, value) {
-        weather.asked[url] = { pending: false, value: value, failed: false, at: Date.now() };
+    // Keeps what a URL would say to a provider, the first unless another
+    // is named, as if it had just answered.
+    function kept(url, value, provider) {
+        (provider ?? weather).asked[url] = { pending: false, value: value, failed: false,
+            at: Date.now() };
     }
 
     function forecastUrl(latitude, longitude) {
@@ -79,6 +86,23 @@ ShellRoot {
         settings: ({ name: "weather", units: "metric", zone: "America/Toronto", lookups: true })
     }
 
+    // A laptop whereabouts has found, ahead of a place set.
+    Launcher.Weather {
+        id: travelling
+
+        whereabouts: `${Quickshell.env("XDG_RUNTIME_DIR")}/laptop.json`
+        settings: ({ name: "weather", units: "metric", zone: "America/Toronto", place: "Lima",
+            lookups: true })
+    }
+
+    // A place set, with no laptop found, ahead of the time zone.
+    Launcher.Weather {
+        id: settled
+
+        settings: ({ name: "weather", units: "metric", zone: "America/Toronto", place: "Lima",
+            lookups: true })
+    }
+
     Launcher.Weather {
         id: offline
 
@@ -86,8 +110,19 @@ ShellRoot {
     }
 
     // Quickshell hears Qt.exit only once the shell has loaded, so the cases
-    // run just after.
-    Component.onCompleted: Qt.callLater(root.cases)
+    // run just after, and once the laptop's file is read, which a FileView
+    // does apart from the shell's start.
+    readonly property bool read: travelling.laptop !== null
+    property bool started: false
+    onReadChanged: begin()
+    Component.onCompleted: Qt.callLater(root.begin)
+
+    function begin() {
+        if (!read || started)
+            return;
+        started = true;
+        Qt.callLater(root.cases);
+    }
 
     function cases() {
         let status = 0;
@@ -199,5 +234,28 @@ ShellRoot {
             weather.questions.join(", "));
         expect("with lookups off, nothing", offline.answer("rain") === null
             && offline.answer("weather") === null, "it answered");
+
+        // Where the laptop is comes first, asked by its position to a
+        // hundredth of a degree, with no geocoder, and said by it.
+        const far = forecastUrl(10.12, -20.46);
+        kept(far, forecast("2026-10-24T13:45", {}, {}), travelling);
+        const away = travelling.answer("weather");
+        const position = "10.12\u00b0 N 20.46\u00b0 W";
+        expect("the laptop's here",
+            away.note === `${position}, from where the laptop is \u00b7 Open-Meteo`, away.note);
+        expect("its forecast alone is asked", Object.keys(travelling.asked).join(" ") === far,
+            Object.keys(travelling.asked).join(" "));
+        expect("the rain where the laptop is", travelling.answer("rain").note === away.note,
+            travelling.answer("rain").note);
+        // With no laptop found, the place set, then the time zone.
+        kept(where("Lima"), place("Lima", "Peru", -12.05, -77.04), settled);
+        kept(forecastUrl(-12.05, -77.04), forecast("2026-10-24T13:45", {}, {}), settled);
+        const set = settled.answer("weather");
+        expect("the place set", set.note === "Lima, from the place you set \u00b7 Open-Meteo",
+            set.note);
+        expect("a file of another version is no laptop",
+            weather.fixOf('{"v":2,"latitude":1,"longitude":2}') === null
+                && weather.fixOf('{"v":1,"latitude":"1","longitude":2}') === null
+                && weather.fixOf("{\"v\":1,") === null, "it was read");
     }
 }

@@ -205,6 +205,38 @@ fn status_tells_of_each_guard_that_wrote_one() {
 }
 
 #[test]
+fn status_says_what_a_second_version_guard_says_in_words() {
+    let machine = Machine::new();
+    let at = wall() - 5.0;
+    write_file(
+        &machine.env.status,
+        &format!(
+            r#"{{ "version": 2, "heartbeat": {at},
+                 "says": "The disk is filling, with 150.0 GiB free.",
+                 "filesystems": [],
+                 "cleared": [
+                   {{ "at": {at}, "says": "Cleared a Rust build, ~/src/a/target (4.0 GiB)." }},
+                   {{ "at": {at}, "says": "Cleared a cache, ~/.cache/b (1.0 GiB)." }},
+                   {{ "at": {at}, "says": "Cleared a log, ~/c.log (2.0 MiB)." }},
+                   {{ "at": {at}, "says": "Cleared a log, ~/d.log (2.0 MiB)." }}
+                 ] }}"#
+        ),
+    );
+    let (code, out, _) = machine.run("status");
+    assert_eq!(code, 0);
+    assert!(
+        out.contains("  The disk is filling, with 150.0 GiB free.\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  5 s ago: Cleared a Rust build, ~/src/a/target (4.0 GiB)."),
+        "{out}"
+    );
+    assert!(out.contains("Cleared a log, ~/c.log"), "{out}");
+    assert!(!out.contains("~/d.log"), "three at most: {out}");
+}
+
+#[test]
 fn each_platform_keeps_the_guard_where_it_keeps_such_things() {
     use std::path::PathBuf;
     let environment = |pairs: &'static [(&str, &str)]| {

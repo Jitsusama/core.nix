@@ -720,7 +720,9 @@ onLinux {
   # The launcher's weather answers now, its parts and the rain by the hour
   # from one forecast, and the rain's own words answer the next rain
   # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
-  # nothing leaves the sandbox.
+  # nothing leaves the sandbox; and here is where the laptop is, from the
+  # file whereabouts would write, written here, ahead of the place set and
+  # the time zone.
   the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
     mkdir launcher
     cp ${./Fuzzy.js} Fuzzy.js
@@ -734,6 +736,8 @@ onLinux {
     cp ${../../tests/weather.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     mkdir -m 700 $XDG_RUNTIME_DIR
+    echo '{"v":1,"latitude":10.123,"longitude":-20.456,"accuracy":3000,"when":1790000000}' \
+      > $XDG_RUNTIME_DIR/laptop.json
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
     timeout 60 ${qs} -p shell.qml
@@ -1776,5 +1780,10 @@ onLinux {
   # clippy finds nothing in the window recorder, its tests included.
   record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
     pkgs.callPackage ./record-window/package.nix { }
+  );
+
+  # clippy finds nothing in whereabouts, its tests included.
+  whereabouts-passes-clippy = passesClippy "whereabouts-passes-clippy" (
+    pkgs.callPackage ./whereabouts/package.nix { }
   );
 }

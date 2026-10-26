@@ -62,6 +62,7 @@ mod trees;
 mod units;
 mod variants;
 mod vouch;
+mod words;
 mod workspaces;
 #[cfg(target_os = "linux")]
 mod writers;

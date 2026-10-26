@@ -100,13 +100,84 @@ swayimg.format_conf = {
   video = { label = colour.muted },
 }
 
+-- A key as the desktop draws it, by its xkb name, and a letter as itself.
+local function face(name)
+  return nix.keys[name] or name
+end
+local arrows = face('Left') .. ' ' .. face('Right')
+local ends = 'Home End'
+
+-- Every key each mode answers that's worth knowing, as drawn and what it
+-- does, which ? lists; and the few that move on, which a quiet line names
+-- as a picture opens.
+local keys = {
+  [swayimg.viewer] = {
+    listed = {
+      { arrows, 'previous, next' },
+      { ends, 'first, last' },
+      { face('Return'), 'every picture' },
+      { '+ -', 'closer, further' },
+      { '[ ]', 'turn' },
+      { 'F', 'full screen' },
+      { 'E', 'edit' },
+      { 'Y', 'copy' },
+      { 'Delete', 'to the trash' },
+      { face('Escape'), 'close' },
+    },
+    hint = arrows .. '  pictures     ' .. face('Return') .. '  all     ?  keys',
+  },
+  [swayimg.gallery] = {
+    listed = {
+      { arrows .. ' ' .. face('Up') .. ' ' .. face('Down'), 'choose' },
+      { ends, 'first, last' },
+      { face('Return'), 'open' },
+      { '+ -', 'larger, smaller' },
+      { 'E', 'edit' },
+      { 'Y', 'copy' },
+      { 'Delete', 'to the trash' },
+      { face('Escape'), 'close' },
+    },
+    hint = face('Return') .. '  open     ?  keys',
+  },
+}
+
+-- Whether ? has the keys listed, which stays until it's pressed again.
+local listing = false
+
 local function shown(mode)
-  mode.text = { topleft = { '{name}' }, topright = counted(), bottomleft = {}, bottomright = {} }
+  local bottom = {}
+  if listing then
+    for _, row in ipairs(keys[mode].listed) do
+      table.insert(bottom, row[1] .. '\t' .. row[2])
+    end
+  elseif mode ~= swayimg.viewer or swayimg.imagelist.size > 1 then
+    bottom = { keys[mode].hint }
+  end
+  mode.text =
+    { topleft = { '{name}' }, topright = counted(), bottomleft = bottom, bottomright = {} }
+end
+
+-- The list shows until ? is pressed again, and then goes with the rest of
+-- the words, two seconds on.
+local function list(mode)
+  listing = not listing
+  swayimg.text.timeout = listing and 0 or 2
+  shown(mode)
+  swayimg.text.visible = true
 end
 
 for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   mode.on_image_change(function()
     shown(mode)
+  end)
+end
+
+-- The arrows go that way, to the previous and the next picture, as Page Up
+-- and Page Down do too, and Home and End to the first and the last: the
+-- arrows' own default only moves a picture larger than the window.
+for key, where in pairs({ Left = 'prev', Right = 'next', Home = 'first', End = 'last' }) do
+  swayimg.viewer.on_key(key, function()
+    swayimg.viewer.open(where)
   end)
 end
 
@@ -177,5 +248,9 @@ for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   -- q as well as Escape, as in mpv.
   mode.on_key('q', function()
     swayimg.exit(0)
+  end)
+  -- ? says what's here: swayimg hears it as the key it's shifted from.
+  mode.on_key('Shift-slash', function()
+    list(mode)
   end)
 end

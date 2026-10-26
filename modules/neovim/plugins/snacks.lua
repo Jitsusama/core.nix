@@ -108,6 +108,16 @@ by
   gitbrowse = {
     enabled = true,
   },
+
+  -- Pictures drawn in the terminal through kitty's graphics protocol: a
+  -- picture file opened shows itself, and a markdown file's pictures show
+  -- under the lines that name them, a file's own path resolved beside it.
+  -- Formulas would need a TeX the account doesn't carry, so they stay text.
+  image = {
+    enabled = true,
+    math = { enabled = false },
+    icons = { image = require('theme').glyphs.picture .. ' ' },
+  },
 })
 
 -- Notices go to Snacks' notifier, which loads with the first one.
