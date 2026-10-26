@@ -457,6 +457,10 @@
     pebble-lights finds the speakers' control and sound card, keeps their lighting on while sound
     plays and a while after unless the screen is locked, and lets the speakers' own button win
   '';
+  pi-ask-answers-on-the-machines-plan = ''
+    pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
+    extensions, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
+  '';
   pi-claude-keeps-to-the-plan = ''
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
     mesh, signed in to the plan's own folder and with nothing that would bill an API instead
