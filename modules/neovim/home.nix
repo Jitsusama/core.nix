@@ -152,6 +152,19 @@ in
     ../prompt/home.nix
   ];
 
+  # nixpkgs' wrapper renames Neovim's entry "Neovim wrapper", which the
+  # launcher would show as its name, so the wrapper's entry is given back
+  # its own name, keeping the command and the kinds of file it opens.
+  home.packages = lib.mkIf pkgs.stdenv.hostPlatform.isLinux [
+    (lib.hiPrio (
+      pkgs.runCommandLocal "nvim-desktop" { } ''
+        mkdir -p $out/share/applications
+        substitute ${config.programs.neovim.finalPackage}/share/applications/nvim.desktop \
+          $out/share/applications/nvim.desktop --replace-fail 'Name=Neovim wrapper' 'Name=Neovim'
+      ''
+    ))
+  ];
+
   # Every key, for the launcher to find by what it does.
   jitsusama.keys.neovim = map (key: {
     inherit (key) chord does;

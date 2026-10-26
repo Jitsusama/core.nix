@@ -407,6 +407,10 @@
     Neovim's floats, finder and suggestions have a blank border, not a line, on their shade with
     nothing showing through; a notice starts with its mark
   '';
+  neovim-is-named-neovim = ''
+    the account's entry for Neovim is named Neovim, not nixpkgs' "Neovim wrapper", and still runs
+    nvim
+  '';
   neovim-keeps-its-numbers-in-one-column = ''
     Neovim's number column gives the cursor line its own number, marked, as wide as the relative
     counts beside it, and is blank with numbers off
