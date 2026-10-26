@@ -481,9 +481,10 @@ Scope {
     // details from a root view that would put me in the hierarchy"). Only
     // what a thing reads or holds is a spot; what it does, such as
     // Disconnect, is said once for each thing and would be found many
-    // times over. Made once an opening, by the first search of three
-    // letters or more, of the collections whose things are devices, few
-    // and read whole, so a search after it never reads them again.
+    // times over. Made a moment after each closing (spotsLater), and by
+    // the first search of three letters or more when none were made yet,
+    // of the collections whose things are devices, few and read whole, so
+    // a search never reads them again.
     readonly property var spotCollections: ["sound", "bluetooth", "displays", "wifi",
         "keyboard", "cameras"]
     readonly property int spotsFewest: 3
@@ -2386,10 +2387,7 @@ Scope {
             held = [];
             prompt.forget();
             often = picks.counts();
-            // What's inside things is read again for each opening, the
-            // first time a search needs it.
-            spotsMade = false;
-            spots = [];
+            spotsLater.stop();
             restart("");
             // Always the same height, eight rows and home's gap, kept until
             // it closes, so the card is the same shape however much home
@@ -2402,6 +2400,25 @@ Scope {
         } else {
             screenHere = focusedScreen;
             trials.closed();
+            spotsLater.restart();
+        }
+    }
+
+    // What's inside things is read again a moment after the launcher
+    // closes, from what it just showed, so the next opening has it
+    // ready. Read on the third letter instead, as it was, it held that
+    // key 115 to 250 ms once every opening (launcher-trials.json,
+    // 2026-10-26: "wha" 252 ms, "cpu" 248, "key" 211). The first opening
+    // after the shell starts still reads it on its third letter.
+    Timer {
+        id: spotsLater
+
+        interval: 500
+        onTriggered: {
+            if (!root.open) {
+                root.spots = root.spotsFrom();
+                root.spotsMade = true;
+            }
         }
     }
 
