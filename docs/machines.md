@@ -81,16 +81,16 @@ When more than one machine has to `lib.mkForce` the same value, core gets an
 option for it instead.
 
 A configuration file core writes as text, such as niri's `config.kdl`, merges
-as lines, so a machine adds its own after core's with `lib.mkAfter`. niri lets
-a later setting override an earlier one, so a machine can set its panel's
-scale:
+as lines, so a machine adds its own after core's with `lib.mkAfter`. A
+screen's settings are the exception: niri reads only the first `output` block
+that names a screen, so a machine sets them in `jitsusama.niri.outputs`, where
+they join core's in one block, and a second block for a screen is refused:
 
 ```nix
-home-manager.users.jitsusama.xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
-  output "eDP-1" {
-      scale 2
-  }
-'';
+home-manager.users.jitsusama.jitsusama.niri.outputs."eDP-1" = [
+  "scale 2"
+  "position x=560 y=1440"
+];
 ```
 
 ## Applying It

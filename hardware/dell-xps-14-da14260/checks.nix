@@ -1,6 +1,7 @@
 # The checks of dell-xps-14-da14260, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
   bareNixos,
   graphical,
   holds,
@@ -230,10 +231,7 @@ in
         { nixpkgs.config.allowUnfree = true; }
       ];
       told = package: lib.hasInfix "force-color-profile" (package.postFixup or "");
-      # A line of its own, so a comment naming it doesn't count.
-      mapped = lib.elem "srgb-gamut" (
-        map lib.trim (lib.splitString "\n" (builtins.readFile ../../modules/niri/config.kdl))
-      );
+      mapped = lib.elem "srgb-gamut" ((account graphical).jitsusama.niri.outputs."eDP-1" or [ ]);
     in
     holds "chromium-leaves-the-panel-to-niri"
       "Chrome, Slack or 1Password would convert the XPS 14's colours on top of niri's mapping, or niri would no longer map them."

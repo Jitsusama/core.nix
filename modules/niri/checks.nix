@@ -57,6 +57,37 @@ onLinux {
       touch $out
     '';
 
+  # Each screen has one output block in the account's config.kdl, the
+  # panel's holding srgb-gamut, since niri reads only a screen's first block;
+  # and a machine adding a second block for a screen as text is refused.
+  niri-names-each-screen-once =
+    let
+      refused =
+        home: lib.any (check: !check.assertion && lib.hasInfix "output block" check.message) home.assertions;
+      home = account graphical;
+      twice = account (
+        graphical.extendModules {
+          modules = [
+            {
+              home-manager.users.someone.xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
+                output "eDP-1" {
+                    scale 2
+                }
+              '';
+            }
+          ];
+        }
+      );
+      panel = lib.count (line: line == ''output "eDP-1" {'') (
+        lib.splitString "\n" home.xdg.configFile."niri/config.kdl".text
+      );
+    in
+    holds "niri-names-each-screen-once"
+      "The panel needs one output block holding srgb-gamut, and a second block for a screen must be refused."
+      (
+        !refused home && refused twice && panel == 1 && lib.elem "srgb-gamut" home.jitsusama.niri.outputs."eDP-1"
+      );
+
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
   niri-accepts-its-configuration =
