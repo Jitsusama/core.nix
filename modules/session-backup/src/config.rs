@@ -33,6 +33,9 @@ pub struct Config {
     /// The gcloud application-default login.
     pub credentials: PathBuf,
     pub settled: Duration,
+    /// How long a log Drive holds is kept on the machine after its last
+    /// write, or `None` to keep every log.
+    pub keep: Option<Duration>,
     /// The wait before each retry of a call Drive was busy for.
     pub retries: Vec<Duration>,
     pub api: String,
@@ -75,6 +78,11 @@ impl Config {
             .get("settledHours")
             .and_then(Value::as_u64)
             .unwrap_or(SETTLED_HOURS);
+        let keep = value
+            .get("keepDays")
+            .and_then(Value::as_u64)
+            .filter(|days| *days > 0)
+            .map(|days| Duration::from_hours(days * 24));
         let retries = value
             .get("retrySeconds")
             .and_then(Value::as_array)
@@ -93,6 +101,7 @@ impl Config {
             recipients,
             credentials: text("credentials")?.into(),
             settled: Duration::from_hours(hours),
+            keep,
             retries,
             api: text("api").unwrap_or_else(|_| API.into()),
             token: text("token").unwrap_or_else(|_| TOKEN.into()),

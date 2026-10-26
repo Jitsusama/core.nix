@@ -203,7 +203,7 @@ machine can sleep, lock, log out, reboot and power off.
 | console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | kmscon |
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
-| virtual machine | a computer run as a program on this one | | libvirt, QEMU |
+| VM | a computer run as a program on this one | virtual machine | libvirt, QEMU |
 | container | a program run apart from the machine, with its own files | | Podman |
 
 ## Network
@@ -218,7 +218,7 @@ forgotten; Wi-Fi's radio can be turned off.
 | address | an address the machine has on a network | network address, IP | `networks` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
 | sign-in page | the page a network shows before it lets the machine out, as a hotel's does | captive portal, network sign-in page | `wifid-sign-in` |
-| tunnel | a VPN's link through the network | | `jitsusama.shaper.tunnels` |
+| VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.tunnels` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 
@@ -305,7 +305,7 @@ says which module broke.
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | check | one promise that `nix flake check` builds and holds | | `checks.x86_64-linux.<name>` |
-| VM test | a check that boots machines in virtual machines | | a `vm-` name |
+| VM test | a check that boots machines in VMs | | a `vm-` name |
 | subtest | a named part of a VM test, which can run alone | | `with subtest(...)` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-darwin` |
 | stand-in | something standing in for a real program or device in a check | fake | |
@@ -315,8 +315,6 @@ says which module broke.
 ## Still to Settle
 
 Words that wait on one choice, and move into a table above once it's made.
-
-- **virtual machine or VM**, in Machine: VM is what Joel types.
-- **tunnel or VPN**, in Network: VPN is what Joel types.
+None waits now: Joel chose VM and VPN (2026-10-26).
 
 [design]: design.md

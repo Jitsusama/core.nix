@@ -161,6 +161,23 @@ It fails on a relative link that resolves to nothing, and on a backticked
 path starting with one of the repository's own top folders that names
 nothing, read from the root or the doc's folder. Code blocks aren't read.
 
+Every folder says what it holds, as core's do, through another:
+
+```nix
+every-folder-says-what-it-holds = core.lib.everyFolderSaysWhatItHolds pkgs {
+  src = ./.;
+  # Each folder still waiting for its note, with why.
+  waiting = [ ];
+};
+```
+
+A folder says what it holds with a README.md or AGENTS.md, an entry file
+such as `home.nix` or `Cargo.toml` whose first line is a comment, or a line
+of its parent's README opening with its name. A top folder may instead have
+a line in the README's map, its name and then a comment, as
+`machines/   # one folder per machine`. A waiting folder that has its note,
+or is gone, fails too, so the list only shrinks.
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 

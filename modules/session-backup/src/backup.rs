@@ -1,4 +1,5 @@
-//! One run: every settled log not yet in the ledger, sealed and sent.
+//! One run: every settled log not yet in the ledger, sealed and sent, then
+//! every old one Drive holds removed from the machine.
 
 use std::fs::{self, File, TryLockError};
 use std::thread;
@@ -27,6 +28,11 @@ pub struct Done {
     pub busy: Option<String>,
     /// Another run held the lock, so this one sent nothing.
     pub held: bool,
+    /// Logs removed from the machine, since Drive holds them and they are
+    /// older than the settings keep them for.
+    pub removed: usize,
+    /// The bytes those logs took.
+    pub freed: u64,
 }
 
 /// Seal and send every settled log the ledger lacks, oldest first, up to
@@ -35,6 +41,12 @@ pub struct Done {
 /// there without failing, saying so in `busy`. Any other refusal fails
 /// the run at that log, since what stops one, such as the login, stops
 /// the rest. Either way the next run carries on from there.
+///
+/// Then, when the settings say how long to keep a log and Drive wasn't
+/// busy, each log last written longer ago than that is removed from the
+/// machine, once the ledger names its copy under its last write and Drive
+/// still finds that copy by name. A log Drive no longer finds is kept, as
+/// the only copy, and so is one written again since it was listed.
 ///
 /// One run at a time: a run holds a lock beside the ledger from before it
 /// reads the ledger until it is done, since two would share the scratch a
@@ -53,14 +65,21 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         .iter()
         .filter(|log| !ledger.has(&log.name))
         .collect();
+    let old: Vec<&Settled> = config.keep.map_or_else(Vec::new, |keep| {
+        settled
+            .iter()
+            .filter(|log| {
+                ledger.has(&log.name) && seconds(now).saturating_sub(log.written) >= keep.as_secs()
+            })
+            .collect()
+    });
     let mut done = Done {
         before: settled.len() - waiting.len(),
         ..Done::default()
     };
-    if waiting.is_empty() {
+    if waiting.is_empty() && old.is_empty() {
         return Ok(done);
     }
-    let recipients = Recipients::parse(&config.recipients)?;
     let mut login = Login::read(&config.credentials, &config.token)?;
     let agent = drive::agent();
     let drive = Drive {
@@ -69,6 +88,7 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         folder: &config.folder,
     };
     let scratch = config.ledger.with_extension("sealing");
+    let recipients = Recipients::parse(&config.recipients)?;
     for log in waiting.into_iter().take(most.unwrap_or(usize::MAX)) {
         let at = seconds(SystemTime::now());
         let held = patiently(&config.retries, || {
@@ -120,7 +140,55 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
             }
         }
     }
+    if done.busy.is_none() {
+        remove_held(&old, &drive, &mut login, &agent, &config.retries, &mut done)?;
+    }
     Ok(done)
+}
+
+/// Remove each of `old` from the machine that Drive still finds by name and
+/// that wasn't written again since it was listed. Drive busy through every
+/// retry ends the removing there, saying so in `busy`.
+fn remove_held(
+    old: &[&Settled],
+    drive: &Drive<'_>,
+    login: &mut Login,
+    agent: &ureq::Agent,
+    retries: &[Duration],
+    done: &mut Done,
+) -> Result<(), String> {
+    for log in old {
+        let held = match patiently(retries, || {
+            again(login, agent, |token| drive.find(token, &log.name))
+        }) {
+            Err(Fault::Busy(why)) => {
+                done.busy = Some(why);
+                break;
+            }
+            other => other.map_err(|fault| fault.to_string())?,
+        };
+        // Drive no longer finds the copy, so this is the only one.
+        if held.is_none() || !unchanged(log) {
+            continue;
+        }
+        match fs::remove_file(&log.path) {
+            Ok(()) => {
+                done.removed += 1;
+                done.freed += log.bytes;
+            }
+            // Gone since it was listed: nothing is left to remove.
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
+            Err(why) => return Err(format!("can't remove {}: {why}", log.path.display())),
+        }
+    }
+    Ok(())
+}
+
+/// Whether a log is as it was listed: its last write and length the same.
+fn unchanged(log: &Settled) -> bool {
+    fs::metadata(&log.path).is_ok_and(|meta| {
+        meta.len() == log.bytes && meta.modified().is_ok_and(|at| seconds(at) == log.written)
+    })
 }
 
 /// The run's lock, held until it is dropped, or `None` when another run

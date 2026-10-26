@@ -490,6 +490,16 @@
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
     extensions, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
   '';
+  pi-ask-knows-the-machine = ''
+    pi-ask's digest says what's true on the machine as each question starts: the time, its
+    battery, disk and network, what waits on the person and the quests being worked, from the
+    machine's own files alone
+  '';
+  pi-asks-claude-code-its-login-once = ''
+    pi starts Claude Code to ask for its login once for any number of asks within a minute, so a
+    question waits on one start of it rather than several, and asks again while it isn't
+    logged in
+  '';
   pi-claude-keeps-to-the-plan = ''
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
     mesh, signed in to the plan's own folder and with nothing that would bill an API instead
@@ -569,7 +579,8 @@
   '';
   session-backup-passes-clippy = ''
     clippy finds nothing in session-backup or its tests, which hold it to only adding to its one
-    folder, sealed copies that open, and carrying on where a stopped run left off
+    folder, sealed copies that open, carrying on where a stopped run left off, and removing an
+    old log from the machine only once Drive still holds its copy
   '';
   session-backup-stays-in-the-background = ''
     an account naming a folder backs its sessions up hourly in background.slice, catching up on an
@@ -743,6 +754,14 @@
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
     figures and its parts' heat answer
+  '';
+  the-launcher-asks-a-fresh-pi = ''
+    the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
+    asks again rather than closing, and each question is answered by a pi of its own
+  '';
+  the-launcher-catalogues-what-it-does = ''
+    the launcher's catalogue tells a place from an action, offers what ends something rather than
+    doing it, and lists no figure, copy or command's start
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

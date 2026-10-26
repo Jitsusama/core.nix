@@ -126,6 +126,7 @@ let
     "launcher/Zones.js"
     "launcher/Colours.js"
     "launcher/Asking.js"
+    "launcher/Catalogue.js"
     "launcher/Rank.js"
     "launcher/Standing.js"
     "launcher/Steady.js"

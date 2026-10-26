@@ -1,15 +1,21 @@
 # shellcheck shell=bash
 # pi-ask: pi as the launcher's Ask row asks it, a quick question and a short
-# answer. The launcher keeps one running per login and speaks pi's RPC
-# protocol over its stdin and stdout, starting each question with a fresh
-# session, so pi's start, about a second and a half, is paid once.
+# answer. The launcher speaks pi's RPC protocol over its stdin and stdout,
+# one question to each, and keeps the next started before it's asked, so
+# pi's start, about a second and a half, is never waited on.
 #
 # It loads nothing it doesn't need to answer: no tools, skills, context files
 # or prompt templates, no session file, no thinking, and no extensions but the
 # ones the machine names ($EXTENSIONS, one per line), such as the one a work
-# machine reaches its models through. Which plan answers is the machine's one
+# machine reaches its models through, and the digest that tells it what's
+# true on the machine as each question starts ($DIGEST). Which plan answers is the machine's one
 # setting ($PLAN): "pi" for pi's own provider, or "claude" for Joel's own
 # Claude plan through pi-claude ($PI_CLAUDE), on $MODEL either way.
+#
+# The launcher starts it from a user service, whose PATH isn't a login
+# shell's, so what an extension runs, such as the program a work machine's
+# proxy gets its token from, can be missing from it. The folders the machine names ($ASK_PATH, one per line)
+# go ahead of the PATH it was started with, in the order named.
 #
 # A device whose pi extensions are managed centrally has a pi that refuses
 # --no-extensions, since it delivers the managed ones itself. pi is asked once
@@ -19,6 +25,14 @@
 #
 # usage: pi-ask [more of pi's arguments]
 set -euo pipefail
+
+ahead=
+while IFS= read -r folder; do
+  if [ -n "$folder" ]; then
+    ahead=$ahead$folder:
+  fi
+done <<< "$ASK_PATH"
+PATH=$ahead$PATH
 
 prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown."
 arguments=(
@@ -37,6 +51,7 @@ while IFS= read -r extension; do
     arguments+=(-e "$extension")
   fi
 done <<< "$EXTENSIONS"
+arguments+=(-e "$DIGEST")
 
 case $PLAN in
   claude) exec "$PI_CLAUDE" --no-extensions "${arguments[@]}" "$@" ;;

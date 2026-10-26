@@ -7,7 +7,8 @@
 #
 # Patched so a used-up plan limit says so plainly: which limit, when it
 # resets, and that nothing went to extra usage, where Claude Code says only
-# "You've hit your usage limit".
+# "You've hit your usage limit". And so a question waits on one start of
+# Claude Code rather than several, its login is asked once a minute.
 { pkgs }:
 pkgs.applyPatches {
   name = "pi-claude-code";
@@ -17,5 +18,8 @@ pkgs.applyPatches {
     rev = "70abb65186592ca788b29b3db22c3160d629c41f";
     hash = "sha256-9BHTz/IRf8jZczVYoXtypepBDmWJ9+5id6hwZUdeSV0=";
   };
-  patches = [ ./claude-plan-limit.patch ];
+  patches = [
+    ./claude-plan-limit.patch
+    ./claude-login-once.patch
+  ];
 }

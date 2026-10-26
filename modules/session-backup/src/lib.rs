@@ -11,9 +11,14 @@
 //! named for the machine, the folder pi keeps it in, the log's own name and
 //! the time of its last write, in UTC. A session resumed after it was copied
 //! is copied again under its new last write, and a restore takes the newest.
-//! Nothing is ever replaced or removed, so the run only ever creates files
-//! in its one folder and asks Drive whether a name is there already; the
-//! tests fail on any other call (drive.rs).
+//! Nothing on Drive is ever replaced or removed, so the run only ever creates
+//! files in its one folder and asks Drive whether a name is there already;
+//! the tests fail on any other call (drive.rs).
+//!
+//! A log stays on the machine for `keepDays` after its last write, 90 by
+//! default. Past that, a run removes it once its copy under that last write
+//! is in the ledger and Drive still finds it by name; a log Drive no longer
+//! finds is kept as the only copy (backup.rs).
 //!
 //! What was sent is kept in a ledger, one JSON line per object
 //! (ledger.rs), written as each lands. A run stopped part way carries on

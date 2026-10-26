@@ -218,6 +218,27 @@ in
         answer starts in a second or two.
       '';
     };
+    person = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = config.jitsusama.identity.name or null;
+      defaultText = lib.literalExpression "config.jitsusama.identity.name, where there is one";
+      description = ''
+        Who the Ask row's answers are for, named in the digest of what's true
+        on the machine that each question starts with, or null to name
+        nobody.
+      '';
+    };
+    path = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "/home/someone/.local/share/dev/bin" ];
+      description = ''
+        Folders put ahead of the PATH the Ask row's pi starts with, in this
+        order, for what its extensions run, such as the program a work
+        machine's proxy gets its token from. The launcher starts it from a
+        user service, whose PATH isn't a login shell's.
+      '';
+    };
   };
 
   config = {

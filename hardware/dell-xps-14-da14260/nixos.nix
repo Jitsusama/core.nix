@@ -388,7 +388,11 @@ in
     # that won't boot starts from the USB stick instead, which needs only
     # USB boot. The firmware measures these settings into PCR 1 alone, which
     # no disk policy here binds, and firmware recovery from the disk stays.
+    # The firmware's own driver for a dock's network adapter goes too: it
+    # added about 3 s to every docked boot (10.3 s against 7.1 s of firmware
+    # on 2026-10-26), and Linux runs the adapter without it.
     UefiNwStack = "Disabled";
+    TypeCDockLan = "Disabled";
     HttpsBoot = "Disabled";
     BIOSConnect = "Disabled";
     SupportAssistOSRecovery = "Disabled";

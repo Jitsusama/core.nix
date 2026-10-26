@@ -435,6 +435,24 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's catalogue, what pi-ask's tool lists and runs, tells a
+  # place from an action and offers what ends something rather than doing
+  # it, as tests/catalogue.qml holds launcher/Catalogue.js to it in Qt's
+  # own engine.
+  the-launcher-catalogues-what-it-does =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-catalogues-what-it-does" { } ''
+      cp ${../../tests/catalogue.qml} catalogue.qml
+      cp ${./launcher/Catalogue.js} Catalogue.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml catalogue.qml
+      touch $out
+    '';
+
   # A list the launcher shows holds still as what's in it changes: its rows
   # keep their order, new ones come last and the selection keeps its row, as
   # tests/steady.qml holds launcher/Steady.js to it in Qt's own engine.
@@ -812,6 +830,40 @@ onLinux {
     timeout 60 ${qs} -p shell.qml
     touch $out
   '';
+
+  # The launcher's Ask row says why when pi-ask can't start, and gives each
+  # question a pi of its own (tests/ask.qml), over a pi-ask that ends with
+  # an error and the desktop tests' stand-in, which speaks pi's RPC as the
+  # work machine's pi does.
+  the-launcher-asks-a-fresh-pi =
+    let
+      broken = pkgs.writeShellScript "pi-ask-broken" ''
+        echo "Error: Failed to get a token." >&2
+        exit 1
+      '';
+      standIn = pkgs.writers.writePython3 "stand-in-ask" {
+        doCheck = false;
+      } (builtins.readFile ../../tests/desktop/stand-in-ask.py);
+      niri = singleton "Niri.qml" "function spawn(command) {}";
+    in
+    pkgs.runCommandLocal "the-launcher-asks-a-fresh-pi" { } ''
+      mkdir -p launcher runtime && chmod 700 runtime
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Ask.qml} launcher/Ask.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${niri} Niri.qml
+      cp ${../../tests/ask.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} ASK_BROKEN=${broken} ASK_STAND_IN=${standIn}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 
   # The launcher's Lag says what's slowing the desktop in plain words and
   # what to do about it (tests/waits.qml), over lag-watch's status file as

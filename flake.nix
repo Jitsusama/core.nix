@@ -365,6 +365,13 @@
       # path from one of its top folders that names nothing.
       lib.docsNameWhatExists = pkgs: pkgs.callPackage ./tests/docs-name-what-exists.nix { };
 
+      # How a repository built on core holds every folder to saying what it
+      # holds, as core does: `core.lib.everyFolderSaysWhatItHolds pkgs { src =
+      # ./.; waiting = [ ... ]; }` is a check that fails on a folder with no
+      # note, and on a waiting one that has its note or is gone.
+      lib.everyFolderSaysWhatItHolds =
+        pkgs: pkgs.callPackage ./tests/every-folder-says-what-it-holds.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary
