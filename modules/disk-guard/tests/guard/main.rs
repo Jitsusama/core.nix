@@ -34,6 +34,8 @@ mod journal;
 mod linux;
 mod locks;
 mod logs;
+#[cfg(target_os = "macos")]
+mod macos;
 mod nix_builds;
 #[cfg(target_os = "linux")]
 mod notices;
