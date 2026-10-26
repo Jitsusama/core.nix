@@ -26,14 +26,19 @@ pub fn line(network: &Network, devices: Option<usize>) -> String {
         parts.push(format!("conferencing {}", if on { "on" } else { "off" }));
     }
     if let Some(count) = devices {
-        parts.push(format!("{count} device{}", if count == 1 { "" } else { "s" }));
+        parts.push(format!(
+            "{count} device{}",
+            if count == 1 { "" } else { "s" }
+        ));
     }
     parts.join("  ")
 }
 
 /// A timestamp eero gives, cut to the minute for reading.
 fn when(stamp: &str) -> String {
-    stamp.get(..16).map_or_else(|| stamp.to_owned(), |minute| minute.replace('T', " "))
+    stamp
+        .get(..16)
+        .map_or_else(|| stamp.to_owned(), |minute| minute.replace('T', " "))
 }
 
 /// The status file's contents for networks read at a moment.

@@ -46,7 +46,11 @@ impl Cloud {
 
     /// Makes the held token good with the code eero sent, and seals it.
     pub fn verify(&mut self, code: &str) -> Result<(), String> {
-        self.send(Method::Post, "/2.2/login/verify", Some(&json!({"code": code})))?;
+        self.send(
+            Method::Post,
+            "/2.2/login/verify",
+            Some(&json!({"code": code})),
+        )?;
         self.keep()
     }
 
@@ -67,7 +71,11 @@ impl Cloud {
             Err(Refused::Aged) => {
                 let data = self.send(Method::Post, "/2.2/login/refresh", None)?;
                 let token = data.get("user_token").and_then(Value::as_str);
-                self.token = Some(token.ok_or("eero refreshed the session without a token")?.into());
+                self.token = Some(
+                    token
+                        .ok_or("eero refreshed the session without a token")?
+                        .into(),
+                );
                 self.keep()?;
                 Ok(self.send(method, path, body)?)
             }
@@ -105,7 +113,9 @@ impl Cloud {
             return Err(Refused::Aged);
         }
         if !(200..300).contains(&status) {
-            return Err(Refused::Other(format!("eero answered {status} to {path}: {read}")));
+            return Err(Refused::Other(format!(
+                "eero answered {status} to {path}: {read}"
+            )));
         }
         api::data(&read).cloned().map_err(Refused::Other)
     }

@@ -40,7 +40,10 @@ pub fn open() -> io::Result<String> {
         .stderr(Stdio::inherit())
         .output()?;
     if !output.status.success() {
-        return Err(io::Error::other(format!("couldn't open {}", file.display())));
+        return Err(io::Error::other(format!(
+            "couldn't open {}",
+            file.display()
+        )));
     }
     String::from_utf8(output.stdout)
         .map(|token| token.trim().to_owned())

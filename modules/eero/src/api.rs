@@ -49,7 +49,8 @@ pub fn data(body: &Value) -> Result<&Value, String> {
         Some(data) if !data.is_null() => Ok(data),
         _ => Err(format!(
             "eero answered {} without data",
-            body.get("meta").map_or_else(|| "nothing".into(), Value::to_string)
+            body.get("meta")
+                .map_or_else(|| "nothing".into(), Value::to_string)
         )),
     }
 }
@@ -58,7 +59,11 @@ pub fn data(body: &Value) -> Result<&Value, String> {
 /// again, as eero says once a session token has aged.
 pub fn session_expired(status: u16, body: &Value) -> bool {
     let error = body.pointer("/meta/error").and_then(Value::as_str);
-    status == 401 && matches!(error, Some("error.session.invalid" | "error.session.refresh"))
+    status == 401
+        && matches!(
+            error,
+            Some("error.session.invalid" | "error.session.refresh")
+        )
 }
 
 /// The paths of the account's networks, from its record's data.
@@ -75,7 +80,11 @@ pub fn networks(account: &Value) -> Vec<String> {
 
 /// A network, from its record's data.
 pub fn network(url: &str, data: &Value) -> Network {
-    let text = |pointer: &str| data.pointer(pointer).and_then(Value::as_str).map(str::to_owned);
+    let text = |pointer: &str| {
+        data.pointer(pointer)
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
     let online = data
         .pointer("/health/internet/isp_up")
         .and_then(Value::as_bool)
@@ -160,8 +169,14 @@ mod tests {
         assert!((network.up_mbps.unwrap() - 12.4).abs() < 1e-9);
         assert_eq!(network.tested.as_deref(), Some("2026-10-25T18:00:00.000Z"));
         assert_eq!(network.sqm, Some(false));
-        assert_eq!(network.devices_url.as_deref(), Some("/2.2/networks/1234/devices"));
-        assert_eq!(network.settings_url.as_deref(), Some("/2.2/networks/1234/settings"));
+        assert_eq!(
+            network.devices_url.as_deref(),
+            Some("/2.2/networks/1234/devices")
+        );
+        assert_eq!(
+            network.settings_url.as_deref(),
+            Some("/2.2/networks/1234/settings")
+        );
     }
 
     #[test]
@@ -192,16 +207,19 @@ mod tests {
     #[test]
     fn only_connected_devices_are_listed_by_their_best_name() {
         let list = json!([
-            {"connected": true, "nickname": "optimus", "hostname": "optimus", "ip": "192.168.4.20", "wireless": true},
+            {"connected": true, "nickname": "laptop", "hostname": "nixos", "ip": "192.168.4.20", "wireless": true},
             {"connected": true, "nickname": null, "hostname": "dock", "ip": "192.168.4.21", "wireless": false},
             {"connected": true, "nickname": "", "hostname": null, "mac": "6c:ae:f6:00:00:01"},
             {"connected": false, "nickname": "old phone"}
         ]);
-        let names: Vec<_> = devices(&list).into_iter().map(|d| (d.name, d.wired)).collect();
+        let names: Vec<_> = devices(&list)
+            .into_iter()
+            .map(|d| (d.name, d.wired))
+            .collect();
         assert_eq!(
             names,
             [
-                ("optimus".to_owned(), false),
+                ("laptop".to_owned(), false),
                 ("dock".to_owned(), true),
                 ("6c:ae:f6:00:00:01".to_owned(), false)
             ]
@@ -221,8 +239,13 @@ mod tests {
 
     #[test]
     fn an_answer_without_data_says_what_eero_said() {
-        let refused = json!({"meta": {"code": 404, "error": "error.network.missing"}, "data": null});
-        assert!(data(&refused).unwrap_err().contains("error.network.missing"));
+        let refused =
+            json!({"meta": {"code": 404, "error": "error.network.missing"}, "data": null});
+        assert!(
+            data(&refused)
+                .unwrap_err()
+                .contains("error.network.missing")
+        );
         assert_eq!(data(&json!({"data": {"a": 1}})).unwrap(), &json!({"a": 1}));
     }
 }

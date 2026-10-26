@@ -1,4 +1,4 @@
-//! eero: the home network's eero, read from optimus at home or away.
+//! eero: the home network's eero, read from this machine at home or away.
 //!
 //! The eero has no local API, so everything goes through eero's cloud
 //! (cloud.rs), under a session Joel makes once by typing the code eero sends
@@ -58,7 +58,10 @@ fn sign_in(login: &str) -> Result<(), String> {
     eprint!("eero sent a code to {login}. Type it here: ");
     io::stderr().flush().map_err(|e| e.to_string())?;
     let mut code = String::new();
-    io::stdin().lock().read_line(&mut code).map_err(|e| e.to_string())?;
+    io::stdin()
+        .lock()
+        .read_line(&mut code)
+        .map_err(|e| e.to_string())?;
     cloud.verify(code.trim())?;
     eprintln!("Signed in; the session is sealed for this account on this machine.");
     Ok(())
