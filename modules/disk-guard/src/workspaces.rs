@@ -193,6 +193,13 @@ pub fn prune(common: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Whether the workspace's quest is over, which a workspace has to be for
+/// the guard to take it. Knowing this from the README alone spares sizing
+/// the workspaces of quests still going, which hold most of the files.
+pub fn over(workspace: &Workspace) -> bool {
+    matches!(workspace.status.as_str(), "concluded" | "retired")
+}
+
 pub fn candidate(
     workspace: &Workspace,
     written: f64,

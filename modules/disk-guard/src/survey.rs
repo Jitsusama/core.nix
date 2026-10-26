@@ -283,7 +283,10 @@ fn offer_snapshots(
 /// The quest workspaces in `path`, judged by their quests' READMEs in `quests`.
 fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
-    for workspace in workspaces::find(path, quests) {
+    for workspace in workspaces::find(path, quests)
+        .into_iter()
+        .filter(workspaces::over)
+    {
         let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);
         let size = size(&workspace.path);
         if let Some(candidate) =
