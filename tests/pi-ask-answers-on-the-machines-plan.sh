@@ -24,7 +24,8 @@ fail() {
 }
 
 # A stand-in pi that writes down how it was started, unless it was only
-# asked its version; a managed one refuses --no-extensions as Shopify's does.
+# asked its version; a managed one refuses --no-extensions, as a device's
+# centrally managed pi does.
 printf '#!%s\n' "$BASH" > "$work/bin/pi"
 cat >> "$work/bin/pi" << 'EOF'
 for argument in "$@"; do
