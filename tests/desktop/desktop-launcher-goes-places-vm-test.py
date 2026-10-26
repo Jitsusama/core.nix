@@ -1209,6 +1209,10 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     kitty = one(entries, "kitty", "Programs")
     assert kitty["kind"] == "action"
     assert not [e for e in entries if e["in"].startswith("Programs \u203a ")]
+    # Windows lists each window but not each one's own Size, and a
+    # keyboard's keys, which only say what they do, aren't listed.
+    assert not [e for e in entries if e["in"].startswith("Desktop \u203a Windows \u203a ")]
+    assert not [e for e in entries if "keyboard:key:" in e["id"]]
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,

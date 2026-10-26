@@ -61,6 +61,8 @@ QtObject {
             false);
         expect("an action is", Catalogue.listed({ name: "Brighter", verb: "brighter", run: does }),
             true);
+        expect("a keyboard's key isn't", Catalogue.listed({ name: "Escape", verb: "show",
+            key: "keyboard:key:Base:0", run: does }), false);
         // How far down it goes.
         expect("a list's things aren't", Catalogue.descends({ opens: "emoji" }, 1, null), false);
         expect("shortcuts aren't", Catalogue.descends({ key: "shortcut-level:shortcuts:kitty" },
@@ -70,6 +72,10 @@ QtObject {
         expect("Programs' things are", Catalogue.descends(programs, 0, null), true);
         expect("a program's own aren't", Catalogue.descends({ name: "Firefox", verbs: opens }, 1,
             programs), false);
+        expect("a window's own aren't", Catalogue.descends({ name: "Notes", verbs: opens }, 2,
+            { opens: "windows" }), false);
+        expect("this window's are", Catalogue.descends({ key: "windows:this", verbs: opens }, 1,
+            { category: {} }), true);
         expect("nothing below the deepest", Catalogue.descends({ category: {} }, 4, {}), false);
         // What an entry says.
         expect("an entry", Catalogue.entry({ name: "Reboot", verb: "reboot", confirm: true,
