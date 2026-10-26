@@ -5,9 +5,11 @@
 //! derivation at the base, the merge base with origin's main unless told
 //! otherwise, and in the working tree, and names each check added, changed
 //! or removed, and each that no longer evaluates. With `--build` it builds
-//! those added and changed.
+//! those added and changed. With `--keep-base` it only evaluates the base
+//! and keeps its derivations, comparing nothing, so a run after each merge
+//! leaves every later comparison against that commit one evaluation to pay.
 //!
-//! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm]`
+//! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--keep-base]`
 //!
 //! The working tree is read as Nix reads a git checkout, so a new file
 //! counts only once git knows it (`git add -N`). A change that only some
@@ -33,7 +35,8 @@ use checks::Derivations;
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
 
-const USED: &str = "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm]";
+const USED: &str =
+    "Usage: changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--keep-base]";
 
 /// What a run was asked for.
 struct Options {
@@ -45,6 +48,8 @@ struct Options {
     build: bool,
     /// Whether the VM tests are among those built.
     vm: bool,
+    /// Whether to keep the base's derivations and compare nothing.
+    keep_base: bool,
 }
 
 impl Options {
@@ -55,6 +60,7 @@ impl Options {
             system: None,
             build: false,
             vm: true,
+            keep_base: false,
         };
         while let Some(argument) = arguments.next() {
             let mut value = || {
@@ -67,6 +73,7 @@ impl Options {
                 "--system" => options.system = Some(value()?),
                 "--build" => options.build = true,
                 "--no-vm" => options.vm = false,
+                "--keep-base" => options.keep_base = true,
                 _ => return Err(format!("{argument} isn't something it takes")),
             }
         }
@@ -128,10 +135,18 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         eprintln!("changed-checks: Nix doesn't read files git doesn't know:\n{untracked}");
     }
     let short = base.get(..12).unwrap_or(&base);
+    let kept = || {
+        checks::kept(&checks::keeping(&cache(), &base, &system), || {
+            derivations(&format!("{flake}?rev={base}"), &system)
+        })
+    };
+    if options.keep_base {
+        kept()?;
+        eprintln!("kept {system}'s checks at {short}");
+        return Ok(ExitCode::SUCCESS);
+    }
     eprintln!("comparing {system}'s checks at {short} with the working tree");
-    let before = checks::kept(&checks::keeping(&cache(), &base, &system), || {
-        derivations(&format!("{flake}?rev={base}"), &system)
-    })?;
+    let before = kept()?;
     let comparison = checks::compare(&before, &derivations(&flake, &system)?);
     for (kind, names) in comparison.kinds() {
         for name in names {

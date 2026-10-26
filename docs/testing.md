@@ -52,8 +52,12 @@ didn't change, so a change pays only for the builds it can affect. It still
 evaluates every check, and that is what a whole run costs: on 2026-10-25 the
 305 checks took 1,006 s to evaluate uncached and 771 s from Nix's
 evaluation cache, on a 16-core laptop busy with other builds, and one run
-held 24.5 GB. `changed-checks` keeps the base's derivations, so it pays for
-one evaluation, the working tree's.
+held 24.5 GB. `changed-checks` keeps the base's derivations by commit, so
+once a base is kept a comparison pays for one evaluation, the working
+tree's: 461 s on 2026-10-26, against 1,373 s and more for one that had to
+evaluate a base that had just merged. `changed-checks --keep-base`, run in a
+checkout of main as each merge lands, keeps that commit ahead of time, so a
+branch rebased onto it pays for its own tree alone.
 
 `--keep-going` lets every check finish when one fails, so the run names all
 the failures rather than the first. Determinate Nix needs it besides: when a
