@@ -1,14 +1,17 @@
 //! The load proof: whether what Joel uses still feels idle while the work
 //! behind him fills every core and the line.
 //!
-//! It grows a signal at a time. Now it has three:
+//! It grows a signal at a time. Now it has four:
 //!
+//! - `call`: how long a call's packets take to cross the line and back
+//!   (call.rs).
 //! - `frames`: whether niri shows a frame at every refresh (frames.rs).
 //! - `keys`: how quickly a key typed in a terminal comes back (keys.rs).
 //! - `save`: how quickly an app's careful save reaches the disk (save.rs).
 //!
-//! Usage: load-proof frames|keys|save [SECONDS]
+//! Usage: load-proof call|frames|keys|save [SECONDS]
 
+mod call;
 mod frames;
 mod keys;
 mod save;
@@ -20,7 +23,7 @@ use std::ffi::OsString;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const USAGE: &str = "usage: load-proof frames|keys|save [SECONDS]";
+const USAGE: &str = "usage: load-proof call|frames|keys|save [SECONDS]";
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
@@ -40,6 +43,13 @@ fn main() -> ExitCode {
         .unwrap_or(10);
     let length = Duration::from_secs(secs);
     match signal {
+        Some("call") => report(call::watch(call::SERVER, length).map(|calls| {
+            let t = Spread::of(&calls.times);
+            Some(format!(
+                "calls {} lost {} p50 {:.2} ms p95 {:.2} ms worst {:.2} ms",
+                t.count, calls.lost, t.p50_ms, t.p95_ms, t.worst_ms
+            ))
+        })),
         Some("frames") => report(frames::watch(length).map(|shown| {
             let t = frames::Tally::of(&shown);
             Some(format!(
