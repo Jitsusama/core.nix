@@ -530,7 +530,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
         lambda shown: (shown["selected"] or {}).get("name") == "Show what's held"
     )
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notifications"])
+    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-held")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
@@ -555,7 +555,7 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     machine.send_key("meta_l-o")
     desktop.whats_on("Notices")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notifications"])
+    desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-from-margin")
     machine.send_key("esc")
     # Opening them counted them seen, so nothing's waiting.

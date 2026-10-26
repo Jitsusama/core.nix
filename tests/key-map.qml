@@ -145,11 +145,11 @@ ShellRoot {
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
                 && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
                 === "Definitions and calls, Hints and fixes", names(code.verbs()).join(", "));
-            // Windows, Columns, Workspaces and Displays each have Focus, so
+            // Windows, Columns, Workspaces and Screens each have Focus, so
             // each found from above says what holds it.
             const holders = rows => rows.filter(one => one.name === "Focus")
                 .map(one => one.side).sort().join(", ");
-            const focus = "Columns, Displays, Windows, Workspaces";
+            const focus = "Columns, Screens, Windows, Workspaces";
             expect("a group found from the top says what holds it",
                 holders(map.search("focus").rows) === focus, holders(map.search("focus").rows));
             expect("and found inside its layer",

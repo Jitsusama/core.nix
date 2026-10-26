@@ -875,7 +875,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same five rows every time: Now first, then the rest by name.
-    home = ["Now", "Computer", "Programs", "Session", "Tools"]
+    home = ["Now", "Machine", "Programs", "Power and modes", "Tools"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -1178,7 +1178,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.photograph("launcher-shortcut-layers")
     # The desktop holds its groups, by what a chord acts on.
     desktop.step_in()
-    groups = ["Windows", "Columns", "Workspaces", "Displays", "Launcher", "Typing"]
+    groups = ["Windows", "Columns", "Workspaces", "Screens", "Launcher", "Typing"]
     desktop.launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     desktop.photograph("launcher-shortcut-groups")
     # What's typed there finds a group by its name, before every chord in
@@ -1231,23 +1231,16 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # given a minute.
     retry(opened, timeout=dt.timedelta(minutes=1))
 
-    # In the shortcuts category, a group is found by its name too, as the
-    # Shortcuts row there.
+    # Shortcuts is stepped into from its row, and its path says it once.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("shortcuts ")
-    desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts"])
-    # It holds Shortcuts alone, no second Desktop beside the layer.
-    assert "Desktop" not in desktop.showing()["rows"]
-    # A group named what's typed, whole, comes first, and is Return's row.
-    desktop.type_in("workspaces", selecting="Workspaces")
-    assert desktop.showing()["rows"][0] == "Workspaces"
-    # Stepping into Shortcuts from its category says Shortcuts once.
-    for _ in "workspaces":
-        machine.send_key("backspace")
     desktop.type_in("shortcuts", selecting="Shortcuts")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
+    # Inside it, a group named what's typed, whole, comes first, and is
+    # Return's row.
+    desktop.type_in("workspaces", selecting="Workspaces")
+    assert desktop.showing()["rows"][0] == "Workspaces"
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 

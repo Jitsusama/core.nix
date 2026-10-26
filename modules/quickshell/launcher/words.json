@@ -9,9 +9,10 @@
   "categories": [
     {
       "id": "computer",
-      "name": "Computer",
+      "name": "Machine",
       "words": [
         "machine",
+        "computer",
         "laptop",
         "hardware",
         "online",
@@ -39,9 +40,12 @@
     },
     {
       "id": "session",
-      "name": "Session",
+      "name": "Power and modes",
       "words": [
         "modes"
+      ],
+      "hidden": [
+        "session"
       ],
       "holds": [
         "session:quiet",
@@ -204,7 +208,7 @@
     },
     {
       "id": "jobs",
-      "name": "Jobs",
+      "name": "Queue",
       "provider": "machine",
       "question": "queue",
       "answers": [
@@ -229,7 +233,7 @@
     },
     {
       "id": "machine",
-      "name": "Computer",
+      "name": "Machine",
       "question": "cpu",
       "parts": [
         "machine:memory",
@@ -1927,13 +1931,13 @@
     {
       "id": "shortcuts:desktop:screens",
       "in": "shortcuts",
-      "name": "Displays",
+      "name": "Screens",
       "glyph": "display",
       "words": [
         "monitors"
       ],
       "hidden": [
-        "screens"
+        "displays"
       ]
     },
     {
@@ -2096,7 +2100,7 @@
     {
       "id": "shortcuts:desktop:screens:this",
       "in": "shortcuts",
-      "name": "This display",
+      "name": "This screen",
       "glyph": "brightness",
       "words": [
         "brightness",
@@ -2763,16 +2767,16 @@
     },
     {
       "id": "notices",
-      "name": "Notifications",
-      "noun": "notifications",
+      "name": "Notices",
+      "noun": "notices",
       "glyph": "notifications",
       "words": [
-        "notices",
+        "notifications",
         "alerts",
         "messages",
         "missed"
       ],
-      "ask": "which notification?"
+      "ask": "which notice?"
     },
     {
       "id": "wifi",
@@ -2807,12 +2811,12 @@
     },
     {
       "id": "displays",
-      "name": "Displays",
-      "noun": "displays",
+      "name": "Screens",
+      "noun": "screens",
       "glyph": "display",
       "words": [
         "monitors",
-        "screens",
+        "displays",
         "resolution",
         "scale",
         "refresh",
@@ -2820,8 +2824,8 @@
         "external",
         "hdmi"
       ],
-      "ask": "which display?",
-      "empty": "No displays."
+      "ask": "which screen?",
+      "empty": "No screens."
     },
     {
       "id": "displays:scale",
@@ -3255,10 +3259,10 @@
       ],
       "states": {
         "on": {
-          "name": "Let notifications show",
+          "name": "Let notices show",
           "verb": "stop",
           "hidden": [
-            "let notices show",
+            "let notifications show",
             "turn off do not disturb",
             "end",
             "end do not disturb"
@@ -4073,11 +4077,11 @@
     {
       "id": "program:notices",
       "in": "applications",
-      "name": "Notifications",
+      "name": "Notices",
       "verb": "more",
       "glyph": "notifications",
       "words": [
-        "notices",
+        "notifications",
         "messages",
         "alerts"
       ]

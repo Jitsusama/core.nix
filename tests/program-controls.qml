@@ -5,7 +5,7 @@
 // player, a stream and notices holds, in order, Switch to the window used
 // last, New window, New window below, its other window by title, its desktop
 // entry's own actions (one shortened, one left to New window), Quit, then
-// Media, Sound and Notifications, each doing what it says: Quit asks once
+// Media, Sound and Notices, each doing what it says: Quit asks once
 // and closes each window, the media and sound acts reach the player and
 // the program's streams only, and its figures follow what they did. A
 // program with nothing of the sort holds only New window and New window
@@ -102,7 +102,7 @@ ShellRoot {
             const tester = program("tester").verbs();
             same("acts first, then parts, each where it applies", names(tester),
                 "Switch, New window, New window below, Draft, Private window, "
-                + "Open the logbook, Quit, Media, Sound, Notifications");
+                + "Open the logbook, Quit, Media, Sound, Notices");
             const [switching, , , draft, secret, logbook, quit, media, sound, told] = tester;
             same("Switch names the window used last", switching.side, "Logbook");
             switching.run();
@@ -165,7 +165,7 @@ ShellRoot {
             same("its volume says so", `${volume.side} ${sound.graph.values[0]}`, "muted 0");
             same("then it says Unmute", sound.targets()[0].name, "Unmute");
 
-            same("Notifications counts its own", `${told.count} ${told.side}`, "2 1 unread");
+            same("Notices counts its own", `${told.count} ${told.side}`, "2 1 unread");
             same("and holds more", told.nested, true);
             const sent = told.targets();
             same("its notices, newest first", names(sent), "Newest, Oldest \u00b7 said");
