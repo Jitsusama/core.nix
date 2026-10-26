@@ -1093,6 +1093,10 @@
   vm-network-revives-units = ''
     what the network let down starts, and reloads on change
   '';
+  vm-niri-is-traced-by-its-own = ''
+    an account in wheel traces its own niri off the CPU with no password, each sleep said with its
+    kernel stack and monotonic time and waits in epoll left out; nobody else starts it or reads it
+  '';
   vm-passkeys-come-from-the-tpm = ''
     passkeys and security keys are made in the TPM, each after a yes
   '';

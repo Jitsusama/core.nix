@@ -1,0 +1,15 @@
+// An account in wheel may start and stop the trace of its own niri, and no
+// other, without a password: modules/niri-off-cpu/nixos.nix says why that
+// gives it nothing its password didn't. polkit's own engine reads this, in
+// the JavaScript it knows.
+polkit.addRule(function (action, subject) {
+  if (
+    action.id === "org.freedesktop.systemd1.manage-units" &&
+    (action.lookup("verb") === "start" || action.lookup("verb") === "stop") &&
+    action.lookup("unit") === "niri-off-cpu@" + subject.user + ".service" &&
+    subject.isInGroup("wheel")
+  ) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

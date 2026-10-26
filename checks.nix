@@ -356,6 +356,9 @@ let
     # Whether polkit lets an administrator tune the work slices shows only
     # with polkit and systemd.
     vm-admins-tune-the-work-slices = import ./tests/work-slices.nix { inherit self pkgs; };
+    # Whether a niri's kernel stacks are traced for its account and nobody
+    # else shows only with polkit, bpftrace and a kernel to trace.
+    vm-niri-is-traced-by-its-own = import ./tests/niri-off-cpu.nix { inherit self pkgs; };
   };
   vmTests = vmTestsOn vmHostPkgs;
 
