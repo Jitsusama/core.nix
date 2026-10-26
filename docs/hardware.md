@@ -254,10 +254,42 @@ with another program, so the windows a compositor imports from its clients
 looked unused however often they were drawn, and went first. Bringing
 one back happens with its lock held. A trace of niri overnight caught its
 draws waiting on a client's buffer lock for 122 to 250 ms, three times in
-five minutes; whether reclaim held them there is still to be measured.
+five minutes, and the section below, The Write-Combined Buffers Under
+Reclaim, says what held them.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
+
+### The Write-Combined Buffers Under Reclaim
+
+Even with linux-next's two buffer fixes and seeks at 64, niri still
+missed frames under a heavy load. Its tracer caught why: niri waited on a
+buffer lock for 57 to 304 ms, held by Quickshell's render thread or
+Chrome, each in its own submission reading back buffers the shrinker had
+backed up, and spending most of it in `cpa_flush`, setting a
+write-combined page's caching again, which flushes every CPU's TLB. The
+submission holds its windows' locks the while, and niri's commit needs
+one.
+
+Counting what was backed up and read back, over nine 30 s rounds, found
+not one buffer shared with the compositor: shared windows already keep
+their place. Nearly all were the programs' own write-combined buffers. In
+one round Quickshell read back 105 of them in 223 ms and 33 cached ones in
+under 1 ms. The programs' own buffers, niri's aside, came to at most
+632 MiB, and moved 100 to 250 MiB between resident and backed up every
+10 s.
+
+Seeks only order what reclaim takes, and slices' memory ceilings can't
+reach xe's shrinkers, which aren't memory-cgroup aware.
+`kernel/local/xe-shrinker-keeps-write-combined-buffers.patch`, written
+here, has the shrinker skip a non-purgeable buffer that isn't cached, on
+an integrated GPU. Purgeable buffers are still purged. It relies on
+linux-next's 846f333b3e0b, without which a busy buffer ends the
+shrinker's whole walk. Kept buffers are out of reclaim's reach, so a
+program leaking them would push the machine towards the OOM killer rather
+than swap. niri-off-cpu counts the buffers the shrinker keeps, so a trace
+says how much that is; past 1 GiB, making a read back cheaper is the way
+instead.
 
 ### The Boot Clock
 

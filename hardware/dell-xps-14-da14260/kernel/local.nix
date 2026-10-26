@@ -124,5 +124,16 @@
       name = "dell-wmi-ignore-0012-0000";
       patch = ./local/dell-wmi-ignore-0012-0000.patch;
     }
+    {
+      # Reclaim under a build backed up programs' write-combined buffers,
+      # and each program's next draw read them back with its windows'
+      # locks held, so the compositor waited up to 304 ms and missed
+      # frames. Written here; the patch says why. It needs linux-next's
+      # 846f333b3e0b, in next.nix's xe-shrinker-spares-buffers: without it
+      # a busy buffer ends the shrinker's whole walk, so the first one kept
+      # would stop it reclaiming anything.
+      name = "xe-shrinker-keeps-write-combined-buffers";
+      patch = ./local/xe-shrinker-keeps-write-combined-buffers.patch;
+    }
   ];
 }

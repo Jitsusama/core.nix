@@ -14,11 +14,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
 
   nodes.machine = {
     imports = [ self.nixosModules.niri-off-cpu ];
-    # The graphics memory manager, with no graphics card to drive, so the
-    # count of buffers it reads back has the types it reads.
-    boot.kernelModules = [ "ttm" ];
-    # The graphics memory manager, with no graphics card to drive, so the
-    # count of buffers it reads back has the types it reads.
+    # The graphics memory manager and the Intel driver, with no graphics
+    # card to drive, so the count of buffers read back and kept has the
+    # types and functions it reads.
+    boot.kernelModules = [
+      "ttm"
+      "xe"
+    ];
     users.users.someone = {
       isNormalUser = true;
       extraGroups = [ "wheel" ];
