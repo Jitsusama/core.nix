@@ -714,10 +714,6 @@ gather (
       every-folder-says-what-it-holds =
         let
           waiting = [
-            # The guide's machines, as it sees them in its tests.
-            "modules/guide/fixtures/dell-xps-14-da14260"
-            "modules/guide/fixtures/microsoft-surface-laptop-4-1958"
-            "modules/guide/fixtures/tpm-simulator"
             # Neovim's colours, patches, plugins and probes.
             "modules/neovim/colors"
             "modules/neovim/patches"
