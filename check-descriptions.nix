@@ -364,6 +364,10 @@
     Neovim's status line names the file from its repository's root, the branch and its unsaved mark,
     a change, an error, the mode, a version and a terminal, and fits 35 columns
   '';
+  neovim-finds-a-documents-pictures = ''
+    Neovim finds a markdown file's picture by its path relative to the file, for the terminal to
+    draw, with ImageMagick there for pictures other than PNG
+  '';
   neovim-finds-in-every-group = ''
     every key group in Neovim has its own Space, which lists in one column, titled, the group's keys
     that work here and runs the one chosen, or says none does
