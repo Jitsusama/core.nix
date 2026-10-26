@@ -19,6 +19,15 @@ const DEEPEST = 4;
 const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters", "jobs",
     "spend", "runs"]);
 
+// Of those, the ones long enough that a walk over every row leaves them
+// out: their rows are each made one way, and proven offscreen.
+const LONG = new Set(["clipboard", "emoji", "characters"]);
+
+// Whether a collection is one of the long lists.
+function long(source) {
+    return LONG.has(source);
+}
+
 // Collections whose things are listed, each one opened by its own run, but
 // not what each holds: every program's Quit and New window, every window's
 // Size, Float and workspaces, and every quest's own, would bury the rest a
@@ -108,6 +117,23 @@ function listed(row) {
     }
     const verb = verbOf(row);
     return verb !== "copy" && verb !== "close" && (!!row.run || !!row.given);
+}
+
+// Whether Return does something on a row (Joel, 2026-10-26: every row
+// has a Return act; a row that holds more steps in, a row that only shows
+// a value copies it, and a row that can do neither doesn't belong in the
+// launcher). One still being read, whose value is an ellipsis, isn't held
+// against it, since it copies once it's read.
+function acts(row) {
+    if (!row || row.gone || row.side === "\u2026") {
+        return true;
+    }
+    const steps = !!row.verbs || !!row.targets || !!row.nested || !!row.category
+        || !!row.opens || !!row.from;
+    if (steps || !!row.given || row.start !== undefined) {
+        return true;
+    }
+    return !!row.run && !(row.figure === true && verbOf(row) === "close");
 }
 
 // Whether what a row holds is listed too, at `depth` below home, inside

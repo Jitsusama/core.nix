@@ -635,6 +635,35 @@ Scope {
         return out;
     }
 
+    // Every row Return does nothing on, from home down as stepping in
+    // shows them, each with where it sits, for the check that fails any
+    // (Joel, 2026-10-26: every row has a Return act). It walks deeper
+    // than the catalogue and into each program, window and quest, but not
+    // into the long lists, the clipboard's or the emoji, whose rows are
+    // all made one way and are proven offscreen.
+    readonly property int actlessDeepest: 6
+
+    function actless() {
+        const out = [];
+        const seen = new Set();
+        const walk = (rows, above, ids, names, depth) => {
+            for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
+                const path = ids.concat([steadyId(row)]);
+                const id = path.join(catalogueStep);
+                if (!seen.has(id)) {
+                    seen.add(id);
+                    if (!Catalogue.acts(row))
+                        out.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    if (depth < actlessDeepest && !(row.opens && Catalogue.long(row.opens)))
+                        walk(catalogueHolds(row, above === null || collects({ row: above })),
+                            row, path, names.concat([row.name]), depth + 1);
+                }
+            }
+        };
+        walk(home(), null, [], [], 0);
+        return out;
+    }
+
     // What a row holds as `enter` shows it stepped into: from home or a
     // collection (`things`), what can be done to it, then its parts, a
     // collection's own among them, as a step into it lists them (Agents'
@@ -2236,6 +2265,11 @@ Scope {
         // moves without changing.
         function laidOut(): string {
             return root.laidOut();
+        }
+
+        // Every row Return does nothing on, as JSON, for the check.
+        function actless(): string {
+            return JSON.stringify(root.actless());
         }
     }
 

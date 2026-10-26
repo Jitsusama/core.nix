@@ -115,6 +115,19 @@ QtObject {
         expect("not for one that asks first", names(Catalogue.leading({ name: "Reboot",
             verb: "reboot", confirm: true, run: does, verbs: opens }, offers)), "Copy, Forget");
         expect("not for one holding nothing", Catalogue.leading(notice, []).length, 0);
+        // Every row has a Return act.
+        expect("a row that steps in acts", Catalogue.acts({ name: "Power", category: {} }), true);
+        expect("a value that copies acts", Catalogue.acts({ name: "Load", side: "34%",
+            figure: true, verb: "copy", run: does }), true);
+        expect("a value with nothing to copy doesn't", Catalogue.acts({ name: "Load", side: "",
+            figure: true, verb: "close", run: does }), false);
+        expect("nor one that does nothing", Catalogue.acts({ name: "Idle" }), false);
+        expect("one still being read isn't held against it", Catalogue.acts({ name: "Load",
+            side: "\u2026", figure: true, verb: "close", run: does }), true);
+        expect("a window's Close acts", Catalogue.acts({ name: "Close", verb: "close",
+            run: does }), true);
+        expect("the long lists are named", ["emoji", "notices"].map(Catalogue.long),
+            [true, false]);
         Qt.exit(failed === 0 ? 0 : 1);
     }
 }

@@ -259,19 +259,28 @@ Scope {
     // It's a figure, saying a value, so it wears no glyph unless it does
     // more (verbs) or says it's an act to copy (figure false), as a theme to
     // paste is (Choice.qml).
+    // A row that only shows a value copies it (Joel, 2026-10-26: every row
+    // has a Return act, and one that only shows a value copies it): what
+    // it says to copy, or else its value as it reads when Return comes,
+    // so a live figure copies what it shows. One still being read copies
+    // nothing yet.
     function copyRow(fields) {
-        const text = fields.copy ?? fields.name;
-        return thing(Object.assign({
-            verb: text === "" ? "close" : "copy",
+        const valueOf = side => typeof side === "string" && side !== "\u2026" ? side : "";
+        const textOf = from => (from.copy ?? from.name) === "" ? valueOf(from.side)
+            : from.copy ?? from.name;
+        const row = thing(Object.assign({
+            verb: textOf(fields) === "" ? "close" : "copy",
             hue: "voice",
             figure: true,
             plain: true,
             now: true,
             run: () => {
+                const text = textOf({ copy: fields.copy, name: fields.name, side: row.side });
                 if (text !== "")
                     Quickshell.clipboardText = text;
             }
         }, fields));
+        return row;
     }
 
     // A figure holding more, as a CPU's Cores or a display's Scale: it says

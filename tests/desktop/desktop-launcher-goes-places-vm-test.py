@@ -1531,6 +1531,16 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert "error" in ran({"id": "nothing:here"})
 
 
+def test_every_row_has_a_return_act(desktop: Desktop) -> None:
+    """Every row the launcher shows does something on Return."""
+    # Joel, 2026-10-26: a row that holds more steps in, a row that only
+    # shows a value copies it, and a row that can do neither doesn't
+    # belong in the launcher. The launcher walks every row from home down.
+    said = desktop.as_account("qs ipc call launcher actless")
+    actless = cast("list[Json]", json.loads(said))
+    assert actless == [], "\n".join(f"{row['in']} \u203a {row['words']}" for row in actless)
+
+
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
     desktop: Desktop,
 ) -> None:
