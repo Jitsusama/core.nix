@@ -4,6 +4,9 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
+use std::thread;
 
 /// Each check's derivation path by its name, or nothing for a check that
 /// doesn't evaluate.
@@ -20,6 +23,13 @@ pub const WEIGHT: usize = 40;
 
 /// What a VM test weighs against an ordinary check.
 const VM_TEST: usize = 4;
+
+/// How many chunks are evaluated at once. Measured on core's 305 checks, a
+/// comparison's evaluations kept about 1.6 of the machine's 16 cores busy
+/// and peaked at 5.8 GB one at a time, so two at once take about half as
+/// long and hold about twice that, well short of the 24 GB that evaluating
+/// every check in one held.
+pub const AT_ONCE: usize = 2;
 
 /// What a check's name may hold beside letters and digits, so a name is
 /// never read as Nix code.
@@ -97,6 +107,46 @@ pub fn chunks(names: &[String]) -> Vec<&[String]> {
         chunks.push(&names[start..]);
     }
     chunks
+}
+
+/// Do `work` on each item, `at_once` at a time, answering in the items'
+/// order. Once one fails, no item not yet begun is begun, since the first
+/// failure in order is what the run reports.
+pub fn each_at_once<T, R, E>(
+    items: &[T],
+    at_once: usize,
+    work: impl Fn(&T) -> Result<R, E> + Sync,
+) -> Result<Vec<R>, E>
+where
+    T: Sync,
+    R: Send,
+    E: Send,
+{
+    let next = AtomicUsize::new(0);
+    let failed = AtomicBool::new(false);
+    let done: Mutex<Vec<Option<Result<R, E>>>> = Mutex::new(items.iter().map(|_| None).collect());
+    thread::scope(|scope| {
+        for _ in 0..at_once.clamp(1, items.len().max(1)) {
+            scope.spawn(|| {
+                while !failed.load(Ordering::Relaxed) {
+                    let at = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(at) else {
+                        break;
+                    };
+                    let answer = work(item);
+                    failed.fetch_or(answer.is_err(), Ordering::Relaxed);
+                    done.lock().unwrap_or_else(PoisonError::into_inner)[at] = Some(answer);
+                }
+            });
+        }
+    });
+    // An item left unbegun after a failure has no answer, and the failure
+    // before it is returned first.
+    done.into_inner()
+        .unwrap_or_else(PoisonError::into_inner)
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 /// Give the Nix function taking a flake's checks to these ones'
@@ -271,6 +321,32 @@ mod tests {
         all.extend((0..5).map(|at| format!("vm-{at}")));
         // Thirty and two VM tests weigh 38; a third would bring it to 42.
         assert_eq!(sizes(&chunks(&all)), [32, 3]);
+    }
+
+    #[test]
+    fn work_done_at_once_is_answered_in_its_items_order() {
+        let items: Vec<usize> = (0..7).collect();
+        let answered = each_at_once(&items, AT_ONCE, |item| Ok::<_, ()>(item * 10));
+        assert_eq!(answered, Ok(vec![0, 10, 20, 30, 40, 50, 60]));
+    }
+
+    #[test]
+    fn the_first_failure_in_order_is_answered() {
+        let items: Vec<usize> = (0..7).collect();
+        let answered = each_at_once(
+            &items,
+            1,
+            |item| {
+                if *item >= 3 { Err(*item) } else { Ok(*item) }
+            },
+        );
+        assert_eq!(answered, Err(3));
+    }
+
+    #[test]
+    fn no_work_is_no_answers() {
+        let answered = each_at_once(&[] as &[usize], AT_ONCE, |item| Ok::<_, ()>(*item));
+        assert_eq!(answered, Ok(vec![]));
     }
 
     #[test]

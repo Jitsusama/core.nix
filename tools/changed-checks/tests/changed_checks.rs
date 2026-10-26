@@ -35,16 +35,31 @@ esac
 
 /// nix as changed-checks asks it: a side's checks by name, then their
 /// derivations, the base's being any flake at a revision; and a build,
-/// which it records.
+/// which it records. Once a test writes `meet`, an evaluation of
+/// derivations waits for another to be under way beside it before
+/// answering, and fails if none comes within ten seconds.
 const NIX: &str = r#"#!/bin/sh
 case "$1" in
   build) shift; echo "$@" >> "$STAND_IN/built"; exit 0 ;;
 esac
 side=working
 case "$3" in *'?rev='*) side=base ;; esac
+under_way() { find "$STAND_IN" -maxdepth 1 -name 'evaluating.*' | wc -l; }
 case "$5" in
   builtins.attrNames) cat "$STAND_IN/$side-names.json" ;;
-  *) cat "$STAND_IN/$side.json" ;;
+  *)
+    if [ -e "$STAND_IN/meet" ]; then
+      mkdir "$STAND_IN/evaluating.$$"
+      tries=0
+      until [ -e "$STAND_IN/met" ]; do
+        if [ "$(under_way)" -ge 2 ]; then touch "$STAND_IN/met"; break; fi
+        tries=$((tries + 1))
+        if [ "$tries" -ge 200 ]; then echo "evaluated alone" >&2; exit 1; fi
+        sleep 0.05
+      done
+      rmdir "$STAND_IN/evaluating.$$"
+    fi
+    cat "$STAND_IN/$side.json" ;;
 esac
 "#;
 
@@ -215,6 +230,32 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     assert_eq!(runs[1]["named"], 0, "{}", runs[1]);
     let chunks = &runs[0]["evaluated"][1]["chunks"];
     assert_eq!(chunks[0]["checks"], 4, "the tree's one chunk: {}", runs[0]);
+}
+
+#[test]
+fn two_chunks_are_evaluated_at_once() {
+    let stand_in = StandIn::new("at-once");
+    // Ninety ordinary checks are three chunks: forty, forty and ten.
+    let many: serde_json::Map<String, serde_json::Value> = (0..90)
+        .map(|at| (format!("check-{at}"), format!("{at}.drv").into()))
+        .collect();
+    let many = serde_json::to_string(&many).expect("derivations");
+    stand_in.checks("base", &many);
+    stand_in.checks("working", &many);
+    fs::write(stand_in.path("meet"), "").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout), "");
+    let runs = stand_in.runs();
+    let chunks: Vec<&serde_json::Value> = runs[0]["evaluated"][0]["chunks"]
+        .as_array()
+        .expect("the base's chunks")
+        .iter()
+        .map(|chunk| &chunk["checks"])
+        .collect();
+    assert_eq!(chunks, [40, 40, 10], "logged in their order: {}", runs[0]);
 }
 
 #[test]
