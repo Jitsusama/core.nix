@@ -504,17 +504,17 @@
   '';
   pi-ask-answers-on-the-machines-plan = ''
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
-    extensions and, on Linux, the launcher's tool as its one tool, on pi's own plan and quick model
-    by default, or through pi-claude on the Claude plan
-  '';
-  pi-ask-runs-the-launcher = ''
-    pi-ask's one tool lists the launcher's places and actions and runs one, passing on what was
-    done, or that a disruptive one only waits for Return
+    extensions, the digest of what's true on the machine and, on Linux, the launcher's tool as its
+    one tool, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
   '';
   pi-ask-knows-the-machine = ''
     pi-ask's digest says what's true on the machine as each question starts: the time, its
     battery, disk and network, what waits on the person and the quests being worked, from the
     machine's own files alone
+  '';
+  pi-ask-runs-the-launcher = ''
+    pi-ask's one tool lists the launcher's places and actions and runs one, passing on what was
+    done, or that a disruptive one only waits for Return
   '';
   pi-asks-claude-code-its-login-once = ''
     pi starts Claude Code to ask for its login once for any number of asks within a minute, so a
