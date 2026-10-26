@@ -899,6 +899,7 @@ gather (
     ./modules/theme/checks.nix
     ./modules/touchpad/checks.nix
     ./modules/tuple/checks.nix
+    ./modules/unlisted/checks.nix
     ./modules/v4l2loopback/checks.nix
     ./modules/wifid/checks.nix
     ./modules/yubikey/checks.nix

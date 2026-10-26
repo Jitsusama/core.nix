@@ -191,6 +191,7 @@
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
         tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
+        unlisted = ./modules/unlisted/home.nix;
         vivid = ./modules/vivid/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
@@ -288,6 +289,7 @@
         timesyncd = ./modules/timesyncd/nixos.nix;
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
+        unlisted = ./modules/unlisted/nixos.nix;
         usb-camera-holders = ./modules/usb-camera-holders/nixos.nix;
         usb-wake = ./modules/usb-wake/nixos.nix;
         v4l2loopback = ./modules/v4l2loopback/nixos.nix;
