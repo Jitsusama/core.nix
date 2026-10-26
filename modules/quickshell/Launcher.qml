@@ -884,9 +884,21 @@ Scope {
     // soon as Joel typed ("the whitespacing ... is all fucked up"), and took
     // room from how things stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
-    // under the selection.
-    property string footVerbWidest: ""
+    // under the selection. They open as wide as most rows need, Return's
+    // place as wide as "connect" and the keys as wide as a program's at
+    // the top, so the first letter typed doesn't move them: grown only as
+    // rows came, Return moved in as soon as Joel typed, since home's rows
+    // say less than what a letter finds.
+    readonly property string footVerbRoom: "connect"
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["\u21e7\u21b5", "below"],
+        ["\u2192", "see all"]]
+    property string footVerbWidest: footVerbRoom
     property real footKeysWidest: 0
+
+    function footReset() {
+        footVerbWidest = footVerbRoom;
+        footKeysWidest = keysWide(footKeysRoom);
+    }
 
     // How wide a row's keys are, Return in its place.
     function keysWide(told) {
@@ -1932,8 +1944,7 @@ Scope {
         if (open) {
             trials.opened();
             pointer = Qt.point(-1, -1);
-            footVerbWidest = "";
-            footKeysWidest = 0;
+            footReset();
             footStage = 0;
             figuresStep = "";
             held = [];
