@@ -20,8 +20,9 @@ other files. So:
 
 ## Names
 
-- One word per concept, used the same way in code, directories, docs, on
-  screen and in what agents say. The [glossary][3] lists them.
+- One word per concept within its context, with no synonyms, used the same
+  way in code, directories, docs, on screen and in what agents say. The
+  [glossary][3] lists them, context by context.
 - A module is named after the program or subsystem it configures (`kitty`,
   `zsh`, `fonts`), never after an abstraction.
 - A role is named after what a machine is for: `base`, `workstation`,

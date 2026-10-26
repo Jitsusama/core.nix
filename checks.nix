@@ -762,8 +762,9 @@ gather (
           touch $out
         '';
 
-      # The glossary gives each thing one word and each word one thing
-      # (tests/glossary.py), printing each word to settle.
+      # The glossary gives each thing one word and each word one thing within
+      # its context, and writes no name it replaces (tests/glossary.py),
+      # printing each word to settle.
       the-glossary-names-each-thing-once =
         pkgs.runCommandLocal "the-glossary-names-each-thing-once" { }
           ''
