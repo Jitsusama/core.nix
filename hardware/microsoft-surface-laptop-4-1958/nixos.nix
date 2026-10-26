@@ -78,6 +78,13 @@
   # in step once NTP answers, is rtc0. docs/hardware.md has what was seen.
   boot.blacklistedKernelModules = [ "acpi_tad" ];
 
+  # The CMOS clock loses the time at power-off, and the kernel sets the
+  # system's time from rtc0 when it registers. Loaded late by udev, it set a
+  # cold start back to 2025 after systemd had moved the time forward to its
+  # last saved one. Loaded in the initrd, it sets the time before systemd's
+  # own advance, so the time only moves forward from there.
+  boot.initrd.kernelModules = [ "rtc_cmos" ];
+
   # The clock runs on HPET. Early in each boot the TSC and the platform's
   # timers disagree by up to 0.35%, so the kernel's watchdog throws the TSC
   # out, and with the watchdog off its calibration can come out 0.16% fast,
