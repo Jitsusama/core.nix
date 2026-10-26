@@ -78,6 +78,17 @@ in
       "xe isn't held to VESA's brightness controls, so a bad read of the panel leaves its brightness keys doing nothing."
       (lib.elem "xe.enable_dpcd_backlight=2" kernelParams);
 
+  # The XPS 14's panel flashed under its self refresh, PSR2 or PSR1, and
+  # under frame buffer compression, after a monitor was replugged and
+  # after a boot made with the lid shut.
+  the-panel-holds-still =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot) kernelParams;
+    in
+    holds "the-panel-holds-still"
+      "xe may use the panel's self refresh or compression, which set the screen flashing after a replug or a lid-shut boot."
+      (lib.elem "xe.enable_psr=0" kernelParams && lib.elem "xe.enable_fbc=0" kernelParams);
+
   # Under a build, reclaim backed up the XPS 14's window buffers at xe's
   # default seeks, and the compositor waited on their locks; at 64 it
   # backed up none.

@@ -377,10 +377,11 @@ in
     # named even when the system on it can no longer start to say it. smartd
     # watches the same report while the system runs.
     SmartErrors = "Enabled";
-    # The light on the microphone's mute key. It ships off: muted at the
-    # desk on 2026-10-26, the key stayed dark, though dell-laptop offers it
-    # as platform::micmute.
-    MicMuteLed = "Enabled";
+    # MicMuteLed isn't declared, since it follows the mic-mute light
+    # itself: written Enabled before the restart of 2026-10-26, it read
+    # Disabled after, once mic-mute-light had put the light out at
+    # shutdown. dell-laptop sets platform::micmute through SMBIOS tokens
+    # that look to be the same stored value, so the program owns it.
     # Microsoft's presence detection, as the laptop ships and as the camera
     # was proven on. Intel's gave no presence reading either; see
     # docs/hardware.md.
@@ -412,7 +413,18 @@ in
   # both of which the OLED ignores, so the brightness keys do nothing.
   # Written by hand, only VESA's luminance in nits dimmed it, so xe is held
   # to VESA's controls whatever the read says.
-  boot.kernelParams = [ "xe.enable_dpcd_backlight=2" ];
+  #
+  # After a monitor was unplugged and plugged back in, and after a boot
+  # made with the lid shut, the panel flashed under PSR2, under PSR1, and
+  # under frame buffer compression, which xe takes up once self refresh
+  # is off. Each has the panel shown from a
+  # buffer other than the frame just drawn, so xe uses neither
+  # (docs/hardware.md, The Panel's Self Refresh).
+  boot.kernelParams = [
+    "xe.enable_dpcd_backlight=2"
+    "xe.enable_psr=0"
+    "xe.enable_fbc=0"
+  ];
 
   # The BE211's Wi-Fi 7 receive path drops links to the slowest rate, so it
   # runs as Wi-Fi 6, as Omarchy runs it. Remove this once a Wi-Fi 7 link holds

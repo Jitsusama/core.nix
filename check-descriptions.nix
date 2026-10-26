@@ -909,6 +909,10 @@
     the XPS 14's kernel keeps to VESA's brightness controls when its boot-time read of the panel's
     eDP revision comes back wrong
   '';
+  the-panel-holds-still = ''
+    the XPS 14's kernel leaves the panel's self refresh and frame buffer compression off, since
+    PSR2, PSR1 and compression each set the screen flashing after a replug or a lid-shut boot
+  '';
   the-panel-knows-its-luminance = ''
     the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block
   '';
