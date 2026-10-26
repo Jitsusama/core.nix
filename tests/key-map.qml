@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader",
+                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader",
+                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -222,6 +222,9 @@ ShellRoot {
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("inlyne", "README.md");
             expect("over the markdown reader, its own", map.leading()?.name === "Markdown reader"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("org.pwmt.zathura", "paper.pdf");
+            expect("over the document viewer, its own", map.leading()?.name === "Document viewer"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("google-chrome", "");
             expect("over another program, the desktop's", map.leading() === null

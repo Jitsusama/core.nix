@@ -43,4 +43,43 @@ onLinux {
         if grep -E '^(warning|error):' said; then exit 1; fi
         touch $out
       '';
+
+  # Its keys go where the launcher says they go: Left and Right turn the
+  # pages, Tab goes back to the place used last and again returns, and ?
+  # asks the launcher for the keys, which keys-test.sh reads back from
+  # zathura itself over its bus, in a compositor of its own.
+  zathura-keys-go-where-they-say =
+    let
+      home = account graphical;
+      pages = import ../../tests/page.nix {
+        inherit lib pkgs;
+        pages = 3;
+      };
+      # The launcher, which only has to say it was asked.
+      launcher = pkgs.writeShellScriptBin "launcher-say" ''echo "$*" > asked'';
+    in
+    pkgs.runCommandLocal "zathura-keys-go-where-they-say"
+      {
+        nativeBuildInputs = [
+          home.programs.zathura.package
+          launcher
+          pkgs.cage
+          pkgs.dbus
+          pkgs.glib
+          pkgs.wtype
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+        export XDG_RUNTIME_DIR=$PWD/run GDK_BACKEND=wayland
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+        mkdir -p config/zathura data run
+        chmod 700 run
+        cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
+        dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
+          cage -- $BASH ${./keys-test.sh} ${pages} > ran 2>&1 || true
+        if [ ! -e passed ]; then cat ran; exit 1; fi
+        touch $out
+      '';
 }
