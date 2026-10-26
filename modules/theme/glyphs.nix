@@ -513,12 +513,6 @@ in
     console = "W";
     means = "what the agents have waiting on Joel, for him to do";
   };
-  # A steering wheel: Joel's words to the agent that steers the others.
-  steer = {
-    glyph = nerd "f04d4";
-    console = "S";
-    means = "telling the agent steering the others something, as Joel";
-  };
   thinking = {
     glyph = nerd "f09d1";
     console = "t";

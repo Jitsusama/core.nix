@@ -1,7 +1,7 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
-// What the agents have waiting on Joel, and the way to steer the one
-// steering the others, the steward. The steward keeps one file of what
+// What the agents have waiting on Joel. The agent steering the others, the
+// steward, keeps one file of what
 // waits on him, ~/.local/state/mission/queue.json, and each quest keeps its
 // own beside it, waiting/<quest>.json, each replaced whole as it changes:
 // the steward's address and each item's title, why it waits, how many
@@ -10,12 +10,8 @@ pragma ComponentBehavior: Bound
 // do it now. An item that can be done now is said once as a notice, the
 // moment it's heard, and remembered as said across restarts, so the
 // agents never have to wait on a turn to tell him. All of it is heard
-// rather than read on a clock. Steering
-// writes Joel's words into the harness's inbox for the steward's address,
-// which hands them to its session as his own message; each is written under
-// a name of its own and renamed in, so a half-written one is never read.
-// Both folders are made at login (this module's home.nix), so the watch
-// hears the first file and a steer always has somewhere to land.
+// rather than read on a clock. Both folders are made at login (this
+// module's home.nix), so the watch hears the first file.
 import qs
 import Qt.labs.folderlistmodel
 import Quickshell
@@ -29,13 +25,12 @@ Singleton {
     readonly property string state: Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`
     readonly property string queue: `${state}/mission/queue.json`
     readonly property string quests: `${state}/mission/waiting`
-    readonly property string inboxes: `${state}/pi/agentic-harness.pi/steer`
 
     // The steward's file as written, or null when there's none that reads.
     property var said: null
     // Each quest's file as written, by its path.
     property var kept: ({})
-    // The steward's address, which is where a steer goes.
+    // The steward's address, whose window an item with none is done in.
     readonly property string steward: typeof said?.steward === "string" ? said.steward : ""
 
     // A file's items, each with a title and the quest it's from: the
@@ -97,17 +92,6 @@ Singleton {
         const window = windowOf(item);
         if (window)
             Niri.act({ FocusWindow: { id: window.id } });
-    }
-
-    // Joel's words to the steward, as his own message.
-    function steer(text) {
-        if (steward === "" || text.trim() === "")
-            return;
-        const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
-        const body = JSON.stringify({ text: text.trim(), at: new Date().toISOString(),
-            from: "joel" });
-        Niri.spawn(["sh", "-c", 'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
-            "steer", `${inboxes}/${steward}`, name, body]);
     }
 
     // Those said as a notice, by identity, kept so a restart says none

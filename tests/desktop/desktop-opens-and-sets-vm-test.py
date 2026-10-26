@@ -242,7 +242,7 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    assert rows == ["Now", "Computer", "Programs", "Session", "Tools"], rows
+    assert rows == ["Now", "Machine", "Programs", "Power and modes", "Tools"], rows
     # A page down stops on the last.
     machine.send_key("pgdn")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tools")
@@ -884,7 +884,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
 
 
 def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Desktop) -> None:
-    """The launcher's Displays scales a display by keys, and back."""
+    """The launcher's Screens scales a screen by keys, and back."""
     machine = desktop.machine
 
     def scale() -> float:

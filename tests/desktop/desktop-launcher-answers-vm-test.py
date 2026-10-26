@@ -164,7 +164,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # A collection is found by what a person calls it, not only its
     # title, and Return goes straight into it.
     # Beside the field, it says what sort of thing each is.
-    for typed, collection in [("audio", "Sound"), ("notifications", "Notifications")]:
+    for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(
@@ -984,7 +984,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     machine.succeed("ip link delete tailscale0")
-    # The processors, a step into Computer, are named as the thing they
+    # The processors, a step into Machine, are named as the thing they
     # are, and their cores, a step further, read again each second there
     # as at the top: made busy, every core says so, and the selection
     # stays on its row, which says so too, as read again rather than as
@@ -1004,13 +1004,13 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "answer:machine")
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["path"] == ["Computer", "Processor"] and "Cores" in shown["rows"]
+        lambda shown: shown["path"] == ["Machine", "Processor"] and "Cores" in shown["rows"]
     )
     for _ in range(desktop.showing()["rows"].index("Cores")):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["path"] == ["Computer", "Processor", "Cores"])
+    desktop.launcher_until(lambda shown: shown["path"] == ["Machine", "Processor", "Cores"])
     cores = desktop.showing()["rows"]
     if len(cores) > 1:
         machine.send_key("down")

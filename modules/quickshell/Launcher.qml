@@ -503,9 +503,12 @@ Scope {
 
     // The category a word and a space step into: its own word, or one of
     // its others typed whole.
+    // A category by its id, its name or a word of its own, so its name and a
+    // space step into it: "machine " is Machine though the word is its name.
     function categoryFor(word) {
         const said = word.toLowerCase();
         return Words.categories.find(category => category.id === said
+            || category.name.toLowerCase() === said
             || (category.words ?? []).includes(said)) ?? null;
     }
 
