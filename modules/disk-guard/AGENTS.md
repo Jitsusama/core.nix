@@ -82,9 +82,9 @@ or launchd, and [`home.nix`][2] the account's.
   moment, half a minute after a root leaves, and two minutes after a process
   holding paths ends. It deletes them oldest first, in a pass of their own
   once something has let some go, and keeps none as a rebuild cache unless
-  a machine gives `garbage.keep` and `garbage.budget`. A path a running process holds, as a temporary
-  root or a file it has open, and every dead path it reaches, is left for a
-  later pass: Nix refuses a whole delete for one live path, deleting none,
+  a machine gives `garbage.keep` and `garbage.budget`. A path a running
+  process holds, as a temporary root or a file it has open, and every dead
+  path it reaches, is left for a later pass: Nix refuses a whole delete for one live path, deleting none,
   and each refusal costs it a whole look for roots. It expires generations,
   never the current, running or booted one, the newest five, or one with a
   boot entry. It links the store's identical
