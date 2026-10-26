@@ -83,4 +83,30 @@ in
       border_type = "Rounded";
     };
   };
+
+  # Spotify pauses while a call app records from a microphone and plays
+  # again once the call ends, as Joel chose: a call app takes out only its
+  # own sound, so music from the speakers would reach the other end.
+  # pause-for-calls/src/main.rs says how it knows.
+  systemd.user.services.pause-for-calls = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    Unit = {
+      Description = "Pauses Spotify while a call app records from a microphone";
+      After = [ "pipewire.service" ];
+      BindsTo = [ "pipewire.service" ];
+    };
+    Service = {
+      ExecStart = lib.getExe (pkgs.callPackage ./pause-for-calls/package.nix { });
+      Environment = [
+        "PATH=${
+          lib.makeBinPath [
+            pkgs.pipewire
+            pkgs.systemd
+          ]
+        }"
+      ];
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    Install.WantedBy = [ "pipewire.service" ];
+  };
 }
