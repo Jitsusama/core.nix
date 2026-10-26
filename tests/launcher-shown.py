@@ -38,9 +38,7 @@ OTHER_SENSE = {
 }
 
 # Things waiting on a rename, each with the quest that owns it.
-WAITING: dict[str, str] = {
-    "networks:tunnel": "Launcher (Y2YBTS): tunnel to VPN",
-}
+WAITING: dict[str, str] = {}
 
 
 def shown(entry: dict[str, object]) -> Iterator[str]:

@@ -1128,7 +1128,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.step_in()
     addresses = len(desktop.showing()["held"])
     # Each is named by what it is, never by the kernel's name for it.
-    desktop.launcher_until(lambda shown: {"Wi-Fi", "Tunnel"} <= set(shown["rows"]))
+    desktop.launcher_until(lambda shown: {"Wi-Fi", "VPN"} <= set(shown["rows"]))
     assert not {"wlan1", "tailscale0"} & set(desktop.showing()["rows"]), desktop.showing()
     # Return opens the Wi-Fi's parts, and the kernel's name is none of them.
     desktop.type_in("wi-fi", selecting="Wi-Fi")
@@ -1148,8 +1148,13 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     )
     machine.send_key("left")
     desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
-    # The right arrow opens the tunnel's, which has no hardware address.
-    desktop.type_in("tunnel", selecting="Tunnel")
+    # The right arrow opens the VPN's, which has no hardware address, and
+    # the old word for it finds nothing.
+    desktop.type_in("tunnel")
+    desktop.launcher_until(lambda shown: "VPN" not in shown["rows"])
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
+    desktop.type_in("vpn", selecting="VPN")
     desktop.step_in()
     desktop.type_in("address", selecting="Address")
     assert desktop.showing()["selected"]["side"] == "100.100.1.2/32"

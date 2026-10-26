@@ -473,18 +473,46 @@ Scope {
     property var spots: []
     property bool spotsMade: false
 
+    // An answer's parts are spots too, as Battery's Health is, from the
+    // answers a place holds and those home is, such as Disk: asked already
+    // as their places are made, so finding them asks nothing more.
     function spotsFrom() {
-        const out = [];
+        let out = [];
         for (const shown of categories) {
-            const collections = members(shown.category).filter(row => row.from
+            const held = members(shown.category);
+            const collections = held.filter(row => row.from
                 && spotCollections.includes(row.opens));
             for (const collection of collections)
                 for (const thing of collection.verbs())
                     for (const part of (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing)))
                         if (isSpot(part))
                             out.push(spotOf(part, [shown, collection, thing]));
+            for (const said of held.filter(row => row.answered))
+                out = out.concat(answerSpots(said, [shown, said]));
+        }
+        for (const id of Words.home.filter(one => !placeNamed(one))) {
+            const place = answerPlace(id);
+            if (place && place.answered)
+                out = out.concat(answerSpots(place, [place]));
         }
         return out;
+    }
+
+    // What's asked whole at the top, by any thing's words: a part named
+    // so, as the processor's Cores, is found as that answer, never as a
+    // second row beside it.
+    readonly property var answerWords: {
+        const out = {};
+        for (const entry of Object.values(Words.things))
+            for (const word of entry.answers ?? [])
+                out[Fuzzy.plainly(word)] = true;
+        return out;
+    }
+
+    function answerSpots(said, trail) {
+        return (said.verbs ? said.verbs() ?? [] : [])
+            .filter(part => isSpot(part) && !answerWords[Fuzzy.plainly(part.name)])
+            .map(part => spotOf(part, trail));
     }
 
     function isSpot(part) {
@@ -493,13 +521,17 @@ Scope {
     }
 
     function spotOf(part, trail) {
+        // A place inside another says it: Battery's Health is in Machine,
+        // then Power, then Battery.
+        const above = trail[0].category
+            ? placesAbove(trail[0].category).map(place => place.name ?? place.id) : [];
         const spot = {
             key: `spot:${trail.map(row => steadyId(row)).join("/")}/${steadyId(part)}`,
             name: part.name,
             glyph: part.glyph,
             hue: part.hue,
             graph: part.graph,
-            side: trail.map(row => row.name).join(" \u203a "),
+            side: above.concat(trail.map(row => row.name)).join(" \u203a "),
             chord: [],
             verb: "go",
             // Where it is, and so where Return goes, by what each step is.

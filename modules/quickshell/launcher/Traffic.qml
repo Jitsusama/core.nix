@@ -143,7 +143,7 @@ Provider {
     }
 
     // What an interface is, as the addresses name it (Interfaces.js), so a
-    // cable is Wired here as there, and a tunnel a Tunnel.
+    // cable is Wired here as there, and a tunnel a VPN.
     function interfaceKind(name) {
         if (interfaceKinds[name] === undefined)
             interfaceKinds[name] = Interfaces.sysKind(name, {
@@ -208,7 +208,7 @@ Provider {
     }
 
     // Each connection's name, as the addresses' answer says it, never the
-    // kernel's, numbered when there are several of a kind: "Tunnel 2".
+    // kernel's, numbered when there are several of a kind: "VPN 2".
     function connectionNames(listed) {
         const kinds = listed.map(one => one.kind);
         return listed.map((one, at) => {
@@ -286,7 +286,7 @@ Provider {
             rows.push(holder({
                 name: named("connections"),
                 side: String(listed.length),
-                note: "each card, tunnel and bridge, busiest first"
+                note: "each card, VPN and bridge, busiest first"
             }, () => listed.map((one, at) => ({ one: one, name: names[at] }))
                 .sort((a, b) => b.one.in + b.one.out - (a.one.in + a.one.out))
                 .map(each => figure({

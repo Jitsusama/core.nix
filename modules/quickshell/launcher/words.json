@@ -56,11 +56,10 @@
       "holds": [
         "energy",
         "bluetooth",
-        "bluetooth:radio",
-        "bluetooth:links",
         "sound",
         "cameras",
         "machine",
+        "machine:memory",
         "heat",
         "jobs"
       ],
@@ -248,6 +247,8 @@
       "id": "machine:memory",
       "name": "Memory",
       "term": "Machine/memory",
+      "provider": "machine",
+      "question": "memory",
       "glyph": "memory",
       "answers": [
         "memory",
@@ -992,19 +993,19 @@
     {
       "id": "keyboards:lights",
       "in": "keyboards",
-      "name": "Backlight",
+      "name": "Light",
       "answers": [
-        "keyboard backlight"
+        "keyboard light"
       ]
     },
     {
       "id": "keyboards:lights:to",
       "in": "keyboards:lights",
-      "name": "Backlight to {n} of {most}",
+      "name": "Light to {n} of {most}",
       "verb": "set",
       "states": {
         "off": {
-          "name": "Backlight off",
+          "name": "Light off",
           "verb": "turn off"
         }
       }
@@ -1012,7 +1013,7 @@
     {
       "id": "keyboards:lights:on",
       "in": "keyboards:lights",
-      "name": "Backlight on",
+      "name": "Light on",
       "verb": "turn on"
     },
     {
@@ -1030,7 +1031,7 @@
     {
       "id": "keyboards:timeout",
       "in": "keyboards",
-      "name": "Backlight off after"
+      "name": "Light off after"
     },
     {
       "id": "keyboards:connection",
@@ -1068,7 +1069,7 @@
     {
       "id": "networks:tunnel",
       "in": "networks",
-      "name": "Tunnel"
+      "name": "VPN"
     },
     {
       "id": "networks:bridge",
@@ -1703,30 +1704,30 @@
     {
       "id": "keyboard:lights",
       "in": "keyboard",
-      "name": "Backlight"
+      "name": "Light"
     },
     {
       "id": "keyboard:lights-off",
       "in": "keyboard:lights",
-      "name": "Turn off the keyboard's backlight",
+      "name": "Turn off the keyboard's light",
       "verb": "turn off"
     },
     {
       "id": "keyboard:lights-on",
       "in": "keyboard:lights",
-      "name": "Turn on the keyboard's backlight",
+      "name": "Turn on the keyboard's light",
       "verb": "turn on"
     },
     {
       "id": "keyboard:brighter",
       "in": "keyboard:lights",
-      "name": "Brighten the keyboard's backlight",
+      "name": "Brighten the keyboard's light",
       "verb": "brighten"
     },
     {
       "id": "keyboard:dimmer",
       "in": "keyboard:lights",
-      "name": "Dim the keyboard's backlight",
+      "name": "Dim the keyboard's light",
       "verb": "dim"
     },
     {
@@ -3072,6 +3073,7 @@
     },
     {
       "id": "bluetooth:radio",
+      "in": "bluetooth",
       "name": "Bluetooth off",
       "verb": "off",
       "glyph": "bluetoothOff",
@@ -3085,6 +3087,7 @@
     },
     {
       "id": "bluetooth:links",
+      "in": "bluetooth",
       "name": "Bluetooth performance",
       "provider": "bluetooth",
       "question": "bluetooth performance",

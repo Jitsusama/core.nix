@@ -84,10 +84,20 @@ function devices(text) {
 
 // The keyboards among them: a device the kernel gives both keys and lights,
 // which leaves out the power button, the lid and the hotkeys. keyd's own
-// keyboard only passes on the others' keys, so it's left out too.
+// keyboard only passes on the others' keys, so it's left out too. A board
+// is listed once however many keyboards it says it is: the ErgoDox says it
+// twice over one USB device, its keys and its keypad's, so the first of a
+// USB device's is the board (Joel saw two, 2026-10-26).
 function keyboards(text) {
+    const seen = new Set();
     return devices(text).filter(device => KEYS.test(device.handlers)
-        && LIGHTS.test(device.handlers) && !KEYD.test(device.name));
+        && LIGHTS.test(device.handlers) && !KEYD.test(device.name))
+        .filter(device => {
+            const board = usbFolder(device) || device.sysfs;
+            const first = !seen.has(board);
+            seen.add(board);
+            return first;
+        });
 }
 
 // How a keyboard is joined, from where the kernel says it sits.
