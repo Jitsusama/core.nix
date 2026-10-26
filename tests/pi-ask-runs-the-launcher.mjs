@@ -50,6 +50,10 @@ writeFileSync(
   `#!/bin/sh
 echo "$*" >> "${asked}"
 [ -e "${work}/down" ] && { echo "no running instance" >&2; exit 1; }
+[ -e "${work}/dropped" ] && {
+  printf '\\033[31m ERROR\\033[97m quickshell.ipc\\033[0m: Socket Error QLocalSocket::PeerClosedError\\n'
+  exit 0
+}
 case "$4" in
   list) cat "${work}/catalogue" ;;
   run)
@@ -101,6 +105,14 @@ const calls = readFileSync(asked, "utf8").trim().split("\n");
 assert.equal(calls[0], "ipc call launcher list");
 assert.ok(calls.includes("ipc call launcher runWith category:computer›setting:brightness 40"));
 assert.ok(calls.includes("ipc call launcher run app:kitty"));
+
+// qs prints a dropped call's error on stdout, in colour, and exits 0.
+writeFileSync(join(work, "dropped"), "");
+await assert.rejects(
+  said({ action: "list" }),
+  /^Error: The launcher didn't answer: ERROR quickshell\.ipc: Socket Error QLocalSocket::PeerClosedError$/,
+);
+await assert.rejects(said({ action: "run", id: "app:kitty" }), /The launcher didn't answer/);
 
 writeFileSync(join(work, "down"), "");
 await assert.rejects(said({ action: "list" }), /The launcher didn't answer: no running instance/);

@@ -62,9 +62,23 @@ function askLauncher(args: string[], signal?: AbortSignal): Promise<string> {
   });
 }
 
+/**
+ * What the launcher answered. Quickshell's qs prints a failed call's
+ * error on stdout, in colour, and still exits 0, so anything that isn't
+ * JSON is the launcher not answering.
+ */
+function answerOf(printed: string): unknown {
+  try {
+    return JSON.parse(printed);
+  } catch {
+    const plain = printed.replace(/\x1b\[[0-9;]*m/g, "").replace(/\s+/g, " ").trim();
+    throw new Error(`The launcher didn't answer: ${plain || "it printed nothing"}`);
+  }
+}
+
 /** One line for each entry, its id first, as the model needs to run it. */
 export function listing(printed: string, match?: string): string {
-  const parsed: unknown = JSON.parse(printed);
+  const parsed = answerOf(printed);
   const entries = Array.isArray(parsed) ? parsed.filter(isEntry) : [];
   const needle = match?.toLowerCase();
   const shown = needle
@@ -86,7 +100,7 @@ export function listing(printed: string, match?: string): string {
 
 /** What running an entry did, said so the answer can pass it on plainly. */
 export function outcome(printed: string): string {
-  const parsed: unknown = JSON.parse(printed);
+  const parsed = answerOf(printed);
   const ran: Ran = isRecord(parsed) ? parsed : {};
   if (typeof ran.error === "string") return `Not done: ${ran.error}`;
   if (ran.done) return `Done${ran.said ? `: ${ran.said}` : "."}`;
