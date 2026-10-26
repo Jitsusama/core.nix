@@ -38,7 +38,11 @@ while IFS= read -r folder; do
 done <<< "$ASK_PATH"
 PATH=$ahead$PATH
 
-prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown."
+# With the launcher's tool, the model wrote "I'll reboot the laptop for you"
+# before the tool offered a reboot as a row: words ahead of a tool's answer
+# can promise what isn't done. Said in the tool's guidance it still did;
+# said here it didn't.
+prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown. When you have a tool for what's asked, call it first and write nothing before its answer, then say only what it did."
 arguments=(
   --mode rpc
   --no-session

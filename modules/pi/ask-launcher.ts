@@ -119,7 +119,7 @@ export default function (pi: ExtensionAPI) {
     description:
       "The desktop launcher's places and actions: open a place or a program, change a setting such as brightness or volume, or do something to the machine. list reads them, filtered by match; run does one by its id. A disruptive one is only offered as a row for Return, so say it's ready to confirm, never that it happened.",
     promptGuidelines: [
-      "When asked to open, show, change or do something on the machine, run it through the launcher tool, then say in a few words what you did.",
+      "When asked to open, show, change or do something on the machine, call the launcher tool before writing any words, then say in a few words what it did.",
       "A disruptive action, such as a reboot, sleep, logging out or ending a call, is only offered as a row for Return: say it's ready to confirm, never that it happened.",
       "List with a match of a word or two from the request rather than listing everything.",
     ],
