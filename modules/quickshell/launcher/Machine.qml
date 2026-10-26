@@ -735,6 +735,44 @@ Provider {
         return said.length > 0 ? said.join("; ") : "from the disk guard";
     }
 
+    // What's filling the disks, as the guards measured it (Joel, 12:27:
+    // "why isn't the disk guard helping?"): each holder biggest first, its
+    // share of the disk it's on, and whether the guard may clear any of it
+    // or why not, with the guard's own sentence below. Beside the part, the
+    // biggest, so what matters most is seen without a step in.
+    function filling(guard, chip) {
+        const said = Words.of("machine:disk:filling").said ?? {};
+        const quests = (launcher?.sources ?? []).find(one => one.settings.name === "quests");
+        const titled = id => ((quests?.quests ?? []).find(quest => quest.id === id) ?? {}).title;
+        const called = holder => {
+            const owner = holder.owner ?? {};
+            const name = owner.kind === "quest" ? titled(owner.name) || owner.name
+                : owner.kind === "worktree" ? String(owner.name).replace(/^worktree-/, "")
+                : owner.kind === "other" ? holder.path.replace(Sessions.home, "~")
+                : owner.name;
+            const made = (said[owner.kind] ?? "{name}").replace("{name}", name);
+            return made.charAt(0).toUpperCase() + made.slice(1);
+        };
+        const each = holder => {
+            const disk = guard.holding(holder.path) ?? guard.worst;
+            return figure({
+                name: called(holder),
+                side: guard.shown(holder.bytes),
+                graph: disk ? bar(holder.bytes / disk.total) : undefined,
+                note: holder.clearable ? said.clears ?? "" : holder.why ?? "",
+                reads: holder.says ?? ""
+            });
+        };
+        const minutes = Math.max(0, Math.round((Date.now() / 1000 - guard.holdersAt) / 60));
+        const biggest = guard.holders[0];
+        return holderRow({
+            name: named("disk:filling"),
+            side: `${called(biggest)} \u00b7 ${guard.shown(biggest.bytes)}`,
+            glyph: chip,
+            note: minutes < 1 ? said.now ?? "" : (said.ago ?? "").replace("{minutes}", minutes)
+        }, () => guard.holders.map(each));
+    }
+
     function diskParts(guard) {
         const chip = Words.glyph(kinds.disks);
         const rows = [];
@@ -760,6 +798,8 @@ Provider {
             rows.push(watched.length > 1
                 ? holderRow(Object.assign(space, { glyph: chip }), () => watched.map(each))
                 : figure(space));
+            if (guard.holders.length > 0)
+                rows.push(filling(guard, chip));
         } else if (room) {
             rows.push(figure({
                 name: named("disk:space"),
