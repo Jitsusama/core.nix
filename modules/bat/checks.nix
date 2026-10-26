@@ -18,7 +18,7 @@
     in
     assert lib.assertMsg (!lib.hasInfix "cache --build" step) "A switch still builds bat's cache.";
     pkgs.runCommandLocal "bat-reads-its-theme" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/bat-reads-its-theme.sh} ${
+      ${lib.getExe pkgs.bash} ${./tests/bat-reads-its-theme.sh} ${
         lib.escapeShellArgs [
           home.home-files
           (lib.getExe home.programs.bat.package)

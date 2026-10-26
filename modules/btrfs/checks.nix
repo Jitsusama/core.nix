@@ -17,7 +17,7 @@ onLinux {
       rules = lib.filter (lib.hasInfix "/sys/fs/btrfs/") workstation.config.systemd.tmpfiles.rules;
     in
     pkgs.runCommandLocal "btrfs-reclaims-its-chunks" { nativeBuildInputs = [ pkgs.systemd ]; } ''
-      ${lib.getExe pkgs.bash} ${../../tests/btrfs-reclaims-its-chunks.sh} ${pkgs.writeText "btrfs.conf" (lib.concatLines rules)}
+      ${lib.getExe pkgs.bash} ${./tests/btrfs-reclaims-its-chunks.sh} ${pkgs.writeText "btrfs.conf" (lib.concatLines rules)}
       touch $out
     '';
 }

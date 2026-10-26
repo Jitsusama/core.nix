@@ -20,7 +20,7 @@
     pkgs.runCommandLocal "devices-that-stop-working-are-named"
       { nativeBuildInputs = [ (pkgs.callPackage ./package.nix { }) ]; }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/devices-that-stop-working-are-named.sh}
+        ${lib.getExe pkgs.bash} ${./tests/devices-that-stop-working-are-named.sh}
         touch $out
       '';
 
@@ -34,7 +34,7 @@
     pkgs.runCommandLocal "kernel-trouble-is-named"
       { nativeBuildInputs = [ (pkgs.callPackage ./package.nix { }) ]; }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/kernel-trouble-is-named.sh}
+        ${lib.getExe pkgs.bash} ${./tests/kernel-trouble-is-named.sh}
         touch $out
       '';
 

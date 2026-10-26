@@ -29,7 +29,7 @@
       );
     in
     pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it" { } ''
-      ${lib.getExe pkgs.bash} ${../../tests/boot-stopped.sh} ${stopped}
+      ${lib.getExe pkgs.bash} ${./tests/boot-stopped.sh} ${stopped}
       touch $out
     '';
 
@@ -124,7 +124,7 @@
     else
       # tests/console-wears-the-face.sh reads the font.
       pkgs.runCommandLocal "the-console-wears-the-face" { } ''
-        ${lib.getExe pkgs.bash} ${../../tests/console-wears-the-face.sh} ${
+        ${lib.getExe pkgs.bash} ${./tests/console-wears-the-face.sh} ${
           lib.escapeShellArgs [
             console.font
             face
@@ -140,7 +140,7 @@
   the-console-font-refuses-a-stand-in =
     pkgs.runCommandLocal "the-console-font-refuses-a-stand-in" { }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/console-font.sh} ${./font.sh}
+        ${lib.getExe pkgs.bash} ${./tests/console-font.sh} ${./font.sh}
         touch $out
       '';
 }

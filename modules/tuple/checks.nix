@@ -95,7 +95,7 @@ onLinux {
       ''
         export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
         mkdir -m 700 run
-        zsh -f ${../../tests/tuple-completion.zsh} ${completion}/share/zsh/site-functions/_tuple
+        zsh -f ${./tests/tuple-completion.zsh} ${completion}/share/zsh/site-functions/_tuple
         tuple stop > /dev/null 2>&1 || true
         touch $out
       '';
@@ -122,7 +122,7 @@ onLinux {
         ];
       }
       ''
-        ${lib.getExe pkgs.bash} ${../../tests/tuple-opens-its-links.sh} ${
+        ${lib.getExe pkgs.bash} ${./tests/tuple-opens-its-links.sh} ${
           lib.escapeShellArgs [
             (pkgs.writeText "tuple.desktop" entry)
             (pkgs.writeText "niri-mimeapps.list" defaults)
