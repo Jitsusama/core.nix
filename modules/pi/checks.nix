@@ -158,6 +158,14 @@
     touch $out
   '';
 
+  # pi-ask's digest says what's true on the machine as each question starts,
+  # from the machine's own files alone, leaving out what it doesn't have.
+  pi-ask-knows-the-machine = pkgs.runCommandLocal "pi-ask-knows-the-machine" { } ''
+    ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
+      ${../../tests/pi-ask-knows-the-machine.mjs} ${./ask-digest.ts}
+    touch $out
+  '';
+
   # The patched provider starts Claude Code to ask for its login once for any
   # number of asks within a minute, and asks again while it isn't logged in.
   pi-asks-claude-code-its-login-once =
@@ -266,6 +274,7 @@
         model = "claude-code/claude-haiku-4-5-20251001";
         extensions = [ ];
         path = [ ];
+        person = null;
       };
     in
     assert lib.assertMsg (lib.any (

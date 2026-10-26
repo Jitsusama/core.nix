@@ -218,6 +218,16 @@ in
         answer starts in a second or two.
       '';
     };
+    person = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = config.jitsusama.identity.name or null;
+      defaultText = lib.literalExpression "config.jitsusama.identity.name, where there is one";
+      description = ''
+        Who the Ask row's answers are for, named in the digest of what's true
+        on the machine that each question starts with, or null to name
+        nobody.
+      '';
+    };
     path = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];

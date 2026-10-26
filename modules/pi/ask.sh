@@ -7,7 +7,8 @@
 # It loads nothing it doesn't need to answer: no tools, skills, context files
 # or prompt templates, no session file, no thinking, and no extensions but the
 # ones the machine names ($EXTENSIONS, one per line), such as the one a work
-# machine reaches its models through. Which plan answers is the machine's one
+# machine reaches its models through, and the digest that tells it what's
+# true on the machine as each question starts ($DIGEST). Which plan answers is the machine's one
 # setting ($PLAN): "pi" for pi's own provider, or "claude" for Joel's own
 # Claude plan through pi-claude ($PI_CLAUDE), on $MODEL either way.
 #
@@ -50,6 +51,7 @@ while IFS= read -r extension; do
     arguments+=(-e "$extension")
   fi
 done <<< "$EXTENSIONS"
+arguments+=(-e "$DIGEST")
 
 case $PLAN in
   claude) exec "$PI_CLAUDE" --no-extensions "${arguments[@]}" "$@" ;;

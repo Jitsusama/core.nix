@@ -490,6 +490,11 @@
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
     extensions, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
   '';
+  pi-ask-knows-the-machine = ''
+    pi-ask's digest says what's true on the machine as each question starts: the time, its
+    battery, disk and network, what waits on the person and the quests being worked, from the
+    machine's own files alone
+  '';
   pi-asks-claude-code-its-login-once = ''
     pi starts Claude Code to ask for its login once for any number of asks within a minute, so a
     question waits on one start of it rather than several, and asks again while it isn't
