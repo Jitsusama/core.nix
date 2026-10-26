@@ -28,6 +28,9 @@ let
     '';
   # Quickshell's runner, the one the account's shell runs on.
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # The launcher's maths, a QML module the shell imports as Maths
+  # (maths/package.nix), and where Qt finds it.
+  mathsModules = "${pkgs.callPackage ./maths/package.nix { }}/lib/qt-6/qml";
   # Fonts for a shell drawn offscreen, which needs none of its own.
   noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
 
@@ -298,22 +301,49 @@ onLinux {
       touch $out
     '';
 
+  # What the launcher shows says the glossary's words, never a name it
+  # replaces, but what tests/launcher-shown.py lists as another sense or a
+  # rename still waiting.
+  the-launcher-shows-no-replaced-word =
+    let
+      words =
+        pkgs.writeText "words.json"
+          (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+    in
+    pkgs.runCommandLocal "the-launcher-shows-no-replaced-word" { } ''
+      cp ${../../tests/glossary.py} glossary.py
+      cp ${../../tests/names.py} names.py
+      cp ${../../tests/launcher-shown.py} launcher-shown.py
+      ${lib.getExe pkgs.python3} launcher-shown.py ${../../docs/glossary.md} ${words}
+      touch $out
+    '';
+
   # Shortcuts groups every layer's chords by what each acts on, as
   # tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
   # binds, Neovim's and pi's among them, in Qt's own engine, each group
   # named in the account's vocabulary; and steps through them in levels, as
   # tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
-  # over the same account's shortcuts, with niri stood in for.
+  # over the same account's shortcuts, with niri stood in for. The picture
+  # viewer is given a key of its own here, one no viewer would use, so its
+  # layer is there to lead over its window whatever keys it has yet.
   the-launcher-groups-every-shortcut =
     let
       qt = pkgs.qt6.qtdeclarative;
       home = account (bareNixos [
         self.nixosModules.graphical
         {
-          home-manager.users.someone.imports = [
-            self.homeModules.neovim
-            self.homeModules.pi
-          ];
+          home-manager.users.someone = {
+            imports = [
+              self.homeModules.neovim
+              self.homeModules.pi
+            ];
+            jitsusama.keys.swayimg = [
+              {
+                chord = "Ctrl+Alt+F12";
+                does = "Stand in for the viewer's own keys";
+              }
+            ];
+          };
         }
       ]);
       fields = map (b: {
@@ -445,8 +475,11 @@ onLinux {
       touch $out
     '';
 
-  # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
-  # addresses and networks with the kind of range each is in, hardware
+  # The launcher answers what's asked: sums and number bases, worked out by
+  # the shell's maths as the shell works them out, IPv4 and IPv6
+  # addresses and networks with the kind of range each is in, subnet maths
+  # (a network's parts, what holds an address, a prefix alone and a network
+  # split), characters and their codes, named as Unicode names them, hardware
   # addresses, measures, the time in any zone tzdata names and the
   # machine's figures from its files, its parts' heat from their sensors,
   # the keyboards in the kernel's list of input devices, how each Bluetooth
@@ -462,6 +495,9 @@ onLinux {
       cp ${../../tests/answers.qml} answers.qml
       cp ${./launcher/Numbers.js} Numbers.js
       cp ${./launcher/Addresses.js} Addresses.js
+      cp ${./launcher/Subnets.js} Subnets.js
+      cp ${./launcher/Characters.js} Characters.js
+      cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
       cp ${./launcher/Units.js} Units.js
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Colours.js} Colours.js
@@ -486,7 +522,25 @@ onLinux {
       ${shellFolderLint}
       # A script error never reaches Qt.exit, so without a limit the check
       # would wait forever rather than fail.
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml answers.qml
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml:${mathsModules} timeout 120 ${qt}/bin/qml answers.qml
+      touch $out
+    '';
+
+  # The launcher's sums and measures, through the shell's maths, take a
+  # typical key well inside its budget, each input typed a letter at a time
+  # (tests/maths-speed.qml), which builds the maths' module too.
+  the-launcher-sums-within-a-key =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-sums-within-a-key" { } ''
+      cp ${../../tests/maths-speed.qml} maths-speed.qml
+      cp ${./launcher/Numbers.js} Numbers.js
+      cp ${./launcher/Units.js} Units.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml:${mathsModules} timeout 300 ${qt}/bin/qml maths-speed.qml
       touch $out
     '';
 
@@ -745,9 +799,10 @@ onLinux {
   '';
 
   # The launcher's answers that build their parts' ids as they answer, the
-  # calculator's bases, the time's, today's, the waits' and a hardware
-  # address's, name every part as the vocabulary does (tests/part-names.qml),
-  # with tzdata's zones kept and lag-watch's last ten seconds written here.
+  # calculator's bases, the time's, today's, the waits', a hardware
+  # address's, a network's and a character's, name every part as the
+  # vocabulary does (tests/part-names.qml), with tzdata's zones and
+  # Unicode's names kept and lag-watch's last ten seconds written here.
   the-launcher-names-the-parts-it-builds =
     pkgs.runCommandLocal "the-launcher-names-the-parts-it-builds" { }
       ''
@@ -765,6 +820,12 @@ onLinux {
         cp ${./launcher/Today.qml} launcher/Today.qml
         cp ${./launcher/Waits.qml} launcher/Waits.qml
         cp ${./launcher/Vendors.qml} launcher/Vendors.qml
+        cp ${./launcher/Interfaces.js} launcher/Interfaces.js
+        cp ${./launcher/Subnets.js} launcher/Subnets.js
+        cp ${./launcher/Networks.qml} launcher/Networks.qml
+        cp ${./launcher/Characters.js} launcher/Characters.js
+        cp ${./launcher/Characters.qml} launcher/Characters.qml
+        cp ${import ./launcher/names.nix { inherit lib pkgs; }} names.txt
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json

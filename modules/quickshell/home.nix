@@ -120,6 +120,8 @@ let
     "launcher/Sounds.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
+    "launcher/Subnets.js"
+    "launcher/Characters.js"
     "launcher/Units.js"
     "launcher/Zones.js"
     "launcher/Colours.js"
@@ -251,6 +253,7 @@ let
       "terminal"
       "neovim"
       "pi"
+      "swayimg"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -421,6 +424,8 @@ let
     terminal = nerd "f489";
     neovim = nerd "e6ae";
     pi = nerd "f03ff";
+    # The theme's picture, as the viewer shows pictures.
+    swayimg = nerd "f02e9";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };
@@ -470,9 +475,11 @@ let
     vendors = ./launcher/Vendors.qml;
     currency = ./launcher/Currency.qml;
     units = ./launcher/Units.qml;
+    characters = ./launcher/Characters.qml;
     colours = ./launcher/Colours.qml;
     time = ./launcher/Clocks.qml;
     weather = ./launcher/Weather.qml;
+    ask = ./launcher/Ask.qml;
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
     heat = ./launcher/Heat.qml;
@@ -530,6 +537,7 @@ let
   # Every emoji, in a skin tone.
   emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
   timeZones = import ./launcher/zones.nix { inherit lib pkgs; };
+  characterNames = import ./launcher/names.nix { inherit lib pkgs; };
 
   # Every process's counters at one moment, for the machine's answers to
   # say which programs use the processors and the memory: the page size,
@@ -940,6 +948,10 @@ in
         order = 75;
         source = "units";
       };
+      characters = {
+        order = 77;
+        source = "characters";
+      };
       colours = {
         order = 78;
         source = "colours";
@@ -1122,6 +1134,16 @@ in
       shortcuts = {
         order = 120;
         source = "shortcuts";
+      };
+      # A quick question to a model, asked last so any other answer comes
+      # first, through the pi module's pi-ask, which picks the machine's
+      # plan, where the account has the pi module; and carried on in pi.
+      ask = {
+        order = 130;
+        source = "ask";
+        enable = lib.hasAttrByPath [ "pi" "ask" ] config.jitsusama;
+        command = "pi-ask";
+        session = "pi";
       };
       # A keyboard's layout and what can be done to it, where a keyboard's
       # module describes one (KeyboardLayout.qml), and empty elsewhere.
@@ -1387,6 +1409,9 @@ in
                     }
                     // lib.optionalAttrs (provider.source == "time") {
                       list = "${timeZones}";
+                    }
+                    // lib.optionalAttrs (provider.source == "characters") {
+                      names = "${characterNames}";
                     }
                     # What the machine's answers spawn: the processes'
                     # counters, UDisks for the disk's health, and stat for

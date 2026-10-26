@@ -664,9 +664,15 @@ works the same way everywhere.
   Backspace in an empty field does the same. Escape always closes. The
   foot names what Return does and where the arrows go.
 - **Answers first.** A sum is answered in grey right after what's typed,
-  and that's its only home. A base, a measure in another unit, a colour in
-  its other forms, an address or network, a hardware address, money, the
-  time or the weather somewhere, or how the machine is doing is one row
+  and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
+  xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
+  ft + 3 in in cm") are libqalculate's, asked in the shell's own process
+  on each key, and a measure alone ("25ms") is said in its kind's base
+  unit. A base, a measure in another unit, a colour in its other forms, an
+  address or network (its subnet's parts, whether it holds an address, the
+  subnets it splits into), a character and its codes, a hardware address,
+  money, the time or the weather somewhere, or how the machine is doing is
+  one row
   first in the list, named by what it says and saying it's an answer at its
   right edge, with its parts a step in, so a question never lists a column
   of bare figures. The weather's parts are Now, Rain, Wind, Today, Tomorrow

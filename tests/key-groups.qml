@@ -384,6 +384,7 @@ QtObject {
             ["kitty", "~/src/core.nix", ["terminal", "desktop"]],
             ["kitty", "pipewire", ["terminal", "desktop"]],
             ["google-chrome", "\u{1F4DD} notes.md", ["desktop"]],
+            ["swayimg", "holiday.jpg", ["swayimg", "desktop"]],
             ["", "", ["desktop"]]
         ];
         for (const program of programs)

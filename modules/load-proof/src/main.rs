@@ -1,21 +1,26 @@
 //! The load proof: whether what Joel uses still feels idle while the work
 //! behind him fills every core and the line.
 //!
-//! It grows a signal at a time. Now it has two:
+//! It grows a signal at a time. Now it has three:
 //!
 //! - `frames`: whether niri shows a frame at every refresh (frames.rs).
 //! - `keys`: how quickly a key typed in a terminal comes back (keys.rs).
+//! - `save`: how quickly an app's careful save reaches the disk (save.rs).
 //!
-//! Usage: load-proof frames|keys [SECONDS]
+//! Usage: load-proof frames|keys|save [SECONDS]
 
 mod frames;
 mod keys;
+mod save;
+mod spread;
+
+use spread::Spread;
 
 use std::ffi::OsString;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const USAGE: &str = "usage: load-proof frames|keys [SECONDS]";
+const USAGE: &str = "usage: load-proof frames|keys|save [SECONDS]";
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
@@ -43,12 +48,27 @@ fn main() -> ExitCode {
             ))
         })),
         Some("keys") => report(keys::watch(length).map(|echoes| {
-            let t = keys::Tally::of(&echoes);
+            let t = Spread::of(&echoes);
             Some(format!(
                 "keys {} echo p50 {:.2} ms p99 {:.2} ms worst {:.2} ms",
-                t.keys, t.p50_ms, t.p99_ms, t.worst_ms
+                t.count, t.p50_ms, t.p99_ms, t.worst_ms
             ))
         })),
+        Some("save") => {
+            let cache = std::env::var_os("XDG_CACHE_HOME").map(Into::into);
+            let home = std::env::var_os("HOME").map(Into::into);
+            let Some(folder) = save::folder(cache, home) else {
+                eprintln!("load-proof: no HOME or XDG_CACHE_HOME to save under");
+                return ExitCode::FAILURE;
+            };
+            report(save::watch(&folder, length).map(|times| {
+                let t = Spread::of(&times);
+                Some(format!(
+                    "saves {} took p50 {:.2} ms p99 {:.2} ms worst {:.2} ms",
+                    t.count, t.p50_ms, t.p99_ms, t.worst_ms
+                ))
+            }))
+        }
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)

@@ -1,0 +1,73 @@
+// Every time one thread, niri's main one, is off the CPU for 8 ms or more:
+// when it left, on CLOCK_MONOTONIC in nanoseconds, as load-proof's frames
+// are timed; for how long; whether it slept, blocked or was preempted; who
+// held the buffer lock it waited on, if it waited on one; and the kernel
+// stack it left from. Waiting in epoll for its next event, asleep, is niri
+// idle between frames, so it isn't said; blocking inside epoll is.
+//
+// usage: bpftrace off-cpu.bt <tid>
+
+BEGIN
+{
+  printf("niri's main thread %d, off the CPU 8 ms or more; times are CLOCK_MONOTONIC ns\n", $1);
+}
+
+tracepoint:syscalls:sys_enter_epoll_wait,
+tracepoint:syscalls:sys_enter_epoll_pwait,
+tracepoint:syscalls:sys_enter_epoll_pwait2
+/tid == $1/
+{
+  @polling = 1;
+}
+
+tracepoint:syscalls:sys_exit_epoll_wait,
+tracepoint:syscalls:sys_exit_epoll_pwait,
+tracepoint:syscalls:sys_exit_epoll_pwait2
+/tid == $1/
+{
+  @polling = 0;
+}
+
+// The lock's owner is read as the wait starts, from the mutex's own word,
+// whose low bits are flags.
+kprobe:__ww_mutex_lock_slowpath,
+kprobe:__ww_mutex_lock_interruptible_slowpath
+/tid == $1/
+{
+  $lock = (struct ww_mutex *)arg0;
+  $owner = (struct task_struct *)((uint64)$lock->base.owner.counter & ~(uint64)7);
+  @holder = $owner->comm;
+}
+
+tracepoint:sched:sched_switch
+/args.prev_pid == $1/
+{
+  @left = nsecs(monotonic);
+  @state = args.prev_state;
+  @stack = kstack;
+}
+
+tracepoint:sched:sched_switch
+/args.next_pid == $1 && @left != 0/
+{
+  $away = nsecs(monotonic) - @left;
+  if ($away >= 8000000 && !(@polling && @state == 1)) {
+    printf("off at %llu for %llu us, %s, lock held by %s%s\n",
+      @left,
+      $away / 1000,
+      @state == 1 ? "asleep" : (@state == 2 ? "blocked" : "preempted"),
+      @holder == "" ? "nobody" : @holder,
+      @stack);
+  }
+  @left = 0;
+  @holder = "";
+}
+
+END
+{
+  clear(@polling);
+  clear(@left);
+  clear(@state);
+  clear(@stack);
+  clear(@holder);
+}

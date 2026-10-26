@@ -261,6 +261,9 @@
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere
   '';
+  gtk-speaks-in-the-theme = ''
+    GTK's settings, the desktop's dconf and fontconfig's sans-serif all name the theme's sans face
+  '';
   guide-compiles-for-macos = ''
     clippy finds nothing in the guide as macOS compiles it
   '';
@@ -336,7 +339,8 @@
     load-proof counts a refresh with the probe's frame ready and none shown as a frame niri missed,
     one that passed before the probe committed as the probe's own, none when a frame lands at every
     refresh, and a frame niri dropped for a later one apart; a key typed into a pty in raw mode comes
-    back, and its echoes' middle, 99th percentile and worst are read from them
+    back; a careful save leaves its newest text whole, nothing half written, and no file once the
+    probe is done; and the middle, 99th percentile and worst of echoes and saves are read from them
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
@@ -424,6 +428,11 @@
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
   '';
+  no-name-says-a-replaced-word = ''
+    no check's name and no jitsusama.* option's says a name docs/glossary.md replaces, but the
+    other senses and the renames still waiting that tests/names.py lists, each printed with its
+    word, and the check refuses a stand-in name breaking each of its rules
+  '';
   nothing-names-its-own-look = ''
     no module but the theme's names a colour or a face
   '';
@@ -473,6 +482,14 @@
   pi-keeps-its-own-settings = ''
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
+  '';
+  pi-runs-on-the-machines-plan = ''
+    a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
+    no pi-claude beside it, and a work machine's pi is unchanged
+  '';
+  pi-says-when-the-plan-runs-out = ''
+    pi says plainly when a Claude plan limit is used up, which limit and when it resets, that
+    nothing went to extra usage, and in words it never retries
   '';
   pi-tells-where-as-the-prompt-does = ''
     pi's status line finds the folder by the prompt's roots, asks the prompt's git-engine, and marks
@@ -667,8 +684,9 @@
     stopped partway, and refuses a value it can't read
   '';
   the-glossary-names-each-thing-once = ''
-    no word in docs/glossary.md is the name, another word or a replaced name of two things, and
-    each clash is printed, and the check refuses a stand-in glossary breaking each of its rules
+    no word in docs/glossary.md names two things in one context, and no name it replaces is
+    replaced twice or written as any context's word, each clash is printed, and the check
+    refuses a stand-in glossary breaking each of its rules
   '';
   the-gpu-security-link-loads-with-the-gpu = ''
     the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its
@@ -692,7 +710,8 @@
     is, by its position, ahead of the place set and then the time zone, and the footer says which
   '';
   the-launcher-answers-what-is-asked = ''
-    sums, addresses, measures, zones, colours, the machine's figures and its parts' heat answer
+    sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
+    figures and its parts' heat answer
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
@@ -745,8 +764,18 @@
     printed, and the check refuses a stand-in vocabulary breaking each rule of what Joel reads
   '';
   the-launcher-names-the-parts-it-builds = ''
-    every part the calculator, the time, today, the waits and a hardware address show is named as
-    the vocabulary names it
+    every part the calculator, the time, today, the waits, a hardware address, a network and a
+    character show is named as the vocabulary names it
+  '';
+  the-launcher-shows-no-replaced-word = ''
+    nothing the launcher's vocabulary shows of a thing, a place or a command says a name
+    docs/glossary.md replaces, but the other senses and the renames still waiting that
+    tests/launcher-shown.py lists, each printed with its word, and the check refuses a stand-in
+    vocabulary breaking each of its rules
+  '';
+  the-launcher-sums-within-a-key = ''
+    the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
+    typical key under five milliseconds
   '';
   the-litra-follows-the-cameras = ''
     `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
@@ -1096,6 +1125,10 @@
   '';
   vm-network-revives-units = ''
     what the network let down starts, and reloads on change
+  '';
+  vm-niri-is-traced-by-its-own = ''
+    an account in wheel traces its own niri off the CPU with no password, each sleep said with its
+    kernel stack and monotonic time and waits in epoll left out; nobody else starts it or reads it
   '';
   vm-passkeys-come-from-the-tpm = ''
     passkeys and security keys are made in the TPM, each after a yes

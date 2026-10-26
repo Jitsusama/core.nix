@@ -1253,8 +1253,13 @@
     { "id": "networks:state", "in": "networks", "name": "State" },
     { "id": "networks:public", "in": "networks", "name": "Public address", "hidden": ["ipify"] },
     { "id": "networks:public6", "in": "networks", "name": "Public IPv6 address" },
-    { "id": "networks:usable", "in": "networks", "name": "Usable", "hidden": ["hosts"] },
     { "id": "networks:mask", "in": "networks", "name": "Mask", "hidden": ["netmask"] },
+    { "id": "networks:wildcard", "in": "networks", "name": "Wildcard", "hidden": ["inverse mask"] },
+    { "id": "networks:first", "in": "networks", "name": "First host", "hidden": ["usable"] },
+    { "id": "networks:last", "in": "networks", "name": "Last host" },
+    { "id": "networks:hosts", "in": "networks", "name": "Hosts" },
+    { "id": "networks:size", "in": "networks", "name": "Size" },
+    { "id": "networks:subnets", "in": "networks", "name": "Subnets", "hidden": ["/64s"] },
     { "id": "networks:broadcast", "in": "networks", "name": "Broadcast" },
     { "id": "networks:network", "in": "networks", "name": "Network" },
     { "id": "networks:range", "in": "networks", "name": "Range" },
@@ -1266,6 +1271,22 @@
     { "id": "vendors:kind", "in": "vendors", "name": "Kind" },
     { "id": "vendors:colons", "in": "vendors", "name": "With colons" },
     { "id": "vendors:dotted", "in": "vendors", "name": "With dots" },
+    { "id": "characters:decimal", "in": "characters", "name": "Decimal" },
+    { "id": "characters:hex", "in": "characters", "name": "Hex" },
+    { "id": "characters:binary", "in": "characters", "name": "Binary" },
+    { "id": "characters:point", "in": "characters", "name": "Code point", "hidden": ["unicode"] },
+    { "id": "characters:name", "in": "characters", "name": "Name" },
+    { "id": "characters:utf8", "in": "characters", "name": "UTF-8", "hidden": ["bytes"] },
+    { "id": "characters:escaped", "in": "characters", "name": "Escaped" },
+    {
+      "id": "characters:percent",
+      "in": "characters",
+      "name": "Percent-encoded",
+      "hidden": ["url"]
+    },
+    { "id": "characters:bits", "in": "characters", "name": "Bits" },
+    { "id": "characters:points", "in": "characters", "name": "Code points" },
+    { "id": "characters:length", "in": "characters", "name": "Length" },
     { "id": "calculator:hex", "in": "calculator", "name": "Hex" },
     { "id": "calculator:octal", "in": "calculator", "name": "Octal" },
     { "id": "calculator:binary", "in": "calculator", "name": "Binary" },
@@ -1315,6 +1336,25 @@
       "id": "weather:wind",
       "in": "weather",
       "name": "Wind"
+    },
+    {
+      "id": "ask",
+      "in": "ask",
+      "name": "Ask",
+      "verb": "ask",
+      "glyph": "ask",
+      "states": {
+        "starting": {
+          "name": "Ask is starting"
+        }
+      }
+    },
+    {
+      "id": "verb:ask:onward",
+      "in": "ask",
+      "name": "Ask in a session",
+      "verb": "open",
+      "glyph": "agent"
     },
     {
       "id": "weather:today",
@@ -1896,6 +1936,15 @@
       "glyph": "agent",
       "hidden": [
         "pi"
+      ]
+    },
+    {
+      "id": "shortcuts:swayimg",
+      "in": "shortcuts",
+      "name": "Picture viewer",
+      "glyph": "picture",
+      "hidden": [
+        "swayimg"
       ]
     },
     {
@@ -4294,6 +4343,54 @@
         "bases",
         "hex",
         "binary"
+      ]
+    },
+    {
+      "id": "command:within",
+      "provider": "networks",
+      "start": "is ",
+      "form": "⟨address⟩ in ⟨network⟩",
+      "says": "whether a network holds an address",
+      "words": [
+        "contains",
+        "inside",
+        "within"
+      ]
+    },
+    {
+      "id": "command:split",
+      "provider": "networks",
+      "start": "",
+      "form": "⟨network⟩ in /⟨prefix⟩s",
+      "says": "a network split into smaller ones",
+      "words": [
+        "split",
+        "subnets",
+        "divide"
+      ]
+    },
+    {
+      "id": "command:char",
+      "provider": "characters",
+      "start": "char ",
+      "form": "⟨number or character⟩",
+      "says": "a character and its codes",
+      "words": [
+        "ascii",
+        "unicode",
+        "ord",
+        "code point"
+      ]
+    },
+    {
+      "id": "command:utf8",
+      "provider": "characters",
+      "start": "utf8 ",
+      "form": "⟨text⟩",
+      "says": "text as UTF-8's bytes",
+      "words": [
+        "encoding",
+        "bytes"
       ]
     },
     {

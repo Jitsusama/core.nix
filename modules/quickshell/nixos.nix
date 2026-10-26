@@ -19,6 +19,12 @@
 # nearest directory that is. All three are laid over the machine's
 # packages, so the shell, the greeter and the lock all run them.
 #
+# The launcher works out sums and measures with libqalculate, in the shell's
+# own process rather than a calculator program started for each key, as a
+# QML module of its own (maths/), built with the Qt Quickshell is built
+# with. Quickshell's wrapper puts it on the shell's QML import path, so
+# every shell the machine runs can import Maths.
+#
 # The watcher (keyboard-lights.rs) reads the keyboards, which is what a
 # keylogger needs, so it gets nothing else: an account of its own, the input
 # group, read access to input devices alone, no network and a read-only
@@ -54,6 +60,12 @@ in
           ./activation-token.patch
           ./fileview-quiet.patch
           ./fileview-watch-nearest.patch
+        ];
+        qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
+          "--prefix"
+          "NIXPKGS_QT6_QML_IMPORT_PATH"
+          ":"
+          "${prev.callPackage ./maths/package.nix { }}/${prev.qt6.qtbase.qtQmlPrefix}"
         ];
       });
     })

@@ -8,7 +8,9 @@
 # Its status line tells a folder and git as the prompt does, by the prompt's
 # root markers, its git-engine and the theme's marks. pi-claude runs it on
 # Joel's own Claude plan (claude.nix), and pi-ask answers the launcher's Ask
-# row on the plan a machine names in jitsusama.pi.ask (ask.nix).
+# row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
+# machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
+# plan, with no pi-claude beside it: Joel wants one pi that just works.
 {
   config,
   lib,
@@ -115,7 +117,13 @@ let
     else
       pkgs.claude-code;
 
-  piClaude = import ./claude.nix { inherit pkgs claude; };
+  onClaude = config.jitsusama.pi.plan == "claude";
+
+  # On the Claude plan, the machine's own Claude Code login is the plan's.
+  piClaude = import ./claude.nix {
+    inherit pkgs claude;
+    ownLogin = onClaude;
+  };
 
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
@@ -152,14 +160,26 @@ in
     '';
   };
 
+  options.jitsusama.pi.plan = lib.mkOption {
+    type = lib.types.enum (lib.attrNames quickModels);
+    default = "pi";
+    description = ''
+      Which plan every pi runs on: "pi" for pi's own providers, as a work
+      machine has them, or "claude" for Joel's own Claude plan through
+      Claude Code's login on the machine, never its extra usage. On "claude"
+      plain `pi` is all there is: there is no pi-claude beside it.
+    '';
+  };
+
   options.jitsusama.pi.ask = {
     plan = lib.mkOption {
       type = lib.types.enum (lib.attrNames quickModels);
-      default = "pi";
+      default = config.jitsusama.pi.plan;
+      defaultText = lib.literalExpression "config.jitsusama.pi.plan";
       description = ''
         Which plan answers the launcher's Ask row: "pi" for pi's own
         provider, as pi is set up on the machine, or "claude" for Joel's own
-        Claude plan through pi-claude, signed in with `pi-claude login`.
+        Claude plan through pi-claude's way of starting pi.
       '';
     };
     model = lib.mkOption {
@@ -183,13 +203,24 @@ in
   config = {
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
 
-    home.packages = [
-      piClaude
+    home.packages = lib.optional (!onClaude) piClaude ++ [
       (import ./ask.nix {
         inherit pkgs lib piClaude;
         inherit (config.jitsusama.pi) ask;
       })
     ];
+
+    # On the Claude plan every pi starts on it: the provider is one of the
+    # extensions pi finds by itself, so the package list pi keeps is left
+    # alone, and Sonnet is where it starts, a plan's limits being small.
+    home.file.".pi/agent/extensions/claude-code" = lib.mkIf onClaude {
+      source = "${import ./claude-provider.nix { inherit pkgs; }}/src";
+    };
+    home.sessionVariables = lib.mkIf onClaude {
+      PI_CLAUDE_CODE_COMMAND = lib.getExe claude;
+    };
+    jitsusama.pi.settings.defaultProvider = lib.mkIf onClaude "claude-code";
+    jitsusama.pi.settings.defaultModel = lib.mkIf onClaude "claude-sonnet-5";
 
     # The room kept for what a compaction writes. pi's default, 16,384
     # tokens, runs out summarising a long session, which then compacts

@@ -851,7 +851,9 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # The word and a space become a chip, the field cleared, listing
-    # what it holds; what's typed then searches only inside it.
+    # what it holds; what's typed then searches only inside it. Only the
+    # first twenty rows are reported, which Tasks falls past, so it's
+    # found by typing below.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("tools ")
@@ -859,7 +861,7 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
         lambda shown: (
             shown["held"] == ["tools"]
             and shown["typed"] == ""
-            and {"Agents", "Tasks", "Helpers"} <= set(shown["rows"])
+            and {"Agents", "Helpers"} <= set(shown["rows"])
         )
     )
     # What it holds is listed by name, capitals ignored, its commands with
@@ -1125,6 +1127,52 @@ def test_an_answer_asked_for_holds_its_row_from_the_keystroke(desktop: Desktop) 
     assert len(below) == 1, f"the rows below the answer moved: {below}"
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
+
+
+def test_a_question_is_asked_on_return_and_answered_where_it_was_typed(desktop: Desktop) -> None:
+    """A question is asked on Return and answered where it was typed."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+
+    def selected(shown: Json) -> Json:
+        return cast("Json", shown["selected"] or {})
+
+    def close() -> None:
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    # Asked by its first word, a model gives way to what's found, so
+    # "do not disturb" is Do not disturb.
+    desktop.answer("do not disturb")
+    first = selected(desktop.showing())
+    assert first.get("name") != "Ask", f"asking a model came before the setting: {first}"
+    close()
+
+    # Ending in "?", it offers to ask, and nothing is asked until Return,
+    # which keeps the launcher open while the answer is written in place:
+    # its first sentence as the row's name, the whole of it below the rows.
+    desktop.answer("what is a fjord?")
+    offered = selected(desktop.showing())
+    assert (offered.get("name"), offered.get("verb")) == ("Ask", "ask"), offered
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and selected(shown).get("name") == "A fjord is a long, narrow inlet of the sea."
+            and "Glaciers carved" in selected(shown).get("reads", "")
+            and str(shown["footer"]).startswith("answered in")
+            and selected(shown).get("verb") == "copy"
+        )
+    )
+    close()
+
+    # One the model's provider refuses says why, in the row.
+    desktop.answer("why does this fail?")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: selected(shown).get("name") == "the model's provider refused"
+    )
+    close()
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:

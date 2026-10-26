@@ -29,38 +29,6 @@ pub const EVERY: Duration = Duration::from_millis(30);
 /// The subcommand the shell's stand-in runs as, given its side's path.
 pub const ECHO: &str = "keys-echo";
 
-/// A run's echoes, summed.
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct Tally {
-    pub keys: usize,
-    pub p50_ms: f64,
-    pub p99_ms: f64,
-    pub worst_ms: f64,
-}
-
-impl Tally {
-    /// Sums `echoes`, each the time one key took to come back.
-    pub fn of(echoes: &[Duration]) -> Tally {
-        let mut ms: Vec<f64> = echoes.iter().map(|echo| echo.as_secs_f64() * 1e3).collect();
-        ms.sort_by(f64::total_cmp);
-        Tally {
-            keys: ms.len(),
-            p50_ms: rank(&ms, 50),
-            p99_ms: rank(&ms, 99),
-            worst_ms: ms.last().copied().unwrap_or(0.0),
-        }
-    }
-}
-
-/// The nearest-rank `percent`ile of `sorted`, or nothing when it's empty.
-fn rank(sorted: &[f64], percent: usize) -> f64 {
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    let at = (sorted.len() * percent).div_ceil(100).max(1) - 1;
-    sorted[at]
-}
-
 /// Types a key every `EVERY` for `length` into a pty whose other side a
 /// stand-in shell, this program run as `ECHO`, writes back, and gives the
 /// time each took to return.
@@ -176,34 +144,6 @@ fn echo_on(mut side: File) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ms(values: &[u64]) -> Vec<Duration> {
-        values.iter().map(|&v| Duration::from_millis(v)).collect()
-    }
-
-    #[test]
-    fn nothing_typed_sums_to_nothing() {
-        assert_eq!(Tally::of(&[]), Tally::default());
-    }
-
-    #[test]
-    fn the_middle_the_ninety_ninth_and_the_worst_are_read_from_the_echoes() {
-        // A hundred keys at 1 ms to 100 ms, in no order.
-        let mut echoes: Vec<u64> = (1..=100).collect();
-        echoes.reverse();
-        let tally = Tally::of(&ms(&echoes));
-        assert_eq!(tally.keys, 100);
-        assert!((tally.p50_ms - 50.0).abs() < 1e-9, "{tally:?}");
-        assert!((tally.p99_ms - 99.0).abs() < 1e-9, "{tally:?}");
-        assert!((tally.worst_ms - 100.0).abs() < 1e-9, "{tally:?}");
-    }
-
-    #[test]
-    fn one_slow_key_in_a_few_is_the_ninety_ninth() {
-        let tally = Tally::of(&ms(&[1, 1, 1, 40]));
-        assert!((tally.p50_ms - 1.0).abs() < 1e-9, "{tally:?}");
-        assert!((tally.p99_ms - 40.0).abs() < 1e-9, "{tally:?}");
-    }
 
     #[test]
     fn a_key_typed_comes_back_through_a_pty_in_raw_mode() {

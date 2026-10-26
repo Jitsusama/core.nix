@@ -20,8 +20,9 @@ other files. So:
 
 ## Names
 
-- One word per concept, used the same way in code, directories, docs, on
-  screen and in what agents say. The [glossary][3] lists them.
+- One word per concept within its context, with no synonyms, used the same
+  way in code, directories, docs, on screen and in what agents say. The
+  [glossary][3] lists them, context by context.
 - A module is named after the program or subsystem it configures (`kitty`,
   `zsh`, `fonts`), never after an abstraction.
 - A role is named after what a machine is for: `base`, `workstation`,
@@ -150,8 +151,8 @@ is installed system-wide only when it's worth having outside any project.
 
 ## Checks Before Switches
 
-Nothing is applied to a machine until `nix flake check` passes locally, which
-is the only place the checks run. Before switching, compare what changes:
+Nothing is applied to a machine until the checks its change touched pass
+locally, which is the only place the checks run. Before switching, compare what changes:
 
 ```sh
 nix store diff-closures /run/current-system ./result

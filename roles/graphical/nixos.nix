@@ -40,6 +40,7 @@
     nixosModules.memory-modules
     nixosModules.mpv
     nixosModules.niri
+    nixosModules.niri-off-cpu
     nixosModules.onepassword
     nixosModules.open-with
     nixosModules.pipewire

@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents", names(top).join(", "));
+                === "Desktop, Terminal, Neovim, Agents, Picture viewer", names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
             const binds = KeyGroups.merged("desktop", Shortcuts.layers[0].binds).length;
@@ -186,7 +186,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents",
+                === "Neovim, Terminal, Desktop, Agents, Picture viewer",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -201,7 +201,11 @@ ShellRoot {
             expect("over the terminal, its own", map.leading().name === "Terminal"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             // Each of these after the terminal led, so a window read wrong
-            // would leave it leading.
+            // would leave it leading. A program in a window of its own with
+            // keys of its own leads with them, then the desktop's.
+            over("swayimg", "holiday.jpg");
+            expect("over the picture viewer, its own", map.leading()?.name === "Picture viewer"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("google-chrome", "");
             expect("over another program, the desktop's", map.leading() === null
                 && names(map.everything())[0] === "Desktop", names(map.everything()).join(", "));

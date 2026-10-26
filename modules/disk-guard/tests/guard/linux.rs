@@ -1,5 +1,7 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{boot, btrfs_allocation, patiently, power, pressure, space, tick};
+use disk_guard::linux::{
+    Commits, boot, btrfs_allocation, commits, committed, patiently, power, pressure, space, tick,
+};
 use disk_guard::moments::{Power, Stall};
 use std::cell::Cell;
 use std::fs;
@@ -361,4 +363,114 @@ fn while_a_commit_is_stuck_no_other_is_begun() {
         "no waiting on a commit known stuck"
     );
     assert!(begun.recv_timeout(Duration::from_millis(200)).is_err());
+}
+
+#[test]
+fn commits_are_read_from_the_filesystems_stats() {
+    let dir = tempfile::tempdir().unwrap();
+    let stats = dir.path().join("commit_stats");
+    let shown = |pending: u64| {
+        format!(
+            "commits 1106\ncur_commit_ms {pending}\nlast_commit_ms 251\nmax_commit_ms 3019\n\
+             total_commit_ms 182474\n"
+        )
+    };
+    fs::write(&stats, shown(0)).unwrap();
+    assert_eq!(
+        commits(&stats).unwrap(),
+        Commits {
+            done: 1106,
+            underway: false
+        }
+    );
+    fs::write(&stats, shown(161)).unwrap();
+    assert!(commits(&stats).unwrap().underway);
+    fs::write(&stats, "cur_commit_ms 0\n").unwrap();
+    assert!(commits(&stats).is_err(), "no count is no guess");
+}
+
+/// Gives `counts` one after another, keeping the last, as a filesystem's
+/// stats read on each look would.
+fn reading<const N: usize>(counts: [Commits; N]) -> impl FnMut() -> io::Result<Commits> {
+    let mut counts = counts.into_iter();
+    let mut last = None;
+    move || {
+        last = counts.next().or(last);
+        last.ok_or_else(|| io::Error::other("nothing to read"))
+    }
+}
+
+const LOOK: Duration = Duration::from_millis(1);
+const LONGEST: Duration = Duration::from_secs(5);
+
+fn at(done: u64, underway: bool) -> Commits {
+    Commits { done, underway }
+}
+
+#[test]
+fn settling_waits_for_the_next_commit() {
+    let looks = Cell::new(0);
+    let mut read = reading([at(10, false), at(10, false), at(10, true), at(11, false)]);
+    let looked = || {
+        looks.set(looks.get() + 1);
+        read()
+    };
+    committed(looked, || false, LOOK, LONGEST).unwrap();
+    assert_eq!(looks.get(), 4, "done once the count moved");
+}
+
+#[test]
+fn a_commit_under_way_as_settling_starts_is_not_the_one_waited_for() {
+    // It may have closed before what was deleted, so the one after it is.
+    let looks = Cell::new(0);
+    let mut read = reading([at(10, true), at(11, false), at(11, true), at(12, false)]);
+    let looked = || {
+        looks.set(looks.get() + 1);
+        read()
+    };
+    committed(looked, || false, LOOK, LONGEST).unwrap();
+    assert_eq!(looks.get(), 4);
+}
+
+#[test]
+fn a_stop_ends_a_wait_for_a_commit_that_never_comes() {
+    // A wait in the kernel held a stop 23 s at a switch; this one ends at
+    // the next look.
+    let looks = Cell::new(0);
+    let started = Instant::now();
+    let waited = committed(
+        reading([at(10, false)]),
+        || {
+            looks.set(looks.get() + 1);
+            looks.get() > 3
+        },
+        LOOK,
+        LONGEST,
+    );
+    assert_eq!(waited.unwrap_err().kind(), io::ErrorKind::Interrupted);
+    assert!(started.elapsed() < LONGEST / 2, "{:?}", started.elapsed());
+}
+
+#[test]
+fn a_commit_that_never_comes_is_waited_for_no_longer_than_the_longest() {
+    // Nothing dirty, nothing to commit: the frees show at the next commit.
+    let started = Instant::now();
+    committed(
+        reading([at(10, false)]),
+        || false,
+        LOOK,
+        Duration::from_millis(50),
+    )
+    .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_count_that_cant_be_read_fails_the_settle() {
+    let failed = committed(reading([]), || false, LOOK, LONGEST);
+    assert_eq!(failed.unwrap_err().to_string(), "nothing to read");
 }

@@ -15,7 +15,9 @@
   # ctrl+shift+t is Neovim's Ctrl+Shift+T, and its super+return is niri's
   # Super+Return. A sequence whose first key a layer above takes can never
   # start, so it's refused too, as is a layer claiming one chord twice. Neovim
-  # and pi are never heard at once, so a chord both claim is no clash.
+  # and pi are never heard at once, so a chord both claim is no clash, and
+  # nor is one the picture viewer and the terminal both claim, in windows of
+  # their own; the desktop's is refused it as any layer's.
   a-claimed-chord-is-refused =
     let
       machine = bareNixos [
@@ -34,6 +36,16 @@
             {
               chord = "Ctrl+G";
               does = "Say where the file is";
+            }
+          ];
+          home-manager.users.someone.jitsusama.keys.swayimg = [
+            {
+              chord = "Ctrl+Shift+T";
+              does = "Turn the picture";
+            }
+            {
+              chord = "Super+Return";
+              does = "Show the picture whole";
             }
           ];
           home-manager.users.someone.jitsusama.kitty.keys = lib.mkAfter [
@@ -69,5 +81,7 @@
         && !lib.hasInfix "(Write the message in Neovim)" refusals
         && lib.hasInfix "super+enter: desktop (Open a terminal) takes it from terminal (Open a tab)" refusals
         && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
+        && !lib.hasInfix "(Turn the picture)" refusals
+        && lib.hasInfix "super+enter: desktop (Open a terminal) takes it from swayimg (Show the picture whole)" refusals
       );
 }

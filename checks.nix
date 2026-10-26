@@ -175,10 +175,13 @@ let
   # two of their faults corrected: the blur module doesn't say it depends on
   # Quickshell, whose Region it names, and PanelWindow is marked uncreatable
   # because Quickshell types it as the interface it makes a real window
-  # behind.
+  # behind. The launcher's maths sits beside them, as the machine's
+  # Quickshell finds it (modules/quickshell/nixos.nix).
   quickshellTypes = pkgs.runCommandLocal "quickshell-types" { } ''
     mkdir -p $out/lib/qt-6/qml
     cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
+    cp -r ${pkgs.callPackage ./modules/quickshell/maths/package.nix { }}/lib/qt-6/qml/Maths \
+      $out/lib/qt-6/qml/
     chmod -R u+w $out
     echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
     substituteInPlace $out/lib/qt-6/qml/Quickshell/_Window/quickshell-window.qmltypes \
@@ -354,6 +357,9 @@ let
     # Whether polkit lets an administrator tune the work slices shows only
     # with polkit and systemd.
     vm-admins-tune-the-work-slices = import ./tests/work-slices.nix { inherit self pkgs; };
+    # Whether a niri's kernel stacks are traced for its account and nobody
+    # else shows only with polkit, bpftrace and a kernel to trace.
+    vm-niri-is-traced-by-its-own = import ./tests/niri-off-cpu.nix { inherit self pkgs; };
   };
   vmTests = vmTestsOn vmHostPkgs;
 
@@ -400,13 +406,43 @@ let
     _: text: lib.concatStringsSep " " (lib.splitString "\n" (lib.trim text))
   ) (import ./check-descriptions.nix);
 
+  # Every jitsusama.* option a Linux machine can set, NixOS's and
+  # home-manager's, read from the two Linux examples, which between them
+  # import every module Linux has.
+  optionNames =
+    let
+      machines =
+        map
+          (
+            example:
+            (import example {
+              core = self;
+              inherit nixpkgs;
+            }).options
+          )
+          [
+            ./examples/nixos.nix
+            ./examples/laptop.nix
+          ];
+      spelled =
+        options:
+        map (option: lib.showOption (lib.remove "<name>" option.loc)) (
+          lib.collect lib.isOption (options.jitsusama or { })
+        );
+      home = options: options.home-manager.users.type.getSubOptions [ ];
+    in
+    lib.unique (lib.concatMap (options: spelled options ++ spelled (home options)) machines);
+
   # Gives every check what it proves as its meta.description, so a query of the
   # checks lists them, and holds that every check says it and every description
   # names a check. Only Linux has every check, so only it holds that.
   describe =
     checks:
     let
-      named = lib.attrNames checks ++ [ "every-check-says-what-it-proves" ];
+      named = lib.attrNames checks ++ [
+        "every-check-says-what-it-proves"
+        "no-name-says-a-replaced-word"
+      ];
       undescribed = lib.subtractLists (lib.attrNames descriptions) named;
       unchecked = lib.subtractLists named (lib.attrNames descriptions);
       wrong =
@@ -421,6 +457,21 @@ let
           every-check-says-what-it-proves =
             holds "every-check-says-what-it-proves" "Of the checks, ${lib.concatStringsSep "; and " wrong}."
               (wrong == [ ]);
+
+          # Every check's name and every jitsusama.* option's says the
+          # glossary's words, never a name it replaces (tests/names.py).
+          no-name-says-a-replaced-word =
+            pkgs.runCommandLocal "no-name-says-a-replaced-word"
+              {
+                names = builtins.toJSON (named ++ optionNames);
+                passAsFile = [ "names" ];
+              }
+              ''
+                cp ${./tests/glossary.py} glossary.py
+                cp ${./tests/names.py} names.py
+                ${lib.getExe pkgs.python3} names.py ${./docs/glossary.md} "$namesPath"
+                touch $out
+              '';
         };
     in
     lib.mapAttrs (
@@ -760,8 +811,9 @@ gather (
           touch $out
         '';
 
-      # The glossary gives each thing one word and each word one thing
-      # (tests/glossary.py), printing each word to settle.
+      # The glossary gives each thing one word and each word one thing within
+      # its context, and writes no name it replaces (tests/glossary.py),
+      # printing each word to settle.
       the-glossary-names-each-thing-once =
         pkgs.runCommandLocal "the-glossary-names-each-thing-once" { }
           ''

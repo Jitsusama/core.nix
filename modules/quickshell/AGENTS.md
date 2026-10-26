@@ -45,6 +45,10 @@ Joel sees.
   lock is on, run by `nixos.nix`; [`record-window/`][record], one
   window's recording for the recorder; and [`whereabouts/`][whereabouts],
   where the laptop is, from GeoClue, for the weather's here.
+- [`maths/`][maths]: libqalculate as a QML module, `Maths`, which the
+  launcher's sums and measures are worked out by in the shell's own
+  process, its definitions read once and each key asked with a time limit;
+  `nixos.nix` puts it on Quickshell's import path.
 - `*.patch`: Quickshell's own fixes, each saying in its header what it
   mends.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
@@ -110,6 +114,7 @@ a change to one surface can move another.
 [record]: record-window/
 [whereabouts]: whereabouts/
 [launcher]: launcher/
+[maths]: maths/
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
 [words]: launcher/words.json
