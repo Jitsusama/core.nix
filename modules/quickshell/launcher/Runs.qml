@@ -184,7 +184,6 @@ Provider {
             key: "verb:run:switch",
             verb: Words.verb("verb:run:switch"),
             name: Words.name("verb:run:switch"),
-            keywords: Words.keywords("verb:run:switch"),
             side: session.address,
             glyph: Words.glyph("verb:run:switch"),
             hue: "action",

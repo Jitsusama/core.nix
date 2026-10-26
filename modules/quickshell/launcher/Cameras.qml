@@ -61,7 +61,6 @@ Provider {
         const fields = {
             key: `camera:${name}`,
             name: called(name),
-            keywords: Words.keywords(known ? `cameras:${name}` : "cameras:plugged"),
             glyph: Theme.glyph.camera,
             hue: "machine",
             plain: false,

@@ -582,7 +582,6 @@ Scope {
             verbs: () => root.members(category)
         };
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([row.name].concat(category.words ?? []).join(" "));
         return row;
     })
 
@@ -607,13 +606,11 @@ Scope {
 
     // The category a word and a space step into: its own word, or one of
     // its others typed whole.
-    // A category by its id, its name or a word of its own, so its name and a
-    // space step into it: "machine " is Machine though the word is its name.
+    // A place by its name, its one word, so its name and a space step into
+    // it: "machine " is Machine.
     function categoryFor(word) {
         const said = word.toLowerCase();
-        return Words.categories.find(category => category.id === said
-            || category.name.toLowerCase() === said
-            || (category.words ?? []).includes(said)) ?? null;
+        return Words.categories.find(category => category.name.toLowerCase() === said) ?? null;
     }
 
     // What a place holds, in the order the vocabulary gives, which is by
@@ -739,7 +736,6 @@ Scope {
                 plain: true
             };
             row.prepared = Fuzzy.prepare(row.name);
-            row.keywords = Fuzzy.prepare([row.name].concat(command.words ?? []).join(" "));
             return row;
         });
     }
@@ -792,21 +788,15 @@ Scope {
         return Rank.order(found, {}).map(f => f.choice);
     }
 
-    // A row's hidden words, prepared to match: its keywords, and what the
-    // vocabulary says finds the thing it is (Words.qml's keywords), by its
-    // key, or the provider's things it holds, or the answer it gives.
-    // Made once for each row and kept on it, since a step's rows are
-    // searched at every key; a WeakMap keeping them crashed the shell once
-    // its rows were collected.
+    // A row's other words, prepared to match: its keywords, which say only
+    // what it holds of its own, such as a network card's name, since the
+    // vocabulary gives a thing one word, its name. Made once for each row
+    // and kept on it, since a step's rows are searched at every key; a
+    // WeakMap keeping them crashed the shell once its rows were collected.
     function hiddenWords(row) {
         if (row.hiddenMade !== undefined)
             return row.hiddenMade;
-        const key = String(row.key ?? "");
-        const id = key.startsWith("group:") ? key.slice("group:".length)
-            : String(row.is ?? "").startsWith("answer:") ? row.is.slice("answer:".length) : key;
-        const said = id !== "" && Words.things[id] ? Words.keywords(id) : "";
-        const own = row.keywords ? row.keywords.text ?? "" : "";
-        const words = [own, said].filter(part => part !== "").join(" ");
+        const words = row.keywords ? row.keywords.text ?? "" : "";
         const made = words === "" ? null : Fuzzy.prepare(words);
         row.hiddenMade = made;
         return made;
@@ -877,7 +867,7 @@ Scope {
         const collection = source.collection;
         const row = Object.assign(whole(source, false, false), { weight: source.weight });
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([row.name, collection.noun].concat(collection.words ?? []).join(" "));
+        row.keywords = Fuzzy.prepare([row.name, collection.noun].join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
         return row;

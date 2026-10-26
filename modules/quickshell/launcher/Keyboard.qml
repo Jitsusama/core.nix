@@ -30,13 +30,12 @@ Provider {
     // An act on the board, named, done and found as the vocabulary says
     // (Words.qml), with what it fills into its name ({layer}). An act,
     // not a key, so it says no kind (docs/design.md).
-    function act(id, key, fields, fill, more) {
+    function act(id, key, fields, fill) {
         return member(Object.assign({
             key: key,
             what: "",
             verb: Words.verb(id),
             name: Words.name(id, "", fill),
-            keywords: [more ?? "", Words.keywords(id)].join(" ").trim(),
             hue: "machine"
         }, fields));
     }
@@ -66,25 +65,24 @@ Provider {
             }, { layer: choice.layer }))
 
     // What can be done to the board's lights, found from anywhere by its
-    // own words ("brighten keyboard") or the lights' beside them; listed,
-    // they're the board's Lights' choices.
+    // own name; listed, they're the board's Lights' choices.
     readonly property var lights: !KeyboardLayout.present ? [] : [
         act("keyboard:lights-off", "keyboard:lights-off", {
             glyph: Theme.glyph.brightness,
             run: () => KeyboardLayout.lights(false)
-        }, {}, Words.keywords("keyboard:lights")),
+        }),
         act("keyboard:lights-on", "keyboard:lights-on", {
             glyph: Theme.glyph.brightness,
             run: () => KeyboardLayout.lights(true)
-        }, {}, Words.keywords("keyboard:lights")),
+        }),
         act("keyboard:brighter", "keyboard:brighter", {
             glyph: Theme.glyph.brightness,
             run: () => KeyboardLayout.brighter(true)
-        }, {}, Words.keywords("keyboard:lights")),
+        }),
         act("keyboard:dimmer", "keyboard:dimmer", {
             glyph: Theme.glyph.brightness,
             run: () => KeyboardLayout.brighter(false)
-        }, {}, Words.keywords("keyboard:lights"))
+        })
     ]
 
     // Every key with something of its own on each layer: a key that falls

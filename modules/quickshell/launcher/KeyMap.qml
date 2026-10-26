@@ -53,8 +53,6 @@ Provider {
     // How many letters of a level's first groups its row names, whole
     // names only, so they never run out of the room its right edge has.
     readonly property int room: 24
-    // How much of a hidden word finds it, short of the whole word.
-    readonly property int hiddenFrom: 4
 
     // A chord as words: its keys joined by +, those pressed one after
     // another a space apart, as the launcher's foot says them. One the key
@@ -158,8 +156,6 @@ Provider {
             side: first,
             chip: name.toLowerCase(),
             ask: provider.collection?.ask ?? "which shortcut?",
-            keywords: entry.words.length > 0 ? Fuzzy.prepare(entry.words.join(" ")) : null,
-            hidden: entry.hidden,
             from: level(rows, below, held),
             verbs: () => rows
         });
@@ -227,10 +223,9 @@ Provider {
     function found(typed, below, chords) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
-        const plain = Fuzzy.plainly(typed);
         const named = [];
         for (const row of below) {
-            const m = called(row, words, plain);
+            const m = called(row, words);
             if (m.score >= 0)
                 named.push({ item: row.prepared, score: m.score, grade: m.grade, row: row });
         }
@@ -249,25 +244,9 @@ Provider {
         };
     }
 
-    // How well a level answers what's typed: a hidden word typed whole
-    // names it exactly, as its whole name would, so "pi" is Agents before
-    // any name that only starts with it (Picture viewer); then by its name,
-    // or its words, or a hidden word by its first four letters or more.
-    function called(row, words, plain) {
-        if (row.hidden.includes(plain))
-            return Fuzzy.match(Fuzzy.prepare(plain), words, false);
-        const name = Fuzzy.match(row.prepared, words, false);
-        if (name.score >= 0)
-            return name;
-        const beside = row.keywords ? Fuzzy.match(row.keywords, words, false) : name;
-        if (beside.score >= 0)
-            return beside;
-        return hides(row, plain) ? { score: 1, grade: 0 } : beside;
-    }
-
-    function hides(row, plain) {
-        return row.hidden.some(word => word === plain
-            || (plain.length >= hiddenFrom && word.startsWith(plain)));
+    // How well a level answers what's typed: by its name, its one word.
+    function called(row, words) {
+        return Fuzzy.match(row.prepared, words, false);
     }
 
     // How well a chord answers what's typed: by its name, or failing that

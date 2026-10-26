@@ -205,7 +205,7 @@ Provider {
             name: linkName(link, shown),
             side: addressOf(link) || stateSaid[link.state],
             glyph: linkGlyph(link.kind),
-            keywords: `${link.name} ${Words.keywords(`networks:${link.kind}`)}`,
+            keywords: link.name,
             note: link.name === now.out ? "where the machine's traffic leaves" : ""
         }, () => provider.partsOf(link.name)));
         const out = shown.find(link => link.name === now.out) ?? shown[0] ?? null;

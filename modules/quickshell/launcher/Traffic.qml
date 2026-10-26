@@ -1,7 +1,7 @@
-// How the network is doing, answered in the field: "network speed",
-// "bandwidth", "traffic" or "ping". The headline is what the machine's own
+// How the network is doing, answered in the field: "speed", Network's one
+// word for it, or "round trip" alone. The headline is what the machine's own
 // cards carry in and out now, a spark of it beside; a step in are In and
-// Out, each with its spark, the Line (what the line carries at most, as the
+// Out, each with its spark, the Connection (what it carries at most, as the
 // shaper last measured it, and how full it is), the Round trip (how long
 // the internet takes to answer while the line is quiet, each server a step
 // in), what's Dropped, and each Connection, the tunnels and bridges too.
@@ -11,7 +11,8 @@
 // its time. While the answer is shown it's read again once a second, and
 // never more: nothing is read for a key, and nothing is spawned. What the
 // line can carry is never measured here; it's read from the file the shaper
-// writes, and a machine without the shaper simply has no Line or Round trip.
+// writes, and a machine without the shaper simply has no Connection or
+// Round trip.
 import qs
 import Quickshell.Io
 import QtQuick
@@ -26,14 +27,9 @@ Provider {
     // The words it answers whole, and by their start (Provider.qml), and
     // a part each asks for alone, by its id in the vocabulary (traffic:trip).
     readonly property var parts: ({
-        "ping": "trip",
-        "latency": "trip",
-        "round trip": "trip",
-        "download speed": "in",
-        "upload speed": "out"
+        "round trip": "trip"
     })
-    questions: ["network speed", "network performance", "internet speed", "bandwidth",
-        "throughput", "traffic"].concat(Object.keys(parts))
+    questions: ["speed"].concat(Object.keys(parts))
 
     function answer(typed) {
         const question = asks(typed);

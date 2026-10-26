@@ -148,7 +148,6 @@ Provider {
             key: session ? "verb:quest:switch" : "verb:quest:open",
             verb: Words.verb(session ? "verb:quest:switch" : "verb:quest:open"),
             name: Words.name(session ? "verb:quest:switch" : "verb:quest:open"),
-            keywords: Words.keywords(session ? "verb:quest:switch" : "verb:quest:open"),
             glyph: Words.glyph(session ? "verb:quest:switch" : "verb:quest:open"),
             hue: "action",
             later: true,

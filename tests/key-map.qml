@@ -1,7 +1,7 @@
 // Drives the launcher's Shortcuts (modules/quickshell/launcher/KeyMap.qml)
 // through Quickshell itself, over an account's own shortcuts, Neovim's and
 // pi's among them, with niri stood in for: its top is the layers, pi's named
-// Agents and found by "pi" typed whole, each saying its count and its first
+// Agents and found by that name alone, each saying its count and its first
 // groups; a layer holds its groups, then what no group takes; typing finds a
 // group by its name before every chord it starts, flat, at the top and
 // inside a layer, a group found from the top saying its layer, and one
@@ -103,8 +103,10 @@ ShellRoot {
             const twice = read.filter((one, at) => read.indexOf(one) !== at);
             expect("no two rows read alike", twice.length === 0, twice.join("; "));
 
-            expect("pi found whole", map.search("pi").rows[0].name === "Agents",
-                names(map.search("pi").rows.slice(0, 3)).join(", "));
+            expect("Agents found by its name", map.search("agents").rows[0].name === "Agents",
+                names(map.search("agents").rows.slice(0, 3)).join(", "));
+            expect("and never by the program's name", map.search("pi").rows.every(one =>
+                one.name !== "Agents"), names(map.search("pi").rows.slice(0, 3)).join(", "));
             expect("Agents not by a letter", map.search("p").rows.every(one => one.name
                 !== "Agents"), "found");
 
@@ -170,9 +172,9 @@ ShellRoot {
             expect("a group holding groups", names(github.verbs()).slice(0, 4).join(", ")
                 === "Issues, People and labels, Comments, Reactions",
                 names(github.verbs()).join(", "));
-            const pulls = row(neovim.verbs(), "Pull requests");
-            expect("pull requests, by what they hold", names(pulls.verbs()).slice(0, 4)
-                .join(", ") === "Finding pull requests, The pull request, Merging, Checks",
+            const pulls = row(neovim.verbs(), "Changes");
+            expect("changes, by what they hold", names(pulls.verbs()).slice(0, 4)
+                .join(", ") === "Finding changes, The change, Merging, Checks",
                 names(pulls.verbs()).join(", "));
             const held = top[1].verbs();
             const loose = held.findIndex(one => !one.verbs);

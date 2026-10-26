@@ -262,7 +262,6 @@ Provider {
             side: degrees(part.value),
             graph: level(part.value, part),
             glyph: Words.glyph("heat"),
-            keywords: Words.keywords(`heat:${part.id}`),
             note: [hotter, part.crit !== null ? `at most ${degrees(part.crit)}` : ""]
                 .filter(said => said !== "").join("; ")
         }, () => tempParts(part));
@@ -315,7 +314,6 @@ Provider {
             side: times(said.times),
             graph: spark(Machine.spark(drawn, 1)),
             glyph: Words.glyph("heat"),
-            keywords: Words.keywords("heat:throttled"),
             note: said.ms ? `for ${lasted(said.ms)} in all, since the machine started`
                 : "since the machine started"
         }, () => throttledParts(said));
@@ -354,7 +352,6 @@ Provider {
             side: fan.value > 0 ? rpm(fan.value) : "still",
             graph: fan.max ? bar(fan.value / fan.max, false) : undefined,
             glyph: Theme.glyph.fan,
-            keywords: Words.keywords(`heat:${fan.id}`),
             note: [fan.max ? `rated for ${rpm(fan.max)}` : "",
                 fan.power === null ? "" : fan.power >= 1 ? "at full power"
                 : `at ${Math.round(fan.power * 100)}% power`]

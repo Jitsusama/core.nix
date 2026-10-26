@@ -448,7 +448,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         f" && echo '{json.dumps(shaped)}' > /run/shaper/status.json"
     )
     rate = r"[\d.,]+ (b|kb|Mb|Gb)/s"
-    desktop.answer("network speed")
+    desktop.answer("speed")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
@@ -461,14 +461,16 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.step_in()
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
-        lambda shown: shown["rows"][:5] == ["In", "Out", "Line", "Round trip", "Dropped"]
+        lambda shown: shown["rows"][:5] == ["In", "Out", "Connection", "Round trip", "Dropped"]
     )
-    assert desktop.showing()["things"][2]["reads"] == "Line · 40 Mb/s in · 12 Mb/s out"
+    assert (
+        desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
+    )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # "ping" asks the round trip alone, the middle of the servers, each
-    # a step in, the quickest first.
-    desktop.answer("ping")
+    # "round trip" asks it alone, the middle of the servers, each a step
+    # in, the quickest first.
+    desktop.answer("round trip")
     desktop.launcher_until(
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
@@ -859,17 +861,17 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
         lambda shown: (
             shown["held"] == ["network"]
             and shown["typed"] == ""
-            and {"Addresses", "Network speed"} <= set(shown["rows"])
+            and {"Address", "Speed"} <= set(shown["rows"])
         )
     )
     # What it holds is in its own order, Wi-Fi before what it's
     # connected by, then its typed commands, last, in theirs.
     held = desktop.showing()["rows"]
     ip = "ip \u27e8address or network\u27e9"
-    assert held.index("Addresses") < held.index("Network speed") < held.index(ip), held
+    assert held.index("Address") < held.index("Speed") < held.index(ip), held
     assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.photograph("launcher-category")
-    desktop.type_in("add", selecting="Addresses")
+    desktop.type_in("add", selecting="Address")
     # The left arrow takes what's typed, then steps out with the word
     # put back.
     machine.send_key("left")
@@ -899,19 +901,19 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_the_sessions_acts_are_found_from_anywhere_by_joels_own_words(desktop: Desktop) -> None:
-    """The session's acts are found from anywhere by Joel's own words."""
+def test_the_power_acts_are_found_by_their_names_and_an_old_name_finds_none(
+    desktop: Desktop,
+) -> None:
+    """The power acts are found by their names, and an old name finds none."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    # Short names, each found by the start Joel types, or a word of
-    # his; Escape, never Return, since Return would do them.
+    # Short names, each found by the start Joel types; Escape, never
+    # Return, since Return would do them.
     for typed, name, verb in [
-        ("sus", "Suspend", "suspend"),
-        ("caff", "Keep awake", "start"),
+        ("sle", "Sleep", "sleep"),
+        ("keep", "Keep awake", "start"),
         ("reb", "Reboot", "reboot"),
-        ("donot", "Do not disturb", "start"),
-        # An old name, kept as a hidden word.
-        ("suspend the machine", "Suspend", "suspend"),
+        ("do not", "Do not disturb", "start"),
     ]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
@@ -923,6 +925,13 @@ def test_the_sessions_acts_are_found_from_anywhere_by_joels_own_words(desktop: D
         )
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # One word each: the old name finds what it named no more, so Sleep is
+    # learned once.
+    desktop.answer("suspend")
+    said = (desktop.showing()["selected"] or {}).get("name")
+    assert said != "Sleep", f"suspend still found Sleep: {said}"
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
@@ -1028,7 +1037,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     # first shown.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("computer ")
+    machine.send_chars("machine ")
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["computer"]

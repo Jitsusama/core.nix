@@ -29,7 +29,6 @@ Provider {
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state),
-            keywords: Words.keywords(key, state),
             glyph: Words.glyph(key, state)
         }, fields));
     }
@@ -88,7 +87,6 @@ Provider {
     readonly property var profile: holderRow({
         key: "session:profile",
         name: Words.name("session:profile"),
-        keywords: Words.keywords("session:profile"),
         side: profileInUse !== "" ? Words.of(profileInUse).part : "",
         glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile")
     }, () => [])
@@ -120,7 +118,6 @@ Provider {
         const key = `session:${action.was}`;
         const sure = Words.of(key).sure ?? "";
         return said(key, "", {
-            keywords: `${action.was.toLowerCase()} ${Words.keywords(key)}`,
             chord: action.does ? bound(action.does) : [],
             hue: "machine",
             run: action.run,

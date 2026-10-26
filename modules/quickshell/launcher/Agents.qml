@@ -123,7 +123,6 @@ Provider {
             key: "verb:agent:switch",
             verb: Words.verb("verb:agent:switch"),
             name: Words.name("verb:agent:switch"),
-            keywords: Words.keywords("verb:agent:switch"),
             glyph: Words.glyph("verb:agent:switch"),
             hue: "action",
             later: true,

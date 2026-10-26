@@ -22,7 +22,7 @@ Provider {
         return copyRow({
             key: key,
             name: known ? said.name : program.name ?? program.app,
-            keywords: known ? Words.keywords(key) : program.keywords ?? "",
+            keywords: known ? "" : program.keywords ?? "",
             // The program's row it's a part of, and its name there.
             of: said.of ?? `program:${program.app}`,
             part: said.part ?? said.name,

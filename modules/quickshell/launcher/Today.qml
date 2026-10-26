@@ -1,5 +1,6 @@
-// The date and what's known of it, answered in the field: "date", "today",
-// "day", "week", "utc", "epoch" or "unix time". The headline is the date
+// The date and what's known of it, answered in the field: "date" or
+// "today", or a part alone: "week", "day of the year", "utc" or "epoch".
+// The headline is the date
 // in full; the rows are the week of the year, the day of the year and how
 // many are left, the time in UTC, the zone with its offset, and the time
 // as seconds since the epoch, each named first and copied by Return. It's
@@ -15,8 +16,7 @@ Provider {
     examples: ["date", "epoch"]
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["date", "today", "day", "week", "week number", "what day is it", "what's the date",
-        "day of the year", "utc", "gmt", "epoch", "unix time", "unix", "timestamp"]
+    questions: ["date", "today", "week", "day of the year", "utc", "epoch"]
 
     function answer(typed) {
         if (asks(typed) === "")

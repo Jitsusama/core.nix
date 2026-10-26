@@ -56,7 +56,6 @@ Provider {
         what: "",
         verb: Words.verb("wifi:radio", on ? "" : "off"),
         name: Words.name("wifi:radio", on ? "" : "off"),
-        keywords: `wifi wireless network internet ${Words.keywords("wifi:radio", on ? "" : "off")}`,
         glyph: Words.glyph("wifi:radio", on ? "" : "off"),
         hue: "machine",
         run: () => Wifi.turn(!provider.on)
@@ -70,7 +69,6 @@ Provider {
         what: "",
         verb: Words.verb("wifi:sign-in"),
         name: Words.name("wifi:sign-in", "", { network: SignIn.network }),
-        keywords: `wifi ${Words.keywords("wifi:sign-in")}`,
         glyph: Words.glyph("wifi:sign-in"),
         hue: "machine",
         run: () => SignIn.open()
@@ -450,7 +448,7 @@ Provider {
         const signal = read?.signal ?? link.signal;
         const rows = [holds(key("signal"), "signal",
             signal !== null ? `${signal} dBm` : "not read yet", {
-                keywords: `${card} ${Words.keywords("wifi:signal")}`,
+                keywords: card,
                 graph: signalSeen.length > 0
                     ? { shape: "spark", values: signalSeen, warn: false } : undefined,
                 note: link.margin !== null ? `${link.margin} dB over the noise`
@@ -458,7 +456,7 @@ Provider {
             }, () => provider.signalParts(name, card))];
         const rates = speeds(link, read);
         rows.push(holds(key("speed"), "speed", rates.side !== "" ? rates.side : "not read yet",
-            { keywords: Words.keywords("wifi:speed"), note: rates.note },
+            { note: rates.note },
             () => provider.speedParts(name, card)));
         return rows;
     }
@@ -585,7 +583,6 @@ Provider {
         const trouble = read.retries + (read.failed ?? 0);
         return holds(`wifi:link:${card}:speed:retries`, "retries", trouble === 0 ? "none"
             : `${number(read.retries)} sent again, ${number(read.failed ?? 0)} never sent`, {
-                keywords: Words.keywords("wifi:retries"),
                 note: "since it joined"
             }, () => provider.retryParts(card));
     }
@@ -625,7 +622,7 @@ Provider {
             : /WEP/.test(standard) ? "broken" : "weak";
         return holds("wifi:protection", "protection",
             `${account ? "an account" : "a password"}, ${strength}`, {
-                keywords: `${standard} ${Words.keywords("wifi:protection")}`,
+                keywords: standard,
                 note: standard
             }, () => provider.guardParts(name));
     }
@@ -669,7 +666,6 @@ Provider {
         const bands = detail.bands.map(count => `${count.points} on ${ghz[count.band]}`);
         return holds("wifi:heard", "heard",
             bands.join(" \u00b7 ").replace(/ GHz(?= \u00b7)/g, ""), {
-                keywords: Words.keywords("wifi:heard"),
                 glyph: Theme.glyph.accessPoint
             }, () => {
                 const now = provider.detailOf(name);
@@ -704,7 +700,7 @@ Provider {
             side: `${point.signal} dBm \u00b7 ~${point.estimate} Mb/s${mark}`,
             graph: level(point.signal),
             glyph: strengthGlyph(point.bars, point.protection !== null),
-            keywords: `${point.bssid} access point`,
+            keywords: point.bssid,
             note: fastest ? fitting(detail.best.reasons) : ""
         }, () => provider.pointParts(detail.name, point.bssid));
     }
@@ -751,7 +747,6 @@ Provider {
         return Object.assign(fields, {
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`, state, fields.fill),
-            keywords: Words.keywords(`verb:${id}`, state),
             hue: "action"
         });
     }

@@ -164,7 +164,6 @@ Provider {
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state),
-            keywords: Words.keywords(key, state),
             glyph: Words.glyph(key, state),
             hue: "action"
         }, fields));
@@ -200,7 +199,6 @@ Provider {
             all.push(act("verb:below", "", {
                 // What it opens, so the name needn't say it.
                 side: program,
-                keywords: `${Words.keywords("verb:below")} open another ${program} below it`,
                 chord: provider.launcher.belowChord,
                 run: below
             }));

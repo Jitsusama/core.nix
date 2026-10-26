@@ -70,7 +70,6 @@ Provider {
         what: "",
         verb: Words.verb("bluetooth:radio", on ? "" : "off"),
         name: Words.name("bluetooth:radio", on ? "" : "off"),
-        keywords: `bluetooth bt headphones ${Words.keywords("bluetooth:radio", on ? "" : "off")}`,
         glyph: Words.glyph("bluetooth:radio", on ? "" : "off"),
         hue: "machine",
         run: () => provider.adapter.enabled = !provider.on
@@ -164,7 +163,6 @@ Provider {
     readonly property var adapterRow: adapter === null ? null : holderRow({
         key: "bluetooth:adapter",
         name: Words.name("bluetooth:adapter"),
-        keywords: Words.keywords("bluetooth:adapter"),
         side: on ? "on" : "off",
         glyph: Theme.glyph.bluetooth,
         adapter: adapter
@@ -627,7 +625,6 @@ Provider {
             rows.push(thing({
                 key: "verb:bluetooth-passkey",
                 name: Words.name("verb:bluetooth-passkey"),
-                keywords: Words.keywords("verb:bluetooth-passkey"),
                 glyph: Theme.glyph.password,
                 hue: "action",
                 later: true,

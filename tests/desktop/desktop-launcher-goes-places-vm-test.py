@@ -125,7 +125,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     )
     # Each named first, as every part is, then what it says.
     for name, side in [
-        ("Task", r"QEST-20261022-TESTQA"),
+        ("Quest", r"QEST-20261022-TESTQA"),
         ("Address", r"TESTQA"),
         ("Started", r"\d\d:\d\d"),
         ("Spent today", r"\$12\.50"),
@@ -300,9 +300,9 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
     )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # pi's word finds them, named Tasks in Joel's.
+    # Agents' one word for them finds them.
     desktop.type_in("quests")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tasks")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Quests")
     machine.send_key("ret")
     # The one driving first, naming the session that has it loaded.
     desktop.launcher_until(
@@ -391,9 +391,9 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # pi's word finds them, named Helpers in Joel's.
-    desktop.type_in("runs")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Helpers")
+    # Agents' one word for them finds them.
+    desktop.type_in("subagents")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Subagents")
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
@@ -437,8 +437,8 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     # Return on the run itself goes to its session.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("helpers")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Helpers")
+    desktop.type_in("subagents")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Subagents")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
     machine.send_key("ret")

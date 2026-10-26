@@ -88,7 +88,6 @@ Provider {
         key: "on:waiting",
         verb: Words.verb("on:waiting"),
         name: Words.name("on:waiting"),
-        keywords: Words.keywords("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
         hue: Steward.items.some(each => each.ready) ? "strong" : "muted",
         side: String(Steward.items.length),

@@ -37,23 +37,9 @@ OTHER_SENSE = {
     "shortcuts:neovim:editor:commands": "Neovim's command line, not a connection",
 }
 
-# Things waiting on the launcher's words step (Y2YBTS), each with its rename.
-WAITING = {
-    "agents:task": "task to quest",
-    "quests": "task to quest",
-    "runs": "helper to subagent",
-    "traffic": "network speed to speed",
-    "traffic:line": "line to connection",
-    "heat:cpu-fan": "CPU to processor",
-    "networks:first": "host to address, a subnet's usable one",
-    "networks:last": "host to address, a subnet's usable one",
-    "networks:hosts": "host to address, a subnet's usable one",
-    "session:Suspend": "suspend to sleep",
-    "shortcuts:neovim:github:notifications": "notification to notice",
-    "shortcuts:neovim:pulls": "pull request to change",
-    "shortcuts:neovim:pulls:finding": "pull request to change",
-    "shortcuts:neovim:pulls:pull": "pull request to change",
-}
+# Things waiting on a rename, each with it. The launcher's words step made
+# every one it held.
+WAITING: dict[str, str] = {}
 
 
 def shown(entry: dict[str, object]) -> Iterator[str]:
