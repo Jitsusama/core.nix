@@ -998,6 +998,16 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         f'{described} | grep -qF \'"reach":"signIn"\'', timeout=timedelta(seconds=60)
     )
+    # Its own first act is to sign in to it, beside Disconnect it.
+    desktop.as_account("qs ipc call launcher collection wifi")
+    desktop.launcher_ready()
+    desktop.type_in("lant", selecting="Lantern")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:2] == ["Sign in to it", "Disconnect it"]
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.photograph("launcher-sign-in")

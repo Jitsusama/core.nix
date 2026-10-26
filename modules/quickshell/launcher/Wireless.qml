@@ -1,8 +1,9 @@
-// Wi-Fi, a collection: the networks in the air, the one joined first, then
-// those saved, then the rest by signal, each glyph saying how strong it is
-// and whether it's locked, the footer how it's joined. Return leaves the one
-// joined or joins another, and the launcher stays, saying how far the join
-// has got, until the network takes the card or says why not; a locked
+// Wi-Fi, a collection: the networks in the air, the one connected first,
+// then those saved, then the rest by signal, each glyph saying how strong
+// it is and whether it's locked, the footer how it's connected. Return
+// disconnects the one connected or connects another, and the launcher stays,
+// saying how far it has got, until the network takes the card or says why
+// not, in the words Bluetooth's devices use, since it's the same act; a locked
 // network met for the first time, or one whose password didn't work, asks
 // for its password in the field beside the padlock, and one asking for an
 // account asks its name, its server's domain and its password in turn, the
@@ -13,7 +14,8 @@
 // generation, coding, width, channel and Retries a step in), its
 // Protection, said for what it means, its Access points, each a step into
 // its own parts, with the one wifid would pick and why, and how long it's
-// been Connected for. Turning Wi-Fi off and on is an action in the main search.
+// been Connected for. A network wanting a sign-in offers to sign in to it
+// first. Turning Wi-Fi off and on is an action in the main search.
 // Everything else comes from wifid over its socket (Wifi.qml), and the
 // cards look for networks only while the launcher is open. What wifid
 // doesn't say of a link (each antenna, transmit power, retries, how long
@@ -171,7 +173,7 @@ Provider {
     function passwordFor(network, account) {
         return thing({
             key: `wifi:${network.name}:account-password`,
-            verb: "join",
+            verb: "connect",
             name: network.name,
             chip: account.serverDomain,
             ask: "password",
@@ -184,7 +186,7 @@ Provider {
 
     // How far a join has got, in the footer's words.
     readonly property var stages: ({
-        joining: "joining",
+        joining: "connecting to",
         gettingAddress: "getting an address from",
         checking: "seeing how far it reaches:"
     })
@@ -192,7 +194,7 @@ Provider {
     // What the footer says while a network is joined, or wouldn't be.
     function said(network, otherwise) {
         if (Wifi.joining && Wifi.joining.name === network.name)
-            return `${stages[Wifi.joining.stage] ?? "joining"} ${network.name}\u2026`;
+            return `${stages[Wifi.joining.stage] ?? stages.joining} ${network.name}\u2026`;
         if (troubled === network.name && trouble !== "")
             return trouble;
         return otherwise;
@@ -203,7 +205,7 @@ Provider {
         const locked = security(network);
         return thing({
             key: `wifi:${network.name}:password`,
-            verb: "join",
+            verb: "connect",
             name: network.name,
             chip: network.name,
             ask: "password",
@@ -227,7 +229,7 @@ Provider {
         const opening = met && locked.account ? provider.accountFor(network, "peap") : null;
         return member({
             key: `wifi:${network.name}`,
-            verb: joined ? "leave" : "join",
+            verb: joined ? "disconnect" : "connect",
             name: network.name,
             glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
@@ -753,6 +755,13 @@ Provider {
 
     function verbs(network, locked) {
         const rows = [];
+        // A sign-in is what's next while the network wants one.
+        if (SignIn.network === network.name)
+            rows.push(thing(act("wifi-sign-in", "", {
+                verb: Words.verb("verb:wifi-sign-in"),
+                glyph: Words.glyph("verb:wifi-sign-in"),
+                run: () => SignIn.open()
+            })));
         if (network.connected)
             rows.push(thing(act("wifi-leave", "", {
                 glyph: Theme.glyph.offline,
@@ -760,7 +769,7 @@ Provider {
             })));
         else if (network.known || !locked.locked || locked.password)
             rows.push(thing(act("wifi-join", "", {
-                verb: "join",
+                verb: "connect",
                 glyph: Theme.glyph.wireless,
                 network: network.name,
                 stays: true,
