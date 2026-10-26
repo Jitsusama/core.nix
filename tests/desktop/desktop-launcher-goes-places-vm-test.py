@@ -842,9 +842,10 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
-    # Home holds still while something it answers changes: the
-    # machine's queue, which a busy machine writes all the time, once
-    # made it again and moved it from under the selection.
+    # Home holds still while the machine's queue changes, which a busy
+    # machine writes all the time: it once made home again and moved it
+    # from under the selection. Nothing of the machine's shows at home,
+    # so the queue asks nothing again there at all.
     scrolled = desktop.showing()
     since = desktop.mark()
     queued = {"v": 1, "heartbeat": float(machine.succeed("date +%s")), "machine": {}, "jobs": []}
@@ -852,7 +853,6 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    desktop.reported("asked again by ", lambda _: True, since)
     still = desktop.showing()
     assert (still["scrolled"], still["selected"]) == (scrolled["scrolled"], scrolled["selected"]), (
         f"home moved as the queue changed: from {scrolled} to {still}"
@@ -860,6 +860,10 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.photograph("launcher-home-categories")
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
+    said = desktop.as_account(
+        f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
+    )
+    assert "asked again by machine" not in said, f"the queue asked home again: {said}"
     # Tab, with nothing typed, goes straight to them, and Return on one
     # steps into it.
     desktop.as_account("qs ipc call launcher toggle")

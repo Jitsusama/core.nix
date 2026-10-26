@@ -500,15 +500,23 @@ Provider {
         }
     }
 
-    // The queue is heard, not read on a clock, so while the launcher's open
-    // its answer is asked again as the harness writes it: a job finishing
-    // while it's shown says so, and one asked before the file was first
-    // heard answers once it is.
+    // The queue is heard, not read on a clock, so while one of the
+    // machine's answers is shown it's asked again as the harness writes it:
+    // a job finishing while it's shown says so, and one asked before the
+    // file was first heard answers once it is. Asked again while nothing of
+    // the machine's shows, what Joel had typed was searched afresh each
+    // time the queue moved, for nothing. Only something typed can have
+    // asked before the file was heard, so at home it isn't asked at all.
+    property bool queueHeard: false
+
     Connections {
         target: Jobs
 
         function onSaidChanged() {
-            if (provider.launcher?.open)
+            const first = !provider.queueHeard;
+            provider.queueHeard = Jobs.said !== null;
+            if (provider.shown || (first && provider.launcher?.open
+                && provider.launcher.typed !== ""))
                 provider.answered();
         }
     }
@@ -875,6 +883,7 @@ Provider {
         const wasted = Jobs.said.wasted?.today ?? 0;
         return {
             headline: counted === "" ? "nothing queued" : counted,
+            live: provider,
             rows: rows,
             note: Jobs.silent ? "the queue has stopped saying"
                 : [room.availableGib !== undefined ? `${room.availableGib} GiB to spare` : "",
