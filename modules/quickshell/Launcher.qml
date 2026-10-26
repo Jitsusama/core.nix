@@ -871,18 +871,18 @@ Scope {
         return keys;
     }
 
-    // The foot's keys in the order it says them.
-    // Where the foot's keys start and how wide Return's place is, so they
-    // hold still. Said for the selected row alone, the keys moved as the
-    // arrows went from a row that opens to one with more behind it, and
-    // squeezed how things stand beside them from words to glyphs and back
-    // (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So Return,
-    // always first, keeps a place as wide as the longest word it's said
-    // since the launcher opened, and the keys start where the widest of
-    // them has needed. The rest follow Return close by, each as wide as it
-    // is: a place kept for every key any row had left holes between them as
-    // soon as Joel typed ("the whitespacing ... is all fucked up"), and took
-    // room from how things stand that no row used. Both only grow while the
+    // How far in the foot's keys may reach and how wide Return's place is,
+    // so they hold still. Said for the selected row alone, the keys moved
+    // as the arrows went from a row that opens to one with more behind it,
+    // and squeezed how things stand beside them from words to glyphs and
+    // back (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So
+    // Return, last at the right end, keeps a place as wide as the longest
+    // word it's said since the launcher opened, and how things stand keeps
+    // clear of where the widest set of keys has reached. The rest sit just
+    // before Return, each as wide as it is: a place kept for every key any
+    // row had left holes between them as soon as Joel typed ("the
+    // whitespacing ... is all fucked up"), and took room from how things
+    // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
     // under the selection. They open as wide as most rows need, Return's
     // place as wide as "connect" and the keys as wide as a program's at
@@ -1879,8 +1879,8 @@ Scope {
             kind: root.kind,
             footer: foot.said,
             glance: standing.said,
-            // Where the keys start, which holds still as the arrows go.
-            keysAt: Math.round(keys.x),
+            // Where Return's key starts, which holds still as the arrows go.
+            keysAt: Math.round(foot.returnAt),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY)
         });
@@ -2391,8 +2391,22 @@ Scope {
 
                         readonly property var choice: root.selected ?? root.asking
                         readonly property var told: root.keysFor(choice)
-                        // Where the keys start: as far in as the widest of
-                        // them has needed since the launcher opened.
+                        // As the foot says them: Return last, at the right
+                        // end, the rest before it. Return first, in a place
+                        // kept for the widest set, left holes after the keys
+                        // a row didn't have; at the end, what Return says
+                        // keeps to the right edge and the others come and
+                        // go only to its left, as an action bar's main act
+                        // does.
+                        readonly property var shown: told.length === 0 ? []
+                            : told.slice(1).concat([told[0]])
+                        readonly property real returnPlace: told.length === 0 ? 0
+                            : root.returnPlace(told[0])
+                        // Where Return's place starts, which holds still.
+                        readonly property real returnAt: width - Theme.space.l - returnPlace
+                        // How far in the keys may reach: as far as the
+                        // widest of them has needed since the launcher
+                        // opened, so the left's room holds still too.
                         readonly property real keysFrom: width - Theme.space.l
                             - Math.max(root.footKeysWidest, keys.implicitWidth)
                         // The room the left has, short of the keys.
@@ -2510,12 +2524,14 @@ Scope {
 
                         KeyHints {
                             id: keys
-                            x: foot.keysFrom
+                            x: foot.width - Theme.space.l - implicitWidth
                             anchors.verticalCenter: parent.verticalCenter
-                            // The selected row's keys, Return first in its
+                            // The selected row's keys, Return last in its
                             // place (footVerbWidest), the rest close by.
-                            keys: foot.told
-                            widths: foot.told.length > 0 ? [root.returnPlace(foot.told[0])] : []
+                            keys: foot.shown
+                            endsRight: true
+                            widths: foot.shown.map((key, at) => at === foot.shown.length - 1
+                                ? foot.returnPlace : 0)
                         }
                     }
                 }
