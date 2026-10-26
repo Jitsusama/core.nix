@@ -92,7 +92,7 @@ ShellRoot {
             Sessions.running = [{ address: "LEADER", window: { id: 9 }, presence: { owner: { pid: 4242 } } }];
             const led = runs.everything()[0];
             expect("its session named",
-                /^helpers · 1 of 2 done · 1[01] min · LEADER$/.test(led.side) && led.verb === "switch", led.side);
+                /^fleet · 1 of 2 done · 1[01] min · LEADER$/.test(led.side) && led.verb === "switch", led.side);
             led.run();
             expect("going to its session", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":9}}',
                 JSON.stringify(Niri.acted));

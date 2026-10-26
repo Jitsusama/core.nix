@@ -843,10 +843,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     """The launcher sets the power profile."""
     machine = desktop.machine
-    # By its name.
+    # By its name, power saver last, where what follows starts from.
     for typed, profile, name in [
-        ("power saver", "power-saver", "Power saver"),
         ("balanced power", "balanced", "Balanced power"),
+        ("power saver", "power-saver", "Power saver"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()

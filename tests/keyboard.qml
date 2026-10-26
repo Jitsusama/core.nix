@@ -105,11 +105,11 @@ ShellRoot {
                 && names[1] === "Flash the keyboard" && !names.includes("Backlight")
                 && !names.some(name => /^Lock .* on$|^Let .* go$|keyboard's backlight/.test(name)),
                 names.filter(name => /^Lock |^Let |backlight/.test(name)).join(", "));
-            const numb = keyboard.search("numb").rows.map(row => row.name);
-            const punk = keyboard.search("punk").rows.map(row => row.name);
-            expect("the locked layer let go", numb.includes("Let Numb go")
-                && !numb.includes("Lock Numb on") && punk.includes("Lock Punk on"),
-                numb.concat(punk).join(", "));
+            const numbActs = keyboard.search("numb").rows.map(row => row.name);
+            const punkActs = keyboard.search("punk").rows.map(row => row.name);
+            expect("the locked layer let go", numbActs.includes("Let Numb go")
+                && !numbActs.includes("Lock Numb on") && punkActs.includes("Lock Punk on"),
+                numbActs.concat(punkActs).join(", "));
             const lit = ["turn off keyboard", "turn on keyboard", "brighten keyboard",
                 "dim keyboard"].map(typed => first(typed).name);
             expect("each light's choice found", lit.join(", ") === "Turn off the "

@@ -188,12 +188,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
-    # The words a poor memory reaches for ask the same answers.
+    # Each answer by its one word, and an old one asks nothing.
     # "lag" answers from lag-watch's last ten seconds.
     for typed, said in [
-        ("battery life", f"{charge}%"),
-        ("how hot", ""),
-        ("ram", ""),
+        ("battery", f"{charge}%"),
+        ("heat", ""),
+        ("memory", ""),
         ("lag", ""),
     ]:
         desktop.answer(typed)
@@ -974,7 +974,7 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     # another thing. Home, with nothing typed, lists nothing twice
     # either, a collection picked often staying in its own place.
     for typed, leading in [
-        ("tuple", ["Calls"]),
+        ("calls", ["Calls"]),
         ("lock", ["Lock"]),
         ("kitty", ["kitty"]),
         ("do not disturb", ["Do not disturb"]),

@@ -96,10 +96,13 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
-    # The launcher's foot counts it, working, as its presence says.
+    # The launcher's foot wears the agents' mark while a session runs. How
+    # many work it says only while the foot has room, which it hasn't at
+    # the test machine's width with the keys' room kept, so the mark alone
+    # (modules/theme/glyphs.nix's agent) is what's asked of it here.
     since = desktop.mark()
     desktop.as_account("qs ipc call launcher toggle")
-    desktop.reported("stands ", lambda rest: "1 working" in rest, since)
+    desktop.reported("stands ", lambda rest: "\U000f06a9" in rest, since)
     desktop.launcher_ready()
     # Its collection by what it's called, then the session named
     # whole, as its README is, not as its window's title.
@@ -1166,7 +1169,7 @@ def test_a_windows_verbs_follow_it_while_theyre_shown(desktop: Desktop) -> None:
 def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Desktop) -> None:
     """The machine's programs are there the first time it's asked."""
     machine = desktop.machine
-    for figure in ("cpu", "memory"):
+    for figure in ("processor", "memory"):
         desktop.answer(figure)
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Using it" in shown["rows"])
@@ -1177,7 +1180,7 @@ def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Deskt
 def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
     """A word typed whole lands on what it says."""
     machine = desktop.machine
-    # "pi" is meant for pi's sessions, so there has to be one.
+    # Agents lists pi's sessions, so there has to be one.
     desktop.pi_session()
     closed = desktop.in_session(LAUNCHER_OPEN)
 
@@ -1185,17 +1188,12 @@ def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
         """Give a test that Return's row is the one with this key."""
         return lambda shown: bool(shown["selected"]) and shown["selected"]["is"] == key
 
-    # "quiet" is do not disturb's own word, and only the start of the
-    # volume's "quieter". "pi" is two letters, too few for a
-    # collection's words to count by their start, so the Clipboard's
-    # pictures don't. "copy" and "light" each once found nothing.
+    # Each by its one word, the name it shows. "light" once found
+    # nothing.
     lands: list[tuple[str, Callable[[Json], bool]]] = [
-        ("quiet", selects("session:quiet")),
-        (
-            "pi",
-            lambda shown: selects("collection:agents")(shown) and "Clipboard" not in shown["rows"],
-        ),
-        ("copy", selects("collection:clipboard")),
+        ("do not disturb", selects("session:quiet")),
+        ("agents", selects("collection:agents")),
+        ("clipboard", selects("collection:clipboard")),
         ("light", lambda shown: "Brighten the screen" in shown["rows"]),
     ]
     for typed, holds in lands:

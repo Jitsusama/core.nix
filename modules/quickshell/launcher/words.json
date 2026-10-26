@@ -2191,7 +2191,7 @@
     {
       "id": "shortcuts:neovim:git:changes",
       "in": "shortcuts",
-      "name": "Changes"
+      "name": "Edits"
     },
     {
       "id": "shortcuts:neovim:git:staging",
@@ -2231,7 +2231,7 @@
     {
       "id": "shortcuts:neovim:github:notifications",
       "in": "shortcuts",
-      "name": "Notices"
+      "name": "GitHub notices"
     },
     {
       "id": "shortcuts:neovim:pulls:finding",
@@ -3587,14 +3587,6 @@
         "bluetooth"
       ],
       "why": "Both list devices: sound's outputs and inputs, and what's paired."
-    },
-    {
-      "word": "alerts",
-      "things": [
-        "notices",
-        "session:quiet"
-      ],
-      "why": "Do not disturb holds the notifications, so it's found beside them."
     },
     {
       "word": "tabs",
