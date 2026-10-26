@@ -284,6 +284,11 @@ INBOX = f"{HARNESS}/steer/TESTQA"
 def an_orchestrator(desktop: Desktop) -> None:
     """Make pi's session an orchestrator, Lighthouse, as the harness lists one, its inbox empty."""
     desktop.pi_session()
+    lighthouse_listed(desktop)
+
+
+def lighthouse_listed(desktop: Desktop) -> None:
+    """List Lighthouse as an orchestrator, as the harness would, its inbox empty."""
     listed = {
         "orchestrators": [
             {"quest": "QEST-20261022-TESTQA", "address": "TESTQA", "short": "Lighthouse",
@@ -378,6 +383,39 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
         lambda shown: (
             shown["rows"][:2] == ["You said", "How it went"]
             and "Watching" in str((shown["selected"] or {}).get("reads", ""))
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) -> None:
+    """A question asked is talked over with an orchestrator, from Ask's answer."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    desktop.answer("what is a fjord?")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
+    # A step in, talking it over with Lighthouse comes before asking in
+    # a session of its own.
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:2] == ["Talk to Lighthouse", "Ask in a session"]
+    )
+    machine.send_key("ret")
+    # The question goes to its inbox with what was answered, and the
+    # launcher lands inside Lighthouse, where its talks say how each went.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"cat {INBOX}/*.json | grep -q 'The launcher answered: A fjord'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
+    assert said["text"].startswith("what is a fjord?\n\nThe launcher answered: "), said
+    assert said["from"] == "joel", said
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Agents", "Orchestrators", "Lighthouse"] and "Talk" in shown["rows"]
         )
     )
     machine.send_key("esc")
@@ -1213,6 +1251,20 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # keyboard's keys, which only say what they do, aren't listed.
     assert not [e for e in entries if e["in"].startswith("Desktop \u203a Windows \u203a ")]
     assert not [e for e in entries if "keyboard:key:" in e["id"]]
+    # A collection's own parts are listed, as a step into it shows them:
+    # Agents' Orchestrators, and inside it each orchestrator.
+    lighthouse_listed(desktop)
+    machine.wait_until_succeeds(
+        desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
+    assert ran(lighthouse)["done"]
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["path"] == ["Agents", "Orchestrators", "Lighthouse"]
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,

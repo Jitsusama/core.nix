@@ -1353,6 +1353,13 @@
       "glyph": "agent"
     },
     {
+      "id": "verb:ask:talk",
+      "in": "ask",
+      "name": "Talk to {name}",
+      "verb": "say",
+      "glyph": "reply"
+    },
+    {
       "id": "weather:today",
       "in": "weather",
       "name": "Today"
