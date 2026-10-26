@@ -1,12 +1,15 @@
 // What the launcher's answers must make of what's typed, run in Qt's own
 // JavaScript engine, the one the shell runs them in. The
-// `the-launcher-answers-what-is-asked` check copies Numbers.js and
-// Addresses.js beside this file and runs `qml -platform offscreen
-// answers.qml`. Each case names what's typed and what has to come back,
-// or that nothing should.
+// `the-launcher-answers-what-is-asked` check copies Numbers.js,
+// Addresses.js and the rest beside this file, with the character names
+// names.py builds, and runs `qml -platform offscreen answers.qml`. Each
+// case names what's typed and what has to come back, or that nothing
+// should.
 import QtQuick
 import "Numbers.js" as Numbers
 import "Addresses.js" as Addresses
+import "Subnets.js" as Subnets
+import "Characters.js" as Characters
 import "Units.js" as Units
 import "Zones.js" as Zones
 import "Colours.js" as Colours
@@ -88,6 +91,93 @@ QtObject {
     })
     readonly property var notAddresses: ["1.2.3", "256.1.1.1", "1.2.3.4/33", "1:2:3", "a::b::c",
         "12345::", "kitty", "10.0.0.0/", "::/129"]
+
+    // What's typed, the answer's headline, what Return copies, and its
+    // parts, each its id (or a split's subnet) and what it says.
+    readonly property var subnets: [
+        ["10.0.0.0/22", "1,022 hosts", "10.0.0.0/22", ["range 10.0.0.0 \u2013 10.0.3.255",
+            "mask 255.255.252.0", "wildcard 0.0.3.255", "network 10.0.0.0/22",
+            "broadcast 10.0.3.255", "first 10.0.0.1", "last 10.0.3.254",
+            "size 1,024 addresses"]],
+        ["10.0.0.0 255.255.252.0", "1,022 hosts", "10.0.0.0/22", [
+            "range 10.0.0.0 \u2013 10.0.3.255", "mask 255.255.252.0", "wildcard 0.0.3.255",
+            "network 10.0.0.0/22", "broadcast 10.0.3.255", "first 10.0.0.1", "last 10.0.3.254",
+            "size 1,024 addresses"]],
+        ["10.0.0.5/22", "in 10.0.0.0/22", "10.0.0.0/22", ["range 10.0.0.0 \u2013 10.0.3.255",
+            "mask 255.255.252.0", "wildcard 0.0.3.255", "network 10.0.0.0/22",
+            "broadcast 10.0.3.255", "first 10.0.0.1", "last 10.0.3.254", "hosts 1,022",
+            "size 1,024 addresses"]],
+        ["ip 10.1.2.3/31", "in 10.1.2.2/31", "10.1.2.2/31", ["range 10.1.2.2 \u2013 10.1.2.3",
+            "mask 255.255.255.254", "wildcard 0.0.0.1", "network 10.1.2.2/31",
+            "first 10.1.2.2", "last 10.1.2.3", "hosts 2", "size 2 addresses"]],
+        ["is 10.1.2.3 in 10.0.0.0/16", "no", "no", ["network 10.0.0.0/16",
+            "range 10.0.0.0 \u2013 10.0.255.255"]],
+        ["is 10.0.2.3 in 10.0.0.0 255.255.0.0?", "yes", "yes", ["network 10.0.0.0/16",
+            "range 10.0.0.0 \u2013 10.0.255.255"]],
+        ["is 10.0.4.0/24 in 10.0.0.0/22", "no", "no", ["network 10.0.0.0/22",
+            "range 10.0.0.0 \u2013 10.0.3.255"]],
+        ["is 2001:db8::5 in 2001:db8::/32", "yes", "yes", ["network 2001:db8::/32",
+            "range 2001:db8:: \u2013 2001:db8:ffff:ffff:ffff:ffff:ffff:ffff"]],
+        ["/22", "255.255.252.0", "255.255.252.0", ["wildcard 0.0.3.255", "hosts 1,022",
+            "size 1,024 addresses"]],
+        ["/48", "65,536 /64s", "65,536 /64s", ["size 2^80 addresses"]],
+        ["10.0.0.0/22 in /24s", "4 /24s", "10.0.0.0/24\n10.0.1.0/24\n10.0.2.0/24\n10.0.3.0/24", [
+            "10.0.0.0/24 10.0.0.0 \u2013 10.0.0.255", "10.0.1.0/24 10.0.1.0 \u2013 10.0.1.255",
+            "10.0.2.0/24 10.0.2.0 \u2013 10.0.2.255", "10.0.3.0/24 10.0.3.0 \u2013 10.0.3.255"]],
+        ["2001:db8::/63 into /64s", "2 /64s", "2001:db8::/64\n2001:db8:0:1::/64", [
+            "2001:db8::/64 2001:db8:: \u2013 2001:db8::ffff:ffff:ffff:ffff",
+            "2001:db8:0:1::/64 2001:db8:0:1:: \u2013 2001:db8:0:1:ffff:ffff:ffff:ffff"]],
+        ["2001:db8::/48", "65,536 /64s", "2001:db8::/48", [
+            "range 2001:db8:: \u2013 2001:db8:0:ffff:ffff:ffff:ffff:ffff",
+            "size 2^80 addresses", "full 2001:0db8:0000:0000:0000:0000:0000:0000"]],
+        ["2001:db8::1/48", "in 2001:db8::/48", "2001:db8::/48", [
+            "range 2001:db8:: \u2013 2001:db8:0:ffff:ffff:ffff:ffff:ffff",
+            "network 2001:db8::/48", "subnets 65,536 /64s", "size 2^80 addresses",
+            "full 2001:0db8:0000:0000:0000:0000:0000:0001"]]
+    ]
+    readonly property var notSubnets: ["10.0.0.0 255.255.253.0", "/129", "is 10.0.0.1 in",
+        "10.0.0.0/24 in /22s", "10.0.0.0/22 in /33s", "is kitty in 10.0.0.0/8", "/", "22"]
+
+    // What's typed, the answer's headline, what Return copies, and its
+    // rows: a part's id and what it says, or a character of several, what
+    // it says and its name.
+    readonly property var characters: [
+        ["ascii 65", "A", "A", ["decimal 65", "hex 0x41", "binary 0b1000001", "point U+0041",
+            "name latin capital letter a", "utf8 41"]],
+        ["char A", "65", "65", ["hex 0x41", "binary 0b1000001", "point U+0041",
+            "name latin capital letter a", "utf8 41"]],
+        ["ord 1", "49", "49", ["hex 0x31", "binary 0b110001", "point U+0031", "name digit one",
+            "utf8 31"]],
+        ["0x41 as text", "A", "A", ["decimal 65", "hex 0x41", "binary 0b1000001",
+            "point U+0041", "name latin capital letter a", "utf8 41"]],
+        ["U+1F600", "\u{1f600}", "\u{1f600}", ["decimal 128512", "hex 0x1f600",
+            "binary 0b11111011000000000", "point U+1F600", "name grinning face",
+            "utf8 f0 9f 98 80"]],
+        ["72 105 as text", "Hi", "Hi", ["H U+0048 latin capital letter h",
+            "i U+0069 latin small letter i"]],
+        ["ord \u{1f44b}\u{1f3fd}", "128075 127997", "128075 127997", [
+            "\u{1f44b} U+1F44B waving hand sign",
+            "\u{1f3fd} U+1F3FD emoji modifier fitzpatrick type-4"]],
+        ["char 10", "\u240a", "\n", ["decimal 10", "hex 0xa", "binary 0b1010", "point U+000A",
+            "name line feed", "utf8 0a"]],
+        ["char 0x301", "\u25cc\u0301", "\u0301", ["decimal 769", "hex 0x301",
+            "binary 0b1100000001", "point U+0301", "name combining acute accent", "utf8 cc 81"]],
+        ["char 8203", "zero width space", "\u200b", ["decimal 8203", "hex 0x200b",
+            "binary 0b10000000001011", "point U+200B", "name zero width space", "utf8 e2 80 8b"]],
+        ["char 0xac01", "\uac01", "\uac01", ["decimal 44033", "hex 0xac01",
+            "binary 0b1010110000000001", "point U+AC01", "name hangul syllable gag",
+            "utf8 ea b0 81"]],
+        ["char 0x4e00", "\u4e00", "\u4e00", ["decimal 19968", "hex 0x4e00",
+            "binary 0b100111000000000", "point U+4E00", "name cjk unified ideograph-4e00",
+            "utf8 e4 b8 80"]],
+        ["utf8 \u00e9", "c3 a9", "c3 a9", ["escaped \\xc3\\xa9", "percent %C3%A9",
+            "bits 11000011 10101001", "points U+00E9", "length 2 bytes"]],
+        ["utf-8 e\u0301", "65 cc 81", "65 cc 81", ["escaped \\x65\\xcc\\x81",
+            "percent %65%CC%81", "bits 01100101 11001100 10000001", "points U+0065 U+0301",
+            "length 3 bytes"]]
+    ]
+    readonly property var notCharacters: ["char", "char ", "char 0xd800", "char 1114112",
+        "U+41", "u+12345678", "0xzz as text", "kitty", "charm 65", "ord", "12*7"]
 
     // What's typed, and fields a hardware address's reading must have.
     readonly property var macs: ({
@@ -225,6 +315,84 @@ QtObject {
             asked++;
             if (Addresses.mac(typed))
                 failures.push(`"${typed}" read as a hardware address, but it isn't one`);
+        }
+
+        // Each part as a line: its id, or a split's subnet or a character
+        // of several, then what it says and its note.
+        const parted = rows => rows.map(r => [r.id ?? r.name, r.side, r.note]
+            .filter(said => said).join(" "));
+        for (const [typed, headline, copy, rows] of subnets) {
+            asked++;
+            const got = Subnets.answer(typed);
+            if (!got || got.headline !== headline || got.copy !== copy
+                    || quoted(parted(got.rows)) !== quoted(rows))
+                failures.push(`"${typed}" told ${quoted(got && [got.headline, got.copy,
+                    parted(got.rows)])}, not ${quoted([headline, copy, rows])}`);
+        }
+        for (const typed of notSubnets) {
+            asked++;
+            const got = Subnets.answer(typed);
+            if (got)
+                failures.push(`"${typed}" told ${quoted(got.headline)}, but nothing should`);
+        }
+        // A split into more than it lists says how many it lists.
+        const split = Subnets.answer("10.0.0.0/8 in /24s");
+        asked++;
+        if (!split || split.headline !== "65,536 /24s" || split.rows.length !== 256
+                || split.note !== "the first 256")
+            failures.push(`"10.0.0.0/8 in /24s" told ${quoted(split && [split.headline,
+                split.rows.length, split.note])}`);
+
+        const naming = new XMLHttpRequest();
+        naming.open("GET", Qt.resolvedUrl("names.txt"), false);
+        naming.send();
+        const names = Characters.prepare(naming.responseText);
+        for (const [typed, headline, copy, rows] of characters) {
+            asked++;
+            const got = Characters.answer(typed, names);
+            // Bytes name no character, so they say nothing of the names.
+            const note = typed.startsWith("utf") ? "" : `names from Unicode ${names.version}`;
+            if (!got || got.headline !== headline || got.copy !== copy
+                    || quoted(parted(got.rows)) !== quoted(rows) || got.note !== note)
+                failures.push(`"${typed}" told ${quoted(got && [got.headline, got.copy,
+                    parted(got.rows), got.note])}, not ${quoted([headline, copy, rows])}`);
+        }
+        for (const typed of notCharacters) {
+            asked++;
+            const got = Characters.answer(typed, names);
+            if (got)
+                failures.push(`"${typed}" told ${quoted(got.headline)}, but nothing should`);
+        }
+        // Without the names, a character is told by its numbers alone.
+        const unnamed = Characters.answer("ascii 65");
+        asked++;
+        if (!unnamed || unnamed.rows.some(r => r.id === "name") || unnamed.note !== "")
+            failures.push(`"ascii 65" without names told ${quoted(unnamed)}`);
+        // A character of several holds its own parts.
+        const held = Characters.answer("72 105 as text", names);
+        asked++;
+        if (!held || quoted(parted(held.rows[0].parts)) !== quoted(["decimal 72", "hex 0x48",
+                "binary 0b1001000", "point U+0048", "name latin capital letter h", "utf8 48"]))
+            failures.push(`"72 105 as text" held ${quoted(held && parted(held.rows[0].parts))}`);
+        // The answers asked before these leave what they ask alone, and
+        // each of these leaves the other's.
+        for (const [typed] of subnets.concat(characters)) {
+            asked++;
+            const sum = Numbers.answer(typed);
+            const measure = Units.answer(typed);
+            if (sum || measure)
+                failures.push(`"${typed}" was answered ${quoted((sum || measure).headline)} `
+                    + "by the sums or the units first");
+        }
+        for (const [typed] of characters) {
+            asked++;
+            if (Subnets.answer(typed))
+                failures.push(`"${typed}" was told as a network first`);
+        }
+        for (const [typed] of subnets) {
+            asked++;
+            if (Characters.answer(typed, names))
+                failures.push(`"${typed}" was told as characters`);
         }
 
         for (const typed in conversions) {
