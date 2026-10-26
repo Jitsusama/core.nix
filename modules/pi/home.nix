@@ -11,6 +11,8 @@
 # row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
 # machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
+# Once a week, on Linux, the harness pi installs writes its weekly measure
+# in the background: what the week cost and which mistakes recurred.
 {
   config,
   lib,
@@ -118,6 +120,10 @@ let
       pkgs.claude-code;
 
   onClaude = config.jitsusama.pi.plan == "claude";
+
+  # Where pi installs the harness from its package list, and the script in
+  # it a timer runs.
+  weeklyMeasure = "${config.home.homeDirectory}/.pi/agent/git/github.com/Jitsusama/agentic-harness.pi/scripts/weekly-measure.ts";
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
@@ -282,6 +288,33 @@ in
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
       { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
     );
+
+    # The harness's weekly measure: its cost audit and its learning sensor
+    # over the last seven days, as one report in its state folder's
+    # measure/. pi installs the harness itself, so a machine without it
+    # skips the run rather than failing it. The run reads every session
+    # log, so it waits behind whatever the account is doing.
+    systemd.user.services.pi-weekly-measure = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Writes the pi harness's weekly measure";
+        ConditionPathExists = weeklyMeasure;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe pkgs.nodejs} --experimental-transform-types ${weeklyMeasure}";
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.pi-weekly-measure = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Writes the pi harness's weekly measure every Monday morning";
+      Timer = {
+        OnCalendar = "Mon *-*-* 06:00:00";
+        RandomizedDelaySec = "10min";
+        # A Monday slept through runs once the machine wakes.
+        Persistent = true;
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
 
     jitsusama.keys.pi = map (key: {
       inherit (key) chord does;
