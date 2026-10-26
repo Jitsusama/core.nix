@@ -1,29 +1,32 @@
 //! The load proof: whether what Joel uses still feels idle while the work
 //! behind him fills every core and the line.
 //!
-//! It grows a signal at a time. Now it has four:
+//! It grows a signal at a time. Now it has five:
 //!
 //! - `call`: how long a call's packets take to cross the line and back
 //!   (call.rs).
 //! - `frames`: whether niri shows a frame at every refresh (frames.rs).
 //! - `keys`: how quickly a key typed in a terminal comes back (keys.rs).
 //! - `save`: how quickly an app's careful save reaches the disk (save.rs).
+//! - `sound`: whether any sound in PipeWire misses its turn (sound.rs).
 //!
-//! Usage: load-proof call|frames|keys|save [SECONDS]
+//! Usage: load-proof call|frames|keys|save|sound [SECONDS]
 
 mod call;
 mod frames;
 mod keys;
 mod save;
+mod sound;
 mod spread;
 
 use spread::Spread;
 
 use std::ffi::OsString;
+use std::fmt::Write;
 use std::process::ExitCode;
 use std::time::Duration;
 
-const USAGE: &str = "usage: load-proof call|frames|keys|save [SECONDS]";
+const USAGE: &str = "usage: load-proof call|frames|keys|save|sound [SECONDS]";
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
@@ -79,6 +82,14 @@ fn main() -> ExitCode {
                 ))
             }))
         }
+        Some("sound") => report(sound::watch(length).map(|rose| {
+            let errors: u64 = rose.iter().map(|(_, count)| count).sum();
+            let mut line = format!("sound errors {errors}");
+            for (node, count) in &rose {
+                let _ = write!(line, ", {node} {count}");
+            }
+            Some(line)
+        })),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
