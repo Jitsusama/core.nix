@@ -1277,13 +1277,11 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
 
 
 # The agent steering the others keeps what waits on Joel in one file,
-# and takes his words from an inbox the harness hands it as his message.
+# and each quest keeps its own beside it.
 
 
-def test_now_leads_with_what_waits_on_joel_and_steer_tells_the_agent_steering(
-    desktop: Desktop,
-) -> None:
-    """Now leads with what waits on Joel, and Steer tells the agent steering the others."""
+def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
+    """Now leads with what waits on Joel, and Return goes to where it's done."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     desktop.opened("Waiting room")
@@ -1348,33 +1346,8 @@ def test_now_leads_with_what_waits_on_joel_and_steer_tells_the_agent_steering(
         lambda _: desktop.window_titled("Waiting room")["is_focused"],
         timeout=dt.timedelta(seconds=10),
     )
-    # Steer, and the words typed after it, reach the steward's inbox whole.
-    inbox = f"{state}/pi/agentic-harness.pi/steer/STEWRD"
-    desktop.answer("steer go on with the desk")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "tell STEWRD")
-    machine.send_key("ret")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    machine.wait_until_succeeds(
-        desktop.in_session(f"grep -l '\"go on with the desk\"' {inbox}/*.json"),
-        timeout=dt.timedelta(seconds=10),
-    )
-    # Its row asks for them in the field instead.
-    desktop.answer("steer")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Steer")
-    machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["asking"] and shown["typed"] == "")
-    desktop.type_in("stop for the night")
-    machine.send_key("ret")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    machine.wait_until_succeeds(
-        desktop.in_session(f"grep -l '\"stop for the night\"' {inbox}/*.json"),
-        timeout=dt.timedelta(seconds=10),
-    )
-    machine.fail(desktop.in_session(f"ls {inbox}/*.tmp"))
     # Put back as it was, for the tests after.
-    desktop.as_account(
-        f"rm {state}/mission/queue.json {state}/mission/waiting/QUEST1.json {inbox}/*.json"
-    )
+    desktop.as_account(f"rm {state}/mission/queue.json {state}/mission/waiting/QUEST1.json")
     for title in ["Waiting room", "Elsewhere"]:
         window = desktop.window_titled(title)["id"]
         desktop.as_account(f"niri msg action close-window --id {window}")
