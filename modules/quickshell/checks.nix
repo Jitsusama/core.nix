@@ -813,6 +813,29 @@ onLinux {
     touch $out
   '';
 
+  # The launcher's Lag says what's slowing the desktop in plain words and
+  # what to do about it (tests/waits.qml), over lag-watch's status file as
+  # it writes one, the test writing it in turn.
+  the-launcher-says-why-the-desktop-lags =
+    pkgs.runCommandLocal "the-launcher-says-why-the-desktop-lags" { }
+      ''
+        mkdir -p launcher runtime/lag-watch && chmod 700 runtime
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./launcher/Asking.js} launcher/Asking.js
+        cp ${./launcher/Numbers.js} launcher/Numbers.js
+        cp ${./launcher/Waits.qml} launcher/Waits.qml
+        cp ${./Words.qml} Words.qml
+        cp ${./launcher/words.json} launcher/words.json
+        cp ${../../tests/waits.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
+
   # The launcher's answers that build their parts' ids as they answer, the
   # calculator's bases, the time's, today's, the waits', a hardware
   # address's, a network's and a character's, name every part as the

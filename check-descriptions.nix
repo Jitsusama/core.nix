@@ -804,6 +804,11 @@
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
   '';
+  the-launcher-says-why-the-desktop-lags = ''
+    the launcher's Lag leads with the worst of what waited, offers to see what's behind it from
+    the top, says how fast the desktop answers in plain words, and says nothing's slowing the
+    desktop when nothing is
+  '';
   the-launcher-shows-no-replaced-word = ''
     nothing the launcher's vocabulary shows of a thing, a place or a command says a name
     docs/glossary.md replaces, but the other senses and the renames still waiting that

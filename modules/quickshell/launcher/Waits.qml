@@ -1,11 +1,18 @@
 // Whether what Joel uses waited, answered in the field: "lag", Desktop's
-// one word for it. lag-watch (modules/lag-watch) writes
-// its last ten seconds to a file as each ends; it's read when asked, so
-// nothing is watched or spawned. The headline is what waited, or that
-// nothing did; the rows are each thing that waited, in lag-watch's words,
-// then how fast the desktop (niri) answered and how hard the work behind
-// was going, each named first and never by the program's name. A machine
-// without lag-watch has no file, and so no answer.
+// one word for it. lag-watch (modules/lag-watch) writes its last ten
+// seconds to a file as each ends; it's read when asked, so nothing is
+// watched or spawned. A machine without lag-watch has no file, and so no
+// answer.
+//
+// Joel, 2026-10-25: "computer lag is confusing as well, i don't really
+// understand what it is trying to say or what i can do about it." So it
+// says, in plain words, what's slowing the desktop and what to do about it:
+// the headline is the worst of what waited, or that nothing's slowing it;
+// the rows are each thing that waited, in lag-watch's words, then one act
+// that goes to what's behind the worst (the processor's or the memory's
+// programs, or the disk), then how fast the desktop answers, and how hard
+// builds and jobs are running, which goes to the queue. Nothing is named
+// by a program's name, and no figure needs knowing what a percentile is.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -21,6 +28,14 @@ Provider {
     // How old a window may be and still be the last ten seconds: lag-watch
     // writes one every ten.
     readonly property int fresh: 25
+
+    // Where each of lag-watch's causes is looked into: the answer whose
+    // parts name what's using it, typed at the top.
+    readonly property var lookedAt: ({
+        cpu: "processor",
+        memory: "memory",
+        disk: "disk"
+    })
 
     function answer(typed) {
         if (asks(typed) === "")
@@ -41,30 +56,59 @@ Provider {
         return `${Math.round(seconds / 3600)} h ago`;
     }
 
+    function said(id, fill) {
+        let words = (Words.of("waits").said ?? {})[id] ?? id;
+        for (const key of Object.keys(fill ?? {}))
+            words = words.replace(`{${key}}`, fill[key]);
+        return words;
+    }
+
+    // An act that goes to a spot by its word, from the top, the launcher
+    // kept open there.
+    function goes(key, word, fields) {
+        return thing(Object.assign({
+            key: key,
+            verb: Words.verb(key),
+            name: Words.name(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            stays: true,
+            run: () => {
+                provider.launcher.held = [];
+                provider.launcher.restart(word);
+            }
+        }, fields));
+    }
+
     function told() {
         const window = parsed(read(status));
         if (!window || !Array.isArray(window.trouble))
             return null;
         const waited = Theme.glyph.lag;
         const fine = Theme.glyph.fine;
-        const trouble = window.trouble.map(line => copyRow({ name: line, side: "", glyph: waited }));
+        const rows = window.trouble.map(line => copyRow({ name: line, side: "", glyph: waited }));
+        const where = lookedAt[window.worst ?? ""];
+        if (where !== undefined)
+            rows.push(goes(`waits:see:${window.worst}`, where));
         const niri = window.niri ?? {};
-        const part = (id, side, note) => copyRow({ name: Words.name(`waits:${id}`), side: side,
-            note: note, glyph: fine });
-        const rows = trouble.concat([
-            part("typical", ms(niri.p50_ms ?? 0), "as a rule"),
-            part("slowest", ms(niri.p99_ms ?? 0), "the slowest 1 in 100"),
-            part("work", String(window.band ?? ""), "how hard jobs and builds ran")
-        ]);
+        rows.push(copyRow({
+            name: Words.name("waits:typical"),
+            side: said("answers", { typical: ms(niri.p50_ms ?? 0), worst: ms(niri.p99_ms ?? 0) }),
+            note: said("answersNote"),
+            glyph: fine
+        }));
+        rows.push(goes("waits:work", "queue", {
+            side: String(window.band ?? ""),
+            note: said("workNote")
+        }));
         const count = window.trouble.length;
-        let headline = "nothing waited";
+        let headline = said("calm");
         if (count === 1)
             headline = window.trouble[0];
         else if (count > 1)
-            headline = `${count} things waited`;
+            headline = said("several", { count: count });
         const age = Date.now() / 1000 - Number(window.ended ?? 0);
-        const note = age <= fresh ? "the last ten seconds"
-            : `ten seconds that ended ${ago(age)}`;
+        const note = age <= fresh ? said("fresh") : said("stale", { ago: ago(age) });
         return { headline: headline, rows: rows, note: note };
     }
 

@@ -66,7 +66,7 @@ ShellRoot {
         { scope: "time", from: clocks, typed: ["time in tokyo"], ids: ["apart", "day", "zone"] },
         { scope: "today", from: today, typed: ["date"],
             ids: ["day", "epoch", "utc", "week", "zone"] },
-        { scope: "waits", from: waits, typed: ["lag"], ids: ["slowest", "typical", "work"] },
+        { scope: "waits", from: waits, typed: ["lag"], ids: ["typical", "work"] },
         { scope: "vendors", from: vendors, typed: ["3c:22:fb:12:34:56"],
             ids: ["colons", "dotted", "kind"] },
         { scope: "networks", from: networks,
