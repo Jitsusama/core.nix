@@ -105,7 +105,8 @@ function clip(line: string, most: number): string {
 function power(places: Places): string | undefined {
   const supplies = join(places.sys, "power_supply");
   const said: string[] = [];
-  let mains: boolean | undefined;
+  // Whether a charger is plugged in; Linux calls its supply type "Mains".
+  let charger: boolean | undefined;
   for (const supply of names(supplies)) {
     const kind = text(join(supplies, supply, "type"))?.trim();
     if (kind === "Battery") {
@@ -113,10 +114,10 @@ function power(places: Places): string | undefined {
       const status = text(join(supplies, supply, "status"))?.trim().toLowerCase();
       if (capacity) said.push(`battery ${capacity}%${status ? `, ${status}` : ""}`);
     } else if (kind === "Mains") {
-      mains = mains || text(join(supplies, supply, "online"))?.trim() === "1";
+      charger = charger || text(join(supplies, supply, "online"))?.trim() === "1";
     }
   }
-  if (mains !== undefined) said.push(mains ? "on power" : "not on power");
+  if (charger !== undefined) said.push(charger ? "on power" : "not on power");
   return said.length ? said.join(", ") : undefined;
 }
 
