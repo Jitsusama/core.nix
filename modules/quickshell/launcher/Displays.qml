@@ -252,7 +252,7 @@ Provider {
     // Its maker and model, leaving out a model that's only a number.
     function named(output) {
         if (builtIn(output))
-            return "Built-in display";
+            return "Built-in screen";
         const model = /^0x[0-9a-f]+$/i.test(output.model) ? "" : output.model;
         return `${output.make} ${model}`.trim() || output.name;
     }

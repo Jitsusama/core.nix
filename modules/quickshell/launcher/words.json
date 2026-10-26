@@ -841,6 +841,7 @@
     {
       "id": "light",
       "name": "Desk light",
+      "term": "Machine/desk light",
       "answers": [
         "desk light",
         "warmth"
@@ -2406,6 +2407,7 @@
       "id": "displays:brightness",
       "in": "displays",
       "name": "Brightness",
+      "term": "Desktop/brightness",
       "answers": [
         "brightness"
       ]

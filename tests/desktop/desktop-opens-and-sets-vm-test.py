@@ -914,11 +914,11 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         # in, there by Return on the setting, or found from here by what's
         # typed. The backlight lights the one screen there is, so its
         # Brightness comes first, and the Room light once the sensor's said.
-        settings = ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:1] == ["Brightness"]
-                and [row for row in shown["rows"] if row != "Room light"][1:7] == settings
+                and [row for row in shown["rows"] if row != "Room light"][1:7]
+                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
             )
         )
         desktop.photograph("launcher-displays")

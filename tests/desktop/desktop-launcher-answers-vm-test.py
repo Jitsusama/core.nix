@@ -283,9 +283,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # The room's light, as the stand-in sensor hears it, is asked by its
     # word.
     desktop.answer("room light")
-    desktop.launcher_until(
-        lambda shown: str((shown["selected"] or {}).get("name")).endswith(" lx")
-    )
+    desktop.launcher_until(lambda shown: str((shown["selected"] or {}).get("name")).endswith(" lx"))
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The screen the backlight lights leads with its Brightness, a
