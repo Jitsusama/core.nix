@@ -42,8 +42,15 @@ Scope {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
-                + " searching" + (parts ? ` (lists ${parts.lists}, rows ${parts.rows},`
-                    + ` answers ${parts.answers})` : ""));
+                + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each)},`
+                    + ` rows ${parts.rows}, answers ${parts.answers})` : ""));
+    }
+
+    // The three collections that took longest, if any took a millisecond.
+    function slowest(each) {
+        const named = Object.keys(each ?? {}).filter(name => each[name] > 0)
+            .sort((a, b) => each[b] - each[a]).slice(0, 3);
+        return named.length === 0 ? "" : `: ${named.map(name => `${name} ${each[name]}`).join(", ")}`;
     }
 
     function picked(row, typed, depth) {
