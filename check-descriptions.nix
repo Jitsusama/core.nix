@@ -579,7 +579,8 @@
   '';
   session-backup-passes-clippy = ''
     clippy finds nothing in session-backup or its tests, which hold it to only adding to its one
-    folder, sealed copies that open, and carrying on where a stopped run left off
+    folder, sealed copies that open, carrying on where a stopped run left off, and removing an
+    old log from the machine only once Drive still holds its copy
   '';
   session-backup-stays-in-the-background = ''
     an account naming a folder backs its sessions up hourly in background.slice, catching up on an

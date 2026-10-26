@@ -51,6 +51,14 @@ fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
         done.found,
         done.before
     );
+    if done.removed > 0 {
+        println!(
+            "removed {} logs Drive holds that were past their {} days here ({} MB)",
+            done.removed,
+            config.keep.map_or(0, |keep| keep.as_secs() / 86_400),
+            done.freed / 1_000_000
+        );
+    }
     if let Some(why) = done.busy {
         println!("Drive stayed busy, so the rest wait for the next run: {why}");
     }
