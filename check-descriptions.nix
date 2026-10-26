@@ -498,6 +498,10 @@
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
+  pi-loads-its-packages = ''
+    pi's package list is the harness and neovim.pi on every machine, and a package a machine
+    adds comes after them rather than in their place
+  '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged

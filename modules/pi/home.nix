@@ -160,6 +160,20 @@ in
     '';
   };
 
+  options.jitsusama.pi.packages = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    example = [ "git:github.com/someone/their.pi" ];
+    description = ''
+      The pi packages every pi loads, as pi names their sources: core's own,
+      and whatever a machine adds, each definition adding to the others.
+      They are the whole of pi's package list, written at every switch, so
+      a package installed by hand and not named here is dropped from it. One
+      not yet installed is installed the next time pi starts; one installed
+      is left at the commit it is at.
+    '';
+  };
+
   options.jitsusama.pi.plan = lib.mkOption {
     type = lib.types.enum (lib.attrNames quickModels);
     default = "pi";
@@ -221,6 +235,14 @@ in
     };
     jitsusama.pi.settings.defaultProvider = lib.mkIf onClaude "claude-code";
     jitsusama.pi.settings.defaultModel = lib.mkIf onClaude "claude-sonnet-5";
+
+    # The harness, and neovim.pi for pi beside Neovim, on every machine,
+    # first, since pi loads its packages in order.
+    jitsusama.pi.packages = lib.mkBefore [
+      "git:github.com/Jitsusama/agentic-harness.pi"
+      "git:github.com/Jitsusama/neovim.pi"
+    ];
+    jitsusama.pi.settings.packages = config.jitsusama.pi.packages;
 
     # The room kept for what a compaction writes. pi's default, 16,384
     # tokens, runs out summarising a long session, which then compacts

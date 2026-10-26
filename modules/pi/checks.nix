@@ -155,6 +155,30 @@
         && onPi.jitsusama.pi.ask.plan == "pi"
       );
 
+  # pi's package list is declared: core's two on every machine, in order, and
+  # a machine's own after them rather than in their place.
+  pi-loads-its-packages =
+    let
+      own = "git:github.com/someone/their.pi";
+      plain = account workstation;
+      added = account (
+        workstation.extendModules {
+          modules = [ { home-manager.users.someone.jitsusama.pi.packages = [ own ]; } ];
+        }
+      );
+      core = [
+        "git:github.com/Jitsusama/agentic-harness.pi"
+        "git:github.com/Jitsusama/neovim.pi"
+      ];
+    in
+    holds "pi-loads-its-packages"
+      "pi's package list isn't core's two, or a machine's package replaced them."
+      (
+        plain.jitsusama.pi.settings.packages == core
+        && lib.take 2 added.jitsusama.pi.settings.packages == core
+        && lib.elem own added.jitsusama.pi.settings.packages
+      );
+
   # pi-ask starts pi for the Ask row with nothing loaded but the machine's
   # extensions, on the machine's plan and model: pi's own by default, with
   # its quick model, or pi-claude's; and an account gets it.
