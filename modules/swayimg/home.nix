@@ -70,133 +70,143 @@ let
 
   # Every key worth knowing, as swayimg's keys spell it, with what it does
   # and where. A key with an act is bound by init.lua to that act; one
-  # without is swayimg's own, listed as swayimg binds it.
-  keys = [
-    {
-      chord = "Left";
-      does = "Previous picture";
-      when = places.viewer;
-      act = "prev";
-    }
-    {
-      chord = "Right";
-      does = "Next picture";
-      when = places.viewer;
-      act = "next";
-    }
-    {
-      chord = "Home";
-      does = "First picture";
-      when = places.viewer;
-      act = "first";
-    }
-    {
-      chord = "End";
-      does = "Last picture";
-      when = places.viewer;
-      act = "last";
-    }
-    {
-      chord = "Return";
-      does = "Every picture";
-      when = places.viewer;
-    }
-    {
-      chord = "Shift+plus";
-      does = "Closer";
-      when = places.viewer;
-    }
-    {
-      chord = "minus";
-      does = "Further";
-      when = places.viewer;
-    }
-    {
-      chord = "bracketleft";
-      does = "Turn left";
-      when = places.viewer;
-    }
-    {
-      chord = "bracketright";
-      does = "Turn right";
-      when = places.viewer;
-    }
-    {
-      chord = "f";
-      does = "Full screen";
-      when = places.viewer;
-    }
-  ]
-  ++
-    map
-      (chord: {
-        inherit chord;
-        does = "Choose a picture that way";
-        when = places.gallery;
-      })
+  # without is swayimg's own, listed as swayimg binds it. The launcher's
+  # Shortcuts groups those that go between pictures and those that change
+  # how the one in view is shown; the rest are few enough to stay loose.
+  grouped = group: map (key: key // { inherit group; });
+  keys =
+    grouped "moving" (
       [
-        "Left"
-        "Right"
-        "Up"
-        "Down"
+        {
+          chord = "Left";
+          does = "Previous picture";
+          when = places.viewer;
+          act = "prev";
+        }
+        {
+          chord = "Right";
+          does = "Next picture";
+          when = places.viewer;
+          act = "next";
+        }
+        {
+          chord = "Home";
+          does = "First picture";
+          when = places.viewer;
+          act = "first";
+        }
+        {
+          chord = "End";
+          does = "Last picture";
+          when = places.viewer;
+          act = "last";
+        }
+        {
+          chord = "Return";
+          does = "Every picture";
+          when = places.viewer;
+        }
       ]
-  ++ [
-    {
-      chord = "Home";
-      does = "First picture";
-      when = places.gallery;
-    }
-    {
-      chord = "End";
-      does = "Last picture";
-      when = places.gallery;
-    }
-    {
-      chord = "Return";
-      does = "Open the picture";
-      when = places.gallery;
-    }
-    {
-      chord = "Shift+plus";
-      does = "Larger";
-      when = places.gallery;
-    }
-    {
-      chord = "minus";
-      does = "Smaller";
-      when = places.gallery;
-    }
-    {
-      chord = "e";
-      does = "Edit in GIMP, or Inkscape for a drawing";
-      act = "edit";
-    }
-    {
-      chord = "y";
-      does = "Copy the picture";
-      act = "copy";
-    }
-    {
-      chord = "Delete";
-      does = "Move to the trash";
-      act = "trash";
-    }
-    {
-      chord = "Escape";
-      does = "Close";
-    }
-    # As in mpv.
-    {
-      chord = "q";
-      does = "Close";
-      act = "close";
-    }
-    {
-      chord = "Shift+slash";
-      does = "These keys";
-      act = "keys";
-    }
-  ];
+      ++
+        map
+          (chord: {
+            inherit chord;
+            does = "Choose a picture that way";
+            when = places.gallery;
+          })
+          [
+            "Left"
+            "Right"
+            "Up"
+            "Down"
+          ]
+      ++ [
+        {
+          chord = "Home";
+          does = "First picture";
+          when = places.gallery;
+        }
+        {
+          chord = "End";
+          does = "Last picture";
+          when = places.gallery;
+        }
+        {
+          chord = "Return";
+          does = "Open the picture";
+          when = places.gallery;
+        }
+      ]
+    )
+    ++ grouped "picture" [
+      {
+        chord = "Shift+plus";
+        does = "Closer";
+        when = places.viewer;
+      }
+      {
+        chord = "minus";
+        does = "Further";
+        when = places.viewer;
+      }
+      {
+        chord = "bracketleft";
+        does = "Turn left";
+        when = places.viewer;
+      }
+      {
+        chord = "bracketright";
+        does = "Turn right";
+        when = places.viewer;
+      }
+      {
+        chord = "f";
+        does = "Full screen";
+        when = places.viewer;
+      }
+      {
+        chord = "Shift+plus";
+        does = "Larger";
+        when = places.gallery;
+      }
+      {
+        chord = "minus";
+        does = "Smaller";
+        when = places.gallery;
+      }
+    ]
+    ++ [
+      {
+        chord = "e";
+        does = "Edit in GIMP, or Inkscape for a drawing";
+        act = "edit";
+      }
+      {
+        chord = "y";
+        does = "Copy the picture";
+        act = "copy";
+      }
+      {
+        chord = "Delete";
+        does = "Move to the trash";
+        act = "trash";
+      }
+      {
+        chord = "Escape";
+        does = "Close";
+      }
+      # As in mpv.
+      {
+        chord = "q";
+        does = "Close";
+        act = "close";
+      }
+      {
+        chord = "Shift+slash";
+        does = "These keys";
+        act = "keys";
+      }
+    ];
 
   # How a key is drawn, as the desktop draws it: a shifted key as what it
   # types, a letter as a capital. swayimg draws its words in the one face,
