@@ -31,7 +31,7 @@
 # takes a soft one, MemoryLow, back whenever it finds nothing else to take, and
 # when an evaluation filled a 61 GiB laptop it did so 215,001 times, leaving
 # two thirds of niri in swap. niri then read keys up to 281 ms late, and past
-# the 200 ms repeat delay a program takes a key that was let go as held. In a
+# the 200 ms repeat delay of then a program takes a key let go as held. In a
 # 4 GiB virtual machine with zram and a swapfile behind it, a program reading
 # keys in session.slice, with 200 MiB it touches a little of on each one, read
 # them at most 728 ms late under a 5 GB hog and 5.3 s under a 6 GB one with
