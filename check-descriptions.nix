@@ -547,6 +547,14 @@
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
   '';
+  session-backup-passes-clippy = ''
+    clippy finds nothing in session-backup or its tests, which hold it to only adding to its one
+    folder, sealed copies that open, and carrying on where a stopped run left off
+  '';
+  session-backup-stays-in-the-background = ''
+    an account naming a folder backs its sessions up hourly in background.slice, catching up on an
+    hour slept through, and one naming none runs nothing
+  '';
   session-machines-have-a-bridge = ''
     libvirt's bridge helper lets session machines onto virbr0, and its default network starts at
     boot

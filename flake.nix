@@ -175,6 +175,7 @@
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
+        session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
