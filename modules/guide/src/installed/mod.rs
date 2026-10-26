@@ -283,15 +283,15 @@ impl Step for SealTpm {
             asks: vec![
                 Ask::Act {
                     id: "key",
-                    what: "Plug in a YubiKey, which opens the disk for the TPM's slot to be made. Touch it when it blinks.".into(),
+                    what: "Plug in a YubiKey, which opens the disk for the TPM's slot to be made. Touch it when it blinks. Then the TPM gets a PIN of its own, which the disk asks for at every start: your account password will do, and changing that password later doesn't change this PIN. When the TPM can't open the disk, what you type is tried on a plugged-in YubiKey too, which costs it one wrong try before it asks for its own PIN.".into(),
                 },
                 Ask::Secret {
                     id: "key-pin",
-                    name: "the YubiKey's PIN, which opens the disk this once".into(),
+                    name: "your YubiKey's PIN, which opens the disk this once".into(),
                 },
                 Ask::Secret {
                     id: "tpm-pin",
-                    name: "a new PIN for the TPM, which the disk asks for at every start. Your account password will do; changing that password later doesn't change this PIN. When the TPM can't open the disk, what you type is tried on a plugged-in YubiKey too, which costs it one wrong try before it asks for its own PIN".into(),
+                    name: "your account password, or another PIN you'll remember, as the TPM's new PIN".into(),
                 },
                 Ask::Secret {
                     id: "tpm-pin-again",
@@ -371,7 +371,7 @@ impl Step for SealTpm {
 /// empty, which would seal the disk to no PIN at all.
 fn tpm_pin_refused(pin: &Secret, again: &Secret) -> Option<&'static str> {
     if pin.expose() != again.expose() {
-        Some("the two PINs weren't the same")
+        Some("the TPM's new PIN wasn't the same both times, so nothing changed")
     } else if pin.expose().is_empty() {
         Some("the TPM's PIN can't be empty")
     } else {

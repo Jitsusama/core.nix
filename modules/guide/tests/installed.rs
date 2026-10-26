@@ -316,7 +316,7 @@ fn two_different_tpm_pins_seal_nothing() {
         &answers("123456", "an account password", "an account pasword"),
     );
     assert!(
-        matches!(&refused, Err(Fault::Blocked { why, .. }) if why == "the two PINs weren't the same"),
+        matches!(&refused, Err(Fault::Blocked { why, .. }) if why == "the TPM's new PIN wasn't the same both times, so nothing changed"),
         "{refused:?}"
     );
     assert!(stand_in.calls.is_empty(), "{:#?}", stand_in.calls);

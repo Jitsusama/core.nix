@@ -211,9 +211,9 @@ def unlock_as_asked(machine: QemuMachine, tpm_pin: str, key_pin: str) -> str:
 
 def seal_tpm(machine: QemuMachine, values: dict[str, Any]) -> None:
     """Open the disk with a key's PIN for the guide, and give the TPM its own PIN, twice."""
-    on_screen(machine, "which opens the disk this once")
+    on_screen(machine, "Type your YubiKey's PIN, which opens the disk this once")
     enter(machine, values["pin"])
-    on_screen(machine, "a new PIN for the TPM")
+    on_screen(machine, "Type your account password, or another PIN you'll remember")
     enter(machine, values["tpmPin"])
     on_screen(machine, "the TPM's new PIN again")
     enter(machine, values["tpmPin"])
