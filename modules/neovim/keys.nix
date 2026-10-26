@@ -644,6 +644,13 @@ in
     does = "Show the folder as a file you can edit";
     command = "Oil";
   }
+  # inlyne follows the file as it's saved, so the page keeps up with the
+  # edit (../inlyne/home.nix).
+  {
+    chord = "Space f v";
+    does = "Read this markdown file as a page, beside the editor";
+    lua = "vim.system({ 'inlyne', 'view', vim.api.nvim_buf_get_name(0) }, { detach = true })";
+  }
   {
     chord = "-";
     does = "Go up to the folder holding this";

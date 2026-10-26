@@ -281,6 +281,10 @@
   inkscape-accepts-its-configuration = ''
     Inkscape starts a drawing on the theme's desk and reads its stylesheet
   '';
+  inlyne-reads-in-the-theme = ''
+    inlyne draws a sheet and the keys page its settings name on the theme's background, headings in
+    the strong text and none of its own colours, and markdown files open in it
+  '';
   ipu7-outlives-its-open-files = ''
     the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds
   '';

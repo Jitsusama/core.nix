@@ -1,0 +1,89 @@
+Add a heading colour to the theme
+
+Headings were drawn in the text's colour, larger and bold, with no way
+for a theme to set them apart. A theme may now give heading-color; left
+out, headings follow text-color as before, and a heading coloured the
+same as the text is drawn exactly as it was, so the default output and
+its snapshots are unchanged.
+
+diff -ru a/src/color.rs b/src/color.rs
+--- a/src/color.rs
++++ b/src/color.rs
+@@ -36,6 +36,7 @@
+ #[derive(Clone, Debug, PartialEq)]
+ pub struct Theme {
+     pub text_color: u32,
++    pub heading_color: u32,
+     pub background_color: u32,
+     pub code_color: u32,
+     pub quote_block_color: u32,
+@@ -54,6 +55,7 @@
+             .to_owned();
+         Self {
+             text_color: 0x9DACBB,
++            heading_color: 0x9DACBB,
+             background_color: 0x1A1D22,
+             code_color: 0xB38FAC,
+             quote_block_color: 0x1D2025,
+@@ -72,6 +74,7 @@
+             .to_owned();
+         Self {
+             text_color: 0x000000,
++            heading_color: 0x000000,
+             background_color: 0xFFFFFF,
+             code_color: 0x95114E,
+             quote_block_color: 0xEEF9FE,
+diff -ru a/src/interpreter/ast.rs b/src/interpreter/ast.rs
+--- a/src/interpreter/ast.rs
++++ b/src/interpreter/ast.rs
+@@ -30,6 +30,7 @@
+     pub small: bool,
+     pub code: bool,
+     pub pre_formatted: bool,
++    pub heading: bool,
+     pub block_quote: u8,
+     pub align: Option<Align>,
+     pub link: Option<Rc<str>>,
+@@ -346,6 +347,11 @@
+                     text = text.make_underlined(true);
+                 }
+             }
++            // Only a heading coloured apart from the text gets a colour of its own.
++            let theme = &global.opts.theme;
++            if state.text_options.heading && theme.heading_color != theme.text_color {
++                text = text.with_color(global.opts.native_color(theme.heading_color));
++            }
+             if let Some(ref link) = state.text_options.link {
+                 text = text.with_link(link.to_string());
+                 text = text.with_color(global.opts.native_color(global.opts.theme.link_color));
+@@ -481,6 +487,7 @@
+                 element.set_align_or_default(state.text_options.align);
+ 
+                 state.text_options.bold = true;
++                state.text_options.heading = true;
+                 element.font_size *= header.size_multiplier();
+ 
+                 if header == HeaderType::H1 {
+diff -ru a/src/opts/config.rs b/src/opts/config.rs
+--- a/src/opts/config.rs
++++ b/src/opts/config.rs
+@@ -23,6 +23,7 @@
+ #[serde(default, rename_all = "kebab-case")]
+ pub struct OptionalTheme {
+     pub text_color: Option<u32>,
++    pub heading_color: Option<u32>,
+     pub background_color: Option<u32>,
+     pub code_color: Option<u32>,
+     pub quote_block_color: Option<u32>,
+@@ -41,6 +42,11 @@
+ 
+         Ok(color::Theme {
+             text_color: self.text_color.unwrap_or(other.text_color),
++            // Headings follow the text's colour unless given their own.
++            heading_color: self
++                .heading_color
++                .or(self.text_color)
++                .unwrap_or(other.heading_color),
+             background_color: self.background_color.unwrap_or(other.background_color),
+             code_color: self.code_color.unwrap_or(other.code_color),
+             quote_block_color: self.quote_block_color.unwrap_or(other.quote_block_color),

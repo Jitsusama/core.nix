@@ -1,6 +1,7 @@
 # A Mac with a screen in front of Joel: fonts, macOS' defaults and the apps
-# Homebrew installs. Ghostty and WezTerm are the Mac's terminals until kitty
-# replaces them.
+# Homebrew installs, and inlyne, which reads markdown files as pages, as on
+# Linux. Ghostty and WezTerm are the Mac's terminals until kitty replaces
+# them.
 { darwinModules, homeModules }:
 {
   imports = [
@@ -12,6 +13,7 @@
   home-manager.sharedModules = [
     homeModules.homebrew
     homeModules.ghostty
+    homeModules.inlyne
     homeModules.wezterm
   ];
 }

@@ -153,6 +153,7 @@
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
         inkscape = moduleFrom ./modules/inkscape/home.nix { inherit (self.homeModules) niri; };
+        inlyne = ./modules/inlyne/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
@@ -243,6 +244,7 @@
         greetd = ./modules/greetd/nixos.nix;
         guide = ./modules/guide/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
