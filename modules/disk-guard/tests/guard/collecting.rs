@@ -186,15 +186,30 @@ impl Store {
         path
     }
 
+    /// A config keeping young garbage as a rebuild cache, as the guard did
+    /// by default, so the policy's order can be shown.
     fn config(&self, pressure: &str, urgent: &str) -> Config {
+        self.config_keeping(
+            pressure,
+            urgent,
+            r#""garbage": { "keep": "3d", "budget": "10%" },"#,
+        )
+    }
+
+    /// A config with the guard's own garbage policy, as a machine has.
+    fn config_as_given(&self, pressure: &str, urgent: &str) -> Config {
+        self.config_keeping(pressure, urgent, "")
+    }
+
+    fn config_keeping(&self, pressure: &str, urgent: &str, garbage: &str) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "system", "status_file": true,
                  "bands": {{ "pressure": "{pressure}", "urgent": "{urgent}", "critical": "0%",
                             "target": "{pressure}" }},
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
-                          "temp_roots": "{0}/temproots",
+                          "temp_roots": "{0}/temproots", "roots": "{0}/gcroots",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
-                 "garbage": {{ "keep": "3d", "budget": "10%" }},
+                 {garbage}
                  "dedupe": {{ "systemd_run": "{0}/bin/systemd-run" }},
                  "boot": "{0}/boot",
                  "sources": {{}} }}"#,
@@ -933,6 +948,51 @@ fn a_failed_run_is_journaled_and_not_tried_again_at_once() {
         "{failed:?}"
     );
     assert_eq!(store.linked(), ["optimise 5"]);
+}
+
+#[test]
+fn a_healthy_disk_keeps_no_garbage_for_a_rebuild() {
+    // Kept as a cache, garbage under three days old held 34 GiB of the
+    // 43 nothing held on a laptop whose disk its owner expected far emptier.
+    let store = Store::new();
+    let young = store.dead("aaa-young", 60.0, 4096);
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    store.step_until(&mut guard, |_| !young.exists());
+}
+
+#[test]
+fn garbage_goes_once_the_process_holding_it_ends() {
+    let store = Store::new();
+    let built = store.dead("aaa-built", 60.0, 4096);
+    let holding = store.root.join("temproots/4242");
+    fs::write(&holding, format!("{}\0", built.display())).unwrap();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    assert!(built.exists(), "a running build's path stays");
+    fs::remove_file(&holding).unwrap();
+    // Long before the next upkeep, six hours on.
+    step_later_until(&store, &mut guard, 10.0, &BUSY, |_, _| !built.exists());
+}
+
+#[test]
+fn garbage_a_root_left_goes_within_a_minute() {
+    let store = Store::new();
+    let kept = store.dead("aaa-kept", 60.0, 4096);
+    fs::write(kept.join("alive"), "").unwrap();
+    let result = store.root.join("result");
+    fs::write(&result, "").unwrap();
+    fs::create_dir_all(store.root.join("gcroots/auto")).unwrap();
+    std::os::unix::fs::symlink(&result, store.root.join("gcroots/auto/1")).unwrap();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    assert!(kept.exists());
+    // Its owner deletes the build's link, and nothing holds it now.
+    fs::remove_file(&result).unwrap();
+    fs::remove_file(kept.join("alive")).unwrap();
+    step_later_until(&store, &mut guard, 45.0, &BUSY, |_, _| !kept.exists());
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
 }
 
 #[test]

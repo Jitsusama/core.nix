@@ -354,7 +354,10 @@ fn plain_absolute(path: &Path) -> bool {
             .all(|part| matches!(part, Component::RootDir | Component::Normal(_)))
 }
 
-/// Nix's garbage, kept as a rebuild cache with a budget.
+/// Nix's garbage, which a machine may keep as a rebuild cache with a
+/// budget. By default none is kept: kept for three days, up to a tenth of
+/// the disk, it held 34 GiB of the 43 nothing held on a laptop whose owner
+/// expected the disk far emptier, and garbage now goes once it exists.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Garbage {
@@ -368,10 +371,10 @@ pub struct Garbage {
 
 impl Garbage {
     fn keep() -> Span {
-        Span(Duration::from_hours(3 * 24))
+        Span(Duration::ZERO)
     }
     fn budget() -> Size {
-        Size::Percent(10.0)
+        Size::Percent(0.0)
     }
 }
 
@@ -400,6 +403,10 @@ pub struct Nix {
     /// store, which hold what a build or an evaluation has in hand.
     #[serde(default = "Nix::temp_roots")]
     pub temp_roots: PathBuf,
+    /// Where Nix keeps the roots it was told of, whose `auto` folder links
+    /// to each build's result: one going is garbage made, listed at once.
+    #[serde(default = "Nix::roots")]
+    pub roots: PathBuf,
     /// The directory of profiles whose generations expire: the machine's
     /// for the system daemon unless told, and an account's only if told.
     #[serde(default)]
@@ -418,6 +425,9 @@ impl Nix {
     fn temp_roots() -> PathBuf {
         PathBuf::from("/nix/var/nix/temproots")
     }
+    fn roots() -> PathBuf {
+        PathBuf::from("/nix/var/nix/gcroots")
+    }
 }
 
 impl Default for Nix {
@@ -426,6 +436,7 @@ impl Default for Nix {
             bin: Nix::bin(),
             store: Nix::store(),
             temp_roots: Nix::temp_roots(),
+            roots: Nix::roots(),
             profiles: None,
             generations: Generations::default(),
         }

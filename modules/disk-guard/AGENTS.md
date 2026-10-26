@@ -28,7 +28,10 @@ or launchd, and [`home.nix`][2] the account's.
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
   week, an install after two, a replaced build after three days, a core
-  after a week. `src/plan.rs` holds the table.
+  after a week. What belongs to something that has ended goes once it
+  rests: a concluded or retired quest's scratch ten minutes after its last
+  write, and the builds in every tree its README lists, at once, whatever
+  the band. `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables
@@ -76,11 +79,14 @@ or launchd, and [`home.nix`][2] the account's.
   is above urgent, or by `disk-guard thaw`, after which it's never frozen
   again.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
-  moment, and deletes them oldest first, keeping three days' within a budget
-  of 10% of the filesystem. A path a running process holds, as a temporary
-  root or a file it has open, and every dead path it reaches, is left for a
-  later pass: Nix refuses a whole delete for one live path, deleting none,
-  and each refusal costs it a whole look for roots. It expires generations,
+  moment, half a minute after a root leaves, and two minutes after a process
+  holding paths ends. It deletes them oldest first, in a pass of their own
+  once something has let some go, and keeps none as a rebuild cache unless
+  a machine gives `garbage.keep` and `garbage.budget`. A path a running
+  process holds, as a temporary root or a file it has open, and every dead
+  path it reaches, is left for a later pass: Nix refuses a whole delete for
+  one live path, deleting none, and each refusal costs it a whole look for
+  roots. It expires generations,
   never the current, running or booted one, the newest five, or one with a
   boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing
