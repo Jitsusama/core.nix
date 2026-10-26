@@ -6,7 +6,6 @@
     "desktop",
     "computer",
     "network",
-    "machine:disk",
     "keyboard"
   ],
   "categories": [
@@ -61,6 +60,7 @@
         "machine",
         "machine:memory",
         "heat",
+        "machine:disk",
         "jobs"
       ],
       "commands": [

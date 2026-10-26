@@ -647,9 +647,10 @@ works the same way everywhere.
   did, not each time what they're made from moves.
 - **Home is a few places.** With nothing typed, the launcher shows Now,
   then after a gap the places, each a context with its own words: Agents,
-  Programs, Desktop, Machine, Network, Disk and Keyboard, always in that
-  order, eight rows and the card's full height,
-  so home's shape never changes. Each says what it holds after its name,
+  Programs, Desktop, Machine, Network and Keyboard, always in that order,
+  seven rows in a card of eight, so home's shape never changes. Disk is a
+  place in Machine, beside Processor, Memory and Heat, and a disk filling
+  fast shows in Now. Each says what it holds after its name,
   muted, by its members' own names in the place's own order (Desktop:
   "This window, Windows, Screens, Light"), as many whole as fit, so a glance
   reminds Joel what there is. Inside a place, things come by importance
