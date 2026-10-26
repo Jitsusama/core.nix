@@ -37,9 +37,10 @@ OTHER_SENSE = {
     "shortcuts:neovim:editor:commands": "Neovim's command line, not a connection",
 }
 
-# Things waiting on a rename, each with it. The launcher's words step made
-# every one it held.
-WAITING: dict[str, str] = {}
+# Things waiting on a rename, each with the quest that owns it.
+WAITING: dict[str, str] = {
+    "networks:tunnel": "Launcher (Y2YBTS): tunnel to VPN",
+}
 
 
 def shown(entry: dict[str, object]) -> Iterator[str]:
