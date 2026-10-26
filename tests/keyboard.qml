@@ -105,10 +105,11 @@ ShellRoot {
                 && names[1] === "Flash the keyboard" && !names.includes("Backlight")
                 && !names.some(name => /^Lock .* on$|^Let .* go$|keyboard's backlight/.test(name)),
                 names.filter(name => /^Lock |^Let |backlight/.test(name)).join(", "));
-            const layered = keyboard.search("layer").rows.map(row => row.name);
-            expect("the locked layer let go", layered.includes("Let Numb go")
-                && !layered.includes("Lock Numb on") && layered.includes("Lock Punk on"),
-                layered.join(", "));
+            const numbActs = keyboard.search("numb").rows.map(row => row.name);
+            const punkActs = keyboard.search("punk").rows.map(row => row.name);
+            expect("the locked layer let go", numbActs.includes("Let Numb go")
+                && !numbActs.includes("Lock Numb on") && punkActs.includes("Lock Punk on"),
+                numbActs.concat(punkActs).join(", "));
             const lit = ["turn off keyboard", "turn on keyboard", "brighten keyboard",
                 "dim keyboard"].map(typed => first(typed).name);
             expect("each light's choice found", lit.join(", ") === "Turn off the "
@@ -118,13 +119,10 @@ ShellRoot {
             expect("a choice found by its words",
                 brighter.name === "Brighten the keyboard's backlight"
                 && brighter.verb === "brighten", `${brighter.name}, ${brighter.verb}`);
-            expect("a choice found by the backlight's words",
-                first("leds dark").name === "Turn off the keyboard's backlight",
-                first("leds dark").name);
-            // Its old name, Lights, still finds it.
-            expect("a choice found by the old name",
-                first("lights dark").name === "Turn off the keyboard's backlight",
-                first("lights dark").name);
+            // One word each: an old word for the backlight finds nothing.
+            const old = keyboard.search("leds dark").rows;
+            expect("an old word finds nothing", old.length === 0,
+                old.map(row => row.name).join(", "));
             brighter.run();
             expect("brightening runs ergodox", Niri.spawned.join(" ") === "ergodox brighter",
                 Niri.spawned.join(" "));

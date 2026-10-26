@@ -1,5 +1,5 @@
-// Whether what Joel uses waited, answered in the field: "lag", "laggy",
-// "slow", "jank", "stutter" or "waits". lag-watch (modules/lag-watch) writes
+// Whether what Joel uses waited, answered in the field: "lag", Desktop's
+// one word for it. lag-watch (modules/lag-watch) writes
 // its last ten seconds to a file as each ends; it's read when asked, so
 // nothing is watched or spawned. The headline is what waited, or that
 // nothing did; the rows are each thing that waited, in lag-watch's words,
@@ -15,11 +15,8 @@ import "Numbers.js" as Numbers
 Provider {
     id: provider
 
-    // The words it answers whole, and by their start (Provider.qml). Each
-    // start of three letters is one nothing else is typed by: "sta" and
-    // "res" start Joel's own words for other things.
-    questions: ["lag", "laggy", "lagging", "slow", "jank", "janky", "stutter", "waits",
-        "why slow", "is it slow"]
+    // The word it answers whole, and by its start (Provider.qml).
+    questions: ["lag"]
 
     // How old a window may be and still be the last ten seconds: lag-watch
     // writes one every ten.

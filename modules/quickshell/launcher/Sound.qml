@@ -316,7 +316,6 @@ Provider {
             key: "verb:sound-use",
             verb: Words.verb("verb:sound-use", using),
             name: Words.name("verb:sound-use", using),
-            keywords: Words.keywords("verb:sound-use", using),
             glyph: glyph(kind(node)),
             hue: "action",
             note: switches(node) ? said("profile-switches") : "",
@@ -451,7 +450,6 @@ Provider {
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state, fields.fill),
-            keywords: Words.keywords(key, state),
             hue: "action"
         }, fields));
     }

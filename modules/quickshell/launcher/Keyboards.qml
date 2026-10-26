@@ -173,7 +173,6 @@ Provider {
                 key: choice.key,
                 verb: Words.verb(choice.id),
                 name: Words.name(choice.id, "", { layer: choice.layer }),
-                keywords: Words.keywords(choice.id),
                 glyph: Theme.glyph.layer,
                 hue: "action",
                 run: () => KeyboardLayout.lock(choice.index)
@@ -242,7 +241,6 @@ Provider {
             key: learned,
             verb: Words.verb(id, state),
             name: Words.name(id, state),
-            keywords: Words.keywords(id, state),
             glyph: Theme.glyph.brightness,
             hue: "action",
             run: run

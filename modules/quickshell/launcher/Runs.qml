@@ -19,8 +19,7 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    // Named Helpers in Joel's words (Words.qml), a part of Agents; pi's
-    // words for them find them but never name them.
+    // Subagents, Agents' one word for them (Words.qml), a part of Agents.
     what: Words.of("runs").what
 
     collection: Words.collection("runs")
@@ -43,11 +42,11 @@ Provider {
     }
     readonly property var started: JSON.parse(holding)
 
-    // Each kind in Joel's words, its own name a hidden word (its `also`),
-    // since a fleet and a council are pi's names for helpers and a review.
+    // Each kind by Agents' own word for it: a fleet or a council is several
+    // subagents at once.
     readonly property var kinds: ({
-        fleet: "helpers",
-        council: "review",
+        fleet: "fleet",
+        council: "council",
         judge: "judge",
         critique: "critique",
         audit: "audit",
@@ -184,7 +183,6 @@ Provider {
             key: "verb:run:switch",
             verb: Words.verb("verb:run:switch"),
             name: Words.name("verb:run:switch"),
-            keywords: Words.keywords("verb:run:switch"),
             side: session.address,
             glyph: Words.glyph("verb:run:switch"),
             hue: "action",

@@ -37,7 +37,6 @@ Provider {
         what: "",
         verb: Words.verb("copies:forget"),
         name: Words.name("copies:forget"),
-        keywords: `clipboard copies history ${Words.keywords("copies:forget")}`,
         glyph: Words.glyph("copies:forget"),
         hue: "action",
         run: () => provider.tell("clear")
@@ -127,7 +126,6 @@ Provider {
                 key: id,
                 verb: Words.verb(id),
                 name: Words.name(id),
-                keywords: Words.keywords(id),
                 glyph: Words.glyph(id),
                 hue: "action",
                 now: true,

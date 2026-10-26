@@ -48,7 +48,6 @@ Provider {
             key: id,
             verb: Words.verb(id),
             name: Words.name(id),
-            keywords: Words.keywords(id),
             glyph: Words.glyph(id),
             hue: "action",
             now: true,

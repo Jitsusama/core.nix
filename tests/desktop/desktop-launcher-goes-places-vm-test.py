@@ -96,10 +96,13 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
-    # The launcher's foot counts it, working, as its presence says.
+    # The launcher's foot wears the agents' mark while a session runs. How
+    # many work it says only while the foot has room, which it hasn't at
+    # the test machine's width with the keys' room kept, so the mark alone
+    # (modules/theme/glyphs.nix's agent) is what's asked of it here.
     since = desktop.mark()
     desktop.as_account("qs ipc call launcher toggle")
-    desktop.reported("stands ", lambda rest: "1 working" in rest, since)
+    desktop.reported("stands ", lambda rest: "\U000f06a9" in rest, since)
     desktop.launcher_ready()
     # Its collection by what it's called, then the session named
     # whole, as its README is, not as its window's title.
@@ -125,7 +128,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     )
     # Each named first, as every part is, then what it says.
     for name, side in [
-        ("Task", r"QEST-20261022-TESTQA"),
+        ("Quest", r"QEST-20261022-TESTQA"),
         ("Address", r"TESTQA"),
         ("Started", r"\d\d:\d\d"),
         ("Spent today", r"\$12\.50"),
@@ -300,14 +303,14 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
     )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # pi's word finds them, named Tasks in Joel's.
+    # Agents' one word for them finds them.
     desktop.type_in("quests")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tasks")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Quests")
     machine.send_key("ret")
     # The one driving first, naming the session that has it loaded.
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["tasks"]
+            shown["held"] == ["quests"]
             and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
             and shown["selected"]["side"] == "driving \u00b7 TESTQA"
         )
@@ -391,16 +394,16 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # pi's word finds them, named Helpers in Joel's.
-    desktop.type_in("runs")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Helpers")
+    # Agents' one word for them finds them.
+    desktop.type_in("subagents")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Subagents")
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["helpers"]
+            shown["held"] == ["subagents"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
-                r"helpers \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
+                r"fleet \u00b7 1 of 2 done \u00b7 (under a minute|\d+ min) \u00b7 TESTQA",
                 shown["selected"]["side"],
             )
         )
@@ -437,8 +440,8 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     # Return on the run itself goes to its session.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("helpers")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Helpers")
+    desktop.type_in("subagents")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Subagents")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
     machine.send_key("ret")
@@ -846,7 +849,8 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
         """Give the name of the launcher's selected row, or nothing."""
         return cast("str", (desktop.showing()["selected"] or {}).get("name", ""))
 
-    # Down past the first row to a collection's.
+    # Down past the first row to Programs, a collection the VM always has
+    # some of (Agents, above it, is empty here).
     while True:
         before = selected()
         machine.send_key("down")
@@ -854,7 +858,7 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
         desktop.launcher_until(
             lambda shown: (shown["selected"] or {}).get("name", "") != before  # noqa: B023
         )
-        if desktop.showing()["selected"]["is"].startswith("collection:"):
+        if desktop.showing()["selected"]["is"] == "collection:applications":
             break
     chosen = selected()
     desktop.step_in()
@@ -873,7 +877,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     """A detail inside a thing is found from the root, and Return goes there."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    where = "Machine \u203a Screens \u203a "
+    where = "Desktop \u203a Screens \u203a "
 
     def spot(shown: Json) -> int:
         """Give where the screen's Rotation is listed, saying where it lives, or -1."""
@@ -883,7 +887,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
         return -1
 
     # A screen's rotation is a step inside the screen, inside Screens,
-    # inside Machine; from the root it's found by its name, saying so,
+    # inside Desktop; from the root it's found by its name, saying so,
     # below the focused screen's answer.
     desktop.answer("rotation")
     desktop.launcher_until(lambda shown: spot(shown) >= 0)
@@ -900,8 +904,8 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     desktop.launcher_until(
         lambda shown: (
             shown["open"]
-            and shown["path"][:2] == ["Machine", "Screens"]
-            and len(shown["path"]) == len(["Machine", "Screens", "a screen"])
+            and shown["path"][:2] == ["Desktop", "Screens"]
+            and len(shown["path"]) == len(["Desktop", "Screens", "a screen"])
             and (shown["selected"] or {}).get("name") == "Rotation"
         )
     )
@@ -910,7 +914,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Machine", "Screens"]
+            shown["path"] == ["Desktop", "Screens"]
             and (shown["selected"] or {}).get("name") == screen
         )
     )
@@ -925,8 +929,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # The same five rows every time: Now first, then the rest by name.
-    home = ["Now", "Machine", "Programs", "Power and modes", "Tools"]
+    # The same rows every time: Now first, then each place in the order
+    # the approved proposal gives them.
+    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Disk", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -951,13 +956,13 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
             lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
         )
         feet[selected_is()] = foot()
-    assert selected_is() == "category:tools"
+    assert selected_is() == "collection:keyboard"
     assert len(set(feet.values())) == 1, f"the foot moved as the arrows went: {feet}"
-    # Each says what it holds after its name, by name, from the
+    # Each says what it holds after its name, in its own order, from the
     # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:tools"].startswith("Tools \u00b7 Agents, AI spend, brightness, Calls"), (
-        f"tools reads {reads['category:tools']!r}"
+    assert reads["category:desktop"].startswith("Desktop \u00b7 Windows, Screens, "), (
+        f"desktop reads {reads['category:desktop']!r}"
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
@@ -990,14 +995,16 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     first = desktop.showing()["selected"]
     machine.send_key("tab")
     machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:computer")
-    # Had Tab moved to the first category, the arrow would be past it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
+    # Had Tab moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    for _step in range(3):
+    for _step in range(2):
         machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:tools")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["tools"] and "Agents" in shown["rows"])
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and shown["rows"][:2] == ["Windows", "Screens"]
+    )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
 
@@ -1162,7 +1169,7 @@ def test_a_windows_verbs_follow_it_while_theyre_shown(desktop: Desktop) -> None:
 def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Desktop) -> None:
     """The machine's programs are there the first time it's asked."""
     machine = desktop.machine
-    for figure in ("cpu", "memory"):
+    for figure in ("processor", "memory"):
         desktop.answer(figure)
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Using it" in shown["rows"])
@@ -1173,7 +1180,7 @@ def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Deskt
 def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
     """A word typed whole lands on what it says."""
     machine = desktop.machine
-    # "pi" is meant for pi's sessions, so there has to be one.
+    # Agents lists pi's sessions, so there has to be one.
     desktop.pi_session()
     closed = desktop.in_session(LAUNCHER_OPEN)
 
@@ -1181,17 +1188,12 @@ def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
         """Give a test that Return's row is the one with this key."""
         return lambda shown: bool(shown["selected"]) and shown["selected"]["is"] == key
 
-    # "quiet" is do not disturb's own word, and only the start of the
-    # volume's "quieter". "pi" is two letters, too few for a
-    # collection's words to count by their start, so the Clipboard's
-    # pictures don't. "copy" and "light" each once found nothing.
+    # Each by its one word, the name it shows. "light" once found
+    # nothing.
     lands: list[tuple[str, Callable[[Json], bool]]] = [
-        ("quiet", selects("session:quiet")),
-        (
-            "pi",
-            lambda shown: selects("collection:agents")(shown) and "Clipboard" not in shown["rows"],
-        ),
-        ("copy", selects("collection:clipboard")),
+        ("do not disturb", selects("session:quiet")),
+        ("agents", selects("collection:agents")),
+        ("clipboard", selects("collection:clipboard")),
         ("light", lambda shown: "Brighten the screen" in shown["rows"]),
     ]
     for typed, holds in lands:

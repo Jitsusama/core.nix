@@ -298,15 +298,15 @@ Scope {
     // 2026-10-25: "jumpy ... at home arrowing around"). An answer asked
     // again keeps the list where it was scrolled, as a refresh does.
     function reanswer(source) {
-        if (!open)
+        // At home nothing is asked again, even of a place that's one answer
+        // (Disk), so home is never made again under him.
+        if (!open || (held.length === 0 && typed.trim() === ""))
             return;
         Report.say(`asked again by ${source.settings.name}`);
         if (held.length > 0) {
             relive(source);
             return;
         }
-        if (typed.trim() === "")
-            return;
         const scroll = list.contentY;
         compose(false);
         if (list.contentY !== scroll)
@@ -582,7 +582,6 @@ Scope {
             verbs: () => root.members(category)
         };
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([row.name].concat(category.words ?? []).join(" "));
         return row;
     })
 
@@ -607,31 +606,29 @@ Scope {
 
     // The category a word and a space step into: its own word, or one of
     // its others typed whole.
-    // A category by its id, its name or a word of its own, so its name and a
-    // space step into it: "machine " is Machine though the word is its name.
+    // A place by its name, its one word, so its name and a space step into
+    // it: "machine " is Machine.
     function categoryFor(word) {
         const said = word.toLowerCase();
-        return Words.categories.find(category => category.id === said
-            || category.name.toLowerCase() === said
-            || (category.words ?? []).includes(said)) ?? null;
+        return Words.categories.find(category => category.name.toLowerCase() === said) ?? null;
     }
 
-    // The one order every list a category holds keeps: by name, numbers
-    // counting up first, capitals ignored (RSCH-20261025-U7566F), so where
-    // a thing is never has to be remembered, only its name. A command's
-    // form counts by its words, so "\u27e8sum\u27e9" is among the S's.
-    function byName(a, b) {
-        const bare = name => name.replace(/[\u27e8\u27e9]/g, "");
-        return bare(a).localeCompare(bare(b), undefined, { numeric: true, sensitivity: "base" });
-    }
-
-    // What a category holds, by name: each thing the vocabulary names as
-    // it's found anywhere, and only those this machine has, and the
-    // commands with them where the category says it holds those too.
+    // What a place holds, in the order the vocabulary gives, which is by
+    // importance and relation (attachments/collection-order.md under the
+    // launcher's quest; Joel, 2026-10-25: "ordered intelligently by
+    // importance and relation"): each thing as it's found anywhere, only
+    // those this machine has, then the typed commands whose answers are
+    // this place's, last, so they remind him what can be typed here.
     function members(category) {
-        const held = (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null)
-            .concat(category.commands ? commands() : []);
-        return held.sort((a, b) => byName(a.name, b.name));
+        return (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null)
+            .concat(commandsIn(category));
+    }
+
+    // The typed commands a place lists, in its order.
+    function commandsIn(category) {
+        const named = category.commands ?? [];
+        return commands().filter(row => named.includes(row.key))
+            .sort((a, b) => named.indexOf(a.key) - named.indexOf(b.key));
     }
 
     // What a category holds, said after its name at home so scrolling
@@ -642,10 +639,10 @@ Scope {
     // answer is asked for it.
     function holding(category, room) {
         const names = (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "")
-            .concat(category.commands ? commands().map(row => row.start.trim()
-                || row.key.replace(/^command:/, "")) : []);
+            .concat(commandsIn(category).map(row => row.start.trim()
+                || row.key.replace(/^command:/, "")));
         const own = (category.name ?? category.id).toLowerCase();
-        return listed(names.filter(name => name.toLowerCase() !== own).sort(byName), room);
+        return listed(names.filter(name => name.toLowerCase() !== own), room);
     }
 
     // Names as one line, as many whole as fit in `room` characters, then
@@ -739,7 +736,6 @@ Scope {
                 plain: true
             };
             row.prepared = Fuzzy.prepare(row.name);
-            row.keywords = Fuzzy.prepare([row.name].concat(command.words ?? []).join(" "));
             return row;
         });
     }
@@ -754,10 +750,10 @@ Scope {
     // Rows found by what's typed, inside a step, a category or a
     // collection's parts, in the top level's tiers (Rank.js): a name that
     // is what's typed, then one starting with it, then one with a later
-    // word starting with it, and then a row found only by its hidden words
-    // (hiddenWords), each tier best match first. A hidden word isn't said beside
-    // the row, since it may be a name the machine knows a thing by, such as
-    // tailscale0, that Joel never sees.
+    // word starting with it, and then a row found only by what it holds of
+    // its own (hiddenWords), each tier best match first. Such a word isn't
+    // said beside the row, since it may be a name the machine knows a thing
+    // by, such as tailscale0, that Joel never sees.
     function within(rows, letters) {
         const typedWords = Fuzzy.words(letters);
         const need = Fuzzy.letters(typedWords);
@@ -792,21 +788,15 @@ Scope {
         return Rank.order(found, {}).map(f => f.choice);
     }
 
-    // A row's hidden words, prepared to match: its keywords, and what the
-    // vocabulary says finds the thing it is (Words.qml's keywords), by its
-    // key, or the provider's things it holds, or the answer it gives.
-    // Made once for each row and kept on it, since a step's rows are
-    // searched at every key; a WeakMap keeping them crashed the shell once
-    // its rows were collected.
+    // A row's other words, prepared to match: its keywords, which say only
+    // what it holds of its own, such as a network card's name, since the
+    // vocabulary gives a thing one word, its name. Made once for each row
+    // and kept on it, since a step's rows are searched at every key; a
+    // WeakMap keeping them crashed the shell once its rows were collected.
     function hiddenWords(row) {
         if (row.hiddenMade !== undefined)
             return row.hiddenMade;
-        const key = String(row.key ?? "");
-        const id = key.startsWith("group:") ? key.slice("group:".length)
-            : String(row.is ?? "").startsWith("answer:") ? row.is.slice("answer:".length) : key;
-        const said = id !== "" && Words.things[id] ? Words.keywords(id) : "";
-        const own = row.keywords ? row.keywords.text ?? "" : "";
-        const words = [own, said].filter(part => part !== "").join(" ");
+        const words = row.keywords ? row.keywords.text ?? "" : "";
         const made = words === "" ? null : Fuzzy.prepare(words);
         row.hiddenMade = made;
         return made;
@@ -877,7 +867,7 @@ Scope {
         const collection = source.collection;
         const row = Object.assign(whole(source, false, false), { weight: source.weight });
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([row.name, collection.noun].concat(collection.words ?? []).join(" "));
+        row.keywords = Fuzzy.prepare([row.name, collection.noun].join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
         return row;
@@ -1179,14 +1169,14 @@ Scope {
     // what it orders holds still while it's open.
     property var often: ({})
 
-    // With nothing typed, home is the same five rows every time, each in
-    // its one place (RSCH-20261025-U7566F): Now first, saying what's on or
-    // waiting this moment, then Computer, Programs, Session and Tools by
-    // name, each saying what it holds, so one glance reminds Joel what
-    // there is. Each thing has one home among them, and nothing else is
-    // here: what's on is in Now, a mode in Session, a window in Programs'
-    // and Tools' Windows. What each row says is read as the launcher opens
-    // and held while it's open, so nothing moves under him.
+    // With nothing typed, home is the same rows every time, each in its
+    // one place, as the approved proposal sets them
+    // (attachments/launcher-proposal.md under the launcher's quest): Now
+    // first, saying what's on or waiting this moment, then each place, a
+    // context of its own, saying what it holds, so one glance reminds Joel
+    // what there is. Each thing has one home among them, and nothing else
+    // is here. What each row says is read as the launcher opens and held
+    // while it's open, so nothing moves under him.
     function home() {
         const room = Math.floor((list.width - Theme.space.l - Theme.space.xxl
             - Theme.space.xxl - Theme.space.m - Theme.space.l)
@@ -1209,7 +1199,7 @@ Scope {
             });
         const source = collections.find(one => one.settings.name === id);
         if (!source)
-            return null;
+            return answerPlace(id);
         const row = whole(source, false, false);
         // In Now, what waits on Joel leads, named by the first of it, since
         // it's the one thing there only he can move; the rest follow by name.
@@ -1223,6 +1213,33 @@ Scope {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
         });
+    }
+
+    // A place that's one answer, as Disk is: named as the vocabulary names
+    // it, what it says now after its name, and its parts a step in. Until
+    // the machine can say, as before its first reading is back, it's there
+    // by name with nothing after it, so home never gains a row while it's
+    // open, and Return leaves it open rather than closing on nothing.
+    function answerPlace(id) {
+        const entry = Words.of(id);
+        if (!entry.name)
+            return null;
+        const row = resolved(id);
+        if (row)
+            return Object.assign({}, row, { name: entry.name, count: row.side ?? "", side: "" });
+        return {
+            key: `place:${id}`,
+            name: entry.name,
+            glyph: Words.glyph(id),
+            hue: "voice",
+            plain: true,
+            chord: [],
+            side: "",
+            count: "",
+            verb: "open",
+            stays: true,
+            run: () => {}
+        };
     }
 
     // A collection as one row at home: Return or the right arrow opens all
@@ -1600,7 +1617,7 @@ Scope {
             // typed, then those it finds, best first, and with them the
             // choices of a part that offers them (a display's Scale), so
             // what's typed reaches them without a step in: "scale 150".
-            // Found by name or by hidden word, in the top level's tiers.
+            // Found by name or by what it holds, in the top level's tiers.
             else if (words.length === 0)
                 found = offered.slice();
             else

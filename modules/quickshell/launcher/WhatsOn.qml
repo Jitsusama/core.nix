@@ -19,8 +19,8 @@ Provider {
 
     what: "on"
 
-    // Named Now, as the vocabulary says (Words.qml), its old name a hidden
-    // word, under the calendar clock.
+    // Named Now, as the vocabulary says (Words.qml), under the calendar
+    // clock.
     collection: Words.collection("on", { searched: false })
     // What waits on Joel is found by its words too, since Now is its one
     // home: the rest of what's on each has a place of its own to be found
@@ -88,7 +88,6 @@ Provider {
         key: "on:waiting",
         verb: Words.verb("on:waiting"),
         name: Words.name("on:waiting"),
-        keywords: Words.keywords("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
         hue: Steward.items.some(each => each.ready) ? "strong" : "muted",
         side: String(Steward.items.length),

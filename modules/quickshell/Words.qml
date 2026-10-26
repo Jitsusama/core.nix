@@ -1,9 +1,9 @@
 pragma Singleton
 // The launcher's vocabulary (launcher/words.json, from
 // jitsusama.quickshell.launcher.words): for every thing it knows, a
-// collection, an answer, an act or a part, its name as shown, the categories
-// it's in, the other words that find it, the words that ask its answer, its
-// verb and the glyph it wears, so a name is said in one place and a check
+// collection, an answer, an act or a part, its name as shown, the place
+// it's in, the words that ask its answer, its verb and the glyph it wears,
+// one word each (docs/design.md), so a name is said in one place and a check
 // (tests/launcher-words.py) can say no word finds two things. A provider
 // asks it by its own name, or a row by its key.
 import Quickshell
@@ -41,13 +41,11 @@ Singleton {
     }
 
     // A thing as it is in a state ("on", "off", "floating"), the state's
-    // own name, verb, glyph and old names over its usual ones.
+    // own name, verb and glyph over its usual ones.
     function of(id, state) {
         const entry = things[id] ?? { id: id, name: id };
         const over = state ? (entry.states ?? {})[state] ?? {} : {};
         return Object.assign({
-            words: [],
-            hidden: [],
             parts: [],
             answers: [],
             verb: ""
@@ -64,13 +62,6 @@ Singleton {
 
     function verb(id, state) {
         return of(id, state).verb;
-    }
-
-    // What finds it besides its name, as one string, as a row's keywords
-    // are: its words and its hidden ones, an old name among them.
-    function keywords(id, state) {
-        const entry = of(id, state);
-        return entry.words.concat(entry.hidden).join(" ");
     }
 
     // The words that ask its answer, typed whole, best first, as a
@@ -106,7 +97,6 @@ Singleton {
         return Object.assign({
             noun: entry.noun ?? entry.name.toLowerCase(),
             title: entry.name,
-            words: entry.words.concat(entry.hidden),
             glyph: glyph(id),
             ask: entry.ask ?? "which?",
             empty: entry.empty ?? `No ${entry.noun ?? entry.name.toLowerCase()} yet.`

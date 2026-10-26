@@ -114,7 +114,9 @@ def stray(category: Entry, things: dict[str, Entry]) -> list[str]:
         for entry in things.values()
         if plainly(entry.get("name", "")) == category["id"]
         and category["id"] not in shown
-        and "in" not in entry
+        # One that lives inside another, as the desktop's acts live in
+        # Shortcuts' Desktop layer, is named for it there, not beside it.
+        and not {"in", "by"} & entry.keys()
     )
     return out
 

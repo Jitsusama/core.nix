@@ -153,7 +153,6 @@ Provider {
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state),
-            keywords: Words.keywords(key, state),
             glyph: Words.glyph(key, state),
             hue: "action"
         }, fields));

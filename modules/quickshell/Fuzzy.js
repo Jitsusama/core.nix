@@ -92,9 +92,14 @@ function letters(ws) {
     return mask;
 }
 
+// A letter or a digit, either side of a hyphen that joins a word.
+const JOINED = /[a-z0-9\u00c0-\u024f]/i;
+
 // An item ready to be matched: its text, its letters in lower case (one
 // for one, so positions line up) as a string and as character codes, each
-// letter's bonus, and which letters it holds.
+// letter's bonus, and which letters it holds. A word written with a hyphen
+// is the same word typed without one, so "wifi" is Wi-Fi: it's kept closed
+// up too, with where each of its letters is in the text.
 function prepare(text) {
     const source = String(text);
     const n = source.length;
@@ -114,7 +119,30 @@ function prepare(text) {
         codes[j] = f.charCodeAt(0);
         mask |= bitOf(codes[j]);
     }
-    return { text: source, folded: folded, codes: codes, bonus: bonus, mask: mask };
+    return Object.assign({ text: source, folded: folded, codes: codes, bonus: bonus, mask: mask },
+        closedUp(source, folded, bonus));
+}
+
+// The text with each hyphen inside a word taken out, its letters' places in
+// the text, and their bonuses as the closed-up word has them, or nothing
+// for a text without such a hyphen.
+function closedUp(source, folded, bonus) {
+    const n = source.length;
+    let closed = "";
+    const at = [];
+    for (let j = 0; j < n; j++) {
+        const inside = source[j] === "-" && j > 0 && j < n - 1
+            && JOINED.test(source[j - 1]) && JOINED.test(source[j + 1]);
+        if (!inside) {
+            closed += folded[j];
+            at.push(j);
+        }
+    }
+    if (at.length === n) return { closed: null };
+    const closedBonus = new Int8Array(at.length);
+    for (let k = 0; k < at.length; k++)
+        closedBonus[k] = k > 0 && at[k] !== at[k - 1] + 1 ? 0 : bonus[at[k]];
+    return { closed: closed, closedAt: at, closedBonus: closedBonus };
 }
 
 // What a word is worth landing at `at`: fzf's score for a run of letters,
@@ -156,8 +184,31 @@ function align(item, word, positions) {
             bestAt = at;
         }
     }
+    if (best < 0 && item.closed)
+        return alignClosed(item, word, positions);
     if (positions && bestAt >= 0)
         for (let j = bestAt; j < bestAt + m; j++) positions.push(j);
+    return best;
+}
+
+// As align, over the text closed up, for a word typed without the hyphen
+// its text has: the letters it lands on are put where they are in the text.
+function alignClosed(item, word, positions) {
+    const text = item.closed;
+    const bonus = item.closedBonus;
+    const m = word.length;
+    let best = -1;
+    let bestAt = -1;
+    for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
+        if (bonus[at] <= 0) continue;
+        const score = worth(bonus, at, m);
+        if (score > best) {
+            best = score;
+            bestAt = at;
+        }
+    }
+    if (positions && bestAt >= 0)
+        for (let k = bestAt; k < bestAt + m; k++) positions.push(item.closedAt[k]);
     return best;
 }
 

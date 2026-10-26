@@ -549,9 +549,7 @@ works the same way everywhere.
   first, then a name it starts, then a later word it starts, then a word
   that only finds it, typed whole before only started: an act's name starts
   with its verb, so "quiet" is do not disturb before the volume's
-  "quieter". Below three
-  letters a collection's other words find it only whole, so "pi" is the
-  Agents and not the Clipboard's pictures. What's
+  "quieter". What's
   picked most for what was typed, counting the longer words it starts, is
   first there once it's been picked two more times than anything else, so
   "sl", "sla" and "slac" all mean Slack, and "l" means what its words were
@@ -567,24 +565,24 @@ works the same way everywhere.
   is learned only once its first word is typed whole. When fewer letters
   would do, the field's end says so ("sl is enough"), so the habit gets
   quicker by itself, and there are no aliases to set up or remember.
-- **One way of naming.** Every name and word the launcher knows is said
+- **One word each.** Every name and word the launcher knows is said
   once, in its vocabulary (`modules/quickshell/launcher/words.json`, the
   option `jitsusama.quickshell.launcher.words`): each thing's name as
-  shown, the categories it's in, the other words that find it and the
-  glyph it wears. A thing is its own name in Joel's words ("Slack",
-  "Agents", "Calls"); a set is a plural noun ("Windows", "Tasks"); an act
-  is short, in sentence case, saying what it does ("Lock", "Keep awake",
-  "Power saver", "Wi-Fi off", "New window", "Bring here"), a switch
-  saying what it will do now. Implementation names are never shown, only
-  kept as hidden words: pi, claude, quest, council, fleet, tuple, niri,
-  spend-watch, lag-watch. Other words find a row but never name it: a row
-  found by one shows the word in quotes after its name (Suspend "sleep"),
-  and a renamed row's old name is one of them, so what Joel typed before
-  still finds it ("use power saver", "quests", "what's on"). A word finds
-  one thing at each strength (a name typed whole, another word, an
-  answer's question), or the vocabulary lists it as meant to find several
-  ("pair" is a call and a Bluetooth device), and a check fails on any
-  other. Return's word in the footer is one: the act's own verb (switch,
+  shown, the place it's in and the glyph it wears. A thing is named by
+  its context's one term for it, the glossary's (`docs/glossary.md`), and
+  that term is what finds it: there are no synonyms and no hidden words,
+  and an old name finds nothing, so a renamed row is learned once (Joel,
+  2026-10-25: "i don't want 1,000 synonyms for similar ideas"). A word
+  may mean its own thing in another context, the crumbs saying which. A
+  set is a plural noun ("Windows", "Quests"); an act is short, in
+  sentence case, saying what it does ("Lock", "Keep awake", "Power
+  saver", "Wi-Fi off", "New window", "Bring here"), a switch saying what
+  it will do now. Implementation names are never shown or typed. An
+  answer is asked by its term, or a part's name after its thing's
+  ("battery health"). A word finds one thing at each strength (a name
+  typed whole, an answer's question), or the vocabulary lists it as meant
+  to find several ("pair" is a call and a Bluetooth device), and a check
+  fails on any other. Return's word in the footer is one: the act's own verb (switch,
   start, lock, mute, close, copy, set, off), a turn by the way it goes.
   Ending the session asks once more, saying what it closes ("Reboot now,
   closing 14 windows").
@@ -638,17 +636,17 @@ works the same way everywhere.
   list scrolled where it was. A category held, as Agents in "ai", refreshes
   the same way. A collection says it changed only when what its rows show
   did, not each time what they're made from moves.
-- **Home is what's next.** With nothing typed, the launcher shows what's in
-  front of you (the focused window, its verbs one arrow away), then the
-  three likeliest picks, then after a gap the same three collections in the
-  same order, Windows, Clipboard and Notifications, so home's shape never
-  changes, and below them the fifteen categories in their order, each
-  saying what it holds after its name, muted, by its members' own names
-  (AI: "Agents, Tasks, Helpers, AI spend"), as many whole as fit, so
-  scrolling down
-  reminds Joel what there is. Tab does nothing at home, since an arrow
-  reaches every category. Every other collection is its name away, and every
-  typed command is in **commands**.
+- **Home is a few places.** With nothing typed, the launcher shows Now,
+  then after a gap the places, each a context with its own words: Agents,
+  Programs, Desktop, Machine, Network, Disk and Keyboard, always in that
+  order, eight rows and the card's full height,
+  so home's shape never changes. Each says what it holds after its name,
+  muted, by its members' own names in the place's own order (Desktop:
+  "Windows, Screens, Light, Notices"), as many whole as fit, so a glance
+  reminds Joel what there is. Inside a place, things come by importance
+  and relation, never A to Z, and a typed command comes last in the place
+  whose answer it gives (Network's "ip ⟨address or network⟩").
+  Tab does nothing at home, since an arrow reaches every place.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, and so does Tab when the row holds more, so a
   few letters reach inside a thing from anywhere: what can be done to it,

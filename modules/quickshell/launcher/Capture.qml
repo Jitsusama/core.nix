@@ -202,7 +202,6 @@ Provider {
                 key: `capture:window:${window.app_id}`,
                 verb: "take",
                 name: titled(window),
-                keywords: `${window.app_id ?? ""} window screenshot picture`,
                 // Its program by the name Joel knows, never its app id.
                 side: provider.programOf(window),
                 glyph: picture,

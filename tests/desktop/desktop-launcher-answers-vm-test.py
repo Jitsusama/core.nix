@@ -161,10 +161,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
     )
     machine.send_key("esc")
-    # A collection is found by what a person calls it, not only its
-    # title, and Return goes straight into it.
+    # A collection is found by its name, and Return goes straight into
+    # it.
     # Beside the field, it says what sort of thing each is.
-    for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
+    for typed, collection in [("sound", "Sound"), ("notices", "Notices")]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(
@@ -188,12 +188,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert desktop.as_account("wl-paste --no-newline").startswith(f"{charge}%, ")
-    # The words a poor memory reaches for ask the same answers.
+    # Each answer by its one word, and an old one asks nothing.
     # "lag" answers from lag-watch's last ten seconds.
     for typed, said in [
-        ("battery life", f"{charge}%"),
-        ("how hot", ""),
-        ("ram", ""),
+        ("battery", f"{charge}%"),
+        ("heat", ""),
+        ("memory", ""),
         ("lag", ""),
     ]:
         desktop.answer(typed)
@@ -206,7 +206,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
         machine.send_key("esc")
     # A name starting the same way is chosen over an answer only
-    # started: "pow" is Power Off, the battery's answer above it.
+    # started: "pow" is Power off, by its name.
     desktop.answer("pow")
     desktop.launcher_until(
         lambda shown: (
@@ -218,14 +218,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # The hottest part, from the sensors the kernel lists, of which
     # the stand-in battery is one.
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
-    desktop.answer("temperature")
+    desktop.answer("heat")
     desktop.photograph("launcher-heat")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert re.search("^-?\\d+ \\u00b0C at the ", desktop.as_account("wl-paste --no-newline"))
     # Each part reads name first, a step in; Return opens one, its
     # history first, and so does the right arrow, once back out.
-    desktop.answer("temperature")
+    desktop.answer("heat")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
@@ -304,14 +304,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         timeout=dt.timedelta(seconds=10),
     )
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # "backlight" asks the keyboard's backlight alone, as the stand-in's
+    # "keyboard backlight" asks it alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
     kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
     kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
     kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
     kbd_levels = ["Backlight off", "Backlight to 1 of 2", "Backlight to 2 of 2"]
-    desktop.answer("backlight")
+    desktop.answer("keyboard backlight")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
@@ -328,12 +328,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # The session's actions answer to what people call them; Escape,
+    # The power actions answer to their names, and only those; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
-        ("shut down", "Power off", "Power off"),
-        ("restart", "Reboot", "Reboot"),
-        ("sign out", "Log out", "Log out"),
+        ("power off", "Power off", "Power off"),
+        ("reboot", "Reboot", "Reboot"),
+        ("log out", "Log out", "Log out"),
     ]:
         desktop.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
@@ -448,7 +448,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         f" && echo '{json.dumps(shaped)}' > /run/shaper/status.json"
     )
     rate = r"[\d.,]+ (b|kb|Mb|Gb)/s"
-    desktop.answer("network speed")
+    desktop.answer("speed")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
@@ -461,14 +461,16 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.step_in()
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
-        lambda shown: shown["rows"][:5] == ["In", "Out", "Line", "Round trip", "Dropped"]
+        lambda shown: shown["rows"][:5] == ["In", "Out", "Connection", "Round trip", "Dropped"]
     )
-    assert desktop.showing()["things"][2]["reads"] == "Line · 40 Mb/s in · 12 Mb/s out"
+    assert (
+        desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
+    )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # "ping" asks the round trip alone, the middle of the servers, each
-    # a step in, the quickest first.
-    desktop.answer("ping")
+    # "round trip" asks it alone, the middle of the servers, each a step
+    # in, the quickest first.
+    desktop.answer("round trip")
     desktop.launcher_until(
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
@@ -535,7 +537,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    desktop.answer("what's running")
+    desktop.answer("queue")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
@@ -572,7 +574,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # How busy the processors are, read again while it's shown, so a
     # moment on it says just now; a step in, each core and the rest.
-    desktop.answer("cpu")
+    desktop.answer("processor")
     desktop.launcher_until(
         lambda shown: (
             re.fullmatch(r"\d+% busy", (shown["selected"] or {}).get("name", "")) is not None
@@ -696,7 +698,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # breaks. Each waits for its answer to settle, failed; asked again
     # while that failure stands, it says so at once. When a failure is
     # asked again is the launcher's answers check's to say.
-    for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "ip"]:
+    for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "address"]:
         desktop.answer(typed)
         machine.send_key("esc")
     desktop.answer("weather tokyo")
@@ -713,7 +715,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    desktop.answer("when will it rain in tokyo")
+    desktop.answer("rain in tokyo")
     rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
     desktop.launcher_until(
         lambda shown: (
@@ -851,37 +853,31 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # The word and a space become a chip, the field cleared, listing
-    # what it holds; what's typed then searches only inside it. Only the
-    # first twenty rows are reported, which Tasks falls past, so it's
-    # found by typing below.
+    # what it holds; what's typed then searches only inside it.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("tools ")
+    machine.send_chars("network ")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["tools"]
+            shown["held"] == ["network"]
             and shown["typed"] == ""
-            and {"Agents", "Helpers"} <= set(shown["rows"])
+            and {"Address", "Speed"} <= set(shown["rows"])
         )
     )
-    # What it holds is listed by name, capitals ignored, its commands with
-    # them by their words. AI spend has nothing to say here, with no
-    # spend written.
+    # What it holds is in its own order, Wi-Fi before what it's
+    # connected by, then its typed commands, last, in theirs.
     held = desktop.showing()["rows"]
-    assert held[0] == "Agents", held
-    assert held.index("\u27e8amount\u27e9 \u27e8unit\u27e9 in \u27e8unit\u27e9") > 0, held
-    assert held.index("brightness \u27e8percent\u27e9") < held.index("Calls"), held
-    # An answer is named as what it is, what it says beside, so it keeps
-    # its place: the date is Date, never today's date.
-    assert held.index("colour \u27e8colour\u27e9") < held.index("Date"), held
+    ip = "ip \u27e8address or network\u27e9"
+    assert held.index("Address") < held.index("Speed") < held.index(ip), held
+    assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.photograph("launcher-category")
-    desktop.type_in("tas", selecting="Tasks")
+    desktop.type_in("add", selecting="Address")
     # The left arrow takes what's typed, then steps out with the word
     # put back.
     machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == ["tools"] and shown["typed"] == "")
+    desktop.launcher_until(lambda shown: shown["held"] == ["network"] and shown["typed"] == "")
     machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "tools")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "network")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A question that starts with a category's word is still a question.
@@ -889,18 +885,12 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Every command is in Tools by its words, its form shown; Tab puts its
-    # start in the field, out at the top, where it's finished. Only the
-    # first twenty rows are reported, so two from early in the alphabet.
+    # A command is in the place whose answer it gives, its form shown; Tab
+    # puts its start in the field, out at the top, where it's finished.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("tools ")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["held"] == ["tools"]
-            and {"ip \u27e8address or network\u27e9", "epoch"} <= set(shown["rows"])
-        )
-    )
+    machine.send_chars("network ")
+    desktop.launcher_until(lambda shown: shown["held"] == ["network"] and ip in shown["rows"])
     desktop.photograph("launcher-commands")
     desktop.type_in("ip", selecting="ip \u27e8address or network\u27e9")
     machine.send_key("tab")
@@ -911,19 +901,19 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_the_sessions_acts_are_found_from_anywhere_by_joels_own_words(desktop: Desktop) -> None:
-    """The session's acts are found from anywhere by Joel's own words."""
+def test_the_power_acts_are_found_by_their_names_and_an_old_name_finds_none(
+    desktop: Desktop,
+) -> None:
+    """The power acts are found by their names, and an old name finds none."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    # Short names, each found by the start Joel types, or a word of
-    # his; Escape, never Return, since Return would do them.
+    # Short names, each found by the start Joel types; Escape, never
+    # Return, since Return would do them.
     for typed, name, verb in [
-        ("sus", "Suspend", "suspend"),
-        ("caff", "Keep awake", "start"),
+        ("sle", "Sleep", "sleep"),
+        ("keep", "Keep awake", "start"),
         ("reb", "Reboot", "reboot"),
-        ("donot", "Do not disturb", "start"),
-        # An old name, kept as a hidden word.
-        ("suspend the machine", "Suspend", "suspend"),
+        ("do not", "Do not disturb", "start"),
     ]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
@@ -935,6 +925,13 @@ def test_the_sessions_acts_are_found_from_anywhere_by_joels_own_words(desktop: D
         )
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # One word each: the old name finds what it named no more, so Sleep is
+    # learned once.
+    desktop.answer("suspend")
+    said = (desktop.showing()["selected"] or {}).get("name")
+    assert said != "Sleep", f"suspend still found Sleep: {said}"
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
@@ -977,11 +974,11 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     # another thing. Home, with nothing typed, lists nothing twice
     # either, a collection picked often staying in its own place.
     for typed, leading in [
-        ("tuple", ["Calls"]),
+        ("calls", ["Calls"]),
         ("lock", ["Lock"]),
         ("kitty", ["kitty"]),
         ("do not disturb", ["Do not disturb"]),
-        ("screenshot", ["Capture"]),
+        ("capture", ["Capture"]),
         ("", []),
     ]:
         desktop.answer(typed)
@@ -1012,7 +1009,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
         "ip tuntap add dev tailscale0 mode tun"
         " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
     )
-    desktop.answer("ip")
+    desktop.answer("address")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Tunnel" in shown["rows"])
     desktop.type_in("tailscale0", selecting="Tunnel")
@@ -1040,7 +1037,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     # first shown.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("computer ")
+    machine.send_chars("machine ")
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["computer"]

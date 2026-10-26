@@ -6,8 +6,9 @@
 // says when it next rains, with a spark of the next twelve hours, and Return
 // steps into them, an hour a row, each its chance, how much and a bar; the
 // rain's own words answer with the next rain, here or "in" a place, and
-// say when it's raining now, might, or won't; every word that asked for
-// the weather before still does; and with lookups off it answers nothing.
+// say when it's raining now, might, or won't; the weather's one word asks
+// it, here or anywhere, and an old word doesn't; and with lookups off it
+// answers nothing.
 // Here is where the laptop is once whereabouts has said, its forecast asked
 // by its position with no geocoder and said by it, ahead of the place set
 // and the time zone; then the place set, ahead of the time zone; and the
@@ -189,10 +190,8 @@ ShellRoot {
                 && hours[3].graph.values[0] === 0.9, JSON.stringify(hours[3].graph));
         expect("an hour is a figure, copying nothing", hours[2].verb === "close", hours[2].verb);
 
-        // The rain asked for itself, by any of its words.
-        for (const typed of ["rain", "Rain", "raining", "umbrella", "precipitation",
-                "will it rain", "will it rain?", "when will it rain", "is it going to rain",
-                "when is it going to rain?"]) {
+        // The rain asked for itself, by its one word.
+        for (const typed of ["rain", "Rain", "rain?"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the next rain`,
                 said?.headline === "rain from 15:00, 70%" && said.rows.length === 12
@@ -212,20 +211,20 @@ ShellRoot {
             names(tokyo.rows[1].verbs()));
         const dry = weather.answer("rain in tokyo");
         expect("no rain there", dry.headline === "no rain in the next 12 hours", dry.headline);
-        const wet = weather.answer("when will it rain in paris?");
+        const wet = weather.answer("rain in paris?");
         expect("raining now", wet.headline === "rain now, 80%", wet.headline);
         const maybe = weather.answer("rain for oslo");
         expect("might", maybe.headline === "rain unlikely, at most 40%", maybe.headline);
 
-        // Every word that asked for the weather before still does.
-        for (const typed of ["weather", "forecast", "Weather", "weather tokyo", "weather for tokyo",
-                "tokyo weather", "tokyo forecast", "forecast in tokyo"]) {
+        // The weather's one word asks it, here or anywhere.
+        for (const typed of ["weather", "Weather", "weather tokyo", "weather for tokyo",
+                "tokyo weather"]) {
             const said = weather.answer(typed);
             expect(`"${typed}" answers the weather`,
                 said?.rows.length === 6 && said.rows[1].name === "Rain", said?.headline);
         }
         // And nothing else is read as rain, nor a place looked up by it.
-        for (const typed of ["rainbow", "rain tomorrow", "train", "brain"])
+        for (const typed of ["rainbow", "rain tomorrow", "train", "brain", "umbrella", "forecast"])
             expect(`"${typed}" isn't asked`, weather.answer(typed) === null, typed);
         expect("one request a place, and no more", Object.keys(weather.asked).length === asked,
             Object.keys(weather.asked).join(" "));

@@ -242,10 +242,11 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    assert rows == ["Now", "Machine", "Programs", "Power and modes", "Tools"], rows
+    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Disk", "Keyboard"]
+    assert rows == home, rows
     # A page down stops on the last.
     machine.send_key("pgdn")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tools")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keyboard")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
     desktop.type_in("shortcuts", selecting="Shortcuts")
@@ -842,12 +843,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     """The launcher sets the power profile."""
     machine = desktop.machine
-    # By its name, or a word a person would call it.
+    # By its name, power saver last, where what follows starts from.
     for typed, profile, name in [
-        ("eco", "power-saver", "Power saver"),
         ("balanced power", "balanced", "Balanced power"),
-        # Its old name, a hidden word, still finds it.
-        ("use power saver", "power-saver", "Power saver"),
+        ("power saver", "power-saver", "Power saver"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
@@ -1114,7 +1113,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     machine.wait_until_succeeds(
         "ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=timedelta(seconds=90)
     )
-    desktop.answer("ip")
+    desktop.answer("address")
     desktop.step_in()
     addresses = len(desktop.showing()["held"])
     # Each is named by what it is, never by the kernel's name for it.
