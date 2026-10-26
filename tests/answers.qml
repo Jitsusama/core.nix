@@ -436,8 +436,8 @@ QtObject {
         // each of these leaves the other's.
         for (const [typed] of subnets.concat(characters)) {
             asked++;
-            const sum = Numbers.answer(typed);
-            const measure = Units.answer(typed);
+            const sum = Numbers.answer(typed, undefined, Maths);
+            const measure = Units.answer(typed, undefined, Maths);
             if (sum || measure)
                 failures.push(`"${typed}" was answered ${quoted((sum || measure).headline)} `
                     + "by the sums or the units first");
