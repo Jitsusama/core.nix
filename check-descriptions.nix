@@ -274,8 +274,9 @@
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
-    and answers an invitation the shell asks it to, changing only Joel's own answer, and tells it the
-    mail that wants Joel, newest first, each asked for once
+    and answers an invitation the shell asks it to, changing only Joel's own answer, and tells it
+    the mail that wants Joel, newest first, each asked for once, marking it read or archiving it
+    when asked
   '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most

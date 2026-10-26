@@ -171,6 +171,26 @@ impl Google {
         )
     }
 
+    /// Takes the label `label` off the mail `id`, as Gmail's own buttons
+    /// do: UNREAD to mark it read, INBOX to archive it.
+    pub fn unlabel(&self, token: &str, id: &str, label: &str) -> Result<(), Refused> {
+        let written = self
+            .agent
+            .post(format!(
+                "{}/gmail/v1/users/me/messages/{id}/modify",
+                self.origins.api
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("fields", "id")
+            .send_json(serde_json::json!({ "removeLabelIds": [label] }))
+            .map_err(|error| unreachable(&error))?;
+        let status = written.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "marking mail"));
+        }
+        Ok(())
+    }
+
     /// The inbox, for how many in it are unread.
     pub fn inbox(&self, token: &str) -> Result<Value, Refused> {
         self.get(

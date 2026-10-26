@@ -14,6 +14,26 @@ pub const WANTS: &str = "in:inbox is:unread is:important";
 /// How many the shell is told of, at most.
 pub const SHOWN: usize = 20;
 
+/// What Joel does with a piece of mail that wants him, each taking one of
+/// Gmail's labels off it, after which it wants him no more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tidy {
+    /// Mark it read: it stays in the inbox.
+    Read,
+    /// Take it out of the inbox, read or not, as Gmail's Archive does.
+    Archive,
+}
+
+impl Tidy {
+    /// The label Gmail takes off.
+    pub fn label(self) -> &'static str {
+        match self {
+            Tidy::Read => "UNREAD",
+            Tidy::Archive => "INBOX",
+        }
+    }
+}
+
 /// One piece of mail, as the shell is told it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Mail {

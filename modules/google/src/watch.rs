@@ -1,7 +1,7 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
 //! asks for the meetings and the mail that wants Joel, and says how it all
-//! stands; an answer to an invitation is asked the same way, and changes
-//! what's held at once.
+//! stands; an answer to an invitation, and mail marked read or archived,
+//! are asked the same way, and change what's held at once.
 
 use std::path::PathBuf;
 
@@ -10,7 +10,7 @@ use jiff::Zoned;
 use crate::account::{self, Missing};
 use crate::api::{Google, Refused};
 use crate::calendar::{self, Answer};
-use crate::mail::{self, Mail};
+use crate::mail::{self, Mail, Tidy};
 use crate::state::{Standing, State};
 use crate::token::Keeper;
 
@@ -77,6 +77,24 @@ impl Watch {
                     if meeting.id == id {
                         meeting.answer = Some(with);
                     }
+                }
+            }
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Marks the mail `id` read or archives it, as `how` says, and lets it
+    /// go from what's held so the shell hears it at once: it wants Joel no
+    /// more either way. Held, it was unread in the inbox, so the inbox has
+    /// one fewer unread. Mail Google didn't take changes nothing held.
+    pub fn tidy(&mut self, id: &str, how: Tidy, now: &Zoned) -> &State {
+        match self.asking(now, |google, token| google.unlabel(token, id, how.label())) {
+            Ok(()) => {
+                let before = self.state.mail.len();
+                self.state.mail.retain(|mail| mail.id != id);
+                if self.state.mail.len() < before {
+                    self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
                 }
             }
             Err(looked) => self.fell(looked, self.state.account),

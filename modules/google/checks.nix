@@ -17,7 +17,8 @@ onLinux {
   # joined by are read, an invitation is answered by changing only Joel's
   # own answer, and held at once, one Google refuses changing nothing, the
   # mail that wants Joel is told newest first, each asked for once and kept
-  # while Gmail fails, the shell asks only what's read strictly, and it hears the state on
+  # while Gmail fails, mail marked read or archived takes one label off and
+  # wants Joel no more, the shell asks only what's read strictly, and it hears the state on
   # connecting and each change once. A stand-in on the machine answers for
   # Google.
   google-reads-the-calendar = pkgs.callPackage ./package.nix { };

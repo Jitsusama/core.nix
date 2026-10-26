@@ -11,6 +11,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
+use google::mail::Tidy;
 use google::state::Standing;
 use google::watch::Watch;
 use jiff::Zoned;
@@ -384,6 +385,57 @@ fn an_unreachable_google_keeps_what_was_heard() {
 
 /// The stand-in's Standup, to which Joel and one other are invited, and
 /// which takes an answer.
+/// The stand-in's Gmail, taking a label off the mail it's asked to.
+fn tidied(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("POST /gmail/v1/users/me/messages/") {
+        return (200, r#"{"id": "new"}"#.into());
+    }
+    gmail(path, body)
+}
+
+#[test]
+fn mail_read_or_archived_takes_one_label_and_wants_joel_no_more() {
+    for (how, label) in [(Tidy::Read, "UNREAD"), (Tidy::Archive, "INBOX")] {
+        let stand_in = StandIn::new(tidied);
+        let path = credentials(label, now().timestamp().as_millisecond() + 3_600_000);
+        let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+        watch.look(&now());
+        let state = watch.tidy("new", how, &now()).clone();
+        let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+        assert_eq!(held, ["old"]);
+        assert_eq!(state.unread, Some(4));
+        let asked = stand_in
+            .heard()
+            .into_iter()
+            .find(|heard| heard.line.starts_with("POST /gmail"))
+            .unwrap();
+        assert!(
+            asked
+                .line
+                .starts_with("POST /gmail/v1/users/me/messages/new/modify?"),
+            "{}",
+            asked.line
+        );
+        let body: serde_json::Value = serde_json::from_str(&asked.body).unwrap();
+        assert_eq!(body, serde_json::json!({"removeLabelIds": [label]}));
+    }
+}
+
+#[test]
+fn mail_google_refuses_to_mark_stays_held() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("POST /gmail") {
+            (404, "{}".into())
+        } else {
+            gmail(path, body)
+        }
+    });
+    let path = credentials("unmarked", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(watch.tidy("new", Tidy::Archive, &now()), &before);
+}
+
 fn invited(path: &str, _: &str) -> (u16, String) {
     if path.starts_with("GET /calendar/v3/calendars/primary/events/e1?") {
         return (

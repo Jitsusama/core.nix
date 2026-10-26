@@ -14,8 +14,9 @@
 //! after the laptop wakes comes at once rather than a minute later. With
 //! nobody signed in, the file is looked at, and Google never asked.
 //!
-//! The shell asks it to answer an invitation on the same socket (ask.rs),
-//! which it does at once, telling every shell the meeting answered.
+//! The shell asks it to answer an invitation, and to mark mail read or
+//! archive it, on the same socket (ask.rs), which it does at once, telling
+//! every shell what changed.
 //!
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
@@ -34,6 +35,7 @@ use jiff::Zoned;
 
 use google::api::{Google, Origins};
 use google::ask::{self, Ask};
+use google::mail::Tidy;
 use google::socket::Socket;
 use google::state::{Standing, State};
 use google::watch::Watch;
@@ -88,9 +90,14 @@ fn main() -> ExitCode {
         // is looked at again a tick on.
         match asked.recv_timeout(TICK) {
             Ok(line) => {
-                if let Some(Ask::Answer { id, with }) = ask::read(&line) {
-                    socket.say(watch.answer(&id, with, &Zoned::now()).line());
-                }
+                let now = Zoned::now();
+                let state = match ask::read(&line) {
+                    Some(Ask::Answer { id, with }) => watch.answer(&id, with, &now),
+                    Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),
+                    Some(Ask::Archive { id }) => watch.tidy(&id, Tidy::Archive, &now),
+                    None => continue,
+                };
+                socket.say(state.line());
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => thread::sleep(TICK),
