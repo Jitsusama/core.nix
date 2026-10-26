@@ -313,12 +313,22 @@ Scope {
         const said = row.asker ? row.asker.answer(row.heard) : null;
         if (!parted(said))
             return null;
-        return Object.assign(answered(heard(said, row.asker, row.heard)), {
+        return inPlace(Object.assign(answered(heard(said, row.asker, row.heard)), {
             key: row.key,
             is: row.is,
             chip: row.chip,
             title: row.title
-        });
+        }), row.placed);
+    }
+
+    // An answer a category holds, named as the vocabulary names it, what it
+    // says beside: a list by name keeps it in one place however its figure
+    // changes, where "Sunday 25 October 2026" moved every day. Out at the
+    // top, an answer is named by what it says, as it's what was asked.
+    function inPlace(row, name) {
+        if (!name)
+            return row;
+        return Object.assign(row, { name: name, side: row.name, placed: name });
     }
 
     // What a source's answers say now, wherever they're shown below the
@@ -574,10 +584,10 @@ Scope {
         const question = entry.question ?? source.questions[0];
         if (question !== undefined) {
             const said = source.answer(question);
-            return parted(said) ? Object.assign(answered(heard(said, source, question)), {
+            return parted(said) ? inPlace(Object.assign(answered(heard(said, source, question)), {
                 is: `answer:${id}`,
                 chip: question
-            }) : null;
+            }), entry.name.includes("{") ? "" : entry.name) : null;
         }
         const things = source.things.filter(row => !(row.key.startsWith("action:")
             && standIns.includes(row.name)));
