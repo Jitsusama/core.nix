@@ -48,7 +48,7 @@ Piece {
     value: frozen.length > 0 ? "froze " + frozen.map(writer => writer.name).join(", ")
         : short || !silent
         ? (worst === null ? "" : `${shown(worst.free)} free on ${worst.path}`
-            + (short ? `, ${worst.band}` : ""))
+            + (short ? `, ${banded(worst.band)}` : ""))
         : "not watching"
 
     title: "Disks"
@@ -79,6 +79,12 @@ Piece {
         name: "Start the guard",
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])
+
+    // A band in Joel's words, the glossary's: filling, nearly full and
+    // critically full, never the guard's own names for them.
+    function banded(band) {
+        return (Words.of("machine:disk").said ?? {})[band] ?? band;
+    }
 
     function worse(one, other) {
         return bands.indexOf(one.band) > bands.indexOf(other.band);

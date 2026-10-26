@@ -410,6 +410,11 @@
         "disk",
         "space"
       ],
+      "said": {
+        "pressure": "filling",
+        "urgent": "nearly full",
+        "critical": "critically full"
+      },
       "parts": [
         "machine:disk:space",
         "machine:disk:speed",

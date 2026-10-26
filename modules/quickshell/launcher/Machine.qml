@@ -718,10 +718,21 @@ Provider {
                 : room ? bar(1 - room.free / room.total) : undefined,
             glyph: Words.glyph(kinds.disks),
             title: Words.name(kinds.disks),
-            note: guard
-                ? (guard.silent ? "the disk guard has stopped saying" : "from the disk guard")
-                : counted ? since(kept) : ""
+            note: guard ? guardSays(guard, worst) : counted ? since(kept) : "",
+            // The guard's own words, below the rows.
+            reads: guard && worst ? worst.says ?? "" : ""
         }, () => diskParts(guard));
+    }
+
+    // How the guard stands, in a phrase: the band the worst file system is
+    // in and what its last pass did, such as "filling; nothing more is safe
+    // to take", so Joel sees why the disk is still short.
+    function guardSays(guard, worst) {
+        if (guard.silent)
+            return "the disk guard has stopped saying";
+        const said = [worst && worst.band !== "healthy" ? guard.banded(worst.band) : "",
+            guard.context].filter(part => part !== "");
+        return said.length > 0 ? said.join("; ") : "from the disk guard";
     }
 
     function diskParts(guard) {
@@ -735,7 +746,7 @@ Provider {
             const each = disk => figure({
                 name: disk.path,
                 side: disk.band === "healthy" ? `${guard.shown(disk.free)} free`
-                    : `${guard.shown(disk.free)} free \u00b7 ${disk.band}`,
+                    : `${guard.shown(disk.free)} free \u00b7 ${guard.banded(disk.band)}`,
                 graph: bar(1 - disk.free / disk.total, disk.band !== "healthy")
             });
             const worst = watched[0];
