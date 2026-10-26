@@ -228,6 +228,22 @@ Provider {
             chip: "move to",
             targets: () => provider.workspacesFor(window)
         }));
+        // Another screen, where there's one to go to, each named as Screens
+        // names it (Displays.qml).
+        const screens = provider.screensFor(window);
+        if (screens.length > 0)
+            all.push(act("verb:screen", "", {
+                side: "\u2026",
+                ask: "which screen?",
+                chip: "move to",
+                targets: () => screens
+            }));
+        all.push(act("verb:size", "", {
+            side: "\u2026",
+            ask: "how wide?",
+            chip: "size",
+            targets: () => provider.sizesFor(window)
+        }));
         if (below)
             all.push(act("verb:below", "", {
                 // What it opens, so the name needn't say it.
@@ -255,6 +271,41 @@ Provider {
     // The workspaces a window could go to, on its own screen in order, each
     // saying what's on it. niri always keeps an empty one last, which is
     // how a new workspace is made, so that one is offered as new.
+    // The lit screens a window isn't on, as Screens names them, or none when
+    // there's one screen, or no Screens to ask.
+    function screensFor(window) {
+        const displays = (provider.launcher?.sources ?? [])
+            .find(source => source.settings.name === "displays") ?? null;
+        const from = Niri.workspaces[window.workspace_id];
+        const here = from ? from.output : "";
+        const others = displays ? displays.lit.filter(output => output.name !== here) : [];
+        return others.map(output => thing({
+            key: `screen:${output.name}`,
+            verb: "move",
+            name: displays.named(output),
+            glyph: Theme.glyph.display,
+            hue: "machine",
+            run: () => Niri.act({ MoveWindowToMonitor: { id: window.id, output: output.name } })
+        }));
+    }
+
+    // The widths a window can be given, as shares of its screen, niri's
+    // own proportions in percent.
+    readonly property var widths: [["third", 100 / 3], ["half", 50], ["two-thirds", 200 / 3]]
+
+    function sizesFor(window) {
+        return widths.map(width => thing({
+            key: `verb:size:${width[0]}`,
+            verb: Words.verb(`verb:size:${width[0]}`),
+            name: Words.name(`verb:size:${width[0]}`),
+            glyph: Words.glyph("verb:size"),
+            hue: "action",
+            run: () => Niri.act({
+                SetWindowWidth: { id: window.id, change: { SetProportion: width[1] } }
+            })
+        }));
+    }
+
     function workspacesFor(window) {
         const from = Niri.workspaces[window.workspace_id];
         const output = from ? from.output : null;

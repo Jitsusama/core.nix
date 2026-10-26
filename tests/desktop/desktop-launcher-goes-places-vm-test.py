@@ -865,6 +865,24 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
         return bool(now["layout"]["window_size"][0] > before["layout"]["window_size"][0])
 
     retry(widened, timeout=dt.timedelta(seconds=10))
+    # Size gives it a share of the screen, half of it narrower than all.
+    wide = desktop.window_titled("Notes for Tuesday")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("this window", selecting="This window")
+    desktop.step_in("ret")
+    desktop.type_in("size", selecting="Size")
+    desktop.step_in("ret")
+    desktop.type_in("half", selecting="Half the screen")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+    def halved(_: bool) -> bool:
+        """Say whether the notes' window is narrower than it was at full width."""
+        now = desktop.window_titled("Notes for Tuesday")
+        return bool(now["layout"]["window_size"][0] < wide["layout"]["window_size"][0])
+
+    retry(halved, timeout=dt.timedelta(seconds=10))
 
 
 # Stepping back out of a collection finds the launcher as it was left,
