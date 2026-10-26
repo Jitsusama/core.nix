@@ -367,13 +367,14 @@ pub struct FilesystemStatus {
     pub total: u64,
     pub size: u64,
     pub used: u64,
-    /// Seconds until the next band at the present fill, if it's filling.
+    /// Seconds until the next band at the fill's trend, if it's filling.
     pub forecast: Option<f64>,
-    /// Bytes an hour it's filling at, falling when space is freed; none
-    /// until the guard has watched it long enough to say.
+    /// Bytes an hour it's filling at over the last two hours or so,
+    /// negative when space is coming back; none until the guard has
+    /// watched it ten minutes.
     pub fill_per_hour: Option<f64>,
-    /// When it's full at the present fill, in wall seconds, if it's
-    /// filling.
+    /// When it's full at the fill's trend, in wall seconds, if it's
+    /// filling, both over the trend and now.
     pub full_at: Option<f64>,
     pub says: String,
 }
@@ -1642,7 +1643,10 @@ impl Guard {
                     Band::Urgent => Some(thresholds.critical),
                     Band::Critical => None,
                 };
-                let full_in = watched.fill.until(space.free, 0);
+                // What a person is told comes from the trend, not the
+                // two-minute rate passes are planned by, which a churning
+                // disk swings either way by tens of gigabytes an hour.
+                let full_in = watched.fill.steady_until(space.free, 0);
                 let mut status = FilesystemStatus {
                     path: watched.path.clone(),
                     band: watched.band,
@@ -1650,8 +1654,8 @@ impl Guard {
                     total: space.total,
                     size: space.total,
                     used: space.total.saturating_sub(space.free),
-                    forecast: next.and_then(|start| watched.fill.until(space.free, start)),
-                    fill_per_hour: watched.fill.rate().map(|rate| rate * 3600.0),
+                    forecast: next.and_then(|start| watched.fill.steady_until(space.free, start)),
+                    fill_per_hour: watched.fill.trend().map(|trend| trend * 3600.0),
                     full_at: full_in.map(|seconds| now + seconds),
                     says: String::new(),
                 };
