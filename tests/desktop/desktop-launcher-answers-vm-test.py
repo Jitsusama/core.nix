@@ -851,7 +851,9 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # The word and a space become a chip, the field cleared, listing
-    # what it holds; what's typed then searches only inside it.
+    # what it holds; what's typed then searches only inside it. Only the
+    # first twenty rows are reported, which Tasks falls past, so it's
+    # found by typing below.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("tools ")
@@ -859,7 +861,7 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
         lambda shown: (
             shown["held"] == ["tools"]
             and shown["typed"] == ""
-            and {"Agents", "Tasks", "Helpers"} <= set(shown["rows"])
+            and {"Agents", "Helpers"} <= set(shown["rows"])
         )
     )
     # What it holds is listed by name, capitals ignored, its commands with
