@@ -176,6 +176,9 @@ struct Fake {
     asked: usize,
     told: Vec<Change>,
     refuse: bool,
+    /// How many tells it refuses before it hears, as a notification
+    /// server still starting does.
+    deaf_for: usize,
 }
 
 impl Desk for Fake {
@@ -187,6 +190,10 @@ impl Desk for Fake {
     fn tell(&mut self, change: &Change) -> Result<(), String> {
         if self.refuse {
             return Err("no one listens".to_owned());
+        }
+        if self.deaf_for > 0 {
+            self.deaf_for -= 1;
+            return Err("not started yet".to_owned());
         }
         self.told.push(change.clone());
         Ok(())
@@ -231,6 +238,34 @@ fn the_desktop_is_told_once_when_a_disk_becomes_critically_full() {
         summaries[0].ends_with("is still critically full"),
         "{summaries:?}"
     );
+}
+
+#[test]
+fn a_notice_the_desktop_missed_is_told_again_once_it_hears() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut guard = guard_at(dir.path(), "100%");
+    let mut desk = Fake {
+        deaf_for: 1,
+        ..Fake::default()
+    };
+    let said = stepped(&mut guard, 3, &mut desk);
+    assert_eq!(desk.told.len(), 1, "{:?} {said}", desk.told);
+    assert!(
+        matches!(&desk.told[0], Change::Show(notice)
+            if notice.summary.ends_with("is still critically full")),
+        "{:?}",
+        desk.told
+    );
+    let status: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(dir.path().join("status.json")).unwrap()).unwrap();
+    assert!(
+        status["notice"]["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.ends_with("is still critically full")),
+        "what stands is in the status file too: {status}"
+    );
+    assert_eq!(status["notice"]["urgency"], "critical", "{status}");
+    assert_eq!(status["filesystems"][0]["exhausted"], true, "{status}");
 }
 
 #[test]

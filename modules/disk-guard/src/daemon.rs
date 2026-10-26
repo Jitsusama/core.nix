@@ -336,6 +336,9 @@ pub struct Status {
     /// Who wrote most of the last minute's writes, while a disk is below
     /// healthy and one process did.
     pub writer: Option<Writing>,
+    /// What stands to be told now, from any band below healthy, for
+    /// whoever reads this file: the desktop is told only from urgent on.
+    pub notice: Option<crate::notices::Notice>,
 }
 
 /// A process writing most of what's written, as the status file says it.
@@ -377,6 +380,9 @@ pub struct FilesystemStatus {
     /// filling, both over the trend and now.
     pub full_at: Option<f64>,
     pub says: String,
+    /// Whether the last pass here, in this band or a worse one, found
+    /// nothing more it may clear.
+    pub exhausted: bool,
 }
 
 impl FilesystemStatus {
@@ -396,6 +402,11 @@ impl FilesystemStatus {
         if band != self.band {
             self.forecast = None;
         }
+        // A worse band takes more than the pass that found nothing left, and
+        // its own pass hasn't run yet.
+        if band > self.band {
+            self.exhausted = false;
+        }
         self.band = band;
         self.free = space.free;
         self.total = space.total;
@@ -412,6 +423,7 @@ impl FilesystemStatus {
             free: self.free,
             size: self.size,
             full_in,
+            cleared_all: self.exhausted,
         }
     }
 }
@@ -1667,6 +1679,12 @@ impl Guard {
                     fill_per_hour: watched.fill.trend().map(|trend| trend * 3600.0),
                     full_at: full_in.map(|seconds| now + seconds),
                     says: String::new(),
+                    exhausted: self.last.as_ref().is_some_and(|last| {
+                        last.path == watched.path
+                            && last.end == "exhausted"
+                            && watched.band != Band::Healthy
+                            && last.band >= watched.band
+                    }),
                 };
                 status.says = crate::words::filesystem(&status.room(full_in), home);
                 Some(status)
@@ -1690,7 +1708,7 @@ impl Guard {
                 bytes: one.bytes,
             })
             .collect();
-        Status {
+        let mut status = Status {
             version: STATUS_VERSION,
             heartbeat: now,
             says,
@@ -1706,7 +1724,10 @@ impl Guard {
                     pid: writer.pid,
                     rate: writer.rate,
                 }),
-        }
+            notice: None,
+        };
+        status.notice = crate::notices::standing(&status);
+        status
     }
 
     /// The pacer for a pass in `band` on the filesystem at `path`. Below

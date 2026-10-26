@@ -98,7 +98,15 @@ or launchd, and [`home.nix`][2] the account's.
   are the trend over about two hours, told once it's watched ten minutes
   and while the disk is filling now too, since builds writing and freeing
   gigabytes every few minutes swing the two-minute rate passes plan by
-  either way by tens of gigabytes an hour.
+  either way by tens of gigabytes an hour. A disk whose last pass, in its
+  band or a worse one, found nothing more to clear is `exhausted`, and its
+  sentence says so rather than that the guard is clearing.
+- **Notices.** The account's guard shows one desktop notice, and only from
+  urgent on: a disk under pressure is the launcher's to show. A notice the
+  desktop didn't take, as when the notification server is still starting,
+  is told again each step until it is. What stands to be told now, from
+  pressure on, is the status file's `notice` too, for whoever looks after
+  the machine. `src/notices.rs` holds both.
 - **A Mac.** The same daemons run under launchd, asking macOS through
   `crate::sys`, which is `linux.rs` or `macos.rs`. Nothing hears who opens a
   file there without Apple's entitlement, so no older build is dated or

@@ -759,6 +759,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         fill_per_hour: Some(36_000.0),
         full_at: Some(1960.0),
         says: String::new(),
+        exhausted: false,
     };
     status.measured(&space(210), &bands, 1900.0, None);
     assert_eq!(status.band, Band::Pressure);
@@ -780,6 +781,24 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     assert_eq!(status.band, Band::Healthy);
     assert_eq!(status.free, 300);
     assert_eq!(status.forecast, None);
+    status.band = Band::Pressure;
+    status.exhausted = true;
+    status.full_at = None;
+    status.measured(&space(200), &bands, 1900.0, None);
+    assert!(status.exhausted, "the same band's pass still holds");
+    assert!(
+        status.says.contains("has cleared all it may"),
+        "{}",
+        status.says
+    );
+    status.measured(&space(50), &bands, 1900.0, None);
+    assert_eq!(status.band, Band::Urgent);
+    assert!(!status.exhausted, "a worse band's pass hasn't run yet");
+    assert!(
+        status.says.contains("is clearing everything"),
+        "{}",
+        status.says
+    );
 }
 
 #[test]

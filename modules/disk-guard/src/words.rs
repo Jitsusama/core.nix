@@ -21,23 +21,38 @@ pub struct Room<'a> {
     pub size: u64,
     /// Seconds until it's full at the present fill, if it's filling.
     pub full_in: Option<f64>,
+    /// Whether the last pass in this band or a worse one found nothing
+    /// more it may clear, so saying it's clearing would be untrue.
+    pub cleared_all: bool,
 }
 
 /// What one filesystem's room is, and what the guard does about it.
 pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     let name = named(room.path, home);
     let free = shown(room.free);
-    let mut said = match room.band {
-        Band::Healthy => format!("{name} has {free} free."),
-        Band::Pressure => format!(
+    let mut said = match (room.band, room.cleared_all) {
+        (Band::Healthy, _) => format!("{name} has {free} free."),
+        (Band::Pressure, true) => format!(
+            "{name} is filling, with {free} free. \
+             The guard has cleared all it may; what's left is in use or kept."
+        ),
+        (Band::Urgent, true) => format!(
+            "{name} is nearly full, with {free} free. \
+             The guard has cleared all it safely can; delete something you don't need."
+        ),
+        (Band::Critical, true) => format!(
+            "{name} is critically full, with {free} free. Saves may fail; \
+             the guard has cleared all it can and may freeze what is filling it."
+        ),
+        (Band::Pressure, false) => format!(
             "{name} is filling, with {free} free. \
              The guard is clearing builds and caches nobody has used lately."
         ),
-        Band::Urgent => format!(
+        (Band::Urgent, false) => format!(
             "{name} is nearly full, with {free} free. \
              The guard is clearing everything it safely can."
         ),
-        Band::Critical => format!(
+        (Band::Critical, false) => format!(
             "{name} is critically full, with {free} free. Saves may fail; \
              the guard is clearing everything it can and may freeze what is filling it."
         ),
