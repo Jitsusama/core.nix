@@ -1201,6 +1201,110 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+# The agent steering the others keeps what waits on Joel in one file,
+# and takes his words from an inbox the harness hands it as his message.
+
+
+def test_now_leads_with_what_waits_on_joel_and_steer_tells_the_agent_steering(
+    desktop: Desktop,
+) -> None:
+    """Now leads with what waits on Joel, and Steer tells the agent steering the others."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.opened("Waiting room")
+    queue = {
+        "steward": "STEWRD",
+        "items": [
+            {
+                "id": "try",
+                "title": "Try the new home",
+                "why": "to see",
+                "minutes": 10,
+                "window": "Waiting room",
+            },
+            {
+                "id": "pick",
+                "title": "Pick a bucket",
+                "why": "backups",
+                "minutes": 1,
+                "window": None,
+            },
+        ],
+    }
+    # A quest's own, ready to do now.
+    asked = {"items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}]}
+    state = "$HOME/.local/state"
+    desktop.as_account(
+        f"printf %s {shlex.quote(json.dumps(queue))} > {state}/mission/.q"
+        f" && mv {state}/mission/.q {state}/mission/queue.json"
+    )
+    # One ready is said as a notice the moment it's heard, named by what
+    # it asks, so it's never a second "Waiting on you" beside Now's.
+    with desktop.told("shows card Answer the ask"):
+        desktop.as_account(
+            f"printf %s {shlex.quote(json.dumps(asked))} > {state}/mission/waiting/.q"
+            f" && mv {state}/mission/waiting/.q {state}/mission/waiting/QUEST1.json"
+        )
+    # Another window in front, so going to the waiting room is seen.
+    desktop.opened("Elsewhere")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Home's Now names the first Joel can do now, with its minutes.
+    desktop.launcher_until(
+        lambda shown: any(
+            thing["reads"].startswith("Now \u00b7 Waiting on you: Answer the ask, 2 min")
+            for thing in shown["things"]
+        )
+    )
+    # Inside, they're listed by name, and Return goes to where one is done.
+    desktop.type_in("waiting on you", selecting="Waiting on you")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"] == ["Answer the ask", "Pick a bucket", "Try the new home"]
+    )
+    machine.send_key("down")
+    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Try the new home"
+    )
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    retry(
+        lambda _: desktop.window_titled("Waiting room")["is_focused"],
+        timeout=dt.timedelta(seconds=10),
+    )
+    # Steer, and the words typed after it, reach the steward's inbox whole.
+    inbox = f"{state}/pi/agentic-harness.pi/steer/STEWRD"
+    desktop.answer("steer go on with the desk")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "tell STEWRD")
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -l '\"go on with the desk\"' {inbox}/*.json"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    # Its row asks for them in the field instead.
+    desktop.answer("steer")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Steer")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["asking"] and shown["typed"] == "")
+    desktop.type_in("stop for the night")
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -l '\"stop for the night\"' {inbox}/*.json"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.fail(desktop.in_session(f"ls {inbox}/*.tmp"))
+    # Put back as it was, for the tests after.
+    desktop.as_account(
+        f"rm {state}/mission/queue.json {state}/mission/waiting/QUEST1.json {inbox}/*.json"
+    )
+    for title in ["Waiting room", "Elsewhere"]:
+        window = desktop.window_titled(title)["id"]
+        desktop.as_account(f"niri msg action close-window --id {window}")
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 

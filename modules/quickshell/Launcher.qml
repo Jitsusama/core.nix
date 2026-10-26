@@ -1077,10 +1077,17 @@ Scope {
         if (!source)
             return null;
         const row = whole(source, false, false);
-        const names = source.everything().map(one => one.name);
+        // In Now, what waits on Joel leads, named by the first of it, since
+        // it's the one thing there only he can move; the rest follow by name.
+        const lead = source.foremost ?? "";
+        const names = source.everything().filter(one => lead === "" || one.key !== "on:waiting")
+            .map(one => one.name);
+        const left = room > 0 ? room - row.name.length : Infinity;
+        const rest = names.length === 0 ? ""
+            : listed(names, lead === "" ? left : left - lead.length - " \u00b7 ".length);
         return Object.assign({}, row, {
-            count: names.length === 0 ? source.collection.empty ?? ""
-                : listed(names, room > 0 ? room - row.name.length : Infinity)
+            count: lead === "" && rest === "" ? source.collection.empty ?? ""
+                : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
         });
     }
 

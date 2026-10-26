@@ -90,6 +90,7 @@ let
     "Pasting.qml"
     "Notices.qml"
     "Sessions.qml"
+    "Steward.qml"
     "SpendWatch.qml"
     "Jobs.qml"
     "Caffeinate.qml"
@@ -558,6 +559,7 @@ let
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
     on = ./launcher/WhatsOn.qml;
+    steer = ./launcher/Steer.qml;
     wifi = ./launcher/Wireless.qml;
     sound = ./launcher/Sound.qml;
     bluetooth = ./launcher/Accessories.qml;
@@ -1169,6 +1171,11 @@ in
         order = 113;
         source = "on";
       };
+      # Joel's words to the agent steering the others, in Tools.
+      steer = {
+        order = 116;
+        source = "steer";
+      };
       # Each camera with its parts, and whether one is in use. Return opens
       # the viewfinder on the camera the machine calls camera, the one
       # pictures are taken with; the loopbacks' cards find their nodes in
@@ -1634,11 +1641,16 @@ in
     # first needs them, and spend-watch its own as it starts. Sessions.qml
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
-    # beside them so the shell's first look finds each.
+    # beside them so the shell's first look finds each. So are the
+    # folders Steward.qml watches for what waits on Joel and writes his
+    # steers into.
     systemd.user.tmpfiles.rules = [
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
+      "d ${config.xdg.stateHome}/pi/agentic-harness.pi/steer - - - -"
+      "d ${config.xdg.stateHome}/mission - - - -"
+      "d ${config.xdg.stateHome}/mission/waiting - - - -"
       "d ${config.xdg.dataHome}/pi/agentic-harness.pi/quest-workflow/quests - - - -"
     ];
 
