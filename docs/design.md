@@ -608,17 +608,20 @@ works the same way everywhere.
   display's Scale "175%", Refresh, Resolution and Rotation, then what
   its EDID says (Colour depth "10 bit"). What's typed beside them finds
   their choices too, so "scale 150" is Scale to 150% without a step in.
-- **Categories are levels.** Fifteen categories gather everything by
-  what it's about: Computer, Network, Sound, Now, AI, Apps, Shortcuts,
-  Notifications, Clipboard, Weather, Time, Calls, Capture, Typing and
-  Commands. Each is a row found by its word, stepping in lists what it
-  holds, and its word and a space steps into it, so what's typed after
-  it searches only inside it ("ai " and then "tas"). A category named as
-  a thing is ("sound", "clipboard") gives way to the thing, and its word
+- **Places are levels.** Desktop, Machine and Network gather what
+  they're about, and a place may hold a smaller one, as Machine holds
+  Power (Battery, the power profile, Keep awake, Sleep, Lock, Log out,
+  Reboot and Power off). Each is a row found by its word, stepping in
+  lists what it holds, and its word and a space steps into it, through
+  the places it sits in, so what's typed after it searches only inside
+  it ("machine " and then "heat"). When a name goes on from the word and
+  a space, as Power off does from Power, it's searched for where it's
+  typed instead, so nothing moves under the keys; Power found by its
+  name opens as Machine, then Power. A place named as a thing is gives way to the thing, and its word
   and a space still step into it; what's typed after the word that asks
   something whole ("time in tokyo", "time left") is given back whole, as
-  the question it is. **commands** lists every typed command with its
-  form muted ("ip ⟨address or network⟩", "time in ⟨place⟩", "⟨amount⟩
+  the question it is. A place lists last the typed commands whose
+  answers it gives, each with its form muted ("ip ⟨address or network⟩", "time in ⟨place⟩", "⟨amount⟩
   ⟨unit⟩ in ⟨unit⟩"), and Tab or Return on one puts its start in the
   field, out at the top, to finish there. A command is the one row
   written as it's typed, in lowercase; every other row's name, and every
