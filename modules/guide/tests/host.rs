@@ -6,14 +6,16 @@
 mod common;
 
 use common::Scratch;
+use std::cell::Cell;
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 
 use guide::fake::Fake;
 use guide::host::carried::{self, Carried};
-use guide::host::{GatherBundles, WriteStick};
+use guide::host::{ChoosePhrase, GatherBundles, WriteStick};
 use guide::rescue::Bundle;
 use guide::stick::gpt::{SECTOR, Table};
 use guide::vault::store::Directory;
@@ -314,6 +316,180 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
     );
 }
 
+/// The stick's passphrase as its vault was sealed to it before.
+const PHRASE: &str = "abacus abdomen abdominal abide abiding ability ablaze";
+
+/// The copy of a vault's key that `PHRASE` opens.
+fn sealed_to_phrase() -> Vec<u8> {
+    guide::vault::VaultKey::generate()
+        .seal_with_passphrase(&guide::Secret::new(PHRASE.into()), Some(1))
+        .unwrap()
+}
+
+/// The copy of its key the vault written onto `stick` keeps for its
+/// passphrase, read straight off it.
+fn phrase_on_stick(stick: &Path) -> Vec<u8> {
+    let mut disk = File::open(stick).unwrap();
+    let mut start = vec![0u8; 1 << 20];
+    std::io::Read::read_exact(&mut disk, &mut start).unwrap();
+    let vault = Table::read(&start)
+        .unwrap()
+        .partitions()
+        .into_iter()
+        .find(|partition| partition.name == "vault")
+        .unwrap();
+    let mut region =
+        guide::stick::blocks::Partition::new(&mut disk, vault.offset(), vault.bytes()).unwrap();
+    let mut fat = guide::vault::store::Fat::open(&mut region).unwrap();
+    let mut sealed = vec![];
+    guide::vault::store::Store::open(&mut fat, guide::vault::KEY_PASSPHRASE)
+        .unwrap()
+        .read_to_end(&mut sealed)
+        .unwrap();
+    sealed
+}
+
+#[test]
+fn a_stick_that_has_a_passphrase_asks_whether_to_keep_it_and_a_new_one_doesnt() {
+    let mut fake = Fake::new();
+    let keep = Rc::new(Cell::new(None));
+    let choose = ChoosePhrase {
+        sealed: Some(sealed_to_phrase()),
+        keep: Rc::clone(&keep),
+    };
+    let Standing::Needed { asks } = choose.observe(&mut fake).unwrap() else {
+        panic!("the stick's vault has a passphrase")
+    };
+    let [
+        Ask::Choose {
+            question, choices, ..
+        },
+    ] = asks.as_slice()
+    else {
+        panic!("{asks:#?}")
+    };
+    assert!(
+        question.contains("named \"NixOS Install Phrase\""),
+        "{question}"
+    );
+    assert!(choices[0].starts_with("Keep it"), "{choices:?}");
+    let mut answers = Answers::new();
+    answers.give("phrase", Answer::Chosen(0));
+    Journey::attempt(&choose, &mut fake, &answers).unwrap();
+    assert_eq!(keep.get(), Some(true));
+
+    // A stick the guide never wrote has no passphrase to keep.
+    let fresh = ChoosePhrase {
+        sealed: None,
+        keep: Rc::new(Cell::new(None)),
+    };
+    assert!(matches!(
+        fresh.observe(&mut fake).unwrap(),
+        Standing::Done { evidence } if evidence.contains("new words")
+    ));
+}
+
+#[test]
+fn new_words_chosen_for_a_stick_that_had_a_passphrase_are_shown_for_the_phone() {
+    let directory = Scratch::new("host-new-phrase");
+    let mut fake = Fake::new();
+    lsblk(&mut fake, fixture!("lsblk-blank.json"));
+    fake.disk("/dev/sda", &stick_file(&directory));
+    let write = WriteStick::new(
+        image(&directory),
+        Some(payload(
+            &directory,
+            r#"{"machine":"laptop","disk":"/dev/disk/by-id/virtio-root","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":[]}"#,
+        )),
+        None,
+    );
+    let steps = guide::host::writing(write, Some(sealed_to_phrase()));
+    let [choose, write] = steps.as_slice() else {
+        panic!("asked whether to keep it, then written")
+    };
+    let mut answers = Answers::new();
+    answers.give("phrase", Answer::Chosen(1));
+    Journey::attempt(choose.as_ref(), &mut fake, &answers).unwrap();
+    let Standing::Needed { asks } = write.observe(&mut fake).unwrap() else {
+        panic!("the stick isn't written yet")
+    };
+    assert!(
+        matches!(
+            asks.as_slice(),
+            [Ask::Confirm { .. }, Ask::Show { .. }, Ask::Recall { .. }]
+        ),
+        "{asks:#?}"
+    );
+}
+
+#[test]
+fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
+    let directory = Scratch::new("host-keeps-phrase");
+    let stick = stick_file(&directory);
+    let mut fake = Fake::new();
+    lsblk(&mut fake, fixture!("lsblk-blank.json"));
+    fake.disk("/dev/sda", &stick);
+    let step = WriteStick::new(
+        image(&directory),
+        Some(payload(
+            &directory,
+            r#"{"machine":"laptop","disk":"/dev/disk/by-id/virtio-root","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":[]}"#,
+        )),
+        None,
+    )
+    .keeping_phrase(sealed_to_phrase(), Rc::new(Cell::new(Some(true))));
+    let Standing::Needed { asks } = step.observe(&mut fake).unwrap() else {
+        panic!("the stick isn't written yet")
+    };
+    let [
+        Ask::Confirm { .. },
+        Ask::Secret {
+            id: "passphrase",
+            name,
+        },
+    ] = asks.as_slice()
+    else {
+        panic!("no new words shown: {asks:#?}")
+    };
+    assert!(name.contains("named \"NixOS Install Phrase\""), "{name}");
+
+    let typed = |words: &str| {
+        let mut answers = Answers::new();
+        answers.give("stick", Answer::Done);
+        answers.give(
+            "passphrase",
+            Answer::Secret(guide::Secret::new(words.into())),
+        );
+        answers
+    };
+    let refused = step.run(
+        &mut fake,
+        &typed("abacus abdomen abdominal abide abiding ability"),
+    );
+    assert!(
+        matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("isn't the stick's passphrase")),
+        "{refused:?}"
+    );
+    assert!(
+        !fake.calls.iter().any(|call| call.starts_with("opening")),
+        "{:#?}",
+        fake.calls
+    );
+
+    // Typed as a phone's Live Text gives it, capitals and all.
+    Journey::attempt(
+        &step,
+        &mut fake,
+        &typed("Abacus abdomen  abdominal abide abiding ability ablaze"),
+    )
+    .unwrap();
+    guide::vault::VaultKey::open_with_passphrase(
+        &phrase_on_stick(&stick),
+        &guide::Secret::new(PHRASE.into()),
+    )
+    .unwrap();
+}
+
 /// A bundle as a machine's install seals it, as far as a host reads one
 /// it carries on: which machine's it is, and when it was sealed.
 fn bundle(machine: &str, sealed: Option<u64>) -> Vec<u8> {
@@ -567,6 +743,7 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
         bundle("laptop", Some(4)),
     )
     .unwrap();
+    fs::write(mounted.join(guide::vault::KEY_PASSPHRASE), b"sealed").unwrap();
     let mut seen: serde_json::Value =
         serde_json::from_str(fixture!("lsblk-laid-out.json")).unwrap();
     for disk in seen["blockdevices"].as_array_mut().unwrap() {
@@ -595,6 +772,12 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
     assert_eq!(
         carried::kept(&mut Directory::new(directory.join("host"))),
         vec![carried("laptop", Some(4))]
+    );
+    // The copy of its key the stick's passphrase opens, kept for the
+    // write to prove a passphrase kept against.
+    assert_eq!(
+        gather.phrase.borrow().as_deref(),
+        Some(b"sealed".as_slice())
     );
 }
 

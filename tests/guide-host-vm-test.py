@@ -4,10 +4,10 @@ tests/guide-host.nix runs this through pytest inside the driver (tests/lib/vm_py
 its opening comment says what the test proves. The guide's screens come one after another, so
 each state a test starts from is a fixture that walks the guide one screen further than the
 fixture it asks for: the used stick mounted, the host's bundle opened, the stick named, its
-passphrase typed back, and the stick written. A fixture's work is done once a run, so any test
-runs alone with `-k`, walking only as far as it needs. What the tests need from Nix, the used
-stick and the tool to put an overlay on it, the old stick's bundle and the passphrase of the
-host's own, are guide-host.nix's, given as the `values` fixture.
+passphrase typed back, the stick written, then written again keeping it. A fixture's work is
+done once a run, so any test runs alone with `-k`, walking only as far as it needs. What the
+tests need from Nix, the used stick and the tool to put an overlay on it, the old stick's bundle
+and the passphrase of the host's own, are guide-host.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations
@@ -227,3 +227,30 @@ def test_boot_program_is_signed_with_the_machines_db_key(written: QemuMachine) -
     written.succeed("mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
     written.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
     written.succeed("umount /run/esp")
+
+
+@pytest.fixture(scope="module")
+def rewritten(written: QemuMachine, passphrase: str, values: dict[str, Any]) -> QemuMachine:
+    """Write the stick over again, keeping the passphrase its vault has."""
+    type_in(written, "")
+    written.wait_until_fails("pgrep -u alice -f 'guide host'")
+    type_in(written, "write-the-stick-again")
+    on_screen(written, "which opens")
+    type_in(written, values["bundlePassphrase"])
+    on_screen(written, "is the stick to write")
+    type_in(written, "")
+    on_screen(written, "has its passphrase already")
+    # Keeping it is the first choice, and taken with Return.
+    type_in(written, "")
+    on_screen(written, "which it keeps")
+    type_in(written, passphrase)
+    on_screen(written, "The stick is written", timeout=WRITTEN)
+    return written
+
+
+def test_a_stick_written_again_keeps_its_passphrase(rewritten: QemuMachine) -> None:
+    """Written again, the stick keeps its passphrase, the old words proven against its vault."""
+    # The rewrite asked for the words it keeps rather than showing new
+    # ones, and wrote only once they opened the old vault's key.
+    verified = rewritten.succeed("sfdisk --verify /dev/sda")
+    assert "No errors detected" in verified, verified

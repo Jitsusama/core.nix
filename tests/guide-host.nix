@@ -8,6 +8,9 @@
 # machine's, go onto the new stick and stay with the person. The stick is
 # the host's own machine's, so the bundle it keeps for itself is opened
 # with its passphrase and signs the stick with the machine's db key.
+# Written over again, the stick keeps the passphrase its vault has: the
+# person types it back, proven against the old vault, and no new words are
+# made.
 # polkit lets the person open a removable disk without the password a
 # desktop's agent would ask for, since a test has no agent to answer it.
 # The tests are guide-host-vm-test.py, run through pytest.
@@ -123,6 +126,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       pkgs.dosfstools
       pkgs.gptfdisk
       pkgs.sbsigntool
+      # The same write again, for the stick written once to be written
+      # over, keeping its passphrase.
+      (pkgs.writeShellScriptBin "write-the-stick-again" ''
+        exec ${lib.getExe guide} host ${image} --install ${payload}
+      '')
     ];
     virtualisation = {
       memorySize = 2048;

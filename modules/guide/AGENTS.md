@@ -37,7 +37,10 @@ driven on; the installed machine's steps come later.
   they're typed. Each has its name in 1Password from `words.rs`: the
   stick's is `STICK_PHRASE`, the same for every machine, and a machine's
   own are its name and a kind, as `machines` makes "Hedgehog Recovery
-  Phrase" from hedgehog.
+  Phrase" from hedgehog. A stick written over again keeps its phrase
+  unless the person asks for new words: the host reads the sealed copy of
+  the vault's key from the old vault as it gathers the rescue bundles, and
+  what's typed back is proven against it before anything is written.
 - **Journal.** What observing can't show, such as a recovery key proven by
   being typed back, goes in the journal: a line of JSON per fact, on the disk
   before the step goes on, readable only by its owner.

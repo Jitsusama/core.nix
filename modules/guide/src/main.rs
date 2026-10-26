@@ -343,8 +343,10 @@ fn host(
     // The rescue bundles the stick carries kept first, before anything
     // writes over them, where the person's own state is.
     let kept = own_state().map(|state| state.join("rescue"));
-    let gathering = Journey::new(match &kept {
-        Some(kept) => vec![Box::new(GatherBundles::new(kept.clone())) as Box<dyn Step>],
+    let gather = kept.clone().map(GatherBundles::new);
+    let phrase = gather.as_ref().map(|gather| Rc::clone(&gather.phrase));
+    let gathering = Journey::new(match gather {
+        Some(gather) => vec![Box::new(gather) as Box<dyn Step>],
         None => vec![],
     })
     .map_err(|why| Fault::unreadable("the host's steps", why))?;
@@ -423,7 +425,8 @@ fn host(
         Some(_) => write.carrying(bundles),
         None => write,
     };
-    let journey = Journey::new(vec![Box::new(write) as Box<dyn Step>])
+    let sealed = phrase.and_then(|phrase| phrase.take());
+    let journey = Journey::new(host::writing(write, sealed))
         .map_err(|why| Fault::unreadable("the host's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;

@@ -1069,7 +1069,8 @@
     another's words refused, the old stick's rescue bundles read from its vault mounted only for
     reading and the host's own kept for the person and carried onto the new stick, which is the
     host's own machine's, so the bundle it keeps for itself is opened with its passphrase and signs
-    the stick's boot program with the machine's db key
+    the stick's boot program with the machine's db key; written again, the stick keeps its
+    passphrase, typed back and proven against its old vault
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
