@@ -4,8 +4,8 @@
 # theme, written here from jitsusama.theme. The desktop says whether it
 # prefers dark or light, as the theme is, which every program that asks the
 # portal hears, websites included. Like Omarchy's themes, they keep Adwaita's
-# shapes and its sans interface font and use the theme's Yaru icons;
-# monospaced text is in the theme's font.
+# shapes and use the theme's Yaru icons; their words are in the theme's sans
+# face and monospaced text in its monospaced one, as every other program's.
 # libadwaita's colours:
 # https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1.9/css-variables.html
 {
@@ -128,6 +128,14 @@ in
         --accent-fg-color: @accent_fg_color;
       }
     '';
+  };
+
+  # GTK 3 and 4 read their words' face from their settings, and libadwaita
+  # and Chrome from the desktop's, through the portal, which this writes
+  # too; GTK's own default is whatever fontconfig calls sans.
+  gtk.font = {
+    name = font.sans.family;
+    size = builtins.fromJSON font.sans.size;
   };
 
   dconf.settings."org/gnome/desktop/interface" = {
