@@ -5,15 +5,19 @@
 GLOSSARY is docs/glossary.md, WORDS the launcher's vocabulary
 (modules/quickshell/launcher/words.json). A thing, a place or a command that
 names a glossary thing says which with its term, "Context/word": the context
-a `## ` section of the glossary, the word one of its things. A term naming no
-thing in that context fails, as does one not written as Context/word. The
-row's name, noun and what each say that word, in any case and singular or
-plural, or the row fails, printed with what it says against its term. A
-part, named short inside its thing, may say it after its thing's name, so a
-battery's Health is battery health. A row
-with no term names something the glossary doesn't, such as a program or a
-network, and is left alone. And so does the check itself, should one of its
-rules stop refusing what it's there for, or refuse what sits beside it.
+a `## ` section of the glossary, the word one of its things. A place named
+for a context gives the context alone, as "Network". A term naming no thing
+in that context fails, as does one not written as Context/word, or a bare
+context anywhere but a place. The row's name says that word or context, in
+any case and singular or plural, or the row fails, printed with what it
+says against its term. A row's noun and what
+name what it holds rather than the row, as the clipboard holds copies, so
+they're left to the shown-words check. A part, named short inside its
+thing, may say it after its thing's name, so a battery's Health is battery
+health. A row with no term names something the glossary doesn't, such as a
+program or a network, and is left alone. And so does the check itself,
+should one of its rules stop refusing what it's there for, or refuse what
+sits beside it.
 """
 
 from __future__ import annotations
@@ -24,13 +28,18 @@ from pathlib import Path
 
 from glossary import Thing, plainly, read
 
-# Fields a row calls its thing by.
-CALLED = ("name", "noun", "what")
+# What a row's term says: the things' Context/word pairs, and the contexts a
+# place may name alone.
+Terms = tuple[set[tuple[str, str]], set[str]]
 
 
-def entries(words: dict[str, list[dict[str, object]]]) -> list[dict[str, object]]:
-    """Give every thing, place and command the vocabulary holds."""
-    return [*words.get("things", []), *words.get("categories", []), *words.get("commands", [])]
+def entries(words: dict[str, list[dict[str, object]]]) -> list[tuple[bool, dict[str, object]]]:
+    """Give every thing, place and command the vocabulary holds, and whether it's a place."""
+    return [
+        *((False, entry) for entry in words.get("things", [])),
+        *((True, entry) for entry in words.get("categories", [])),
+        *((False, entry) for entry in words.get("commands", [])),
+    ]
 
 
 def says(text: str, word: str) -> bool:
@@ -39,44 +48,53 @@ def says(text: str, word: str) -> bool:
     return said in (word, f"{word}s", f"{word}es")
 
 
-def called(entry: dict[str, object], field: str, word: str, names: dict[str, str]) -> bool:
-    """Say whether a row's field says the word, alone or, for a part, after its thing's name."""
-    text = str(entry[field])
+def called(entry: dict[str, object], word: str, names: dict[str, str]) -> bool:
+    """Say whether a row's name says the word, alone or, for a part, after its thing's name."""
+    text = str(entry["name"])
     owner = names.get(str(entry.get("in", "")))
     return says(text, word) or (owner is not None and says(f"{owner} {text}", word))
 
 
+def meant(ident: str, term: object, terms: Terms, *, place: bool) -> tuple[str, str]:
+    """Give the word a term says, or what's wrong with it, one of the two left empty."""
+    pairs, contexts = terms
+    if place and isinstance(term, str) and "/" not in term:
+        if term.strip() in contexts:
+            return plainly(term), ""
+        return "", f'{ident}: its term "{term}" names no context in the glossary.'
+    if not isinstance(term, str) or term.count("/") != 1:
+        return "", f'{ident}: its term {term!r} isn\'t written as "Context/word".'
+    context, word = (part.strip() for part in term.split("/"))
+    if (context, plainly(word)) not in pairs:
+        return "", f'{ident}: its term "{term}" names no thing in the glossary\'s {context}.'
+    return plainly(word), ""
+
+
 def wrong(
-    entry: dict[str, object], terms: set[tuple[str, str]], names: dict[str, str]
+    entry: dict[str, object], terms: Terms, names: dict[str, str], *, place: bool
 ) -> list[str]:
     """Say what's wrong with how one row names its glossary thing, if anything."""
     ident = str(entry.get("id", ""))
-    term = entry.get("term")
-    if term is None:
+    if "term" not in entry:
         return []
-    if not isinstance(term, str) or term.count("/") != 1:
-        return [f'{ident}: its term {term!r} isn\'t written as "Context/word".']
-    context, word = (part.strip() for part in term.split("/"))
-    word = plainly(word)
-    if (context, word) not in terms:
-        return [f'{ident}: its term "{term}" names no thing in the glossary\'s {context}.']
-    return [
-        f'{ident}: its {field} says "{entry[field]}", but its term is "{word}".'
-        for field in CALLED
-        if isinstance(entry.get(field), str) and not called(entry, field, word, names)
-    ]
+    word, why = meant(ident, entry["term"], terms, place=place)
+    if why:
+        return [why]
+    if isinstance(entry.get("name"), str) and not called(entry, word, names):
+        return [f'{ident}: its name says "{entry["name"]}", but its term is "{word}".']
+    return []
 
 
 def drift(things: list[Thing], words: dict[str, list[dict[str, object]]]) -> list[str]:
     """Say each row whose term is wrong or whose name isn't its term."""
-    terms = {(thing.context, thing.word) for thing in things}
+    terms = ({(thing.context, thing.word) for thing in things}, {thing.context for thing in things})
     rows = entries(words)
     names = {
         str(entry["id"]): str(entry["name"])
-        for entry in rows
+        for _, entry in rows
         if isinstance(entry.get("id"), str) and isinstance(entry.get("name"), str)
     }
-    return [said for entry in rows for said in wrong(entry, terms, names)]
+    return [said for place, entry in rows for said in wrong(entry, terms, names, place=place)]
 
 
 GLOSSARY = (
@@ -100,12 +118,21 @@ REFUSED: list[tuple[str, dict[str, list[dict[str, object]]]]] = [
         {"things": [{"id": "a", "name": "Bots", "term": "Agents/agent"}]},
     ),
     (
-        "a noun that isn't its term",
-        {"categories": [{"id": "a", "noun": "ai", "term": "Agents/agent"}]},
+        "a place's name that isn't its term",
+        {"categories": [{"id": "a", "name": "AI", "term": "Agents/agent"}]},
     ),
     (
-        "a what that isn't its term",
-        {"commands": [{"id": "a", "what": "bot", "term": "Agents/agent"}]},
+        "a place's context that isn't in the glossary",
+        {"categories": [{"id": "a", "term": "Programs"}]},
+    ),
+    ("a context alone on a thing", {"things": [{"id": "a", "term": "Agents"}]}),
+    (
+        "a place's name that isn't its context",
+        {"categories": [{"id": "a", "name": "Robots", "term": "Agents"}]},
+    ),
+    (
+        "a command's name that isn't its term",
+        {"commands": [{"id": "a", "name": "Bot", "term": "Agents/agent"}]},
     ),
     (
         "a part short for another thing's term",
@@ -125,8 +152,9 @@ REFUSED: list[tuple[str, dict[str, list[dict[str, object]]]]] = [
 ]
 
 # What sits beside each rule's edge and isn't refused: a term's plural and
-# its capital, a term of two words, a part named short inside its thing, and
-# a row naming no glossary thing.
+# its capital, a term of two words, a collection whose noun and what name
+# what it holds, a place named for its context, a part named short inside
+# its thing, and a row naming no glossary thing.
 ALLOWED: dict[str, list[dict[str, object]]] = {
     "things": [
         {
@@ -136,7 +164,13 @@ ALLOWED: dict[str, list[dict[str, object]]] = {
             "what": "agent",
             "term": "Agents/agent",
         },
-        {"id": "notices", "name": "Notices", "term": "Desktop/notice"},
+        {
+            "id": "notices",
+            "name": "Notices",
+            "noun": "notes",
+            "what": "note",
+            "term": "Desktop/notice",
+        },
         {"id": "window", "name": "This window", "term": "Agents/This window"},
         {"id": "battery", "name": "Battery", "term": "Machine/battery"},
         {
@@ -146,7 +180,8 @@ ALLOWED: dict[str, list[dict[str, object]]] = {
             "term": "Machine/battery health",
         },
         {"id": "firefox", "name": "Firefox"},
-    ]
+    ],
+    "categories": [{"id": "machine", "name": "Machine", "term": "Machine"}],
 }
 
 
