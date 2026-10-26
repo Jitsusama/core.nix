@@ -4,7 +4,7 @@
 //! on whatever machine runs it, as the person: given `--sign-with` and
 //! sbctl's db key directory, its boot program signed for that machine;
 //! given `--install` and a machine's payload (payload.nix), its vault
-//! holding everything to install it, sealed to a recovery passphrase;
+//! holding everything to install it, sealed to the stick's passphrase;
 //! given `--rescue-bundle` too, the machine's Secure Boot keys, opened
 //! from its bundle, sign the boot program and go into the vault, as the
 //! bundle the host keeps for the machine does when neither that nor
@@ -214,18 +214,18 @@ fn reported(result: Result<(), Fault>) -> ExitCode {
     }
 }
 
-/// A recovery passphrase, as the next line of standard input.
+/// A passphrase, as the next line of standard input.
 fn passphrase() -> Result<Secret, Fault> {
     let mut line = zeroize::Zeroizing::new(String::new());
     std::io::stdin()
         .lock()
         .read_line(&mut line)
-        .map_err(|why| Fault::unreadable("the recovery passphrase on standard input", why))?;
+        .map_err(|why| Fault::unreadable("the passphrase on standard input", why))?;
     let passphrase = line.trim_end_matches(['\n', '\r']);
     if passphrase.chars().count() < 12 {
         return Err(Fault::Blocked {
             step: "write-stick",
-            why: "a recovery passphrase has to be at least 12 characters".into(),
+            why: "a passphrase has to be at least 12 characters".into(),
         });
     }
     Ok(Secret::new(passphrase.to_string()))
@@ -343,8 +343,10 @@ fn host(
     // The rescue bundles the stick carries kept first, before anything
     // writes over them, where the person's own state is.
     let kept = own_state().map(|state| state.join("rescue"));
-    let gathering = Journey::new(match &kept {
-        Some(kept) => vec![Box::new(GatherBundles::new(kept.clone())) as Box<dyn Step>],
+    let gather = kept.clone().map(GatherBundles::new);
+    let phrase = gather.as_ref().map(|gather| Rc::clone(&gather.phrase));
+    let gathering = Journey::new(match gather {
+        Some(gather) => vec![Box::new(gather) as Box<dyn Step>],
         None => vec![],
     })
     .map_err(|why| Fault::unreadable("the host's steps", why))?;
@@ -423,7 +425,8 @@ fn host(
         Some(_) => write.carrying(bundles),
         None => write,
     };
-    let journey = Journey::new(vec![Box::new(write) as Box<dyn Step>])
+    let sealed = phrase.and_then(|phrase| phrase.take());
+    let journey = Journey::new(host::writing(write, sealed))
         .map_err(|why| Fault::unreadable("the host's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;
@@ -450,7 +453,7 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
             &target,
             &keys,
             &passphrase,
-            guide::rescue::RECOVERY_PASSPHRASE,
+            &guide::rescue::rescue_passphrase(&target.machine),
             None,
         )?;
         machine.write(bundle, &bytes)?;

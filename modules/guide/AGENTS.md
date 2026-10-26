@@ -37,7 +37,10 @@ driven on; the installed machine's steps come later.
   they're typed. Each has its name in 1Password from `words.rs`: the
   stick's is `STICK_PHRASE`, the same for every machine, and a machine's
   own are its name and a kind, as `machines` makes "Hedgehog Recovery
-  Phrase" from hedgehog.
+  Phrase" from hedgehog. A stick written over again keeps its phrase
+  unless the person asks for new words: the host reads the sealed copy of
+  the vault's key from the old vault as it gathers the rescue bundles, and
+  what's typed back is proven against it before anything is written.
 - **Journal.** What observing can't show, such as a recovery key proven by
   being typed back, goes in the journal: a line of JSON per fact, on the disk
   before the step goes on, readable only by its owner.
@@ -226,10 +229,11 @@ driven on; the installed machine's steps come later.
   failure before it makes one.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
-  machine's YubiKeys and apart to a recovery passphrase of seven words,
-  as the vault's is. `guide seal-keys` makes it on the machine the keys belong to,
-  reading them as root and sealing them in memory, and proves the
-  passphrase opens the same keys before anything's written. It's text
+  machine's YubiKeys and apart to a passphrase of seven words, kept as
+  the machine's Rescue Phrase (`rescue_passphrase`). `guide seal-keys`
+  makes it on the machine the keys belong to, reading them as root and
+  sealing them in memory, and proves the passphrase opens the same keys
+  before anything's written. It's text
   and ciphertext only, so it can live on every machine and stick, and it
   names the db certificate's fingerprint, so a machine knows its bundle
   is current without opening it. The install seals one to the disk's
@@ -328,25 +332,24 @@ driven on; the installed machine's steps come later.
   seconds (`src/screen/terminal.rs`), since the kernel writes on the
   console when a device comes or goes and nothing else would redraw it.
 - **The vault.** A FAT32 partition any machine can read, holding files
-  sealed with age to a vault key made for it. The key is sealed to each
-  YubiKey, and separately to the recovery passphrase, since age won't mix a
-  passphrase with other recipients. Files are split into objects of at most
+  sealed with age to a vault key made for it. The key is sealed to the
+  stick's passphrase alone, so every machine opens it the same way. Files
+  are split into objects of at most
   1 GiB, under FAT32's limit, with numbered names; only the sealed index
   says what they hold, and extracting checks every object's size and each
   file's SHA-256. `manifest.json` goes last, so a vault without one was
   never finished. Every file sits at the top, since fatfs 0.3.6 writes
   directories fsck.fat has to repair.
-- **Opening the vault.** The key's YubiKey copy goes through
+- **Opening the vault.** The stick's vault is sealed to its passphrase
+  alone, named as the host had the person save it on their phone: a key
+  works only beside the stick, and a laptop with one port both fit has no
+  room for it. A rescue bundle also opens with a key's PIN, through
   age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
   its own PATH to the plugin's store directory as it starts. Sealing needs
-  no key plugged in. On the stick the install's vault takes only the
-  stick's passphrase, named as the host had the person save it on their
-  phone: a key works only beside the stick, and a laptop with one port
-  both fit has no room for it. A rescue bundle still opens with a key's
-  PIN; the plugin's own prompts never reach the screen, since the PIN is
-  handed to it.
+  no key plugged in, and the plugin's own prompts never reach the screen,
+  since the PIN is handed to it.
 - **Passphrase before PIN.** Wherever one field takes a passphrase or a
-  key's PIN (the vault, a rescue bundle, recovering the disk), what's
+  key's PIN (a rescue bundle, recovering the disk), what's
   typed is tried as the passphrase or recovery key first, which costs the
   key nothing; only then is it the plugged-in key's PIN. Typed the other
   way round, a passphrase with the Nano plugged in would spend one of the
@@ -392,8 +395,7 @@ driven on; the installed machine's steps come later.
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
-| `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
-| `../../tests/guide-vault.nix` | a vault sealed to a YubiKey, shut to its PIN, opened by the passphrase |
+| `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
 | `../../tests/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |

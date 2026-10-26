@@ -4,10 +4,10 @@ tests/guide-host.nix runs this through pytest inside the driver (tests/lib/vm_py
 its opening comment says what the test proves. The guide's screens come one after another, so
 each state a test starts from is a fixture that walks the guide one screen further than the
 fixture it asks for: the used stick mounted, the host's bundle opened, the stick named, its
-passphrase typed back, and the stick written. A fixture's work is done once a run, so any test
-runs alone with `-k`, walking only as far as it needs. What the tests need from Nix, the used
-stick and the tool to put an overlay on it, the old stick's bundle and the passphrase of the
-host's own, are guide-host.nix's, given as the `values` fixture.
+passphrase typed back, the stick written, then written again keeping it. A fixture's work is
+done once a run, so any test runs alone with `-k`, walking only as far as it needs. What the
+tests need from Nix, the used stick and the tool to put an overlay on it, the old stick's bundle
+and the passphrase of the host's own, are guide-host.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations
@@ -114,9 +114,10 @@ def mounted(host: QemuMachine) -> QemuMachine:
 def bundle_opened(mounted: QemuMachine, values: dict[str, Any]) -> QemuMachine:
     """Open the bundle the host keeps for the machine with its passphrase."""
     on_screen(mounted, "Write laptop's stick")
-    # Sealed to no YubiKey, since the payload carries no recipients.
-    on_screen(mounted, "which opens")
-    type_in(mounted, values["bundlePassphrase"])
+    # Sealed to the key too, so its PIN opens it, the key touched by
+    # itself as a canokey is.
+    on_screen(mounted, r"type\s+its\s+PIN")
+    type_in(mounted, values["pin"])
     return mounted
 
 
@@ -164,8 +165,8 @@ def test_used_stick_has_a_partition_the_desktop_mounted(mounted: QemuMachine) ->
     mounted.succeed("findmnt /dev/sda1")
 
 
-def test_hosts_bundle_opens_with_its_passphrase(bundle_opened: QemuMachine) -> None:
-    """The bundle the host keeps for the machine is opened with its passphrase."""
+def test_hosts_bundle_opens_with_its_keys_pin(bundle_opened: QemuMachine) -> None:
+    """The bundle the host keeps for the machine, sealed to a real key, opens with its PIN."""
     on_screen(bundle_opened, "is the stick to write")
 
 
@@ -227,3 +228,33 @@ def test_boot_program_is_signed_with_the_machines_db_key(written: QemuMachine) -
     written.succeed("mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
     written.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
     written.succeed("umount /run/esp")
+
+
+@pytest.fixture(scope="module")
+def rewritten(written: QemuMachine, passphrase: str, values: dict[str, Any]) -> QemuMachine:
+    """Write the stick over again, keeping the passphrase its vault has."""
+    type_in(written, "")
+    written.wait_until_fails("pgrep -u alice -f 'guide host'")
+    type_in(written, "write-the-stick-again")
+    # Its passphrase opens it as well, tried before the key that's still
+    # plugged in, so none of the key's PIN tries is spent.
+    on_screen(written, r"type\s+its\s+PIN")
+    type_in(written, values["bundlePassphrase"])
+    # Whether to keep it comes first, as a step of its own, then the stick.
+    on_screen(written, "has its passphrase already")
+    # Keeping it is the first choice, and taken with Return.
+    type_in(written, "")
+    on_screen(written, "is the stick to write")
+    type_in(written, "")
+    on_screen(written, r"which\s+it\s+keeps")
+    type_in(written, passphrase)
+    on_screen(written, "The stick is written", timeout=WRITTEN)
+    return written
+
+
+def test_a_stick_written_again_keeps_its_passphrase(rewritten: QemuMachine) -> None:
+    """Written again, the stick keeps its passphrase, the old words proven against its vault."""
+    # The rewrite asked for the words it keeps rather than showing new
+    # ones, and wrote only once they opened the old vault's key.
+    verified = rewritten.succeed("sfdisk --verify /dev/sda")
+    assert "No errors detected" in verified, verified

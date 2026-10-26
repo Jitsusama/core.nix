@@ -1,8 +1,9 @@
 //! The vault: what a reinstall stick carries for one machine, every byte
 //! of it age-encrypted under one vault key. The key is sealed to the
-//! machine's YubiKeys in `key.age` and, since age keeps a passphrase from
-//! sharing a file with other recipients, to the recovery passphrase alone
-//! in `key-passphrase.age`, as quest-backup seals a chain's key. Files are
+//! stick's passphrase in `key-passphrase.age`, as quest-backup seals a
+//! chain's key; a rescue bundle seals its keys the same way, and to its
+//! machine's YubiKeys apart, since age keeps a passphrase from sharing a
+//! file with other recipients. Files are
 //! split into numbered objects of at most a gibibyte, under FAT32's limit
 //! of four, and an encrypted index says which objects make which file, so
 //! no sealed file shows its name. Only `manifest.json` and the rescue
@@ -23,7 +24,6 @@ use crate::{Fault, Secret};
 use store::Store;
 
 pub const MANIFEST: &str = "manifest.json";
-pub const KEY: &str = "key.age";
 pub const KEY_PASSPHRASE: &str = "key-passphrase.age";
 const INDEX: &str = "index.age";
 /// A changed index, written whole before it takes the index's place.

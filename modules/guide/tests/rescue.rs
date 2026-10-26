@@ -1,8 +1,8 @@
 //! A machine's rescue bundle: its Secure Boot keys read as root, sealed so
-//! only its YubiKeys or its recovery passphrase open them, and proven to
-//! open again before anything's written. The keys are made by openssl as
-//! sbctl makes them, and the YubiKey side is the vault's own sealing,
-//! which vm-guide-opens-the-vault proves with a real FIDO2 key.
+//! only its YubiKeys or its passphrase open them, and proven to open again
+//! before anything's written. The keys are made by openssl as sbctl makes
+//! them, and the YubiKey side is the vault's own sealing, which
+//! vm-guide-writes-a-stick proves with a real FIDO2 key.
 
 mod common;
 
@@ -16,7 +16,7 @@ use zeroize::Zeroizing;
 use guide::fake::Fake;
 use guide::install::Target;
 use guide::rescue::{
-    Bundle, KEYS, Keys, OpenRescueBundle, RECOVERY_KEY, RECOVERY_PASSPHRASE, SBCTL, SealKeys,
+    Bundle, KEYS, Keys, OpenRescueBundle, RECOVERY_KEY, SBCTL, SealKeys, rescue_passphrase,
 };
 use guide::{Answer, Answers, Ask, Fault, Secret, Standing, Step, Tool};
 
@@ -66,7 +66,7 @@ fn sealed(keys: &Keys) -> Vec<u8> {
         &target("laptop"),
         keys,
         &passphrase(),
-        RECOVERY_PASSPHRASE,
+        &rescue_passphrase("laptop"),
         Some(10),
     )
     .unwrap()
@@ -236,7 +236,7 @@ fn the_bundle_is_written_privately_and_then_done() {
     assert_eq!(opened, Keys::new(files).unwrap());
     let standing = step.observe(&mut fake).unwrap();
     assert!(
-        matches!(&standing, Standing::Done { evidence } if evidence.contains("the recovery passphrase")),
+        matches!(&standing, Standing::Done { evidence } if evidence.contains("named \"Laptop Rescue Phrase\"")),
         "{standing:?}"
     );
     // No secret of the keys went into the log of what ran.
@@ -290,7 +290,7 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
     // Said to be sealed to the Nano too, by a copy nothing here opens, so
     // reaching for the key fails.
     let mut written: serde_json::Value = serde_json::from_slice(&sealed(&keys)).unwrap();
-    written["opened_by"] = serde_json::json!(["the Nano", RECOVERY_PASSPHRASE]);
+    written["opened_by"] = serde_json::json!(["the Nano", rescue_passphrase("laptop")]);
     written["to_keys"] = "bm8ga2V5IG9wZW5zIHRoaXM=".into();
     let bundle = Bundle::read(&serde_json::to_vec(&written).unwrap()).unwrap();
     assert_eq!(bundle.yubikeys(), ["the Nano"]);
@@ -322,7 +322,7 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
 
     let refused = step.run(&mut fake, &typed("123456"));
     assert!(
-        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with(&format!("that isn't {RECOVERY_PASSPHRASE}, and "))),
+        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with(&format!("that isn't {}, and ", rescue_passphrase("laptop")))),
         "{refused:?}"
     );
     step.run(&mut fake, &typed(passphrase().expose())).unwrap();

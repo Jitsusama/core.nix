@@ -1,6 +1,6 @@
 //! The host's part: writing a stick, from a machine's image and, for a
 //! reinstall stick, its payload (payload.nix) sealed into the vault with
-//! the recovery passphrase. The stick is a whole USB or removable disk,
+//! the stick's passphrase. The stick is a whole USB or removable disk,
 //! only ever one plugged in at once, opened for writing through the
 //! system's own way of letting a person do so (`stick::device`), so nothing
 //! on a host runs as root. Every stick carries on the rescue bundles the
@@ -245,36 +245,14 @@ pub fn write(
     };
     let needed = fits(&image, disk, payload)?;
     let key = VaultKey::generate();
+    // Sealed to the passphrase alone: a YubiKey opens a vault only beside
+    // the stick, which a laptop with one port both fit has no room for, so
+    // every machine opens it the same way.
     let sealed = key.seal_with_passphrase(passphrase, None)?;
-    // Sealed to the YubiKeys too when the machine names their recipients,
-    // so one touch opens it and the passphrase stays for when none can.
-    let target = &payload.target;
-    if !target.recipients.is_empty() && target.recipients.len() != target.yubikeys.len() {
-        return Err(Fault::Blocked {
-            step: "write-stick",
-            why: format!(
-                "{} names {} YubiKeys and {} recipients for them",
-                target.machine,
-                target.yubikeys.len(),
-                target.recipients.len()
-            ),
-        });
-    }
-    let to_keys = if target.recipients.is_empty() {
-        None
-    } else {
-        Some(key.seal_to_keys(&target.recipients)?)
-    };
-    let mut opened_by = if to_keys.is_some() {
-        target.yubikeys.clone()
-    } else {
-        vec![]
-    };
-    opened_by.push("the recovery passphrase".into());
     let manifest = Manifest {
         format: 1,
-        machine: target.machine.clone(),
-        opened_by,
+        machine: payload.target.machine.clone(),
+        opened_by: vec!["the stick's passphrase".into()],
     };
     meter.stage(WRITING, Some(imaged + needed));
     let written = stick::write(
@@ -288,9 +266,6 @@ pub fn write(
                 .create(vault::KEY_PASSPHRASE)?
                 .write_all(&sealed)
                 .map_err(kept)?;
-            if let Some(to_keys) = &to_keys {
-                store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
-            }
             carry(bundles, store)?;
             let mut packer = Packer::new(store, &key);
             for (name, from) in payload.files() {
@@ -420,6 +395,10 @@ pub struct GatherBundles {
     pub kept: PathBuf,
     /// Why the stick's vault couldn't be read, when it couldn't.
     pub unread: std::cell::RefCell<Option<String>>,
+    /// The copy of its key the stick's vault keeps for its passphrase,
+    /// sealed and so no secret, for the write to prove a kept passphrase
+    /// against.
+    pub phrase: std::rc::Rc<std::cell::RefCell<Option<Vec<u8>>>>,
 }
 
 impl GatherBundles {
@@ -427,6 +406,7 @@ impl GatherBundles {
         GatherBundles {
             kept,
             unread: std::cell::RefCell::default(),
+            phrase: std::rc::Rc::default(),
         }
     }
 }
@@ -476,8 +456,11 @@ impl Step for GatherBundles {
         // Read where a desktop mounted the vault, else mounted only for
         // reading, which needs no password as opening the disk would.
         let mut found = vec![];
+        let mut phrase = None;
         let mut read = |mounted: &Path| {
-            found = carried::kept(&mut vault::store::Directory::new(mounted));
+            let mut store = vault::store::Directory::new(mounted);
+            found = carried::kept(&mut store);
+            phrase = sealed_phrase(&mut store);
         };
         if let Some(vault) = vault {
             match vault.mounted.first() {
@@ -491,6 +474,7 @@ impl Step for GatherBundles {
                 }
             }
         }
+        self.phrase.replace(phrase);
         let own = machine
             .read(rescue::KEPT)
             .ok()
@@ -506,6 +490,82 @@ impl Step for GatherBundles {
             now,
         )?;
         machine.journal().record(self.id(), &named(&stick))
+    }
+}
+
+/// The copy of its key a stick's vault keeps for its passphrase, when it
+/// keeps one.
+fn sealed_phrase(store: &mut dyn Store) -> Option<Vec<u8>> {
+    let mut sealed = vec![];
+    store
+        .open(vault::KEY_PASSPHRASE)
+        .ok()?
+        .read_to_end(&mut sealed)
+        .ok()?;
+    Some(sealed)
+}
+
+/// Whether a stick whose vault has a passphrase keeps it or gets new
+/// words, so the person's phone keeps one passphrase for the stick
+/// whichever machine it's written for. A stick with none gets new words.
+pub struct ChoosePhrase {
+    /// The copy of its key the stick's vault keeps for its passphrase.
+    pub sealed: Option<Vec<u8>>,
+    /// What was chosen: to keep it, or not.
+    pub keep: std::rc::Rc<std::cell::Cell<Option<bool>>>,
+}
+
+impl Step for ChoosePhrase {
+    fn id(&self) -> &'static str {
+        "choose-phrase"
+    }
+
+    fn place(&self) -> Place {
+        Place::Host
+    }
+
+    fn title(&self) -> &'static str {
+        "Keep the stick's passphrase"
+    }
+
+    fn observe(&self, _machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        if self.sealed.is_none() {
+            return Ok(Standing::Done {
+                evidence: "the stick has no passphrase yet, so it gets new words".into(),
+            });
+        }
+        Ok(match self.keep.get() {
+            Some(true) => Standing::Done {
+                evidence: "the stick keeps its passphrase".into(),
+            },
+            Some(false) => Standing::Done {
+                evidence: "the stick gets new words".into(),
+            },
+            None => Standing::Needed {
+                asks: vec![Ask::Choose {
+                    id: "phrase",
+                    question: format!(
+                        "This stick has its passphrase already, the seven words in 1Password on your phone named \"{}\". Keep it?",
+                        words::STICK_PHRASE
+                    ),
+                    choices: vec![
+                        "Keep it, typing it from your phone".into(),
+                        "Make new words, which replace it on your phone".into(),
+                    ],
+                }],
+            },
+        })
+    }
+
+    fn run(&self, _machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
+        let Some(Answer::Chosen(chosen)) = answers.get("phrase") else {
+            return Err(Fault::Unanswered {
+                step: self.id(),
+                ask: "phrase",
+            });
+        };
+        self.keep.set(Some(*chosen == 0));
+        Ok(())
     }
 }
 
@@ -528,6 +588,30 @@ pub struct WriteStick {
     /// The passphrase's words, made once, so those shown are those typed
     /// back and those the vault is sealed to.
     pub words: std::cell::OnceCell<Secret>,
+    /// The copy of its key the stick's old vault keeps for its passphrase,
+    /// and whether the person chose to keep that passphrase: when they
+    /// did, what's typed is proven against it, and no new words are made.
+    pub kept_phrase: Option<(Vec<u8>, Chosen)>,
+}
+
+/// What the person chose, once they have: shared by the step that asks
+/// and the steps after that act on it.
+pub type Chosen = std::rc::Rc<std::cell::Cell<Option<bool>>>;
+
+/// The steps that write a stick: first, for a stick for a machine whose
+/// vault has a passphrase, sealed as `sealed`, whether to keep it.
+pub fn writing(write: WriteStick, sealed: Option<Vec<u8>>) -> Vec<Box<dyn Step>> {
+    let Some(sealed) = sealed.filter(|_| write.payload.is_some()) else {
+        return vec![Box::new(write)];
+    };
+    let keep = Chosen::default();
+    vec![
+        Box::new(ChoosePhrase {
+            sealed: Some(sealed.clone()),
+            keep: std::rc::Rc::clone(&keep),
+        }),
+        Box::new(write.keeping_phrase(sealed, keep)),
+    ]
 }
 
 impl WriteStick {
@@ -539,7 +623,42 @@ impl WriteStick {
             bundles: vec![],
             gathered: false,
             words: std::cell::OnceCell::new(),
+            kept_phrase: None,
         }
+    }
+
+    /// Keeping the stick's passphrase, the one `sealed` was sealed to,
+    /// once `chosen` says the person chose to.
+    #[must_use]
+    pub fn keeping_phrase(mut self, sealed: Vec<u8>, chosen: Chosen) -> WriteStick {
+        self.kept_phrase = Some((sealed, chosen));
+        self
+    }
+
+    /// The sealed copy the kept passphrase is proven against, when the
+    /// person chose to keep it.
+    fn kept(&self) -> Option<&[u8]> {
+        self.kept_phrase
+            .as_ref()
+            .filter(|(_, chosen)| chosen.get() == Some(true))
+            .map(|(sealed, _)| sealed.as_slice())
+    }
+
+    /// The passphrase the person typed, as the stick's old vault was
+    /// sealed to it: as the words it says, or as typed for one chosen by
+    /// hand.
+    fn proven(&self, sealed: &[u8], typed: &Secret) -> Result<Secret, Fault> {
+        let as_words = Secret::new(words::typed(typed.expose()));
+        [as_words, Secret::new(typed.expose().to_string())]
+            .into_iter()
+            .find(|tried| VaultKey::open_with_passphrase(sealed, tried).is_ok())
+            .ok_or(Fault::Blocked {
+                step: self.id(),
+                why: format!(
+                    "what was typed isn't the stick's passphrase, the seven words in 1Password named \"{}\"",
+                    words::STICK_PHRASE
+                ),
+            })
     }
 
     /// Carrying these rescue bundles on too, gathered from the stick it
@@ -636,7 +755,15 @@ impl Step for WriteStick {
             ),
             verb: "write it",
         }];
-        if self.payload.is_some() {
+        if self.payload.is_some() && self.kept().is_some() {
+            asks.push(Ask::Secret {
+                id: "passphrase",
+                name: format!(
+                    "the stick's passphrase, the seven words in 1Password on your phone named \"{}\", which it keeps",
+                    words::STICK_PHRASE
+                ),
+            });
+        } else if self.payload.is_some() {
             let words = self.words()?.expose();
             asks.push(Ask::Show {
                 id: "shown",
@@ -667,8 +794,13 @@ impl Step for WriteStick {
                 why: standing.to_string(),
             });
         }
+        let kept;
         let passphrase = match (&self.payload, answers.get("passphrase")) {
             (None, _) => None,
+            (Some(_), Some(Answer::Secret(typed))) if self.kept().is_some() => {
+                kept = self.proven(self.kept().unwrap_or_default(), typed)?;
+                Some(&kept)
+            }
             (Some(_), Some(Answer::Typed(typed))) => {
                 let words = self.words()?;
                 if words::typed(typed) != words::typed(words.expose()) {

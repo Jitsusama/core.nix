@@ -109,11 +109,10 @@ fn plugged(fake: &mut Fake, keys: &[(&str, &str)]) {
     fake.prints(Tool::Fido2Token, &["-L"], &listed);
 }
 
-const PASSPHRASE: &str = "the vault's recovery passphrase";
+const PASSPHRASE: &str = "the stick's own passphrase";
 
 /// A fake machine on the stick, its vault still shut: its key sealed to
-/// `PASSPHRASE`, and a copy for the YubiKeys that nothing here opens, so
-/// a test that reaches for a key fails.
+/// `PASSPHRASE`, as the host seals it.
 fn shut_stick(directory: &std::path::Path, target: &Target) -> Fake {
     let mut fake = stick(directory, target);
     let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
@@ -126,19 +125,10 @@ fn shut_stick(directory: &std::path::Path, target: &Target) -> Fake {
                 .unwrap(),
         )
         .unwrap();
-    store
-        .create(vault::KEY)
-        .unwrap()
-        .write_all(b"no key opens this")
-        .unwrap();
     let manifest = Manifest {
         format: 1,
         machine: target.machine.clone(),
-        opened_by: vec![
-            "the Nano".into(),
-            "the 5C".into(),
-            "the recovery passphrase".into(),
-        ],
+        opened_by: vec!["the stick's passphrase".into()],
     };
     store
         .create(vault::MANIFEST)
@@ -573,12 +563,31 @@ fn a_key_plugged_in_beside_another_is_never_enrolled() {
 }
 
 #[test]
-fn a_touch_the_key_missed_or_refused_is_said_plainly_with_what_to_do() {
+fn a_touch_or_pin_the_key_refused_is_said_plainly_with_what_to_do() {
     // As a Nano did, touched ahead of its blinks: cryptenroll's own words
     // name libfido2's error, which says nothing to a person.
-    for said in [
-        "Failed to ask token for assertion: FIDO_ERR_OPERATION_DENIED",
-        "Failed to ask token for assertion: FIDO_ERR_ACTION_TIMEOUT",
+    let touch = "the Nano didn't get its touch. Press Return to try again, and touch it each time it blinks: twice, a few seconds apart";
+    for (said, plainly) in [
+        (
+            "Failed to ask token for assertion: FIDO_ERR_OPERATION_DENIED",
+            touch,
+        ),
+        (
+            "Failed to ask token for assertion: FIDO_ERR_ACTION_TIMEOUT",
+            touch,
+        ),
+        (
+            "Failed to generate FIDO2 credential: FIDO_ERR_PIN_INVALID",
+            "the Nano didn't take that PIN. Press Return to type it again: a key takes only a few wrong PINs before it locks itself",
+        ),
+        (
+            "Failed to generate FIDO2 credential: FIDO_ERR_PIN_AUTH_BLOCKED",
+            "the Nano takes no more PINs after three wrong ones in a row until it's unplugged. Unplug it, plug it back in, then press Return to try again",
+        ),
+        (
+            "Failed to generate FIDO2 credential: FIDO_ERR_PIN_BLOCKED",
+            "the Nano has locked its PIN after too many wrong ones, and only a reset frees it, which wipes what it holds. Reset its FIDO2 part and set its PIN again on another computer, then plug it in here and press Return to try again",
+        ),
     ] {
         let target = target("/dev/disk/by-id/virtio-root");
         let scratch = Scratch::new("install-touch-missed");
@@ -616,7 +625,7 @@ fn a_touch_the_key_missed_or_refused_is_said_plainly_with_what_to_do() {
         answers.give("pin", Answer::Secret(Secret::new("123456".into())));
         let refused = EnrolYubikey::new("the Nano").run(&mut fake, &answers);
         assert!(
-            matches!(&refused, Err(Fault::Blocked { why, .. }) if why == "the Nano didn't get its touch. Press Return to try again, and touch it each time it blinks: twice, a few seconds apart"),
+            matches!(&refused, Err(Fault::Blocked { why, .. }) if why == plainly),
             "{said}: {refused:?}"
         );
     }
