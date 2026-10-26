@@ -301,7 +301,7 @@ in
       };
       Service = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe pkgs.nodejs} --experimental-transform-types ${weeklyMeasure}";
+        ExecStart = "${lib.getExe pkgs.nodejs} ${weeklyMeasure}";
         Slice = "background.slice";
       };
     };
