@@ -16,11 +16,21 @@ machine's, Agents › Sessions › Language › Address is a session's.
 Each table has the same columns:
 
 - **Word**: the term, as it's written in prose, shown on screen and typed.
+  In prose it's in lower case unless it's a name, such as Bluetooth or Keep
+  Awake, which is written as its title everywhere.
 - **Means**: what it is, in a few plain words.
 - **Not**: names it replaces. They're never written, shown or found for
   anything, in any context.
 - **In code**: how code spells it, where code has to spell it otherwise, such
   as a program's name for a module or NixOS's own option.
+
+A title, the name of a place, a row or an act on screen, is in Title Case:
+every word takes a capital but a, an, the, and, or, but, of, to, in, on, at,
+by, for and with, which take one only as the first or last word, as in Keep
+Awake, Do Not Disturb, Start a Session and Turn the Radio Off (Joel,
+2026-10-26: "i hate things that look like sentences without punctuation"). A
+note, a notice and what an empty list says are sentences, and a command is
+written as it's typed, in lower case.
 
 The-glossary-names-each-thing-once holds every table to that: no word names two
 things in one context, and no replaced name is written for anything.
@@ -35,13 +45,15 @@ the-launcher-names-each-thing-its-term holds the row's name to it.
 
 ## The Context Map
 
-Seven contexts are the launcher's places, in its order on the home screen
-after Now: Agents, Programs, Desktop, Machine, Network, Disk and Keyboards.
-Three are never places: Security, which the others lean on, and the Library
-and Checks, which are core.nix's own.
+Seven contexts are the launcher's places. Six are home's rows, in its order
+after Now: Agents, Programs, Desktop, Machine, Network and Keyboards, so home
+has seven rows. Disk's place is inside Machine, beside Processor, Memory and
+Heat. Three contexts are never places: Security, which the others lean on,
+and the Library and Checks, which are core.nix's own.
 
 - **Desktop shows every context.** Each launcher place belongs to one; Now is a
-  view onto the others' rows, each kept in its own place.
+  view onto the others' rows, each kept in its own place, with one row of its
+  own, Today. A filling disk shows in Now, with its forecast, while it fills.
 - **Agents uses Machine's queue**: a session's heavy work waits there, shown on
   the session as what it's waiting on.
 - **Disk acts on Machine's jobs**: the disk guard freezes and thaws them.
@@ -142,10 +154,10 @@ or a copy, can be opened, copied or forgotten.
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
 | window | a program's rectangle on the screen | | |
-| This window | the launcher's first row in Desktop: the window Joel is in | | |
+| This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
 | notice | a card at the top right saying what a program said | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
-| Do not disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
+| Do Not Disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
 | question | a centred box asking Joel something, such as a password or a yes | | `Polkit.qml`, `Askpass.qml` |
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `overview.pieces` |
@@ -153,25 +165,33 @@ or a copy, can be opened, copied or forgotten.
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
+| home | the launcher's first place: Now, Agents, Programs, Desktop, Machine, Network and Keyboards | | |
 | crumbs | where Joel is in the launcher, from home | | |
 | field | where Joel types, at the top of every place | | |
 | back | going up one place, to the row he was on | | the ← key |
 | action | what a row can do: the same set for every row of its kind | verb | |
+| go to | the action moving to something already open, such as a window or a session | | |
+| open | the action starting something, such as a program or a file | | |
+| turn on | the action starting a setting, a radio or a light | | |
+| turn off | the action stopping a setting, a radio or a light | | |
+| forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `WhatsOn.qml` |
-| Waiting on you | everything waiting on Joel, each with its minutes, at the top of Now | | |
+| Waiting on You | everything waiting on Joel, each with its minutes, at the top of Now | | |
 | lag | how long the desktop takes to answer a key or a click | slow, jank, stutter | `lag-watch` |
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
-| Today | the time, the date and the weather, as one row | | |
+| Today | Now's row for the date, the weather and the next meeting, whose Return joins the meeting | | |
 | here | where the weather is when no town is typed: where the laptop is, else the town set, else the time zone's city | | the `whereabouts` program; the weather provider's `place` |
 
 ## Machine
 
-The computer and its parts, its power and its sleep. A device can be
-connected, used and forgotten; a setting can be set, raised and lowered; the
-machine can sleep, lock, log out, reboot and power off.
+The computer and its parts, its power and its sleep. A Bluetooth device is
+paired, connected, disconnected and forgotten in Bluetooth, and used in its
+kind's place, such as a headset's volume in Sound; a setting can be set,
+raised and lowered; the machine can sleep, lock, log out, reboot and power
+off.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -187,7 +207,7 @@ machine can sleep, lock, log out, reboot and power off.
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |
 | charger | the power cable, and what it's plugged into | mains | AC |
-| Keep awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
+| Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
 | wake | coming back from sleep | | |
 | log out | ending the desktop, back to the greeter | sign out | `session:` |
@@ -195,7 +215,7 @@ machine can sleep, lock, log out, reboot and power off.
 | power off | turning the machine off | shut down | |
 | lid | the laptop's lid, whose closing puts it to sleep away from a desk | | `lid-docked` |
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | on a dock, at a desk | |
-| Bluetooth | the radio that reaches headphones, keyboards and mice | | BlueZ |
+| Bluetooth | the radio that reaches headphones, keyboards and mice, and the place listing every device it reaches, to pair and connect | | BlueZ |
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
@@ -208,8 +228,8 @@ machine can sleep, lock, log out, reboot and power off.
 
 ## Network
 
-How the machine reaches out. A network can be connected, signed in to and
-forgotten; Wi-Fi's radio can be turned off.
+How the machine reaches out: Wi-Fi, Ethernet, a VPN and tethering. A network
+can be connected, signed in to and forgotten; Wi-Fi's radio can be turned off.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -217,6 +237,8 @@ forgotten; Wi-Fi's radio can be turned off.
 | speed | how fast the connection carries data now, each way | network speed, connection speed, bandwidth | `traffic` |
 | address | an address the machine has on a network | network address, IP | `networks` |
 | Wi-Fi | the network without a cable | WLAN, wireless | `wifid`, `wifi` |
+| Ethernet | the network through a cable | wired | |
+| tethering | reaching out through a phone's connection, over its cable | | |
 | sign-in page | the page a network shows before it lets the machine out, as a hotel's does | captive portal, network sign-in page | `wifid-sign-in` |
 | VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.tunnels` |
 | firewall | what keeps others' connections out | | nftables |
@@ -224,9 +246,9 @@ forgotten; Wi-Fi's radio can be turned off.
 
 ## Disk
 
-The disk, its filesystems, and the guard that keeps them from filling. A
-filesystem can say what's filling it, be cleared now, and keep or stop keeping
-a folder.
+The disk, its filesystems, and the guard that keeps them from filling, whose
+place is inside Machine. A filesystem can say what's filling it, be cleared
+now, and keep or stop keeping a folder.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -240,11 +262,13 @@ a folder.
 | filling | the disk guard's first band, under a quarter free, when it starts taking room back | pressure | `pressure` |
 | nearly full | the disk guard's second band, under a tenth free, when it takes more | urgent | `urgent` |
 | critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | critical | `critical` |
+| forecast | how long a filesystem has until it's full, at the rate it's filling | | |
 
 ## Keyboards
 
 The keyboards plugged in, their keys, layers and light. A keyboard can switch
-layer and set its light; its keys and shortcuts are listed inside it.
+layer, lock a layer on and release it, and set its light; its keys and
+shortcuts are listed inside it.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -252,6 +276,7 @@ layer and set its light; its keys and shortcuts are listed inside it.
 | key | one key on a keyboard | | |
 | layer | what a keyboard's keys do, one set of several, which a key switches between | Keys and layers | the ErgoDox's layers, `Layer.qml` |
 | map | the keyboard's layout, shown on screen | | `KeyboardMap.qml` |
+| release | letting go of a layer locked on, back to the one beneath | | |
 | light | the keyboard's own light | backlight | |
 | shortcut | keys pressed together that do one thing | binding, bind | niri's `binds` |
 

@@ -38,7 +38,9 @@ OTHER_SENSE = {
 }
 
 # Things waiting on a rename, each with the quest that owns it.
-WAITING: dict[str, str] = {}
+WAITING: dict[str, str] = {
+    "networks:wired": "Launcher (Y2YBTS): wired to Ethernet",
+}
 
 
 def shown(entry: dict[str, object]) -> Iterator[str]:
