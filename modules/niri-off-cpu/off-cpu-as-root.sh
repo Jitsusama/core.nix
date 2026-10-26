@@ -17,4 +17,6 @@ fi
 
 out=/run/niri-off-cpu/$account.txt
 install -m 0600 -o "$account" /dev/null "$out"
-exec bpftrace -q -o "$out" "$OFF_CPU" "$pid"
+# A line at a time, so the header BEGIN prints once every probe is in place
+# reaches the file then, and the unit can wait for it (nixos.nix).
+exec bpftrace -q -B line -o "$out" "$OFF_CPU" "$pid"

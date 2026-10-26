@@ -22,6 +22,13 @@ let
     text = builtins.readFile ./off-cpu-as-root.sh;
   };
 
+  # What the unit waits on before it counts as started (off-cpu-begun.sh).
+  begun = pkgs.writeShellApplication {
+    name = "niri-off-cpu-begun";
+    runtimeInputs = [ pkgs.inotify-tools ];
+    text = builtins.readFile ./off-cpu-begun.sh;
+  };
+
   # What the account runs (niri-off-cpu.sh).
   ask = pkgs.writeShellApplication {
     name = "niri-off-cpu";
@@ -39,6 +46,10 @@ in
     serviceConfig = {
       Type = "exec";
       ExecStart = "${trace}/bin/niri-off-cpu-as-root %i";
+      # Started once its probes are in place, so the asker's window is
+      # traced whole; a trace that can't begin in a minute fails.
+      ExecStartPost = "${begun}/bin/niri-off-cpu-begun %i";
+      TimeoutStartSec = "1min";
       # bpftrace writes what it holds and runs END on an interrupt.
       KillSignal = "SIGINT";
       # A trace left running by an asker that went away ends anyway.

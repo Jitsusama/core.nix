@@ -66,13 +66,15 @@ def test_times_are_on_the_machines_monotonic_clock(machine: BaseMachine, traced:
 @pytest.mark.usefixtures("traced")
 def test_nobody_else_traces_or_reads_it(machine: BaseMachine) -> None:
     """Nobody else traces it or reads it."""
-    # polkit refuses both, rather than either failing for want of a niri.
+    # polkit refuses both, asking for a password nobody can give here,
+    # rather than either failing for want of a niri. systemctl words the
+    # refusal by whether it was asked from a terminal.
     status, said = machine.execute("runuser -u other -- niri-off-cpu 1 2>&1")
     assert status != 0, said
-    assert "authentication required" in said, said
+    assert "authentication" in said, said
     status, said = machine.execute(
         "runuser -u someone -- systemctl start niri-off-cpu@other.service 2>&1"
     )
     assert status != 0, said
-    assert "authentication required" in said, said
+    assert "authentication" in said, said
     machine.fail(f"runuser -u other -- cat {TRACE}")
