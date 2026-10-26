@@ -13,24 +13,24 @@ let
     cp ${pkgs.bash}/bin/bash $out/bin/service
   '';
   # A VM's threads, and a compiler that's busy until stopped.
-  fakeVm = pkgs.writeShellApplication {
-    name = "fake-vm";
+  standInVm = pkgs.writeShellApplication {
+    name = "stand-in-vm";
     runtimeEnv.PYTHONHOME = pkgs.python3;
     text = "exec ${impostors}/bin/qemu-system-x86_64 ${./vm-first-guest.py}";
   };
-  fakeCompiler = pkgs.writeShellApplication {
-    name = "fake-compiler";
+  standInCompiler = pkgs.writeShellApplication {
+    name = "stand-in-compiler";
     text = "exec ${impostors}/bin/cc1 -c 'while :; do ${pkgs.coreutils}/bin/sleep 1; done'";
   };
   # A container, as a check run in one starts it, with a service in it that
   # bears no name of its own to be known by.
-  fakeContainer = pkgs.writeShellApplication {
-    name = "fake-container";
+  standInContainer = pkgs.writeShellApplication {
+    name = "stand-in-container";
     text = "exec ${impostors}/bin/systemd-nspawn -c '${impostors}/bin/service -c \"while :; do ${pkgs.coreutils}/bin/sleep 1; done\" & wait'";
   };
   # A build that writes 64 MiB through to the disk and then finishes.
-  fakeWriter = pkgs.writeShellApplication {
-    name = "fake-writer";
+  standInWriter = pkgs.writeShellApplication {
+    name = "stand-in-writer";
     # Nix gives a builder $out in its environment.
     excludeShellChecks = [ "SC2154" ];
     text = ''
@@ -40,8 +40,8 @@ let
     '';
   };
   # A build that writes 64 MiB and finishes without waiting for the disk.
-  fakeLazyWriter = pkgs.writeShellApplication {
-    name = "fake-lazy-writer";
+  standInLazyWriter = pkgs.writeShellApplication {
+    name = "stand-in-lazy-writer";
     # Nix gives a builder $out in its environment.
     excludeShellChecks = [ "SC2154" ];
     text = ''
@@ -52,8 +52,8 @@ let
   };
   # A build that asks for its filesystem to be synced, then for everything,
   # and keeps what each answered.
-  fakeSyncer = pkgs.writeShellApplication {
-    name = "fake-syncer";
+  standInSyncer = pkgs.writeShellApplication {
+    name = "stand-in-syncer";
     # Nix gives a builder $out in its environment.
     excludeShellChecks = [ "SC2154" ];
     text = ''
@@ -69,8 +69,8 @@ let
   # it and moves in, then asks to hand that one a controller, saying what it
   # was answered. A cgroup it makes beside that one says it has asked, and
   # it runs until stopped.
-  fakeNester = pkgs.writeShellApplication {
-    name = "fake-nester";
+  standInNester = pkgs.writeShellApplication {
+    name = "stand-in-nester";
     runtimeInputs = [
       pkgs.coreutils
       pkgs.util-linux
@@ -105,28 +105,28 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   nodes.machine = {
     imports = [ self.nixosModules.nix-daemon ];
     system.extraDependencies = [
-      fakeVm
-      fakeCompiler
-      fakeContainer
-      fakeWriter
-      fakeLazyWriter
-      fakeSyncer
-      fakeNester
+      standInVm
+      standInCompiler
+      standInContainer
+      standInWriter
+      standInLazyWriter
+      standInSyncer
+      standInNester
     ];
-    environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
-    environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
-    environment.etc."quest-build.nix".source = buildOf "quest-build" fakeCompiler;
-    environment.etc."container-build.nix".source = buildOf "container-build" fakeContainer;
-    environment.etc."writer-build.nix".source = buildOf "writer-build" fakeWriter;
-    environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" fakeLazyWriter;
-    environment.etc."syncer-build.nix".source = buildOf "syncer-build" fakeSyncer;
+    environment.etc."vm-build.nix".source = buildOf "vm-build" standInVm;
+    environment.etc."compiler-build.nix".source = buildOf "compiler-build" standInCompiler;
+    environment.etc."quest-build.nix".source = buildOf "quest-build" standInCompiler;
+    environment.etc."container-build.nix".source = buildOf "container-build" standInContainer;
+    environment.etc."writer-build.nix".source = buildOf "writer-build" standInWriter;
+    environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" standInLazyWriter;
+    environment.etc."syncer-build.nix".source = buildOf "syncer-build" standInSyncer;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
     # As buildOf makes one, given a range of user ids as a container's is.
     environment.etc."nester-build.nix".text = ''
       derivation {
         name = "nester-build";
         system = builtins.currentSystem;
-        builder = "''${builtins.storePath "${fakeNester}"}/bin/fake-nester";
+        builder = "''${builtins.storePath "${standInNester}"}/bin/stand-in-nester";
         requiredSystemFeatures = [ "uid-range" ];
       }
     '';
