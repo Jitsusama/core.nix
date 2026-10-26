@@ -4,13 +4,16 @@
 // retry classifier never retries. Anything else the provider passes on.
 import assert from "node:assert/strict";
 
-const provider = process.argv[2];
+const [, , provider] = process.argv;
 const { describePlanLimit } = await import(`${provider}/src/billing.ts`);
 
 const said = (message) => describePlanLimit(message);
 
 const usage = said("Claude Code API error: You've hit your usage limit · resets 3pm");
-assert.match(usage, /^Claude plan limit reached: your usage limit is used up until it resets 3pm\./);
+assert.match(
+  usage,
+  /^Claude plan limit reached: your usage limit is used up until it resets 3pm\./,
+);
 assert.match(usage, /nothing is charged to extra usage/);
 assert.match(usage, /billing/);
 
