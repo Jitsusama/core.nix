@@ -474,6 +474,10 @@
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
+  pi-runs-on-the-machines-plan = ''
+    a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
+    no pi-claude beside it, and a work machine's pi is unchanged
+  '';
   pi-tells-where-as-the-prompt-does = ''
     pi's status line finds the folder by the prompt's roots, asks the prompt's git-engine, and marks
     git with the theme's glyphs
