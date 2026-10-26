@@ -22,6 +22,10 @@ Provider {
     // Named Now, as the vocabulary says (Words.qml), its old name a hidden
     // word, under the calendar clock.
     collection: Words.collection("on", { searched: false })
+    // What waits on Joel is found by its words too, since Now is its one
+    // home: the rest of what's on each has a place of its own to be found
+    // in, which is why the collection adds no row to a search.
+    things: waiting === null ? [] : [waiting]
 
     // The kinds of piece it lists: what wants Joel, what's on air, and
     // what was left on.

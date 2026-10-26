@@ -1238,8 +1238,9 @@ def test_now_leads_with_what_waits_on_joel_and_steer_tells_the_agent_steering(
         f"printf %s {shlex.quote(json.dumps(queue))} > {state}/mission/.q"
         f" && mv {state}/mission/.q {state}/mission/queue.json"
     )
-    # One ready is said as a notice the moment it's heard.
-    with desktop.told("shows card Waiting on you"):
+    # One ready is said as a notice the moment it's heard, named by what
+    # it asks, so it's never a second "Waiting on you" beside Now's.
+    with desktop.told("shows card Answer the ask"):
         desktop.as_account(
             f"printf %s {shlex.quote(json.dumps(asked))} > {state}/mission/waiting/.q"
             f" && mv {state}/mission/waiting/.q {state}/mission/waiting/QUEST1.json"

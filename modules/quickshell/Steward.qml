@@ -133,7 +133,14 @@ Singleton {
     onRememberedChanged: Qt.callLater(notice)
 
     // A notice offering to go where it's done, which notify-send prints
-    // when Joel takes it.
+    // when Joel takes it. It's named by what's asked, its minutes below,
+    // and its sender says it waits on him: named "Waiting on you", the
+    // notices kept since were a second thing of that name beside Now's row.
+    function minutes(item) {
+        const said = (Words.of("on:waiting").said ?? {}).minutes ?? "{minutes} min";
+        return typeof item.minutes === "number" ? said.replace("{minutes}", item.minutes) : "";
+    }
+
     Component {
         id: asking
 
@@ -145,7 +152,7 @@ Singleton {
             running: item !== null
             command: item === null ? [] : ["notify-send", "--app-name=waiting",
                 `--action=go=${root.capitalised(Words.verb("on:waiting"))}`,
-                Words.name("on:waiting"), root.titled(item)]
+                item.title, root.minutes(item)]
             stdout: SplitParser {
                 onRead: line => {
                     if (line.trim() === "go")
