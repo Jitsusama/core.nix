@@ -538,7 +538,7 @@
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
   '';
   pi-packages-passes-clippy = ''
-    clippy finds nothing in pi-packages or its tests, which hold a live process's release unchanged
+    clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
     through an update and never swap in a build that fails or leaves a native module unbuilt
   '';
   pi-packages-swap-in-the-background = ''

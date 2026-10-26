@@ -1,4 +1,4 @@
-//! pi-packages: each of pi's packages installed into a release folder of
+//! pi-packages: each of pi's packages installed into a version folder of
 //! its own, checked whole, and swapped in by one rename, so no file a
 //! running pi has loaded ever changes under it.
 //!
@@ -9,27 +9,31 @@
 //! crashed them. pi never installs or changes a package named by a local
 //! path, so pi is given each package as a link instead:
 //!
-//!   <root>/<host>/<path>/current -> releases/<commit>
+//!   <root>/<host>/<path>/current -> versions/<commit>
 //!
 //! An update fetches the package's mirror (`mirror.git`), and when its
 //! branch has moved, builds the new commit into a hidden folder beside
-//! the releases: a clone sharing the mirror's objects, and its production
+//! the versions: a clone sharing the mirror's objects, and its production
 //! dependencies, installed with this machine's pnpm and node in an
 //! environment of their own, so no shell's pnpm or settings leak in. The
 //! build is checked whole (check.rs) and only then renamed into
-//! `releases/<commit>`, and `current` is pointed at it by renaming a new
-//! link over the old one, which a reader sees as the old release or the new,
-//! never half of either (release.rs).
+//! `versions/<commit>`, and `current` is pointed at it by renaming a new
+//! link over the old one, which a reader sees as the old version or the new,
+//! never half of either (version.rs).
 //!
-//! A release `current` has left stays as it was, for the sessions still
+//! A version `current` has left stays as it was, for the sessions still
 //! running it, until it has been out for `keepDays` and no process on the
 //! machine holds a file in it, maps one or stands in it (inuse.rs). A
 //! build that fails its check is removed and `current` is left alone; the
 //! next run tries again. One update runs at a time for each package, under
-//! a lock beside its releases.
+//! a lock beside its versions.
+//!
+//! Versions were first kept in `releases/`, a word that names giving a
+//! tree back here. That folder is still read, so each version in it goes
+//! like any other once nothing uses it, and the folder with the last.
 
 pub mod check;
 pub mod config;
 pub mod inuse;
-pub mod release;
 pub mod run;
+pub mod version;

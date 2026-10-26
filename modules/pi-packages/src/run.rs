@@ -4,14 +4,14 @@ use std::fs::{self, File, TryLockError};
 use std::time::SystemTime;
 
 use crate::config::{Config, Package};
-use crate::release::{self, Place};
+use crate::version::{self, Place};
 
 /// What an update did for one package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Done {
     /// `current` already pointed at the branch's head.
     Current { commit: String },
-    /// `current` was moved, from the release it pointed at, if any.
+    /// `current` was moved, from the version it pointed at, if any.
     Moved { from: Option<String>, to: String },
     /// Another update holds this package's lock, so this one left it.
     Busy,
@@ -24,7 +24,7 @@ pub enum Done {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Outcome {
     pub done: Done,
-    /// Old releases removed, nothing using them.
+    /// Old versions removed, nothing using them.
     pub removed: usize,
     /// Why the mirror could not be fetched, when it could not; the last
     /// commit it saw was used.
@@ -65,21 +65,21 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
         }
         Err(TryLockError::Error(error)) => return Err(format!("{}: {error}", lock_path.display())),
     }
-    let env = release::build_env(config);
-    let (commit, unfetched) = release::fetch(config, package, &place, &env)?;
+    let env = version::build_env(config);
+    let (commit, unfetched) = version::fetch(config, package, &place, &env)?;
     let from = place.current_commit();
     let done = if from.as_deref() == Some(commit.as_str()) {
         Done::Current { commit }
     } else {
-        match release::build(config, package, &place, &commit, &env) {
+        match version::build(config, package, &place, &commit, &env) {
             Ok(_) => {
-                release::swap(&place, &commit, now)?;
+                version::swap(&place, &commit, now)?;
                 Done::Moved { from, to: commit }
             }
             Err(why) => Done::Failed { commit, why },
         }
     };
-    let removed = release::prune(config, &place, now)?;
+    let removed = version::prune(config, &place, now)?;
     Ok(Outcome {
         done,
         removed,

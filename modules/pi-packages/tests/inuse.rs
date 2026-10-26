@@ -1,4 +1,4 @@
-//! Whether a release is in use, asked of the machine's real processes:
+//! Whether a version is in use, asked of the machine's real processes:
 //! one standing in a folder, one holding a file in it open, and none.
 
 use pi_packages::inuse::in_use;
@@ -46,29 +46,29 @@ fn soon_in_use(dir: &Path) -> bool {
 
 #[test]
 fn a_folder_a_process_stands_in_is_in_use() {
-    let release = tempfile::tempdir().expect("a folder");
-    let _standing = shell(release.path(), "");
-    assert!(soon_in_use(release.path()), "a process stands in it");
+    let version = tempfile::tempdir().expect("a folder");
+    let _standing = shell(version.path(), "");
+    assert!(soon_in_use(version.path()), "a process stands in it");
 }
 
 #[test]
 fn a_folder_a_process_holds_a_file_open_in_is_in_use() {
-    let release = tempfile::tempdir().expect("a folder");
-    let file = release.path().join("binding.node");
+    let version = tempfile::tempdir().expect("a folder");
+    let file = version.path().join("binding.node");
     fs::write(&file, "").expect("a file");
     let elsewhere = tempfile::tempdir().expect("a folder");
     let _holding = shell(elsewhere.path(), &format!("exec 3<'{}';", file.display()));
     assert!(
-        soon_in_use(release.path()),
+        soon_in_use(version.path()),
         "a process holds a file in it open"
     );
 }
 
 #[test]
 fn a_folder_nothing_uses_is_not_in_use() {
-    let release = tempfile::tempdir().expect("a folder");
+    let version = tempfile::tempdir().expect("a folder");
     let elsewhere = tempfile::tempdir().expect("a folder");
     let _elsewhere = shell(elsewhere.path(), "");
     sleep(Duration::from_millis(200));
-    assert!(!in_use(release.path()), "nothing uses it");
+    assert!(!in_use(version.path()), "nothing uses it");
 }

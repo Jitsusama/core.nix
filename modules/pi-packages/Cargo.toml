@@ -1,4 +1,4 @@
-# pi-packages installs each of pi's packages into a release folder of its own
+# pi-packages installs each of pi's packages into a version folder of its own
 # and swaps it in whole, never changing a file a running pi has loaded
 # (src/lib.rs says how).
 [package]

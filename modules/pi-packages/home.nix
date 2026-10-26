@@ -1,10 +1,10 @@
-# pi-packages installs each git package pi loads into a release of its own
+# pi-packages installs each git package pi loads into a version of its own
 # and swaps it in whole (src/lib.rs says how), so no update changes a file
 # a running pi has loaded. pi is given each one as a local path, the link
-# to its current release, and pi never installs or changes a package named
+# to its current version, and pi never installs or changes a package named
 # that way, so `pi update` can't reach it either.
 #
-# It installs a package with no release yet at a switch, before pi's
+# It installs a package with no version yet at a switch, before pi's
 # settings are written, and updates every fifteen minutes in the
 # background, a switch starting a run without waiting on it; `pi-packages update` runs it now,
 # after a merge, and `pi-packages status` says where each package is. A
@@ -20,11 +20,12 @@
 let
   cfg = config.jitsusama.pi-packages;
   package = pkgs.callPackage ./package.nix { };
-  # The node and pnpm a release is installed and checked with, and git with
+  # The node and pnpm a version is installed and checked with, and git with
   # them, whatever a shell has on its PATH; pnpm runs install scripts
-  # through sh, and its shims for a dependency's programs use sed. A native module with no prebuilt binding for this node
-  # would need a compiler too, which isn't given: its build fails, and the
-  # release is never swapped in.
+  # through sh, and its shims for a dependency's programs use sed. A native
+  # module with no prebuilt binding for this node would need a compiler
+  # too, which isn't given: its build fails, and the version is never
+  # swapped in.
   tools = [
     pkgs.git
     cfg.node
@@ -43,7 +44,7 @@ let
       node = lib.getExe cfg.node;
       pnpm = lib.getExe pkgs.pnpm;
       path = map (tool: "${lib.getBin tool}/bin") tools ++ cfg.extraPath;
-      # The account's one pnpm store (modules/pnpm), so a release clones
+      # The account's one pnpm store (modules/pnpm), so a version clones
       # its files from there rather than filling a store of its own.
       env = lib.filterAttrs (
         name: _: name == "npm_config_store_dir" || name == "pnpm_config_store_dir"
@@ -70,7 +71,7 @@ in
       default = [ ];
     };
     root = lib.mkOption {
-      description = "Where each package's mirror, releases and current link are kept.";
+      description = "Where each package's mirror, versions and current link are kept.";
       type = lib.types.str;
       default = "${config.xdg.dataHome}/pi-packages";
       defaultText = lib.literalExpression ''"''${config.xdg.dataHome}/pi-packages"'';
@@ -91,7 +92,7 @@ in
     };
     node = lib.mkOption {
       description = ''
-        The node pi runs on, which a release's native modules are built for
+        The node pi runs on, which a version's native modules are built for
         and loaded with before it is swapped in.
       '';
       type = lib.types.package;
@@ -100,7 +101,7 @@ in
     };
     keepDays = lib.mkOption {
       description = ''
-        How long a release the link has left is kept, at least. It goes only
+        How long a version the link has left is kept, at least. It goes only
         once no process maps, holds or stands in a file of it.
       '';
       type = lib.types.ints.unsigned;
@@ -123,7 +124,7 @@ in
   config = lib.mkIf (gitPackages != [ ]) {
     home.packages = [ configured ];
 
-    # Before pi's settings name the links: a package with no release yet is
+    # Before pi's settings name the links: a package with no version yet is
     # installed then and there, so a first switch has it, and a run that
     # fails leaves the switch to go on. Once each has one, a switch only
     # starts the service and goes on, rather than waiting on a fetch.
@@ -143,7 +144,7 @@ in
 
     systemd.user.services.pi-packages = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
-        Description = "Installs pi's packages as whole releases and swaps them in";
+        Description = "Installs pi's packages as whole versions and swaps them in";
         X-RestartIfChanged = false;
       };
       Service = {

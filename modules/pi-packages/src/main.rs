@@ -1,4 +1,4 @@
-//! pi-packages: each of pi's packages built into a release of its own and
+//! pi-packages: each of pi's packages built into a version of its own and
 //! swapped in whole (src/lib.rs says how).
 //!
 //! Usage:
@@ -10,8 +10,8 @@ use std::process::ExitCode;
 use std::time::SystemTime;
 
 use pi_packages::config::Config;
-use pi_packages::release::Place;
 use pi_packages::run::{self, Done};
+use pi_packages::version::Place;
 
 const USAGE: &str = "usage: pi-packages update --config FILE | status --config FILE";
 
@@ -77,7 +77,7 @@ fn update(file: &Path) -> Result<(), String> {
                 }
                 if outcome.removed > 0 {
                     println!(
-                        "{name}: removed {} old releases nothing uses",
+                        "{name}: removed {} old versions nothing uses",
                         outcome.removed
                     );
                 }
