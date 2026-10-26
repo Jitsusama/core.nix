@@ -10,15 +10,18 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use google::api::{Google, Origins};
+use google::calendar::Answer;
 use google::state::Standing;
 use google::watch::Watch;
 use jiff::Zoned;
 
-/// One request the stand-in heard: its first line and its Authorization.
+/// One request the stand-in heard: its first line, its Authorization and
+/// its body.
 #[derive(Clone, Debug)]
 struct Heard {
     line: String,
     authorization: String,
+    body: String,
 }
 
 /// A stand-in for Google's token endpoint and Calendar API, answering each
@@ -62,6 +65,7 @@ impl StandIn {
                 kept.lock().unwrap().push(Heard {
                     line: line.trim_end().to_owned(),
                     authorization,
+                    body,
                 });
                 let mut stream = stream;
                 write!(
@@ -269,6 +273,67 @@ fn an_unreachable_google_keeps_what_was_heard() {
     assert_eq!(state.account, Standing::Unreachable);
     assert_eq!(state.meetings.len(), 1);
     assert_eq!(state.heard, heard);
+}
+
+/// The stand-in's Standup, to which Joel and one other are invited, and
+/// which takes an answer.
+fn invited(path: &str, _: &str) -> (u16, String) {
+    if path.starts_with("GET /calendar/v3/calendars/primary/events/e1?") {
+        return (
+            200,
+            r#"{"attendees": [{"email": "a@example.com", "responseStatus": "accepted"},
+                {"email": "joel@example.com", "self": true, "responseStatus": "needsAction"}]}"#
+                .into(),
+        );
+    }
+    if path.starts_with("PATCH") {
+        return (200, r#"{"id": "e1"}"#.into());
+    }
+    (200, EVENTS.into())
+}
+
+#[test]
+fn an_answer_changes_joels_own_and_is_held_at_once() {
+    let stand_in = StandIn::new(invited);
+    let path = credentials("answer", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    let state = watch.answer("e1", Answer::Maybe, &now()).clone();
+    assert_eq!(state.meetings[0].answer, Some(Answer::Maybe));
+    let heard = stand_in.heard();
+    let written = heard.last().unwrap();
+    assert!(
+        written
+            .line
+            .starts_with("PATCH /calendar/v3/calendars/primary/events/e1?sendUpdates=none"),
+        "{}",
+        written.line
+    );
+    assert_eq!(written.authorization, "Bearer pis");
+    let body: serde_json::Value = serde_json::from_str(&written.body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"attendees": [
+            {"email": "a@example.com", "responseStatus": "accepted"},
+            {"email": "joel@example.com", "self": true, "responseStatus": "tentative"}
+        ]})
+    );
+}
+
+#[test]
+fn an_answer_google_refuses_changes_nothing_held() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("PATCH") {
+            (404, "{}".into())
+        } else {
+            invited(path, body)
+        }
+    });
+    let path = credentials("unanswered", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    let state = watch.answer("e1", Answer::Yes, &now()).clone();
+    assert_eq!(state, before);
 }
 
 #[test]
