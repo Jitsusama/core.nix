@@ -1,9 +1,14 @@
-// Arithmetic and number bases for the launcher's answers, in plain
-// JavaScript so a check can run it in Qt's own engine, as the shell does.
+// Sums and number bases for the launcher's answers: what counts as one,
+// what's handed to the shell's maths (libqalculate, through the Maths
+// module, modules/quickshell/maths), and how its answer is written. Plain
+// JavaScript, the maths given to it, so a check can run it in Qt's own
+// engine with the real module beside it.
 //
 // An answer is given only when what's typed is plainly a sum or a base:
-// "12*7", "2^10", "(3+4)/2", "0x1f", "255 in hex", "0o17 to dec". A lone
-// number is never answered, since "2" is as likely the start of "2fa".
+// "12*7", "2^10", "(3+4)/2", "0x1f", "255 in hex", "0b1011 << 3", "~5",
+// "5 xor 3", "20% of 50", "3 squared". A lone number is never answered,
+// since "2" is as likely the start of "2fa", nor a measure, which Units
+// answers, nor money, a date or a name the maths doesn't know.
 // Numbers are written with our own digit grouping, since Qt's JavaScript
 // ignores the locale's.
 .pragma library
@@ -15,36 +20,51 @@ const bases = {
     bin: 2, binary: 2
 };
 const prefixes = { 16: "0x", 8: "0o", 2: "0b", 10: "" };
-const prefixed = { x: 16, o: 8, b: 2 };
 const names = { 16: "hex", 8: "octal", 2: "binary", 10: "decimal" };
-
-const functions = {
-    sqrt: Math.sqrt, abs: Math.abs, round: Math.round, floor: Math.floor, ceil: Math.ceil,
-    ln: Math.log, log: Math.log10, log2: Math.log2, exp: Math.exp,
-    sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan
-};
-const constants = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI };
+// The digits the maths gives a whole number in, by base.
+const digitsIn = { 16: "hex", 8: "octal", 2: "binary", 10: "digits" };
 // The bases a whole number's answer is shown in, decimal first.
 const shownBases = [bases.dec, bases.hex, bases.oct, bases.bin];
 
-// A piece of what's typed, read where the last left off: a number in a
-// base, a decimal one, a name, or an operator.
-const SPELLED = new RegExp([
-    "\\s*(?:(0x[0-9a-f_]+|0o[0-7_]+|0b[01_]+)",
-    "(\\d[\\d_,]*(?:\\.\\d+)?(?:e[+-]?\\d+)?|\\.\\d+)",
-    "([a-z]+)",
-    // biome-ignore lint/security/noSecrets: it's the operators a sum is written with.
-    "(\\*\\*|[-+*/%^()\u00d7\u00f7]))"
-].join("|"), "iy");
-// What groups a number's digits as it's typed, and is left out to read it.
-const DIGIT_GROUPING = /_/g;
-const DECIMAL_GROUPING = /[_,]/g;
-// The zeros a fixed number ends with after its point, and a point left bare.
-const TRAILING_ZEROS = /\.?0+$/;
-// Where a whole number's groups of three start, counting from its end.
-const THOUSANDS = /\B(?=(\d{3})+(?!\d))/g;
+// What a sum is written with: a digit, an operator or a bracket, at least
+// one of which it has, so words alone, such as "battery life", are never
+// handed to the maths.
+const SUM_MARKS = /[\d+\-*/^%()&|~!<>\u00d7\u00f7]/;
+// What the launcher's other answers own: a colon, as an address, a hardware
+// address or a time has, a colour's #, and a number with two points, as
+// 8.8.8.8, which the maths would read as one with a stray point.
+const OTHERS = /[:#]|\d*\.\d*\./;
+// A number written in a base, by its prefix.
+const BASED = /\b0[xob][\da-f]/i;
+// The operators that work on bits, after which every base is shown.
+const BITWISE = /<<|>>|[&|~]|\b(?:xor|nand|nor)\b/i;
 // A sum asked for in a base: "255 in hex".
 const IN_BASE = /^(.*\S)\s+(?:in|to|as)\s+([a-z]+)$/i;
+// A conversion into anything else, which is Units' to answer.
+const CONVERTED = /\s(?:in|to|as|into)\s+\S/i;
+// The marks grouping a number's digits as it's typed, which the maths
+// would read as a list: a comma or an underscore before three digits, or an
+// underscore between a based number's digits.
+const GROUPED = /(\d)[,_](?=\d{3}(?!\d))/g;
+const BASED_GROUPS = /([\da-f])_(?=[\da-f])/gi;
+// Words for operators, as they're said, in what the maths reads instead:
+// "log" is the common logarithm here, as on a calculator, where the maths
+// reads it as the natural one, and "of" after a percentage multiplies.
+const SAID = [
+    [/\blog\s*\(/gi, "log10("],
+    [/\s*\bsquared\b/gi, "^2"],
+    [/\s*\bcubed\b/gi, "^3"],
+    [/%\s*of\b/gi, "% *"]
+];
+// The size past which a number is written with an exponent rather than its
+// places, and below which a fraction is: toFixed writes an exponent from
+// 1e21, and ten places can't show less than 1e-10.
+const LARGEST_FIXED = 1e21;
+const SMALLEST_FIXED = 1e-10;
+// Where a whole number's groups of three start, counting from its end.
+const THOUSANDS = /\B(?=(\d{3})+(?!\d))/g;
+// The zeros a fixed number ends with after its point, and a point left bare.
+const TRAILING_ZEROS = /\.?0+$/;
 // The places a number has, unless the caller asks for others.
 const PLACES = 10;
 // What a place is divided by for its last two digits.
@@ -52,144 +72,6 @@ const HUNDREDS = 100;
 // The teens, 11th to 13th, which end in "th" whatever their last digit.
 const FIRST_TEEN = 11;
 const LAST_TEEN = 13;
-
-// The pieces of what's typed: numbers, with the base they were written in,
-// names, and operators. Null when anything else is in it.
-function tokens(text) {
-    const out = [];
-    let at = 0;
-    while (at < text.length) {
-        SPELLED.lastIndex = at;
-        const m = SPELLED.exec(text);
-        if (!m) {
-            if (text.slice(at).trim() === "") {
-                break;
-            }
-            return null;
-        }
-        at = SPELLED.lastIndex;
-        if (m[1]) {
-            const base = prefixed[m[1][1].toLowerCase()];
-            const digits = m[1].slice(2).replace(DIGIT_GROUPING, "");
-            out.push({ number: Number.parseInt(digits, base), base });
-        } else if (m[2]) {
-            const plain = m[2].replace(DECIMAL_GROUPING, "");
-            out.push({ number: Number.parseFloat(plain), base: 10 });
-        } else if (m[3]) {
-            out.push({ name: m[3].toLowerCase() });
-        } else {
-            const op = { "\u00d7": "*", "\u00f7": "/", "**": "^" }[m[4]] ?? m[4];
-            out.push({ op });
-        }
-    }
-    return out;
-}
-
-// The functions below read a sum from a reader, { list, at }: the tokens,
-// and how many have been read. This one says whether the next is `op`.
-function isOp(reader, op) {
-    const t = reader.list[reader.at];
-    return t && t.op === op;
-}
-
-// The token to be read next, read.
-function next(reader) {
-    const t = reader.list[reader.at];
-    reader.at += 1;
-    return t;
-}
-
-// Reads the bracket closing a sum, which has to be there.
-function closing(reader) {
-    if (!isOp(reader, ")")) {
-        throw new Error("unclosed");
-    }
-    reader.at += 1;
-}
-
-// A number, a bracketed sum, a constant, or a function of the bracketed sum
-// after its name.
-function primary(reader) {
-    const t = next(reader);
-    if (!t) {
-        throw new Error("short");
-    }
-    if (t.number !== undefined) {
-        return t.number;
-    }
-    if (t.op === "(") {
-        const inner = sum(reader);
-        closing(reader);
-        return inner;
-    }
-    // An operator has no name, which neither table holds.
-    if (constants[t.name] !== undefined) {
-        return constants[t.name];
-    }
-    if (functions[t.name] && isOp(reader, "(")) {
-        reader.at += 1;
-        const inner = sum(reader);
-        closing(reader);
-        return functions[t.name](inner);
-    }
-    throw new Error("unknown");
-}
-
-// A power, with any signs before it.
-function unary(reader) {
-    if (isOp(reader, "-") || isOp(reader, "+")) {
-        const { op } = next(reader);
-        return op === "-" ? -unary(reader) : unary(reader);
-    }
-    return power(reader);
-}
-
-// A primary raised to what follows ^, which binds to the right.
-function power(reader) {
-    const base = primary(reader);
-    if (isOp(reader, "^")) {
-        reader.at += 1;
-        return base ** unary(reader);
-    }
-    return base;
-}
-
-// Signed powers multiplied, divided and taken remainders of.
-function product(reader) {
-    let value = unary(reader);
-    while (isOp(reader, "*") || isOp(reader, "/") || isOp(reader, "%")) {
-        const { op } = next(reader);
-        const right = unary(reader);
-        if (op === "*") {
-            value *= right;
-        } else {
-            value = op === "/" ? value / right : value % right;
-        }
-    }
-    return value;
-}
-
-// Products added and taken away.
-function sum(reader) {
-    let value = product(reader);
-    while (isOp(reader, "+") || isOp(reader, "-")) {
-        const { op } = next(reader);
-        const right = product(reader);
-        value = op === "+" ? value + right : value - right;
-    }
-    return value;
-}
-
-// Reads a sum by precedence: + and - below * / %, below ^, which binds to
-// the right, below a sign and a function's argument.
-function parse(list) {
-    const reader = { list, at: 0 };
-    const value = sum(reader);
-    if (reader.at !== list.length) {
-        throw new Error("left over");
-    }
-    return value;
-}
 
 // A number grouped in threes, with at most `decimals` places, trailing
 // zeros dropped: 1234567.891 as "1,234,567.891".
@@ -218,40 +100,12 @@ function ordinal(place) {
     return `${place}${suffix}`;
 }
 
-// A whole number in a base, with its prefix: 255 in 16 as "0xff".
-function inBase(value, base) {
-    const sign = value < 0 ? "-" : "";
-    return sign + prefixes[base] + Math.abs(value).toString(base);
-}
-
-// What's typed, answered: { value, headline, copy, rows: [{ text, side,
-// copy }] }, or null when it isn't plainly a sum or a base. `options` gives
-// decimals and the grouping and decimal marks. What's copied is never
-// grouped, so it pastes as a number.
-function answer(text, options) {
-    const settings = options ?? {};
-    const show = number => format(number, settings.decimals, settings.group, settings.point);
-    const { asked, into } = wanting(text.trim());
-    const list = tokens(asked);
-    if (!list || list.length === 0) {
-        return null;
-    }
-    const based = list.some(t => t.base !== undefined && t.base !== 10);
-    if (!plainly(list, based, into)) {
-        return null;
-    }
-    const value = valued(list);
-    if (value === null) {
-        return null;
-    }
-    const whole = Number.isInteger(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
-    if (into !== null && !whole) {
-        return null;
-    }
-    const bare = format(value, settings.decimals, "", settings.point);
-    const headline = into !== null && into !== 10 ? inBase(value, into) : show(value);
-    const rows = whole && (based || into !== null) ? inBases(value, into, show, bare) : [];
-    return { value, headline, copy: into !== null && into !== 10 ? headline : bare, rows };
+// A whole number in a base, with its prefix, from the maths' signed
+// digits: -1f in 16 as "-0x1f".
+function inBase(said, base) {
+    const digits = said[digitsIn[base]];
+    const sign = digits.startsWith("-") ? "-" : "";
+    return sign + prefixes[base] + digits.slice(sign.length);
 }
 
 // What's typed, apart from the base it's asked for in: { asked, into },
@@ -264,35 +118,79 @@ function wanting(typed) {
     return { asked: typed, into: null };
 }
 
-// Whether the tokens are plainly a sum or a base, `based` saying whether a
-// number in them is written in one and `into` the base asked for, if any.
-function plainly(list, based, into) {
-    const operators = list.filter(t => t.op !== undefined && t.op !== "(" && t.op !== ")");
-    const named = list.some(t => t.name !== undefined);
-    // A lone number is an answer only when it's written in a base or asked
-    // for in one; a lone name, such as "pi", only with an operator.
-    if (operators.length === 0 && !based && into === null && !(named && list.length > 1)) {
-        return false;
-    }
-    // "-5" alone is a negative number, not a sum.
-    const negative = operators.length === 1 && list.length === 2 && list[0].op === "-";
-    return !(negative && !based && into === null);
+// Whether what's typed could be a sum, before the maths is asked.
+function sumLike(asked) {
+    return SUM_MARKS.test(asked) && !OTHERS.test(asked) && !CONVERTED.test(asked);
 }
 
-// The sum the tokens make, or null when they don't make a number.
-function valued(list) {
-    try {
-        const value = parse(list);
-        return typeof value === "number" && !Number.isNaN(value) ? value : null;
-    } catch (_error) {
+// A sum as the maths reads it: digits ungrouped, and words said for
+// operators put as the maths writes them.
+function written(asked) {
+    const ungrouped = asked.replace(GROUPED, "$1").replace(BASED_GROUPS, "$1");
+    return SAID.reduce((text, [said, meant]) => text.replace(said, meant), ungrouped);
+}
+
+// Whether the maths' answer is plainly a sum's: worked out, no measure,
+// money, date or unknown name in it, and more than a lone number, unless
+// that's written in a base or asked for in one.
+function plainly(said, based, into) {
+    if (!said.answered || said.units || said.currency || said.unknown || said.time) {
+        return false;
+    }
+    if (said.plain && !based && into === null) {
+        return false;
+    }
+    return said.real || said.complex;
+}
+
+// A real number as it's shown, `mark` grouping it, and as it's copied.
+function figures(said, settings, mark) {
+    if (said.digits !== undefined) {
+        return said.digits.replace(THOUSANDS, mark);
+    }
+    const size = Math.abs(said.number);
+    if (!Number.isFinite(said.number) || size >= LARGEST_FIXED
+        || (size > 0 && size < SMALLEST_FIXED)) {
+        return said.text;
+    }
+    return format(said.number, settings.decimals, mark, settings.point);
+}
+
+// What's typed, answered by `maths` (the Maths module): { headline, copy,
+// rows: [{ text, side, copy }] }, or null when it isn't plainly a sum or a
+// base. `options` gives decimals and the grouping and decimal marks. What's
+// copied is never grouped, so it pastes as a number.
+function answer(text, options, maths) {
+    const settings = options ?? {};
+    const { asked, into } = wanting(text.trim());
+    if (!sumLike(asked)) {
         return null;
     }
+    const said = maths.calculate(written(asked));
+    const based = BASED.test(asked);
+    if (!plainly(said, based, into)) {
+        return null;
+    }
+    const whole = said.digits !== undefined;
+    if (into !== null && !whole) {
+        return null;
+    }
+    if (said.complex) {
+        return { headline: said.text, copy: said.text, rows: [] };
+    }
+    const shown = figures(said, settings, settings.group ?? ",");
+    const bare = figures(said, settings, "");
+    const inOne = into !== null && into !== bases.dec;
+    const headline = inOne ? inBase(said, into) : shown;
+    const rows = whole && (based || into !== null || BITWISE.test(asked))
+        ? inBases(said, into, shown, bare) : [];
+    return { headline, copy: inOne ? headline : bare, rows };
 }
 
 // The rows of a whole number in each base but the one it's answered in,
-// `show` writing it in decimal and `bare` as it's copied.
-function inBases(value, into, show, bare) {
-    return shownBases.filter(base => base !== (into ?? 10)).map(base => (base === 10
-        ? { text: show(value), side: names[base], copy: bare }
-        : { text: inBase(value, base), side: names[base], copy: inBase(value, base) }));
+// `shown` writing it in decimal and `bare` as it's copied.
+function inBases(said, into, shown, bare) {
+    return shownBases.filter(base => base !== (into ?? bases.dec)).map(base => (base === bases.dec
+        ? { text: shown, side: names[base], copy: bare }
+        : { text: inBase(said, base), side: names[base], copy: inBase(said, base) }));
 }

@@ -28,6 +28,9 @@ let
     '';
   # Quickshell's runner, the one the account's shell runs on.
   qs = lib.getExe' graphical.pkgs.quickshell "qs";
+  # The launcher's maths, a QML module the shell imports as Maths
+  # (maths/package.nix), and where Qt finds it.
+  mathsModules = "${pkgs.callPackage ./maths/package.nix { }}/lib/qt-6/qml";
   # Fonts for a shell drawn offscreen, which needs none of its own.
   noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
 
@@ -455,7 +458,8 @@ onLinux {
       touch $out
     '';
 
-  # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
+  # The launcher answers what's asked: sums and number bases, worked out by
+  # the shell's maths as the shell works them out, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, subnet maths
   # (a network's parts, what holds an address, a prefix alone and a network
   # split), characters and their codes, named as Unicode names them, hardware
@@ -501,7 +505,25 @@ onLinux {
       ${shellFolderLint}
       # A script error never reaches Qt.exit, so without a limit the check
       # would wait forever rather than fail.
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml answers.qml
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml:${mathsModules} timeout 120 ${qt}/bin/qml answers.qml
+      touch $out
+    '';
+
+  # The launcher's sums and measures, through the shell's maths, take a
+  # typical key well inside its budget, each input typed a letter at a time
+  # (tests/maths-speed.qml), which builds the maths' module too.
+  the-launcher-sums-within-a-key =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-sums-within-a-key" { } ''
+      cp ${../../tests/maths-speed.qml} maths-speed.qml
+      cp ${./launcher/Numbers.js} Numbers.js
+      cp ${./launcher/Units.js} Units.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml:${mathsModules} timeout 300 ${qt}/bin/qml maths-speed.qml
       touch $out
     '';
 

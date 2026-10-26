@@ -2,10 +2,13 @@
 // JavaScript engine, the one the shell runs them in. The
 // `the-launcher-answers-what-is-asked` check copies Numbers.js,
 // Addresses.js and the rest beside this file, with the character names
-// character-names.py builds, and runs `qml -platform offscreen answers.qml`. Each
-// case names what's typed and what has to come back, or that nothing
+// character-names.py builds, and runs `qml -platform offscreen
+// answers.qml`, with the shell's maths (Maths, libqalculate) on its import
+// path, so sums and measures are worked out as the shell works them out.
+// Each case names what's typed and what has to come back, or that nothing
 // should.
 import QtQuick
+import Maths
 import "Numbers.js" as Numbers
 import "Addresses.js" as Addresses
 import "Subnets.js" as Subnets
@@ -47,10 +50,34 @@ QtObject {
         "255 to bin": "0b11111111",
         "0o17 in dec": "15",
         "0xff + 1": "256",
-        "1/0": "\u221e"
+        "0xff_ff": "65,535",
+        "0b1011 << 3": "88",
+        "1 << 4": "16",
+        "0x10 >> 2": "4",
+        "~5": "-6",
+        "5 xor 3": "6",
+        "5 & 3": "1",
+        "5 | 3": "7",
+        "2^64": "18,446,744,073,709,551,616",
+        "2^64 in hex": "0x10000000000000000",
+        "5!": "120",
+        "log(100)": "2",
+        "ln(e^2)": "2",
+        "20% of 50": "10",
+        "3 squared": "9",
+        "2 cubed": "8",
+        "gcd(12, 18)": "6",
+        "sqrt(-1)": "i"
     })
+    // Division by zero has no value, so it isn't answered: the old engine
+    // said infinity, which it isn't from both sides. What other answers
+    // own stays theirs: addresses, a hardware address, a time, money,
+    // measures, a colour and words.
     readonly property var notSums: ["2", "-5", "pi", "kitty", "ws 3", "1password", "12*",
-        "(3", "sqrt", "3.5 in hex", "2fa", "e"]
+        "(3", "sqrt", "3.5 in hex", "2fa", "e", "1/0", "8.8.8.8", "10.0.0.0/22",
+        "3c:22:fb:12:34:56", "12:30", "100 USD in CAD", "5 km * 2", "350 f in c",
+        "brightness 40", "volume 40", "time in utc", "#f53", "now", "command(\"true\")",
+        "battery life", "2 + x"]
 
     // What's typed, and fields its reading must have.
     readonly property var addresses: ({
@@ -214,10 +241,29 @@ QtObject {
         "90 deg in rad": "1.5708 rad",
         "180 degrees in turns": "0.5 turn",
         "1 kwh in kcal": "860.421 kcal",
-        "1 atm in psi": "14.6959 psi"
+        "1 atm in psi": "14.6959 psi",
+        "25ms in s": "0.025 s",
+        "25' in m": "7.62 m",
+        // A measure alone is said in its kind's base unit, and a
+        // temperature in the other scale people use.
+        "25ms": "0.025 s",
+        "5 km": "5,000 m",
+        "3 ft": "0.9144 m",
+        "2 hours": "7,200 s",
+        "100\u00b0f": "37.7778 \u00b0C",
+        // What the table can't, the maths works out.
+        "5 parsecs in km": "154,283,879,074,568 km",
+        "5 ft + 3 in in cm": "160.02 cm",
+        "60 mph * 2 h": "120 mi",
+        "1 gib / (10 mbit/s) in min": "14.3166 min",
+        "3 cups + 2 tbsp in ml": "739.338 mL",
+        "2 pints + 1 quart in l": "1.89271 L"
     })
+    // A letter after a number is a word's end as often as a unit ("4k",
+    // "3d", "1st"), so a measure alone needs a longer name.
     readonly property var notConversions: ["5 km in kg", "5 km in km", "100 usd in cad",
-        "255 in hex", "km in mi", "5 parsecs in km", "kitty", "5 km"]
+        "100 USD in CAD", "255 in hex", "km in mi", "kitty", "4k", "3d", "1st", "100 c",
+        "ws 3", "2fa", "5 km + 3 kg", "1 m / 1 cm", "12*7", "5 m"]
 
     // What's typed, when (in UTC), and the time there, from the zones
     // zones.py built, told against Toronto.
@@ -251,14 +297,14 @@ QtObject {
         let asked = 0;
         for (const typed in sums) {
             asked++;
-            const got = Numbers.answer(typed);
+            const got = Numbers.answer(typed, undefined, Maths);
             if (!got || got.headline !== sums[typed])
                 failures.push(`"${typed}" answered ${quoted(got && got.headline)}, `
                     + `not "${sums[typed]}"`);
         }
         for (const typed of notSums) {
             asked++;
-            const got = Numbers.answer(typed);
+            const got = Numbers.answer(typed, undefined, Maths);
             if (got)
                 failures.push(`"${typed}" answered ${quoted(got.headline)}, but nothing should`);
         }
@@ -279,10 +325,22 @@ QtObject {
             if (got !== said)
                 failures.push(`place ${place} was said "${got}", not "${said}"`);
         }
-        const bases = Numbers.answer("0x1f");
+        // A base's answer, or a sum on bits, shows each other base as a row,
+        // a negative number signed rather than in two's complement.
+        for (const [typed, rows] of [["0x1f", ["0x1f", "0o37", "0b11111"]],
+                ["0b1011 << 3", ["0x58", "0o130", "0b1011000"]],
+                ["~5", ["-0x6", "-0o6", "-0b110"]],
+                ["255 in hex", ["255", "0o377", "0b11111111"]]]) {
+            asked++;
+            const got = Numbers.answer(typed, undefined, Maths);
+            if (!got || quoted(got.rows.map(r => r.text)) !== quoted(rows))
+                failures.push(`"${typed}" gave the rows ${quoted(got && got.rows)}`);
+        }
+        // A plain sum has none, and what's copied is never grouped.
+        const plain = Numbers.answer("1000 * 1000", undefined, Maths);
         asked++;
-        if (!bases || quoted(bases.rows.map(r => r.text)) !== quoted(["0x1f", "0o37", "0b11111"]))
-            failures.push(`"0x1f" gave the rows ${quoted(bases && bases.rows)}`);
+        if (!plain || plain.rows.length !== 0 || plain.copy !== "1000000")
+            failures.push(`"1000 * 1000" gave ${quoted(plain)}`);
         for (const typed in addresses) {
             asked++;
             const got = Addresses.read(typed);
@@ -378,8 +436,8 @@ QtObject {
         // each of these leaves the other's.
         for (const [typed] of subnets.concat(characters)) {
             asked++;
-            const sum = Numbers.answer(typed);
-            const measure = Units.answer(typed);
+            const sum = Numbers.answer(typed, undefined, Maths);
+            const measure = Units.answer(typed, undefined, Maths);
             if (sum || measure)
                 failures.push(`"${typed}" was answered ${quoted((sum || measure).headline)} `
                     + "by the sums or the units first");
@@ -397,25 +455,25 @@ QtObject {
 
         for (const typed in conversions) {
             asked++;
-            const got = Units.answer(typed);
+            const got = Units.answer(typed, undefined, Maths);
             if (!got || got.headline !== conversions[typed])
                 failures.push(`"${typed}" converted to ${quoted(got && got.headline)}, `
                     + `not "${conversions[typed]}"`);
         }
         for (const typed of notConversions) {
             asked++;
-            const got = Units.answer(typed);
+            const got = Units.answer(typed, undefined, Maths);
             if (got)
                 failures.push(`"${typed}" converted to ${quoted(got.headline)}, `
                     + "but nothing should");
         }
-        const rated = Units.answer("5 km in mi");
+        const rated = Units.answer("5 km in mi", undefined, Maths);
         asked++;
         if (!rated || quoted(rated.rows.map(r => `${r.text} ${r.side}`))
                 !== quoted(["1 km 0.621371 mi", "1 mi 1.60934 km"]))
             failures.push(`"5 km in mi" gave the rows ${quoted(rated && rated.rows)}`);
         // A temperature's third scale is named first, as a part is.
-        const scaled = Units.answer("100 c in f");
+        const scaled = Units.answer("100 c in f", undefined, Maths);
         asked++;
         if (!scaled || quoted(scaled.rows.map(r => `${r.text} ${r.side}`))
                 !== quoted(["Kelvin 373.15 K"]))
