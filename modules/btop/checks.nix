@@ -37,9 +37,10 @@ onLinux {
         touch $out
       '';
 
-  # Escape backs out of btop a step at a time: with a process chosen by
-  # Down, one Escape leaves btop running, and a second ends it, where
-  # btop's own Escape opens its menu and never ends it.
+  # Escape backs out of btop a step at a time: alone it ends btop, and with
+  # a process chosen by Down, one leaves btop running and a second ends it,
+  # where btop's own Escape opens its menu and never ends it. The keys go
+  # through tmux, as a terminal sends them.
   btop-backs-out-on-escape =
     let
       home = account workstation;
@@ -48,22 +49,38 @@ onLinux {
       {
         nativeBuildInputs = [
           home.programs.btop.package
-          pkgs.util-linux
+          pkgs.tmux
         ];
       }
       ''
-        export HOME=$PWD LANG=C.UTF-8
-        # btop's keys, a second apart so each reads as its own: Down, then
-        # as many Escapes as asked; then what btop did within 8 seconds.
-        backs() {
-          { sleep 2; printf '\033[B'; for _ in $(seq "$1"); do sleep 1; printf '\033'; done; sleep 9; } |
-            script -q -c 'stty cols 120 rows 40; timeout 8 btop; echo "ended $?" > ended' /dev/null > /dev/null || true
-          cat ended
+        export HOME=$PWD LANG=C.UTF-8 TMUX_TMPDIR=$PWD
+        # btop in a terminal of its own, given these keys a second apart;
+        # then whether it has ended, waiting up to ten seconds for a btop
+        # expected to end so a busy machine can't fail it.
+        after() {
+          expected=$1
+          shift
+          rm -f ended
+          tmux new-session -d -x 120 -y 40 "btop; touch $PWD/ended; sleep 60"
+          sleep 2
+          for key in "$@"; do
+            tmux send-keys "$key"
+            sleep 1
+          done
+          for _ in $(seq 100); do
+            [ -e ended ] || [ "$expected" = running ] || { sleep 0.1; continue; }
+            break
+          done
+          if [ -e ended ]; then got=ended; else got=running; fi
+          tmux kill-server
+          if [ "$got" != "$expected" ]; then
+            echo "after $*, btop is $got, not $expected"
+            exit 1
+          fi
         }
-        once=$(backs 1)
-        twice=$(backs 2)
-        if [ "$once" != "ended 124" ]; then echo "one Escape with a process chosen: $once, not still running"; exit 1; fi
-        if [ "$twice" != "ended 0" ]; then echo "two Escapes: $twice, not btop ended"; exit 1; fi
+        after ended Escape
+        after running Down Escape
+        after ended Down Escape Escape
         touch $out
       '';
 }
