@@ -47,6 +47,11 @@ const SIGNALS: [&str; 5] = ["call", "sound", "frames", "keys", "save"];
 fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let command = args.first().and_then(|arg| arg.to_str());
+    // A mistyped `run --help` would otherwise load the machine for minutes.
+    if !fits(&args) {
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
+    }
     // The keys signal runs this program again as the shell's stand-in.
     if command == Some(keys::ECHO) {
         let Some(path) = args.get(1) else {
@@ -83,7 +88,15 @@ fn main() -> ExitCode {
         };
         return done(run::line(length));
     }
-    let length = seconds(args.get(1)).unwrap_or(Duration::from_secs(10));
+    let length = if args.get(1).is_none() {
+        Duration::from_secs(10)
+    } else {
+        let Some(length) = seconds(args.get(1)) else {
+            eprintln!("{USAGE}");
+            return ExitCode::from(2);
+        };
+        length
+    };
     match command {
         Some("all") => all(length),
         Some(signal) if SIGNALS.contains(&signal) => match read(signal, length) {
@@ -195,6 +208,18 @@ fn judged(idle: &OsString, loaded: &OsString) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// Whether `args` give their command no more than it takes, so one that's
+/// mistyped is refused before anything starts.
+fn fits(args: &[OsString]) -> bool {
+    let takes = match args.first().and_then(|arg| arg.to_str()) {
+        Some("run") => 0,
+        Some("judge" | run::BUILD) => 2,
+        // The rest take a path or their seconds.
+        _ => 1,
+    };
+    args.len() <= takes + 1
+}
+
 /// A length given as a whole number of seconds.
 fn seconds(arg: Option<&OsString>) -> Option<Duration> {
     let secs = arg?.to_str()?.parse().ok()?;
@@ -245,4 +270,31 @@ fn done(result: Result<(), String>) -> ExitCode {
 fn failed(why: &str) -> ExitCode {
     eprintln!("load-proof: {why}");
     ExitCode::FAILURE
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fits;
+    use std::ffi::OsString;
+
+    fn given(args: &str) -> Vec<OsString> {
+        args.split_whitespace().map(Into::into).collect()
+    }
+
+    #[test]
+    fn a_run_given_anything_is_refused_before_it_loads() {
+        assert!(fits(&given("run")));
+        assert!(!fits(&given("run --help")));
+    }
+
+    #[test]
+    fn each_command_takes_no_more_than_its_own() {
+        assert!(fits(&given("frames")));
+        assert!(fits(&given("frames 30")));
+        assert!(!fits(&given("frames 30 40")));
+        assert!(fits(&given("judge idle loaded")));
+        assert!(!fits(&given("judge idle loaded again")));
+        assert!(fits(&given("load-build folder 30")));
+        assert!(!fits(&given("load-line 30 40")));
+    }
 }
