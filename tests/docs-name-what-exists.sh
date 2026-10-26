@@ -22,6 +22,12 @@ cd "$tree"
 missing=()
 named=()
 
+# The tree's own top folders, so a path is read as one only where the
+# repository has a folder by that name, whichever repository it is.
+tops=$(find . -mindepth 1 -maxdepth 1 -type d -not -name .git -printf '%f\n' |
+  sed 's/\./\\./g' | sort | paste -sd '|')
+[ -n "$tops" ] || fail "no folders in $tree"
+
 # Whether a mention in a file is exempt, and if so, that it was seen.
 exempted() {
   grep -qxF "$1 $2" "$exempt" || return 1
@@ -49,7 +55,7 @@ while IFS= read -r file; do
   done < <(
     # The backticks are markdown's, matched as they're written.
     # shellcheck disable=SC2016
-    grep -oE '`(\.agents|checks|docs|examples|hardware|modules|roles|tests|tools)/[^` *<>{}]+`' <<<"$prose" |
+    grep -oE '`('"$tops"')/[^` *<>{}]+`' <<<"$prose" |
       tr -d '`' | sed -E 's/:[0-9]+(-[0-9]+)?$//' || true
   )
 done < <(find . -name '*.md' -not -path './.git/*' | sort)
