@@ -290,6 +290,21 @@ def test_the_splash_names_the_generation_the_boot_loader_started(asking: Boot) -
     asking.photographed("generation")
 
 
+def test_a_splash_made_again_still_names_the_generation(asking: Boot) -> None:
+    """A splash made again still names the generation.
+
+    Escape shows the details, and Escape again makes a new splash. A splash hears what the
+    boot said before it was made only when Plymouth keeps it, as the first splash needs when
+    the graphics card comes after the generation is told.
+    """
+    before = asking.photographed("before-details")
+    asking.machine.send_key("esc")
+    asking.changed_from(before, "details")
+    asking.machine.send_key("esc")
+    asking.machine.wait_for_text("generation 7", timeout=READING)
+    asking.machine.wait_for_text("disk is locked", timeout=READING)
+
+
 def test_each_key_shows_as_a_dot(asking: Boot) -> None:
     """Each key shows as a dot."""
     before = asking.photographed("before-typing")

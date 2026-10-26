@@ -1,0 +1,50 @@
+Keeps what plymouthd is told for a splash made later, for plymouth: a
+status sent while there's no splash yet, as when the boot asks for one
+before the graphics card has a screen, reached nothing and was lost, so
+the splash never drew the generation the boot loader started. Messages
+were already kept and replayed so; statuses now are too, in order.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -89,6 +89,7 @@
+         ply_list_t             *entry_triggers;
+         ply_buffer_t           *entry_buffer;
+         ply_list_t             *messages;
++        ply_list_t             *statuses;
+         ply_command_parser_t   *command_parser;
+         ply_boot_splash_mode_t  mode;
+         ply_terminal_t         *local_console_terminal;
+@@ -198,6 +199,9 @@
+         if (state->boot_splash != NULL)
+                 ply_boot_splash_update_status (state->boot_splash,
+                                                status);
++        /* Kept, as messages are, for a splash made later, which would
++         * otherwise never hear what the boot said before it. */
++        ply_list_append_data (state->statuses, strdup (status));
+ }
+ 
+ static void
+@@ -261,7 +265,14 @@
+                 return;
+         }
+ 
+-        ply_list_node_t *node = ply_list_get_first_node (state->messages);
++        ply_list_node_t *node = ply_list_get_first_node (state->statuses);
++        while (node != NULL) {
++                ply_boot_splash_update_status (state->boot_splash,
++                                               ply_list_node_get_data (node));
++                node = ply_list_get_next_node (state->statuses, node);
++        }
++
++        node = ply_list_get_first_node (state->messages);
+         while (node != NULL) {
+                 ply_list_node_t *next_node;
+                 char *message = ply_list_node_get_data (node);
+@@ -2161,6 +2172,7 @@
+         state->entry_triggers = ply_list_new ();
+         state->entry_buffer = ply_buffer_new ();
+         state->messages = ply_list_new ();
++        state->statuses = ply_list_new ();
+ 
+         if (!ply_is_tracing_to_terminal ())
+                 redirect_standard_io_to_dev_null ();
