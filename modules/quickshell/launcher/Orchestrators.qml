@@ -199,7 +199,10 @@ Provider {
             side: stageSaid(talk),
             reads: talk.reply !== "" ? talk.reply : talk.why,
             nested: true,
-            verbs: () => provider.talkRows(address, talk.id)
+            // A step's rows open by their targets, so it gives both, as a
+            // part holding more does (Provider.qml's holderRow).
+            verbs: () => provider.talkRows(address, talk.id),
+            targets: () => provider.talkRows(address, talk.id)
         }));
     }
 
