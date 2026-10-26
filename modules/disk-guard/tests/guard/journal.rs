@@ -226,7 +226,7 @@ fn what_frees_nothing_is_not_counted_as_cleared() {
             outcome: Outcome::Reclaimed,
         })
         .unwrap();
-    assert!(journal.cleared().is_empty());
+    assert!(journal.cleared().is_empty(), "{:?}", journal.cleared());
 }
 
 #[test]
