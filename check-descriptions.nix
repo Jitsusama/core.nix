@@ -525,12 +525,20 @@
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
   pi-loads-its-packages = ''
-    pi's package list is the harness and neovim.pi on every machine, and a package a machine
-    adds comes after them rather than in their place
+    pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
+    after them rather than in their place, and pi is given each git package as its current link
   '';
   pi-measures-each-day-in-the-background = ''
     the harness's measure runs each morning in background.slice with the store's node, catching up on
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
+  '';
+  pi-packages-passes-clippy = ''
+    clippy finds nothing in pi-packages or its tests, which hold a live process's release unchanged
+    through an update and never swap in a build that fails or leaves a native module unbuilt
+  '';
+  pi-packages-swap-in-the-background = ''
+    pi's git packages are updated at a switch before pi's settings name their links, and every
+    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with

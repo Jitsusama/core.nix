@@ -223,13 +223,17 @@
         "git:github.com/Jitsusama/agentic-harness.pi"
         "git:github.com/Jitsusama/neovim.pi"
       ];
+      # pi is given each as pi-packages' link to its current release.
+      linked =
+        home: map (source: "${home.jitsusama.pi-packages.root}/${lib.removePrefix "git:" source}/current");
     in
     holds "pi-loads-its-packages"
-      "pi's package list isn't core's two, or a machine's package replaced them."
+      "pi's package list isn't core's two, a machine's package replaced them, or pi is given a git source to update in place rather than its current link."
       (
-        plain.jitsusama.pi.settings.packages == core
-        && lib.take 2 added.jitsusama.pi.settings.packages == core
-        && lib.elem own added.jitsusama.pi.settings.packages
+        plain.jitsusama.pi.packages == core
+        && plain.jitsusama.pi.settings.packages == linked plain core
+        && lib.take 2 added.jitsusama.pi.settings.packages == linked added core
+        && lib.elem (lib.head (linked added [ own ])) added.jitsusama.pi.settings.packages
       );
 
   # pi-ask starts pi for the Ask row with nothing loaded but the machine's

@@ -11,7 +11,7 @@
 # row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
 # machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
-# Each morning, on Linux, the harness pi installs writes its measure in the
+# Each morning, on Linux, the installed harness writes its measure in the
 # background: what the day cost and which mistakes recurred.
 {
   config,
@@ -121,9 +121,9 @@ let
 
   onClaude = config.jitsusama.pi.plan == "claude";
 
-  # Where pi installs the harness from its package list, and the script in
+  # Where pi-packages keeps the harness's current release, and the script in
   # it a timer runs.
-  measure = "${config.home.homeDirectory}/.pi/agent/git/github.com/Jitsusama/agentic-harness.pi/scripts/measure.ts";
+  measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
@@ -149,6 +149,7 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
+    ../pi-packages/home.nix
   ];
 
   options.jitsusama.pi.settings = lib.mkOption {
@@ -174,9 +175,9 @@ in
       The pi packages every pi loads, as pi names their sources: core's own,
       and whatever a machine adds, each definition adding to the others.
       They are the whole of pi's package list, written at every switch, so
-      a package installed by hand and not named here is dropped from it. One
-      not yet installed is installed the next time pi starts; one installed
-      is left at the commit it is at.
+      a package installed by hand and not named here is dropped from it.
+      Each `git:` one is installed by pi-packages, which follows its branch
+      and swaps each new commit in whole, and pi is given its current link.
     '';
   };
 
@@ -269,23 +270,30 @@ in
       "git:github.com/Jitsusama/agentic-harness.pi"
       "git:github.com/Jitsusama/neovim.pi"
     ];
-    jitsusama.pi.settings.packages = config.jitsusama.pi.packages;
+    jitsusama.pi-packages.sources = config.jitsusama.pi.packages;
+    jitsusama.pi.settings.packages = config.jitsusama.pi-packages.links;
 
     # The room kept for what a compaction writes. pi's default, 16,384
     # tokens, runs out summarising a long session, which then compacts
     # nothing and runs on toward the model's limit.
     jitsusama.pi.settings.compaction.reserveTokens = lib.mkDefault 64000;
 
-    home.activation.piTakesCoresSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      run ${
-        lib.getExe (
-          import ./settings.nix {
-            inherit pkgs;
-            inherit (config.jitsusama.pi) settings;
-          }
-        )
-      } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
-    '';
+    home.activation.piTakesCoresSettings =
+      lib.hm.dag.entryAfter
+        [
+          "writeBoundary"
+          "piPackagesInstall"
+        ]
+        ''
+          run ${
+            lib.getExe (
+              import ./settings.nix {
+                inherit pkgs;
+                inherit (config.jitsusama.pi) settings;
+              }
+            )
+          } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
+        '';
 
     # Where the harness's status line learns the folder and git; its README
     # says what each field means.
@@ -313,9 +321,9 @@ in
     # The harness's measure: its cost audit of the last day against the day
     # before, and its learning sensor over the last seven days day by day,
     # as one report in its state folder's measure/. A day rather than a
-    # week, so a harness change shows the day after it lands. pi installs
-    # the harness itself, so a machine without it skips the run rather than
-    # failing it. The run reads the day's session logs, so it waits behind
+    # week, so a harness change shows the day after it lands. pi-packages
+    # installs the harness, so a machine without it, or before its first
+    # install, skips the run rather than failing it. The run reads the day's session logs, so it waits behind
     # whatever the account is doing.
     systemd.user.services.pi-measure = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
