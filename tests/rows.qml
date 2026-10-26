@@ -83,8 +83,8 @@ ShellRoot {
             Prompt {
                 id: crowded
                 width: root.panel
-                chips: [{ text: "agents" }, { text: "orchestrators" }, { text: "Optimus" }]
-                hint: "say something to Optimus"
+                chips: [{ text: "agents" }, { text: "orchestrators" }, { text: "Lighthouse" }]
+                hint: "say something to Lighthouse"
                 aside: "listening"
             }
             // A short note in the room a long one took before it.
