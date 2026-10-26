@@ -137,6 +137,7 @@
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
         disk-guard = ./modules/disk-guard/home.nix;
+        eero = ./modules/eero/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
@@ -295,7 +296,7 @@
         graphical = moduleFrom ./roles/graphical/nixos.nix {
           inherit (self) nixosModules homeModules;
         };
-        laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules; };
+        laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules homeModules; };
 
         # The stick's own system, which installs and repairs a machine.
         guide-stick = moduleFrom ./modules/guide/stick.nix {
