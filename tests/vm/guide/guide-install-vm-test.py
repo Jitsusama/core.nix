@@ -628,7 +628,8 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     machine.wait_for_unit("getty@tty1.service")
     since = len(machine.get_console_log())
     machine.reboot()
-    unlock(machine, pin)
+    # Sealed again, the TPM opens the disk with its own PIN.
+    unlock(machine, values["tpmPin"])
     machine.connect()
     machine.wait_for_unit("multi-user.target")
     return Cleared(nano, before, machine.get_console_log()[since:])
