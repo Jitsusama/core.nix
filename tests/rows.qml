@@ -4,7 +4,9 @@
 // every surface: nothing wraps, overlaps or runs past its edge, and what
 // doesn't fit ends in an ellipsis. A row's name and what it is both keep
 // within the row and apart, however long either is, and a field's ghost or
-// hint stops at the field's end. Words that fit are left whole. It exits 0
+// hint stops at the field's end. A field's path keeps its steps whole
+// beside a long note, and a short note keeps to the field's right end
+// however wide a room it holds. Words that fit are left whole. It exits 0
 // once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -66,6 +68,24 @@ ShellRoot {
                 ghost: " = Today: $484 · usual, ends near $1,457 ($800 to $2,216), billed"
             }
             Prompt { id: hinted; width: root.panel; hint: root.sentence }
+            // Three steps in, beside a note longer than the line has room
+            // for, as Machine's processors' cores say.
+            Prompt {
+                id: pathed
+                width: root.panel
+                steady: true
+                chips: [{ text: "Machine" }, { text: "Processor" }, { text: "Cores" }]
+                hint: "what to do?"
+                aside: root.sentence
+            }
+            // A short note in the room a long one took before it.
+            Prompt {
+                id: steadied
+                width: root.panel
+                steady: true
+                asideWidest: root.panel / 3
+                aside: "just now"
+            }
         }
     }
 
@@ -74,7 +94,10 @@ ShellRoot {
         for (const child of item.children) {
             if (child.visible && typeof child.text === "string" && child.text !== ""
                 && child.truncated !== undefined) {
-                const at = child.mapToItem(null, 0, 0);
+                // Words set to the right end start where they leave off.
+                const lead = child.horizontalAlignment === Text.AlignRight
+                    ? child.width - child.contentWidth : 0;
+                const at = child.mapToItem(null, lead, 0);
                 into.push({ text: child.text, truncated: child.truncated,
                     from: at.x, to: at.x + child.contentWidth });
             }
@@ -135,6 +158,14 @@ ShellRoot {
                 expect("a field's ghost or hint ends at its end", after !== undefined
                     && after.truncated && after.to <= end, `${said(texts)}, end ${end}`);
             }
+            texts = drawn(pathed, []);
+            expect("a field's path keeps its steps whole beside a long note",
+                ["Machine", "Processor", "Cores"].every(step =>
+                    texts.some(t => t.text === step && !t.truncated)), said(texts));
+            const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
+            const note = drawn(steadied, []).find(t => t.text === "just now");
+            expect("a short note keeps to the field's right end", note !== undefined
+                && Math.abs(note.to - right) <= 1, `${said(drawn(steadied, []))}, end ${right}`);
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

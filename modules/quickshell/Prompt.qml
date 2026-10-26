@@ -38,8 +38,14 @@ Item {
     // letters narrowing a list, never text worth walking through, so the
     // arrow is the one key for "not that", and a second press goes up.
     property bool leftClears: false
-    // Says how far an aside may run, so a long one never crowds what's typed.
-    property real asideMost: width * 0.4
+    // Says how far an aside may run, so a long one never crowds what's typed
+    // or where Joel is: the path's steps and room to type come first, and
+    // the aside has what they leave, up to two fifths of the line. With the
+    // aside first, a step into a thing whose rows have long notes cut every
+    // step of the path to a letter (Joel, 2026-10-25: "the breadcrumb
+    // quickly goes single letter per entry").
+    property real asideMost: Math.max(0, Math.min(width * 0.4, width - 2 * Theme.space.l
+        - glyphWidth - Theme.space.m - pathWanted - typingRoom - Theme.space.xl))
     // Whether the aside keeps the room its widest has taken until forget():
     // the launcher's says the selected row's note, which changes with each
     // arrow, and an aside sized to each one moved where what's typed had to
@@ -49,7 +55,10 @@ Item {
     property alias text: input.text
 
     // The aside's room: its own width, or, held steady, its widest since
-    // forget(), its words starting at the same place whatever they say.
+    // forget(), so what's typed ends at the same place whatever it says. Its
+    // words keep to the right end of that room, since a short note set at
+    // the start of a long one's room sat far in from the edge (Joel,
+    // 2026-10-25: "just now is inset an insane amount").
     readonly property real asideRoom: Math.min(prompt.asideMost, steady
         ? Math.max(asideWidest, asideText.implicitWidth) : asideText.implicitWidth)
 
@@ -103,6 +112,7 @@ Item {
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
         width: prompt.asideRoom
+        horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
         onImplicitWidthChanged: {
             if (prompt.steady)
@@ -140,8 +150,17 @@ Item {
 
     // Each step's words' width: what it needs where it fits, and otherwise
     // an even share of what the shorter ones leave.
+    // The room kept for typing: the hint's, or a dozen characters.
+    readonly property real typingRoom: Math.max(chipFace.advanceWidth(hint),
+        12 * chipFace.averageCharacterWidth)
+
+    // How wide the path wants to be, whole, with the chip's own margins.
+    readonly property real pathWanted: chips.length === 0 ? 0
+        : chips.reduce((sum, chip) => sum + Math.ceil(chipFace.advanceWidth(chip.text)) + 1, 0)
+            + chipFace.advanceWidth(between) * (chips.length - 1) + 2 * Theme.space.m
+
     readonly property var fitted: {
-        const typing = Math.max(chipFace.advanceWidth(hint), 12 * chipFace.averageCharacterWidth);
+        const typing = typingRoom;
         let left = Math.max(0, end - Theme.space.l - glyphWidth - Theme.space.m - typing
             - chipFace.advanceWidth(between) * Math.max(0, chips.length - 1)
             - 2 * Theme.space.m);
