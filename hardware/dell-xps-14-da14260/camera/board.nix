@@ -6,15 +6,6 @@
 # read it.
 { lib, ... }:
 {
-  # The option's name before the glossary's word, kept working, with a
-  # warning, until the machines that set it use the new one.
-  imports = [
-    (lib.mkRenamedOptionModule
-      [ "jitsusama" "dellXps14" "cameraModule" ]
-      [ "jitsusama" "dellXps14" "cameraBoard" ]
-    )
-  ];
-
   options.jitsusama.dellXps14.cameraBoard = lib.mkOption {
     type = lib.types.nullOr (lib.types.strMatching "[A-Z0-9_]+");
     default = null;
