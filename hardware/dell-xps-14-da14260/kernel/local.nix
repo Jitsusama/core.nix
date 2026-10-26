@@ -129,7 +129,10 @@
       # with the compositor, and the next draw read each back with its lock
       # held, so the compositor waited up to 220 ms and missed frames, even
       # at the most the shrinker's seeks can be raised. Written here; the
-      # patch says why.
+      # patch says why. It needs linux-next's 846f333b3e0b, in next.nix's
+      # xe-shrinker-spares-buffers: without it a busy buffer ends the
+      # shrinker's whole walk, so the first exported one would stop it
+      # reclaiming anything.
       name = "xe-shrinker-keeps-exported-buffers";
       patch = ./local/xe-shrinker-keeps-exported-buffers.patch;
     }

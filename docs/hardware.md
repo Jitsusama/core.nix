@@ -254,7 +254,8 @@ with another program, so the windows a compositor imports from its clients
 looked unused however often they were drawn, and went first. Bringing
 one back happens with its lock held. A trace of niri overnight caught its
 draws waiting on a client's buffer lock for 122 to 250 ms, three times in
-five minutes; The Window Buffers Under Reclaim says what held them.
+five minutes, and the section below, The Window Buffers Under Reclaim, says
+what held them.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
@@ -275,7 +276,11 @@ aren't memory-cgroup aware, so only machine-wide reclaim reaches them.
 `kernel/local/xe-shrinker-keeps-exported-buffers.patch`, written here, has
 the shrinker skip a buffer while it's exported through dma-buf, as the
 windows a compositor shows from its clients are. Purgeable buffers are
-still purged.
+still purged. It relies on linux-next's 846f333b3e0b, without which a busy
+buffer ends the shrinker's whole walk. Exported buffers are out of
+reclaim's reach, so a program leaking them would push the machine towards
+the OOM killer rather than swap; niri-off-cpu's count of buffers backed up
+and read back is how to see what they hold.
 
 ### The Boot Clock
 
