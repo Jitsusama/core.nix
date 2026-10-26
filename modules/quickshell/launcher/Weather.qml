@@ -4,15 +4,21 @@
 // next rains, with a spark of the next twelve hours' chance, and holds
 // those hours, each its chance and how much. "rain", "umbrella",
 // "precipitation" or "when will it rain", here or "in" a place, answer
-// with the rain itself, its hours a step in. Here is `place`, a name, or
-// else the city the machine's time zone is named for (`zone`, which NixOS
-// gives), and the footer says which. Forecasts are Open-Meteo's, one
-// request for all of it, asked only when the weather is typed and kept
-// for a quarter of an hour; places are found through its geocoder and kept
-// for a day. `units` is "metric" or "imperial". With `lookups` set false it
-// answers nothing. The words that ask it and its parts' names are the
-// vocabulary's (launcher/words.json, Words.qml).
+// with the rain itself, its hours a step in. Here is where the laptop is,
+// as whereabouts last found it through GeoClue (../whereabouts), else
+// `place`, a name, or else the city the machine's time zone is named for
+// (`zone`, which NixOS gives), and the footer says which. The laptop's
+// forecast is asked by its position, to a hundredth of a degree, and the
+// footer says it by that position, since GeoClue names no place. Forecasts
+// are Open-Meteo's, one request for all of it, asked only when the weather
+// is typed and kept for a quarter of an hour; other places are found
+// through its geocoder and kept for a day. `units` is "metric" or
+// "imperial". With `lookups` set false it answers nothing. The words that
+// ask it and its parts' names are the vocabulary's (launcher/words.json,
+// Words.qml).
 import qs
+import Quickshell
+import Quickshell.Io
 import QtQuick
 import "Numbers.js" as Numbers
 
@@ -100,11 +106,61 @@ Provider {
             : `${Numbers.format(value, 1, settings.group, settings.point)} mm`;
     }
 
-    // Where "here" is, and how the footer says it was found. Not home(),
+    // Where the laptop is, as whereabouts writes it in the runtime
+    // directory (its src/fix.rs), or null with no file, or one of another
+    // version. whereabouts replaces the file whole, and only once the
+    // laptop has moved, so each change heard is a new here. A test points
+    // it at a file of its own.
+    property string whereabouts: `${Quickshell.env("XDG_RUNTIME_DIR")}/whereabouts.json`
+    property var laptop: null
+    // A new here answers again what's shown, as a forecast arriving does.
+    onLaptopChanged: answered()
+
+    function fixOf(text) {
+        const fix = parsed(text);
+        return fix.v === 1 && Number.isFinite(fix.latitude) && Number.isFinite(fix.longitude)
+            ? fix : null;
+    }
+
+    FileView {
+        path: provider.whereabouts
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.laptop = provider.fixOf(text())
+        onLoadFailed: provider.laptop = null
+    }
+
+    // A position to a hundredth of a degree, about a kilometre, as near as
+    // a forecast needs, so a forecast is kept for it whatever the last
+    // digits.
+    function hundredths(degrees) {
+        return Math.round(degrees * 100) / 100;
+    }
+
+    // A position as it's said: "43.65° N 79.38° W".
+    function position(latitude, longitude) {
+        const part = (degrees, ahead, behind) => `${Numbers.format(Math.abs(degrees), 2,
+            settings.group, settings.point)}\u00b0 ${degrees < 0 ? behind : ahead}`;
+        return `${part(latitude, "N", "S")} ${part(longitude, "E", "W")}`;
+    }
+
+    // Where "here" is, and how the footer says it was found: the laptop's
+    // position, then the place set, then the time zone's city. Not home(),
     // which is what a provider puts on the launcher's home screen.
     function local() {
+        if (laptop) {
+            const latitude = hundredths(laptop.latitude);
+            const longitude = hundredths(laptop.longitude);
+            return {
+                name: position(latitude, longitude),
+                latitude: latitude,
+                longitude: longitude,
+                from: "from where the laptop is"
+            };
+        }
         if (settings.place)
-            return { name: settings.place, from: "" };
+            return { name: settings.place, from: "from the place you set" };
         if (!settings.zone)
             return null;
         const city = settings.zone.split("/").pop().replace(/_/g, " ");
@@ -193,11 +249,13 @@ Provider {
                 note: "say where here is with the weather provider's place"
             };
         const name = away === "" ? here.name : away;
-        const found = ask("https://geocoding-api.open-meteo.com/v1/search?count=1&name="
-            + encodeURIComponent(name), placeKept);
-        if (!found.value)
+        // Where the laptop is needs no geocoder: its position is known.
+        const fixed = away === "" && here.latitude !== undefined;
+        const found = fixed ? null : ask("https://geocoding-api.open-meteo.com/v1/search"
+            + `?count=1&name=${encodeURIComponent(name)}`, placeKept);
+        if (found && !found.value)
             return waiting(found, "Open-Meteo");
-        const place = (found.value.results ?? [])[0];
+        const place = fixed ? here : (found.value.results ?? [])[0];
         if (!place)
             return {
                 headline: "no such place",

@@ -42,8 +42,9 @@ Joel sees.
 - Programs the shell runs: `askpass.sh`, OpenSSH's askpass asked through
   the shell; `quests.rs` and `runs.rs`, the launcher's quests and runs,
   built by `pi-helper.nix`; `keyboard-lights.rs`, which says whether caps
-  lock is on, run by `nixos.nix`; and [`record-window/`][record], one
-  window's recording for the recorder.
+  lock is on, run by `nixos.nix`; [`record-window/`][record], one
+  window's recording for the recorder; and [`whereabouts/`][whereabouts],
+  where the laptop is, from GeoClue, for the weather's here.
 - `*.patch`: Quickshell's own fixes, each saying in its header what it
   mends.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
@@ -107,6 +108,7 @@ a change to one surface can move another.
 [desktop]: ../../tests/desktop.nix
 [home]: home.nix
 [record]: record-window/
+[whereabouts]: whereabouts/
 [launcher]: launcher/
 [pieces]: pieces/
 [provider]: launcher/Provider.qml

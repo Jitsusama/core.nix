@@ -16,7 +16,7 @@
   lib,
   pkgs,
   # The machine's own settings, which Home Manager gives when it's part of
-  # one, for the weather's home: the time zone.
+  # one, for the weather's home: the time zone, and whether GeoClue runs.
   osConfig ? { },
   ...
 }:
@@ -596,6 +596,15 @@ let
   # The program that hears every copy, for the clipboard collection.
   clipboardHistory = pkgs.callPackage ./clipboard/package.nix { };
   keepsCopies = launcher.providers.clipboard.enable or false;
+
+  # The program that says where the laptop is, for the weather's here. It
+  # runs only while the weather may ask the network, since it has GeoClue
+  # ask BeaconDB, and where the machine runs GeoClue (nixos.nix).
+  whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
+  followsTheLaptop =
+    (launcher.providers.weather.enable or false)
+    && (launcher.providers.weather.lookups or launcher.lookups)
+    && (osConfig.services.geoclue2.enable or false);
 
   # Every emoji, in a skin tone.
   emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
@@ -1669,6 +1678,24 @@ in
         ];
         Restart = "on-failure";
         RestartSec = 1;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    # Where the laptop is, as GeoClue last found it, in the runtime
+    # directory for the weather to watch (launcher/Weather.qml). A GeoClue
+    # that refuses or goes is asked again a minute on, not at once, so a
+    # machine without it isn't kept busy asking.
+    systemd.user.services.whereabouts = lib.mkIf followsTheLaptop {
+      Unit = {
+        Description = "Says where the laptop is, for the launcher's weather";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json";
+        Restart = "on-failure";
+        RestartSec = 60;
       };
       Install.WantedBy = [ "graphical-session.target" ];
     };

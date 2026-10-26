@@ -1,7 +1,8 @@
 # What Quickshell needs from the system: a PAM service of its own for the
 # lock screen, which checks the account's password and nothing else (its
 # polkit prompt goes through polkit's own service), a watcher that says
-# whether caps lock is on, which nothing else tells it, and its build.
+# whether caps lock is on, which nothing else tells it, GeoClue, for where
+# the laptop is, and its build.
 #
 # Quickshell 0.3.1's notification server never sends a program the
 # activation token a compositor asks before it lets the program bring its
@@ -28,6 +29,14 @@
 # directory of systemd's would go each time the watcher restarted, taking
 # the file with it, and one it keeps, with an account it makes, moves where
 # Quickshell can't read.
+#
+# GeoClue says where the laptop is, so the launcher's weather for here
+# follows it (whereabouts/, which home.nix runs). It finds the laptop from
+# the Wi-Fi networks in reach, through BeaconDB, since Mozilla's location
+# service, GeoClue's old default, has shut down. whereabouts is allowed
+# without asking, as a browser is: it only ever asks to a city's accuracy,
+# and what it learns stays in the account's runtime directory, leaving
+# only as the weather's question to Open-Meteo, to a hundredth of a degree.
 { pkgs, ... }:
 let
   # The standard library alone, so it builds with rustc and no crates.
@@ -51,6 +60,15 @@ in
   ];
 
   security.pam.services.quickshell = { };
+
+  services.geoclue2 = {
+    enable = true;
+    geoProviderUrl = "https://api.beacondb.net/v1/geolocate";
+    appConfig.whereabouts = {
+      isAllowed = true;
+      isSystem = false;
+    };
+  };
 
   users.users.keyboard-lights = {
     isSystemUser = true;

@@ -9,6 +9,7 @@ doc-valid-idents = [
   "DisplayPort",
   "ErgoDox",
   "GStreamer",
+  "GeoClue",
   "MSCHAPv2",
   "NVMe",
   "OpenVINO",
