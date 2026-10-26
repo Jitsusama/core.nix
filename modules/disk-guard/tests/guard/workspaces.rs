@@ -150,13 +150,19 @@ fn the_trees_a_finished_quest_lists_are_over_with_it() {
     let root = tempfile::tempdir().unwrap();
     let quests = root.path().join("quests");
     let trees = |paths: &[&str]| {
-        let entries: String = paths
-            .iter()
-            .map(|path| {
-                format!("  - path: {path}\n    providerId: git-worktree\n    repoRoot: {path}\n")
-            })
-            .collect();
-        format!("trees:\n{entries}")
+        let mut listed = String::from("trees:\n");
+        for path in paths {
+            for part in [
+                "  - path: ",
+                path,
+                "\n    providerId: git-worktree\n    repoRoot: ",
+                path,
+                "\n",
+            ] {
+                listed.push_str(part);
+            }
+        }
+        listed
     };
     quest(
         &quests,
