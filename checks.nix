@@ -684,9 +684,8 @@ gather (
             "modules/neovim/patches"
             "modules/neovim/plugins"
             "modules/neovim/probes"
-            # The desk's keyboard and microphone.
+            # The desk's keyboard.
             "modules/ergodox/keymap"
-            "modules/shure-mv7/paths"
             # tests/, given notes as it's grouped by level.
             "tests/battery-stand-ins"
             "tests/lib"
