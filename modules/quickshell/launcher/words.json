@@ -54,14 +54,7 @@
       "name": "Machine",
       "term": "Machine",
       "holds": [
-        "power",
-        "session:profile",
-        "session:awake",
-        "session:Suspend",
-        "session:Lock",
-        "session:Log Out",
-        "session:Reboot",
-        "session:Power Off",
+        "energy",
         "bluetooth",
         "bluetooth:radio",
         "bluetooth:links",
@@ -73,6 +66,20 @@
       ],
       "commands": [
         "command:volume"
+      ]
+    },
+    {
+      "id": "energy",
+      "name": "Power",
+      "holds": [
+        "power",
+        "session:profile",
+        "session:awake",
+        "session:Suspend",
+        "session:Lock",
+        "session:Log Out",
+        "session:Reboot",
+        "session:Power Off"
       ]
     },
     {

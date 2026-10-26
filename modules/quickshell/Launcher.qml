@@ -664,6 +664,9 @@ Scope {
     // this machine has none or its name waits for a fact ("Sign in to
     // {network}").
     function heldName(id) {
+        const place = placeNamed(id);
+        if (place)
+            return place.name;
         const known = keyed[id];
         if (known && !known.category)
             return known.name;
@@ -672,10 +675,21 @@ Scope {
         return there && !entry.name.includes("{") ? entry.name : "";
     }
 
-    // A thing the vocabulary names, as a row: the row of that key, a
-    // collection whole, an answer to its question, or a provider's things
-    // as one row holding them. Null where this machine has none.
+    // A category another holds, as Machine holds Power, by its id: its own
+    // row, stepped into as one at home is. Undefined for anything else.
+    function placeNamed(id) {
+        return categories.find(row => row.category.id === id);
+    }
+
+    // A thing the vocabulary names, as a row: a category, the row of that
+    // key, a collection whole, an answer to its question, or a provider's
+    // things as one row holding them. Null where this machine has none.
     function resolved(id) {
+        const place = placeNamed(id);
+        if (place)
+            return Object.assign({}, place, {
+                count: holding(place.category, Math.max(1, rowRoom() - place.name.length))
+            });
         const known = keyed[id];
         if (known && !known.category)
             return known;
@@ -846,11 +860,34 @@ Scope {
         return sources.some(source => source.answer(whole)) ? whole : "";
     }
 
-    // Steps into a category from a word and a space, the word put back on
+    // The places a category sits in, outermost first, as Machine holds
+    // Power; none for one at home.
+    function placesAbove(category) {
+        const above = Words.categories.find(one => (one.holds ?? []).includes(category.id));
+        return above ? placesAbove(above).concat([above]) : [];
+    }
+
+    // Steps into a category from a word and a space, or from the top,
+    // through the places it sits in, so the path says where it lives and
+    // the left arrow climbs out through them; what was typed is put back on
     // the way out.
     function intoCategory(category, word) {
-        const row = categories.find(one => one.category === category);
-        held = [Object.assign(here(), { typed: word, row: row, rows: members(category) })];
+        const chain = placesAbove(category).concat([category]);
+        const steps = [];
+        // Where each step was stepped in from: the field for the first,
+        // then the place before it, its row for the next one selected.
+        let from = Object.assign(here(), { typed: word });
+        chain.forEach((place, at) => {
+            const rows = members(place);
+            steps.push(Object.assign(from, {
+                row: categories.find(one => one.category === place),
+                rows: rows
+            }));
+            const inner = rows.findIndex(one => one.category === chain[at + 1]);
+            from = { typed: "", at: Math.max(0, inner), key: inner < 0 ? ""
+                : steadyId(rows[inner]), scroll: 0 };
+        });
+        held = steps;
         restart("");
     }
 
@@ -1199,10 +1236,15 @@ Scope {
     // what there is. Each thing has one home among them, and nothing else
     // is here. What each row says is read as the launcher opens and held
     // while it's open, so nothing moves under him.
-    function home() {
-        const room = Math.floor((list.width - Theme.space.l - Theme.space.xxl
+    // How many characters a row's name and what it holds have room for.
+    function rowRoom() {
+        return Math.floor((list.width - Theme.space.l - Theme.space.xxl
             - Theme.space.xxl - Theme.space.m - Theme.space.l)
             / Math.max(1, measure.advanceWidth("0")));
+    }
+
+    function home() {
+        const room = rowRoom();
         const rows = Words.home.map(id => homeRow(id, room)).filter(row => row !== null);
         // Now stands apart from the rest by a gap, as what's this moment.
         if (rows.length > 1)
@@ -1362,6 +1404,12 @@ Scope {
             return false;
         if (held.length > 0 && row.given) {
             ask(row);
+            return true;
+        }
+        // A place found from the top that sits in another is stepped into
+        // through it, so the path says where it lives.
+        if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
+            intoCategory(row.category, typed);
             return true;
         }
         const things = held.length === 0 || collecting;
@@ -1595,9 +1643,13 @@ Scope {
             current = 0;
             return;
         }
-        // A category's word and a space step into it.
+        // A category's word and a space step into it, unless a name goes on
+        // from that word, as Power off does from Power: then it's searched
+        // for here, and nothing moves under what's being typed.
         const chipped = held.length === 0 ? /^(\S+) $/.exec(letters) : null;
-        const named = chipped ? categoryFor(chipped[1]) : null;
+        const named = chipped && !choices.some(row => !row.category
+            && String(row.name ?? "").toLowerCase().startsWith(letters))
+            ? categoryFor(chipped[1]) : null;
         if (named) {
             intoCategory(named, chipped[1]);
             return;
