@@ -101,7 +101,8 @@ first in the queue and conclude.
 | judge | the model that consolidates a council's findings | | |
 | finding | something a review raised | | |
 | change | work put up for review | PR, pull request, proposal | |
-| AI spend | what agents have cost | cost, usage, tokens, bill, budget | spend-watch |
+| AI spend | what agents have cost | cost, usage, tokens, budget | spend-watch |
+| bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a Claude plan one window allows: five hours, or a week | limit | `5h`, `wk` |
 | person | the human a session works for | user, human, operator | |
