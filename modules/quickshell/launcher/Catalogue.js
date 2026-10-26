@@ -12,16 +12,18 @@
 const DEEPEST = 4;
 
 // Collections whose things are a list of items, each listed whole only as
-// a place: what was copied, the emoji, the notices past and the shortcuts.
-// A model asked to paste or find one opens the place instead.
-const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters"]);
+// a place: what was copied, the emoji, the notices past, the shortcuts,
+// and what comes and goes in Agents, AI spend's findings and the subagents'
+// runs. A model asked to paste or find one opens the place instead.
+const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters", "spend",
+    "runs"]);
 
 // Collections whose things are listed, each one opened by its own run, but
 // not what each holds: every program's Quit and New window, every window's
-// Size, Float and workspaces, and every quest's and run's own, would bury
-// the rest a few hundred times over. The window Joel came from keeps its
-// own, as This window.
-const WHOLE = new Set(["applications", "windows", "quests", "runs"]);
+// Size, Float and workspaces, and every quest's own, would bury the rest a
+// few hundred times over. The window Joel came from keeps its own, as This
+// window.
+const WHOLE = new Set(["applications", "windows", "quests"]);
 
 // What a keyboard's key does is a lookup, not something done to the
 // machine, and the boards' keys are a few hundred rows.
