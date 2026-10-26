@@ -157,8 +157,14 @@ Rectangle {
             anchors.right: parent.right
             visible: right.sided
             // What a row is never takes more than its share of the row, so
-            // however long it runs it can't reach the name.
-            width: Math.min(implicitWidth, row.width * 0.45)
+            // however long it runs it can't reach the name, and it gives the
+            // name its room first, down to a fifth of the row: a window's
+            // title is what Joel looks for, its program and place only help
+            // (Joel, 2026-10-25: titles "get elipsed really quick").
+            width: Math.min(implicitWidth, row.width * 0.45, Math.max(row.width * 0.2,
+                row.width - nameText.x - nameText.implicitWidth - 2 * Theme.space.xxl
+                - Theme.space.l - (row.detail === "" ? 0
+                    : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
             elide: Text.ElideRight
             text: right.said
             color: Theme.muted

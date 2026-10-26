@@ -881,12 +881,16 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     """The launcher's agents hold still as one changes, the selection on its row."""
     machine = desktop.machine
     desktop.pi_session()
-    # A second session in a window of its own, with its own presence.
-    other = "\u03c0 - TESTQB Another of its own - other-tree"
+    # A second session in a window of its own, with its own presence. Its
+    # title is the shape pi gives one now, the quest's short name and no
+    # address, so only the title its presence says joins the two.
+    other = "\u03c0 - Another - other-tree"
 
     def present(address: str, said: Json) -> None:
         """Replace a session's presence with this, by rename, as pi does."""
         name = address.lower()
+        if address == "TESTQB":
+            said = {**said, "title": other}
         desktop.as_account(
             f"echo '{json.dumps(said)}' > {PI_PRESENCE}/.{name}"
             f" && mv {PI_PRESENCE}/.{name} {PI_PRESENCE}/{name}.json"
@@ -904,6 +908,8 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"] and len(shown["rows"]) > 1)
+    # The window titled the new way is its session, named by its title.
+    assert "Another" in desktop.showing()["rows"], desktop.showing()["rows"]
     # The second, which would go first once it wants Joel.
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][1])
