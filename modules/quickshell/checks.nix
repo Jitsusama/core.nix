@@ -1474,6 +1474,19 @@ onLinux {
       touch $out
     '';
 
+  # A long IPC reply reaches its caller whole, in the Quickshell the machine
+  # runs (ipc-replies-whole.patch): without the patch, one past the socket's
+  # buffer was cut off, so the launcher's catalogue never reached pi-ask.
+  an-ipc-reply-arrives-whole = pkgs.runCommandLocal "an-ipc-reply-arrives-whole" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../tests/ipc-replies.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts} QS=${qs} PATH=${pkgs.coreutils}/bin:$PATH
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # A status file is heard again once its folder is made again, and when
   # its folder is made only after the shell starts, as tests/watched.qml
   # drives it, in the Quickshell the machine runs

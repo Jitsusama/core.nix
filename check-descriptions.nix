@@ -42,6 +42,10 @@
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
   '';
+  an-ipc-reply-arrives-whole = ''
+    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
+    function that isn't there ends qs with a failure
+  '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';
