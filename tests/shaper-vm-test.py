@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 # A JSON object as tc gives it, whose fields the test reads as it finds them.
 type Json = dict[str, Any]
 
+# One of Meet's media servers, which takes a call on 443.
+MEET = "74.125.250.1"
+
 # CAKE's diffserv4 tins, in the order its counts list them.
 TINS = ["bulk", "best effort", "video", "voice"]
 VOICE = TINS.index("voice")
@@ -342,11 +345,16 @@ def test_guest(line: Line) -> None:
 
 
 def test_apps(line: Line) -> None:
-    """An app's pages are best effort, and its calls video."""
+    """An app's pages are best effort, and its calls video, Meet's on 443 among them.
+
+    Nothing answers at Meet's address here, and needn't: the client's default route sends it
+    through eth1, whose CAKE counts it on the way out.
+    """
     line.lands("best effort", "app.slice", line.upload)
     line.lands("best effort", "app.slice", line.download, dev=line.ifb("eth1"))
     line.lands("best effort", "app.slice", line.datagrams(443))
     line.lands("video", "app.slice", line.datagrams(9000))
+    line.lands("video", "app.slice", line.datagrams(443, to=MEET))
 
 
 def test_real_time(line: Line) -> None:

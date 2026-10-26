@@ -19,6 +19,17 @@ set bulk4 { typeof socket cgroupv2 level 4; }
 set app4 { typeof socket cgroupv2 level 4; }
 set video5 { typeof socket cgroupv2 level 5; }
 set awaited5 { typeof socket cgroupv2 level 5; }
+# Meet's media servers, as Google lists them for a firewall to let calls
+# through. Meet sends a call to them on 443, as a page would, so only where
+# it goes tells the two apart, and these addresses carry nothing but calls.
+set meet4 {
+  type ipv4_addr; flags interval;
+  elements = { 74.125.247.128/32, 74.125.250.0/24, 142.250.82.0/24 }
+}
+set meet6 {
+  type ipv6_addr; flags interval;
+  elements = { 2001:4860:4864:4:8000::/128, 2001:4860:4864:5::/64, 2001:4860:4864:6::/64 }
+}
 set local4 { type ipv4_addr; flags interval; }
 set local6 { type ipv6_addr; flags interval; }
 set uplinks { type ifname; }
@@ -55,10 +66,13 @@ chain classify {
   tcp dport { 53, 853 } goto voice
   socket cgroupv2 level 2 @voice2 goto voice
 
-  # Calls: Tuple's daemon, and an app's UDP to anything but 443, which is
-  # how WebRTC sends a call's sound and pictures; 443 is QUIC, a page.
+  # Calls: Tuple's daemon, an app's UDP to anything but 443, which is how
+  # WebRTC sends a call's sound and pictures, and anything an app sends
+  # Meet's media servers; other UDP to 443 is QUIC, a page.
   socket cgroupv2 level 5 @video5 goto video
   udp dport != 443 socket cgroupv2 level 4 @app4 goto video
+  ip daddr @meet4 socket cgroupv2 level 4 @app4 goto video
+  ip6 daddr @meet6 socket cgroupv2 level 4 @app4 goto video
 
   # What Joel waits on at a terminal sits inside jobs, but he's waiting,
   # so it goes as an app's would; the rest of jobs he isn't waiting on.

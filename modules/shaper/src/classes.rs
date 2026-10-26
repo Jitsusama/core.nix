@@ -28,7 +28,8 @@ pub struct Sets {
     pub bulk4: Vec<String>,
     /// The shaper's own pings, which must measure the line, not its queue.
     pub voice2: Vec<String>,
-    /// Each account's apps, whose UDP to anything but 443 is a call.
+    /// Each account's apps, whose UDP to anything but 443 is a call, as is
+    /// anything they send Meet's media servers.
     pub app4: Vec<String>,
     /// Programs that are calls through and through: Tuple's daemon.
     pub video5: Vec<String>,

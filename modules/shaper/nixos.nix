@@ -16,8 +16,9 @@
 # starts at 10 Mbit/s up and 50 down and climbs within seconds.
 #
 # CAKE's four tins follow the slices: voice for names, time and the
-# shaper's own pings; video for Tuple's daemon and an app's UDP other than
-# 443, which is how a browser's call sends; bulk for the jobs, background
+# shaper's own pings; video for Tuple's daemon, an app's UDP other than
+# 443, which is how a browser's call sends, and what an app sends Meet's
+# media servers, which take a call on 443; bulk for the jobs, background
 # and containers slices, the account's user.slice, Nix's builds, virtual
 # machines and whatever this machine forwards for them; best effort for the
 # rest, Spotify, Chrome, Slack, pi's own requests and what Joel waits on at
