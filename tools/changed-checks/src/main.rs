@@ -23,14 +23,21 @@
 //! kept under `~/.cache/changed-checks`, and only the working tree is
 //! evaluated again. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
+//!
+//! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
+//! under XDG's state folder, saying what each evaluation and the build took
+//! (`runs.rs` says what it holds).
 
 mod checks;
+mod runs;
 
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
+use std::time::Instant;
 
 use checks::Derivations;
+use runs::Run;
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -134,25 +141,46 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if !untracked.is_empty() {
         eprintln!("changed-checks: Nix doesn't read files git doesn't know:\n{untracked}");
     }
-    let short = base.get(..12).unwrap_or(&base);
-    let kept = || {
-        checks::kept(&checks::keeping(&cache(), &base, &system), || {
-            derivations(&format!("{flake}?rev={base}"), &system)
+    let mut noted = Run::new(&base, &system);
+    let compared = compare(options, &flake, &base, &system, &mut noted);
+    let log = state().join("changed-checks/runs.jsonl");
+    if let Err(why) = noted.record(&log) {
+        eprintln!("changed-checks: couldn't log the run: {why}");
+    }
+    compared
+}
+
+/// Compare the working tree's checks with the base's, noting in the run
+/// what each step took, and build what changed if asked.
+fn compare(
+    options: &Options,
+    flake: &str,
+    base: &str,
+    system: &str,
+    noted: &mut Run,
+) -> Result<ExitCode, String> {
+    let short = base.get(..12).unwrap_or(base);
+    let kept = |noted: &mut Run| {
+        checks::kept(&checks::keeping(&cache(), base, system), || {
+            derivations(&format!("{flake}?rev={base}"), system, "base", noted)
         })
     };
     if options.keep_base {
-        kept()?;
+        kept(noted)?;
         eprintln!("kept {system}'s checks at {short}");
         return Ok(ExitCode::SUCCESS);
     }
     eprintln!("comparing {system}'s checks at {short} with the working tree");
-    let before = kept()?;
-    let comparison = checks::compare(&before, &derivations(&flake, &system)?);
+    let before = kept(noted)?;
+    let comparison = checks::compare(&before, &derivations(flake, system, "tree", noted)?);
+    let mut named = 0;
     for (kind, names) in comparison.kinds() {
         for name in names {
             println!("{kind:<8} {name}");
+            named += 1;
         }
     }
+    noted.named(named);
     if !comparison.broken.is_empty() {
         return Ok(ExitCode::FAILURE);
     }
@@ -160,6 +188,7 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     if !options.build || targets.is_empty() {
         return Ok(ExitCode::SUCCESS);
     }
+    let began = Instant::now();
     // A failing build is reported by its status, as nix reports it.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
@@ -170,6 +199,7 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
         )
         .status()
         .map_err(|error| format!("running nix: {error}"))?;
+    noted.built(targets.len(), began.elapsed(), built.success());
     Ok(if built.success() {
         ExitCode::SUCCESS
     } else {
@@ -177,8 +207,15 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     })
 }
 
-/// Evaluate each of a flake's checks for a system to its derivation's path.
-fn derivations(flake: &str, system: &str) -> Result<Derivations, String> {
+/// Evaluate each of a flake's checks for a system to its derivation's path,
+/// noting in the run what each chunk of them took, as the side named.
+fn derivations(
+    flake: &str,
+    system: &str,
+    side: &'static str,
+    noted: &mut Run,
+) -> Result<Derivations, String> {
+    let mut evaluation = Run::evaluating(side);
     let checks = format!("{flake}#checks.{system}");
     let listed = run(
         "nix",
@@ -188,6 +225,7 @@ fn derivations(flake: &str, system: &str) -> Result<Derivations, String> {
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
     let mut found = Derivations::new();
     for chunk in checks::chunks(&names) {
+        let began = Instant::now();
         let evaluated = run(
             "nix",
             &[
@@ -198,10 +236,12 @@ fn derivations(flake: &str, system: &str) -> Result<Derivations, String> {
                 &checks::selecting(chunk)?,
             ],
         )?;
+        evaluation.chunk(chunk.len(), began.elapsed());
         let chunk: Derivations = serde_json::from_str(&evaluated)
             .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
         found.extend(chunk);
     }
+    noted.evaluated(evaluation);
     Ok(found)
 }
 
@@ -227,10 +267,20 @@ fn run(program: &str, arguments: &[&str]) -> Result<String, String> {
 
 /// Give the cache folder: XDG's, or `~/.cache` without one.
 fn cache() -> PathBuf {
-    env::var_os("XDG_CACHE_HOME")
-        .filter(|cache| !cache.is_empty())
+    xdg("XDG_CACHE_HOME", ".cache")
+}
+
+/// Give the state folder: XDG's, or `~/.local/state` without one.
+fn state() -> PathBuf {
+    xdg("XDG_STATE_HOME", ".local/state")
+}
+
+/// Give the folder XDG's variable names, or the one under home without it.
+fn xdg(variable: &str, under_home: &str) -> PathBuf {
+    env::var_os(variable)
+        .filter(|folder| !folder.is_empty())
         .map_or_else(
-            || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".cache"),
+            || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(under_home),
             PathBuf::from,
         )
 }

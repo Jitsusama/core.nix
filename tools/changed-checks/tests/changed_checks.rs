@@ -7,6 +7,18 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::{Mutex, MutexGuard, PoisonError};
+
+/// Held while a stand-in is written and while a program is started. The
+/// tests run on threads of one process, and a program started while another
+/// thread's stand-in is open for writing holds it open too until it's under
+/// way, so running that stand-in fails as a busy file.
+static STARTING: Mutex<()> = Mutex::new(());
+
+/// Hold `STARTING`, even when a test that held it failed.
+fn starting() -> MutexGuard<'static, ()> {
+    STARTING.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// git as changed-checks asks it: where the repository is, the merge base
 /// with origin's main and nothing else, and no untracked files.
@@ -47,6 +59,7 @@ impl StandIn {
             std::env::temp_dir().join(format!("changed-checks-{}-{test}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(folder.join("bin")).expect("a folder for the stand-ins");
+        let _starting = starting();
         for (name, script) in [("git", GIT), ("nix", NIX)] {
             let path = folder.join("bin").join(name);
             fs::write(&path, script).expect("a stand-in");
@@ -78,18 +91,44 @@ impl StandIn {
             self.folder.join("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        Command::new(env!("CARGO_BIN_EXE_changed-checks"))
-            .args(arguments)
-            .env("PATH", path)
-            .env("STAND_IN", &self.folder)
-            .env("XDG_CACHE_HOME", self.folder.join("cache"))
-            .output()
-            .expect("changed-checks runs")
+        let started = {
+            let _starting = starting();
+            Command::new(env!("CARGO_BIN_EXE_changed-checks"))
+                .args(arguments)
+                .env("PATH", path)
+                .env("STAND_IN", &self.folder)
+                .env("XDG_CACHE_HOME", self.folder.join("cache"))
+                .env("XDG_STATE_HOME", self.folder.join("state"))
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .expect("changed-checks starts")
+        };
+        started.wait_with_output().expect("changed-checks runs")
     }
 
     fn built(&self) -> String {
         fs::read_to_string(self.path("built")).unwrap_or_default()
     }
+
+    /// The runs logged so far, each as its line of JSON.
+    fn runs(&self) -> Vec<serde_json::Value> {
+        fs::read_to_string(self.path("state/changed-checks/runs.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a run as JSON"))
+            .collect()
+    }
+}
+
+/// The sides a logged run evaluated, in order.
+fn evaluated(run: &serde_json::Value) -> Vec<&str> {
+    run["evaluated"]
+        .as_array()
+        .expect("its evaluations")
+        .iter()
+        .map(|evaluation| evaluation["of"].as_str().expect("a side"))
+        .collect()
 }
 
 fn text(bytes: &[u8]) -> String {
@@ -131,6 +170,10 @@ fn asked_to_build_it_builds_what_was_added_and_changed_but_the_vm_tests() {
         stand_in.built(),
         format!("--no-link --keep-going -L {flake}.new {flake}.a\n")
     );
+    let runs = stand_in.runs();
+    assert_eq!(runs.len(), 1, "one run logged: {runs:?}");
+    assert_eq!(runs[0]["built"]["checks"], 2, "{}", runs[0]);
+    assert_eq!(runs[0]["built"]["passed"], true, "{}", runs[0]);
 }
 
 #[test]
@@ -164,6 +207,14 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     assert_eq!(text(&ran.stdout), "");
     let kept = Path::new("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
     assert!(stand_in.folder.join(kept).exists());
+    let runs = stand_in.runs();
+    assert_eq!(runs.len(), 2, "both runs logged: {runs:?}");
+    assert_eq!(evaluated(&runs[0]), ["base", "tree"], "{}", runs[0]);
+    assert_eq!(evaluated(&runs[1]), ["tree"], "{}", runs[1]);
+    assert_eq!(runs[1]["base"], "0123456789abcdef0123", "{}", runs[1]);
+    assert_eq!(runs[1]["named"], 0, "{}", runs[1]);
+    let chunks = &runs[0]["evaluated"][1]["chunks"];
+    assert_eq!(chunks[0]["checks"], 4, "the tree's one chunk: {}", runs[0]);
 }
 
 #[test]
