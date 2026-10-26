@@ -635,7 +635,8 @@ Scope {
         return out;
     }
 
-    // Every row Return does nothing on, from home down as stepping in
+    // Every row Return does nothing on, and how many rows there were,
+    // from home down as stepping in
     // shows them, each with where it sits, for the check that fails any
     // (Joel, 2026-10-26: every row has a Return act). It walks deeper
     // than the catalogue and into each program, window and quest, but not
@@ -661,7 +662,9 @@ Scope {
             }
         };
         walk(home(), null, [], [], 0);
-        return out;
+        // How many it walked too, so a check that finds none knows it
+        // looked.
+        return { walked: seen.size, rows: out };
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a
