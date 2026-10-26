@@ -7,7 +7,8 @@
 # keys come from keys.nix, written where pi reads them and into the key map.
 # Its status line tells a folder and git as the prompt does, by the prompt's
 # root markers, its git-engine and the theme's marks. pi-claude runs it on
-# Joel's own Claude plan (claude.nix).
+# Joel's own Claude plan (claude.nix), and pi-ask answers the launcher's Ask
+# row on the plan a machine names in jitsusama.pi.ask (ask.nix).
 {
   config,
   lib,
@@ -114,6 +115,14 @@ let
     else
       pkgs.claude-code;
 
+  piClaude = import ./claude.nix { inherit pkgs claude; };
+
+  # Each plan's small, quick model, for answers that take a second or two.
+  quickModels = {
+    pi = "anthropic/claude-haiku-4-5";
+    claude = "claude-code/claude-haiku-4-5-20251001";
+  };
+
   # Each action named in keys.nix, with every chord listed for it.
   keybindings = lib.mapAttrs (_: map (key: key.chord)) (
     lib.groupBy (key: key.action) (
@@ -143,10 +152,44 @@ in
     '';
   };
 
+  options.jitsusama.pi.ask = {
+    plan = lib.mkOption {
+      type = lib.types.enum (lib.attrNames quickModels);
+      default = "pi";
+      description = ''
+        Which plan answers the launcher's Ask row: "pi" for pi's own
+        provider, as pi is set up on the machine, or "claude" for Joel's own
+        Claude plan through pi-claude, signed in with `pi-claude login`.
+      '';
+    };
+    model = lib.mkOption {
+      type = lib.types.str;
+      default = quickModels.${config.jitsusama.pi.ask.plan};
+      defaultText = lib.literalExpression "the plan's small, quick model";
+      description = "The model the Ask row's answers come from, as pi names it.";
+    };
+    extensions = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "/home/someone/.pi/agent/extensions/a-proxy" ];
+      description = ''
+        The only pi extensions the Ask row loads, such as the one a work
+        machine reaches its models through. Every other is left out, so an
+        answer starts in a second or two.
+      '';
+    };
+  };
+
   config = {
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
 
-    home.packages = [ (import ./claude.nix { inherit pkgs claude; }) ];
+    home.packages = [
+      piClaude
+      (import ./ask.nix {
+        inherit pkgs lib piClaude;
+        inherit (config.jitsusama.pi) ask;
+      })
+    ];
 
     # The room kept for what a compaction writes. pi's default, 16,384
     # tokens, runs out summarising a long session, which then compacts
