@@ -169,6 +169,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         pi = ./modules/pi/home.nix;
+        pi-packages = ./modules/pi-packages/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
         prompt = ./modules/prompt/home.nix;

@@ -867,6 +867,7 @@ gather (
     ./modules/open-with/checks.nix
     ./modules/panel/checks.nix
     ./modules/pi/checks.nix
+    ./modules/pi-packages/checks.nix
     ./modules/pipewire/checks.nix
     ./modules/plymouth/checks.nix
     ./modules/pnpm/checks.nix
