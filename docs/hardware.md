@@ -176,7 +176,7 @@ a hunk moved onto 7.2's context, which its header says.
 | `xe-small-fixes`                | fbdev, resume hotplug, UHBR DP audio, four GT fixes |
 | `sof-dsp-and-dma`               | the DSP's DMA, its period on a high-priority queue  |
 | `amp-feedback-channels`         | the amplifiers' feedback on the right channels      |
-| `hdmi-jack-after-resume`        | a jack plugged in during suspend is seen            |
+| `hdmi-jack-after-resume`        | a jack plugged in during sleep is seen              |
 | `sdca-hid-lifetime`             | the headset buttons' device leaves with its codec   |
 | `iwlwifi-core-107`              | Wi-Fi firmware 107 and per-country puncturing       |
 | `iwlmld-resume-fixes`           | Wi-Fi resumes cleanly after being powered off       |
@@ -617,7 +617,7 @@ and pstore kept both records:
   the modules' tag area whose counter pointer was garbage, so
   `__alloc_tagging_slab_free_hook()` faulted. It came 60 ms after the
   camera's ISYS bound the CVS bridge.
-- **At reboot, after a suspend.** `device_shutdown()` found that the device
+- **At reboot, after a sleep.** `device_shutdown()` found that the device
   before the one it was removing had been freed: the `kobj.entry` link at
   offset 8 of its 1 KiB slab object held an address in the modules' tag area
   instead. Offset 8 is where an entry in a slab's object vector keeps its
@@ -1094,7 +1094,7 @@ module loads it in the initrd, as the XPS 14's does with its GPU.
 
 The laptop sleeps only in s2idle, and it sleeps soundly: one night on the
 charger, `/sys/power/suspend_stats/last_hw_sleep` counted 12,327 s of
-hardware sleep in the 12,328 s between suspend entry and exit, so the SoC
+hardware sleep in the 12,328 s between going to sleep and waking, so the SoC
 sat in its deepest state throughout. The graphics and Wi-Fi came back within
 two seconds.
 
@@ -1105,7 +1105,7 @@ the power button and the Aggregator woke it. The CMOS clock says it can wake
 the machine only from S4. The ACPI time-and-alarm device reports
 capabilities 0x1F4, which set only its S4 and S5 wake bits, so the kernel
 offers no alarm on it, and reading its clock fails with an I/O error. A
-suspend test on this laptop needs someone to open the lid or press the
+sleep test on this laptop needs someone to open the lid or press the
 power button.
 
 ### What's Left

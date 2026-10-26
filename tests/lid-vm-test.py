@@ -3,7 +3,7 @@
 tests/lid.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
 opening comment says what the test proves. Each test asks for the state it starts from as a
 fixture: the machine booted with its stand-in connectors, or its lid shut at a desk with the
-monitor off. The stand-in lid, connectors and suspend are all named in the machine lid.nix
+monitor off. The stand-in lid, connectors and sleep are all named in the machine lid.nix
 builds, so the tests need no value from Nix.
 """
 
@@ -23,22 +23,23 @@ OPENED = (
     "busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
     " org.freedesktop.login1.Manager LidClosed | grep -qx 'b false'"
 )
-# The suspend unit's state is read rather than asked with is-active, which calls a oneshot
-# still running "activating" and so can't tell a suspend under way from one that's over.
+# The sleep unit's state is read rather than asked with is-active, which calls a oneshot
+# still running "activating" and so can't tell a sleep under way from one that's over.
 SETTLED = (
     "busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
     " org.freedesktop.login1.Manager PreparingForSleep | grep -qx 'b false'"
     " && ! systemctl list-jobs --no-legend | grep -q suspend"
     " && systemctl show -P ActiveState systemd-suspend.service | grep -qx inactive"
 )
-SUSPENDED = "test -e /run/suspended"
-# How long logind may take to suspend once nothing holds the lid, or to settle afterwards.
-SUSPENDING = dt.timedelta(minutes=1)
+# The stand-in sleep leaves this file, under systemd's word for it.
+ASLEEP = "test -e /run/suspended"
+# How long logind may take to sleep once nothing holds the lid, or to settle afterwards.
+FALLING_ASLEEP = dt.timedelta(minutes=1)
 # How long logind may take to see the lid open.
 OPENING = dt.timedelta(seconds=30)
 # How long lid-docked may take to hold the lid once a monitor is plugged in.
 HOLDING = dt.timedelta(seconds=10)
-# How long logind is given to act on a shut lid it mustn't suspend for.
+# How long logind is given to act on a shut lid it mustn't sleep for.
 LOOKING = dt.timedelta(seconds=5)
 
 
@@ -88,20 +89,20 @@ def shut_at_desk(laptop: Laptop) -> str:
     return first
 
 
-def test_a_laptop_shut_with_no_monitor_suspends(laptop: Laptop) -> None:
-    """A laptop shut with no monitor suspends."""
+def test_a_laptop_shut_with_no_monitor_sleeps(laptop: Laptop) -> None:
+    """A laptop shut with no monitor sleeps."""
     laptop.monitor("disconnected")
     laptop.machine.fail(HELD)
     laptop.lid(shut=True)
-    laptop.machine.wait_until_succeeds(SUSPENDED, timeout=SUSPENDING)
+    laptop.machine.wait_until_succeeds(ASLEEP, timeout=FALLING_ASLEEP)
     laptop.lid(shut=False)
-    # The stand-in suspend returns at once, and logind, finding the lid
+    # The stand-in sleep returns at once, and logind, finding the lid
     # still shut, may queue another, which a loaded machine starts after
     # the lid opens. The file is cleared once logind has seen the lid
-    # open and isn't preparing to sleep, and no suspend is queued or
+    # open and isn't preparing to sleep, and no sleep is queued or
     # running.
     laptop.machine.wait_until_succeeds(OPENED, timeout=OPENING)
-    laptop.machine.wait_until_succeeds(SETTLED, timeout=SUSPENDING)
+    laptop.machine.wait_until_succeeds(SETTLED, timeout=FALLING_ASLEEP)
     laptop.machine.succeed("rm /run/suspended")
 
 
@@ -114,12 +115,12 @@ def test_a_laptop_shut_at_a_desk_keeps_running_once_the_monitor_is_off(
     laptop.monitor("connected")
     laptop.machine.sleep(LOOKING)
     assert laptop.holder() == shut_at_desk
-    laptop.machine.fail(SUSPENDED)
+    laptop.machine.fail(ASLEEP)
 
 
 @pytest.mark.usefixtures("shut_at_desk")
-def test_unplugging_the_monitor_with_the_lid_shut_suspends(laptop: Laptop) -> None:
-    """Unplugging the monitor with the lid shut suspends."""
+def test_unplugging_the_monitor_with_the_lid_shut_sleeps(laptop: Laptop) -> None:
+    """Unplugging the monitor with the lid shut sleeps."""
     laptop.monitor("disconnected")
-    laptop.machine.wait_until_succeeds(SUSPENDED, timeout=SUSPENDING)
+    laptop.machine.wait_until_succeeds(ASLEEP, timeout=FALLING_ASLEEP)
     laptop.machine.fail(HELD)
