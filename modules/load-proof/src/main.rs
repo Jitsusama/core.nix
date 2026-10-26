@@ -12,15 +12,19 @@
 //!
 //! `all` reads the five at once and prints a line each, which is a
 //! reading; `judge` says whether a loaded reading felt as an idle one did
-//! (judge.rs).
+//! (judge.rs). `run` takes an idle reading, loads the machine in steps up
+//! to twenty builds with the line full both ways, and judges a reading in
+//! each step against idle (run.rs).
 //!
 //! Usage: load-proof call|frames|keys|save|sound|all [SECONDS]
 //!        load-proof judge IDLE LOADED
+//!        load-proof run
 
 mod call;
 mod frames;
 mod judge;
 mod keys;
+mod run;
 mod save;
 mod sound;
 mod spread;
@@ -34,7 +38,8 @@ use std::thread;
 use std::time::Duration;
 
 const USAGE: &str = "usage: load-proof call|frames|keys|save|sound|all [SECONDS]
-       load-proof judge IDLE LOADED";
+       load-proof judge IDLE LOADED
+       load-proof run";
 
 /// The signals, in the order a reading prints them.
 const SIGNALS: [&str; 5] = ["call", "sound", "frames", "keys", "save"];
@@ -60,12 +65,25 @@ fn main() -> ExitCode {
         };
         return judged(idle, loaded);
     }
-    let secs = args
-        .get(1)
-        .and_then(|arg| arg.to_str())
-        .and_then(|arg| arg.parse().ok())
-        .unwrap_or(10);
-    let length = Duration::from_secs(secs);
+    if command == Some("run") {
+        return ran();
+    }
+    // A run's load runs this program again in jobs.slice.
+    if command == Some(run::BUILD) {
+        let (Some(folder), Some(length)) = (args.get(1), seconds(args.get(2))) else {
+            eprintln!("usage: load-proof {} FOLDER SECONDS", run::BUILD);
+            return ExitCode::from(2);
+        };
+        return done(run::build(folder.as_ref(), length));
+    }
+    if command == Some(run::LINE) {
+        let Some(length) = seconds(args.get(1)) else {
+            eprintln!("usage: load-proof {} SECONDS", run::LINE);
+            return ExitCode::from(2);
+        };
+        return done(run::line(length));
+    }
+    let length = seconds(args.get(1)).unwrap_or(Duration::from_secs(10));
     match command {
         Some("all") => all(length),
         Some(signal) if SIGNALS.contains(&signal) => match read(signal, length) {
@@ -175,6 +193,52 @@ fn judged(idle: &OsString, loaded: &OsString) -> ExitCode {
         println!("fails: {failure}");
     }
     ExitCode::FAILURE
+}
+
+/// A length given as a whole number of seconds.
+fn seconds(arg: Option<&OsString>) -> Option<Duration> {
+    let secs = arg?.to_str()?.parse().ok()?;
+    Some(Duration::from_secs(secs))
+}
+
+/// Runs the load proof whole, saying each step's reading as it comes, and
+/// passes only when every step felt as idle did.
+fn ran() -> ExitCode {
+    let program = match std::env::current_exe() {
+        Ok(program) => program,
+        Err(e) => return failed(&format!("finding this program: {e}")),
+    };
+    let cache = std::env::var_os("XDG_CACHE_HOME").map(Into::into);
+    let home = std::env::var_os("HOME").map(Into::into);
+    let Some(folder) = save::folder(cache, home) else {
+        return failed("no HOME or XDG_CACHE_HOME to build under");
+    };
+    let plan = run::Plan::default();
+    println!("a run takes {} s", plan.length().as_secs());
+    match run::run(&plan, &program, &folder.join("run"), &mut std::io::stdout()) {
+        Ok(run) if run.passed() => {
+            println!("passes: everything felt as it does idle, up to twenty builds");
+            ExitCode::SUCCESS
+        }
+        Ok(run) => {
+            if let Some(why) = &run.stopped {
+                println!("stopped: {why}");
+            }
+            match run.first_failed() {
+                Some(builds) => println!("fails: from {builds} builds on"),
+                None => println!("fails: the load didn't run to the end"),
+            }
+            ExitCode::FAILURE
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+fn done(result: Result<(), String>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => failed(&e),
+    }
 }
 
 /// Says why the load proof couldn't do what it was asked.
