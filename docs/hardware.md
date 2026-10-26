@@ -1073,9 +1073,14 @@ before that carried the old date, and `uptime` counted from it, at 222 days.
 The CMOS clock read 2025-05-12 early in that boot, and the true time to the
 second once NTP had answered, since the kernel writes it to keep it in step.
 The module keeps `acpi_tad` from loading, so the CMOS clock is rtc0 and the
-kernel sets the time from it at boot. Whether it holds the time across a
-shutdown is still to be seen; when it doesn't, boots start at systemd's
-fallback date as before.
+kernel sets the time from it at boot.
+
+It doesn't hold the time across a power-off. At a cold start on 2026-10-26
+it read 2025-05-13, though it had the right time while on. Loaded late by
+udev, it then set the system's time back to that date, after systemd had
+moved it forward to the last time it saved. The module loads it in the
+initrd, so its date comes first, systemd's advance overrides it, and NTP
+puts the time right from there.
 
 ### The Graphics Driver
 
