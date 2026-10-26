@@ -16,7 +16,8 @@ onLinux {
   # pty comes back from a shell's stand-in; a careful save leaves its newest
   # text whole; a call's request answered by a STUN server's stand-in is
   # timed and one never answered is lost; each sound node's errors are read
-  # from pw-top, cameras' left out; and the times are summed.
+  # from pw-top, cameras' left out, and counted only while it runs; and the
+  # times are summed.
   load-proof-reads-its-signals = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in load-proof, its tests included.
   load-proof-passes-clippy = passesClippy "load-proof-passes-clippy" (

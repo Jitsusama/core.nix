@@ -6,11 +6,12 @@
 //! `pw-top` shows. Nothing playing, every sink is suspended and nothing can
 //! miss a turn, so the signal plays silence of its own, at the latency a
 //! call asks for, to keep the default sink's graph running. It reads every
-//! node's errors before and after, and says which rose. Silence makes no
+//! node's errors before and after, and which nodes run halfway through,
+//! and says which of those rose. Silence makes no
 //! sound, so it can run while Joel sleeps; whatever else plays meanwhile,
 //! Spotify or a call, is counted too.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -33,34 +34,58 @@ const NOT_SOUND: [&str; 2] = ["v4l2_", "libcamera"];
 /// in several iterations takes its last; header lines and video nodes are
 /// left out.
 pub fn errors(top: &str) -> BTreeMap<String, u64> {
-    let mut errors = BTreeMap::new();
-    for line in top.lines() {
+    rows(top).map(|row| (row.name, row.errors)).collect()
+}
+
+/// The nodes running as `pw-top -b` printed: those carrying sound then.
+pub fn running(top: &str) -> BTreeSet<String> {
+    rows(top)
+        .filter(|row| row.state == "R")
+        .map(|row| row.name)
+        .collect()
+}
+
+/// One node as `pw-top` shows it.
+struct Row {
+    state: String,
+    name: String,
+    errors: u64,
+}
+
+/// Every node line `pw-top -b` printed, in order; header lines and video
+/// nodes are left out.
+fn rows(top: &str) -> impl Iterator<Item = Row> + '_ {
+    top.lines().filter_map(|line| {
         let fields: Vec<&str> = line.split_whitespace().collect();
         // State, id, quantum, rate, wait, busy, W/Q, B/Q, errors, then the
         // format, which may be blank or several words, and the name last.
-        let (Some(id), Some(count), Some(name)) = (fields.get(1), fields.get(8), fields.last())
-        else {
-            continue;
-        };
-        if fields.len() < 10 || id.parse::<u32>().is_err() {
-            continue;
+        if fields.len() < 10 || fields[1].parse::<u32>().is_err() {
+            return None;
         }
-        let Ok(count) = count.parse() else {
-            continue;
-        };
+        let name = *fields.last()?;
         if NOT_SOUND.iter().any(|prefix| name.starts_with(prefix)) {
-            continue;
+            return None;
         }
-        errors.insert((*name).to_owned(), count);
-    }
-    errors
+        Some(Row {
+            state: fields[0].to_owned(),
+            name: name.to_owned(),
+            errors: fields[8].parse().ok()?,
+        })
+    })
 }
 
-/// The nodes whose errors rose from `before` to `after`, and by how many.
-/// A node that appeared meanwhile counts from none.
-pub fn rose(before: &BTreeMap<String, u64>, after: &BTreeMap<String, u64>) -> Vec<(String, u64)> {
+/// The nodes in `carrying` whose errors rose from `before` to `after`, and
+/// by how many. A node that appeared meanwhile counts from none. A node
+/// that carried nothing can't be heard, whatever it counts: a microphone
+/// nobody records from may count errors while it idles.
+pub fn rose(
+    before: &BTreeMap<String, u64>,
+    after: &BTreeMap<String, u64>,
+    carrying: &BTreeSet<String>,
+) -> Vec<(String, u64)> {
     after
         .iter()
+        .filter(|(name, _)| carrying.contains(*name))
         .filter_map(|(name, &now)| {
             let was = before.get(name).copied().unwrap_or(0);
             (now > was).then(|| (name.clone(), now - was))
@@ -68,12 +93,18 @@ pub fn rose(before: &BTreeMap<String, u64>, after: &BTreeMap<String, u64>) -> Ve
         .collect()
 }
 
-/// Plays silence for `length` and gives the nodes whose errors rose.
+/// Plays silence for `length` and gives the nodes carrying sound whose
+/// errors rose. Which nodes carry sound is read halfway through.
 pub fn watch(length: Duration) -> Result<Vec<(String, u64)>, String> {
     let before = errors(&top()?);
-    play_silence(length)?;
+    let player = std::thread::spawn(move || play_silence(length));
+    std::thread::sleep(length / 2);
+    let carrying = running(&top()?);
+    player
+        .join()
+        .map_err(|_| "playing silence panicked".to_owned())??;
     let after = errors(&top()?);
-    Ok(rose(&before, &after))
+    Ok(rose(&before, &after, &carrying))
 }
 
 fn tool(name: &str) -> String {
@@ -147,11 +178,13 @@ S   31      0      0    ---     ---   ---   ---     0                  Dummy-Dri
 I   72    256  48000   5.4us   1.2us  0.00  0.00   90    S32LE 2 48000 alsa_input.Mic__source
 S   41      0      0    ---     ---   ---   ---     0                   + shure_mv7_voice_input
 S   46      0      0    ---     ---   ---   ---     7                  v4l2_input.video33
+R   73    256  48000   3.1us   1.0us  0.01  0.00    3    S32LE 2 48000 alsa_output.Speaker__sink
 S   ID  QUANT   RATE    WAIT    BUSY   W/Q   B/Q  ERR FORMAT           NAME 
 S   31      0      0    ---     ---   ---   ---     0                  Dummy-Driver
 I   72    256  48000   5.4us   1.2us  0.00  0.00   92    S32LE 2 48000 alsa_input.Mic__source
 S   41      0      0    ---     ---   ---   ---     0                   + shure_mv7_voice_input
 S   46      0      0    ---     ---   ---   ---     9                  v4l2_input.video33
+R   73    256  48000   3.1us   1.0us  0.01  0.00    4    S32LE 2 48000 alsa_output.Speaker__sink
 ";
 
     #[test]
@@ -160,7 +193,8 @@ S   46      0      0    ---     ---   ---   ---     9                  v4l2_inpu
         assert_eq!(errors.get("alsa_input.Mic__source"), Some(&92));
         assert_eq!(errors.get("Dummy-Driver"), Some(&0));
         assert_eq!(errors.get("shure_mv7_voice_input"), Some(&0), "a follower");
-        assert_eq!(errors.len(), 3, "{errors:?}");
+        assert_eq!(errors.get("alsa_output.Speaker__sink"), Some(&4));
+        assert_eq!(errors.len(), 4, "{errors:?}");
     }
 
     #[test]
@@ -176,15 +210,32 @@ S   46      0      0    ---     ---   ---   ---     9                  v4l2_inpu
             ("source".to_owned(), 7),
             ("stream".to_owned(), 1),
         ]);
+        let carrying = BTreeSet::from(["sink", "source", "stream"].map(str::to_owned));
         assert_eq!(
-            rose(&before, &after),
+            rose(&before, &after, &carrying),
             [("source".to_owned(), 2), ("stream".to_owned(), 1)]
         );
     }
 
     #[test]
+    fn only_running_nodes_carry_sound() {
+        assert_eq!(
+            running(TOP),
+            BTreeSet::from(["alsa_output.Speaker__sink".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_node_that_carried_nothing_isnt_heard_whatever_it_counts() {
+        let before = BTreeMap::from([("mic".to_owned(), 50), ("sink".to_owned(), 0)]);
+        let after = BTreeMap::from([("mic".to_owned(), 98), ("sink".to_owned(), 1)]);
+        let carrying = BTreeSet::from(["sink".to_owned()]);
+        assert_eq!(rose(&before, &after, &carrying), [("sink".to_owned(), 1)]);
+    }
+
+    #[test]
     fn nothing_rose_when_nothing_changed() {
         let errors = errors(TOP);
-        assert!(rose(&errors, &errors).is_empty());
+        assert!(rose(&errors, &errors, &running(TOP)).is_empty());
     }
 }
