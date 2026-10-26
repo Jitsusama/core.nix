@@ -342,12 +342,12 @@ pub trait Desk {
 
 /// What the machine is doing, with `saver` saying whether its person
 /// asked to save power. What can't be read is taken as least in the way:
-/// a machine with no supplies to read runs on mains, and no stall to read
+/// a machine with no supplies to read is taken as on the charger, and no stall to read
 /// is no stall.
 pub fn senses(saver: bool) -> Senses {
     Senses {
         power: crate::sys::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
-            mains: true,
+            on_charger: true,
             battery: None,
         }),
         saver,

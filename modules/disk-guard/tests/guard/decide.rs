@@ -216,28 +216,28 @@ fn awake_for(seconds: f64) -> Awake {
     awake
 }
 
-const MAINS: Power = Power {
-    mains: true,
+const ON_CHARGER: Power = Power {
+    on_charger: true,
     battery: Some(20),
 };
 
 #[test]
 fn routine_work_waits_for_power() {
     let awake = awake_for(HOUR);
-    assert!(spare(MAINS, false, &awake, 1_000_000.0));
+    assert!(spare(ON_CHARGER, false, &awake, 1_000_000.0));
     let charged = Power {
-        mains: false,
+        on_charger: false,
         battery: Some(51),
     };
     assert!(spare(charged, false, &awake, 1_000_000.0));
     let low = Power {
-        mains: false,
+        on_charger: false,
         battery: Some(50),
     };
     assert!(!spare(low, false, &awake, 1_000_000.0));
-    assert!(!spare(MAINS, true, &awake, 1_000_000.0), "power saver");
+    assert!(!spare(ON_CHARGER, true, &awake, 1_000_000.0), "power saver");
     let desktop = Power {
-        mains: true,
+        on_charger: true,
         battery: None,
     };
     assert!(spare(desktop, false, &awake, 1_000_000.0));
@@ -245,8 +245,8 @@ fn routine_work_waits_for_power() {
 
 #[test]
 fn routine_work_waits_ten_minutes_after_boot_or_resume() {
-    assert!(!spare(MAINS, false, &awake_for(599.0), 1_000_000.0));
-    assert!(spare(MAINS, false, &awake_for(600.0), 1_000_000.0));
+    assert!(!spare(ON_CHARGER, false, &awake_for(599.0), 1_000_000.0));
+    assert!(spare(ON_CHARGER, false, &awake_for(600.0), 1_000_000.0));
     let mut resumed = awake_for(HOUR);
     resumed.observe(&Tick {
         wall: 1_000_000.0 + 8.0 * HOUR,
@@ -254,7 +254,12 @@ fn routine_work_waits_ten_minutes_after_boot_or_resume() {
         suspended: 8.0 * HOUR - 60.0,
         boot: "b".into(),
     });
-    assert!(!spare(MAINS, false, &resumed, 1_000_000.0 + 8.0 * HOUR));
+    assert!(!spare(
+        ON_CHARGER,
+        false,
+        &resumed,
+        1_000_000.0 + 8.0 * HOUR
+    ));
 }
 
 #[test]

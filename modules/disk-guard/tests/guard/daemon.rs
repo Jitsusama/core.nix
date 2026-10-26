@@ -29,7 +29,7 @@ fn tick() -> Tick {
 
 const CALM: Senses = Senses {
     power: Power {
-        mains: true,
+        on_charger: true,
         battery: None,
     },
     saver: false,
@@ -864,7 +864,7 @@ fn a_band_is_answered_when_the_machine_could_not_spare_upkeep() {
     let mut guard = home.guard(home.config("100%", "100%"));
     let drained = Senses {
         power: Power {
-            mains: false,
+            on_charger: false,
             battery: Some(5),
         },
         ..CALM
