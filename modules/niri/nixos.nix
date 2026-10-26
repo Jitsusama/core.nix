@@ -43,6 +43,13 @@
     # (cast-logical-size.patch) casts a scaled screen at its logical size,
     # 2560x1440 there, as a Mac shares one; windows' casts keep theirs.
     #
+    # Tuple's Linux client asks a screen's cast for no pointer and sends
+    # none of its own, so the person watching never saw where Joel
+    # pointed. The patch (hidden-pointer-drawn.patch) draws the pointer
+    # into any cast that asks for it hidden. The portal names no app for
+    # niri to tell Tuple's casts apart by, so every program asking that
+    # gets it drawn too.
+    #
     # niri asks the GPU to draw its frames at high priority, which xe grants
     # only to a process holding CAP_SYS_NICE, so without it the desktop's
     # frames queued beside Chrome's. A wrapper below gives it, putting it
@@ -63,6 +70,7 @@
         ./prune-imports.patch
         ./tiled-positions.patch
         ./cast-logical-size.patch
+        ./hidden-pointer-drawn.patch
         ./keep-capabilities.patch
         (pkgs.fetchpatch {
           name = "niri-screencast-pts-unknown.patch";
