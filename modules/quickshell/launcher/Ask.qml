@@ -4,7 +4,8 @@
 // in 10.0.0.0/8" never reaches it. Nothing is asked as Joel types: the row
 // offers to ask, and Return asks, the launcher staying open while the
 // answer is written in place, the whole of it below the rows. The right
-// arrow holds carrying the question on in a session of its own.
+// arrow holds talking it over with the orchestrator running, and carrying
+// the question on in a session of its own.
 //
 // It talks to pi through pi's own RPC, a JSON object a line each way, as
 // 85PKB2's contract sets out (pi-ask, the pi module's, which picks the
@@ -97,7 +98,7 @@ Provider {
             copy: "",
             stays: true,
             run: () => provider.pose(question),
-            rows: [onward(question, "")],
+            rows: talkOn(question, "").concat([onward(question, "")]),
             note: down ? `it can't start: ${lastError || "pi ended"}`
                 : "a quick answer, in a sentence or two",
             glyph: Words.glyph("ask"),
@@ -126,7 +127,7 @@ Provider {
             copy: failed ? "" : whole,
             reads: failed || first === whole ? "" : whole,
             asking: stage === "asking",
-            rows: [onward(question, whole)],
+            rows: talkOn(question, whole).concat([onward(question, whole)]),
             note: notes[stage] ?? "",
             glyph: Words.glyph("ask"),
             hue: failed ? "alert" : "voice"
@@ -141,11 +142,44 @@ Provider {
         } : {});
     }
 
+    // The question, and what was answered so far, to carry on elsewhere.
+    function carried(question, answered) {
+        return answered === "" ? question : `${question}\n\nThe launcher answered: ${answered}`;
+    }
+
+    // Talking it over with an orchestrator (P9R1KI, 2026-10-26: a row
+    // under Ask's answer sending the question on to it): the first one
+    // running, in Orchestrators' own order, so one waiting on Joel comes
+    // first. Its words go to its inbox as Talk's do, and the launcher lands
+    // inside it, where the talk says how it went as its session replies.
+    // With none running, there's no row.
+    function talkOn(question, answered) {
+        const source = (launcher?.sources ?? []).find(one => one.settings.name
+            === "orchestrators") ?? null;
+        const row = source ? source.all.find(one => one.stands !== "off") ?? null : null;
+        const one = row ? source.listed.find(listed => `orchestrator:${listed.address}`
+            === row.key) ?? null : null;
+        if (one === null)
+            return [];
+        return [thing({
+            key: "verb:ask:talk",
+            verb: Words.verb("verb:ask:talk"),
+            name: Words.name("verb:ask:talk").replace("{name}", row.name),
+            glyph: Words.glyph("verb:ask:talk"),
+            hue: "action",
+            stays: true,
+            run: () => {
+                source.talk(one, carried(question, answered));
+                launcher.goTo({ trail: ["collection:agents", "collection:orchestrators", row.key],
+                    spot: "" });
+            }
+        })];
+    }
+
     // Carrying it on in a session of its own, in a terminal in the home
     // folder, with what was answered so far.
     function onward(question, answered) {
-        const text = answered === "" ? question
-            : `${question}\n\nThe launcher answered: ${answered}`;
+        const text = carried(question, answered);
         return thing({
             key: "verb:ask:onward",
             verb: Words.verb("verb:ask:onward"),

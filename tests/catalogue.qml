@@ -74,6 +74,12 @@ QtObject {
             programs), false);
         expect("a window's own aren't", Catalogue.descends({ name: "Notes", verbs: opens }, 2,
             { opens: "windows" }), false);
+        expect("a quest's own aren't", Catalogue.descends({ name: "The Launcher", verbs: opens },
+            2, { opens: "quests" }), false);
+        expect("a run's own aren't", Catalogue.descends({ name: "A review", verbs: opens }, 2,
+            { opens: "runs" }), false);
+        expect("an orchestrator's are", Catalogue.descends({ name: "Lighthouse", verbs: opens },
+            2, { opens: "orchestrators" }), true);
         expect("this window's are", Catalogue.descends({ key: "windows:this", verbs: opens }, 1,
             { category: {} }), true);
         expect("nothing below the deepest", Catalogue.descends({ category: {} }, 4, {}), false);

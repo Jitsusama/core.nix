@@ -571,8 +571,12 @@ Scope {
         held = [];
         restart("");
         for (const step of spot.trail) {
-            // From the top, a place or an answer home is, such as Disk.
-            const rows = held.length === 0 ? categories.concat(home()) : offered;
+            // From the top, a place or an answer home is, such as Disk;
+            // inside a collection, its things and then its parts, as it
+            // shows them, so Agents leads on to Orchestrators.
+            const from = held.length > 0 ? held[held.length - 1].row.from : null;
+            const rows = held.length === 0 ? categories.concat(home())
+                : from ? offered.concat(partsOf(from)) : offered;
             const row = rows.find(one => steadyId(one) === step) ?? null;
             if (row === null || !enter(row))
                 return;
@@ -611,14 +615,17 @@ Scope {
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a
-    // collection (`things`), what can be done to it, then its parts; from
-    // a thing's own verbs, what each is done to. One whose rows can't be
-    // made out of the launcher's step holds nothing here.
+    // collection (`things`), what can be done to it, then its parts, a
+    // collection's own among them, as a step into it lists them (Agents'
+    // Orchestrators, Quests, Runs and AI spend); from a thing's own verbs,
+    // what each is done to. One whose rows can't be made out of the
+    // launcher's step holds nothing here.
     function catalogueHolds(row, things) {
         try {
             const making = things ? row.verbs : row.targets;
             const own = making ? making() ?? [] : [];
-            return things ? own.concat(partsIn(row)) : own;
+            const places = things && row.from ? partsOf(row.from) : [];
+            return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
             return [];
         }
