@@ -35,11 +35,12 @@ let
   });
 
   # What each key does, in the order the keys page says them, and the
-  # group the launcher lists it in over inlyne's window, where it has one.
-  moving = map (key: key // { group = "moving"; });
-  size = map (key: key // { group = "size"; });
+  # group the launcher lists it in over inlyne's window, where it has one,
+  # named apart from every other group a word could find there.
+  scrolling = map (key: key // { group = "scrolling"; });
+  zoom = map (key: key // { group = "zoom"; });
   keys =
-    moving [
+    scrolling [
       {
         chord = [ "Left" ];
         action = "HistoryPrevious";
@@ -81,7 +82,7 @@ let
         does = "The bottom";
       }
     ]
-    ++ size [
+    ++ zoom [
       {
         chord = [ "=" ];
         action = "ZoomIn";

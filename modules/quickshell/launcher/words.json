@@ -2335,14 +2335,14 @@
       "name": "The picture"
     },
     {
-      "id": "shortcuts:inlyne:moving",
+      "id": "shortcuts:inlyne:scrolling",
       "in": "shortcuts",
-      "name": "Moving"
+      "name": "Scrolling"
     },
     {
-      "id": "shortcuts:inlyne:size",
+      "id": "shortcuts:inlyne:zoom",
       "in": "shortcuts",
-      "name": "Size"
+      "name": "Zoom"
     },
     {
       "id": "on",
