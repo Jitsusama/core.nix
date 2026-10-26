@@ -254,6 +254,7 @@ let
       "neovim"
       "pi"
       "swayimg"
+      "inlyne"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -426,6 +427,8 @@ let
     pi = nerd "f03ff";
     # The theme's picture, as the viewer shows pictures.
     swayimg = nerd "f02e9";
+    # The theme's document, as the reader shows documents.
+    inlyne = nerd "f0219";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };
