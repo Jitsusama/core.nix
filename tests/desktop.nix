@@ -82,6 +82,12 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-dictation.py);
 
+  # Stands in for pi-ask, which would ask a model, speaking pi's RPC
+  # (desktop/stand-in-ask.py).
+  standInAsk = pkgs.writers.writePython3 "stand-in-ask" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-ask.py);
+
   # Asks the portal to open a file, always asking what with, and writes down
   # its answer (desktop/ask-portal.py).
   askPortal = pkgs.writers.writePython3 "ask-portal" {
@@ -453,6 +459,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.quickshell.notices.away = 3600;
         # Dictation's own service would load Whisper in the VM.
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
+        # The Ask row's model would need the network and an account.
+        jitsusama.quickshell.launcher.providers.ask = {
+          enable = lib.mkForce true;
+          command = lib.mkForce "${standInAsk}";
+        };
         # No key repeats. A key the test presses is let go when the host gets
         # round to it, which on a busy host is past the delay a held key
         # repeats after, so a letter typed once arrived twice.

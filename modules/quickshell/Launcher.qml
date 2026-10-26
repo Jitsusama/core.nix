@@ -193,7 +193,11 @@ Scope {
     // selection already moved stays on the row it was on.
     function compose(fresh) {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
-        answer = answering(typed, fresh);
+        const said = answering(typed, fresh);
+        // An answer only there when nothing else is, as asking a model by a
+        // question's first word is, gives way to anything found.
+        answer = said && said.fallback
+            && (root.found.some(row => !row.category) || gathered.length > 0) ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -271,6 +275,10 @@ Scope {
             chord: [],
             verb: said.verb ?? ((said.copy ?? said.headline) === "" ? "close" : "copy"),
             now: true,
+            // One whose doing takes a while keeps the launcher open, as
+            // asking a question does, its whole words below the rows.
+            stays: said.stays ?? false,
+            reads: said.reads ?? "",
             note: said.note ?? "",
             run: said.run ?? (() => {
                 const copy = said.copy ?? said.headline;
@@ -378,6 +386,8 @@ Scope {
         // An answer still being asked for has nothing to copy yet.
         verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
         now: true,
+        stays: answer.stays ?? false,
+        reads: answer.reads ?? "",
         note: answer.note ?? "",
         run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;

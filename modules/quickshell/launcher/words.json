@@ -1338,6 +1338,25 @@
       "name": "Wind"
     },
     {
+      "id": "ask",
+      "in": "ask",
+      "name": "Ask",
+      "verb": "ask",
+      "glyph": "ask",
+      "states": {
+        "starting": {
+          "name": "Ask is starting"
+        }
+      }
+    },
+    {
+      "id": "verb:ask:onward",
+      "in": "ask",
+      "name": "Ask in a session",
+      "verb": "open",
+      "glyph": "agent"
+    },
+    {
       "id": "weather:today",
       "in": "weather",
       "name": "Today"
