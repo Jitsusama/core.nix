@@ -718,11 +718,6 @@ gather (
             "modules/guide/fixtures/dell-xps-14-da14260"
             "modules/guide/fixtures/microsoft-surface-laptop-4-1958"
             "modules/guide/fixtures/tpm-simulator"
-            # Neovim's colours, patches, plugins and probes.
-            "modules/neovim/colors"
-            "modules/neovim/patches"
-            "modules/neovim/plugins"
-            "modules/neovim/probes"
             # The desk keyboard's layout, which firmware.nix describes. Its
             # folder's hash is the board's serial, so a note in it would change
             # the firmware and need a reflash; it takes one with the next
