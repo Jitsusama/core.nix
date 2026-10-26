@@ -698,6 +698,12 @@ in
     glyph = nerd "f032a";
     console = "s";
     means = "the power saver profile";
+    # An upright leaf on its stem, its vein cut out and stopping short of
+    # the stem, since one running into it split the leaf in two.
+    drawn = drawing [
+      "M6 0C11 3 11 7.5 6.6 9.7V12H5.4V9.7C1 7.5 1 3 6 0Z"
+      "M5.5 3H6.5V8H5.5Z"
+    ];
   };
   balanced = {
     glyph = nerd "f05d1";
@@ -708,6 +714,17 @@ in
     glyph = nerd "f04c5";
     console = "^";
     means = "the full performance power profile";
+    # A gauge's arc, open below, and its needle turned high on a pivot
+    # under the arc's middle, so it stands the grid's full height. Each arc
+    # ends where it meets the grid's edge, since Qt draws an arc as curves
+    # that fall just short of an edge met partway along one.
+    drawn = drawing [
+      (
+        "M0.204 7.553A6 6 0 0 1 0 6A6 6 0 0 1 6 0A6 6 0 0 1 12 6A6 6 0 0 1 11.796 7.553"
+        + "L9.864 7.035A4 4 0 1 0 2.136 7.035Z"
+      )
+      "M7.341 11.171L9 4.5L4.659 9.829A1.5 1.5 0 0 0 6 12A1.5 1.5 0 0 0 7.341 11.171Z"
+    ];
   };
   suspend = {
     glyph = nerd "f04b2";
