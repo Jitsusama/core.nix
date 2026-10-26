@@ -1,0 +1,53 @@
+Say plainly when a Claude plan limit is used up: which limit, when it
+resets, and that nothing went to extra usage.
+
+--- a/src/billing.ts
++++ b/src/billing.ts
+@@ -37,6 +37,27 @@
+   );
+ }
+ 
++// Claude Code's own words when a plan limit is used up, such as "You've hit
++// your usage limit · resets 3pm".
++const PLAN_LIMIT = /You've (?:hit|reached) your ([^·\n]+?)\s*(?:·\s*resets ([^·\n]+?))?\s*(?:·|$)/imu;
++
++/**
++ * Rewrite Claude Code's plan-limit error into a plain one that says which
++ * limit, when it resets, and that nothing went to extra usage. It carries
++ * "billing", which Pi's retry classifier never retries.
++ */
++export function describePlanLimit(message: string): string | undefined {
++  const hit = PLAN_LIMIT.exec(message);
++  if (!hit) return undefined;
++  const [, limit, resets] = hit;
++  return (
++    `Claude plan limit reached: your ${limit.trim()} is used up` +
++    (resets ? ` until it resets ${resets.trim()}` : "") +
++    ". Pi stopped here and will not retry, and nothing is charged to extra usage. " +
++    `(Claude Code billing: ${message})`
++  );
++}
++
+ /** Rewrite an Anthropic usage-credit rejection into an actionable, non-retryable error. */
+ export function describeUsageCreditsRejection(message: string): string | undefined {
+   if (!USAGE_CREDITS_REJECTION.test(message)) return undefined;
+--- a/src/stream.ts
++++ b/src/stream.ts
+@@ -15,7 +15,7 @@
+   type ToolCall,
+   type TranscriptContext,
+ } from "@earendil-works/pi-ai";
+-import { describeUsageCreditsRejection } from "./billing.ts";
++import { describePlanLimit, describeUsageCreditsRejection } from "./billing.ts";
+ import { runClaudeRequest } from "./claude-cli.ts";
+ import { nativeModel, supportsNativeToolChanges } from "./model-catalog.ts";
+ import type { AnthropicStreamEvent, NativeContentBlock, NativeMessage, NativeUsage } from "./native-types.ts";
+@@ -322,6 +322,8 @@
+   const message = error instanceof Error ? error.message : String(error);
+   const usageCredits = describeUsageCreditsRejection(message);
+   if (usageCredits) return usageCredits;
++  const planLimit = describePlanLimit(message);
++  if (planLimit) return planLimit;
+   if (/prompt is too long|context(?:_| )length|context window exceeded|too many input tokens/iu.test(message)) {
+     return `context_length_exceeded: ${message}`;
+   }

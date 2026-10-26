@@ -114,6 +114,17 @@
       touch $out
     '';
 
+  # A used-up Claude plan limit is said plainly, by the provider as it is
+  # patched: which limit, when it resets, and that nothing went to extra
+  # usage, in words pi never retries.
+  pi-says-when-the-plan-runs-out = pkgs.runCommandLocal "pi-says-when-the-plan-runs-out" { } ''
+    ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
+      ${../../tests/pi-says-when-the-plan-runs-out.mjs} ${
+        import ./claude-provider.nix { inherit pkgs; }
+      }
+    touch $out
+  '';
+
   # A machine on the Claude plan has one pi, on it: the provider is an
   # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
   # is the one it drives, and there is no pi-claude beside it. The Ask row

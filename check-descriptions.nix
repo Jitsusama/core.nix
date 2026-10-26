@@ -478,6 +478,10 @@
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged
   '';
+  pi-says-when-the-plan-runs-out = ''
+    pi says plainly when a Claude plan limit is used up, which limit and when it resets, that
+    nothing went to extra usage, and in words it never retries
+  '';
   pi-tells-where-as-the-prompt-does = ''
     pi's status line finds the folder by the prompt's roots, asks the prompt's git-engine, and marks
     git with the theme's glyphs
