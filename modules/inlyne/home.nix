@@ -27,11 +27,19 @@ let
   # The theme's #RRGGBB as the number inlyne reads.
   number = colour: lib.fromHexString (lib.removePrefix "#" colour);
 
+  # nixpkgs gives inlyne X's libraries by path but not Wayland's, which its
+  # window library looks for by name and, not finding it, opens the window
+  # through X instead, so it's given Wayland's too.
   inlyne = pkgs.inlyne.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       ./heading-colour.patch
       ./keys-page.patch
     ];
+    postFixup =
+      (old.postFixup or "")
+      + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+        patchelf $out/bin/inlyne --add-rpath ${lib.makeLibraryPath [ pkgs.wayland ]}
+      '';
   });
 
   # What each key does, in the order the keys page says them, and the
