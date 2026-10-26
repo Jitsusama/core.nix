@@ -12,6 +12,9 @@
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1 doesn't build
   '';
+  a-mac-sudo-takes-touch-id = ''
+    every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds
