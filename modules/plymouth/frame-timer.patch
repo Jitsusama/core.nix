@@ -1,0 +1,30 @@
+Stops a freed splash's frame timer, for plymouth: a splash freed while
+shown, as `plymouth quit --retain-splash` leaves it, kept its timer, which
+could fire before plymouthd exited, on the freed splash, and crash walking
+its freed list of displays.
+
+--- a/src/libply-splash-core/ply-boot-splash.c
++++ b/src/libply-splash-core/ply-boot-splash.c
+@@ -399,6 +399,8 @@
+         }
+ }
+ 
++static void on_new_frame (ply_boot_splash_t *splash);
++
+ void
+ ply_boot_splash_free (ply_boot_splash_t *splash)
+ {
+@@ -413,6 +415,13 @@
+                                                                   ply_boot_splash_update_progress, splash);
+                 }
+ 
++                /* A splash freed while shown, as quitting with --retain-splash
++                 * leaves it, would keep its frame timer, which then fires on
++                 * the freed splash and walks its freed list of displays. */
++                ply_event_loop_stop_watching_for_timeout (splash->loop,
++                                                          (ply_event_loop_timeout_handler_t)
++                                                          on_new_frame, splash);
++
+                 ply_event_loop_stop_watching_for_exit (splash->loop, (ply_event_loop_exit_handler_t)
+                                                        ply_boot_splash_detach_from_event_loop,
+                                                        splash);

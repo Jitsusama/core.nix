@@ -339,6 +339,13 @@ in
   config = lib.mkIf (theme != null) {
     boot.plymouth = {
       enable = true;
+      # plymouth quits with the splash kept (plymouth-quit below), which
+      # frees it while shown and left its frame timer to fire on the freed
+      # splash: plymouthd crashed so in a starved VM's boot. The patch
+      # (frame-timer.patch) stops the timer as the splash is freed.
+      package = pkgs.plymouth.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./frame-timer.patch ];
+      });
       theme = "jitsusama";
       themePackages = [ art ];
       font = "${sansFile}";
