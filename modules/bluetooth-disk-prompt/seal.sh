@@ -8,10 +8,11 @@
 #
 # The environment names where things go: ESP (the ESP's mount point), POLICY
 # (the pcrlock policy the disk's key is bound to, or empty to bind to PCR 7
-# alone) and STATE_DIRECTORY (systemd's, for the last seal's checksum).
+# alone) and STATE_DIRECTORY (systemd's, for the last seal's checksum). Its
+# check names BLUEZ_STATE too, BlueZ's own being /var/lib/bluetooth.
 set -euo pipefail
 
-store=/var/lib/bluetooth
+store=${BLUEZ_STATE:-/var/lib/bluetooth}
 credential="$ESP/loader/credentials/bluetooth-pairing.cred"
 sealed="$STATE_DIRECTORY/sealed.sha256"
 

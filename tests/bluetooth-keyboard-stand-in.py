@@ -16,7 +16,7 @@ import sys
 import time
 from typing import Annotated
 
-from dbus_fast import BusType, Variant
+from dbus_fast import BusType, Message, MessageType, Variant
 from dbus_fast.aio import MessageBus
 from dbus_fast.annotations import DBusSignature, DBusStr, DBusUInt32
 from dbus_fast.service import ServiceInterface, dbus_method
@@ -30,8 +30,7 @@ INTERRUPT = 19
 # A boot keyboard's report descriptor, report 1: a byte of modifiers, a
 # reserved byte and six keys, which is what each report below sends.
 DESCRIPTOR = bytes.fromhex(
-    "05010906a101850175019508050719e029e715002501810295017508810395067508"
-    "150025650507190029658100c0"
+    "05010906a101850175019508050719e029e715002501810295017508810395067508150025650507190029658100c0"
 )
 
 # The SDP record a host reads to learn it's a keyboard and how to read it.
@@ -80,24 +79,21 @@ RECORD = f"""<?xml version="1.0" encoding="UTF-8" ?>
 SHIFT = 0x02
 
 
+# Each character the stand-in types, as a US keyboard's modifiers and key.
+USAGES = (
+    {chr(ord("a") + n): (0, 0x04 + n) for n in range(26)}
+    | {chr(ord("A") + n): (SHIFT, 0x04 + n) for n in range(26)}
+    | {chr(ord("1") + n): (0, 0x1E + n) for n in range(9)}
+    | {"0": (0, 0x27), "\n": (0, 0x28), " ": (0, 0x2C), "-": (0, 0x2D)}
+)
+
+
 def usage_of(character: str) -> tuple[int, int]:
     """Give a character's modifiers and key usage on a US keyboard."""
-    if "a" <= character <= "z":
-        return 0, 0x04 + ord(character) - ord("a")
-    if "A" <= character <= "Z":
-        return SHIFT, 0x04 + ord(character) - ord("A")
-    if "1" <= character <= "9":
-        return 0, 0x1E + ord(character) - ord("1")
-    if character == "0":
-        return 0, 0x27
-    if character == "\n":
-        return 0, 0x28
-    if character == "-":
-        return 0, 0x2D
-    if character == " ":
-        return 0, 0x2C
-    message = f"the stand-in can't type {character!r}"
-    raise ValueError(message)
+    if character not in USAGES:
+        message = f"the stand-in can't type {character!r}"
+        raise ValueError(message)
+    return USAGES[character]
 
 
 def report(modifiers: int, key: int) -> bytes:
@@ -114,23 +110,23 @@ class Agent(ServiceInterface):
 
     @dbus_method(name="Release")
     def release(self) -> None:
-        """BlueZ no longer needs the agent."""
+        """Let go, since BlueZ no longer needs the agent."""
 
     @dbus_method(name="AuthorizeService")
     def authorize_service(self, _device: DBusPath, _uuid: DBusStr) -> None:
-        """A paired host may use any service."""
+        """Let a paired host use any service."""
 
     @dbus_method(name="RequestAuthorization")
     def request_authorization(self, _device: DBusPath) -> None:
-        """Any host may pair."""
+        """Let any host pair."""
 
     @dbus_method(name="RequestConfirmation")
     def request_confirmation(self, _device: DBusPath, _passkey: DBusUInt32) -> None:
-        """Any passkey shown is right."""
+        """Take any passkey shown as right."""
 
     @dbus_method(name="Cancel")
     def cancel(self) -> None:
-        """A request was withdrawn."""
+        """Forget a request that was withdrawn."""
 
 
 class Profile(ServiceInterface):
@@ -142,7 +138,7 @@ class Profile(ServiceInterface):
 
     @dbus_method(name="Release")
     def release(self) -> None:
-        """BlueZ no longer needs the profile."""
+        """Let go, since BlueZ no longer needs the profile."""
 
 
 def listening(psm: int) -> socket.socket:
@@ -158,10 +154,14 @@ def listening(psm: int) -> socket.socket:
 async def held(channel: socket.socket) -> None:
     """Hold each channel a host opens, answering its control requests."""
     loop = asyncio.get_running_loop()
+    # The loop keeps only a weak reference to a task, so they're kept here.
+    answering: set[asyncio.Task[None]] = set()
     while True:
         connection, (address, _) = await loop.sock_accept(channel)
         print(f"{address} opened channel {channel.getsockname()[1]}", flush=True)
-        loop.create_task(answered(connection))
+        task = loop.create_task(answered(connection))
+        answering.add(task)
+        task.add_done_callback(answering.discard)
 
 
 async def answered(connection: socket.socket) -> None:
@@ -174,18 +174,42 @@ async def answered(connection: socket.socket) -> None:
                 await loop.sock_sendall(connection, b"\x00")
 
 
+async def asked(
+    bus: MessageBus, path: str, interface: str, member: str, signature: str, *body: object
+) -> None:
+    """Call one of BlueZ's methods, stopping with its error if it refuses."""
+    reply = await bus.call(
+        Message(
+            destination="org.bluez",
+            path=path,
+            interface=interface,
+            member=member,
+            signature=signature,
+            body=list(body),
+        )
+    )
+    if reply is None or reply.message_type == MessageType.ERROR:
+        details = reply.body if reply else "no reply"
+        message = f"BlueZ refused {member}: {details}"
+        raise RuntimeError(message)
+
+
 async def serve() -> None:
     """Make the adapter a keyboard to pair with, and hold its channels."""
     bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
     bus.export("/stand_in/agent", Agent())
     bus.export("/stand_in/profile", Profile())
-    root = await bus.introspect("org.bluez", "/org/bluez")
-    manager = bus.get_proxy_object("org.bluez", "/org/bluez", root)
-    agents = manager.get_interface("org.bluez.AgentManager1")
-    await agents.call_register_agent("/stand_in/agent", "NoInputNoOutput")
-    await agents.call_request_default_agent("/stand_in/agent")
-    profiles = manager.get_interface("org.bluez.ProfileManager1")
-    await profiles.call_register_profile(
+    agents = "org.bluez.AgentManager1"
+    await asked(
+        bus, "/org/bluez", agents, "RegisterAgent", "os", "/stand_in/agent", "NoInputNoOutput"
+    )
+    await asked(bus, "/org/bluez", agents, "RequestDefaultAgent", "o", "/stand_in/agent")
+    await asked(
+        bus,
+        "/org/bluez",
+        "org.bluez.ProfileManager1",
+        "RegisterProfile",
+        "osa{sv}",
         "/stand_in/profile",
         HID,
         {
@@ -195,9 +219,6 @@ async def serve() -> None:
             "RequireAuthorization": Variant("b", False),  # noqa: FBT003
         },
     )
-    node = await bus.introspect("org.bluez", "/org/bluez/hci0")
-    adapter = bus.get_proxy_object("org.bluez", "/org/bluez/hci0", node)
-    properties = adapter.get_interface("org.freedesktop.DBus.Properties")
     for name, value in (
         ("Alias", Variant("s", "Stand-in Keyboard")),
         ("Powered", Variant("b", True)),  # noqa: FBT003
@@ -205,7 +226,16 @@ async def serve() -> None:
         ("DiscoverableTimeout", Variant("u", 0)),
         ("Discoverable", Variant("b", True)),  # noqa: FBT003
     ):
-        await properties.call_set("org.bluez.Adapter1", name, value)
+        await asked(
+            bus,
+            "/org/bluez/hci0",
+            "org.freedesktop.DBus.Properties",
+            "Set",
+            "ssv",
+            "org.bluez.Adapter1",
+            name,
+            value,
+        )
     print("ready", flush=True)
     await asyncio.gather(held(listening(CONTROL)), held(listening(INTERRUPT)))
 

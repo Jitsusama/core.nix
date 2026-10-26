@@ -65,6 +65,12 @@
   batteries-leave-time-to-power-off = ''
     UPower powers a laptop off at 5%, before it goes flat
   '';
+  bluetooth-firmware-reaches-the-disk-prompt-dell-xps-14-da14260 = ''
+    the XPS 14's Bluetooth firmware for the disk prompt is in the machine's firmware
+  '';
+  bluetooth-firmware-reaches-the-disk-prompt-microsoft-surface-laptop-4-1958 = ''
+    the Surface Laptop 4's Bluetooth firmware for the disk prompt is in the machine's firmware
+  '';
   bluetooth-keeps-its-power-limits = ''
     the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI
   '';
@@ -89,6 +95,11 @@
     settings whose choices set them, and its address to copy; lists the adapter's radio,
     visibility and pairing as settings, its traffic as a spark and what it is; and answers how the
     links are doing
+  '';
+  bluetooth-seal-keeps-only-what-a-keyboard-needs = ''
+    the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to
+    the TPM under the disk's policy, leaves out devices only seen in a scan, seals unchanged
+    pairings once and takes the keys off once unpaired
   '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
