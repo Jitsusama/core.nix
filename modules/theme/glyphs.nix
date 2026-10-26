@@ -990,6 +990,12 @@ in
     console = "d";
     means = "a date: today, or the day it is somewhere";
   };
+  # A calendar with a person on it, since a meeting is a day with others.
+  meeting = {
+    glyph = nerd "f0ed7";
+    console = "m";
+    means = "a meeting on Joel's calendar, and the calendar holding them";
+  };
   clock = {
     glyph = nerd "f0150";
     console = "o";

@@ -1,10 +1,10 @@
 """The desktop test's launcher goes places area.
 
 Here the launcher goes places: pi's sessions, quests and runs, the volume, kitty, the windows it
-finds and moves, and the shortcuts. tests/desktop.nix runs this through pytest inside the driver
-(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks for
-the desktop, started once a run (desktop_session.py), and waits at its start for what it needs,
-so any test runs alone.
+finds and moves, a meeting's call, and the shortcuts. tests/desktop.nix runs this through pytest
+inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the test proves.
+Every test asks for the desktop, started once a run (desktop_session.py), and waits at its start
+for what it needs, so any test runs alone.
 """
 
 from __future__ import annotations
@@ -1158,6 +1158,33 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
         )
     )
     machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_a_meeting_is_found_by_its_name_says_when_it_is_and_return_joins_it(
+    desktop: Desktop,
+) -> None:
+    """A meeting on the calendar is found by its name, says when it is, and Return joins it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Standup starts half an hour from now, on Meet.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("standup")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Standup"
+            and re.fullmatch(r"in (29|30) min", str(shown["selected"].get("side", "")))
+        )
+    )
+    # Return joins its call: the Meet link opens in a window of its own,
+    # and the launcher closes, since joining takes Joel out of it.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qx https://meet.google.com/abc-defg-hij {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
