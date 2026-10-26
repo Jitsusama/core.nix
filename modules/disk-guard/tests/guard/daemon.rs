@@ -706,6 +706,30 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
     assert_eq!(status["filesystems"][0]["band"], "pressure");
     assert!(status["heartbeat"].as_f64().unwrap() > 0.0);
     assert!(home.root.join("state/memory.json").exists());
+    assert_eq!(status["version"], 2);
+    let disk = &status["filesystems"][0];
+    assert_eq!(
+        disk["used"].as_u64().unwrap() + disk["free"].as_u64().unwrap(),
+        disk["size"].as_u64().unwrap()
+    );
+    assert!(
+        disk["says"].as_str().unwrap().contains("is getting full"),
+        "{disk}"
+    );
+    assert_eq!(
+        status["says"], disk["says"],
+        "the machine speaks for its one disk"
+    );
+    let cleared = &status["cleared"][0];
+    assert_eq!(cleared["path"], cold.to_str().unwrap());
+    assert_eq!(cleared["kind"], "scratch");
+    assert!(
+        cleared["says"]
+            .as_str()
+            .unwrap()
+            .starts_with("Cleared scratch space, "),
+        "{cleared}"
+    );
 }
 
 #[test]
@@ -729,17 +753,30 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         band: Band::Pressure,
         free: 200,
         total: 1000,
+        size: 1000,
+        used: 800,
         forecast: Some(60.0),
+        fill_per_hour: Some(36_000.0),
+        full_at: Some(1960.0),
+        says: String::new(),
     };
-    status.measured(&space(210), &bands);
+    status.measured(&space(210), &bands, 1900.0, None);
     assert_eq!(status.band, Band::Pressure);
     assert_eq!(status.free, 210);
+    assert_eq!(status.used, 790);
+    assert_eq!(
+        status.says,
+        "The disk is getting full, with 210 B free. \
+         The guard is clearing builds and caches nobody has used lately. \
+         At this rate it fills in 60 s.",
+        "said again from the fresh measure, filling to the moment it was due"
+    );
     assert_eq!(
         status.forecast,
         Some(60.0),
         "still the band it was made for"
     );
-    status.measured(&space(300), &bands);
+    status.measured(&space(300), &bands, 1900.0, None);
     assert_eq!(status.band, Band::Healthy);
     assert_eq!(status.free, 300);
     assert_eq!(status.forecast, None);

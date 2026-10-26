@@ -88,6 +88,13 @@ or launchd, and [`home.nix`][2] the account's.
   when the moment ends. An account's guard on the same filesystem asks it to
   collect rather than collecting itself; with no system daemon answering, it
   collects with `nix store gc --max` from urgent.
+- **Status.** Each daemon keeps a status file, the account's in its
+  runtime directory and the system's in `/run/disk-guard`, which the
+  desktop and `disk-guard status` read. Its second version says things in
+  sentences the desktop shows as they are: one for the machine, one for
+  each disk beside its size, use, fill an hour and when it fills, and one
+  for each of the last 20 things cleared, which the journal remembers
+  across restarts. `src/words.rs` writes them.
 - **A Mac.** The same daemons run under launchd, asking macOS through
   `crate::sys`, which is `linux.rs` or `macos.rs`. Nothing hears who opens a
   file there without Apple's entitlement, so no older build is dated or
@@ -113,6 +120,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/replaced.rs`, `opens.rs`, `unwatched.rs` | older builds, and the watch that dates them, or a Mac's lack of one |
 | `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |
+| `src/words.rs`            | the sentences the status file carries for the desktop     |
 | `tests/guard/`            | the scenarios, one file per module                       |
 
 ## Working on It

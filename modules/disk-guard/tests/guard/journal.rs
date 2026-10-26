@@ -194,6 +194,59 @@ fn a_directory_is_begun_before_it_is_reclaimed_and_ended_after() {
 }
 
 #[test]
+fn the_journal_keeps_the_last_twenty_things_cleared_newest_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut journal = Journal::new(&dir.path().join("journal.jsonl"), 1 << 20);
+    for n in 0..25 {
+        journal.write(&reclaimed(&format!("/t/{n}"))).unwrap();
+        journal
+            .write(&action("/kept", Outcome::Kept("in use".to_owned())))
+            .unwrap();
+    }
+    let cleared = journal.cleared();
+    assert_eq!(cleared.len(), 20);
+    assert_eq!(cleared[0].path, PathBuf::from("/t/24"));
+    assert_eq!(cleared[19].path, PathBuf::from("/t/5"));
+    assert_eq!(cleared[0].kind, "target");
+    assert_eq!(cleared[0].bytes, 4096);
+    assert!((cleared[0].at - 1_760_000_000.0).abs() < 1e-6);
+}
+
+#[test]
+fn what_frees_nothing_is_not_counted_as_cleared() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut journal = Journal::new(&dir.path().join("journal.jsonl"), 1 << 20);
+    journal
+        .write(&Line::Action {
+            at: 1.0,
+            band: Band::Pressure,
+            path: PathBuf::from("/#garbage"),
+            kind: "garbage".to_owned(),
+            size: 0,
+            outcome: Outcome::Reclaimed,
+        })
+        .unwrap();
+    assert!(journal.cleared().is_empty());
+}
+
+#[test]
+fn a_journal_opened_again_remembers_what_was_cleared_across_its_earlier_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let mut journal = Journal::new(&path, 400);
+    for n in 0..4 {
+        journal.write(&reclaimed(&format!("/t/{n}"))).unwrap();
+    }
+    assert!(
+        dir.path().join("journal.jsonl.1").exists(),
+        "set aside once"
+    );
+    let again = Journal::new(&path, 400);
+    let paths: Vec<_> = again.cleared().into_iter().map(|one| one.path).collect();
+    assert_eq!(paths, ["/t/3", "/t/2", "/t/1", "/t/0"].map(PathBuf::from));
+}
+
+#[test]
 fn nothing_journalled_has_nothing_unfinished() {
     let dir = tempfile::tempdir().unwrap();
     let journal = Journal::new(&dir.path().join("journal.jsonl"), 400);

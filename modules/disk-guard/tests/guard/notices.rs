@@ -7,8 +7,9 @@ const GIB: u64 = 1 << 30;
 
 fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
     Status {
-        version: 1,
+        version: 2,
         heartbeat: 0.0,
+        says: String::new(),
         filesystems: bands
             .iter()
             .map(|&(path, band, free)| FilesystemStatus {
@@ -16,9 +17,15 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
                 band,
                 free: free * GIB,
                 total: 1000 * GIB,
+                size: 1000 * GIB,
+                used: (1000 - free) * GIB,
                 forecast: None,
+                fill_per_hour: None,
+                full_at: None,
+                says: String::new(),
             })
             .collect(),
+        cleared: Vec::new(),
         last,
         frozen: Vec::new(),
         writer: None,
