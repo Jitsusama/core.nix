@@ -128,6 +128,7 @@ What Joel sees and reaches for on the desktop.
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | | `foot` |
 | margin | the row of marks at the top of the screen saying what's true now | | corner | `Margin.qml`, `overview.pieces` |
 | Now | the launcher's list of what's on and waiting, on Super+O | | What's on | `WhatsOn.qml` |
+| This window | the launcher's place for the window Joel is in: which program it is, and moving, sizing, floating or closing it | | | |
 | Waiting on you | everything waiting on Joel, each with its minutes, in Now | | | |
 | meter | a level shown while it changes, such as the volume | | overlay | `Meter.qml` |
 | map | the keyboard's layout, shown on screen | | | `KeyboardMap.qml` |
@@ -158,6 +159,7 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | report | a quest's document on what happened, its outcomes and lessons | | | |
 | Journey | a quest's dated log of what happened | | | `quest journal` |
 | session | a pi working for Joel, in a window of its own | | | `agents` in the launcher |
+| orchestrator | the session that runs a quest's subquests, sending their work and gathering what waits on Joel | | steward | |
 | Working on | the line a session tells its peers about its work | | Works on | `worksOn` |
 | peer | another session on the same machine, reached over the mesh | | instance, swarm | |
 | mesh | how sessions on one machine message each other | | | `mesh_send` |
