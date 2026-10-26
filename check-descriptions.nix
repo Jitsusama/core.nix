@@ -490,6 +490,11 @@
     pi-ask starts pi for the launcher's Ask row speaking RPC with nothing loaded but the machine's
     extensions, on pi's own plan and quick model by default, or through pi-claude on the Claude plan
   '';
+  pi-asks-claude-code-its-login-once = ''
+    pi starts Claude Code to ask for its login once for any number of asks within a minute, so a
+    question waits on one start of it rather than several, and asks again while it isn't
+    logged in
+  '';
   pi-claude-keeps-to-the-plan = ''
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
     mesh, signed in to the plan's own folder and with nothing that would bill an API instead
