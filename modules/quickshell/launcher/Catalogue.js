@@ -17,9 +17,14 @@ const DEEPEST = 4;
 const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters"]);
 
 // Collections whose things are listed, each one opened by its own run, but
-// not what each holds: every program's Quit and New window would bury the
-// rest a few hundred times over.
-const WHOLE = new Set(["applications"]);
+// not what each holds: every program's Quit and New window, and every
+// window's Size, Float and workspaces, would bury the rest a few hundred
+// times over. The window Joel came from keeps its own, as This window.
+const WHOLE = new Set(["applications", "windows"]);
+
+// What a keyboard's key does is a lookup, not something done to the
+// machine, and the boards' keys are a few hundred rows.
+const LOOKUPS = "keyboard:key:";
 
 // What a row's verb says it does that can't be taken back, or that ends
 // something in use: a window or a program closed, a call left, a session
@@ -55,6 +60,9 @@ function kindOf(row) {
 // start to finish in the field, or a thing that's gone.
 function listed(row) {
     if (!row || row.gone || (row.name ?? "") === "" || row.start !== undefined) {
+        return false;
+    }
+    if (String(row.key ?? "").startsWith(LOOKUPS)) {
         return false;
     }
     const holds = !!row.verbs || !!row.targets || !!row.nested || !!row.category || !!row.opens;
