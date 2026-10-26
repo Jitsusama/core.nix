@@ -1069,7 +1069,7 @@
     {
       "id": "networks:tunnel",
       "in": "networks",
-      "name": "Tunnel"
+      "name": "VPN"
     },
     {
       "id": "networks:bridge",

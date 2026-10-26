@@ -1,5 +1,5 @@
 // Addresses and networks, answered in the field: "address" says this machine's
-// connections, each named by what it is (Wi-Fi, Wired, a Tunnel, a Virtual
+// connections, each named by what it is (Wi-Fi, Wired, a VPN, a Virtual
 // bridge) and saying its address, the one the traffic leaves by first,
 // then its public addresses. A step into a connection holds its parts:
 // its Address, Gateway, DNS (on the way out, as the machine asks names
@@ -152,7 +152,7 @@ Provider {
     }
 
     // A connection's name, by what it is, numbered when there are several
-    // of a kind: "Tunnel 2".
+    // of a kind: "VPN 2".
     function linkName(link, all) {
         const alike = all.filter(each => each.kind === link.kind);
         const base = named(link.kind);

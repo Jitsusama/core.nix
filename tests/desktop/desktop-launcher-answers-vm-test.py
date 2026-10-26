@@ -1007,21 +1007,21 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     )
     desktop.answer("address")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: "Tunnel" in shown["rows"])
-    desktop.type_in("tailscale0", selecting="Tunnel")
+    desktop.launcher_until(lambda shown: "VPN" in shown["rows"])
+    desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
     # The left arrow takes what's typed away, the selection staying on
     # the tunnel, and Tab steps into it as the right arrow would.
     machine.send_key("left")
     desktop.launcher_until(
-        lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "Tunnel"
+        lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "VPN"
     )
     desktop.step_in("tab")
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
     # Stepping back out lands on the row it came from.
     machine.send_key("left")
     desktop.launcher_until(
-        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Tunnel"
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "VPN"
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
