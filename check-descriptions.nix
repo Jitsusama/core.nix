@@ -30,6 +30,10 @@
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
   '';
+  a-trusted-cable-finds-machines = ''
+    a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
+    first, and a machine naming none gets no such network
+  '';
   a-watched-file-comes-back = ''
     the shell's status file hears a status once its folder is made, after the shell starts and again
     after it's removed, and says nothing while it's gone
