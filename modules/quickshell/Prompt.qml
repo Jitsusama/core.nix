@@ -112,6 +112,9 @@ Item {
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
         width: prompt.asideRoom
+        // Given no room, it isn't drawn: a text of no width isn't cut but
+        // drawn whole, over the hint that took the room.
+        visible: prompt.asideRoom > 0
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
         onImplicitWidthChanged: {
