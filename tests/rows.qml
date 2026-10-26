@@ -31,6 +31,14 @@ ShellRoot {
             Choice { id: sideLong; name: "Weekly cap"; side: root.sentence; glyph: "$" }
             Choice { id: nameLong; name: root.long + root.long; side: "7.0× usual"; glyph: "$" }
             Choice { id: fits; name: "Today"; side: "$484 · usual"; glyph: "$" }
+            // A window: its title is what's looked for, so it keeps its room
+            // and its program and place are cut first.
+            Choice {
+                id: titled
+                name: "\u03c0 - Launcher - agentic-harness.pi"
+                side: "Kitty · workspace 2, 3rd column, 2nd down"
+                glyph: "$"
+            }
             // A noun: its kind at the right edge, and what else it says after
             // its name, in its own words.
             Choice {
@@ -107,6 +115,9 @@ ShellRoot {
             texts = apart(nameLong, nameLong.width);
             expect("a long name cut, its side whole", cut(texts).length === 1
                 && cut(texts)[0] === nameLong.name, said(texts));
+            texts = apart(titled, titled.width);
+            expect("a window's title kept whole, its program and place cut first",
+                cut(texts).length === 1 && cut(texts)[0] === titled.side, said(texts));
             texts = apart(fits, fits.width);
             expect("words that fit left whole", cut(texts).length === 0, said(texts));
             texts = apart(noun, noun.width);

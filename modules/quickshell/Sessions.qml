@@ -4,9 +4,11 @@ pragma Singleton
 // title, and whether it's working or wants Joel, as each says; and a
 // notice once for each want, withdrawn when the want ends.
 //
-// What runs comes from niri's windows, whose titles pi sets to "π -", its
-// address, its quest's title cut short, and its folder, so a session is
-// known the moment its window is and gone the moment it closes. Its quest's
+// What runs comes from niri's windows, whose titles pi sets to "π - ", a
+// name and its folder, so a session is known the moment its window is and
+// gone the moment it closes. The name was once its address and its quest's
+// title cut short; now it's the quest's short name, and the window is
+// joined to its session by the title the session's presence file says. Its quest's
 // whole title is the first line of the quest's README, read once the quests
 // are listed. Whether it's working comes from the file each session keeps
 // in the mesh's presence folder while it runs, watched for changes; a
@@ -38,7 +40,7 @@ Singleton {
         return Object.values(Niri.windows)
             .sort((a, b) => when(b) - when(a))
             .map(window => {
-                const said = parsed(window.title ?? "");
+                const said = known(window.title ?? "");
                 return said ? {
                     window: window,
                     address: said.address,
@@ -121,7 +123,22 @@ Singleton {
             : wants.kind === "blocked" ? "is stuck without you" : "asks you";
     }
 
-    // A pi window's title: "π - ", its address, its quest's title cut
+    // What a window says of its session: by the presence whose title is
+    // its own, or else by its title's old shape; null for any other.
+    function known(title) {
+        const presence = titled[title];
+        if (!presence || (presence.addresses ?? []).length === 0)
+            return parsed(title);
+        const rest = title.startsWith("\u03c0 - ") ? title.slice(4) : title;
+        const last = rest.lastIndexOf(" - ");
+        return {
+            address: presence.addresses[0],
+            cut: (last < 0 ? rest : rest.slice(0, last)).trim(),
+            folder: last < 0 ? "" : rest.slice(last + 3).trim()
+        };
+    }
+
+    // A pi window's title as it once was: "π - ", its address, its quest's title cut
     // short, and " - " its folder, split at the last " - ", since a quest's
     // title may hold one and a folder's name hyphens; or null for any
     // other window.
@@ -157,7 +174,7 @@ Singleton {
         const next = Object.assign({}, titles);
         let changed = false;
         for (const window of Object.values(Niri.windows)) {
-            const said = parsed(window.title ?? "");
+            const said = known(window.title ?? "");
             if (!said || next[said.address])
                 continue;
             const title = read(said.address);
@@ -238,14 +255,23 @@ Singleton {
         }
     }
 
-    // Who a presence file belongs to, kept by each address it answers to.
+    // Who a presence file belongs to, kept by each address it answers to,
+    // and by the window title it says its session's window has.
     property var files: ({})
+    property var titled: ({})
+    // A window joined to its session only once its presence is heard has
+    // its quest's title to learn then.
+    onTitledChanged: learn()
     function forget(file) {
         const next = Object.assign({}, present);
-        for (const address of files[file] ?? [])
+        const named = Object.assign({}, titled);
+        for (const address of files[file]?.addresses ?? [])
             delete next[address];
+        if (files[file]?.title)
+            delete named[files[file].title];
         delete files[file];
         present = next;
+        titled = named;
     }
     function heard(file, text) {
         // A folder Qt fell back to when the presence folder isn't there.
@@ -258,11 +284,18 @@ Singleton {
             return;
         }
         const next = Object.assign({}, present);
-        for (const address of files[file] ?? [])
+        const named = Object.assign({}, titled);
+        for (const address of files[file]?.addresses ?? [])
             delete next[address];
-        files[file] = said.addresses ?? [];
-        for (const address of files[file])
+        if (files[file]?.title)
+            delete named[files[file].title];
+        const title = typeof said.title === "string" ? said.title : "";
+        files[file] = { addresses: said.addresses ?? [], title: title };
+        for (const address of files[file].addresses)
             next[address] = said;
+        if (title !== "")
+            named[title] = said;
         present = next;
+        titled = named;
     }
 }
