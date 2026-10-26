@@ -1,10 +1,20 @@
 # The Nix daemon, which runs every build on the machine. Builds yield the CPU
 # to whatever Joel is doing, so a build on every core never slows the desktop:
-# the scheduler never prefers a batch process over an interactive one.
+# each build runs at SCHED_IDLE, which the scheduler takes off a core the
+# moment any normal task there wakes, whatever cgroups either is in, and a
+# core running only idle work counts as free when one looks for a core.
+# Batch, which they ran at before, only never preempts as it wakes; a batch
+# build kept its turn, and niri waited for it. With a sixteen-thread Nix build
+# at batch beside the agents' work, niri waited for a core over 3 ms 47 and
+# 76 times in 30 s and missed 4 and 7 of 3,600 refreshes; at idle it waited
+# 10 and 11 times and missed 4 and 1. The build did 32% less work, giving way
+# to the agents' cargo builds as well as to Joel. An idle slice did as well
+# for niri but starved VM checks, whose threads vm-first puts back to the
+# normal policy below; at SCHED_IDLE they keep build.slice's weight.
 #
-# Batch only orders processes that share a group, though, and the daemon's
-# group, system.slice, weighs the same as Joel's user.slice, so a build took
-# half the CPU from his programs whatever its policy. In a slice of its own at
+# A policy only orders processes when they meet on a core, though, and the
+# daemon's group, system.slice, weighs the same as Joel's user.slice, so a
+# build took half the CPU from his programs whatever its policy. In a slice of its own at
 # a tenth of their weight it takes what they leave. On the XPS 14, with a
 # kernel build in an app's scope, a sixteen-thread Nix build and a virtual
 # machine booting at once, a wakeup in another app waited 280 to 377 us at
@@ -65,7 +75,8 @@
 #
 # A check's virtual machine is a build too, and on a busy machine it shared
 # each CPU evenly with the compilers beside it, as batch, which never
-# preempts as it wakes: its guest's timers fired late and the check's
+# preempts as it wakes, and at idle it would wait behind every program
+# and the agents' work besides: its guest's timers fired late and the check's
 # timeouts failed, so other sessions held their builds while one ran. So
 # vm-first puts every qemu thread back to the normal policy at nice -10
 # within a second of it starting, and weighs the build holding it at 1000
@@ -90,7 +101,7 @@ let
   vmFirst = pkgs.callPackage ./vm-first/package.nix { };
 in
 {
-  nix.daemonCPUSchedPolicy = "batch";
+  nix.daemonCPUSchedPolicy = "idle";
   nix.daemonIOSchedClass = "idle";
 
   nix.settings.auto-allocate-uids = true;

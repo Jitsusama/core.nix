@@ -141,7 +141,7 @@ else.
 - A test that waits on a thread to show nothing happened gives it time to,
   and fakes are scripts that refuse an argument they don't expect before
   doing anything.
-- The package builds in Nix's sandbox, at the batch scheduling policy and on
+- The package builds in Nix's sandbox, at the idle scheduling policy and on
   a disk other builds are filling, so a scenario expects the policy it runs
   under and never the real disk's trend.
 

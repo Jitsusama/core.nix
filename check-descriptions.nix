@@ -932,9 +932,9 @@
   '';
   vm-checks-go-first = ''
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,
-    memory and pids; a build's qemu goes from batch to normal at nice -10, every thread and a later
+    memory and pids; a build's qemu goes from idle to normal at nice -10, every thread and a later
     one, and its build's cgroup is weighed at 1000 for CPU and disk, while a compiler's build beside
-    it stays batch at 100; a build running a stand-in systemd-nspawn, with no qemu, is weighed at
+    it stays idle at 100; a build running a stand-in systemd-nspawn, with no qemu, is weighed at
     1000 and a service in it goes to normal at nice -10; a build asked for from a quest's slice
     takes the slice's weight and follows it; the daemon's own cgroup carries oomd's mark to pass it
     over; ten restarts of the daemon, vm-first looking every 20 ms, each start and leave the builds

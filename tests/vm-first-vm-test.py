@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 # What a thread of the VM is put to, and what a build is left at: nice and
 # scheduling class, as ps writes them.
 AHEAD = "-10 TS"
-AS_BUILT = "0 B"
+AS_BUILT = "- IDL"
 # The ids a build that asks for a range of them is given.
 RANGE = "65536"
 DAEMON = "/sys/fs/cgroup/build.slice/nix-daemon.service"
