@@ -1,8 +1,15 @@
 # load-proof, built from this directory, its tests run as it builds.
-{ lib, rustPlatform }:
+{
+  lib,
+  pipewire,
+  rustPlatform,
+}:
 rustPlatform.buildRustPackage {
   pname = "load-proof";
   version = "0.1.0";
+  # The sound signal plays silence and reads the graph's errors with
+  # PipeWire's own tools, found here rather than on the path.
+  env.PIPEWIRE_BIN = "${lib.getBin pipewire}/bin";
   src = lib.fileset.toSource {
     root = ./.;
     fileset = lib.fileset.unions [
