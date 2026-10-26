@@ -713,10 +713,6 @@ gather (
       every-folder-says-what-it-holds =
         let
           waiting = [
-            # Crates' helper-program folders, for their owners.
-            "modules/device-check/src/bin"
-            "modules/dictation/src/bin"
-            "modules/wifid/daemon"
             # The guide's machines, as it sees them in its tests.
             "modules/guide/fixtures/dell-xps-14-da14260"
             "modules/guide/fixtures/microsoft-surface-laptop-4-1958"
@@ -730,7 +726,10 @@ gather (
             "modules/neovim/patches"
             "modules/neovim/plugins"
             "modules/neovim/probes"
-            # The desk's keyboard.
+            # The desk keyboard's layout, which firmware.nix describes. Its
+            # folder's hash is the board's serial, so a note in it would change
+            # the firmware and need a reflash; it takes one with the next
+            # layout change.
             "modules/ergodox/keymap"
           ];
         in
