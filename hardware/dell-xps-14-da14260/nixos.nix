@@ -82,7 +82,7 @@ in
   # The devices this laptop always has: every one a driver binds to, and each
   # light, sensor, control and setting those drivers give, so a kernel or
   # firmware change that loses one is named rather than found by chance.
-  # The USB-C controller, the speakers' amplifiers and the camera's ISP have
+  # The USB-C controller, the speakers' amplifiers and the camera's image processor have
   # each failed to come up here before. A PCI function is expected bound to
   # its driver, at the address it always has on this board; Wi-Fi's number,
   # the sensors' instance numbers and the WMI devices' suffixes move, so
@@ -97,7 +97,7 @@ in
     "The graphics" = "/sys/bus/pci/drivers/xe/0000:00:02.0";
     "The screen" = "/sys/class/drm/card*-eDP-1";
     "The screen's brightness" = "/sys/class/backlight/intel_backlight";
-    "The camera's ISP" = "/sys/bus/auxiliary/devices/intel_ipu7.psys.*";
+    "The camera's image processor" = "/sys/bus/auxiliary/devices/intel_ipu7.psys.*";
     "The camera" = "/sys/bus/i2c/drivers/ov08x40/i2c-OVTI08F4:00";
     "The camera's bridge" = "/sys/bus/i2c/drivers/intel_cvs/i2c-INTC10E1:00";
     "The camera's USB link" = "/sys/bus/auxiliary/devices/usbio.usbio-i2c.*";
@@ -340,14 +340,14 @@ in
     patches = (old.patches or [ ]) ++ [ ./programs/bolt-panther-lake.patch ];
   });
 
-  # Dell publishes this laptop's BIOS and firmware updates through LVFS.
+  # Dell publishes this laptop's firmware updates through LVFS.
   services.fwupd.enable = true;
 
   # The battery stops charging at 80% and starts again below 75%: a lithium
   # cell ages fastest held near full, and with the starting point that close
   # it leaves the charger near 80% however briefly it was plugged in. The
   # limits hold only in the custom mode, and the firmware won't change them
-  # until it's in it. With a BIOS password set, the firmware refuses them
+  # until it's in it. With a firmware password set, the firmware refuses them
   # through the kernel's charge_types and thresholds, which can't send the
   # password, so they're set here with it.
   jitsusama.firmware.settings = {
@@ -355,9 +355,9 @@ in
     CustomChargeStart = "75";
     CustomChargeStop = "80";
 
-    # Settings chosen here that a BIOS update or reset would put back
+    # Settings chosen here that a firmware update or reset would put back
     # without a word, as 1.11.0 turned the adapter warnings back off. The
-    # thermal mode isn't one of them: it's the platform profile the power
+    # firmware's own power profile isn't one of them: it's what the power
     # profile follows (modules/power-profiles-daemon), so it's balanced's
     # Optimized after a boot on battery, and the charger puts back the
     # Performance the power limits were measured in. Nor is the keyboard
@@ -369,7 +369,7 @@ in
     IntelSagv = "Enabled";
     # No pause at power-on over a charger it thinks too weak.
     PowerWarn = "Disabled";
-    # A bad BIOS can be rolled back.
+    # A bad firmware release can be rolled back.
     AllowBiosDowngrade = "Enabled";
     # The firmware reads the disk's own health report at power-on and stops
     # to say so when it's failing, before anything boots, so a dying disk is
@@ -387,7 +387,7 @@ in
     # software handed to the operating system and no telemetry. A machine
     # that won't boot starts from the USB stick instead, which needs only
     # USB boot. The firmware measures these settings into PCR 1 alone, which
-    # no disk policy here binds, and BIOS recovery from the disk stays.
+    # no disk policy here binds, and firmware recovery from the disk stays.
     UefiNwStack = "Disabled";
     HttpsBoot = "Disabled";
     BIOSConnect = "Disabled";

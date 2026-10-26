@@ -11,7 +11,7 @@ says why each piece is there.
 | `module.nix`                   | the option naming which colour camera module is fitted, for its tuning |
 | `ir-camera-pipeline.sh`        | the IR sensor's link, set up at each boot                |
 | `camera-cvs.patch`             | the HAL, made to route this sensor through the CVS bridge |
-| `ipu7-psys-*.patch`            | the out-of-tree IPU7 driver, as the ISP's module needs it |
+| `ipu7-psys-*.patch`            | the out-of-tree IPU7 driver, as its processing module needs it |
 
 The camera's kernel patches live with the laptop's other kernel
 patches in [`../kernel/local/`][local], since they're made against the

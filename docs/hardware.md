@@ -56,15 +56,15 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Sensors  | the light sensor's buffer, for the backlight; see below                |
 | Panel    | Chrome, Slack and 1Password told it's P3; 60 Hz on a low battery       |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
-| Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
-| Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
-| BIOS     | the thermal mode and four other settings held where they were chosen   |
+| Firmware | fwupd, for the firmware updates Dell publishes through LVFS            |
+| Battery  | charges to 80% and again below 75%, in the firmware; see below         |
+| Settings | the firmware's power profile and its other settings, held as chosen    |
 | Wi-Fi    | runs as Wi-Fi 6; see below                                             |
 | Devices  | expected: every device with a driver, its lights, keys and settings    |
 
 ### The CVS Patch
 
-Intel's CVS bridge sits between the camera and the IPU. Its 7.2 driver claims
+Intel's CVS bridge sits between the camera and the image processor. Its 7.2 driver claims
 a GPIO it only reads an interrupt from, and on this laptop that pin is the one
 all four amplifiers read their speaker ID from. With the driver loaded, none
 of the amplifiers bind and there's no sound card:
@@ -304,9 +304,9 @@ link holds its rate without it. Turning Wi-Fi 7 back on lets the card offer
 multi-link, and the kernel then answers nothing through the old wireless
 extensions, which WARP's service still reads its Wi-Fi statistics through.
 
-With the lid closed, Wi-Fi slows to a crawl even on a dock. Testing in
+With the lid closed, Wi-Fi slows to a crawl even docked. Testing in
 [Omarchy's report][5] points to the antennas in the closed lid rather than to
-software, though nobody has proven it, and nothing here fixes it. On a dock,
+software, though nobody has proven it, and nothing here fixes it. Docked,
 Ethernet avoids it.
 
 ### Bluetooth's Power Limits
@@ -353,10 +353,10 @@ by hand and hears the tuning.
 ### The Camera
 
 The OV08X40 sits behind the CVS bridge, which Linux 7.2 puts between the sensor
-and the IPU. [`camera.nix`][11] turns on nixpkgs's `hardware.ipu7`, which brings
+and the image processor. [`camera.nix`][11] turns on nixpkgs's `hardware.ipu7`, which brings
 the image processor's module and firmware, and swaps in Intel's camera software
 from its main branch, which knows the bridge. A patch routes this sensor's graph
-through the bridge, as [Intel's own change][6] does for the next IPU. Programs
+through the bridge, as [Intel's own change][6] does for the next image processor. Programs
 open a loopback camera, "Built-in Camera", which a relay fills from the image
 processor at 1080p, turned upright: the sensor is mounted upside down.
 The firmware says it isn't, so a patch adds the laptop to the bridge's
@@ -428,7 +428,7 @@ however old, so a call opened on the last frame of the one before, its
 timestamps running backwards, which recorders reject. A patch written here,
 in the [loopback module][18], starts each reader at the next frame written.
 
-Unbinding the IPU and binding it again, which brings a hung camera back
+Unbinding the image processor and binding it again, which brings a hung camera back
 without a reboot, freed the
 capture side's nodes while WirePlumber still held them open, and the kernel
 oopsed as they closed. A patch written here keeps them until the last one
@@ -458,26 +458,27 @@ in at 70% uncharged. On mains the laptop runs from the charger either way, so
 the limit costs no speed.
 
 `dell-laptop` offers these as `charge_types` and the charge thresholds, but
-with a BIOS password set every write fails with EIO: Dell's token writes need
+with a firmware password set every write fails with EIO: Dell's token writes need
 a key made from the password, and the driver sends none. So the module sets
-them through the BIOS's own settings ([firmware-settings][13]), which take
+them through the firmware's own settings ([firmware-settings][13]), which take
 the admin password. The thresholds are read-only until the mode is Custom
 (`ReadOnlyIfNot:PrimaryBattChargeCfg=Custom`), so the first pass writes the
 mode and the second the thresholds. The battery reports the new limits at
-once, though the BIOS also asks for a boot to finish taking them.
+once, though the firmware also asks for a boot to finish taking them.
 power-profiles-daemon leaves a battery in the custom mode alone.
 
 To charge to full once, `run0 firmware-settings set CustomChargeStop 100`,
 and `run0 firmware-settings apply` after to bring the limit back. Both ask
 for the admin password.
 
-The module holds five more settings that were chosen here, since a BIOS
+The module holds five more settings that were chosen here, since a firmware
 update or reset can change them without a word, as 1.11.0 turned the
-adapter warnings off. The thermal mode stays
+adapter warnings off. The firmware's power profile stays
 Performance, which the power limits were measured in; SAGV stays on, so the
 memory slows when idle, for the battery; the keyboard's light stays dim; the
-adapter warnings stay off, so a charger the BIOS thinks too weak doesn't
-hold the boot; and downgrades stay allowed, so a bad BIOS can be rolled back.
+adapter warnings stay off, so a charger the firmware thinks too weak doesn't
+hold the boot; and downgrades stay allowed, so a bad firmware release can be
+rolled back.
 Secure Boot's settings stay out: recovering those is the enrolment's job.
 
 ### Dell's Hourly Event
@@ -523,7 +524,7 @@ changes it:
 
 - **The long-term power limit.** Raising it from 30 W to the 38 W the
   firmware allowed ran no faster: Dell's skin-temperature policy holds
-  sustained power near 25 W either way. BIOS 1.11.0 allows 41 W, and the
+  sustained power near 25 W either way. Firmware 1.11.0 allows 41 W, and the
   30 W limit holds as before.
 - **The performance profile on mains.** It sustains 22 to 28% more work than
   balanced, which is why the charger follower asks for it.
@@ -561,7 +562,7 @@ session's builds kept the laptop 9% busy.
 
 ### The Power-Saver Profile
 
-Two drivers offer the firmware's platform profiles here: Dell's, with the
+Two drivers offer the firmware's power profiles here: Dell's, with the
 quiet, cool, balanced and performance modes Dell's own app offers, and
 Intel's SoC slider, with low-power, balanced and performance.
 power-profiles-daemon writes only the legacy file, which offers what every
@@ -576,7 +577,7 @@ from the kernel's patched source.
 
 ### The Two Crashes
 
-The laptop has panicked twice, both times on BIOS 1.10.1 and kernel 7.2.9,
+The laptop has panicked twice, both times on firmware 1.10.1 and kernel 7.2.9,
 and pstore kept both records:
 
 - **At boot, 20 s in.** An RCU callback freeing a dentry read the slab's
@@ -594,7 +595,7 @@ Each is a use-after-free: something freed memory that was still in use. In
 the second, the allocation profiler's bookkeeping was only the next owner of
 that memory, writing where it was entitled to. Neither record names what
 freed it. 7.2.10 and the memory list hold no fix for the object vectors that
-would match, and there have been no crashes since, over five boots on BIOS
+would match, and there have been no crashes since, over five boots on firmware
 1.11.0. Both kernels carried the staging IPU7 drivers and Intel's
 out-of-tree psys module, which the camera needs.
 
@@ -731,7 +732,7 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
   every service file is found twice, once through a link. Leaving
   `system-path` out would lose the services only it has.
-- **No "RAPL domain uncore" on BIOS 1.11.0.** 1.10.1 reported it. It only
+- **No "RAPL domain uncore" on firmware 1.11.0.** 1.10.1 reported it. It only
   meters the uncore's energy; the power limits are unaffected.
 - **xe's "Selective fetch area calculation failed in pipe A"**, once. When
   the panel's self refresh can't work out which part of a frame changed, the
@@ -923,7 +924,7 @@ upstream as it is and the override can then come out.
 - **`fred=on`.** Omarchy sets it, but 7.2 turns FRED on by default wherever
   the CPU has it.
 - **`rtc_cmos.use_acpi_alarm=1`.** Omarchy sets it for suspend-then-hibernate,
-  but the kernel already uses the ACPI alarm on any Intel machine with a BIOS
+  but the kernel already uses the ACPI alarm on any Intel machine with firmware
   from 2015 or later.
 - **Omarchy's Panel Replay patches.** Upstream turns Panel Replay off on this
   panel because it lags; Omarchy's patches turn it back on with a workaround

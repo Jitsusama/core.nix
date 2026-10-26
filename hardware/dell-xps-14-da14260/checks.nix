@@ -319,7 +319,7 @@ in
       touch $out
     '';
 
-  # The capture side of the XPS 14's IPU, and the ports its video nodes sit
+  # The capture side of the XPS 14's image processor, and the ports its video nodes sit
   # in, are freed at the V4L2 device's last reference rather than with the
   # device, since a file open on one of its nodes outlives an unbind and
   # reaches them as it closes.
