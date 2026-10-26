@@ -4,10 +4,11 @@ It speaks what the launcher's Ask row expects (modules/quickshell/launcher/Ask.q
 prompt is answered in two pieces a moment apart, then settled; an abort settles what's
 being answered as stopped. It starts with the harmless extension error the work machine's
 pi prints, which the row has to pass over. A question holding "fail" is answered with the
-error a model's provider gives instead. As the work machine's pi does, a prompt after a
-new session is started and then never answered, since its proxy extension keeps the
-session it began with; and a second question to one pi is answered as carrying the
-first, so the row is seen giving each question a pi of its own.
+error a model's provider gives instead, and one holding "open" is done through a tool,
+the model saying it will before the call and what it did after. As the work machine's pi
+does, a prompt after a new session is started and then never answered, since its proxy
+extension keeps the session it began with; and a second question to one pi is answered as
+carrying the first, so the row is seen giving each question a pi of its own.
 """
 
 import json
@@ -19,6 +20,9 @@ PIECE = 0.5
 ANSWER = ["A fjord is a long, narrow inlet of the sea. ", "Glaciers carved its steep sides."]
 # What a second question to one pi is answered with.
 CARRIED = "It carries the last question."
+# What a request is answered with, either side of its tool call.
+BEFORE_THE_CALL = "Let me open it. "
+DONE = "It's open."
 
 
 class Pi:
@@ -54,7 +58,14 @@ class Pi:
             self.say({"type": "agent_settled", "aborted": False})
             return
         self.asked += 1
-        for piece in ANSWER if self.asked == 1 else [CARRIED]:
+        # None is where the tool is called.
+        pieces: list[str | None] = [*ANSWER] if self.asked == 1 else [CARRIED]
+        if "open" in question:
+            pieces = [BEFORE_THE_CALL, None, DONE]
+        for piece in pieces:
+            if piece is None:
+                self.say({"type": "tool_execution_start", "toolName": "launcher"})
+                continue
             if self.stopped.wait(PIECE):
                 break
             self.say(

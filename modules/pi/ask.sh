@@ -41,8 +41,9 @@ PATH=$ahead$PATH
 # With the launcher's tool, the model wrote "I'll reboot the laptop for you"
 # before the tool offered a reboot as a row: words ahead of a tool's answer
 # can promise what isn't done. Said in the tool's guidance it still did;
-# said here it didn't.
-prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown. When you have a tool for what's asked, call it first and write nothing before its answer, then say only what it did."
+# said here it didn't. Between a list and a run it still said "Let me set
+# it to 40%", so it waits for the last call, not the first.
+prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown. When you have a tool for what's asked, use it first and write nothing until your last call has answered, then say only what was done."
 arguments=(
   --mode rpc
   --no-session
