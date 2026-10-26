@@ -2,7 +2,8 @@
  * pi-ask's one tool: the launcher's own catalogue of places and actions,
  * reached as the launcher's tests reach it, through `qs ipc call launcher`
  * ($ASK_LAUNCHER is that qs). Listing reads what is there, each entry with
- * its id, the place it sits in and its words; running one does it at once
+ * its id (opaque: its steps are joined by "›"), the place it sits in, its
+ * words and what its row says now; running one does it at once
  * when it is harmless, and when it is disruptive the launcher only shows it
  * as a row ready for Return, so nothing disruptive happens from an answer.
  * Either way it lands in the launcher's own history.
@@ -20,6 +21,7 @@ interface Entry {
   kind: string;
   in?: string;
   words: string;
+  says?: string;
   disruptive?: boolean;
   args?: { name: string; words?: string }[];
 }
@@ -74,9 +76,10 @@ export function listing(printed: string, match?: string): string {
   return shown
     .map((entry) => {
       const where = entry.in ? `${entry.in} › ` : "";
+      const now = entry.says ? ` (now ${entry.says})` : "";
       const takes = entry.args?.length ? ` (takes ${entry.args.map((arg) => arg.words ?? arg.name).join(", ")})` : "";
       const care = entry.disruptive ? " [disruptive: offered for Return, not done]" : "";
-      return `${entry.id}: ${where}${entry.words}${takes}${care}`;
+      return `${entry.id}: ${where}${entry.words}${now}${takes}${care}`;
     })
     .join("\n");
 }
@@ -116,7 +119,9 @@ export default function (pi: ExtensionAPI) {
         params.action === "list"
           ? listing(await askLauncher(["list"], signal), params.match)
           : params.id
-            ? outcome(await askLauncher(["run", params.id, ...(params.arg ? [params.arg] : [])], signal))
+            ? outcome(
+                await askLauncher(params.arg ? ["runWith", params.id, params.arg] : ["run", params.id], signal),
+              )
             : "Name the id to run, as list gives it.";
       return { content: [{ type: "text", text }], details: {} };
     },
