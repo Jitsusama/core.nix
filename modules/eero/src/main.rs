@@ -2,13 +2,15 @@
 //!
 //! The eero has no local API, so everything goes through eero's cloud
 //! (cloud.rs), under a session Joel makes once by typing the code eero sends
-//! him (session.rs). It reads; changing a setting comes later.
+//! him (session.rs). It reads, and changes one setting: "Optimize for
+//! conferencing and gaming".
 //!
 //! Usage:
 //!   eero sign-in <email or phone>   sign in once, typing the code eero sends
 //!   eero status [--json]            each network: online, speed, setting, devices
 //!   eero devices                    what's connected now
 //!   eero speedtest                  start the eero's own speed test
+//!   eero sqm on|off                 optimize for conferencing and gaming, or not
 //!   eero watch [SECONDS]            keep the shell's status file, every 300 s
 
 mod api;
@@ -25,7 +27,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use cloud::Cloud;
 
 const USAGE: &str = "usage: eero sign-in <email or phone> | status [--json] | devices | speedtest | \
-                     watch [SECONDS]";
+                     sqm on|off | watch [SECONDS]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -36,6 +38,8 @@ fn main() -> ExitCode {
         ["status", "--json"] => show(true),
         ["devices"] => devices(),
         ["speedtest"] => speedtest(),
+        ["sqm", "on"] => conferencing(true),
+        ["sqm", "off"] => conferencing(false),
         ["watch"] => watch(Duration::from_secs(300)),
         ["watch", secs] => match secs.parse() {
             Ok(secs) => watch(Duration::from_secs(secs)),
@@ -116,6 +120,23 @@ fn speedtest() -> Result<(), String> {
         cloud.post(&format!("{url}/speedtest"), None)?;
     }
     println!("The eero is testing its line; `eero status` shows the result in about a minute.");
+    Ok(())
+}
+
+/// Turns "Optimize for conferencing and gaming" on or off on every
+/// network, and says each one's line once eero reads the change back.
+fn conferencing(on: bool) -> Result<(), String> {
+    let mut cloud = Cloud::signed_in()?;
+    for url in api::networks(&cloud.get(api::ACCOUNT)?) {
+        let network = api::network(&url, &cloud.get(&url)?);
+        let settings = network
+            .settings_url
+            .ok_or_else(|| format!("eero names no settings for {}", network.name))?;
+        cloud.put(&settings, &api::conferencing(on))?;
+        let now = api::network(&url, &cloud.get(&url)?);
+        api::taken(on, now.sqm)?;
+        println!("{}", status::line(&now, None));
+    }
     Ok(())
 }
 

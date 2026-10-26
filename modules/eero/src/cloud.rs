@@ -64,6 +64,11 @@ impl Cloud {
         self.call(Method::Post, path, body)
     }
 
+    /// The data of an answer to a PUT, which is how a setting changes.
+    pub fn put(&mut self, path: &str, body: &Value) -> Result<Value, String> {
+        self.call(Method::Put, path, Some(body))
+    }
+
     /// Asks, and once more after refreshing the session if eero says it
     /// aged, as it does every so often.
     fn call(&mut self, method: Method, path: &str, body: Option<&Value>) -> Result<Value, String> {
@@ -94,8 +99,12 @@ impl Cloud {
                     None => request.call(),
                 }
             }
-            Method::Post => {
-                let request = self.agent.post(&url);
+            Method::Post | Method::Put => {
+                let request = if matches!(method, Method::Put) {
+                    self.agent.put(&url)
+                } else {
+                    self.agent.post(&url)
+                };
                 let request = match &cookie {
                     Some(cookie) => request.header("Cookie", cookie),
                     None => request,
@@ -126,11 +135,13 @@ impl Cloud {
     }
 }
 
-/// How a request asks: eero's reads are GETs, and everything else POSTs.
+/// How a request asks: eero's reads are GETs, a setting changes by PUT,
+/// and everything else POSTs.
 #[derive(Clone, Copy)]
 enum Method {
     Get,
     Post,
+    Put,
 }
 
 /// Why eero didn't answer with data.

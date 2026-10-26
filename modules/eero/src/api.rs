@@ -102,6 +102,27 @@ pub fn network(url: &str, data: &Value) -> Network {
     }
 }
 
+/// What a network's settings are sent to turn "Optimize for conferencing
+/// and gaming" on or off: a bare boolean, since eero ignores it nested.
+pub fn conferencing(on: bool) -> Value {
+    serde_json::json!({ "sqm": on })
+}
+
+/// Whether the network, read again, says the setting was taken. eero answers
+/// a change it ignores as gladly as one it takes, so only reading it back
+/// tells.
+pub fn taken(asked: bool, read: Option<bool>) -> Result<(), String> {
+    let word = |on: bool| if on { "on" } else { "off" };
+    match read {
+        Some(read) if read == asked => Ok(()),
+        Some(read) => Err(format!(
+            "eero took the change but still says conferencing {}",
+            word(read)
+        )),
+        None => Err("eero no longer says whether conferencing is on".into()),
+    }
+}
+
 /// A speed eero gives as a value and its units, in Mbit/s.
 fn speed(reading: Option<&Value>) -> Option<f64> {
     let reading = reading?;
@@ -186,6 +207,22 @@ mod tests {
         assert_eq!(network.online, None);
         assert_eq!(network.down_mbps, None);
         assert_eq!(network.sqm, None);
+    }
+
+    #[test]
+    fn conferencing_is_set_as_a_bare_boolean() {
+        assert_eq!(conferencing(true), json!({"sqm": true}));
+        assert_eq!(conferencing(false), json!({"sqm": false}));
+    }
+
+    #[test]
+    fn a_setting_counts_as_taken_only_once_eero_reads_it_back() {
+        assert!(taken(true, Some(true)).is_ok());
+        assert_eq!(
+            taken(true, Some(false)).unwrap_err(),
+            "eero took the change but still says conferencing off"
+        );
+        assert!(taken(false, None).is_err());
     }
 
     #[test]
