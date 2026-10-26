@@ -789,8 +789,8 @@
   the-launcher-names-each-thing-its-term = ''
     each launcher row naming a glossary thing gives its term as Context/word, or a place named
     for a context the context alone, the glossary holds that word or context, and the row's name
-    says it, a part's after its thing's name; each one that doesn't is printed, and the check refuses a stand-in vocabulary breaking each
-    of its rules
+    says it, a part's after its thing's name; each one that doesn't is printed, and the check
+    refuses a stand-in vocabulary breaking each of its rules
   '';
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
