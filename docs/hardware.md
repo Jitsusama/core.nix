@@ -486,7 +486,7 @@ ages fastest held near full, and faster warm: Battery University puts a cell
 kept a year at 25 °C at 96% of its capacity at 40% charge, against 80% at
 full. With the starting point that close, the laptop leaves the charger near
 80% however briefly it was plugged in; a start of 50 would leave one plugged
-in at 70% uncharged. On mains the laptop runs from the charger either way, so
+in at 70% uncharged. Plugged in, the laptop runs from the charger either way, so
 the limit costs no speed.
 
 `dell-laptop` offers these as `charge_types` and the charge thresholds, but
@@ -558,7 +558,7 @@ changes it:
   firmware allowed ran no faster: Dell's skin-temperature policy holds
   sustained power near 25 W either way. Firmware 1.11.0 allows 41 W, and the
   30 W limit holds as before.
-- **The performance profile on mains.** It sustains 22 to 28% more work than
+- **The performance profile on the charger.** It sustains 22 to 28% more work than
   balanced, which is why the charger follower asks for it.
 - **Wi-Fi power saving.** It stays on: off, the router's latency was the same
   within the noise.
@@ -575,7 +575,7 @@ changes it:
 
 power-profiles-daemon's performance profile asks Intel's driver for the
 energy preference `performance`. The module patches it to ask for
-`balance_performance`, as balanced already does on mains; the profiles still
+`balance_performance`, as balanced already does on the charger; the profiles still
 differ in the energy bias (0 against 6) and in the firmware's platform
 profile. Measured on a quiet laptop under the performance profile, with
 stress-ng's CPU stressor on sixteen threads for a minute:

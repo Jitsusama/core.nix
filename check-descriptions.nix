@@ -1294,7 +1294,7 @@
   '';
   vm-wifi-joins = ''
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
-    others' routing rules, keeps the card awake on mains power
+    others' routing rules, keeps the card awake on the charger
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
