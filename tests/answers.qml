@@ -2,7 +2,7 @@
 // JavaScript engine, the one the shell runs them in. The
 // `the-launcher-answers-what-is-asked` check copies Numbers.js,
 // Addresses.js and the rest beside this file, with the character names
-// names.py builds, and runs `qml -platform offscreen answers.qml`. Each
+// character-names.py builds, and runs `qml -platform offscreen answers.qml`. Each
 // case names what's typed and what has to come back, or that nothing
 // should.
 import QtQuick

@@ -8,7 +8,7 @@
 // the vocabulary (words.json's characters:*): its number in decimal, hex
 // and binary, its code point, its name and its UTF-8. Several characters
 // are a row each, { code, name, side, note, parts }, holding the parts.
-// Names are Unicode's, as names.py writes them, read by prepare(); without
+// Names are Unicode's, as character-names.py writes them, read by prepare(); without
 // them a character is told by its numbers alone.
 .pragma library
 
@@ -86,7 +86,7 @@ const NUMBER = /^(?:0x([0-9a-f]+)|0o([0-7]+)|0b([01]+)|u\+([0-9a-f]{4,6})|(\d+))
 // What parts numbers written together.
 const BETWEEN = /[\s,]+/;
 
-// The names names.py wrote, ready to be looked up: { text, version, runs },
+// The names character-names.py wrote, ready to be looked up: { text, version, runs },
 // the runs being the characters named by their code point. A character's
 // line is found by its code point after a line break, so the text is kept
 // whole rather than split into thousands of entries.
