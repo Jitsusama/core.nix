@@ -124,5 +124,14 @@
       name = "dell-wmi-ignore-0012-0000";
       patch = ./local/dell-wmi-ignore-0012-0000.patch;
     }
+    {
+      # Reclaim under a build backed up the window buffers programs share
+      # with the compositor, and the next draw read each back with its lock
+      # held, so the compositor waited up to 220 ms and missed frames, even
+      # at the most the shrinker's seeks can be raised. Written here; the
+      # patch says why.
+      name = "xe-shrinker-keeps-exported-buffers";
+      patch = ./local/xe-shrinker-keeps-exported-buffers.patch;
+    }
   ];
 }

@@ -254,10 +254,28 @@ with another program, so the windows a compositor imports from its clients
 looked unused however often they were drawn, and went first. Bringing
 one back happens with its lock held. A trace of niri overnight caught its
 draws waiting on a client's buffer lock for 122 to 250 ms, three times in
-five minutes; whether reclaim held them there is still to be measured.
+five minutes; The Window Buffers Under Reclaim says what held them.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
+
+### The Window Buffers Under Reclaim
+
+Even with linux-next's two buffer fixes and seeks at 64, niri still
+missed frames under a heavy load. Its tracer caught why: in ten 30 s rounds
+at a load of 36 to 72, niri waited on a buffer lock four times, for 57, 73,
+185 and 220 ms, held by Quickshell's render thread or Chrome. Each holder was
+in its own submission, reading back a buffer the shrinker had backed up, and
+spent most of it in `cpa_flush`, setting a write-combined page's caching
+again, which flushes every CPU's TLB. Reclaim ran at 4 to 12 GB a round.
+
+Seeks only order what reclaim takes, so once it runs, shared buffers go
+with the rest. Slices' memory ceilings don't help either: xe's shrinkers
+aren't memory-cgroup aware, so only machine-wide reclaim reaches them.
+`kernel/local/xe-shrinker-keeps-exported-buffers.patch`, written here, has
+the shrinker skip a buffer while it's exported through dma-buf, as the
+windows a compositor shows from its clients are. Purgeable buffers are
+still purged.
 
 ### The Boot Clock
 

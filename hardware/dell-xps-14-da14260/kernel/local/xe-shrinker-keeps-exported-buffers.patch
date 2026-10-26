@@ -1,0 +1,46 @@
+drm/xe: don't back up buffers exported through dma-buf
+
+Under machine-wide memory reclaim, the bo shrinker backs up
+non-purgeable buffers to shmem, including those a client has exported
+through dma-buf for the compositor to sample: its windows. The next
+exec that uses such a buffer finds it backed up and restores it from
+xe_vm_validate_rebind, under drm_gpuvm_exec_lock, with the buffer's
+reservation held. On an integrated GPU with write-combined buffers the
+restore sets each page's caching again, and set_pages_array_wc()
+flushes every CPU's TLB per chunk. The compositor's own commit locks
+the same buffer and waits.
+
+On a Panther Lake laptop under a build, a compositor's main thread was
+seen waiting 57 to 220 ms on such locks, held by the clients whose
+windows it showed, each in ttm_tt_restore() and mostly in cpa_flush(),
+and it missed frames for as long. Raising the non-purgeable shrinker's
+seeks to its maximum didn't stop it: whenever reclaim runs, shared
+buffers go with the rest.
+
+Skip a non-purgeable buffer while it's exported. Purgeable buffers are
+still purged, since their owner has said it can recreate them. Buffers
+imported from another device are sg buffers, which the shrinker already
+skips for want of TTM_TT_FLAG_EXTERNAL_MAPPABLE.
+
+diff --git a/drivers/gpu/drm/xe/xe_bo.c b/drivers/gpu/drm/xe/xe_bo.c
+--- a/drivers/gpu/drm/xe/xe_bo.c
++++ b/drivers/gpu/drm/xe/xe_bo.c
+@@ -1396,6 +1396,18 @@
+ 		goto out_unref;
+ 	}
+ 
++	/*
++	 * A buffer exported through dma-buf is most often a client's window,
++	 * which the compositor samples on every frame. Backing it up leaves
++	 * the next submission that uses it to read it back with the
++	 * reservation held, and the compositor stalls on that lock. Leave it
++	 * resident while it is exported.
++	 */
++	if (bo->base.dma_buf) {
++		lret = -EBUSY;
++		goto out_unref;
++	}
++
+ 	/* System CCS needs gpu copy when moving PL_TT -> PL_SYSTEM */
+ 	needs_rpm = (!IS_DGFX(xe) && bo->resource->mem_type != XE_PL_SYSTEM &&
+ 		     xe_bo_needs_ccs_pages(xe_bo));
