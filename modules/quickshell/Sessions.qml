@@ -57,6 +57,23 @@ Singleton {
     readonly property var wanting: running
         .filter(session => session.presence && session.presence.wants)
         .sort((a, b) => String(a.presence.wants.since ?? "").localeCompare(String(b.presence.wants.since ?? "")))
+    // The windows of those waiting on Joel, as one string, so a session's
+    // other changes (working or not, its step) leave it the same and don't
+    // remake the windows that read it.
+    readonly property string waitingWindows: wanting.map(session => session.window.id).join(" ")
+
+    // What a pi window is about beyond its title: its quest's whole title
+    // and what its session says it works on, so Joel finds the window by
+    // any word he remembers of its work (Joel, 2026-10-25: "i want to make
+    // sure i can easily find the windows i care about even with my shit
+    // memory"). Asked as a search runs, never bound, for the same reason.
+    function aboutOf(id) {
+        const session = running.find(one => one.window.id === id);
+        if (!session)
+            return "";
+        return [session.title, session.presence?.worksOn ?? ""]
+            .filter(part => part !== "").join(" ");
+    }
 
     // A want new to this shell is said once as a notice from pi, whose
     // Return goes to the session's window (pi-wants-you, home.nix), unless
