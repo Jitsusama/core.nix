@@ -228,8 +228,9 @@ Scope {
             ? Rank.identity(matches[current]) : "";
         // And a thing found more than one way is one row, as the one
         // with the most to say.
-        const below = Rank.once(Rank.placed(found.filter(once),
-            gathered.filter(row => !whole.has(row.from.settings.name)), latch));
+        // A program's own keys named as it is are the program's, a step in.
+        const below = Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
+            gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
         matches = steadying ? Steady.kept(matches, rows.concat(below), steadyId)

@@ -891,6 +891,10 @@ into one without being told, and a bind the table puts wrong names its own
 (`group`). Typing at any level finds a group below it by its name, then any
 chord below it by what it does, flat. Inside a layer its own "what's here"
 shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
+A program holds its own layer as Shortcuts, a step into its row, Neovim's
+by its desktop entry since its windows are the terminal's; found from the
+top beside a layer named as it is, the program stands for both, so one
+Neovim is listed.
 
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N takes the notices on screen by
