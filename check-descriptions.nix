@@ -220,6 +220,9 @@
   every-check-says-what-it-proves = ''
     every check says here what it proves, and every description here names a check
   '';
+  docs-name-what-exists = ''
+    every doc's links and paths name what's there, but the exemptions named
+  '';
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';

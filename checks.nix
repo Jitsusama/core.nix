@@ -705,6 +705,24 @@ gather (
           touch $out
         '';
 
+      # A doc names only what's there, so a move or a rename that leaves a guide
+      # pointing at nothing fails here rather than misleading the next reader:
+      # every relative link, and every backticked path from a top folder. Those
+      # below name something deliberately absent, and fail once they're gone.
+      docs-name-what-exists =
+        let
+          exempt = [
+            # A module a reader would add, as an example.
+            "docs/modules.md modules/jq/checks.nix"
+            # A file in the kernel's own source tree.
+            "docs/hardware.md tools/power/x86/turbostat/Makefile"
+          ];
+        in
+        pkgs.runCommandLocal "docs-name-what-exists" { } ''
+          ${lib.getExe pkgs.bash} ${./tests/docs-name-what-exists.sh} ${./.} ${pkgs.writeText "exempt" (lib.concatLines exempt)}
+          touch $out
+        '';
+
       # core.nix knows nothing about what builds on it: no file names a machine, a
       # machine repository or an employer, so the repositories that use core name
       # it and never the other way round. Every file is read but this one, which
