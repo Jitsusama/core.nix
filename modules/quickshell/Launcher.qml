@@ -851,7 +851,9 @@ Scope {
 
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
-    // step, and Tab at home.
+    // step, and Tab at home. The left arrow is said only where it goes
+    // back: that it takes away what's typed is what any field does, and
+    // saying so took room from how things stand as soon as Joel typed.
     function keysFor(choice) {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
@@ -861,10 +863,7 @@ Scope {
             keys.push(["\u21e7\u21b5", "below"]);
         if ((held.length === 0 || collecting) && choice.verbs)
             keys.push(["\u2192", choice.from ? "see all" : "more"]);
-        // The left arrow takes what's typed first, then goes back.
-        if (typed !== "")
-            keys.push(["\u2190", "clear"]);
-        else if (held.length > 0)
+        if (typed === "" && held.length > 0)
             keys.push(["\u2190", "back"]);
         if (atHome && matches.some(row => !!row.category))
             keys.push(["\u21e5", "browse"]);
@@ -872,35 +871,47 @@ Scope {
     }
 
     // The foot's keys in the order it says them.
-    readonly property var footOrder: ["\u21b5", "\u21e7\u21b5", "\u2192", "\u2190", "\u21e5"]
+    // Where the foot's keys start and how wide Return's place is, so they
+    // hold still. Said for the selected row alone, the keys moved as the
+    // arrows went from a row that opens to one with more behind it, and
+    // squeezed how things stand beside them from words to glyphs and back
+    // (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So Return,
+    // always first, keeps a place as wide as the longest word it's said
+    // since the launcher opened, and the keys start where the widest of
+    // them has needed. The rest follow Return close by, each as wide as it
+    // is: a place kept for every key any row had left holes between them as
+    // soon as Joel typed ("the whitespacing ... is all fucked up"), and took
+    // room from how things stand that no row used. Both only grow while the
+    // launcher's open, and only as the rows change, so nothing gives way
+    // under the selection.
+    property string footVerbWidest: ""
+    property real footKeysWidest: 0
 
-    // Each key the foot has said since the launcher opened, with the
-    // longest word it's said beside it, so the key keeps a place that wide
-    // and every key stays put. Said for the selected row alone, the keys
-    // moved as the arrows went from a row that opens to one with more behind
-    // it, and squeezed how things stand beside them from words to glyphs
-    // and back (Joel, 2026-10-25: "jumpy ... at home arrowing around").
-    // A row a key doesn't apply to leaves its place empty. It only grows
-    // while the launcher's open, and only as the rows change, so nothing
-    // gives way under the selection.
-    property var footWidest: ({})
-
-    function noteKeys() {
-        const widest = Object.assign({}, footWidest);
-        let grew = false;
-        for (const row of asking ? matches.concat([asking]) : matches)
-            for (const key of keysFor(row)) {
-                const was = widest[key[0]];
-                if (was === undefined || key[1].length > was.length) {
-                    widest[key[0]] = key[1];
-                    grew = true;
-                }
-            }
-        if (grew)
-            footWidest = widest;
+    // How wide a row's keys are, Return in its place.
+    function keysWide(told) {
+        if (told.length === 0)
+            return 0;
+        return told.slice(1).reduce((sum, key) => sum + keys.spacing
+            + measure.advanceWidth(`${key[0]} ${key[1]}`), returnPlace(told[0]));
     }
 
-    readonly property var footPlaces: footOrder.filter(key => footWidest[key] !== undefined)
+    // How wide Return's place is beside what it says now.
+    function returnPlace(key) {
+        return Math.max(measure.advanceWidth(`${key[0]} ${key[1]}`),
+            measure.advanceWidth(`${key[0]} ${footVerbWidest}`));
+    }
+
+    function noteKeys() {
+        const rows = asking ? matches.concat([asking]) : matches;
+        const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
+        const verb = said.reduce((longest, keys) => keys[0][1].length > longest.length
+            ? keys[0][1] : longest, footVerbWidest);
+        if (verb !== footVerbWidest)
+            footVerbWidest = verb;
+        const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
+        if (wide > footKeysWidest)
+            footKeysWidest = wide;
+    }
 
     // The widest that graphed rows have said at their right in this step,
     // in characters, so the graphs' column only ever widens until a key
@@ -1849,7 +1860,8 @@ Scope {
         if (open) {
             trials.opened();
             pointer = Qt.point(-1, -1);
-            footWidest = {};
+            footVerbWidest = "";
+            footKeysWidest = 0;
             footStage = 0;
             figuresStep = "";
             held = [];
@@ -2279,8 +2291,13 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
+                        readonly property var told: root.keysFor(choice)
+                        // Where the keys start: as far in as the widest of
+                        // them has needed since the launcher opened.
+                        readonly property real keysFrom: width - Theme.space.l
+                            - Math.max(root.footKeysWidest, keys.implicitWidth)
                         // The room the left has, short of the keys.
-                        readonly property real room: keys.x - Theme.space.xl - Theme.space.l
+                        readonly property real room: keysFrom - Theme.space.xl - Theme.space.l
 
                         // An answer's footer says where it came from.
                         readonly property string said: {
@@ -2394,20 +2411,12 @@ Scope {
 
                         KeyHints {
                             id: keys
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.space.l
+                            x: foot.keysFrom
                             anchors.verticalCenter: parent.verticalCenter
-                            // Every key said since it opened, each in its
-                            // place, as wide as the most it's said there
-                            // (footWidest); a row it doesn't apply to
-                            // leaves it empty.
-                            keys: {
-                                const now = root.keysFor(foot.choice);
-                                return root.footPlaces.map(key => now.find(each => each[0] === key)
-                                    ?? ["", ""]);
-                            }
-                            widths: root.footPlaces.map(key =>
-                                measure.advanceWidth(`${key} ${root.footWidest[key]}`))
+                            // The selected row's keys, Return first in its
+                            // place (footVerbWidest), the rest close by.
+                            keys: foot.told
+                            widths: foot.told.length > 0 ? [root.returnPlace(foot.told[0])] : []
                         }
                     }
                 }
