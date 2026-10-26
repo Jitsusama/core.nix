@@ -71,5 +71,6 @@ pub mod trash;
 pub mod trees;
 pub mod units;
 pub mod vouch;
+pub mod words;
 pub mod workspaces;
 pub mod writers;

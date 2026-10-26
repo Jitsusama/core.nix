@@ -266,6 +266,9 @@ pub struct Guard {
     /// marked what's built.
     opens: Option<Arc<crate::opens::Watch>>,
     marked_at: Option<f64>,
+    /// The account's home, which sentences write as `~`, for a guard run
+    /// in one; the system's guard has none.
+    home: Option<PathBuf>,
     /// What freezes a runaway writer, once given one, and what each
     /// process has written lately.
     freeze: Option<Box<dyn crate::freeze::Freeze>>,
@@ -307,6 +310,13 @@ pub struct Hearing {
     pub collects: Receiver<(PathBuf, Band, Responder)>,
 }
 
+/// The status file's shape. The second added sentences, each disk's use
+/// and fill, and what was cleared, beside everything the first had.
+pub const STATUS_VERSION: u32 = 2;
+
+/// How many things cleared the status file lists.
+const CLEARED_SHOWN: usize = 20;
+
 /// What the status file says, for the desktop's disk piece and
 /// `disk-guard status`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -314,7 +324,12 @@ pub struct Status {
     pub version: u32,
     /// When the guard last wrote this, in wall seconds.
     pub heartbeat: f64,
+    /// One sentence for the machine as a whole: its worst disk, or how
+    /// much room its tightest has.
+    pub says: String,
     pub filesystems: Vec<FilesystemStatus>,
+    /// The last things cleared, newest first.
+    pub cleared: Vec<ClearedStatus>,
     pub last: Option<LastPass>,
     /// The writers frozen now, for the desktop to offer to thaw.
     pub frozen: Vec<crate::writers::Frozen>,
@@ -332,22 +347,50 @@ pub struct Writing {
     pub rate: f64,
 }
 
+/// One thing cleared, as the status file lists it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ClearedStatus {
+    /// When, in wall seconds.
+    pub at: f64,
+    pub kind: String,
+    pub path: PathBuf,
+    pub bytes: u64,
+    pub says: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct FilesystemStatus {
     pub path: PathBuf,
     pub band: Band,
     pub free: u64,
+    /// Its size, as `size`; kept for readers of the first version.
     pub total: u64,
+    pub size: u64,
+    pub used: u64,
     /// Seconds until the next band at the present fill, if it's filling.
     pub forecast: Option<f64>,
+    /// Bytes an hour it's filling at, falling when space is freed; none
+    /// until the guard has watched it long enough to say.
+    pub fill_per_hour: Option<f64>,
+    /// When it's full at the present fill, in wall seconds, if it's
+    /// filling.
+    pub full_at: Option<f64>,
+    pub says: String,
 }
 
 impl FilesystemStatus {
     /// Takes a fresh measure, during a pass long enough that its start's
     /// would mislead: its band is worked out as the guard's watch works it
     /// out, from the band it showed. A forecast made for another band no
-    /// longer holds, so it goes.
-    pub fn measured(&mut self, space: &Space, bands: &crate::config::Bands) {
+    /// longer holds, so it goes; when it fills is kept, from the fill the
+    /// pass began with.
+    pub fn measured(
+        &mut self,
+        space: &Space,
+        bands: &crate::config::Bands,
+        now: f64,
+        home: Option<&Path>,
+    ) {
         let band = Thresholds::new(bands, space.total).band(space, self.band);
         if band != self.band {
             self.forecast = None;
@@ -355,6 +398,20 @@ impl FilesystemStatus {
         self.band = band;
         self.free = space.free;
         self.total = space.total;
+        self.size = space.total;
+        self.used = space.total.saturating_sub(space.free);
+        let full_in = self.full_at.map(|at| at - now);
+        self.says = crate::words::filesystem(&self.room(full_in), home);
+    }
+
+    fn room(&self, full_in: Option<f64>) -> crate::words::Room<'_> {
+        crate::words::Room {
+            path: &self.path,
+            band: self.band,
+            free: self.free,
+            size: self.size,
+            full_in,
+        }
     }
 }
 
@@ -426,6 +483,9 @@ impl Guard {
         let uses_path = state.join("uses.json");
         let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
         uses.forget_gone();
+        let home = matches!(config.scope, crate::config::Scope::User)
+            .then(|| std::env::var_os("HOME").map(PathBuf::from))
+            .flatten();
         Ok(Guard {
             config,
             processes: places.processes.clone(),
@@ -457,6 +517,7 @@ impl Guard {
             uses_path,
             opens: None,
             marked_at: None,
+            home,
             freeze: None,
             writers: Writers::default(),
             unread: (0, None),
@@ -1568,6 +1629,7 @@ impl Guard {
 
     pub fn status(&self, now: f64) -> Status {
         let bands = &self.config.bands;
+        let home = self.home.as_deref();
         let filesystems = self
             .watched
             .values()
@@ -1580,19 +1642,47 @@ impl Guard {
                     Band::Urgent => Some(thresholds.critical),
                     Band::Critical => None,
                 };
-                Some(FilesystemStatus {
+                let full_in = watched.fill.until(space.free, 0);
+                let mut status = FilesystemStatus {
                     path: watched.path.clone(),
                     band: watched.band,
                     free: space.free,
                     total: space.total,
+                    size: space.total,
+                    used: space.total.saturating_sub(space.free),
                     forecast: next.and_then(|start| watched.fill.until(space.free, start)),
-                })
+                    fill_per_hour: watched.fill.rate().map(|rate| rate * 3600.0),
+                    full_at: full_in.map(|seconds| now + seconds),
+                    says: String::new(),
+                };
+                status.says = crate::words::filesystem(&status.room(full_in), home);
+                Some(status)
+            })
+            .collect::<Vec<_>>();
+        let rooms: Vec<_> = filesystems
+            .iter()
+            .map(|status| status.room(status.full_at.map(|at| at - now)))
+            .collect();
+        let says = crate::words::machine(&rooms, home);
+        let cleared = self
+            .journal
+            .cleared()
+            .into_iter()
+            .take(CLEARED_SHOWN)
+            .map(|one| ClearedStatus {
+                says: crate::words::cleared(&one.kind, &one.path, one.bytes, home),
+                at: one.at,
+                kind: one.kind,
+                path: one.path,
+                bytes: one.bytes,
             })
             .collect();
         Status {
-            version: state::VERSION,
+            version: STATUS_VERSION,
             heartbeat: now,
+            says,
             filesystems,
+            cleared,
             last: self.last.clone(),
             frozen: self.memory.frozen.clone(),
             writer: self
@@ -1660,15 +1750,23 @@ impl Guard {
             return Box::new(|| {});
         };
         let bands = self.config.bands.clone();
+        let home = self.home.clone();
         Box::new(move || {
-            status.heartbeat = SystemTime::now()
+            let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0.0, |since| since.as_secs_f64());
+            status.heartbeat = now;
             for filesystem in &mut status.filesystems {
                 if let Ok(space) = crate::sys::space(&filesystem.path) {
-                    filesystem.measured(&space, &bands);
+                    filesystem.measured(&space, &bands, now, home.as_deref());
                 }
             }
+            let rooms: Vec<_> = status
+                .filesystems
+                .iter()
+                .map(|filesystem| filesystem.room(filesystem.full_at.map(|at| at - now)))
+                .collect();
+            status.says = crate::words::machine(&rooms, home.as_deref());
             if let Err(error) = state::save(&path, &status) {
                 eprintln!("disk-guard: writing its status: {error}");
             }

@@ -7,13 +7,27 @@ use crate::band::Band;
 use crate::pass::{Outcome, Reclaimer};
 use crate::plan::Candidate;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 /// Where a journal starts again, and keeps one earlier file.
 pub const LIMIT: u64 = 16 << 20;
+
+/// How many of the things it cleared a journal keeps to hand, for the
+/// status file's list.
+const CLEARED: usize = 20;
+
+/// One thing the guard cleared: when, what kind of thing, where, and how
+/// big it was.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cleared {
+    pub at: f64,
+    pub kind: String,
+    pub path: PathBuf,
+    pub bytes: u64,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Line {
@@ -80,6 +94,41 @@ impl Line {
     }
 }
 
+/// How much of the end of each journal file is read for what was last
+/// cleared: thousands of lines, so a guard starting reads a little rather
+/// than the whole of its journal.
+const TAIL: u64 = 1 << 20;
+
+/// The last `most` bytes of a file, from the first whole line in them.
+fn tail(path: &Path, most: u64) -> io::Result<String> {
+    let mut file = fs::File::open(path)?;
+    let length = file.metadata()?.len();
+    let start = length.saturating_sub(most);
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(match text.find('\n') {
+        Some(end) if start > 0 => text[end + 1..].to_owned(),
+        _ => text.into_owned(),
+    })
+}
+
+/// What a journal line says was cleared, if it says something was: a
+/// candidate reclaimed that held anything.
+fn cleared(line: &Value) -> Option<Cleared> {
+    if line["event"] != "action" || line["outcome"] != "reclaimed" {
+        return None;
+    }
+    let bytes = line["size"].as_u64().filter(|bytes| *bytes > 0)?;
+    Some(Cleared {
+        at: line["at"].as_f64()?,
+        kind: line["kind"].as_str()?.to_owned(),
+        path: PathBuf::from(line["path"].as_str()?),
+        bytes,
+    })
+}
+
 /// A reclaimer that journals each candidate as it's taken: a directory
 /// is begun first, durably, so a guard that dies with it moved aside
 /// knows where to look when it starts again. A file goes in one unlink
@@ -133,14 +182,48 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
 pub struct Journal {
     path: PathBuf,
     limit: u64,
+    /// The last things cleared, newest at the back.
+    cleared: VecDeque<Cleared>,
 }
 
 impl Journal {
+    /// The journal at `path`, remembering what it last cleared from what an
+    /// earlier run wrote there.
     pub fn new(path: &Path, limit: u64) -> Self {
-        Journal {
+        let mut journal = Journal {
             path: path.to_owned(),
             limit,
+            cleared: VecDeque::with_capacity(CLEARED + 1),
+        };
+        for file in [journal.earlier(), journal.path.clone()] {
+            // A journal that can't be read remembers nothing, and the
+            // guard goes on: it's only for the status file's list.
+            let Ok(text) = tail(&file, TAIL) else {
+                continue;
+            };
+            for line in text.lines() {
+                if let Some(cleared) = serde_json::from_str::<Value>(line)
+                    .ok()
+                    .as_ref()
+                    .and_then(cleared)
+                {
+                    journal.remember(cleared);
+                }
+            }
         }
+        journal
+    }
+
+    /// The last things cleared, newest first.
+    pub fn cleared(&self) -> Vec<Cleared> {
+        self.cleared.iter().rev().cloned().collect()
+    }
+
+    fn remember(&mut self, cleared: Cleared) {
+        if self.cleared.len() == CLEARED {
+            self.cleared.pop_front();
+        }
+        self.cleared.push_back(cleared);
     }
 
     /// Each directory begun and never ended with an action, oldest first,
@@ -197,6 +280,9 @@ impl Journal {
             .append(true)
             .open(&self.path)?;
         file.write_all(text.as_bytes())?;
+        if let Some(cleared) = cleared(&line.json()) {
+            self.remember(cleared);
+        }
         if let Line::Begin { .. } = line {
             // On the disk before the move it announces, so even a power cut
             // can't leave a moved directory nobody knows of.
