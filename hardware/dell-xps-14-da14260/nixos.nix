@@ -202,6 +202,16 @@ in
     "usb_storage"
     "uas"
     "sd_mod"
+    # The Bluetooth controller, on PCIe rather than USB, for a paired
+    # keyboard at the disk prompt (bluetooth-disk-prompt).
+    "btintel_pcie"
+  ];
+  # Its firmware and settings, which btintel picks by what the chip answers,
+  # so the module tree can't name them.
+  boot.initrd.extraFirmwarePaths = [
+    "intel/ibt-00a0-01a1-iml.sfi"
+    "intel/ibt-00a0-01a1-pci.sfi"
+    "intel/ibt-00a0-01a1-pci.ddc"
   ];
   # The GPU's driver, with the firmware it asks for, so it takes the screen
   # from the firmware's framebuffer before the disk's PIN is asked for rather
