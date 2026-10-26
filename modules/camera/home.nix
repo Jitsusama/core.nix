@@ -28,6 +28,7 @@ let
   # The theme's look for the viewfinder's panel, as mpv's script options.
   look = lib.concatStringsSep "," (
     lib.mapAttrsToList (name: value: "camera-${name}=${value}") {
+      sans = font.sans.family;
       mono = font.mono.family;
       inherit (roles)
         deepest
