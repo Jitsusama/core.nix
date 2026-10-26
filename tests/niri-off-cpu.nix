@@ -17,6 +17,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     # The graphics memory manager, with no graphics card to drive, so the
     # count of buffers it reads back has the types it reads.
     boot.kernelModules = [ "ttm" ];
+    # The graphics memory manager, with no graphics card to drive, so the
+    # count of buffers it reads back has the types it reads.
     users.users.someone = {
       isNormalUser = true;
       extraGroups = [ "wheel" ];

@@ -28,10 +28,14 @@ kprobe:__ww_mutex_lock_interruptible_slowpath
 
 // An epoll's waiters are woken from its callback, in whoever's context
 // made the event, so the file is known there. A callback can wake another
-// epoll's, so the first file is kept: the one the event was on.
+// epoll's, so the first file is kept: the one the event was on. The kernel
+// skips a probe that fires inside another BPF program on the same CPU, so a
+// return can come without its entry, and a count under nothing counts as
+// nothing rather than keeping every later file out.
 kprobe:ep_poll_callback
 {
-  if (@callbacks[tid] == 0) {
+  if (@callbacks[tid] <= 0) {
+    @callbacks[tid] = 0;
     $entry = (struct eppoll_entry *)((uint64)arg0 - offsetof(struct eppoll_entry, wait));
     $item = $entry->base;
     @event_fd[tid] = $item->ffd.fd;
@@ -43,7 +47,7 @@ kprobe:ep_poll_callback
 kretprobe:ep_poll_callback
 {
   @callbacks[tid]--;
-  if (@callbacks[tid] == 0) {
+  if (@callbacks[tid] <= 0) {
     delete(@callbacks, tid);
     delete(@event_fd, tid);
     delete(@event_file, tid);
