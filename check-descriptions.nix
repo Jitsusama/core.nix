@@ -347,7 +347,9 @@
     one passes, one past any margin fails saying its figures, and one missing a signal or a figure
     fails; a run fits in five minutes, climbs to twenty builds, reads free memory as the kernel's
     MemAvailable, builds its own source only from the vendored crates, copies that source whole
-    and writable, and passes only when every step did and nothing stopped it
+    and writable, reads the line as the default route's link and what it carried in megabits a
+    second, and passes only when every step did and nothing stopped it; and a command given more
+    than it takes, `run --help` among them, is refused before anything starts
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
