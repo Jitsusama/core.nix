@@ -19,6 +19,19 @@ let
     probe: "--cmd \"let g:probe = '${probe}'\" --cmd 'luafile ${./probes/at-first-screen.lua}'";
 in
 onLinux {
+  # The launcher lists Neovim as Neovim: the account's entry for it says so,
+  # where nixpkgs' wrapper calls it "Neovim wrapper", and still runs nvim.
+  neovim-is-named-neovim =
+    let
+      home = account workstation;
+      entry = "${home.home.path}/share/applications/nvim.desktop";
+    in
+    pkgs.runCommandLocal "neovim-is-named-neovim" { } ''
+      grep -qx 'Name=Neovim' ${entry} || { echo "the entry is named $(grep '^Name=' ${entry})"; exit 1; }
+      grep -qx 'Exec=nvim %F' ${entry} || { echo "the entry runs $(grep '^Exec=' ${entry})"; exit 1; }
+      touch $out
+    '';
+
   # Neovim starts with the configuration an account gets, in the theme's own
   # colour scheme drawn on the terminal's own background, with Tree-sitter
   # drawing a file in a language it has a parser for and its text objects
