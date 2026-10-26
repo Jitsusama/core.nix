@@ -14,7 +14,7 @@
 #
 # When the program's standard input is a terminal and it can open its
 # controlling terminal, a person is at the keyboard and Joel's key signs;
-# otherwise a harness is driving git over pipes and the agent's key signs.
+# otherwise a harness is driving git over pipes and the agents' key signs.
 # git hands the signer its own standard input, so this is the input of `git
 # commit` itself. A harness started from a terminal can still open /dev/tty,
 # which is why both are checked. SIGN_AS=joel or SIGN_AS=agent decides it
@@ -97,7 +97,7 @@ in
             };
             agentKey = lib.mkOption {
               type = lib.types.str;
-              description = "What ssh-keygen's -f takes to sign with the agent's key.";
+              description = "What ssh-keygen's -f takes to sign with the agents' key.";
             };
             makesKeys = lib.mkOption {
               type = lib.types.str;
@@ -116,7 +116,7 @@ in
               type = lib.types.attrsOf lib.types.str;
               default = { };
               description = ''
-                Variables exported after the environment when the agent's key
+                Variables exported after the environment when the agents' key
                 signs, as the environment's are, so it can reach a key held
                 apart from Joel's, which no prompt of his holds up.
               '';
