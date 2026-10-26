@@ -106,7 +106,7 @@ first in the queue and conclude.
 | change | work put up for review | PR, pull request, proposal | |
 | AI spend | what agents have cost | cost, usage, tokens, budget | spend-watch |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
-| AI proxy | the gateway a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
+| AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a Claude plan one window allows: five hours, or a week | limit | `5h`, `wk` |
 | person | the human a session works for | user, human, operator | |
