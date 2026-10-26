@@ -59,6 +59,36 @@ function kindOf(row) {
     return holds && !row.run && !row.given ? "place" : "action";
 }
 
+// What a step into a row holds, as the right arrow and the catalogue
+// both show it: everything it can be told, Return's own act first, even
+// where its provider left it out, so the right arrow always does more
+// than Return and never less (Joel's concept map: Return is the default
+// act and the right arrow does more; agreed with 15J7N3 for every row).
+// A row that only steps in, asks first or asks for words has no act of
+// its own to add, nor does one holding nothing.
+function leading(row, inside) {
+    if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given) {
+        return inside;
+    }
+    const verb = verbOf(row);
+    const said = verb.toLowerCase();
+    if (said === "" || inside.some(one => verbOf(one).toLowerCase() === said)) {
+        return inside;
+    }
+    const own = {
+        key: `return:${said}`,
+        name: verb.charAt(0).toUpperCase() + verb.slice(1),
+        verb,
+        glyph: row.glyph ?? "",
+        hue: "action",
+        stays: row.stays === true,
+        // Asked through the row, so a run that depends on how the row
+        // stands now, a program's switch or start, is read when it's done.
+        run: () => row.run()
+    };
+    return [own].concat(inside);
+}
+
 // Whether the catalogue lists it: a row with a name that does something
 // or holds more, never a figure, a copy of what's shown, a command's
 // start to finish in the field, or a thing that's gone.

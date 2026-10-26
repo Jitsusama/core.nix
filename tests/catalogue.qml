@@ -5,7 +5,8 @@
 // this file and runs `qml -platform offscreen catalogue.qml`. Each case is
 // a promise pi-ask's tool leans on: a place opens and an action is done,
 // one that ends something is only offered, and what's only a figure, a
-// copy or a command's start isn't listed at all.
+// copy or a command's start isn't listed at all. A step into a row, as the
+// right arrow and the catalogue both show it, leads with Return's own act.
 import QtQuick
 import "Catalogue.js" as Catalogue
 
@@ -93,6 +94,27 @@ QtObject {
             ask: "what to say?", side: "listening" }, "a", []), { id: "a", kind: "action",
             words: "Talk", in: "", disruptive: false, says: "listening",
             args: [{ name: "words", words: "what to say?" }] });
+        // A step into a row leads with what Return does, unless it's there.
+        const names = rows => rows.map(row => row.name).join(", ");
+        let opened = 0;
+        const notice = { name: "Build done", verb: "open", glyph: "n", run: () => {
+            opened += 1;
+        }, verbs: opens };
+        const offers = [{ name: "Copy", verb: "copy", run: does },
+            { name: "Forget", verb: "forget", run: does }];
+        const led = Catalogue.leading(notice, offers);
+        expect("Return's act leads what it left out", names(led), "Open, Copy, Forget");
+        led[0].run();
+        expect("and does what Return does", opened, 1);
+        expect("as an act of its own", [led[0].key, led[0].verb, led[0].hue],
+            ["return:open", "open", "action"]);
+        expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "switch", run: does,
+            verbs: opens }, [{ name: "Switch", verb: "switch", run: does }])), "Switch");
+        expect("not for a row that only steps in", names(Catalogue.leading({ name: "Space",
+            verb: "more", run: does, verbs: opens }, offers)), "Copy, Forget");
+        expect("not for one that asks first", names(Catalogue.leading({ name: "Reboot",
+            verb: "reboot", confirm: true, run: does, verbs: opens }, offers)), "Copy, Forget");
+        expect("not for one holding nothing", Catalogue.leading(notice, []).length, 0);
         Qt.exit(failed === 0 ? 0 : 1);
     }
 }

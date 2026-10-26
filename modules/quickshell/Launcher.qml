@@ -643,7 +643,8 @@ Scope {
     function catalogueHolds(row, things) {
         try {
             const making = things ? row.verbs : row.targets;
-            const own = making ? making() ?? [] : [];
+            const made = making ? making() ?? [] : [];
+            const own = things ? Catalogue.leading(row, made) : made;
             const places = things && row.from ? partsOf(row.from) : [];
             return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
@@ -1610,7 +1611,8 @@ Scope {
             return true;
         }
         const things = held.length === 0 || collecting;
-        const own = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        const own = things && made ? Catalogue.leading(row, made) : made;
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
