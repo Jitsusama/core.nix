@@ -179,20 +179,33 @@ fn files(dir: &Path) -> BTreeMap<PathBuf, (u64, Vec<u8>)> {
     found
 }
 
+/// A node session, stopped when the test ends, passed or failed: one
+/// left running holds the build's output open, and the build never ends.
+struct Session(Child);
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 /// A node that loaded the package's dependency through `current` and
 /// stands in the release it found, as a running pi does.
-fn session(place: &Place) -> Child {
+fn session(place: &Place) -> Session {
     let release = fs::canonicalize(place.current()).expect("current resolves");
-    Command::new("node")
-        .args([
-            "-e",
-            "require(process.argv[1]); setInterval(() => {}, 1000)",
-        ])
-        .arg(place.current().join("node_modules/dep"))
-        .current_dir(release)
-        .stdout(Stdio::null())
-        .spawn()
-        .expect("a session starts")
+    Session(
+        Command::new("node")
+            .args([
+                "-e",
+                "require(process.argv[1]); setInterval(() => {}, 1000)",
+            ])
+            .arg(place.current().join("node_modules/dep"))
+            .current_dir(release)
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("a session starts"),
+    )
 }
 
 #[test]
@@ -225,7 +238,7 @@ fn a_live_session_keeps_its_release_through_an_update() {
         old
     );
     assert!(
-        live.try_wait().expect("the session").is_none(),
+        live.0.try_wait().expect("the session").is_none(),
         "the session died"
     );
     assert_eq!(files(&old), before, "a file the session loaded changed");
@@ -234,8 +247,7 @@ fn a_live_session_keeps_its_release_through_an_update() {
         "the release the session runs was removed"
     );
 
-    live.kill().expect("the session stops");
-    live.wait().expect("the session is gone");
+    drop(live);
     let third = fixture.update();
     assert_eq!(third.removed, 1, "{third:?}");
     assert!(!old.exists(), "a release nothing uses was kept");
