@@ -161,10 +161,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
     )
     machine.send_key("esc")
-    # A collection is found by what a person calls it, not only its
-    # title, and Return goes straight into it.
+    # A collection is found by its name, and Return goes straight into
+    # it.
     # Beside the field, it says what sort of thing each is.
-    for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
+    for typed, collection in [("sound", "Sound"), ("notices", "Notices")]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(
@@ -206,7 +206,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
         machine.send_key("esc")
     # A name starting the same way is chosen over an answer only
-    # started: "pow" is Power Off, the battery's answer above it.
+    # started: "pow" is Power off, by its name.
     desktop.answer("pow")
     desktop.launcher_until(
         lambda shown: (
@@ -218,14 +218,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # The hottest part, from the sensors the kernel lists, of which
     # the stand-in battery is one.
     print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
-    desktop.answer("temperature")
+    desktop.answer("heat")
     desktop.photograph("launcher-heat")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert re.search("^-?\\d+ \\u00b0C at the ", desktop.as_account("wl-paste --no-newline"))
     # Each part reads name first, a step in; Return opens one, its
     # history first, and so does the right arrow, once back out.
-    desktop.answer("temperature")
+    desktop.answer("heat")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Battery" in shown["rows"])
@@ -304,14 +304,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         timeout=dt.timedelta(seconds=10),
     )
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # "backlight" asks the keyboard's backlight alone, as the stand-in's
+    # "keyboard backlight" asks it alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
     kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
     kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
     kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
     kbd_levels = ["Backlight off", "Backlight to 1 of 2", "Backlight to 2 of 2"]
-    desktop.answer("backlight")
+    desktop.answer("keyboard backlight")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
@@ -537,7 +537,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    desktop.answer("what's running")
+    desktop.answer("queue")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
@@ -574,7 +574,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # How busy the processors are, read again while it's shown, so a
     # moment on it says just now; a step in, each core and the rest.
-    desktop.answer("cpu")
+    desktop.answer("processor")
     desktop.launcher_until(
         lambda shown: (
             re.fullmatch(r"\d+% busy", (shown["selected"] or {}).get("name", "")) is not None
@@ -698,7 +698,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # breaks. Each waits for its answer to settle, failed; asked again
     # while that failure stands, it says so at once. When a failure is
     # asked again is the launcher's answers check's to say.
-    for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "ip"]:
+    for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "address"]:
         desktop.answer(typed)
         machine.send_key("esc")
     desktop.answer("weather tokyo")
@@ -715,7 +715,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    desktop.answer("when will it rain in tokyo")
+    desktop.answer("rain in tokyo")
     rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
     desktop.launcher_until(
         lambda shown: (
@@ -978,7 +978,7 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
         ("lock", ["Lock"]),
         ("kitty", ["kitty"]),
         ("do not disturb", ["Do not disturb"]),
-        ("screenshot", ["Capture"]),
+        ("capture", ["Capture"]),
         ("", []),
     ]:
         desktop.answer(typed)
@@ -1009,7 +1009,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
         "ip tuntap add dev tailscale0 mode tun"
         " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
     )
-    desktop.answer("ip")
+    desktop.answer("address")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Tunnel" in shown["rows"])
     desktop.type_in("tailscale0", selecting="Tunnel")

@@ -1,4 +1,4 @@
-// Addresses and networks, answered in the field: "ip" says this machine's
+// Addresses and networks, answered in the field: "address" says this machine's
 // connections, each named by what it is (Wi-Fi, Wired, a Tunnel, a Virtual
 // bridge) and saying its address, the one the traffic leaves by first,
 // then its public addresses. A step into a connection holds its parts:
@@ -31,7 +31,7 @@ import "Subnets.js" as Subnets
 Provider {
     id: provider
 
-    examples: ["ip", "10.0.0.0/22", "8.8.8.8", "2001:db8::/48", "10.0.0.0/22 in /24s"]
+    examples: ["address", "10.0.0.0/22", "8.8.8.8", "2001:db8::/48", "10.0.0.0/22 in /24s"]
 
     readonly property bool lookups: settings.lookups !== false
     // How long what a registry or ipify said is kept, in milliseconds.
@@ -50,11 +50,9 @@ Provider {
         return Words.name(`networks:${id}`);
     }
 
-    // The words that ask this machine's own addresses, best first. Their
-    // start asks them too, and the answer asks ipify, so the rest, whose
-    // start other words share ("add", "pub", "wha"), are whole words only.
-    readonly property var own: ["ip", "ip address", "ip addresses", "my ip", "my ip address"]
-    readonly property var wholly: ["addresses", "what's my ip", "whats my ip", "public ip"]
+    // The word that asks this machine's own addresses, Network's one word
+    // for them (Words.qml), its start asking too.
+    readonly property var own: Words.answers("networks")
     // The parts asked for alone, by their words, as the part's id.
     readonly property var partsAsked: {
         const out = {};
@@ -70,7 +68,7 @@ Provider {
         const question = asks(text);
         if (partsAsked[question] !== undefined)
             return alone(partsAsked[question]);
-        if (question !== "" || wholly.includes(plainly(text)))
+        if (question !== "")
             return mine();
         const said = Subnets.answer(text, settings);
         return said ? about(said) : null;

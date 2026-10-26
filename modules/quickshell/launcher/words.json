@@ -888,10 +888,7 @@
       "states": {
         "off": {
           "name": "Turn it on",
-          "verb": "on",
-          "hidden": [
-            "light it"
-          ]
+          "verb": "on"
         }
       }
     },
@@ -1634,10 +1631,7 @@
       "states": {
         "muted": {
           "name": "Unmute",
-          "verb": "unmute",
-          "hidden": [
-            "unmute it"
-          ]
+          "verb": "unmute"
         }
       }
     },
@@ -2658,11 +2652,7 @@
       "states": {
         "on": {
           "name": "Let it sleep",
-          "verb": "stop",
-          "hidden": [
-            "let the machine sleep",
-            "keep awake"
-          ]
+          "verb": "stop"
         }
       }
     },
@@ -2674,13 +2664,7 @@
       "states": {
         "on": {
           "name": "Let notices show",
-          "verb": "stop",
-          "hidden": [
-            "let notifications show",
-            "turn off do not disturb",
-            "end",
-            "end do not disturb"
-          ]
+          "verb": "stop"
         }
       }
     },
@@ -2773,10 +2757,7 @@
         "off": {
           "name": "Wi-Fi on",
           "verb": "on",
-          "glyph": "wireless",
-          "hidden": [
-            "turn on wi-fi"
-          ]
+          "glyph": "wireless"
         }
       }
     },
@@ -3000,10 +2981,7 @@
         "off": {
           "name": "Bluetooth on",
           "verb": "on",
-          "glyph": "bluetooth",
-          "hidden": [
-            "turn on bluetooth"
-          ]
+          "glyph": "bluetooth"
         }
       }
     },
@@ -3302,10 +3280,7 @@
       "states": {
         "playing": {
           "name": "Pause",
-          "verb": "pause",
-          "hidden": [
-            "stop"
-          ]
+          "verb": "pause"
         }
       }
     },
@@ -3392,10 +3367,7 @@
       "states": {
         "floating": {
           "name": "Tile",
-          "verb": "tile",
-          "hidden": [
-            "tile it"
-          ]
+          "verb": "tile"
         }
       }
     },
@@ -3454,10 +3426,7 @@
       "states": {
         "muted": {
           "name": "Let them hear me again",
-          "verb": "unmute",
-          "hidden": [
-            "let them hear me again in the tuple call"
-          ]
+          "verb": "unmute"
         }
       },
       "by": "tuple"

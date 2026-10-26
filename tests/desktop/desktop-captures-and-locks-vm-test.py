@@ -350,7 +350,7 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     # held by a program.
     machine.succeed(f"echo chrome > {holders}.1 && mv {holders}.1 {holders}")
     # The answer leads to the camera, rather than saying its parts again.
-    desktop.answer("who has the camera")
+    desktop.answer("camera")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
