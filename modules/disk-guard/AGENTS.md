@@ -28,7 +28,10 @@ or launchd, and [`home.nix`][2] the account's.
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
   week, an install after two, a replaced build after three days, a core
-  after a week. `src/plan.rs` holds the table.
+  after a week. What belongs to something that has ended goes once it
+  rests: a concluded or retired quest's scratch ten minutes after its last
+  write, and the builds in every tree its README lists, at once, whatever
+  the band. `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables

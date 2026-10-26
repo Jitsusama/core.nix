@@ -70,9 +70,11 @@ fn each_workspace_is_read_with_what_its_quest_says() {
 }
 
 #[test]
-fn a_concluded_quest_keeps_its_workspace_from_when_it_finished() {
+fn a_concluded_quests_workspace_is_idle_from_its_last_write_not_its_day() {
+    // A README dates only the day it was last updated, so keeping from
+    // that day's end kept a quest concluded this morning until midnight.
     let made = candidate(
-        &workspace("concluded", 1_000.0, 500.0),
+        &workspace("concluded", 10_000.0, 500.0),
         0.0,
         7,
         &Awake::default(),
@@ -80,7 +82,7 @@ fn a_concluded_quest_keeps_its_workspace_from_when_it_finished() {
     )
     .unwrap();
     assert_eq!(made.class, Class::Workspace);
-    crate::assert_exactly(made.idle, 4_000.0);
+    crate::assert_exactly(made.idle, 4_500.0);
     assert_eq!(made.size, 7);
 }
 
@@ -139,6 +141,53 @@ fn a_live_quests_workspace_is_no_candidate() {
             None
         );
     }
+}
+
+#[test]
+fn the_trees_a_finished_quest_lists_are_over_with_it() {
+    // A tree's builds belong to the quest that cut it, so they go when it
+    // ends, not a week of idle later.
+    let root = tempfile::tempdir().unwrap();
+    let quests = root.path().join("quests");
+    let trees = |paths: &[&str]| {
+        let mut listed = String::from("trees:\n");
+        for path in paths {
+            listed +=
+                &format!("  - path: {path}\n    providerId: git-worktree\n    repoRoot: {path}\n");
+        }
+        listed
+    };
+    quest(
+        &quests,
+        "QEST-20261001-ABC123",
+        &format!(
+            "status: concluded\nupdated: 2026-10-03\n{}",
+            trees(&["/t/one", "/t/two"])
+        ),
+    );
+    quest(
+        &quests,
+        "QEST-20261002-DEF456",
+        &format!(
+            "status: active\nupdated: 2026-10-03\n{}",
+            trees(&["/t/three"])
+        ),
+    );
+    quest(
+        &quests,
+        "QEST-20261003-GHI789",
+        &format!(
+            "status: retired\nupdated: 2026-10-03\n{}",
+            trees(&["/t/four"])
+        ),
+    );
+    let mut over = disk_guard::workspaces::finished_trees(&quests);
+    over.sort();
+    assert_eq!(
+        over,
+        ["/t/four", "/t/one", "/t/two"].map(PathBuf::from),
+        "an active quest's trees are its own"
+    );
 }
 
 /// A repository outside the workspace with a worktree linked into it, a

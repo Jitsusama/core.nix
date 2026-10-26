@@ -902,7 +902,6 @@ impl Guard {
         self.watch();
         self.mark(tick);
         self.heartbeat();
-        self.measure_holders(tick.wall);
         self.heard_garbage(tick.wall)?;
         let spare_moment = spare(senses.power, senses.saver, &self.memory.awake, tick.wall);
         let mut due = Vec::new();
@@ -940,6 +939,11 @@ impl Guard {
                 due.push((device, decision, thresholds));
             }
         }
+        // Once the bands are read, and before a pass: on a restart every
+        // band reads healthy until this step reads it, so the first measure
+        // waited out a whole pass, and passes took 20 and 29 minutes on 26
+        // October.
+        self.measure_holders(tick.wall);
         self.watch_roots();
         self.list_garbage(tick.wall, spare_moment);
         self.collect_garbage(tick.wall, &mut due);
@@ -1622,7 +1626,22 @@ impl Guard {
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
         let (predicates, answers) = (&self.predicates, &mut self.answers);
+        // A tree a finished quest cut is finished with it, whatever its
+        // branch says: its builds were the quest's.
+        let quests_over: Vec<PathBuf> = self
+            .config
+            .sources
+            .values()
+            .filter_map(|source| match source {
+                Source::Workspaces { quests, .. } => Some(quests),
+                _ => None,
+            })
+            .flat_map(|quests| crate::workspaces::finished_trees(quests))
+            .collect();
         let mut finished = |dir: &Path| {
+            if quests_over.iter().any(|tree| dir.starts_with(tree)) {
+                return true;
+            }
             let Some(checkout) = finished::read(dir) else {
                 return false;
             };

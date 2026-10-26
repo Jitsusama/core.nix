@@ -96,8 +96,7 @@ pub fn find(root: &Path, quests: &Path) -> Vec<Workspace> {
 }
 
 /// The candidate a finished quest's workspace makes, idle for the awake
-/// time since its keeping began: when the quest finished, or when the
-/// workspace appeared if later, and never before the last write in it.
+/// time since the last write in it, or since it appeared.
 /// A quest retired before its workspace appeared has nothing to keep.
 /// How deep a workspace is searched for linked worktrees, and how many
 /// entries are read.
@@ -196,6 +195,55 @@ pub fn prune(common: &Path) -> std::io::Result<()> {
 /// Whether the workspace's quest is over, which a workspace has to be for
 /// the guard to take it. Knowing this from the README alone spares sizing
 /// the workspaces of quests still going, which hold most of the files.
+/// The trees every concluded or retired quest lists in its README's
+/// frontmatter, as `trees:` entries of `- path: ...`: their builds are
+/// spent with the quest. A README that can't be read lists nothing.
+pub fn finished_trees(quests: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for (_, frontmatter) in finished(quests) {
+        let mut listing = false;
+        for line in frontmatter.lines() {
+            if !line.starts_with(' ') {
+                listing = line.trim_end() == "trees:";
+            } else if listing && let Some(path) = line.trim_start().strip_prefix("- path:") {
+                found.push(PathBuf::from(path.trim()));
+            }
+        }
+    }
+    found
+}
+
+/// Each concluded or retired quest, by its id, with its README's
+/// frontmatter. A README that can't be read is no quest's.
+pub fn finished(quests: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = fs::read_dir(quests) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name();
+        let Some(id) = name.to_str().filter(|name| QUEST_ID.is_match(name)) else {
+            continue;
+        };
+        let Ok(text) = fs::read_to_string(entry.path().join("README.md")) else {
+            continue;
+        };
+        let Some(frontmatter) = text
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split("\n---").next())
+        else {
+            continue;
+        };
+        let over = FIELD
+            .captures_iter(frontmatter)
+            .any(|field| &field[1] == "status" && matches!(&field[2], "concluded" | "retired"));
+        if over {
+            found.push((id.to_owned(), frontmatter.to_owned()));
+        }
+    }
+    found
+}
+
 pub fn over(workspace: &Workspace) -> bool {
     matches!(workspace.status.as_str(), "concluded" | "retired")
 }
@@ -209,8 +257,11 @@ pub fn candidate(
 ) -> Option<Candidate> {
     let idle = match workspace.status.as_str() {
         "retired" if workspace.born <= workspace.finished => f64::INFINITY,
+        // Idle from the last write, or from when it appeared: a README
+        // dates only the day it was updated, which kept a workspace until
+        // that day's end, and a quest that's over owns nothing after it.
         "concluded" | "retired" => {
-            let kept = workspace.finished.max(workspace.born).max(written).min(now);
+            let kept = workspace.born.max(written).min(now);
             awake.since(kept, now).max(0.0)
         }
         _ => return None,
