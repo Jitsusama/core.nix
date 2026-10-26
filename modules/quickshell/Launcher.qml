@@ -999,12 +999,18 @@ Scope {
 
     // Whether the category's word and what's typed after it ask something
     // whole ("time in tokyo", "time left", "weather tokyo"): a question,
-    // not a search inside it, so the field gives it back whole.
+    // not a search inside it, so the field gives it back whole. An answer
+    // there only when nothing else is, as Ask's for any two plain words,
+    // asks nothing whole, or "network a" would leave Network on its
+    // second letter.
     function askedWhole(letters) {
         if (held.length !== 1 || Fuzzy.words(letters).length === 0)
             return "";
         const whole = `${held[0].typed} ${letters}`;
-        return sources.some(source => source.answer(whole)) ? whole : "";
+        return sources.some(source => {
+            const said = source.answer(whole);
+            return !!said && !said.fallback;
+        }) ? whole : "";
     }
 
     // The places a category sits in, outermost first, as Machine holds

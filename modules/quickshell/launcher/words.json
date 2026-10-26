@@ -145,7 +145,7 @@
     {
       "id": "agents:works",
       "in": "agents",
-      "name": "Works on"
+      "name": "Working on"
     },
     {
       "id": "agents:hears",
@@ -1085,7 +1085,7 @@
     {
       "id": "networks:wired",
       "in": "networks",
-      "name": "Wired"
+      "name": "Ethernet"
     },
     {
       "id": "networks:tunnel",

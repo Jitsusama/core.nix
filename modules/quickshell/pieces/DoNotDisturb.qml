@@ -18,7 +18,7 @@ Piece {
     hue: "voice"
     value: Quiet.lasts
     title: "Do Not Disturb"
-    hint: `Quiet ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
+    hint: `Do Not Disturb ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{
         glyph: Theme.glyph.ringing,

@@ -2,11 +2,12 @@
 //! (main.rs) and its tests share: the account as the harness keeps it
 //! (account.rs), the token to ask with (token.rs), asking Google
 //! (api.rs), the meetings and the link each is joined by (calendar.rs,
-//! link.rs), what the shell is told (state.rs) and how (socket.rs), and
-//! one look at it all (watch.rs).
+//! link.rs), what the shell is told (state.rs) and how (socket.rs), what
+//! the shell asks (ask.rs), and the account as it stands (watch.rs).
 
 pub mod account;
 pub mod api;
+pub mod ask;
 pub mod calendar;
 pub mod link;
 pub mod socket;

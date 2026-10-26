@@ -273,7 +273,8 @@
   google-reads-the-calendar = ''
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
-    can't be reached, and tells the shell each meeting's times, answer and the one link it's joined by
+    can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
+    and answers an invitation the shell asks it to, changing only Joel's own answer
   '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
@@ -506,6 +507,14 @@
     a palette's row and field keep their words apart and inside them, however long, ending what
     doesn't fit in an ellipsis
   '';
+  pause-for-calls-follows-the-calls = ''
+    pause-for-calls counts a call app's running recording as a call, leaving out PipeWire's filters,
+    dictation, the camera's videos and monitors, pauses Spotify two seconds into a call and plays it
+    five seconds after, and finds each Spotify on the bus
+  '';
+  pause-for-calls-passes-clippy = ''
+    clippy finds nothing in pause-for-calls or its tests
+  '';
   pebble-lights-follow-the-sound = ''
     pebble-lights finds the speakers' control and sound card, keeps their lighting on while sound
     plays and a while after unless the screen is locked, and lets the speakers' own button win
@@ -544,6 +553,10 @@
   pi-measures-each-day-in-the-background = ''
     the harness's measure runs each morning in background.slice with the store's node, catching up on
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
+  '';
+  pi-packages-compiles-for-macos = ''
+    pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
+    processes use a version
   '';
   pi-packages-passes-clippy = ''
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
@@ -714,6 +727,10 @@
   '';
   the-camera-takes-its-boards-tuning = ''
     the XPS 14's camera reads Dell's tuning for the board a machine names, and Intel's otherwise
+  '';
+  the-camera-takes-the-one-plugged-in = ''
+    the camera program takes a camera on a removable USB port over the machine's own while it's
+    plugged in, never a built-in one on a fixed port, and the machine's own with none
   '';
   the-click-strength-finds-the-intensity = ''
     the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes

@@ -26,7 +26,7 @@ Piece {
         niri: "niri"
     })
     readonly property string what: held === null ? "" : named[held.worst] ?? held.worst
-    readonly property string who: window?.who === "desktop" ? "The desktop has" : "Apps have"
+    readonly property string who: window?.who === "desktop" ? "The desktop has" : "Programs have"
     property bool lasting: false
 
     onWindowChanged: {

@@ -14,6 +14,9 @@
 //! after the laptop wakes comes at once rather than a minute later. With
 //! nobody signed in, the file is looked at, and Google never asked.
 //!
+//! The shell asks it to answer an invitation on the same socket (ask.rs),
+//! which it does at once, telling every shell the meeting answered.
+//!
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
 //!
@@ -23,12 +26,14 @@
 use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::mpsc::RecvTimeoutError;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
 use jiff::Zoned;
 
 use google::api::{Google, Origins};
+use google::ask::{self, Ask};
 use google::socket::Socket;
 use google::state::{Standing, State};
 use google::watch::Watch;
@@ -49,8 +54,8 @@ fn main() -> ExitCode {
         eprintln!("<3>usage: google SOCKET CREDENTIALS");
         return ExitCode::from(2);
     };
-    let socket = match Socket::listen(&path, State::default().line()) {
-        Ok(socket) => socket,
+    let (socket, asked) = match Socket::listen(&path, State::default().line()) {
+        Ok(listening) => listening,
         Err(error) => {
             eprintln!("<3>couldn't listen at {}: {error}", path.display());
             return ExitCode::FAILURE;
@@ -79,6 +84,16 @@ fn main() -> ExitCode {
             wait = (EVERY * 2u32.saturating_pow(failures.saturating_sub(1).min(4))).min(LONGEST);
             socket.say(state.line());
         }
-        thread::sleep(TICK);
+        // A shell's ask is done the moment it comes; otherwise the clock
+        // is looked at again a tick on.
+        match asked.recv_timeout(TICK) {
+            Ok(line) => {
+                if let Some(Ask::Answer { id, with }) = ask::read(&line) {
+                    socket.say(watch.answer(&id, with, &Zoned::now()).line());
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => thread::sleep(TICK),
+        }
     }
 }
