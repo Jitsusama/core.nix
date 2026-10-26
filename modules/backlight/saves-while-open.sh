@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2154 # $save comes from saves-while-open.nix's header.
 # Saves a backlight's level as systemd-backlight does when it stops at
 # shutdown, except the screen's while a lid is shut. The panel is off then,
 # and the level it reads is the dark one it was left at (169 of 65535 on
