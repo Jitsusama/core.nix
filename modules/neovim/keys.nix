@@ -1841,6 +1841,22 @@ in
     does = "Fold the symbol and everything in it";
     plugin = "actions.tree_close_recursive";
   }
+  # The arrows into and out of a symbol, and Escape out, as everywhere.
+  {
+    chord = "Right";
+    does = "Show what the symbol holds";
+    plugin = "actions.tree_open";
+  }
+  {
+    chord = "Left";
+    does = "Fold the symbol";
+    plugin = "actions.tree_close";
+  }
+  {
+    chord = "Escape";
+    does = "Close the outline";
+    plugin = "actions.close";
+  }
 ]
 ++ inWindow "outline" (folds outlineFolds)
 ++ inWindow "walk" [
@@ -1870,6 +1886,16 @@ in
     plugin = "actions.right";
   }
   {
+    chord = "Left";
+    does = "Go out to the symbol holding this";
+    plugin = "actions.left";
+  }
+  {
+    chord = "Right";
+    does = "Go into the symbol";
+    plugin = "actions.right";
+  }
+  {
     chord = "q";
     does = "Stop walking the outline";
     plugin = "actions.close";
@@ -1890,6 +1916,23 @@ in
     chord = "Return";
     does = "Open the file or folder";
     plugin = "actions.select";
+  }
+  # The arrows into a folder and out to the one holding it, and Escape
+  # out, as everywhere.
+  {
+    chord = "Right";
+    does = "Open the file or folder";
+    plugin = "actions.select";
+  }
+  {
+    chord = "Left";
+    does = "Go up to the folder holding this";
+    plugin = "actions.parent";
+  }
+  {
+    chord = "Escape";
+    does = "Close the file browser";
+    plugin = "actions.close";
   }
   {
     chord = "Ctrl+S";
@@ -2052,6 +2095,18 @@ in
     chord = "s";
     does = "Show only the worse problems, a step at a time";
     plugin = "only.worse";
+  }
+  # The arrows into and out of a file's problems, as in the outline;
+  # Escape already backs out of a preview.
+  {
+    chord = "Right";
+    does = "Unfold here";
+    plugin = "fold_open";
+  }
+  {
+    chord = "Left";
+    does = "Fold here";
+    plugin = "fold_close";
   }
 ]
 ++ inWindow "problems" (folds problemFolds)
