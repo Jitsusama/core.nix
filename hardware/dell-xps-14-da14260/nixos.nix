@@ -376,6 +376,10 @@ in
     # named even when the system on it can no longer start to say it. smartd
     # watches the same report while the system runs.
     SmartErrors = "Enabled";
+    # The light on the microphone's mute key. It ships off: muted at the
+    # desk on 2026-10-26, the key stayed dark, though dell-laptop offers it
+    # as platform::micmute.
+    MicMuteLed = "Enabled";
     # Microsoft's presence detection, as the laptop ships and as the camera
     # was proven on. Intel's gave no presence reading either; see
     # docs/hardware.md.
