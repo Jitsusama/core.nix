@@ -23,6 +23,8 @@
 let
   inherit (pkgs) lib;
   pin = "123456";
+  # The TPM's own, as an account password is, never the YubiKeys'.
+  tpmPin = "alices disk password";
   # Spaces inside, which ssh-tpm-keygen keeps.
   keyPin = "the keys PIN";
   password = "a password for alice";
@@ -189,6 +191,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           inherit
             image
             pin
+            tpmPin
             keyPin
             password
             passphrase

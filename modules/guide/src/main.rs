@@ -560,7 +560,7 @@ fn installed() -> Result<(), Fault> {
     // No restart: at boot the guide holds the boot back from counting as
     // good, so restarting from here would spend one of a new generation's
     // tries.
-    let next = "From the next start, the disk asks for the YubiKey's PIN, which the TPM takes too. A YubiKey with that PIN, or the recovery key, still opens it whenever the TPM won't.";
+    let next = "From the next start, the disk asks for the TPM's PIN you just chose. A YubiKey with its own PIN, or the recovery key, still opens it whenever the TPM won't.";
     walk.card(
         &mut terminal,
         &format!("{name} is finished"),
@@ -839,7 +839,7 @@ fn install() -> Result<(), Fault> {
 /// that start only a YubiKey opens the disk, since the TPM is sealed after.
 fn first_start(machine: &str, yubikeys: &[String]) -> String {
     format!(
-        "Press Return to shut down. Take the stick out, plug in {}, then turn {machine} on. When its disk asks for a security token PIN, type that key's PIN, and touch the key when it blinks. The guide then finishes {machine} before you sign in, and from the next start the same PIN opens the disk with no key plugged in.",
+        "Press Return to shut down. Take the stick out, plug in {}, then turn {machine} on. When its disk asks for a security token PIN, type that key's PIN, and touch the key when it blinks. The guide then finishes {machine} before you sign in, and asks for a PIN of the TPM's own, which opens the disk from the next start with no key plugged in.",
         guide::rescue::either(yubikeys)
     )
 }
@@ -1029,7 +1029,7 @@ mod tests {
         assert!(out < plug && plug < on, "{said}");
         assert!(
             said.ends_with(
-                "from the next start the same PIN opens the disk with no key plugged in."
+                "asks for a PIN of the TPM's own, which opens the disk from the next start with no key plugged in."
             ),
             "{said}"
         );

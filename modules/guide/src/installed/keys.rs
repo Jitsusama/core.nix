@@ -259,7 +259,7 @@ impl Step for MakeKeys {
         }
         // Said whole, since a person asked whether a PIN meant a locked
         // copy of each key and an open one: there's one, kept in the TPM.
-        let held = "Each is made inside this machine's TPM and never leaves it, so there's one copy of each, locked by this PIN, which it asks for once after each sign-in. The YubiKeys' PIN will do, to keep to one PIN";
+        let held = "Each is made inside this machine's TPM and never leaves it, so there's one copy of each, locked by this PIN, which it asks for once after each sign-in. The disk's PIN will do, to keep to one PIN you remember";
         let name = if lost {
             format!(
                 "a PIN for {}'s new SSH keys, made again since the TPM was cleared and can't open the old ones. {held}",

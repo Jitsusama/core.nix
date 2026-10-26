@@ -190,19 +190,33 @@ def unlock(machine: QemuMachine, secret: str) -> None:
     raise RuntimeError(message)
 
 
-def unlock_as_asked(machine: QemuMachine, pin: str) -> str:
-    """Answer each of the disk's prompts with the one PIN, and say which key took it."""
+def unlock_as_asked(machine: QemuMachine, tpm_pin: str, key_pin: str) -> str:
+    """Answer the disk's first prompt with the TPM's PIN and the rest with the key's.
+
+    Say which of them opened it.
+    """
     asked = r"Please enter (?:LUKS2 token|TPM2|security token) PIN"
     since = len(machine.get_console_log())
-    for _ in range(8):
+    for tries in range(8):
         machine.wait_for_console_text(f"{asked}|{OPENED}")
         boot = machine.get_console_log()[since:]
         if re.search(OPENED, boot):
             # systemd asks a YubiKey only once the TPM has refused.
             return "the key" if "Asking FIDO2 token" in boot else "the TPM"
-        machine.send_console(pin + "\n")
-    message = "the disk never opened with the one PIN"
+        # The TPM is asked first, and a prompt after it is a key's.
+        machine.send_console((tpm_pin if tries == 0 else key_pin) + "\n")
+    message = "the disk never opened with the TPM's PIN or the key's"
     raise RuntimeError(message)
+
+
+def seal_tpm(machine: QemuMachine, values: dict[str, Any]) -> None:
+    """Open the disk with a key's PIN for the guide, and give the TPM its own PIN, twice."""
+    on_screen(machine, "which opens the disk this once")
+    enter(machine, values["pin"])
+    on_screen(machine, "a new PIN for the TPM")
+    enter(machine, values["tpmPin"])
+    on_screen(machine, "the TPM's new PIN again")
+    enter(machine, values["tpmPin"])
 
 
 def prompts(boot: str) -> list[str]:
@@ -474,7 +488,7 @@ def first_boot(shut_down: QemuMachine, rig: Rig, values: dict[str, Any]) -> Qemu
 
 @pytest.fixture(scope="module")
 def tpm_sealed(first_boot: QemuMachine, values: dict[str, Any]) -> QemuMachine:
-    """Let a YubiKey open the disk for the guide to seal it to the TPM, with the one PIN."""
+    """Let a YubiKey open the disk for the guide to seal it to the TPM, with its own PIN."""
     machine = first_boot
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     # The units still starting don't write across it.
@@ -494,8 +508,7 @@ def tpm_sealed(first_boot: QemuMachine, values: dict[str, Any]) -> QemuMachine:
     )
     assert "scribbled" not in screen(machine), screen(machine)
     enter(machine, "")
-    on_screen(machine, "which the TPM takes too")
-    enter(machine, values["pin"])
+    seal_tpm(machine, values)
     # Sealed, the guide goes on to the account's keys.
     on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
     return machine
@@ -556,7 +569,7 @@ def restarted(signed_in: QemuMachine, values: dict[str, Any]) -> str:
     machine = signed_in
     before = len(machine.get_console_log())
     machine.reboot()
-    unlock(machine, values["pin"])
+    unlock(machine, values["tpmPin"])
     machine.connect()
     machine.wait_for_unit("multi-user.target")
     # With nothing to do, the guide showed nothing and left.
@@ -594,8 +607,7 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     machine.connect()
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
-    on_screen(machine, "which the TPM takes too")
-    enter(machine, pin)
+    seal_tpm(machine, values)
     # The TPM refuses the keys it sealed before, so the guide makes them
     # again, saying why.
     on_screen(machine, "a PIN for alice's new SSH keys", timeout=STEP)
@@ -766,8 +778,7 @@ def policy_freed(reinstalled_boot: QemuMachine, values: dict[str, Any]) -> list[
     machine.connect()
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
-    on_screen(machine, "which the TPM takes too")
-    enter(machine, values["pin"])
+    seal_tpm(machine, values)
     # Sealed, and freed before the guide asks for the account's keys.
     on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
     return before
@@ -805,9 +816,9 @@ def firmware_cleared(
     machine.efi_vars_path.unlink()
     machine.start(allow_reboot=True)
     # Without Secure Boot the TPM's policy doesn't hold, so it refuses
-    # the PIN for the boot, and a YubiKey opens the disk with the same
-    # one, so neither counts a wrong try.
-    assert unlock_as_asked(machine, values["pin"]) == "the key"
+    # the boot without counting a wrong try, and a YubiKey opens the
+    # disk with its own PIN.
+    assert unlock_as_asked(machine, values["tpmPin"], values["pin"]) == "the key"
     machine.connect()
     # lanzaboote readies the keys again, from the machine's own, and
     # fails only at predicting the TPM's policy, which systemd-pcrlock
@@ -833,11 +844,11 @@ def keys_back(
 ) -> QemuMachine:
     """Take the unsigned program away, and restart for the keys to be enrolled again."""
     del firmware_cleared
-    machine, pin = reinstalled_boot, values["pin"]
+    machine, pin, tpm_pin = reinstalled_boot, values["pin"], values["tpmPin"]
     machine.succeed(f"rm {UNSIGNED}")
     machine.reboot()
     rebooted = len(machine.get_console_log())
-    assert unlock_as_asked(machine, pin) == "the key"
+    assert unlock_as_asked(machine, tpm_pin, pin) == "the key"
     machine.wait_for_console_text("Custom Secure Boot keys successfully enrolled")
     # A boot that restarted itself may have greeted the driver first, and
     # the driver takes the first greeting it reads for the boot it's in.
@@ -845,7 +856,7 @@ def keys_back(
     # Enforcing with the same keys, the TPM's policy, which the boot
     # without them couldn't rewrite, holds again, and its PIN alone opens
     # the disk.
-    assert unlock_as_asked(machine, pin) == "the TPM"
+    assert unlock_as_asked(machine, tpm_pin, pin) == "the TPM"
     machine.connect()
     if greeted:
         machine.connected = False

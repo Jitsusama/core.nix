@@ -161,10 +161,12 @@ driven on; the installed machine's steps come later.
   at boot it holds the sign-in back. It checks
   Secure Boot enforces with the machine's own keys before anything is
   sealed to it, then seals the disk to the TPM under the measured-boot
-  policy with the YubiKey's PIN, the YubiKey opening the disk to do so,
-  prefers the TPM's slot and proves it opens. One PIN, because the boot
-  tries what's typed on each key, and a PIN one doesn't know costs it a
-  try at every boot the TPM refuses. The seal counts as done only while the
+  policy with a PIN of its own, typed twice, the YubiKey opening the disk
+  with its PIN to do so, prefers the TPM's slot and proves it opens. The
+  TPM's PIN is typed at every start, so it's one the person remembers,
+  such as their account password, and never the YubiKeys': theirs was
+  forgotten (2026-10-26). The boot tries what's typed on each key, so a
+  start the TPM refuses costs a plugged-in YubiKey one try. The seal counts as done only while the
   policy follows the boot: the TPM holds its NV index, and lanzaboote's
   unit remade it this boot. A cleared TPM loses the index, and a firmware
   update changes PCR 0 past what the policy can follow, so that unit

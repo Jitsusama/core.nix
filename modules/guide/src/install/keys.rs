@@ -519,7 +519,9 @@ impl Step for KeepRecoveryKey {
                         Ask::Recall {
                             id: "key",
                             expected: key.expose().into(),
-                            why: "type the recovery key, reading it off your phone".into(),
+                            // The disk takes the words only as they were made, so
+                            // the person learns the form it wants here.
+                            why: "type the recovery key as the disk takes it, lowercase and one space apart, reading it off your phone".into(),
                         },
                     ],
                 }

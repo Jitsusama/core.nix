@@ -191,10 +191,13 @@ fn holding(indices: &str) -> StandIn {
     holding_after(indices, "success")
 }
 
-fn answers(pin: &str) -> Answers {
+/// The YubiKey's PIN, then the TPM's own, typed twice.
+fn answers(key_pin: &str, pin: &str, again: &str) -> Answers {
     let mut answers = Answers::new();
     answers.give("key", Answer::Done);
-    answers.give("key-pin", Answer::Secret(Secret::new(pin.into())));
+    answers.give("key-pin", Answer::Secret(Secret::new(key_pin.into())));
+    answers.give("tpm-pin", Answer::Secret(Secret::new(pin.into())));
+    answers.give("tpm-pin-again", Answer::Secret(Secret::new(again.into())));
     answers
 }
 
@@ -252,8 +255,13 @@ fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
         panic!("the TPM is still to seal")
     };
     let ids: Vec<&str> = asks.iter().map(Ask::id).collect();
-    assert_eq!(ids, ["key", "key-pin"]);
-    Journey::attempt(&SealTpm, &mut stand_in, &answers("123456")).unwrap();
+    assert_eq!(ids, ["key", "key-pin", "tpm-pin", "tpm-pin-again"]);
+    Journey::attempt(
+        &SealTpm,
+        &mut stand_in,
+        &answers("123456", "an account password", "an account password"),
+    )
+    .unwrap();
 
     let privileged: Vec<&String> = stand_in
         .calls
@@ -274,8 +282,8 @@ fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
         enrolled.contains("[cryptsetup.fido2-pin cryptenroll.fido2-pin cryptenroll.new-tpm2-pin]"),
         "{enrolled}"
     );
-    // The TPM takes the YubiKey's PIN, so whichever the disk reaches at
-    // boot, the one PIN typed is right; the proof opens it with that PIN.
+    // The YubiKey's PIN opens the disk this once; the TPM is sealed to a
+    // PIN of its own, and the proof opens it with that one.
     let handed: Vec<(&str, &str)> = stand_in
         .secrets
         .iter()
@@ -286,15 +294,32 @@ fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
         [
             ("cryptsetup.fido2-pin", "123456"),
             ("cryptenroll.fido2-pin", "123456"),
-            ("cryptenroll.new-tpm2-pin", "123456"),
-            ("stdin", "123456\n"),
+            ("cryptenroll.new-tpm2-pin", "an account password"),
+            ("stdin", "an account password\n"),
         ]
     );
     assert!(
-        stand_in.calls.iter().all(|call| !call.contains("123456")),
+        stand_in
+            .calls
+            .iter()
+            .all(|call| !call.contains("123456") && !call.contains("account password")),
         "{:#?}",
         stand_in.calls
     );
+}
+
+#[test]
+fn two_different_tpm_pins_seal_nothing() {
+    let mut stand_in = machine();
+    let refused = SealTpm.run(
+        &mut stand_in,
+        &answers("123456", "an account password", "an account pasword"),
+    );
+    assert!(
+        matches!(&refused, Err(Fault::Blocked { why, .. }) if why == "the two PINs weren't the same"),
+        "{refused:?}"
+    );
+    assert!(stand_in.calls.is_empty(), "{:#?}", stand_in.calls);
 }
 
 #[test]
@@ -457,7 +482,12 @@ fn a_cleared_tpm_gets_its_policy_made_again_before_the_disk_is_sealed_to_it() {
         ],
         "",
     );
-    Journey::attempt(&SealTpm, &mut stand_in, &answers("123456")).unwrap();
+    Journey::attempt(
+        &SealTpm,
+        &mut stand_in,
+        &answers("123456", "an account password", "an account password"),
+    )
+    .unwrap();
 
     let at = |start: &str| {
         stand_in

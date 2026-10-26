@@ -263,7 +263,7 @@ impl Step for SealTpm {
         });
         if proven && policy_current(machine)? {
             return Ok(Standing::Done {
-                evidence: "the TPM opens the disk with the YubiKeys' PIN, tried before them".into(),
+                evidence: "the TPM opens the disk with its own PIN, tried before the YubiKeys".into(),
             });
         }
         // Sealing again now would lock this boot's firmware programs in,
@@ -273,10 +273,12 @@ impl Step for SealTpm {
                 evidence: "this boot went through the firmware's own menu, which the TPM's policy leaves out, so the next ordinary boot opens with the TPM's PIN again".into(),
             });
         }
-        // The disk tries whatever is typed at boot on the TPM and the
-        // YubiKey both, so a PIN of the TPM's own would cost one of them a
-        // wrong try at every boot the TPM can't open. The YubiKeys' PIN,
-        // proven by opening the disk with it, serves for both.
+        // The TPM has a PIN of its own, since it's the one typed at every
+        // start and so has to be one the person remembers, such as their
+        // account password; a YubiKey's PIN, typed only when the TPM won't
+        // open the disk, was forgotten (2026-10-26). The disk tries what's
+        // typed on the TPM, then on a plugged-in YubiKey, so a start the
+        // TPM can't open costs a plugged-in key one wrong try, said here.
         Ok(Standing::Needed {
             asks: vec![
                 Ask::Act {
@@ -285,19 +287,40 @@ impl Step for SealTpm {
                 },
                 Ask::Secret {
                     id: "key-pin",
-                    name: "the YubiKey's PIN, which the TPM takes too, so the disk asks for that one PIN at every boot".into(),
+                    name: "the YubiKey's PIN, which opens the disk this once".into(),
+                },
+                Ask::Secret {
+                    id: "tpm-pin",
+                    name: "a new PIN for the TPM, which the disk asks for at every start. Your account password will do; changing that password later doesn't change this PIN. When the TPM can't open the disk, what you type is tried on a plugged-in YubiKey too, which costs it one wrong try before it asks for its own PIN".into(),
+                },
+                Ask::Secret {
+                    id: "tpm-pin-again",
+                    name: "the TPM's new PIN again".into(),
                 },
             ],
         })
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
-        let Some(pin) = secret(answers, "key-pin") else {
+        let Some(key_pin) = secret(answers, "key-pin") else {
             return Err(Fault::Unanswered {
                 step: self.id(),
                 ask: "key-pin",
             });
         };
+        let (Some(pin), Some(again)) = (secret(answers, "tpm-pin"), secret(answers, "tpm-pin-again"))
+        else {
+            return Err(Fault::Unanswered {
+                step: self.id(),
+                ask: "tpm-pin",
+            });
+        };
+        if let Some(why) = tpm_pin_refused(pin, again) {
+            return Err(Fault::Blocked {
+                step: self.id(),
+                why: why.into(),
+            });
+        }
         let facts = facts(machine)?;
         let volume = volume(&facts);
         let before = luks::observe_as_root(machine, &volume)?;
@@ -306,7 +329,7 @@ impl Step for SealTpm {
         if policy_index(machine)?.is_some() && !policy_current(machine)? {
             renew_policy(machine)?;
         }
-        enrol_tpm(machine, &volume, &before, pin)?;
+        enrol_tpm(machine, &volume, &before, key_pin, pin)?;
 
         let after = luks::observe_as_root(machine, &volume)?;
         let slots: Vec<u32> = after
@@ -344,13 +367,26 @@ impl Step for SealTpm {
     }
 }
 
+/// Why the TPM's PIN, typed twice, won't do: the two differ, or it's
+/// empty, which would seal the disk to no PIN at all.
+fn tpm_pin_refused(pin: &Secret, again: &Secret) -> Option<&'static str> {
+    if pin.expose() != again.expose() {
+        Some("the two PINs weren't the same")
+    } else if pin.expose().is_empty() {
+        Some("the TPM's PIN can't be empty")
+    } else {
+        None
+    }
+}
+
 /// Seals `volume` to the TPM with `pin` under the measured-boot policy,
-/// opened by the plugged-in YubiKey with the same PIN, in place of any
-/// slot `before` shows sealed already.
+/// opened by the plugged-in YubiKey with `key_pin`, in place of any slot
+/// `before` shows sealed already.
 fn enrol_tpm(
     machine: &mut dyn Machine,
     volume: &str,
     before: &luks::Header,
+    key_pin: &Secret,
     pin: &Secret,
 ) -> Result<(), Fault> {
     let pcrlock = format!("--tpm2-pcrlock={PCRLOCK}");
@@ -376,8 +412,8 @@ fn enrol_tpm(
             // askpw_credential), so the PIN goes under both: the name
             // read today, and the one cryptenroll means.
             credentials: vec![
-                ("cryptsetup.fido2-pin", pin),
-                ("cryptenroll.fido2-pin", pin),
+                ("cryptsetup.fido2-pin", key_pin),
+                ("cryptenroll.fido2-pin", key_pin),
                 ("cryptenroll.new-tpm2-pin", pin),
             ],
             as_root: true,

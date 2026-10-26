@@ -1114,17 +1114,17 @@
     screen, installs a machine from its stick: two keys and a recovery key of seven words, shown
     alone for a phone and typed back, an install whose memory a restart took carried on through a
     key it enrolled, Secure Boot enforcing with its keys, its firmware enrolling them before the
-    disk first asks; then seals the disk to the TPM with a PIN, which opens it at
-    the next boot, leaving one systemd-pcrlock policy; makes the account's TPM keys under one PIN
-    and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
+    disk first asks; then seals the disk to the TPM with a PIN of its own, typed twice and never
+    the YubiKeys', which opens it at the next boot, leaving one systemd-pcrlock policy; makes the
+    account's TPM keys under one PIN and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
     opens with a YubiKey, seals again, makes the keys it lost again and downloads a lost spare; a
     writer writes a stick from the rescue bundle the install sealed to the recovery key, which the
     firmware boots while enforcing; then the install's own stick, which it made the machine's by
     carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
     machine with the same keys, whose guide frees the first install's policy; and a firmware cleared
     of its keys gets them back from the machine's next boot, not while a program it would start is
-    unsigned, and the TPM alone opens the disk once they're enrolled, the TPM and the YubiKeys
-    sharing one PIN so no boot costs either a try
+    unsigned, and the TPM alone opens the disk with its own PIN once they're enrolled, a YubiKey
+    with its PIN when the TPM refuses
   '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, mounts it whole, sets
