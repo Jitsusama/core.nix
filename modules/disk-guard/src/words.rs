@@ -30,7 +30,7 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     let mut said = match room.band {
         Band::Healthy => format!("{name} has {free} free."),
         Band::Pressure => format!(
-            "{name} is getting full, with {free} free. \
+            "{name} is filling, with {free} free. \
              The guard is clearing builds and caches nobody has used lately."
         ),
         Band::Urgent => format!(
@@ -38,8 +38,8 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
              The guard is clearing everything it safely can."
         ),
         Band::Critical => format!(
-            "{name} is full, with {free} free. Saves may fail; \
-             the guard is clearing everything it can and may pause what is filling it."
+            "{name} is critically full, with {free} free. Saves may fail; \
+             the guard is clearing everything it can and may freeze what is filling it."
         ),
     };
     if let Some(full_in) = room.full_in.filter(|full_in| *full_in < TELL_WITHIN) {
@@ -109,7 +109,7 @@ fn label(kind: &str) -> Option<&'static str> {
 }
 
 /// A filesystem as people know it, at the start of a sentence.
-fn named(path: &Path, home: Option<&Path>) -> String {
+pub fn named(path: &Path, home: Option<&Path>) -> String {
     if path == Path::new("/") {
         "The disk".to_owned()
     } else if path == Path::new("/nix/store") || path == Path::new("/nix") {
@@ -122,7 +122,7 @@ fn named(path: &Path, home: Option<&Path>) -> String {
 }
 
 /// A name from `named` for the middle of a sentence.
-fn lower(name: &str) -> String {
+pub fn lower(name: &str) -> String {
     match name.strip_prefix("The ") {
         Some(rest) => format!("the {rest}"),
         None => match name.strip_prefix("Your ") {

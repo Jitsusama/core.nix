@@ -46,7 +46,7 @@ fn each_band_below_healthy_says_what_the_guard_is_doing() {
     let said = |band, free| filesystem(&room("/", band, free, None), None);
     assert_eq!(
         said(Band::Pressure, 180 * GIB),
-        "The disk is getting full, with 180.0 GiB free. \
+        "The disk is filling, with 180.0 GiB free. \
          The guard is clearing builds and caches nobody has used lately."
     );
     assert_eq!(
@@ -56,8 +56,8 @@ fn each_band_below_healthy_says_what_the_guard_is_doing() {
     );
     assert_eq!(
         said(Band::Critical, 20 * GIB),
-        "The disk is full, with 20.0 GiB free. Saves may fail; \
-         the guard is clearing everything it can and may pause what is filling it."
+        "The disk is critically full, with 20.0 GiB free. Saves may fail; \
+         the guard is clearing everything it can and may freeze what is filling it."
     );
 }
 

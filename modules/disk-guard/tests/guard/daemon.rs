@@ -713,7 +713,7 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
         disk["size"].as_u64().unwrap()
     );
     assert!(
-        disk["says"].as_str().unwrap().contains("is getting full"),
+        disk["says"].as_str().unwrap().contains("is filling"),
         "{disk}"
     );
     assert_eq!(
@@ -766,7 +766,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     assert_eq!(status.used, 790);
     assert_eq!(
         status.says,
-        "The disk is getting full, with 210 B free. \
+        "The disk is filling, with 210 B free. \
          The guard is clearing builds and caches nobody has used lately. \
          At this rate it fills in 60 s.",
         "said again from the fresh measure, filling to the moment it was due"

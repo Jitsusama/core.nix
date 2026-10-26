@@ -212,7 +212,7 @@ fn status_says_what_a_second_version_guard_says_in_words() {
         &machine.env.status,
         &format!(
             r#"{{ "version": 2, "heartbeat": {at},
-                 "says": "The disk is getting full, with 150.0 GiB free.",
+                 "says": "The disk is filling, with 150.0 GiB free.",
                  "filesystems": [],
                  "cleared": [
                    {{ "at": {at}, "says": "Cleared a Rust build, ~/src/a/target (4.0 GiB)." }},
@@ -225,7 +225,7 @@ fn status_says_what_a_second_version_guard_says_in_words() {
     let (code, out, _) = machine.run("status");
     assert_eq!(code, 0);
     assert!(
-        out.contains("  The disk is getting full, with 150.0 GiB free.\n"),
+        out.contains("  The disk is filling, with 150.0 GiB free.\n"),
         "{out}"
     );
     assert!(
