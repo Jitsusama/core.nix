@@ -15,12 +15,16 @@
 // (modules/desk-facts), and the right arrow lists after the settings,
 // named first as parts are (Colour depth "10 bit"), Return copying one.
 //
-// The screen the backlight lights leads with its Brightness: its share as
-// a bar, its levels a step in, which set it as the brightness keys do, so
-// the backlight daemon (modules/backlight), which follows the room, learns
-// it as Joel's pick; then the Room light its sensor hears. "brightness"
-// asks it, and "brightness 40" sets it on Return. A monitor follows the
-// panel's brightness by itself, so it has none of its own here. The
+// The panel's backlight is the one brightness, lid shut or not: the
+// backlight daemon (modules/backlight) sets every monitor it reaches to
+// the same share, so one Brightness says it, in one screen's place: the
+// built-in one while it's on, else the first lit monitor that follows it,
+// as desk-facts says by a brightness among its facts (lid shut and
+// docked, the monitor). It leads that screen's settings: its share as a
+// bar, its levels a step in, which set it as the brightness keys do, so
+// the daemon, which follows the room while the lid is open, learns it as
+// Joel's pick; then, on the built-in screen, the Room light its sensor
+// hears. "brightness" asks it, and "brightness 40" sets it on Return. The
 // backlight is read from the kernel's files when asked, its folder listed
 // once by Qt, so nothing is spawned or watched; the room's light, which
 // the sensor takes a tenth of a second to say, is read in the background
@@ -77,10 +81,27 @@ Provider {
         return output.name.startsWith("eDP");
     }
 
-    // Whether the backlight lights this screen: the built-in one does, and
-    // so does the only screen there is, as in a virtual machine's.
-    function backlit(output) {
+    // Whether a monitor's brightness follows the panel's, as desk-facts
+    // says by the brightness the daemon read back from it.
+    function follows(output) {
+        return (facts[output.name] ?? []).some(fact => fact.name.toLowerCase() === "brightness");
+    }
+
+    // Whether the room's light is heard here: the built-in screen's lid
+    // holds the sensor, and so does the only screen there is, as in a
+    // virtual machine's.
+    function inTheRoom(output) {
         return builtIn(output) || shown.length === 1;
+    }
+
+    // Whether this screen's place holds the Brightness: the built-in one
+    // while it's on, the only screen there is, or else the first lit
+    // monitor that follows the panel. Only one holds it, since every
+    // screen shows the same level.
+    function backlit(output) {
+        const home = lit.find(each => inTheRoom(each))
+            ?? lit.find(each => follows(each)) ?? null;
+        return home !== null && home.name === output.name;
     }
 
     function readOut(file) {
@@ -120,8 +141,8 @@ Provider {
         return `${Numbers.format(value, value >= 10 ? 0 : 1, settings.group, settings.point)} lx`;
     }
 
-    // The backlit screen's Brightness and the Room light, or nothing for
-    // a screen the backlight doesn't light.
+    // The Brightness and, where the room is heard, the Room light, or
+    // nothing for a screen whose place doesn't hold them.
     function lightRows(output) {
         const light = backlit(output) ? backlight() : null;
         if (light === null)
@@ -131,9 +152,13 @@ Provider {
                 Words.name("displays:brightness:level", "", { n: each }), "brightness",
                 light.share === each, () => provider.brighten(each)))), {
             graph: level(light.now, light.most),
-            note: `${light.now} of ${light.most} steps; it follows the room, and the keys set it`
+            // With the lid shut nothing hears the room, and a monitor has
+            // no steps of the panel's, so it only says what sets it.
+            note: inTheRoom(output)
+                ? `${light.now} of ${light.most} steps; it follows the room, and the keys set it`
+                : "every screen follows it, and the keys set it"
         })];
-        if (askRoom() && room !== null)
+        if (inTheRoom(output) && askRoom() && room !== null)
             rows.push(copyRow({
                 key: `displays:${output.name}:room`,
                 name: partName("room"),
@@ -334,7 +359,11 @@ Provider {
     // Colour depth "10 bit", Colours, then who made it and when, the depth
     // first since it's what's asked.
     function factRows(output) {
-        return factParts("displays", output.name, facts[output.name], askedFirst);
+        // A monitor's brightness is the panel's, which the Brightness
+        // setting says, so it isn't said again as a fact.
+        const said = (facts[output.name] ?? [])
+            .filter(fact => fact.name.toLowerCase() !== "brightness");
+        return factParts("displays", output.name, said, askedFirst);
     }
 
     // The facts asked of a display most, which lead the rest.
