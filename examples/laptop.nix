@@ -8,8 +8,17 @@ nixpkgs.lib.nixosSystem {
     core.nixosModules.graphical
     core.nixosModules.laptop
     core.nixosModules.dell-xps-14-da14260
+    core.nixosModules.disk-loss-panic
     core.nixosModules.disko
     core.nixosModules.lanzaboote
+    (
+      { config, ... }:
+      {
+        # While a disk that goes is chased, it panics the kernel once the
+        # disk stops answering, so pstore keeps the kernel's log.
+        jitsusama.diskLossPanic.disk = config.jitsusama.disk.device;
+      }
+    )
     {
       networking.hostName = "example-laptop";
       nixpkgs.hostPlatform = "x86_64-linux";
