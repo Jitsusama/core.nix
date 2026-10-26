@@ -675,7 +675,8 @@
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
-    or "when will it rain" answer when it next rains, here or in a place
+    or "when will it rain" answer when it next rains, here or in a place; here is where the laptop
+    is, by its position, ahead of the place set and then the time zone, and the footer says which
   '';
   the-launcher-answers-what-is-asked = ''
     sums, addresses, measures, zones, colours, the machine's figures and its parts' heat answer
@@ -970,8 +971,9 @@
     keys, and its lock screen, polkit's prompt and the askpass answer and hold
   '';
   vm-desktop-launcher-answers = ''
-    the launcher lists each thing once for everything Joel types, copies what it answers, and keeps
-    emoji in their own place
+    the launcher lists each thing once for everything Joel types, copies what it answers, keeps
+    emoji in their own place, and takes the weather's here from where whereabouts says the laptop
+    is
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, sets
@@ -1144,6 +1146,9 @@
     one fails; a VM test written for pytest gets the driver's machines as fixtures, each test is a
     subtest named by its docstring, a failure fails it with pytest's account of why, and the
     driver ends as a failed subtest ends it
+  '';
+  whereabouts-passes-clippy = ''
+    clippy finds nothing in whereabouts or its tests
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests

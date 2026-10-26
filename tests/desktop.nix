@@ -429,6 +429,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         ];
         initialPassword = secret;
       };
+      # GeoClue asks a geolocation service that isn't there, so whereabouts
+      # runs as it does on a machine but never finds the laptop, and the
+      # test writes where it is in its stead. Run by hand, the VM can reach
+      # the network, and the host's own position would stand in for the
+      # test's.
+      services.geoclue2.geoProviderUrl = lib.mkForce "http://127.0.0.1:9/v1/geolocate";
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs photograph kitty the same
