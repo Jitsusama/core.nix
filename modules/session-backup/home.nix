@@ -1,0 +1,111 @@
+# session-backup copies each of the account's settled pi session logs, packed
+# and sealed with age, into one Google Drive folder, every hour, only ever
+# adding to it (src/lib.rs says how). A module names the folder and who can
+# open the copies:
+#
+#   jitsusama.session-backup = {
+#     folder = "<the folder's id>";
+#     recipients = [ "age1tag1..." "age1fido2-hmac1..." ];
+#   };
+#
+# With no folder named, nothing runs. It signs in as the account's gcloud
+# application-default login, so the account signs in once with
+#
+#   gcloud auth application-default login
+#
+# and `session-backup status` says what is sent and what waits. A copy is
+# opened with age and one of the recipients' keys, then zstd -d.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.jitsusama.session-backup;
+  package = pkgs.callPackage ./package.nix { };
+  configFile = pkgs.writeText "session-backup.json" (
+    builtins.toJSON {
+      sessions = "${config.home.homeDirectory}/.pi/agent/sessions";
+      ledger = "${config.xdg.stateHome}/session-backup/sent.jsonl";
+      inherit (cfg)
+        folder
+        host
+        recipients
+        settledHours
+        ;
+      credentials = "${config.xdg.configHome}/gcloud/application_default_credentials.json";
+    }
+  );
+  # The command, told its settings, for the account to ask what's sent.
+  configured = pkgs.writeShellScriptBin "session-backup" ''
+    case "''${1:-status}" in
+      run | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} "''${@:2}" ;;
+      *) echo "usage: session-backup [status | run [--most N]]" >&2; exit 2 ;;
+    esac
+  '';
+in
+{
+  options.jitsusama.session-backup = {
+    folder = lib.mkOption {
+      description = ''
+        The id of the Google Drive folder the copies go in, from the end of
+        its address. The account's login needs to be able to add to it.
+      '';
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+    };
+    recipients = lib.mkOption {
+      description = ''
+        Who can open a copy: age recipients, a plugin's such as a TPM's
+        age1tag1 or a YubiKey's age1fido2-hmac1 among them.
+      '';
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+    };
+    host = lib.mkOption {
+      description = "The machine, as each copy's name begins.";
+      type = lib.types.str;
+    };
+    settledHours = lib.mkOption {
+      description = ''
+        How long a log goes unwritten before it's copied. A session resumed
+        later is copied again, so this only spares copying one still going.
+      '';
+      type = lib.types.ints.positive;
+      default = 48;
+    };
+  };
+
+  config = lib.mkIf (cfg.folder != null && pkgs.stdenv.hostPlatform.isLinux) {
+    assertions = [
+      {
+        assertion = cfg.recipients != [ ];
+        message = "jitsusama.session-backup names a folder but no recipient, so nothing could open a copy.";
+      }
+    ];
+
+    home.packages = [ configured ];
+
+    systemd.user.services.session-backup = {
+      Unit.Description = "Copies the account's settled pi session logs, sealed, to Drive";
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe package} run --config ${configFile}";
+        # Whatever the account runs comes first: the slice gives it the
+        # disk's idle priority and a small share of the processor.
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.session-backup = {
+      Unit.Description = "Copies the account's settled pi session logs every hour";
+      Timer = {
+        OnCalendar = "hourly";
+        RandomizedDelaySec = "10min";
+        # An hour slept through runs once the machine wakes.
+        Persistent = true;
+      };
+      Install.WantedBy = [ "timers.target" ];
+    };
+  };
+}

@@ -1,0 +1,22 @@
+# session-backup copies each settled pi session log, packed and sealed, into
+# one Google Drive folder, only ever adding to it (src/lib.rs says how).
+[package]
+name = "session-backup"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Sealing to the backup's recipients, its plugins included: age-plugin-tag
+# for a TPM's age1tag1 recipient, age-plugin-fido2-hmac for a YubiKey's.
+age = { version = "0.12", features = ["plugin"] }
+# Reaping the plugins age starts, which it leaves unwaited.
+libc = "0.2"
+serde_json = "1"
+# Drive's API and Google's token endpoint, over rustls.
+ureq = "3"
+zstd = "0.13"
+
+[dev-dependencies]
+tempfile = "3"
