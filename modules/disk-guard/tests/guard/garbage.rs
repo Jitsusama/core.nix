@@ -533,6 +533,29 @@ fn young_garbage_over_its_budget_goes_largest_first() {
 }
 
 #[test]
+fn with_no_cache_kept_the_largest_goes_first_however_old() {
+    // Oldest first, a disk image waited an hour behind tens of thousands
+    // of small derivations that evaluations left, which came faster than
+    // they went.
+    let all = [
+        dead("old-drv", 30.0, 1, &[]),
+        dead("image", 0.1, 100, &[]),
+        dead("older-drv", 40.0, 1, &[]),
+    ];
+    assert_eq!(
+        names(&batches(&all, NOW, 0.0, 0, 100)),
+        [(
+            vec![
+                "image".to_owned(),
+                "old-drv".to_owned(),
+                "older-drv".to_owned()
+            ],
+            false
+        )]
+    );
+}
+
+#[test]
 fn a_large_path_goes_first_with_the_small_ones_referring_to_it() {
     // A disk image, and the little link to it that a test run left.
     let all = [
