@@ -925,8 +925,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     machine = desktop.machine
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    # The same five rows every time: Now first, then the rest by name.
-    home = ["Now", "Machine", "Programs", "Power and modes", "Tools"]
+    # The same rows every time: Now first, then each place in the order
+    # the approved proposal gives them.
+    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -951,13 +952,13 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
             lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
         )
         feet[selected_is()] = foot()
-    assert selected_is() == "category:tools"
+    assert selected_is() == "collection:keyboard"
     assert len(set(feet.values())) == 1, f"the foot moved as the arrows went: {feet}"
-    # Each says what it holds after its name, by name, from the
+    # Each says what it holds after its name, in its own order, from the
     # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:tools"].startswith("Tools \u00b7 Agents, AI spend, brightness, Calls"), (
-        f"tools reads {reads['category:tools']!r}"
+    assert reads["category:desktop"].startswith("Desktop \u00b7 Windows, Screens, "), (
+        f"desktop reads {reads['category:desktop']!r}"
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
@@ -990,14 +991,16 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     first = desktop.showing()["selected"]
     machine.send_key("tab")
     machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:computer")
-    # Had Tab moved to the first category, the arrow would be past it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
+    # Had Tab moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    for _step in range(3):
+    for _step in range(2):
         machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:tools")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["tools"] and "Agents" in shown["rows"])
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and shown["rows"][:2] == ["Windows", "Screens"]
+    )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
 

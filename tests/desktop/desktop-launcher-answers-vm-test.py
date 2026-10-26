@@ -851,37 +851,31 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # The word and a space become a chip, the field cleared, listing
-    # what it holds; what's typed then searches only inside it. Only the
-    # first twenty rows are reported, which Tasks falls past, so it's
-    # found by typing below.
+    # what it holds; what's typed then searches only inside it.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("tools ")
+    machine.send_chars("network ")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["tools"]
+            shown["held"] == ["network"]
             and shown["typed"] == ""
-            and {"Agents", "Helpers"} <= set(shown["rows"])
+            and {"Addresses", "Network speed"} <= set(shown["rows"])
         )
     )
-    # What it holds is listed by name, capitals ignored, its commands with
-    # them by their words. AI spend has nothing to say here, with no
-    # spend written.
+    # What it holds is in its own order, Wi-Fi before what it's
+    # connected by, then its typed commands, last, in theirs.
     held = desktop.showing()["rows"]
-    assert held[0] == "Agents", held
-    assert held.index("\u27e8amount\u27e9 \u27e8unit\u27e9 in \u27e8unit\u27e9") > 0, held
-    assert held.index("brightness \u27e8percent\u27e9") < held.index("Calls"), held
-    # An answer is named as what it is, what it says beside, so it keeps
-    # its place: the date is Date, never today's date.
-    assert held.index("colour \u27e8colour\u27e9") < held.index("Date"), held
+    ip = "ip \u27e8address or network\u27e9"
+    assert held.index("Addresses") < held.index("Network speed") < held.index(ip), held
+    assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.photograph("launcher-category")
-    desktop.type_in("tas", selecting="Tasks")
+    desktop.type_in("add", selecting="Addresses")
     # The left arrow takes what's typed, then steps out with the word
     # put back.
     machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == ["tools"] and shown["typed"] == "")
+    desktop.launcher_until(lambda shown: shown["held"] == ["network"] and shown["typed"] == "")
     machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "tools")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "network")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A question that starts with a category's word is still a question.
@@ -889,17 +883,13 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     desktop.launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Every command is in Tools by its words, its form shown; Tab puts its
-    # start in the field, out at the top, where it's finished. Only the
-    # first twenty rows are reported, so two from early in the alphabet.
+    # A command is in the place whose answer it gives, its form shown; Tab
+    # puts its start in the field, out at the top, where it's finished.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    machine.send_chars("tools ")
+    machine.send_chars("network ")
     desktop.launcher_until(
-        lambda shown: (
-            shown["held"] == ["tools"]
-            and {"ip \u27e8address or network\u27e9", "epoch"} <= set(shown["rows"])
-        )
+        lambda shown: shown["held"] == ["network"] and ip in shown["rows"]
     )
     desktop.photograph("launcher-commands")
     desktop.type_in("ip", selecting="ip \u27e8address or network\u27e9")

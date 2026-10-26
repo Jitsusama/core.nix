@@ -616,22 +616,22 @@ Scope {
             || (category.words ?? []).includes(said)) ?? null;
     }
 
-    // The one order every list a category holds keeps: by name, numbers
-    // counting up first, capitals ignored (RSCH-20261025-U7566F), so where
-    // a thing is never has to be remembered, only its name. A command's
-    // form counts by its words, so "\u27e8sum\u27e9" is among the S's.
-    function byName(a, b) {
-        const bare = name => name.replace(/[\u27e8\u27e9]/g, "");
-        return bare(a).localeCompare(bare(b), undefined, { numeric: true, sensitivity: "base" });
+    // What a place holds, in the order the vocabulary gives, which is by
+    // importance and relation (attachments/collection-order.md under the
+    // launcher's quest; Joel, 2026-10-25: "ordered intelligently by
+    // importance and relation"): each thing as it's found anywhere, only
+    // those this machine has, then the typed commands whose answers are
+    // this place's, last, so they remind him what can be typed here.
+    function members(category) {
+        return (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null)
+            .concat(commandsIn(category));
     }
 
-    // What a category holds, by name: each thing the vocabulary names as
-    // it's found anywhere, and only those this machine has, and the
-    // commands with them where the category says it holds those too.
-    function members(category) {
-        const held = (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null)
-            .concat(category.commands ? commands() : []);
-        return held.sort((a, b) => byName(a.name, b.name));
+    // The typed commands a place lists, in its order.
+    function commandsIn(category) {
+        const named = category.commands ?? [];
+        return commands().filter(row => named.includes(row.key))
+            .sort((a, b) => named.indexOf(a.key) - named.indexOf(b.key));
     }
 
     // What a category holds, said after its name at home so scrolling
@@ -642,10 +642,10 @@ Scope {
     // answer is asked for it.
     function holding(category, room) {
         const names = (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "")
-            .concat(category.commands ? commands().map(row => row.start.trim()
-                || row.key.replace(/^command:/, "")) : []);
+            .concat(commandsIn(category).map(row => row.start.trim()
+                || row.key.replace(/^command:/, "")));
         const own = (category.name ?? category.id).toLowerCase();
-        return listed(names.filter(name => name.toLowerCase() !== own).sort(byName), room);
+        return listed(names.filter(name => name.toLowerCase() !== own), room);
     }
 
     // Names as one line, as many whole as fit in `room` characters, then
@@ -1179,14 +1179,14 @@ Scope {
     // what it orders holds still while it's open.
     property var often: ({})
 
-    // With nothing typed, home is the same five rows every time, each in
-    // its one place (RSCH-20261025-U7566F): Now first, saying what's on or
-    // waiting this moment, then Computer, Programs, Session and Tools by
-    // name, each saying what it holds, so one glance reminds Joel what
-    // there is. Each thing has one home among them, and nothing else is
-    // here: what's on is in Now, a mode in Session, a window in Programs'
-    // and Tools' Windows. What each row says is read as the launcher opens
-    // and held while it's open, so nothing moves under him.
+    // With nothing typed, home is the same rows every time, each in its
+    // one place, as the approved proposal sets them
+    // (attachments/launcher-proposal.md under the launcher's quest): Now
+    // first, saying what's on or waiting this moment, then each place, a
+    // context of its own, saying what it holds, so one glance reminds Joel
+    // what there is. Each thing has one home among them, and nothing else
+    // is here. What each row says is read as the launcher opens and held
+    // while it's open, so nothing moves under him.
     function home() {
         const room = Math.floor((list.width - Theme.space.l - Theme.space.xxl
             - Theme.space.xxl - Theme.space.m - Theme.space.l)

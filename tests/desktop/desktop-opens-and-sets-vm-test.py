@@ -242,10 +242,12 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    assert rows == ["Now", "Machine", "Programs", "Power and modes", "Tools"], rows
+    assert rows == ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"], (
+        rows
+    )
     # A page down stops on the last.
     machine.send_key("pgdn")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tools")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Keyboard")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
     desktop.type_in("shortcuts", selecting="Shortcuts")

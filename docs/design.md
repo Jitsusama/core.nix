@@ -638,17 +638,16 @@ works the same way everywhere.
   list scrolled where it was. A category held, as Agents in "ai", refreshes
   the same way. A collection says it changed only when what its rows show
   did, not each time what they're made from moves.
-- **Home is what's next.** With nothing typed, the launcher shows what's in
-  front of you (the focused window, its verbs one arrow away), then the
-  three likeliest picks, then after a gap the same three collections in the
-  same order, Windows, Clipboard and Notifications, so home's shape never
-  changes, and below them the fifteen categories in their order, each
-  saying what it holds after its name, muted, by its members' own names
-  (AI: "Agents, Tasks, Helpers, AI spend"), as many whole as fit, so
-  scrolling down
-  reminds Joel what there is. Tab does nothing at home, since an arrow
-  reaches every category. Every other collection is its name away, and every
-  typed command is in **commands**.
+- **Home is a few places.** With nothing typed, the launcher shows Now,
+  then after a gap the places, each a context with its own words: Agents,
+  Programs, Desktop, Machine, Network and Keyboard, always in that order,
+  so home's shape never changes. Each says what it holds after its name,
+  muted, by its members' own names in the place's own order (Desktop:
+  "Windows, Screens, Light, Notices"), as many whole as fit, so a glance
+  reminds Joel what there is. Inside a place, things come by importance
+  and relation, never A to Z, and a typed command comes last in the place
+  whose answer it gives (Network's "ip ⟨address or network⟩").
+  Tab does nothing at home, since an arrow reaches every place.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, and so does Tab when the row holds more, so a
   few letters reach inside a thing from anywhere: what can be done to it,
