@@ -1,7 +1,8 @@
 # session-backup copies each of the account's settled pi session logs, packed
 # and sealed with age, into one Google Drive folder, every hour, only ever
-# adding to it (src/lib.rs says how). A module names the folder and who can
-# open the copies:
+# adding to it (src/lib.rs says how). A log Drive holds stays on the machine
+# for `keepDays` after its last write, then a run removes it. A module names
+# the folder and who can open the copies:
 #
 #   jitsusama.session-backup = {
 #     folder = "<the folder's id>";
@@ -39,6 +40,7 @@ let
       inherit (cfg)
         folder
         host
+        keepDays
         recipients
         settledHours
         ;
@@ -91,6 +93,16 @@ in
       '';
       type = lib.types.ints.positive;
       default = 48;
+    };
+    keepDays = lib.mkOption {
+      description = ''
+        How many days after its last write a log stays on the machine. Past
+        that, a run removes it, but only once Drive holds its copy under
+        that last write; a log Drive no longer finds is kept. Null keeps
+        every log.
+      '';
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = 90;
     };
   };
 
