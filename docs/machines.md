@@ -147,6 +147,20 @@ my-tool-passes-clippy = (core.lib.clippy pkgs).passes {
 clippy reads core's `clippy.toml` unless `settings` names a folder holding
 the repository's own, for names of things its docs use that core's don't.
 
+Its docs name only what exists, as core's do, through one more:
+
+```nix
+docs-name-what-exists = core.lib.docsNameWhatExists pkgs {
+  src = ./.;
+  # Each mention of something deliberately absent, as `file path`, with why.
+  exempt = [ ];
+};
+```
+
+It fails on a relative link that resolves to nothing, and on a backticked
+path starting with one of the repository's own top folders that names
+nothing, read from the root or the doc's folder. Code blocks aren't read.
+
 ## Taking New Pins
 
 The machine repository follows core.nix's pins, so updating is one input:

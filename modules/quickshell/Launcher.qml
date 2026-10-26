@@ -455,6 +455,100 @@ Scope {
         return typedWords.every(word => named.some(one => one.startsWith(word)));
     }
 
+    // A spot: a part or a figure a level inside a thing a category holds,
+    // a headset's Sample rate or a screen's Colour depth, found from the
+    // root by its name, saying where it lives, and Return goes there, the
+    // crumbs filled and the spot selected, so ← goes back up through each
+    // (Joel, 2026-10-25: "being able to drill right down by typing in the
+    // details from a root view that would put me in the hierarchy"). Only
+    // what a thing reads or holds is a spot; what it does, such as
+    // Disconnect, is said once for each thing and would be found many
+    // times over. Made once an opening, by the first search of three
+    // letters or more, of the collections whose things are devices, few
+    // and read whole, so a search after it never reads them again.
+    readonly property var spotCollections: ["sound", "bluetooth", "displays", "wifi",
+        "keyboard", "cameras"]
+    readonly property int spotsFewest: 3
+    property var spots: []
+    property bool spotsMade: false
+
+    function spotsFrom() {
+        const out = [];
+        for (const shown of categories) {
+            const collections = members(shown.category).filter(row => row.from
+                && spotCollections.includes(row.opens));
+            for (const collection of collections)
+                for (const thing of collection.verbs())
+                    for (const part of (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing)))
+                        if (isSpot(part))
+                            out.push(spotOf(part, [shown, collection, thing]));
+        }
+        return out;
+    }
+
+    function isSpot(part) {
+        return !!part && (part.name ?? "") !== ""
+            && (part.figure === true || !!part.targets || !!part.verbs || !!part.nested);
+    }
+
+    function spotOf(part, trail) {
+        const spot = {
+            key: `spot:${trail.map(row => steadyId(row)).join("/")}/${steadyId(part)}`,
+            name: part.name,
+            glyph: part.glyph,
+            hue: part.hue,
+            graph: part.graph,
+            side: trail.map(row => row.name).join(" \u203a "),
+            chord: [],
+            verb: "go",
+            // Where it is, and so where Return goes, by what each step is.
+            trail: trail.map(row => steadyId(row)),
+            spot: steadyId(part),
+            stays: true,
+            prepared: Fuzzy.prepare(part.name)
+        };
+        spot.run = () => root.goTo(spot);
+        return spot;
+    }
+
+    // The spots what's typed names, best first, once it's three letters or
+    // more, but for one a row found already says: a thing found at the top
+    // is its own row.
+    function spotted(letters) {
+        if (Fuzzy.plainly(letters).length < spotsFewest)
+            return [];
+        if (!spotsMade) {
+            spots = spotsFrom();
+            spotsMade = true;
+        }
+        const found = [];
+        for (const spot of spots) {
+            const m = Fuzzy.match(spot.prepared, words, false);
+            if (m.score >= 0)
+                found.push({ item: spot.prepared, score: m.score, grade: m.grade, row: spot });
+        }
+        return Fuzzy.keep(found).map(f => Object.assign({ grade: f.grade, tier: 2 }, f.row));
+    }
+
+    // Goes to a spot: from the root into each step of its trail, found again
+    // by what it is, then onto the spot itself. A step gone since, such as a
+    // headset turned off, stops it where it got to.
+    function goTo(spot) {
+        held = [];
+        restart("");
+        for (const step of spot.trail) {
+            const rows = held.length === 0 ? categories : offered;
+            const row = rows.find(one => steadyId(one) === step) ?? null;
+            if (row === null || !enter(row))
+                return;
+        }
+        const at = matches.findIndex(row => steadyId(row) === spot.spot);
+        if (at >= 0) {
+            current = at;
+            list.positionViewAtIndex(at, ListView.Contain);
+        }
+    }
+
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
         return (partsOfRows[row.key] ?? []).map(part => Object.assign({}, part, {
@@ -1608,7 +1702,7 @@ Scope {
                 grade: f.grade,
                 tier: f.tier,
                 kept: !!learned[f.choice.key]
-            }, f.choice));
+            }, f.choice)).concat(spotted(letters));
         }
         const matched = Date.now();
         compose(true);
@@ -1968,6 +2062,10 @@ Scope {
             held = [];
             prompt.forget();
             often = picks.counts();
+            // What's inside things is read again for each opening, the
+            // first time a search needs it.
+            spotsMade = false;
+            spots = [];
             restart("");
             // Always the same height, eight rows and home's gap, kept until
             // it closes, so the card is the same shape however much home
