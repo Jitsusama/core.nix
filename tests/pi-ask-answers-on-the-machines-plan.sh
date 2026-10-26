@@ -5,7 +5,9 @@
 # machine names, on the model it names; on the Claude plan, pi-claude is
 # started the same way instead, and pi is not. On a device whose extensions
 # are managed centrally, where pi refuses --no-extensions, pi-ask leaves the
-# flag out and loads the machine's extensions all the same.
+# flag out and loads the machine's extensions all the same. Started with no
+# more than a user service has, as the launcher starts it, pi-ask puts the
+# machine's folders ahead on pi's PATH, in the order named.
 # usage: pi-ask-answers-on-the-machines-plan.sh <pi-ask on pi's plan>
 #          <pi-ask on the Claude plan> <the stand-in pi-claude>
 set -euo pipefail
@@ -42,6 +44,7 @@ for argument in "$@"; do
 done
 {
   echo "started pi"
+  echo "path $PATH"
   printf 'arg %s\n' "$@"
 } > "$SAID"
 EOF
@@ -69,6 +72,11 @@ grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/a-proxy" ||
 grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/another" ||
   fail "the machine's second extension wasn't loaded"
 [ "$(grep -cxF -- "arg -e" "$said")" = 2 ] || fail "it loaded more than the machine named"
+
+: > "$said"
+env -i PATH="$work/bin" SAID="$said" "$on_pi"
+has "started pi"
+has "path /folders/the-token-maker:/folders/another:$work/bin"
 
 : > "$said"
 MANAGED=1 "$on_pi"

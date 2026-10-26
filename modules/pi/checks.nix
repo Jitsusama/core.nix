@@ -214,7 +214,8 @@
 
   # pi-ask starts pi for the Ask row with nothing loaded but the machine's
   # extensions, on the machine's plan and model: pi's own by default, with
-  # its quick model, or pi-claude's; and an account gets it.
+  # its quick model, or pi-claude's; started as a user service starts it, it
+  # puts the machine's folders first on pi's PATH; and an account gets it.
   pi-ask-answers-on-the-machines-plan =
     let
       home = account workstation;
@@ -242,12 +243,17 @@
             "/extensions/a-proxy"
             "/extensions/another"
           ];
+          path = [
+            "/folders/the-token-maker"
+            "/folders/another"
+          ];
         }
       );
       onClaude = asking {
         plan = "claude";
         model = "claude-code/claude-haiku-4-5-20251001";
         extensions = [ ];
+        path = [ ];
       };
     in
     assert lib.assertMsg (lib.any (

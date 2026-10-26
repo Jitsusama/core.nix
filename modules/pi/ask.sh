@@ -11,6 +11,11 @@
 # setting ($PLAN): "pi" for pi's own provider, or "claude" for Joel's own
 # Claude plan through pi-claude ($PI_CLAUDE), on $MODEL either way.
 #
+# The launcher starts it from a user service, whose PATH isn't a login
+# shell's, so what an extension runs, such as the program a work machine's
+# proxy gets its token from, can be missing from it. The folders the machine names ($ASK_PATH, one per line)
+# go ahead of the PATH it was started with, in the order named.
+#
 # A device whose pi extensions are managed centrally has a pi that refuses
 # --no-extensions, since it delivers the managed ones itself. pi is asked once
 # whether it takes the flag, which works wherever the managed list is kept,
@@ -19,6 +24,14 @@
 #
 # usage: pi-ask [more of pi's arguments]
 set -euo pipefail
+
+ahead=
+while IFS= read -r folder; do
+  if [ -n "$folder" ]; then
+    ahead=$ahead$folder:
+  fi
+done <<< "$ASK_PATH"
+PATH=$ahead$PATH
 
 prompt="You answer quick questions in a desktop launcher. One or two plain sentences, no markdown."
 arguments=(

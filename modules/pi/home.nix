@@ -218,6 +218,17 @@ in
         answer starts in a second or two.
       '';
     };
+    path = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "/home/someone/.local/share/dev/bin" ];
+      description = ''
+        Folders put ahead of the PATH the Ask row's pi starts with, in this
+        order, for what its extensions run, such as the program a work
+        machine's proxy gets its token from. The launcher starts it from a
+        user service, whose PATH isn't a login shell's.
+      '';
+    };
   };
 
   config = {
