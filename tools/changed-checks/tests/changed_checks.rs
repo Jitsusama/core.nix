@@ -195,6 +195,36 @@ fn asked_to_build_it_builds_what_was_added_and_changed_but_the_vm_tests() {
 }
 
 #[test]
+fn it_builds_each_check_from_the_derivation_it_evaluated_rather_than_evaluating_again() {
+    // An evaluator holds its heap until its last build ends, so building
+    // from the flake again held gigabytes through every VM test.
+    let stand_in = StandIn::new("derivations");
+    let new = stand_in.path("n.drv");
+    fs::write(&new, "").expect("a derivation");
+    let missing = stand_in.path("a2.drv");
+    stand_in.checks("base", BASE);
+    stand_in.checks(
+        "working",
+        &format!(
+            r#"{{"a": "{}", "b": "b.drv", "new": "{}", "vm-x": "v2.drv"}}"#,
+            missing.display(),
+            new.display()
+        ),
+    );
+
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let repo = stand_in.path("repo");
+    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+    assert_eq!(
+        stand_in.built(),
+        format!("--no-link --keep-going -L {}^* {flake}.a\n", new.display()),
+        "a derivation collected since its evaluation is built from the flake"
+    );
+}
+
+#[test]
 fn a_check_that_stops_evaluating_fails_the_run_and_nothing_is_built() {
     let stand_in = StandIn::new("broken");
     stand_in.checks("base", BASE);
