@@ -744,6 +744,10 @@
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
     figures and its parts' heat answer
   '';
+  the-launcher-asks-a-fresh-pi = ''
+    the Ask row says why pi-ask can't start before it's asked and within 3 s of Return, which
+    asks again rather than closing, and each question is answered by a pi of its own
+  '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
   '';

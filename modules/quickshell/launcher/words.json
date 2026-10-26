@@ -1337,12 +1337,7 @@
       "in": "ask",
       "name": "Ask",
       "verb": "ask",
-      "glyph": "ask",
-      "states": {
-        "starting": {
-          "name": "Ask is starting"
-        }
-      }
+      "glyph": "ask"
     },
     {
       "id": "verb:ask:onward",

@@ -6,13 +6,21 @@
 // answer is written in place, the whole of it below the rows. The right
 // arrow holds carrying the question on in a session of its own.
 //
-// It talks to one long-lived pi through pi's own RPC, a JSON object a
-// line each way, as 85PKB2's contract sets out (pi-ask, the pi module's,
-// which picks the machine's plan and model). Each question starts a new
-// session first, so no answer carries the last and pi's context never
-// grows; a new question while one is answered, or the launcher closing,
-// stops the one being answered. pi is started once with the shell, and
-// again 2 s after it ends.
+// It talks to pi through pi's own RPC, a JSON object a line each way, as
+// 85PKB2's contract sets out (pi-ask, the pi module's, which picks the
+// machine's plan and model). Each question goes to a pi of its own, so no
+// answer carries the last and pi's context never grows: one is started
+// with the shell and waits, and once it's asked, the next is started as
+// its answer ends, so pi's start, a second or more, is never waited on.
+// A new pi rather than RPC's new session, since a work machine's proxy
+// extension keeps the session it started with, and a prompt after a new
+// session reached no model at all (2026-10-26). A new question while one
+// is answered, or the launcher closing, stops that pi.
+//
+// A pi that ends before it's ready says why, as its last line of errors,
+// in the row, so Ask never waits on one that can't start; it's started
+// again after 2 s, then longer each time it ends that way, up to a minute,
+// and at once when Return asks.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -39,13 +47,22 @@ Provider {
     property real askedAt: 0
     property real answeredAt: 0
 
-    // What pi is waiting to be asked once the session it was told to
-    // start is ready, or once the question it's stopping has stopped.
-    property string next: ""
+    // The question waiting for a pi that hasn't been asked one, whether
+    // this one has, and whether it's being ended to start the next.
+    property string waiting: ""
+    property bool spent: false
+    property bool renewing: false
     property int count: 0
-    property string starting: ""
     property bool answering: false
-    property bool stopping: false
+
+    // How the last pi ended: its last line of errors, and how many in a
+    // row ended before saying anything, which sets how long until the
+    // next is started.
+    property string lastError: ""
+    property int failures: 0
+    property bool spoke: false
+    readonly property int firstWait: 2000
+    readonly property int longestWait: 60000
 
     function isQuestion(text) {
         const words = Fuzzy.words(text);
@@ -61,20 +78,18 @@ Provider {
         const question = typed.trim();
         if (!isQuestion(question))
             return null;
-        const row = !pi.running ? {
-            headline: Words.name("ask", "starting"),
-            copy: "",
-            rows: [],
-            note: "it answers in a moment",
-            glyph: Words.glyph("ask"),
-            hue: "voice"
-        } : question === posed ? reply(question) : offer(question);
+        const row = question === posed && stage !== "" ? reply(question) : offer(question);
         // Asked by a question's word rather than "?", it gives way to
         // anything found, so "do not disturb" is Do not disturb.
         return question.endsWith("?") ? row : Object.assign(row, { fallback: true });
     }
 
+    // Whether the last pi ended before it said anything, so the next may
+    // not start either: the row says why until one does.
+    readonly property bool down: failures > 0
+
     // Before it's asked: Return asks, and the launcher stays to show it.
+    // While pi can't start, it says why, and Return tries again at once.
     function offer(question) {
         return {
             headline: Words.name("ask"),
@@ -83,27 +98,30 @@ Provider {
             stays: true,
             run: () => provider.pose(question),
             rows: [onward(question, "")],
-            note: "a quick answer, in a sentence or two",
+            note: down ? `it can't start: ${lastError || "pi ended"}`
+                : "a quick answer, in a sentence or two",
             glyph: Words.glyph("ask"),
-            hue: "voice"
+            hue: down ? "alert" : "voice"
         };
     }
 
     // As it's answered, and once it is: its first sentence as the row's
-    // name, the whole of it below the rows, and Return copying it.
+    // name, the whole of it below the rows, and Return copying it. One that
+    // failed says why, and Return asks it again rather than closing.
     function reply(question) {
         const whole = said.trim();
         const first = (whole.match(/^[\s\S]*?[.!?](?=\s|$)/) ?? [whole])[0];
         const took = Math.max(0, Math.round(((answeredAt || Date.now()) - askedAt) / 1000));
         const notes = {
-            asking: "asking",
+            asking: "thinking",
             answering: "answering",
             answered: `answered in ${took} s`,
             stopped: "stopped",
             failed: "it couldn't answer"
         };
         const failed = stage === "failed";
-        return {
+        const again = failed || (stage === "stopped" && whole === "");
+        return Object.assign({
             headline: failed ? why : whole === "" ? "\u2026" : first,
             copy: failed ? "" : whole,
             reads: failed || first === whole ? "" : whole,
@@ -112,7 +130,15 @@ Provider {
             note: notes[stage] ?? "",
             glyph: Words.glyph("ask"),
             hue: failed ? "alert" : "voice"
-        };
+        }, again ? {
+            verb: Words.verb("ask"),
+            stays: true,
+            run: () => provider.pose(question)
+        } : stage === "asking" || stage === "answering" ? {
+            // Return while it's still answering leaves it answering.
+            stays: true,
+            run: () => {}
+        } : {});
     }
 
     // Carrying it on in a session of its own, in a terminal in the home
@@ -142,28 +168,48 @@ Provider {
         stage = "asking";
         askedAt = Date.now();
         answeredAt = 0;
+        waiting = question;
         told();
-        if (answering || starting !== "") {
-            next = question;
-            stop();
+        if (pi.running && !spent)
+            put();
+        else
+            renew();
+    }
+
+    // The question waiting, to a pi that's running and hasn't been asked.
+    // pi reads it once it's ready, so it may go as soon as pi starts.
+    function put() {
+        if (waiting === "")
+            return;
+        spent = true;
+        answering = true;
+        count += 1;
+        send({ id: `ask-${count}`, type: "prompt", message: waiting });
+        waiting = "";
+    }
+
+    // A pi of its own for what's asked next: the one running ended first,
+    // or, with none, one started now.
+    function renew() {
+        if (pi.running) {
+            renewing = true;
+            pi.running = false;
             return;
         }
-        begin(question);
+        again.stop();
+        pi.running = true;
     }
 
-    function begin(question) {
-        next = question;
-        count += 1;
-        starting = `new-${count}`;
-        send({ id: starting, type: "new_session" });
-    }
-
+    // Closed while it answers, the answer's not wanted.
     function stop() {
-        if (stopping || !answering)
-            return;
-        stopping = true;
-        count += 1;
-        send({ id: `stop-${count}`, type: "abort" });
+        waiting = "";
+        if (stage === "asking" || stage === "answering") {
+            stage = "stopped";
+            answeredAt = Date.now();
+            told();
+        }
+        if (answering)
+            renew();
     }
 
     function failed(reason) {
@@ -176,14 +222,27 @@ Provider {
     // Each line pi writes: a command's response, or an event of the
     // question being answered.
     function heard(line) {
+        // One being ended says nothing more of the question after it.
+        if (renewing)
+            return;
         let event = null;
         try {
             event = JSON.parse(line);
         } catch (error) {
             return;
         }
+        // A complaint an extension prints as it loads isn't pi ready.
+        if (event.type === "extension_error")
+            return;
+        spoke = true;
+        failures = 0;
+        lastError = "";
         if (event.type === "response") {
-            responded(event);
+            if (String(event.id ?? "").startsWith("ask-") && event.success === false) {
+                answering = false;
+                failed(event.error);
+                renew();
+            }
             return;
         }
         if (event.type === "message_update"
@@ -201,27 +260,7 @@ Provider {
                 answeredAt = Date.now();
                 told();
             }
-        }
-    }
-
-    function responded(event) {
-        const id = String(event.id ?? "");
-        if (id === starting) {
-            starting = "";
-            // Asked again while it started, the last is the one asked.
-            if (next === posed) {
-                answering = true;
-                count += 1;
-                send({ id: `ask-${count}`, type: "prompt", message: next });
-            }
-        } else if (id.startsWith("ask-") && event.success === false) {
-            answering = false;
-            failed(event.error);
-        } else if (id.startsWith("stop-")) {
-            stopping = false;
-            answering = false;
-            if (next !== "" && next === posed && stage === "asking")
-                begin(next);
+            renew();
         }
     }
 
@@ -238,7 +277,6 @@ Provider {
         onTriggered: provider.answered()
     }
 
-    // Closed while it answers, the answer's not wanted.
     Connections {
         target: provider.launcher
         ignoreUnknownSignals: true
@@ -257,19 +295,41 @@ Provider {
             splitMarker: "\n"
             onRead: line => provider.heard(line)
         }
+        stderr: SplitParser {
+            splitMarker: "\n"
+            onRead: line => {
+                const plain = line.trim().replace(/^error:\s*/i, "");
+                if (plain !== "")
+                    provider.lastError = plain;
+            }
+        }
+        onStarted: {
+            provider.spent = false;
+            provider.spoke = false;
+            provider.put();
+        }
         onExited: {
             provider.answering = false;
-            provider.stopping = false;
-            provider.starting = "";
-            if (provider.stage === "asking" || provider.stage === "answering")
-                provider.failed("it stopped");
+            const meant = provider.renewing;
+            provider.renewing = false;
+            if (!meant && !provider.spoke)
+                provider.failures += 1;
+            if (!meant && (provider.stage === "asking" || provider.stage === "answering"))
+                provider.failed(provider.lastError || "it stopped");
+            if (meant) {
+                Qt.callLater(() => pi.running = true);
+                return;
+            }
+            again.interval = Math.min(provider.longestWait,
+                provider.firstWait * 2 ** Math.max(0, provider.failures - 1));
             again.start();
+            provider.told();
         }
     }
 
     Timer {
         id: again
-        interval: 2000
+        interval: provider.firstWait
         onTriggered: pi.running = true
     }
 }
