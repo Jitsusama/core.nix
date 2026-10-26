@@ -1564,9 +1564,13 @@ Scope {
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        if (!into || into.length === 0)
+        // A collection with nothing in it still holds the places its
+        // vocabulary names, which a step into it shows: Agents with no
+        // agent running still leads to its Quests and Orchestrators.
+        const places = things && row.from ? partsOf(row.from).length : 0;
+        if ((!into || into.length === 0) && places === 0)
             return false;
-        held = held.concat([Object.assign(here(), { row: row, rows: into })]);
+        held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
         if (row.from)
             row.from.opened();
         // What was typed found the row, so it goes: inside, everything the row
