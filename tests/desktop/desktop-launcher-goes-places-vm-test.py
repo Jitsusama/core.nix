@@ -873,7 +873,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     """A detail inside a thing is found from the root, and Return goes there."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    where = "Machine \u203a Screens \u203a "
+    where = "Desktop \u203a Screens \u203a "
 
     def spot(shown: Json) -> int:
         """Give where the screen's Rotation is listed, saying where it lives, or -1."""
@@ -883,7 +883,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
         return -1
 
     # A screen's rotation is a step inside the screen, inside Screens,
-    # inside Machine; from the root it's found by its name, saying so,
+    # inside Desktop; from the root it's found by its name, saying so,
     # below the focused screen's answer.
     desktop.answer("rotation")
     desktop.launcher_until(lambda shown: spot(shown) >= 0)
@@ -900,8 +900,8 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     desktop.launcher_until(
         lambda shown: (
             shown["open"]
-            and shown["path"][:2] == ["Machine", "Screens"]
-            and len(shown["path"]) == len(["Machine", "Screens", "a screen"])
+            and shown["path"][:2] == ["Desktop", "Screens"]
+            and len(shown["path"]) == len(["Desktop", "Screens", "a screen"])
             and (shown["selected"] or {}).get("name") == "Rotation"
         )
     )
@@ -910,7 +910,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Machine", "Screens"]
+            shown["path"] == ["Desktop", "Screens"]
             and (shown["selected"] or {}).get("name") == screen
         )
     )

@@ -888,9 +888,7 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     machine.send_chars("network ")
-    desktop.launcher_until(
-        lambda shown: shown["held"] == ["network"] and ip in shown["rows"]
-    )
+    desktop.launcher_until(lambda shown: shown["held"] == ["network"] and ip in shown["rows"])
     desktop.photograph("launcher-commands")
     desktop.type_in("ip", selecting="ip \u27e8address or network\u27e9")
     machine.send_key("tab")
