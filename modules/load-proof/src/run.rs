@@ -5,12 +5,15 @@
 //! The load is its own, so a run needs nothing but this program: each
 //! build is a release build of load-proof's own source, shipped beside it
 //! with its crates, rebuilt from clean until its step ends; and the line
-//! is filled both ways, a large download and an upload of zeros. All of it
-//! runs in jobs.slice, where Joel's work runs, and every reading in
-//! app.slice, where his programs do. A run refuses to start with too
-//! little memory free and stops the load if free memory falls too far, so
-//! it can't push Joel's own programs out.
+//! is filled both ways, a large download and an upload to a public iperf3
+//! server, and each step says what the line carried, so one whose upload
+//! found every server busy says so. All of it runs in jobs.slice, where
+//! Joel's work runs, and every reading in app.slice, where his programs
+//! do. A run refuses to start with too little memory free and stops the
+//! load if free memory falls too far, so it can't push Joel's own
+//! programs out.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -26,10 +29,30 @@ const SOURCE: Option<&str> = option_env!("LOAD_PROOF_SOURCE");
 const VENDOR: Option<&str> = option_env!("LOAD_PROOF_VENDOR");
 const TOOLS: Option<&str> = option_env!("LOAD_PROOF_TOOLS");
 
-/// What a download fetches and where an upload goes: public servers made
-/// for testing a line, which let one fill it.
+/// What a download fetches: a large file a public server keeps for
+/// testing a line.
 const DOWNLOAD: &str = "http://ipv4.download.thinkbroadband.com/1GB.zip";
-const UPLOAD: &str = "https://speed.cloudflare.com/__up";
+
+/// Where an upload goes: public iperf3 servers, each port taking one test
+/// at a time and most often busy, so an upload moves on to the next until
+/// one takes it.
+const UPLOADS: [(&str, u16); 11] = [
+    ("iperf.he.net", 5201),
+    ("ping.online.net", 5200),
+    ("ping.online.net", 5201),
+    ("ping.online.net", 5202),
+    ("ping.online.net", 5203),
+    ("ping.online.net", 5204),
+    ("ping.online.net", 5205),
+    ("ping.online.net", 5206),
+    ("ping.online.net", 5207),
+    ("ping.online.net", 5208),
+    ("ping.online.net", 5209),
+];
+
+/// How many streams an upload sends at once: one alone doesn't fill a line
+/// a hundred milliseconds from its server.
+const STREAMS: &str = "4";
 
 const GIB: u64 = 1 << 30;
 
@@ -217,9 +240,23 @@ fn steps(
         if stopped.lock().is_ok_and(|stopped| stopped.is_some()) {
             break;
         }
-        let reading = reading(program, plan.reading)?;
+        let link = fs::read_to_string("/proc/net/route")
+            .ok()
+            .and_then(|route| default_link(&route));
+        let before = link.as_deref().and_then(carried);
+        let started_reading = Instant::now();
+        let mut reading = reading(program, plan.reading)?;
         if stopped.lock().is_ok_and(|stopped| stopped.is_some()) {
             break;
+        }
+        if let (Some(link), Some(before), Some(after)) =
+            (&link, before, link.as_deref().and_then(carried))
+        {
+            let (up, down) = rates(before, after, started_reading.elapsed());
+            let _ = writeln!(
+                reading,
+                "line {link} up {up:.1} Mbit/s down {down:.1} Mbit/s"
+            );
         }
         let failed = crate::judge::judge(&crate::judge::read(idle), &crate::judge::read(&reading));
         say(out, &format!("{builds} builds"), &reading);
@@ -236,6 +273,44 @@ fn say(out: &mut dyn Write, what: &str, reading: &str) {
     for line in reading.lines() {
         let _ = writeln!(out, "  {line}");
     }
+}
+
+/// The link the default route leaves by, from `/proc/net/route`: the one
+/// with the lowest metric, as the kernel would choose.
+pub fn default_link(route: &str) -> Option<String> {
+    route
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            let (link, destination, metric) = (fields.first()?, fields.get(1)?, fields.get(6)?);
+            (*destination == "00000000").then_some((metric.parse::<u64>().ok()?, *link))
+        })
+        .min()
+        .map(|(_, link)| link.to_owned())
+}
+
+/// The bytes `link` has sent and received, as the kernel counts them.
+fn carried(link: &str) -> Option<(u64, u64)> {
+    let count = |which| {
+        fs::read_to_string(format!("/sys/class/net/{link}/statistics/{which}_bytes"))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
+    };
+    Some((count("tx")?, count("rx")?))
+}
+
+/// Megabits a second up and down between two counts `over` apart.
+pub fn rates(before: (u64, u64), after: (u64, u64), over: Duration) -> (f64, f64) {
+    let seconds = over.as_secs_f64().max(f64::EPSILON);
+    let rate = |from: u64, to: u64| {
+        f64::from(u32::try_from(to.saturating_sub(from) / 1000).unwrap_or(u32::MAX)) * 8.0
+            / 1000.0
+            / seconds
+    };
+    (rate(before.0, after.0), rate(before.1, after.1))
 }
 
 fn free() -> Result<u64, String> {
@@ -375,7 +450,7 @@ pub fn build(folder: &Path, length: Duration) -> Result<(), String> {
 /// Fills the line both ways until `length` has passed.
 pub fn line(length: Duration) -> Result<(), String> {
     let Some(tools) = TOOLS else {
-        return Err("this load-proof wasn't built knowing curl".to_owned());
+        return Err("this load-proof wasn't built knowing curl and iperf3".to_owned());
     };
     let end = Instant::now() + length;
     let down = thread::spawn(move || {
@@ -390,19 +465,32 @@ pub fn line(length: Duration) -> Result<(), String> {
         });
     });
     let up = thread::spawn(move || {
+        let mut servers = UPLOADS.iter().cycle();
         again_until(end, || {
-            let mut curl = Command::new(format!("{tools}/curl"))
-                .args(["-4", "-s", "-o", "/dev/null", "-X", "POST", "-T", "-"])
-                .args(["-H", "Content-Type: application/octet-stream", "--max-time"])
+            let Some((host, port)) = servers.next() else {
+                return Ok(());
+            };
+            let status = Command::new(format!("{tools}/iperf3"))
+                .args([
+                    "-4",
+                    "-c",
+                    host,
+                    "-p",
+                    &port.to_string(),
+                    "-P",
+                    STREAMS,
+                    "-t",
+                ])
                 .arg(left(end))
-                .arg(UPLOAD)
-                .stdin(Stdio::piped())
-                .spawn()?;
-            if let Some(mut input) = curl.stdin.take() {
-                let zeros = vec![0u8; 1 << 16];
-                while Instant::now() < end && input.write_all(&zeros).is_ok() {}
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(io::Error::other(format!("{host}:{port} is busy")))
             }
-            curl.wait().map(|_| ())
         });
     });
     let _ = down.join();
@@ -418,7 +506,8 @@ fn left(end: Instant) -> String {
 }
 
 /// Runs `once` until `end`, again whenever it finishes early, with a
-/// second's pause after a failure so a server that refuses isn't hammered.
+/// second's pause after a failure so a server that refuses isn't
+/// hammered: the uploads' next server is tried after it.
 fn again_until(end: Instant, mut once: impl FnMut() -> io::Result<()>) {
     while Instant::now() < end {
         if once().is_err() {
@@ -492,6 +581,23 @@ mod tests {
                 .readonly()
         );
         let _ = fs::remove_dir_all(&scratch);
+    }
+
+    #[test]
+    fn the_line_is_the_default_routes_with_the_lowest_metric() {
+        let route = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\n\
+                     wlp0s20f3\t00000000\t0104A8C0\t0003\t0\t0\t600\t00000000\n\
+                     wlp0s20f3\t0004A8C0\t00000000\t0001\t0\t0\t600\t00FCFFFF\n\
+                     enp0s1\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n";
+        assert_eq!(default_link(route).as_deref(), Some("enp0s1"));
+        assert_eq!(default_link("Iface\tDestination\n"), None);
+    }
+
+    #[test]
+    fn what_the_line_carried_is_read_in_megabits_a_second() {
+        let (up, down) = rates((0, 0), (1_250_000, 12_500_000), Duration::from_secs(10));
+        assert!((up - 1.0).abs() < 1e-9, "{up}");
+        assert!((down - 10.0).abs() < 1e-9, "{down}");
     }
 
     #[test]

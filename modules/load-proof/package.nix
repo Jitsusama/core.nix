@@ -2,6 +2,7 @@
 {
   cargo,
   curl,
+  iperf3,
   lib,
   pipewire,
   rustc,
@@ -20,12 +21,13 @@ let
   };
   cargoDeps = rustPlatform.importCargoLock { lockFile = ./Cargo.lock; };
   # A run's builds compile load-proof's own source with these, and fill
-  # the line with curl, all found in one folder.
+  # the line with curl down and iperf3 up, all found in one folder.
   tools = symlinkJoin {
     name = "load-proof-tools";
     paths = [
       cargo
       curl
+      iperf3
       rustc
       stdenv.cc
     ];
