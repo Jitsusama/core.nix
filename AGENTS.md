@@ -74,8 +74,9 @@ nix fmt                                # format, and lint every language strictl
 nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
 run-subtests vm-desktop-<area> <words> # a VM test's subtests named, in seconds
 shell-preview --type <words>           # the shell from the working copy, in a niri window
-changed-checks --build --no-vm         # every check the change touched, VM tests aside
-nix flake check --keep-going           # everything, once, before pushing
+changed-checks --no-vm                 # names every check the change touched, VM tests aside
+nix build .#checks.x86_64-linux.<each> # builds those it named, as a command of its own
+nix flake check --keep-going           # everything, only for a change every check reads
 ```
 
 Prove a change with the cheapest check that shows it while editing, and run
@@ -97,8 +98,11 @@ it would build, so a change that reaches a VM test is seen before it's paid
 for. Watching a check fail is done
 the same narrow way, never by copying the tree and running everything.
 
-A change is done when `nix flake check` passes locally, and its machine builds
-with core pointed at the checkout. There's no CI, and nothing runs on a
+A change is done when the checks it touched pass locally, those
+`changed-checks` names and the VM tests among them, and its machine builds
+with core pointed at the checkout. Only a change every check reads, such as
+`flake.lock`, runs `nix flake check`: a whole run evaluates every check, about
+15 minutes and over 20 GB on a machine other work shares. There's no CI, and nothing runs on a
 schedule. A refactor is done when the machine repositories' machines evaluate
 to the same derivations as before. A new check has to earn its place. All of
 it is in [docs/testing.md][1].
