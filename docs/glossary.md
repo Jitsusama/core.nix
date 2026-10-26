@@ -24,17 +24,19 @@ Word, an Also or a Not of two things.
 
 The words core.nix is built from.
 
-| Word               | Means                                          | Also | Not  | In code                                                 |
-| ------------------ | ---------------------------------------------- | ---- | ---- | ------------------------------------------------------- |
-| machine            | one computer                                   |      | host | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
-| machine repository | a repository of machines built on core.nix     |      |      | any flake with core.nix as an input                     |
-| module             | one program or subsystem, configured           |      |      | `modules/bat/` becomes `homeModules.bat`                |
-| role               | what a machine is for                          |      |      | `roles/workstation/` becomes `nixosModules.workstation` |
-| hardware           | one machine model, and what it needs           |      |      | `nixosModules.dell-xps-14-da14260`                      |
-| layer              | what a machine repository adds to its machines |      |      | the machine repository's own modules                    |
-| identity           | who Joel is on a machine                       |      |      | `jitsusama.identity.email`                              |
-| theme              | the look every program Joel sees shares        |      |      | `jitsusama.theme.roles.accent`                          |
-| account            | the user home-manager configures               |      |      | `home-manager.users.<account>`                          |
+| Word | Means | Also | Not | In code |
+| ---- | ----- | ---- | --- | ------- |
+| machine | one computer, which the launcher shows as Machine | computer | host | `nixosConfigurations.laptop`; `hostName`, which NixOS requires |
+| machine repository | a repository of machines built on core.nix, adding its own modules | | | any flake with core.nix as an input |
+| module | one program or subsystem, configured | | | `modules/bat/` becomes `homeModules.bat` |
+| kernel module | a part of the kernel loaded on its own, always written whole | | | `boot.kernelModules` |
+| role | what a machine is for | | | `roles/workstation/` becomes `nixosModules.workstation` |
+| hardware | one machine model, and what it needs | | | `nixosModules.dell-xps-14-da14260` |
+| identity | who Joel is on a machine | | | `jitsusama.identity.email` |
+| age key | the file that opens what was sealed to it with age | | age identity | |
+| theme | the look every program Joel sees shares | | | `jitsusama.theme` |
+| colour | what a colour means in the theme, such as the accent | | colour role | `jitsusama.theme.roles`, to be renamed |
+| account | the account on a machine that home-manager configures | | | `home-manager.users.<account>` |
 
 ## The Machine and Its Parts
 
@@ -50,9 +52,15 @@ What a machine is made of, and the programs that look after each part.
 | disk guard | the program that keeps each filesystem from filling: one for the machine, one for the account | | | `disk-guard system`, `disk-guard user` |
 | freeze | the disk guard stopping a program that fills a filesystem, until there's room | frozen | | `SIGSTOP` |
 | thaw | letting a frozen program carry on | | | `disk-guard thaw` |
+| filling | the disk guard's first band, under a quarter free, when it starts taking room back | | pressure | `pressure` |
+| nearly full | the disk guard's second band, under a tenth free, when it takes more | | urgent | `urgent` |
+| critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | | critical | `critical` |
 | memory | what programs run in while the machine is on | RAM | | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | | swapfile | zram |
 | memory pressure | how long programs are waiting for memory | | | PSI |
+| job | work Joel or an agent starts, run below the desktop so it gives way to it | | | `jobs.slice` |
+| kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
+| queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | | |
 | slice | a share of the machine's CPU, memory and disk that a group of programs runs in | | | a systemd `.slice` |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | | `shaper`, CAKE |
 | connection | the network link out of the machine | uplink | line | |
@@ -67,9 +75,11 @@ What a machine is made of, and the programs that look after each part.
 | wake | coming back from sleep | | resume | |
 | lid | the laptop's lid, whose closing puts it to sleep away from a desk | | | `lid-docked` |
 | docked | the laptop at a desk with a monitor plugged in, kept awake with its lid shut | at a desk | on a dock | |
+| camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | | camera module | `jitsusama.dellXps14.cameraModule` |
 | image processor | the part turning the built-in camera's raw picture into an image | | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | | `ir-camera`, Howdy |
 | desk light | the light on the monitor, lit while a camera is in use | | | Litra |
+| TPM | the chip that keeps the machine's keys and seals its disk | security chip | | |
 | login key | the SSH key that signs Joel in to other machines, kept in the TPM | | everyday SSH key | `id_ecdsa.tpm`, ssh-tpm-agent |
 | spare | the login key's copy on the YubiKey, for when the TPM can't be used | | | `<account>@yubikey` |
 | Joel's key | the key that signs Joel's own commits | Joel's signing key | | `joel-signing`, `joelKey` |
@@ -84,12 +94,27 @@ What a machine is made of, and the programs that look after each part.
 | virtual machine | a computer run as a program on this one | VM | | libvirt, QEMU |
 | container | a program run apart from the machine, with its own files | | | Podman |
 
+## The Terminal
+
+| Word | Means | Also | Not | In code |
+| ---- | ----- | ---- | --- | ------- |
+| shell | zsh, which Joel types commands into in a terminal | | | zsh |
+| prompt | the line the shell writes before each command | | | |
+
 ## The Desktop and the Screen
 
 What Joel sees and reaches for on the desktop.
 
 | Word | Means | Also | Not | In code |
 | ---- | ----- | ---- | --- | ------- |
+| desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | | niri, Quickshell |
+| screen | a monitor, built in or plugged in, which the launcher lists under Screens | display, monitor | | niri's outputs |
+| workspace | one of niri's rows of windows on a screen | | | |
+| notice | a card at the top right saying what a program said | notification | | `Notifications.qml`, `org.freedesktop.Notifications` |
+| mark | one drawn symbol, such as each one in the margin | glyph | icon | `glyphs.nix` |
+| question | a centred box asking Joel something, such as a password or a yes | | | `Polkit.qml`, `Askpass.qml` |
+| layer | what a keyboard's keys do, one set of several, which a key switches between | | | the ErgoDox's layers, `Layer.qml` |
+| Power and modes | the launcher's row for sleep, locking, signing out and the desktop's modes | | | |
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | | palette, command palette | `Launcher.qml` |
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | | `foot` |
 | margin | the row of marks at the top of the screen saying what's true now | | corner | `Margin.qml`, `overview.pieces` |
@@ -119,8 +144,10 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | brief | a quest's document asking someone for something: audience, ask, background, recommendation | | | `BRIF-` ids |
 | report | a quest's document on what happened, its outcomes and lessons | | | |
 | Journey | a quest's dated log of what happened | | | `quest journal` |
+| session | a pi working for Joel, in a window of its own | | | |
 | peer | another session on the same machine, reached over the mesh | | instance, swarm | |
 | mesh | how sessions on one machine message each other | | | `mesh_send` |
+| turn | a mesh message that starts a peer's turn at once, the mesh's loudest attention level | | | |
 | glance | a mesh message given to a peer as one line, since it's another peer's own business | | | |
 | hold | a peer asking every other to put something off, such as a switch, until it says it's over | | | `intent: hold` |
 | steer | Joel's words, delivered to a session from outside its window | | | `steer/<ADDRESS>/` |
@@ -133,6 +160,8 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | release | giving back a tree one holds | | prune, reap | `work release`; `quest tree-prune`, to be renamed |
 | tidy | reporting which trees on the machine are spent, removing nothing | | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | | `work reclaim` |
+| scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | | the quest workspace |
+| background command | a command a session runs without waiting on it | | | the `jobs` tool |
 | fleet | subagents run at once on one piece of work | | fan-out, batch | the `subagent` tool |
 | subagent | a pi a session starts to do part of its work | | sub-agent, worker, lane | |
 | council | reviewing models each reading one change on their own | | | `review_ask council` |
@@ -147,7 +176,8 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 How core.nix proves what it promises. A check's name is a sentence saying what
 it holds, subject first, with no prefix but `vm-`, which marks a VM test and
 nothing else; its description in `check-descriptions.nix` finishes the
-sentence.
+sentence. It may name the program its module is named after, since that
+says which module broke.
 
 | Word | Means | Also | Not | In code |
 | ---- | ----- | ---- | --- | ------- |
@@ -164,36 +194,6 @@ sentence.
 Words that mean two things today. Each waits on one choice, and moves into a
 table above once it's made.
 
-- **shell**: zsh, as this glossary used to say, and the desktop's own windows
-  (the launcher, notices and the margin), as most of the code and [the
-  design][design] say.
-- **layer**: what a machine repository adds, and a keyboard's layer.
-- **role**: what a machine is for, and what a colour means (`jitsusama.theme.roles`).
-- **identity**: who Joel is, and an age identity, the file that opens what was
-  sealed to it.
-- **module**: one of core's modules, a kernel module, and the camera module.
-- **machine**: one computer here, and `Computer` in the launcher.
-- **the kinds of work**: what Joel waits on at a terminal, timed work, agents'
-  work and the desktop's each run in their own slice, but the set has no
-  name, and "jobs" names both the agents' slice and pi's background
-  commands.
-- **how full a disk is**: the disk guard says "nearly full" and "critically
-  full" on screen and `urgent` and `critical` in code, and calls the band
-  below them "pressure", which is also memory's word.
-- **session**: a pi, the login session, the desktop's slice, and the
-  launcher's Session row.
-- **notice**: notice in the design and most code, notification on screen.
-- **mark**: mark in the design and the margin, glyph in the theme's table
-  and the launcher's words, for one drawn symbol.
-- **prompt**: zsh's prompt, and the design's centred questions (polkit, a
-  PIN, the lock).
-- **screen**: a monitor, and the launcher's Displays.
-- **workspace**: niri's workspaces, and a quest's scratch folder.
-- **check names**: whether a check's name may name its program
-  (`quickshell-`, `niri-`, `pi-`), which `nix flake check` shows Joel.
-- **wake**: coming back from sleep, and the mesh's loudest attention level,
-  a message that starts a peer's turn at once.
-- **TPM**: the chip that keeps the machine's keys is shown by its acronym;
-  a plain word for it is still to be chosen.
+Nothing waits now: Joel settled the last sixteen on 2026-10-25.
 
 [design]: design.md

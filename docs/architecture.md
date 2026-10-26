@@ -10,9 +10,8 @@ fits without knowing anything beyond Nix and the module system.
 
 Each word has one meaning, used the same way in code, directories and docs.
 The words this library is built from (machine, machine repository, module,
-role, hardware, layer, identity, theme and account) are in [the
-glossary][6], with every other thing's name and the words still to
-settle.
+role, hardware, identity, theme and account) are in [the glossary][6], with
+every other thing's name.
 
 Modules are named after the program or subsystem they configure, never after
 an abstraction, and no name carries a prefix saying what kind of thing it is:

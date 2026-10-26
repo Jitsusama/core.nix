@@ -25,7 +25,7 @@ no framework, and nothing found by scanning the file tree.
 A file's name says its module system: `home.nix` (home-manager), `darwin.nix`
 (nix-darwin), `nixos.nix` (NixOS) or `system.nix` (both NixOS and
 nix-darwin). To learn how any file fits, search `flake.nix` for its path. The
-words machine, role, module, hardware, layer, identity and account have one
+words machine, role, module, hardware, identity and account have one
 meaning each; [docs/glossary.md][15] defines them, and every other thing's
 name. A name for something new comes from it, or is added to it.
 
