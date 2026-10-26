@@ -42,7 +42,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of things) {
+        for (const row of poolFor(things, typed)) {
             const byName = (row.prepared.mask & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
             const byWord = row.keywords && (row.keywords.mask & need) === need
@@ -51,6 +51,7 @@ Provider {
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
+        matchedIn(things, typed, found.map(f => f.row));
         const grade = Math.min(3, ...found.map(f => f.grade));
         const kept = found.filter(f => f.grade === grade).sort((a, b) => b.score - a.score);
         return { rows: kept.map(f => f.row), grade: grade };

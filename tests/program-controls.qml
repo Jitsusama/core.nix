@@ -11,7 +11,9 @@
 // program with nothing of the sort holds only New window and New window
 // below, and one whose player is found by its identity holds Media with
 // only what that player can do, and Sound with only its Microphone while
-// it records and plays nothing, Mute there reaching what it records alone. It exits 0 once every case holds, and
+// it records and plays nothing, Mute there reaching what it records alone.
+// Typing on looks only through what the last key found, and finds what
+// looking through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -197,6 +199,26 @@ ShellRoot {
                 `${listening.muted} ${meter.muted}`, "true false");
             same("its Microphone says so", `${microphone.side} ${recording.side}`, "muted muted");
             same("then it says Unmute", microphone.targets()[0].name, "Unmute");
+
+            // Typing on looks only through what the last key found
+            // (Provider.qml's poolFor), and finds just what looking
+            // through everything would; going back, or another word,
+            // looks through everything again.
+            const found = typed => names(applications.search(typed).rows);
+            const whole = typed => {
+                applications.matchedIn(null, "", []);
+                return found(typed);
+            };
+            applications.matchedIn(null, "", []);
+            for (const [typed, narrowed] of [["r", false], ["ra", true], ["rad", true],
+                ["ra", false], ["q", false], ["qu", true], ["qu r", true]]) {
+                const pool = applications.poolFor(applications.things, typed);
+                same(`"${typed}" looked ${narrowed ? "through the last key's" : "whole"}`,
+                    pool !== applications.things, narrowed);
+                const got = found(typed);
+                same(`"${typed}" found as looking whole does`, got, whole(typed));
+                found(typed);
+            }
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             fail(error.message);
