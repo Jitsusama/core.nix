@@ -1,14 +1,14 @@
 """A machine recovered from a repair stick in a virtual machine, its data left in place.
 
-tests/guide-recover.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. The guide's screens come one after another,
-and its menu keeps where it was, so each state a test starts from is a fixture that walks the
-guide one step further than the fixture it asks for: the disk's keys enrolled, the recovery
-started, the disk opened, a generation chosen, a lost key replaced and the boot loader put back.
-A fixture's work is done once a run, so any test runs alone with `-k`, walking only as far as
-it needs. What the tests need from Nix, the machine's disk image, the repair stick, the keys'
-state files, the PIN and the recovery key, are guide-recover.nix's, given as the `values`
-fixture.
+guide-recover.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. The guide's screens
+come one after another, and its menu keeps where it was, so each state a test starts from is a
+fixture that walks the guide one step further than the fixture it asks for: the disk's keys
+enrolled, the recovery started, the disk opened, a generation chosen, a lost key replaced and
+the boot loader put back. A fixture's work is done once a run, so any test runs alone with `-k`,
+walking only as far as it needs. What the tests need from Nix, the machine's disk image, the
+repair stick, the keys' state files, the PIN and the recovery key, are guide-recover.nix's,
+given as the `values` fixture.
 """
 
 from __future__ import annotations

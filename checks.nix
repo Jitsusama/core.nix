@@ -234,17 +234,17 @@ let
   # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTestsOn = pkgs: {
     # The disk layout and Secure Boot decide whether a machine starts at all.
-    vm-secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
+    vm-secure-boot-installs = import ./tests/vm/guide/secure-boot.nix { inherit self pkgs; };
     # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
     # a TPM together, driven by its keys as a person drives it.
-    vm-guide-installs = import ./tests/guide-install.nix { inherit self pkgs; };
+    vm-guide-installs = import ./tests/vm/guide/guide-install.nix { inherit self pkgs; };
     # Writing a stick on a host is UDisks2, polkit and a USB disk together,
     # as the person rather than root, and a bundle sealed to a FIDO2 key
     # opens only where the plugin, the key and its PIN meet.
-    vm-guide-writes-a-stick = import ./tests/guide-host.nix { inherit self pkgs; };
+    vm-guide-writes-a-stick = import ./tests/vm/guide/guide-host.nix { inherit self pkgs; };
     # Recovering is a stick, a laid-out disk and its subvolumes together,
     # with nothing of the machine's on the stick.
-    vm-guide-recovers = import ./tests/guide-recover.nix { inherit self pkgs; };
+    vm-guide-recovers = import ./tests/vm/guide/guide-recover.nix { inherit self pkgs; };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.

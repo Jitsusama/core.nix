@@ -15,7 +15,7 @@ let
   # is what the recovery key's slot takes, typed text.
   recovery = "the machines recovery key";
   pin = "123456";
-  guide = pkgs.callPackage ../modules/guide/package.nix { };
+  guide = pkgs.callPackage ../../../modules/guide/package.nix { };
 
   # The kept, lost and new keys, one device swapped between their state
   # files (canokeys.nix).
@@ -27,7 +27,7 @@ let
     "new"
   ];
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-recover";
   globalTimeout = 30 * 60;
   qemu.package = qemu;
@@ -60,8 +60,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       disko.imageBuilder.imageFormat = "qcow2";
       disko.memSize = 4096;
       # disko's image builder hands vmTools its module tree as the kernel,
-      # which current nixpkgs refuses (disko#1298), as tests/secure-boot.nix
-      # says.
+      # which current nixpkgs refuses (disko#1298), as secure-boot.nix beside
+      # this says.
       disko.imageBuilder.pkgs = pkgs.extend (
         _final: prev: {
           vmTools = prev.vmTools // {

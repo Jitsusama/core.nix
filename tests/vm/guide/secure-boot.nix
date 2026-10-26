@@ -17,11 +17,11 @@ let
     text = ''
       exec ${
         pkgs.python3.withPackages (python: [ python.dbus-fast ])
-      }/bin/python3 ${./stand-in-notices.py} "$@"
+      }/bin/python3 ${../../stand-in-notices.py} "$@"
     '';
   };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "secure-boot";
   globalTimeout = 40 * 60;
 

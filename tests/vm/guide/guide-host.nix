@@ -19,7 +19,7 @@
 { self, pkgs }:
 let
   inherit (pkgs) lib;
-  guide = pkgs.callPackage ../modules/guide/package.nix { };
+  guide = pkgs.callPackage ../../../modules/guide/package.nix { };
   # One key, made by QEMU at its start, standing in for the Nano.
   inherit (import ./canokeys.nix { inherit pkgs; }) qemu setPin;
   pin = "123456";
@@ -44,7 +44,7 @@ let
       boot.loader.systemd-boot.enable = true;
       system.stateVersion = "26.05";
     }).config;
-  payload = pkgs.callPackage ../modules/guide/payload.nix { } {
+  payload = pkgs.callPackage ../../../modules/guide/payload.nix { } {
     config = machine;
     yubikeys = [ "the Nano" ];
     account = "alice";
@@ -91,7 +91,7 @@ let
         dd if=vault.fat of=$out/stick.raw bs=512 seek=133120 conv=notrunc
       '';
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-host";
   qemu.package = qemu;
 

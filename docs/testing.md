@@ -223,7 +223,7 @@ enrolled, the disk is bound to the TPM and a PIN, the passphrase is wiped,
 and the TPM refuses once a measured PCR changes. On the way it checks that
 enrolling without checksums refuses the option ROM of QEMU's network card,
 which the firmware runs, and that no NvPCR is set up at boot or measured at
-login. It lives in [`tests/secure-boot.nix`][4].
+login. It lives in [`tests/vm/guide/secure-boot.nix`][4].
 
 ### What Changed on Screen
 
@@ -304,7 +304,7 @@ isn't restored by accident.
 [1]: ../checks.nix
 [2]: kernel.md
 [3]: installing.md
-[4]: ../tests/secure-boot.nix
+[4]: ../tests/vm/guide/secure-boot.nix
 [5]: ../tools/shots-changed/shots-that-move.txt
 [6]: ../AGENTS.md#commands
 [7]: decisions/0012-no-ci.md

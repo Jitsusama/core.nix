@@ -1,13 +1,13 @@
 """core's install, Secure Boot and measured boot walked through in a virtual machine with a TPM.
 
-tests/secure-boot.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. Each state a test starts from is a fixture, and
-each fixture that boots the machine again asks for the one before it, in the order the boots
-come: the keys enrolled at the first boot, the real system installed, the disk bound to the
-TPM, its next boot, and a generation passed over. A fixture's work is done once a run, so any
-test runs alone with `-k`, booting only as far as it needs. What the tests need from Nix, the
-disk image, the systems to install and the secrets typed at the install, are secure-boot.nix's,
-given as the `values` fixture.
+secure-boot.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Each state a test
+starts from is a fixture, and each fixture that boots the machine again asks for the one before
+it, in the order the boots come: the keys enrolled at the first boot, the real system installed,
+the disk bound to the TPM, its next boot, and a generation passed over. A fixture's work is done
+once a run, so any test runs alone with `-k`, booting only as far as it needs. What the tests
+need from Nix, the disk image, the systems to install and the secrets typed at the install, are
+secure-boot.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations
