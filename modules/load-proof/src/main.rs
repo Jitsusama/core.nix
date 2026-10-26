@@ -88,7 +88,11 @@ fn all(length: Duration) -> ExitCode {
     let reading: Vec<_> = SIGNALS
         .map(|signal| thread::spawn(move || read(signal, length)))
         .into_iter()
-        .map(|reader| reader.join().unwrap_or_else(|_| Err("it panicked".to_owned())))
+        .map(|reader| {
+            reader
+                .join()
+                .unwrap_or_else(|_| Err("it panicked".to_owned()))
+        })
         .collect();
     let mut code = ExitCode::SUCCESS;
     for (signal, line) in SIGNALS.iter().zip(reading) {
@@ -130,7 +134,8 @@ fn read(signal: &str, length: Duration) -> Result<String, String> {
         "save" => {
             let cache = std::env::var_os("XDG_CACHE_HOME").map(Into::into);
             let home = std::env::var_os("HOME").map(Into::into);
-            let folder = save::folder(cache, home).ok_or("no HOME or XDG_CACHE_HOME to save under")?;
+            let folder =
+                save::folder(cache, home).ok_or("no HOME or XDG_CACHE_HOME to save under")?;
             save::watch(&folder, length).map(|times| {
                 let t = Spread::of(&times);
                 format!(

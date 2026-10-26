@@ -162,7 +162,10 @@ saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
     #[test]
     fn the_nodes_after_a_sounds_errors_dont_hide_them() {
         let reading = read("sound errors 2, speaker_sink 1, speaker_tuning 1\n");
-        assert!((reading["sound"]["errors"] - 2.0).abs() < 1e-9, "{reading:?}");
+        assert!(
+            (reading["sound"]["errors"] - 2.0).abs() < 1e-9,
+            "{reading:?}"
+        );
     }
 
     #[test]
@@ -206,7 +209,11 @@ saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
 
     #[test]
     fn a_signal_with_no_reading_fails() {
-        let without_sound: String = IDLE.lines().filter(|l| !l.starts_with("sound")).collect::<Vec<_>>().join("\n");
+        let without_sound: String = IDLE
+            .lines()
+            .filter(|l| !l.starts_with("sound"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let failed = judge(&read(IDLE), &read(&without_sound));
         assert_eq!(failed, ["sound: no reading loaded"]);
         let failed = judge(&read(&without_sound), &read(IDLE));
@@ -216,6 +223,9 @@ saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
     #[test]
     fn a_figure_that_went_missing_fails() {
         let loaded = loaded(&[("p95 23.00 ms ", "")]);
-        assert_eq!(judge(&read(IDLE), &loaded), ["call: p95 NaN ms against 23.0 ms idle"]);
+        assert_eq!(
+            judge(&read(IDLE), &loaded),
+            ["call: p95 NaN ms against 23.0 ms idle"]
+        );
     }
 }
