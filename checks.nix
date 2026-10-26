@@ -293,12 +293,20 @@ let
     # once it has.
     vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
     vm-disk-guard-keeps-the-disk = import ./tests/disk-guard.nix { inherit self pkgs; };
+    # Whether the kernel panics once a disk is gone, and only then, shows
+    # only with a disk to take away.
+    vm-disk-loss-panic-panics-once-the-disk-is-gone = import ./tests/disk-loss-panic.nix {
+      inherit self pkgs;
+    };
     # What an account's services make of the network coming late, changing
     # and networkd restarting shows only with both managers running.
     vm-network-revives-units = import ./tests/network-revive.nix { inherit self pkgs; };
     # Which server timesyncd asks first shows only on a network that names
     # one of its own.
     vm-clock-keeps-time = import ./tests/clock.nix { inherit self pkgs; };
+    # Whether mDNS gets through the firewall, and only on a trusted network,
+    # shows only with machines on a network asking each other.
+    vm-machines-find-each-other-at-home = import ./tests/mdns.nix { inherit self pkgs; };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
     # Whether the shell's surfaces come back after a screen goes shows only
@@ -824,6 +832,7 @@ gather (
     ./modules/device-check/checks.nix
     ./modules/dictation/checks.nix
     ./modules/disk-guard/checks.nix
+    ./modules/disk-loss-panic/checks.nix
     ./modules/disko/checks.nix
     ./modules/eero/checks.nix
     ./modules/ergodox/checks.nix
@@ -849,6 +858,7 @@ gather (
     ./modules/linux-id/checks.nix
     ./modules/litra/checks.nix
     ./modules/memory-modules/checks.nix
+    ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix

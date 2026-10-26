@@ -9,8 +9,9 @@
 // machine's guard watches counts, a writer frozen wants Joel with a way to let
 // it go on, a guard that stopped writing is a warning
 // of its own with a way to start it, as is one whose heartbeat ages past
-// silence with nothing written after it, and a guard that never wrote
-// leaves no piece. It exits 0 once every case holds, and otherwise 1, saying which
+// silence with nothing written after it, what holds the disks is one list
+// from both guards, biggest first, and a guard that never wrote leaves no
+// piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -34,6 +35,18 @@ ShellRoot {
             filesystems: disks, last: last ?? null, frozen: frozen ?? [] });
     }
 
+    // A status with what holds the disks, measured at `at`.
+    function held(said, holders, at) {
+        return JSON.stringify(Object.assign(JSON.parse(said), { holders: holders,
+            holders_at: at }));
+    }
+
+    function holder(path, size, kind, name) {
+        return { path: path, bytes: size * gib, owner: { kind: kind, name: name },
+            clearable: kind === "worktree", why: kind === "worktree" ? null : "not now",
+            says: `${name} holds it.` };
+    }
+
     // Each case: what each guard says (null: nothing written), and what
     // the piece makes of it.
     readonly property var cases: [{
@@ -46,13 +59,29 @@ ShellRoot {
         account: status([disk("/", "healthy", 400)]),
         machine: status([disk("/", "healthy", 400), disk("/boot", "healthy", 0.5)]),
         holds: piece => piece.present && !piece.active && piece.role === "text"
+            && piece.holders.length === 0 && piece.holdersAt === 0
+    }, {
+        what: "what holds the disks, from both guards",
+        // A tree both measured is one holder, as the later measure says,
+        // and every holder is listed biggest first.
+        account: held(status([disk("/", "pressure", 120.5), disk("/boot", "healthy", 0.5)]), [
+            holder("/home/joel/.cache/karst", 17, "cache", "karst"),
+            holder("/home/joel/trees/lamp", 40, "worktree", "worktree-lamp")], root.now - 60),
+        machine: held(status([disk("/", "healthy", 400)]), [
+            holder("/var/lib/containers", 24, "containers", "podman"),
+            holder("/home/joel/trees/lamp", 41, "worktree", "worktree-lamp")], root.now),
+        holds: piece => piece.holders.map(one => one.path).join(" ")
+                === "/home/joel/trees/lamp /var/lib/containers /home/joel/.cache/karst"
+            && piece.holders[0].bytes === 41 * root.gib && piece.holdersAt === root.now
+            && piece.holding("/home/joel/trees/lamp").path === "/"
+            && piece.holding("/boot/efi").path === "/boot" && piece.holding("/bootstrap").path === "/"
     }, {
         what: "a disk under pressure",
         account: status([disk("/", "pressure", 120.5, 5400)],
             { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => !piece.active && piece.role === "text" && !piece.wants && !piece.now
-            && piece.value === "120.5 GiB free on /, pressure"
+            && piece.value === "120.5 GiB free on /, filling"
             && piece.context === "the next band in 1:30; nothing more is safe to take"
     }, {
         what: "a critical disk",
@@ -60,7 +89,7 @@ ShellRoot {
             { at: root.now, path: "/", band: "critical", end: "reached", freed: 3 * gib }),
         machine: status([]),
         holds: piece => piece.active && piece.role === "alert" && piece.wants && piece.now
-            && piece.value === "8.2 GiB free on /, critical"
+            && piece.value === "8.2 GiB free on /, critically full"
             && piece.hint === "/ is short of room: 8.2 GiB free"
             && piece.context === "freed 3.0 GiB on /"
             && piece.actions.length === 0
@@ -69,12 +98,12 @@ ShellRoot {
         account: status([disk("/", "healthy", 200)]),
         machine: status([disk("/", "urgent", 60)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
-            && piece.value === "60.0 GiB free on /, urgent"
+            && piece.value === "60.0 GiB free on /, nearly full"
     }, {
         what: "a disk only the machine watches",
         account: status([disk("/", "healthy", 400)]),
         machine: status([disk("/", "healthy", 400), disk("/boot", "critical", 0.01)]),
-        holds: piece => piece.wants && piece.value === "10.2 MiB free on /boot, critical"
+        holds: piece => piece.wants && piece.value === "10.2 MiB free on /boot, critically full"
     }, {
         what: "a writer frozen",
         // Thawed only above urgent, so frozen still at urgent.

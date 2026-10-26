@@ -26,6 +26,7 @@ mod finished;
 mod freezer;
 mod garbage;
 mod generations;
+mod holders;
 #[cfg(target_os = "linux")]
 mod host;
 mod journal;

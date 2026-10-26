@@ -30,6 +30,10 @@
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
   '';
+  a-trusted-cable-finds-machines = ''
+    a trusted cable's network is a stranger's cable with mDNS on, matched by its card and picked
+    first, and a machine naming none gets no such network
+  '';
   a-watched-file-comes-back = ''
     the shell's status file hears a status once its folder is made, after the shell starts and again
     after it's removed, and says nothing while it's gone
@@ -37,6 +41,10 @@
   agents-work-runs-without-real-time = ''
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
+  '';
+  an-ipc-reply-arrives-whole = ''
+    a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
+    function that isn't there ends qs with a failure
   '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
@@ -399,6 +407,10 @@
     Neovim's floats, finder and suggestions have a blank border, not a line, on their shade with
     nothing showing through; a notice starts with its mark
   '';
+  neovim-is-named-neovim = ''
+    the account's entry for Neovim is named Neovim, not nixpkgs' "Neovim wrapper", and still runs
+    nvim
+  '';
   neovim-keeps-its-numbers-in-one-column = ''
     Neovim's number column gives the cursor line its own number, marked, as wide as the relative
     counts beside it, and is blank with numbers off
@@ -422,6 +434,10 @@
   '';
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
+  '';
+  niri-names-each-screen-once = ''
+    niri's config names each screen in one output block, the panel's holding srgb-gamut, and refuses a
+    second block for a screen, which niri would ignore
   '';
   niri-never-shows-its-own-screens = ''
     no niri key opens its screenshot screen, its key list or a quit that asks, and the launcher's
@@ -512,9 +528,9 @@
     pi's package list is the harness and neovim.pi on every machine, and a package a machine
     adds comes after them rather than in their place
   '';
-  pi-measures-each-week-in-the-background = ''
-    the harness's weekly measure runs each Monday in background.slice with the store's node, catching
-    up on a Monday slept through, skipped where the harness isn't installed, and never on a Mac
+  pi-measures-each-day-in-the-background = ''
+    the harness's measure runs each morning in background.slice with the store's node, catching up on
+    a morning slept through, skipped where the harness isn't installed, and never on a Mac
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
@@ -709,6 +725,10 @@
     the graphical account's desktop settings tell GTK and Chrome to draw letters unhinted, as macOS
     does
   '';
+  the-disk-loss-panic-tells-trouble-apart = ''
+    `disk-loss-panic` counts a warning or worse from the disk's path or a hung task as trouble and
+    nothing else, sees an unarchived kernel log in pstore, and finds a disk that's gone failing
+  '';
   the-disk-piece-reads-the-guards = ''
     the disk piece says the worst disk as the guards wrote it, and a guard gone quiet
   '';
@@ -863,6 +883,10 @@
     every mark the margin can show is the theme's drawing of it, standing the grid's full height and
     centred across it as Qt draws it
   '';
+  the-mic-mute-light-follows-the-mute = ''
+    `mic-mute-light` asks after the mute only once a change to a mute or the default source has
+    ended, and lights the light for a muted source alone
+  '';
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';
@@ -888,6 +912,10 @@
   the-panel-dims-after-a-bad-read = ''
     the XPS 14's kernel keeps to VESA's brightness controls when its boot-time read of the panel's
     eDP revision comes back wrong
+  '';
+  the-panel-holds-still = ''
+    the XPS 14's kernel leaves the panel's self refresh and frame buffer compression off, since
+    PSR2, PSR1 and compression each set the screen flashing after a replug or a lid-shut boot
   '';
   the-panel-knows-its-luminance = ''
     the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block
@@ -967,8 +995,8 @@
     the splash is told the generation only from an entry whose name carries one
   '';
   the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
-    the Surface Laptop 4 loads its GPU's driver in the initrd, and keeps the firmware's
-    unreadable clock from taking rtc0
+    the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps
+    the firmware's unreadable clock from taking rtc0
   '';
   the-surface-keyboard-types-at-the-disk-prompt = ''
     the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that
@@ -1109,6 +1137,10 @@
   vm-disk-guard-keeps-the-disk = ''
     the guards answer each band, sparing what's in use
   '';
+  vm-disk-loss-panic-panics-once-the-disk-is-gone = ''
+    a warning from the disk's path changes nothing while the disk answers, and once the disk has
+    dropped off its bus it panics the kernel, saying why first
+  '';
   vm-first-finds-the-vms = ''
     vm-first reads a thread's nice and policy, knows a check with deadlines by its qemu, test
     driver, container or nested compositor, wrapped or cut short, and not a compiler nor a niri
@@ -1180,6 +1212,10 @@
     close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of
     another name
   '';
+  vm-machines-find-each-other-at-home = ''
+    a machine on a network it trusts finds another there by its .local name through both
+    firewalls, and nobody finds a machine with mDNS off, though the port is open
+  '';
   vm-mv7-voice-is-levelled = ''
     an MV7's voice comes up 12 dB, its room and s sounds less, its peaks under -1 dBFS; another
     mic's are untouched
@@ -1200,7 +1236,8 @@
     a Pebble X Plus hears its tuning, again once it's plugged back in, and headphones don't
   '';
   vm-plugging-in-wakes-it = ''
-    every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it
+    every USB 2 and 1.1 root hub may wake the machine, so a cable plugged into a sleeping laptop
+    wakes it, and the SuperSpeed ones may not, so a USB 3 device pulled out doesn't
   '';
   vm-reboot-cannot-hang = ''
     a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last

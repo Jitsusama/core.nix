@@ -306,6 +306,7 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
 /// What's left in a temporary directory, but for any a process names as its
 /// `TMPDIR`.
 fn offer_temp(path: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let path = &resolved(path);
     let Some(device) = device(path) else { return };
     let tmpdirs: Vec<PathBuf> = world
         .processes
@@ -441,6 +442,7 @@ fn trees_under(
     world: &mut World,
     offers: &mut Vec<Offer>,
 ) {
+    let root = &resolved(root);
     let Some(device) = device(root) else { return };
     let Ok(found) = discover::walk(root, depth.map(|depth| depth as usize)) else {
         return;
@@ -569,6 +571,14 @@ fn since_ran(world: &World, source: &str) -> f64 {
 fn device(path: &Path) -> Option<u64> {
     fs::metadata(path).ok().filter(fs::Metadata::is_dir)?;
     crate::pool::pool(path).ok()
+}
+
+/// A root as the entries found beneath it are named: where it lives, so a
+/// root named through a link, as a Mac names /var/folders through
+/// /var -> /private/var, still holds what it offers. A root that can't be
+/// resolved is kept as named and offers nothing anyway.
+fn resolved(root: &Path) -> PathBuf {
+    fs::canonicalize(root).unwrap_or_else(|_| root.to_owned())
 }
 
 /// What an entry holds: a directory's allocated size beneath it, a file's

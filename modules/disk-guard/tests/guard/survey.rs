@@ -199,6 +199,38 @@ fn targets_and_installs_are_offered_under_their_roots() {
 }
 
 #[test]
+fn a_root_named_through_a_link_holds_what_it_offers() {
+    // A Mac's /var is a link to /private/var, so its temporary folder is
+    // named through a link, and what's found there is named where it lives.
+    // Each offer's root must name that same place, or reclaiming refuses
+    // the entry as outside its root.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let private = dir(&home.join("private"));
+    let temp = dir(&private.join("tmp"));
+    let leftover = dir(&temp.join("tmp.Ab3dE9fGh1"));
+    file(&leftover.join("f"), "x");
+    let (_, target, modules) = src(&dir(&private.join("src")));
+    std::os::unix::fs::symlink(&private, home.join("var")).unwrap();
+    let config = config(&format!(
+        r#""temp": {{ "kind": "temp", "path": "{0}/tmp" }},
+           "cargo": {{ "kind": "cargo", "roots": ["{0}/src"] }},
+           "installs": {{ "kind": "installs", "roots": ["{0}/src"] }}"#,
+        home.join("var").display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    for path in [&leftover, &target, &modules] {
+        let offered = find(&found, path);
+        assert!(
+            path.starts_with(offered.action.root()),
+            "{} is offered under {}",
+            path.display(),
+            offered.action.root().display()
+        );
+    }
+}
+
+#[test]
 fn a_target_holding_only_what_reclaiming_keeps_is_not_offered() {
     // Reclaiming empties a target in place and keeps its benchmarks, so
     // offering it again would free nothing, pass after pass.

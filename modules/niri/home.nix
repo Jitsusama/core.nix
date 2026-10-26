@@ -4,9 +4,11 @@
 # modules/keyboard/repeat.nix, how a held key repeats, as a Mac's does. The binds also go into the keyboard
 # map (modules/keys), which refuses a chord another layer claims.
 #
-# config.kdl is text a machine can add to, with lib.mkAfter, such as a
-# panel's scale; niri lets a later setting override an earlier one, so the
-# machine's lines win.
+# config.kdl is text a machine can add to, with lib.mkAfter. A screen's
+# settings are the exception: niri reads only the first `output` block that
+# names a screen and ignores the rest without a word, so each screen's lines
+# go in jitsusama.niri.outputs, where core's and a machine's merge into one
+# block, and a config.kdl naming a screen twice is refused.
 #
 # niri draws four screens of its own in colours it doesn't let a theme
 # change, so none of them is ever shown: the key list is the launcher's
@@ -213,7 +215,59 @@ in
     }
   ) binds;
 
-  config.xdg.configFile."niri/config.kdl".text = builtins.readFile ./config.kdl;
+  options.jitsusama.niri.outputs = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+    default = { };
+    example = {
+      "eDP-1" = [
+        "scale 2"
+        "position x=560 y=1440"
+      ];
+    };
+    description = ''
+      Each screen's settings, by the name niri knows it by (its connector,
+      or its make, model and serial), as config.kdl's lines inside its
+      `output` block. Core's and a machine's lines for one screen merge
+      into one block, since niri reads only the first.
+    '';
+  };
+
+  # The laptop's own panel shows colours as sRGB, as the monitor beside it
+  # does and a Mac does, rather than stretched to its wider primaries
+  # (nixos.nix's srgb-gamut.patch). A panel that is sRGB already is left as
+  # it is.
+  config.jitsusama.niri.outputs."eDP-1" = [ "srgb-gamut" ];
+
+  config.xdg.configFile."niri/config.kdl".text = lib.mkMerge [
+    (builtins.readFile ./config.kdl)
+    (lib.concatStrings (
+      lib.mapAttrsToList (name: lines: ''
+
+        output "${name}" {
+        ${lib.concatMapStrings (line: "    ${line}\n") lines}}
+      '') config.jitsusama.niri.outputs
+    ))
+  ];
+
+  # A screen named twice is set by its first block alone, so a block a
+  # machine adds as text for a screen core already sets would be ignored.
+  config.assertions =
+    let
+      named = lib.concatMap (
+        line:
+        let
+          found = builtins.match " *output \"([^\"]+)\" *\\{.*" line;
+        in
+        lib.optional (found != null) (lib.head found)
+      ) (lib.splitString "\n" config.xdg.configFile."niri/config.kdl".text);
+      twice = lib.unique (lib.filter (name: lib.count (other: other == name) named > 1) named);
+    in
+    [
+      {
+        assertion = twice == [ ];
+        message = "niri's config.kdl names ${lib.concatStringsSep ", " twice} in more than one output block, and niri reads only the first; set its lines in jitsusama.niri.outputs instead.";
+      }
+    ];
 
   config.xdg.configFile."niri/keyboard.kdl".text =
     let

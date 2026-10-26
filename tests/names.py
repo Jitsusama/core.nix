@@ -8,9 +8,12 @@ names the repository keeps, each another sense of its word or a rename its
 owner hasn't made yet, as tests/names.nix is given them. A name is split into
 words at hyphens, dots and capitals, and a name it says that the glossary
 replaces fails, printed with the word that replaces it, unless one of the
-glossary's terms holds it there ("line" inside "status line"), the glossary's
-In code spells that word on its own as code's ("the `backlight` program"), or
-the name is kept. An option is kept by its path or a part of it. A kept name
+glossary's terms holds it there ("line" inside "status line"), the row that
+replaces it spells that word on its own as its code's (`pressure` for filling),
+or the name is kept. Another row's code doesn't count: the `backlight` program
+is the screen's brightness, so a name saying backlight for the keyboard's light
+still fails, and the program's own names are kept as another sense. An option
+is kept by its path or a part of it. A kept name
 the check no longer finds fails too, so what's kept only shrinks.
 And so does the check itself, should one of its rules stop refusing what it's
 there for, or refuse what sits beside it.
@@ -63,9 +66,9 @@ def replaced(name: str, things: list[Thing]) -> list[str]:
     """Say each name the glossary replaces that a name says, with the word that replaces it."""
     words = tokens(name)
     terms = [tokens(thing.word) for thing in things]
-    code = spelled(things)
     out: list[str] = []
     for thing in things:
+        code = spelled([thing])
         for old in thing.not_:
             old_words = tokens(old)
             if any(same(span, old_words) for span in code):
@@ -99,27 +102,29 @@ GLOSSARY = (
     "| person | the human | user | |\n"
     "| light | the keyboard's light | backlight | |\n"
     "| brightness | how bright a screen is | | the `backlight` program |\n"
+    "| filling | a disk filling up | pressure | `pressure` |\n"
 )
 
 # Stand-in kept names, one another sense and one waiting rename, and a
 # stand-in name for each rule, breaking it once, beside the kept names so
 # that what's kept isn't what fails.
-KEPT = {"jitsusama.theme.syntax.operator", "vm-the-line-stays-quick"}
+KEPT = {"backlight-passes-clippy", "jitsusama.theme.syntax.operator", "vm-the-line-stays-quick"}
 LISTED = sorted(KEPT)
 REFUSED: list[tuple[str, list[str]]] = [
     ("a replaced name in a check's name", ["the-line-stays-quick", *LISTED]),
     ("a replaced name made plural", ["the-users-sign-in", *LISTED]),
     ("a replaced name in an option's name", ["jitsusama.shaper.userRate", *LISTED]),
     ("a replaced name in a name the glossary spells whole", ["jitsusama.wan.lineRate", *LISTED]),
+    ("a replaced name another row spells as code", ["the-keyboards-backlight-dims", *LISTED]),
     ("a kept name no longer found", LISTED[1:]),
 ]
 
 # What sits beside each rule's edge and isn't refused: a replaced name inside
-# a term, a word the glossary spells on its own in code, a word inside
+# a term, a word the row replacing it spells on its own in code, a word inside
 # another, and an option below a kept one.
 ALLOWED = [
     "the-status-line-says-its-quest",
-    "backlight-passes-clippy",
+    "the-pressure-band-holds",
     "userspace-keeps-its-homes",
     "jitsusama.theme.syntax.operator.bold",
     *LISTED,

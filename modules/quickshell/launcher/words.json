@@ -56,11 +56,10 @@
       "holds": [
         "energy",
         "bluetooth",
-        "bluetooth:radio",
-        "bluetooth:links",
         "sound",
         "cameras",
         "machine",
+        "machine:memory",
         "heat",
         "jobs"
       ],
@@ -194,7 +193,7 @@
       "term": "Agents/subagent",
       "noun": "subagents",
       "what": "subagent",
-      "glyph": "running",
+      "glyph": "subagent",
       "ask": "which subagent?",
       "empty": "No subagents today."
     },
@@ -248,6 +247,8 @@
       "id": "machine:memory",
       "name": "Memory",
       "term": "Machine/memory",
+      "provider": "machine",
+      "question": "memory",
       "glyph": "memory",
       "answers": [
         "memory",
@@ -409,8 +410,14 @@
         "disk",
         "space"
       ],
+      "said": {
+        "pressure": "filling",
+        "urgent": "nearly full",
+        "critical": "critically full"
+      },
       "parts": [
         "machine:disk:space",
+        "machine:disk:filling",
         "machine:disk:speed",
         "machine:disk:busy",
         "machine:disk:latency",
@@ -423,6 +430,21 @@
       "id": "machine:disk:space",
       "in": "machine:disk",
       "name": "Space"
+    },
+    {
+      "id": "machine:disk:filling",
+      "in": "machine:disk",
+      "name": "What's filling it",
+      "said": {
+        "quest": "{name}",
+        "worktree": "{name}",
+        "cache": "{name} cache",
+        "containers": "containers",
+        "other": "{name}",
+        "clears": "some is builds or caches the guard clears once idle",
+        "now": "measured just now",
+        "ago": "measured {minutes} min ago"
+      }
     },
     {
       "id": "machine:disk:speed",
@@ -992,19 +1014,19 @@
     {
       "id": "keyboards:lights",
       "in": "keyboards",
-      "name": "Backlight",
+      "name": "Light",
       "answers": [
-        "keyboard backlight"
+        "keyboard light"
       ]
     },
     {
       "id": "keyboards:lights:to",
       "in": "keyboards:lights",
-      "name": "Backlight to {n} of {most}",
+      "name": "Light to {n} of {most}",
       "verb": "set",
       "states": {
         "off": {
-          "name": "Backlight off",
+          "name": "Light off",
           "verb": "turn off"
         }
       }
@@ -1012,7 +1034,7 @@
     {
       "id": "keyboards:lights:on",
       "in": "keyboards:lights",
-      "name": "Backlight on",
+      "name": "Light on",
       "verb": "turn on"
     },
     {
@@ -1030,7 +1052,7 @@
     {
       "id": "keyboards:timeout",
       "in": "keyboards",
-      "name": "Backlight off after"
+      "name": "Light off after"
     },
     {
       "id": "keyboards:connection",
@@ -1068,7 +1090,7 @@
     {
       "id": "networks:tunnel",
       "in": "networks",
-      "name": "Tunnel"
+      "name": "VPN"
     },
     {
       "id": "networks:bridge",
@@ -1345,6 +1367,13 @@
       "name": "Ask in a session",
       "verb": "open",
       "glyph": "agent"
+    },
+    {
+      "id": "verb:ask:talk",
+      "in": "ask",
+      "name": "Talk to {name}",
+      "verb": "say",
+      "glyph": "reply"
     },
     {
       "id": "weather:today",
@@ -1703,30 +1732,30 @@
     {
       "id": "keyboard:lights",
       "in": "keyboard",
-      "name": "Backlight"
+      "name": "Light"
     },
     {
       "id": "keyboard:lights-off",
       "in": "keyboard:lights",
-      "name": "Turn off the keyboard's backlight",
+      "name": "Turn off the keyboard's light",
       "verb": "turn off"
     },
     {
       "id": "keyboard:lights-on",
       "in": "keyboard:lights",
-      "name": "Turn on the keyboard's backlight",
+      "name": "Turn on the keyboard's light",
       "verb": "turn on"
     },
     {
       "id": "keyboard:brighter",
       "in": "keyboard:lights",
-      "name": "Brighten the keyboard's backlight",
+      "name": "Brighten the keyboard's light",
       "verb": "brighten"
     },
     {
       "id": "keyboard:dimmer",
       "in": "keyboard:lights",
-      "name": "Dim the keyboard's backlight",
+      "name": "Dim the keyboard's light",
       "verb": "dim"
     },
     {
@@ -3072,6 +3101,7 @@
     },
     {
       "id": "bluetooth:radio",
+      "in": "bluetooth",
       "name": "Bluetooth off",
       "verb": "off",
       "glyph": "bluetoothOff",
@@ -3085,6 +3115,7 @@
     },
     {
       "id": "bluetooth:links",
+      "in": "bluetooth",
       "name": "Bluetooth performance",
       "provider": "bluetooth",
       "question": "bluetooth performance",

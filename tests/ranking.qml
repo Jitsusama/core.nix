@@ -69,6 +69,18 @@ QtObject {
             row("window:kitty:zsh", "zsh", { is: "window:2" })
         ])), "window:kitty:zsh window:kitty:zsh");
 
+        // A program's own keys named as it is are one Neovim; a layer named
+        // otherwise, or with no program beside it, stays.
+        const neovim = row("program:nvim", "Neovim", { ownLayer: "neovim" });
+        const kitty = row("program:kitty", "kitty", { ownLayer: "terminal" });
+        const keysOfNeovim = row("shortcut-level:shortcuts:neovim", "Neovim", { layer: "neovim" });
+        const keysOfTerminal = row("shortcut-level:shortcuts:terminal", "Terminal",
+            { layer: "terminal" });
+        expect("one Neovim", keys(Rank.keysHeld([keysOfNeovim, neovim, kitty, keysOfTerminal])),
+            "program:nvim program:kitty shortcut-level:shortcuts:terminal");
+        expect("its keys alone", keys(Rank.keysHeld([keysOfNeovim, kitty])),
+            "shortcut-level:shortcuts:neovim program:kitty");
+
         // Tiers: the name typed whole, then its start, then a later word's,
         // then a synonym, whatever the score.
         expect("the name itself first", Rank.tier("Slack", " slack ", false), 0);

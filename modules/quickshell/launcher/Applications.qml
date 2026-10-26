@@ -455,12 +455,24 @@ Provider {
         })];
     }
 
+    // Shortcuts, which says which layer is whose, or null where there's none.
+    function keyMap() {
+        return (provider.launcher?.sources ?? [])
+            .find(source => typeof source.layerOf === "function") ?? null;
+    }
+
+    // The name of the layer of its own keys, or "" for none.
+    function ownLayer(entry) {
+        const map = keyMap();
+        const own = map ? map.ofProgram(entry.id) : "desktop";
+        return own === "desktop" ? "" : own;
+    }
+
     // Its own keys, where Shortcuts has a layer of them (KeyMap.qml's
     // layerOf), as Shortcuts lists the layer, named Shortcuts here since
     // the program already says whose they are.
     function keysOf(entry) {
-        const map = (provider.launcher?.sources ?? [])
-            .find(source => typeof source.layerOf === "function") ?? null;
+        const map = keyMap();
         const layer = map ? map.layerOf(entry.id) : null;
         return layer ? [Object.assign({}, layer, { name: Words.name("shortcuts") })] : [];
     }
@@ -520,6 +532,10 @@ Provider {
             Object.defineProperties(row, {
                 verb: { enumerable: true, get: () => latest() ? "switch" : "start" },
                 count: { enumerable: true, get: () => provider.windowCount(entry) },
+                // The layer of its own keys it holds as Shortcuts, so the
+                // layer, named as the program is, isn't listed beside it
+                // (Rank.js's keysHeld).
+                ownLayer: { enumerable: true, get: () => provider.ownLayer(entry) },
                 run: {
                     enumerable: true,
                     get: () => {

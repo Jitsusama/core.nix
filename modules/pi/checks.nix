@@ -10,27 +10,27 @@
   ...
 }:
 {
-  # The harness's weekly measure runs each Monday in the background,
-  # catching up on a Monday slept through, with the store's node, and only
-  # where the harness is installed; a Mac, with no systemd, gets none.
-  pi-measures-each-week-in-the-background =
+  # The harness's measure runs each morning in the background, catching up
+  # on a morning slept through, with the store's node, and only where the
+  # harness is installed; a Mac, with no systemd, gets none.
+  pi-measures-each-day-in-the-background =
     let
       home = account workstation;
       mac = account macWorkstation;
-      service = home.systemd.user.services.pi-weekly-measure;
-      timer = home.systemd.user.timers.pi-weekly-measure.Timer;
+      service = home.systemd.user.services.pi-measure;
+      timer = home.systemd.user.timers.pi-measure.Timer;
       # home-manager keeps a unit's settings as lists.
       first = value: lib.head (lib.toList value);
     in
-    holds "pi-measures-each-week-in-the-background"
-      "pi's weekly measure runs outside background.slice, not on Mondays, misses a Monday slept through, runs a node off the PATH, fails where the harness isn't installed, or reaches a Mac."
+    holds "pi-measures-each-day-in-the-background"
+      "pi's measure runs outside background.slice, not every day, misses a morning slept through, runs a node off the PATH, fails where the harness isn't installed, or reaches a Mac."
       (
         service.Service.Slice == "background.slice"
         && timer.Persistent
-        && lib.hasPrefix "Mon " (first timer.OnCalendar)
+        && lib.hasPrefix "*-*-* " (first timer.OnCalendar)
         && lib.hasPrefix "${lib.getExe pkgs.nodejs} " (first service.Service.ExecStart)
-        && lib.hasSuffix "/scripts/weekly-measure.ts" (first service.Unit.ConditionPathExists)
-        && !(mac.systemd.user.services ? pi-weekly-measure)
+        && lib.hasSuffix "/scripts/measure.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.services ? pi-measure)
       );
 
   # pi's theme is the machine's: its text, its code and its thinking levels

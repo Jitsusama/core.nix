@@ -84,6 +84,7 @@
         && user.sources.pnpm.path == "/Users/someone/Library/pnpm/store"
         && user.sources.go-mod.path == "/Users/someone/go/pkg/mod"
         && user.sources.lima.path == "/Users/someone/Library/Caches/lima"
+        && user.sources.jetbrains.path == "/Users/someone/Library/Caches/JetBrains"
         && user.sources.account-tmp == { kind = "temp"; }
         && !((account workstation).jitsusama.disk-guard.settings.sources ? account-tmp)
         && !(user.sources ? homebrew)

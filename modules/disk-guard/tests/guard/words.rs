@@ -11,6 +11,7 @@ fn room(path: &str, band: Band, free: u64, full_in: Option<f64>) -> Room<'_> {
         free,
         size: 1000 * GIB,
         full_in,
+        cleared_all: false,
     }
 }
 
@@ -58,6 +59,38 @@ fn each_band_below_healthy_says_what_the_guard_is_doing() {
         said(Band::Critical, 20 * GIB),
         "The disk is critically full, with 20.0 GiB free. Saves may fail; \
          the guard is clearing everything it can and may freeze what is filling it."
+    );
+}
+
+#[test]
+fn a_band_whose_pass_left_nothing_to_clear_says_so_rather_than_clearing() {
+    let said = |band, free| {
+        filesystem(
+            &Room {
+                cleared_all: true,
+                ..room("/", band, free, None)
+            },
+            None,
+        )
+    };
+    assert_eq!(
+        said(Band::Pressure, 180 * GIB),
+        "The disk is filling, with 180.0 GiB free. \
+         The guard has cleared all it may; what's left is in use or kept."
+    );
+    assert_eq!(
+        said(Band::Urgent, 60 * GIB),
+        "The disk is nearly full, with 60.0 GiB free. \
+         The guard has cleared all it safely can; delete something you don't need."
+    );
+    assert_eq!(
+        said(Band::Critical, 20 * GIB),
+        "The disk is critically full, with 20.0 GiB free. Saves may fail; \
+         the guard has cleared all it can and may freeze what is filling it."
+    );
+    assert_eq!(
+        said(Band::Healthy, 400 * GIB),
+        "The disk has 400.0 GiB free."
     );
 }
 

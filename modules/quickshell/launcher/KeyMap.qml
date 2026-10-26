@@ -170,9 +170,12 @@ Provider {
             const glyph = layer.glyph === "" ? "" : (Words.glyph(id) || layer.glyph);
             const binds = KeyGroups.merged(layer.name, layer.binds);
             const chords = binds.map(bind => chordRow(layer, bind, glyph));
-            return Object.assign({ name: layer.name }, levelOf(id,
-                KeyGroups.arrange(layer.name, binds), chords.map((chord, at) => at), chords,
-                glyph));
+            const made = levelOf(id, KeyGroups.arrange(layer.name, binds),
+                chords.map((chord, at) => at), chords, glyph);
+            // Which layer it is, so a program holding it, named as it is,
+            // stands for it at the top (Rank.js's keysHeld).
+            made.row.layer = layer.name;
+            return Object.assign({ name: layer.name }, made);
         })
 
     // The layers whose keys work in the window the launcher opened over, its
@@ -203,11 +206,23 @@ Provider {
 
     // The chord opens on the program's own layer, its groups showing, the
     // path saying which program it is; over the desktop, on the layers.
-    // A program's own keys, by its windows' app id, as the layer it has here,
-    // or null for one with none of its own, so a program's row can hold
-    // them (Applications.qml) without knowing which layer is whose.
+    // The layers of programs that run inside the terminal, by their desktop
+    // entries' ids, since their windows are the terminal's and say which
+    // they are only by their titles.
+    readonly property var terminalPrograms: ({ nvim: "neovim" })
+
+    // The layer a program's own keys are, by its desktop entry's id: one
+    // run inside the terminal by its entry, any other by its windows, and
+    // "desktop" for one with none of its own.
+    function ofProgram(app) {
+        return terminalPrograms[app] ?? KeyGroups.over(app, "")[0];
+    }
+
+    // A program's own keys, by its desktop entry's id, as the layer it has
+    // here, or null for one with none of its own, so a program's row can
+    // hold them (Applications.qml) without knowing which layer is whose.
     function layerOf(app) {
-        const own = KeyGroups.over(app, "")[0];
+        const own = ofProgram(app);
         const layer = own === "desktop" ? null : ranked.find(one => one.name === own) ?? null;
         return layer === null ? null : layer.row;
     }

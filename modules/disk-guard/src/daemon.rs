@@ -279,7 +279,22 @@ pub struct Guard {
     damaged: bool,
     /// The trees the last survey kept for their use without offering.
     kept: Vec<(PathBuf, crate::activity::Use)>,
+    /// What the last survey offered, by path and size, so a holder can
+    /// say how much of it the guard may clear.
+    offered: Vec<(PathBuf, u64)>,
+    /// What holds the disks, as last measured and when, in wall seconds.
+    measured: Measured,
+    /// The thread measuring them, while it does.
+    measuring: Option<std::thread::JoinHandle<()>>,
 }
+
+/// What holds the disks, as a thread of its own measured it.
+type Measured = Arc<Mutex<Option<(f64, Vec<(crate::holders::Place, u64)>)>>>;
+
+/// How often what holds the disks is measured again while one is below
+/// healthy. Sizing every folder the sources name reads millions of
+/// entries, so it's done on a thread at idle priority, and not often.
+const HOLDERS_EVERY: f64 = 1800.0;
 
 /// Why a path stays or would go.
 #[derive(Clone, Debug, PartialEq)]
@@ -336,6 +351,13 @@ pub struct Status {
     /// Who wrote most of the last minute's writes, while a disk is below
     /// healthy and one process did.
     pub writer: Option<Writing>,
+    /// What stands to be told now, from any band below healthy, for
+    /// whoever reads this file: the desktop is told only from urgent on.
+    pub notice: Option<crate::notices::Notice>,
+    /// What holds the disks, biggest first, measured while one is below
+    /// healthy, and when it was measured, in wall seconds.
+    pub holders: Vec<crate::holders::Holder>,
+    pub holders_at: Option<f64>,
 }
 
 /// A process writing most of what's written, as the status file says it.
@@ -377,6 +399,9 @@ pub struct FilesystemStatus {
     /// filling, both over the trend and now.
     pub full_at: Option<f64>,
     pub says: String,
+    /// Whether the last pass here, in this band or a worse one, found
+    /// nothing more it may clear.
+    pub exhausted: bool,
 }
 
 impl FilesystemStatus {
@@ -396,6 +421,11 @@ impl FilesystemStatus {
         if band != self.band {
             self.forecast = None;
         }
+        // A worse band takes more than the pass that found nothing left, and
+        // its own pass hasn't run yet.
+        if band > self.band {
+            self.exhausted = false;
+        }
         self.band = band;
         self.free = space.free;
         self.total = space.total;
@@ -412,6 +442,7 @@ impl FilesystemStatus {
             free: self.free,
             size: self.size,
             full_in,
+            cleared_all: self.exhausted,
         }
     }
 }
@@ -524,7 +555,53 @@ impl Guard {
             unread: (0, None),
             damaged,
             kept: Vec::new(),
+            offered: Vec::new(),
+            measured: Arc::new(Mutex::new(None)),
+            measuring: None,
         })
+    }
+
+    /// Starts measuring what holds the disks, when one is below healthy and
+    /// the last measure is old or missing, unless a measure still runs.
+    fn measure_holders(&mut self, now: f64) {
+        if self
+            .measuring
+            .as_ref()
+            .is_some_and(|thread| !thread.is_finished())
+        {
+            return;
+        }
+        self.measuring = None;
+        let pressed = self
+            .watched
+            .values()
+            .any(|watched| watched.band != Band::Healthy);
+        let fresh = self
+            .measured
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|(at, _)| now - at < HOLDERS_EVERY);
+        if !pressed || fresh {
+            return;
+        }
+        let places = crate::holders::places(&self.config);
+        let measured = Arc::clone(&self.measured);
+        let started = std::thread::Builder::new()
+            .name("holders".to_owned())
+            .spawn(move || {
+                // At idle priority, so sizing never slows what the person
+                // or a build does. A Mac's only way lowers the whole
+                // process, passes too, so there it runs as it is.
+                #[cfg(target_os = "linux")]
+                crate::commands::idle();
+                let sized = crate::holders::measure(places);
+                *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized));
+            });
+        match started {
+            Ok(thread) => self.measuring = Some(thread),
+            Err(error) => eprintln!("disk-guard: measuring what holds the disks: {error}"),
+        }
     }
 
     /// The candidate a source offers at `path`, or the nearest one holding
@@ -773,6 +850,7 @@ impl Guard {
         self.watch();
         self.mark(tick);
         self.heartbeat();
+        self.measure_holders(tick.wall);
         self.heard_garbage(tick.wall)?;
         let spare_moment = spare(senses.power, senses.saver, &self.memory.awake, tick.wall);
         let mut due = Vec::new();
@@ -1441,6 +1519,10 @@ impl Guard {
         let kept = std::mem::take(&mut world.kept);
         drop(world);
         self.kept = kept;
+        self.offered = offers
+            .iter()
+            .map(|offer| (offer.candidate.path.clone(), offer.candidate.size))
+            .collect();
         offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
         offers.extend(self.asked_offers());
@@ -1667,6 +1749,12 @@ impl Guard {
                     fill_per_hour: watched.fill.trend().map(|trend| trend * 3600.0),
                     full_at: full_in.map(|seconds| now + seconds),
                     says: String::new(),
+                    exhausted: self.last.as_ref().is_some_and(|last| {
+                        last.path == watched.path
+                            && last.end == "exhausted"
+                            && watched.band != Band::Healthy
+                            && last.band >= watched.band
+                    }),
                 };
                 status.says = crate::words::filesystem(&status.room(full_in), home);
                 Some(status)
@@ -1690,7 +1778,7 @@ impl Guard {
                 bytes: one.bytes,
             })
             .collect();
-        Status {
+        let mut status = Status {
             version: STATUS_VERSION,
             heartbeat: now,
             says,
@@ -1706,7 +1794,17 @@ impl Guard {
                     pid: writer.pid,
                     rate: writer.rate,
                 }),
+            notice: None,
+            holders: Vec::new(),
+            holders_at: None,
+        };
+        status.notice = crate::notices::standing(&status);
+        if let Some((at, measured)) = &*self.measured.lock().unwrap_or_else(PoisonError::into_inner)
+        {
+            status.holders = crate::holders::holders(measured, &self.offered, &self.kept, home);
+            status.holders_at = Some(*at);
         }
+        status
     }
 
     /// The pacer for a pass in `band` on the filesystem at `path`. Below

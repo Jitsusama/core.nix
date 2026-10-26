@@ -1,6 +1,7 @@
 # The checks of dell-xps-14-da14260, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
   bareNixos,
   graphical,
   holds,
@@ -76,6 +77,17 @@ in
     holds "the-panel-dims-after-a-bad-read"
       "xe isn't held to VESA's brightness controls, so a bad read of the panel leaves its brightness keys doing nothing."
       (lib.elem "xe.enable_dpcd_backlight=2" kernelParams);
+
+  # The XPS 14's panel flashed under its self refresh, PSR2 or PSR1, and
+  # under frame buffer compression, after a monitor was replugged and
+  # after a boot made with the lid shut.
+  the-panel-holds-still =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot) kernelParams;
+    in
+    holds "the-panel-holds-still"
+      "xe may use the panel's self refresh or compression, which set the screen flashing after a replug or a lid-shut boot."
+      (lib.elem "xe.enable_psr=0" kernelParams && lib.elem "xe.enable_fbc=0" kernelParams);
 
   # Under a build, reclaim backed up the XPS 14's window buffers at xe's
   # default seeks, and the compositor waited on their locks; at 64 it
@@ -230,10 +242,7 @@ in
         { nixpkgs.config.allowUnfree = true; }
       ];
       told = package: lib.hasInfix "force-color-profile" (package.postFixup or "");
-      # A line of its own, so a comment naming it doesn't count.
-      mapped = lib.elem "srgb-gamut" (
-        map lib.trim (lib.splitString "\n" (builtins.readFile ../../modules/niri/config.kdl))
-      );
+      mapped = lib.elem "srgb-gamut" ((account graphical).jitsusama.niri.outputs."eDP-1" or [ ]);
     in
     holds "chromium-leaves-the-panel-to-niri"
       "Chrome, Slack or 1Password would convert the XPS 14's colours on top of niri's mapping, or niri would no longer map them."

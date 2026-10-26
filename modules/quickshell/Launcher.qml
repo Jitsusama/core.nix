@@ -228,8 +228,9 @@ Scope {
             ? Rank.identity(matches[current]) : "";
         // And a thing found more than one way is one row, as the one
         // with the most to say.
-        const below = Rank.once(Rank.placed(found.filter(once),
-            gathered.filter(row => !whole.has(row.from.settings.name)), latch));
+        // A program's own keys named as it is are the program's, a step in.
+        const below = Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
+            gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
         matches = steadying ? Steady.kept(matches, rows.concat(below), steadyId)
@@ -473,18 +474,46 @@ Scope {
     property var spots: []
     property bool spotsMade: false
 
+    // An answer's parts are spots too, as Battery's Health is, from the
+    // answers a place holds and those home is, such as Disk: asked already
+    // as their places are made, so finding them asks nothing more.
     function spotsFrom() {
-        const out = [];
+        let out = [];
         for (const shown of categories) {
-            const collections = members(shown.category).filter(row => row.from
+            const held = members(shown.category);
+            const collections = held.filter(row => row.from
                 && spotCollections.includes(row.opens));
             for (const collection of collections)
                 for (const thing of collection.verbs())
                     for (const part of (thing.verbs ? thing.verbs() ?? [] : []).concat(partsIn(thing)))
                         if (isSpot(part))
                             out.push(spotOf(part, [shown, collection, thing]));
+            for (const said of held.filter(row => row.answered))
+                out = out.concat(answerSpots(said, [shown, said]));
+        }
+        for (const id of Words.home.filter(one => !placeNamed(one))) {
+            const place = answerPlace(id);
+            if (place && place.answered)
+                out = out.concat(answerSpots(place, [place]));
         }
         return out;
+    }
+
+    // What's asked whole at the top, by any thing's words: a part named
+    // so, as the processor's Cores, is found as that answer, never as a
+    // second row beside it.
+    readonly property var answerWords: {
+        const out = {};
+        for (const entry of Object.values(Words.things))
+            for (const word of entry.answers ?? [])
+                out[Fuzzy.plainly(word)] = true;
+        return out;
+    }
+
+    function answerSpots(said, trail) {
+        return (said.verbs ? said.verbs() ?? [] : [])
+            .filter(part => isSpot(part) && !answerWords[Fuzzy.plainly(part.name)])
+            .map(part => spotOf(part, trail));
     }
 
     function isSpot(part) {
@@ -493,13 +522,17 @@ Scope {
     }
 
     function spotOf(part, trail) {
+        // A place inside another says it: Battery's Health is in Machine,
+        // then Power, then Battery.
+        const above = trail[0].category
+            ? placesAbove(trail[0].category).map(place => place.name ?? place.id) : [];
         const spot = {
             key: `spot:${trail.map(row => steadyId(row)).join("/")}/${steadyId(part)}`,
             name: part.name,
             glyph: part.glyph,
             hue: part.hue,
             graph: part.graph,
-            side: trail.map(row => row.name).join(" \u203a "),
+            side: above.concat(trail.map(row => row.name)).join(" \u203a "),
             chord: [],
             verb: "go",
             // Where it is, and so where Return goes, by what each step is.
@@ -538,8 +571,12 @@ Scope {
         held = [];
         restart("");
         for (const step of spot.trail) {
-            // From the top, a place or an answer home is, such as Disk.
-            const rows = held.length === 0 ? categories.concat(home()) : offered;
+            // From the top, a place or an answer home is, such as Disk;
+            // inside a collection, its things and then its parts, as it
+            // shows them, so Agents leads on to Orchestrators.
+            const from = held.length > 0 ? held[held.length - 1].row.from : null;
+            const rows = held.length === 0 ? categories.concat(home())
+                : from ? offered.concat(partsOf(from)) : offered;
             const row = rows.find(one => steadyId(one) === step) ?? null;
             if (row === null || !enter(row))
                 return;
@@ -578,14 +615,17 @@ Scope {
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a
-    // collection (`things`), what can be done to it, then its parts; from
-    // a thing's own verbs, what each is done to. One whose rows can't be
-    // made out of the launcher's step holds nothing here.
+    // collection (`things`), what can be done to it, then its parts, a
+    // collection's own among them, as a step into it lists them (Agents'
+    // Orchestrators, Quests, Runs and AI spend); from a thing's own verbs,
+    // what each is done to. One whose rows can't be made out of the
+    // launcher's step holds nothing here.
     function catalogueHolds(row, things) {
         try {
             const making = things ? row.verbs : row.targets;
             const own = making ? making() ?? [] : [];
-            return things ? own.concat(partsIn(row)) : own;
+            const places = things && row.from ? partsOf(row.from) : [];
+            return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
             return [];
         }
@@ -1524,9 +1564,13 @@ Scope {
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        if (!into || into.length === 0)
+        // A collection with nothing in it still holds the places its
+        // vocabulary names, which a step into it shows: Agents with no
+        // agent running still leads to its Quests and Orchestrators.
+        const places = things && row.from ? partsOf(row.from).length : 0;
+        if ((!into || into.length === 0) && places === 0)
             return false;
-        held = held.concat([Object.assign(here(), { row: row, rows: into })]);
+        held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
         if (row.from)
             row.from.opened();
         // What was typed found the row, so it goes: inside, everything the row

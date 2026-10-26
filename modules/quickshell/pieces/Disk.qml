@@ -8,7 +8,9 @@
 // the guard is taking all it safely can. A writer the guard froze for
 // filling a disk wants him now too, with a way to let it go on. It's true
 // as well when a guard has stopped writing, since then nothing watches the
-// disks. Nothing else asks for him, since nothing else needs him.
+// disks. Nothing else asks for him, since nothing else needs him. It also
+// holds what the guards measured filling the disks, for the launcher's
+// Disk to list.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -38,6 +40,21 @@ Piece {
     readonly property var last: account.said?.last ?? null
     // What the account's guard froze for filling a disk, if anything.
     readonly property var frozen: account.said?.frozen ?? []
+    // What holds the disks, as each guard measured it, biggest first; a
+    // folder both measured is one holder, as the later says. A guard
+    // measures only while a disk is short of room, so it's empty until one
+    // has: { path, bytes, owner: { kind, name }, clearable, why, says }.
+    readonly property var holders: {
+        const byPath = {};
+        for (const status of said.slice().sort((a, b) => (a.holders_at ?? 0)
+            - (b.holders_at ?? 0)))
+            for (const holder of status.holders ?? [])
+                byPath[holder.path] = holder;
+        return Object.values(byPath).sort((a, b) => b.bytes - a.bytes);
+    }
+    // When they were last measured, in wall seconds, or 0.
+    readonly property real holdersAt: said.reduce((latest, status) => Math.max(latest,
+        status.holders_at ?? 0), 0)
 
     present: said.length > 0
     active: pressed || silent || frozen.length > 0
@@ -48,7 +65,7 @@ Piece {
     value: frozen.length > 0 ? "froze " + frozen.map(writer => writer.name).join(", ")
         : short || !silent
         ? (worst === null ? "" : `${shown(worst.free)} free on ${worst.path}`
-            + (short ? `, ${worst.band}` : ""))
+            + (short ? `, ${banded(worst.band)}` : ""))
         : "not watching"
 
     title: "Disks"
@@ -79,6 +96,19 @@ Piece {
         name: "Start the guard",
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])
+
+    // A band in Joel's words, the glossary's: filling, nearly full and
+    // critically full, never the guard's own names for them.
+    function banded(band) {
+        return (Words.of("machine:disk").said ?? {})[band] ?? band;
+    }
+
+    // The watched disk a path is on: the one whose path holds it longest.
+    function holding(path) {
+        return disks.filter(disk => path === disk.path || path.startsWith(disk.path === "/" ? "/"
+            : `${disk.path}/`)).reduce((best, disk) => best === null
+            || disk.path.length > best.path.length ? disk : best, null);
+    }
 
     function worse(one, other) {
         return bands.indexOf(one.band) > bands.indexOf(other.band);

@@ -680,9 +680,11 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
-      mkdir runtime && chmod 700 runtime
+      mkdir runtime launcher && chmod 700 runtime
       cp ${./pieces/Piece.qml} Piece.qml
       cp ${./pieces/Disk.qml} Disk.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
@@ -1473,6 +1475,19 @@ onLinux {
       grep -q 'shell.qml\[6:.*read() failed' log || { echo "the loud FileView never warned"; exit 1; }
       touch $out
     '';
+
+  # A long IPC reply reaches its caller whole, in the Quickshell the machine
+  # runs (ipc-replies-whole.patch): without the patch, one past the socket's
+  # buffer was cut off, so the launcher's catalogue never reached pi-ask.
+  an-ipc-reply-arrives-whole = pkgs.runCommandLocal "an-ipc-reply-arrives-whole" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../tests/ipc-replies.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts} QS=${qs} PATH=${pkgs.coreutils}/bin:$PATH
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
 
   # A status file is heard again once its folder is made again, and when
   # its folder is made only after the shell starts, as tests/watched.qml

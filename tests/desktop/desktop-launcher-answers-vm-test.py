@@ -69,7 +69,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     ]  # fmt: skip
     audited = [
         "keyboard layout", "stop rec", "tuesday", "this window", "headphones",
-        "bluetooth", "clipboard", "keyboard", "dim", "keyboard backlight", "camera",
+        "bluetooth", "clipboard", "keyboard", "dim", "keyboard light", "camera",
         "quest", "terminal", "below", "zsh",
     ]  # fmt: skip
     listed_twice: list[str] = []
@@ -119,10 +119,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         assert desktop.as_account("wl-paste --no-newline") == expected
 
-    copied("12*7", "84")
-    # The vendor comes from the list built from hwdata, so this proves it's there.
+    # What a sum or a measure says is tests/answers.qml's to hold; here,
+    # only what needs the machine. The vendor comes from the list built
+    # from hwdata, so this proves it's there, and that Return copies.
     copied("3c:22:fb:12:34:56", "Apple, Inc.")
-    copied("5 km in mi", "3.10686")
     # The battery's charge leads, as the kernel's stand-in has it.
     charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
     desktop.answer("battery")
@@ -302,27 +302,25 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         timeout=dt.timedelta(seconds=10),
     )
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # "keyboard backlight" asks it alone, as the stand-in's
+    # "keyboard light" asks it alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
     kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
     kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
     kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
-    kbd_levels = ["Backlight off", "Backlight to 1 of 2", "Backlight to 2 of 2"]
-    desktop.answer("keyboard backlight")
+    kbd_levels = ["Light off", "Light to 1 of 2", "Light to 2 of 2"]
+    desktop.answer("keyboard light")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
-            and (shown["selected"] or {}).get("name") == f"the keyboard's backlight is {kbd_said}"
+            and (shown["selected"] or {}).get("name") == f"the keyboard's light is {kbd_said}"
         )
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    for _ in range(kbd_levels.index("Backlight to 2 of 2")):
+    for _ in range(kbd_levels.index("Light to 2 of 2")):
         machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Backlight to 2 of 2"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
@@ -377,17 +375,48 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         "filesystems": [
             # Less room than /nix, but healthy, so /nix still leads.
             {"path": "/", "band": "healthy", "free": 10 * 2**30, "total": 30 * 2**30},
-            {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
+            {
+                "path": "/nix",
+                "band": "pressure",
+                "free": 20 * 2**30,
+                "total": 900 * 2**30,
+                "says": "The disk is filling, with 20.0 GiB free.",
+            },
         ],
         "frozen": [],
+        # What the guard measured filling the disks, biggest first.
+        "holders": [
+            {
+                "path": "/var/lib/containers",
+                "bytes": 12 * 2**30,
+                "owner": {"kind": "containers", "name": "podman"},
+                "clearable": False,
+                "why": "podman prunes only images no container uses",
+                "says": "Container storage holds 12.0 GiB; podman prunes only images no"
+                " container uses.",
+            },
+            {
+                "path": "/nix/var/cache",
+                "bytes": 6 * 2**30,
+                "owner": {"kind": "cache", "name": "nix"},
+                "clearable": True,
+                "why": None,
+                "says": "The nix cache holds 6.0 GiB.",
+            },
+        ],
+        "holders_at": time.time(),
     }
     machine.succeed(
         f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
     desktop.answer("disk")
+    # The guard's own words are read below the rows.
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+        lambda shown: (
+            (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+            and shown["selected"]["reads"] == "The disk is filling, with 20.0 GiB free."
+        )
     )
     desktop.photograph("launcher-disks")
     # Its first part, a step in, is the space the headline's disk has,
@@ -405,7 +434,25 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
-            and shown["selected"]["side"] == "20.0 GiB free \u00b7 pressure"
+            and shown["selected"]["side"] == "20.0 GiB free \u00b7 filling"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # After Space, what's filling the disks, the biggest beside it, and a
+    # step in each holder, saying whether the guard clears any of it or
+    # why not, its own sentence below.
+    desktop.answer("disk")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's filling it"])
+    desktop.type_in("filling", selecting="What's filling it")
+    assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Containers", "Nix cache"]
+            and shown["selected"]["side"] == "12.0 GiB"
+            and str(shown["selected"]["reads"]).startswith("Container storage holds")
         )
     )
     machine.send_key("esc")
@@ -485,7 +532,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
     desktop.answer("disk")
-    desktop.launcher_until(lambda shown: shown["footer"] == "from the disk guard")
+    # The band /nix is in, while the guard still writes.
+    desktop.launcher_until(lambda shown: shown["footer"] == "filling")
     # Held open, the answer is asked again each second, so it says so as
     # the deadline passes, about twenty seconds on.
     desktop.launcher_until(
@@ -624,24 +672,24 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
-            and {"Repeat", "Backlight", "Connection", "Keys"} <= set(shown["rows"])
+            and {"Repeat", "Light", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
-    # Its Backlight is a setting saying how lit it is, the level set
+    # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
-    for _ in range(desktop.showing()["rows"].index("Backlight")):
+    for _ in range(desktop.showing()["rows"].index("Light")):
         machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Backlight"
+            (shown["selected"] or {}).get("name") == "Light"
             and shown["selected"]["side"] == "2 of 2"
         ),
     )
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Backlight off")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light off")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=dt.timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
@@ -1009,21 +1057,21 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     )
     desktop.answer("address")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: "Tunnel" in shown["rows"])
-    desktop.type_in("tailscale0", selecting="Tunnel")
+    desktop.launcher_until(lambda shown: "VPN" in shown["rows"])
+    desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
     # The left arrow takes what's typed away, the selection staying on
     # the tunnel, and Tab steps into it as the right arrow would.
     machine.send_key("left")
     desktop.launcher_until(
-        lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "Tunnel"
+        lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "VPN"
     )
     desktop.step_in("tab")
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
     # Stepping back out lands on the row it came from.
     machine.send_key("left")
     desktop.launcher_until(
-        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Tunnel"
+        lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "VPN"
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

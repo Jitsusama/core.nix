@@ -1299,7 +1299,8 @@ QtObject {
 
         // The keyboards in the kernel's list of input devices, as the
         // laptop's and an ErgoDox's read, with the hotkeys and keyd's own
-        // keyboard left out.
+        // keyboard left out, and the ErgoDox's second keyboard, its keypad's
+        // on the same USB device, listed as the one board it is.
         const keyboardsListed = [
             "I: Bus=0011 Vendor=0001 Product=0001 Version=ab83",
             "N: Name=\"AT Translated Set 2 keyboard\"",
@@ -1323,6 +1324,15 @@ QtObject {
                 + "0003:3297:4974.0001/input/input5",
             "U: Uniq=",
             "H: Handlers=sysrq kbd leds event4 ",
+            "B: LED=1f",
+            "",
+            "I: Bus=0003 Vendor=3297 Product=4974 Version=0111",
+            "N: Name=\"ZSA Technology Labs ErgoDox EZ Keyboard\"",
+            "P: Phys=usb-0000:00:14.0-3.4/input2",
+            "S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.4/3-3.4:1.2/"
+                + "0003:3297:4974.0003/input/input8",
+            "U: Uniq=",
+            "H: Handlers=sysrq kbd leds event7 ",
             "B: LED=1f",
             "",
             "I: Bus=0003 Vendor=0fac Product=0ade Version=0000",

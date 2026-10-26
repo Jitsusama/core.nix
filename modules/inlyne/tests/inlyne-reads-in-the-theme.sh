@@ -18,7 +18,9 @@ file=$1
 photo=$2
 : > said
 
-INLYNE_LOG=inlyne=trace inlyne view "$file" > said 2>&1 &
+# Without cage's X server, so an inlyne that can't open a Wayland window
+# never draws rather than drawing through X.
+INLYNE_LOG=inlyne=trace env -u DISPLAY inlyne view "$file" > said 2>&1 &
 reader=$!
 
 # Each frame's line says what the redraw histogram recorded, then names it,

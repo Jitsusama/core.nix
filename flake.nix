@@ -235,6 +235,7 @@
         device-check = ./modules/device-check/nixos.nix;
         dictation = ./modules/dictation/nixos.nix;
         disk-guard = ./modules/disk-guard/nixos.nix;
+        disk-loss-panic = ./modules/disk-loss-panic/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;
         firmware-settings = ./modules/firmware-settings/nixos.nix;
@@ -257,6 +258,7 @@
         litra = ./modules/litra/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         memory-modules = ./modules/memory-modules/nixos.nix;
+        mic-mute-light = ./modules/mic-mute-light/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;

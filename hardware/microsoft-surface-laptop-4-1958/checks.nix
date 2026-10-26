@@ -37,7 +37,8 @@
       );
 
   # The GPU's driver loads in the initrd, before the console is set up, and
-  # the firmware's unreadable clock never becomes rtc0.
+  # the firmware's unreadable clock never becomes rtc0, and the CMOS clock
+  # sets the time in the initrd, before systemd moves it forward.
   the-surface-boots-with-its-gpu-and-a-clock-that-reads =
     let
       surface = bareNixos [
@@ -47,6 +48,10 @@
       inherit (surface.config) boot;
     in
     holds "the-surface-boots-with-its-gpu-and-a-clock-that-reads"
-      "The Surface Laptop 4 loads amdgpu only after its initrd, or lets acpi_tad's unreadable clock take rtc0."
-      (lib.elem "amdgpu" boot.initrd.kernelModules && lib.elem "acpi_tad" boot.blacklistedKernelModules);
+      "The Surface Laptop 4 loads amdgpu or rtc_cmos only after its initrd, or lets acpi_tad's unreadable clock take rtc0."
+      (
+        lib.elem "amdgpu" boot.initrd.kernelModules
+        && lib.elem "rtc_cmos" boot.initrd.kernelModules
+        && lib.elem "acpi_tad" boot.blacklistedKernelModules
+      );
 }

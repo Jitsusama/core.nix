@@ -16,9 +16,11 @@ onLinux {
       programs = [
         ../creative-pebble-x-plus/lights.rs
         ../desk-facts/facts.rs
+        ../disk-loss-panic/disk-loss-panic.rs
         ../ergodox/ergodox-watch.rs
         ../linux-id/pinentry.rs
         ../litra/litra.rs
+        ../mic-mute-light/mic-mute-light.rs
         ../quickshell/keyboard-lights.rs
         ../quickshell/quests.rs
         ../quickshell/runs.rs

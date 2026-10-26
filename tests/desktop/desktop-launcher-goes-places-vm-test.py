@@ -284,6 +284,11 @@ INBOX = f"{HARNESS}/steer/TESTQA"
 def an_orchestrator(desktop: Desktop) -> None:
     """Make pi's session an orchestrator, Lighthouse, as the harness lists one, its inbox empty."""
     desktop.pi_session()
+    lighthouse_listed(desktop)
+
+
+def lighthouse_listed(desktop: Desktop) -> None:
+    """List Lighthouse as an orchestrator, as the harness would, its inbox empty."""
     listed = {
         "orchestrators": [
             {"quest": "QEST-20261022-TESTQA", "address": "TESTQA", "short": "Lighthouse",
@@ -378,6 +383,39 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
         lambda shown: (
             shown["rows"][:2] == ["You said", "How it went"]
             and "Watching" in str((shown["selected"] or {}).get("reads", ""))
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) -> None:
+    """A question asked is talked over with an orchestrator, from Ask's answer."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    desktop.answer("what is a fjord?")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
+    # A step in, talking it over with Lighthouse comes before asking in
+    # a session of its own.
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:2] == ["Talk to Lighthouse", "Ask in a session"]
+    )
+    machine.send_key("ret")
+    # The question goes to its inbox with what was answered, and the
+    # launcher lands inside Lighthouse, where its talks say how each went.
+    machine.wait_until_succeeds(
+        desktop.in_session(f"cat {INBOX}/*.json | grep -q 'The launcher answered: A fjord'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
+    assert said["text"].startswith("what is a fjord?\n\nThe launcher answered: "), said
+    assert said["from"] == "joel", said
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Agents", "Orchestrators", "Lighthouse"] and "Talk" in shown["rows"]
         )
     )
     machine.send_key("esc")
@@ -1096,6 +1134,31 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # An answer's part is found the same way: the stand-in battery's
+    # Health, inside Battery, inside Power, inside Machine.
+    inside = "Machine \u203a Power \u203a Battery"
+
+    def health(shown: Json) -> int:
+        """Give where the battery's Health is listed, saying where it lives, or -1."""
+        for at, thing in enumerate(shown["things"]):
+            if thing["reads"].startswith("Health ") and inside in thing["reads"]:
+                return at
+        return -1
+
+    desktop.answer("health")
+    desktop.launcher_until(lambda shown: health(shown) >= 0)
+    for _ in range(health(desktop.showing())):
+        machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == inside)
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Machine", "Power", "Battery"]
+            and (shown["selected"] or {}).get("name") == "Health"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
@@ -1111,7 +1174,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
-    # Power comes first, saying what it holds.
+    # Power comes first, saying what it holds, and Memory is a row of its
+    # own, before Heat, as the processor is.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
@@ -1119,6 +1183,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
                 str(thing["reads"]).startswith("Power \u00b7 Battery, Power profile")
                 for thing in shown["things"]
             )
+            and "Memory" in shown["rows"]
+            and shown["rows"][shown["rows"].index("Memory") + 1 :][:1] == ["Heat"]
         )
     )
     desktop.step_in("ret")
@@ -1181,6 +1247,24 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     kitty = one(entries, "kitty", "Programs")
     assert kitty["kind"] == "action"
     assert not [e for e in entries if e["in"].startswith("Programs \u203a ")]
+    # Windows lists each window but not each one's own Size, and a
+    # keyboard's keys, which only say what they do, aren't listed.
+    assert not [e for e in entries if e["in"].startswith("Desktop \u203a Windows \u203a ")]
+    assert not [e for e in entries if "keyboard:key:" in e["id"]]
+    # A collection's own parts are listed, as a step into it shows them:
+    # Agents' Orchestrators, and inside it each orchestrator.
+    lighthouse_listed(desktop)
+    machine.wait_until_succeeds(
+        desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
+    assert ran(lighthouse)["done"]
+    desktop.launcher_until(
+        lambda shown: shown["open"] and shown["path"] == ["Agents", "Orchestrators", "Lighthouse"]
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
@@ -1224,6 +1308,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
 ) -> None:
     """The launcher's home lists the categories to browse, each saying what it holds."""
     machine = desktop.machine
+    # Desktop holds This window while one is focused, so one is, whatever
+    # ran before.
+    desktop.focused_kitty()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
