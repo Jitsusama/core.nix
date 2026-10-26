@@ -10,6 +10,7 @@ use serde_json::Value;
 use ureq::Agent;
 
 use crate::account::Account;
+use crate::calendar::Answer;
 
 /// Where Google answers.
 pub struct Origins {
@@ -35,8 +36,24 @@ pub enum Refused {
     /// access is refused: Joel has to sign in again.
     SignedOut,
     /// Google couldn't be reached, or answered with an error of its own;
-    /// asking again later may work.
+    /// asking again later may work. An answer to a meeting Joel isn't
+    /// invited to, or one gone, is said this way too.
     Unreachable(String),
+}
+
+/// What a status says of an answer from the Calendar API, beyond 200.
+fn refused(status: u16, what: &str) -> Refused {
+    // A 403 is as often a quota as a missing grant, so only a 401 says
+    // the token is no good.
+    if status == 401 {
+        Refused::SignedOut
+    } else {
+        Refused::Unreachable(format!("Google Calendar answered {status} to {what}"))
+    }
+}
+
+fn unreachable(error: &ureq::Error) -> Refused {
+    Refused::Unreachable(format!("couldn't reach Google: {error}"))
 }
 
 /// A fresh access token and when it stops working.
@@ -120,19 +137,10 @@ impl Google {
             if let Some(page) = &page {
                 request = request.query("pageToken", page);
             }
-            let mut answer = request
-                .call()
-                .map_err(|error| Refused::Unreachable(format!("couldn't reach Google: {error}")))?;
+            let mut answer = request.call().map_err(|error| unreachable(&error))?;
             let status = answer.status().as_u16();
-            // A 403 is as often a quota as a missing grant, so only a 401
-            // says the token is no good.
-            if status == 401 {
-                return Err(Refused::SignedOut);
-            }
             if status != 200 {
-                return Err(Refused::Unreachable(format!(
-                    "Google Calendar answered {status}"
-                )));
+                return Err(refused(status, "the meetings"));
             }
             let mut body: Value = answer.body_mut().read_json().map_err(|error| {
                 Refused::Unreachable(format!("Google Calendar's answer: {error}"))
@@ -148,5 +156,57 @@ impl Google {
                 return Ok(serde_json::json!({ "items": items }));
             }
         }
+    }
+
+    /// Answers the invitation to the meeting `id`, one occurrence of a
+    /// repeating one, as Joel: his own attendee's answer changes and
+    /// everyone else's stays. The API takes the attendees whole, so they're
+    /// read first. Nobody is sent mail about it, as when he answers in
+    /// Google Calendar; the organizer sees it on the meeting.
+    pub fn answer(&self, token: &str, id: &str, with: Answer) -> Result<(), Refused> {
+        let url = format!(
+            "{}/calendar/v3/calendars/primary/events/{id}",
+            self.origins.api
+        );
+        let authorization = format!("Bearer {token}");
+        let mut read = self
+            .agent
+            .get(&url)
+            .header("Authorization", &authorization)
+            .query("fields", "attendees")
+            .call()
+            .map_err(|error| unreachable(&error))?;
+        let status = read.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "a meeting's attendees"));
+        }
+        let mut event: Value = read.body_mut().read_json().map_err(|error| {
+            Refused::Unreachable(format!("Google Calendar's attendees: {error}"))
+        })?;
+        let mut attendees = event.get_mut("attendees").map_or(Value::Null, Value::take);
+        let me = attendees.as_array_mut().and_then(|attendees| {
+            attendees
+                .iter_mut()
+                .find(|attendee| attendee.get("self").and_then(Value::as_bool) == Some(true))
+        });
+        let Some(me) = me else {
+            return Err(Refused::Unreachable(
+                "Joel isn't invited to the meeting he answered".into(),
+            ));
+        };
+        me["responseStatus"] = Value::from(with.status());
+        let written = self
+            .agent
+            .patch(&url)
+            .header("Authorization", &authorization)
+            .query("sendUpdates", "none")
+            .query("fields", "id")
+            .send_json(serde_json::json!({ "attendees": attendees }))
+            .map_err(|error| unreachable(&error))?;
+        let status = written.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "an answer"));
+        }
+        Ok(())
     }
 }

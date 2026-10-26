@@ -14,8 +14,11 @@ onLinux {
   # and not offered again until a new one, a revoked token is refreshed
   # past once, an unreachable Google keeps what was heard, every page of
   # meetings is joined, each meeting's times, answer and the one link it's
-  # joined by are read, and the shell hears the state on connecting and
-  # each change once. A stand-in on the machine answers for Google.
+  # joined by are read, an invitation is answered by changing only Joel's
+  # own answer, and held at once, one Google refuses changing nothing, the
+  # shell asks only what's read strictly, and it hears the state on
+  # connecting and each change once. A stand-in on the machine answers for
+  # Google.
   google-reads-the-calendar = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in google, its tests included.
   google-passes-clippy = passesClippy "google-passes-clippy" (pkgs.callPackage ./package.nix { });

@@ -10,7 +10,7 @@
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan, Zoned};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::link::{self, Kind};
@@ -38,7 +38,7 @@ pub struct Meeting {
 }
 
 /// How Joel answered an invitation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Answer {
     Yes,
@@ -46,6 +46,18 @@ pub enum Answer {
     No,
     /// Not answered yet.
     Waiting,
+}
+
+impl Answer {
+    /// The answer as the Calendar API writes an attendee's.
+    pub fn status(self) -> &'static str {
+        match self {
+            Answer::Yes => "accepted",
+            Answer::Maybe => "tentative",
+            Answer::No => "declined",
+            Answer::Waiting => "needsAction",
+        }
+    }
 }
 
 /// The window asked for: from the start of the day `now` falls in, for
@@ -92,6 +104,8 @@ fn meeting(event: &Value, zone: &TimeZone) -> Option<Meeting> {
                 .iter()
                 .find(|attendee| attendee.get("self").and_then(Value::as_bool) == Some(true))
         })
+        // A meeting Joel holds is his own, not an invitation to answer.
+        .filter(|me| me.get("organizer").and_then(Value::as_bool) != Some(true))
         .and_then(|me| me.get("responseStatus").and_then(Value::as_str))
         .map(|status| match status {
             "accepted" => Answer::Yes,
@@ -188,6 +202,27 @@ mod tests {
         assert_eq!(answer("accepted"), Some(Answer::Yes));
         assert_eq!(answer("declined"), Some(Answer::No));
         assert_eq!(answer("needsAction"), Some(Answer::Waiting));
+    }
+
+    #[test]
+    fn a_meeting_joel_holds_is_not_his_to_answer() {
+        let answer = json!({"items": [{"id": "e", "start": {"date": "2026-10-27"},
+            "end": {"date": "2026-10-28"},
+            "attendees": [{"self": true, "organizer": true, "responseStatus": "accepted"},
+                {"email": "a@example.com", "responseStatus": "needsAction"}]}]});
+        assert_eq!(meetings(&answer, &zone())[0].answer, None);
+    }
+
+    #[test]
+    fn each_answer_is_written_as_the_api_writes_it() {
+        let written: Vec<_> = [Answer::Yes, Answer::Maybe, Answer::No, Answer::Waiting]
+            .into_iter()
+            .map(Answer::status)
+            .collect();
+        assert_eq!(
+            written,
+            ["accepted", "tentative", "declined", "needsAction"]
+        );
     }
 
     #[test]
