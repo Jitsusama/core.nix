@@ -19,6 +19,7 @@ onLinux {
         ../ergodox/ergodox-watch.rs
         ../linux-id/pinentry.rs
         ../litra/litra.rs
+        ../mic-mute-light/mic-mute-light.rs
         ../quickshell/keyboard-lights.rs
         ../quickshell/quests.rs
         ../quickshell/runs.rs

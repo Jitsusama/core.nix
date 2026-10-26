@@ -856,6 +856,7 @@ gather (
     ./modules/linux-id/checks.nix
     ./modules/litra/checks.nix
     ./modules/memory-modules/checks.nix
+    ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix

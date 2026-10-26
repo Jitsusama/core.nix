@@ -65,6 +65,7 @@ in
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ../../modules/kmscon/nixos.nix
+    ../../modules/mic-mute-light/nixos.nix
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
