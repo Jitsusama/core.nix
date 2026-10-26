@@ -744,14 +744,18 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
     pi = desktop.window_titled(PI_WINDOW)
     between = desktop.opened("Between the two")
     # Used in this order, so the pi window is the oldest of the three
-    # Super+Tab lists, and Elsewhere is where Joel is.
+    # Super+Tab lists, and Elsewhere is where Joel is. niri counts a window
+    # used only once it has kept focus a while (its recent windows'
+    # debounce, 750 ms), so each waits for its time of use to move.
     for window in [pi, between, desktop.notes_window(), desktop.window_titled("Elsewhere")]:
+        before = desktop.window_titled(window["title"]).get("focus_timestamp")
         desktop.as_account(f"niri msg action focus-window --id {window['id']}")
-        focused = f"'\"id\":{window['id']},'"
-        machine.wait_until_succeeds(
-            desktop.in_session(f"niri msg --json focused-window | grep -q {focused}"),
-            timeout=dt.timedelta(seconds=10),
-        )
+
+        def used(_: bool, title: str = window["title"], was: object = before) -> bool:
+            """Say whether niri has moved the window's time of use."""
+            return bool(desktop.window_titled(title).get("focus_timestamp") != was)
+
+        retry(used, timeout=dt.timedelta(seconds=10))
     closed = desktop.in_session(LAUNCHER_OPEN)
 
     def tabbed() -> None:
