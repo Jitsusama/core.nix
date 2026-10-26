@@ -1,5 +1,9 @@
 local keys = require('keys')
 local later = require('later')
+-- How long a wait may take, in milliseconds. Each ends once what it
+-- waits for holds, so only a failure takes this long, and a busy machine
+-- can take seconds to open a plugin's window.
+local DEADLINE = 60000
 local wrong = {}
 local function say(line)
   table.insert(wrong, line)
@@ -54,7 +58,7 @@ vim.fn.writefile({ 'local function hello()', 'end' }, 'probe.lua')
 vim.cmd('edit probe.lua')
 local function window(scope, filetype, open, theirs)
   open()
-  if not vim.wait(5000, function()
+  if not vim.wait(DEADLINE, function()
     return vim.bo.filetype == filetype
   end) then
     say('no ' .. scope .. ' window')
@@ -92,7 +96,9 @@ window('walk', 'aerial-nav', function()
 end)
 vim.wait(200)
 require('aerial').nav_close()
-vim.wait(200)
+vim.wait(DEADLINE, function()
+  return vim.bo.filetype ~= 'aerial-nav'
+end)
 window('files', 'oil', function()
   vim.cmd('Oil .')
 end)
