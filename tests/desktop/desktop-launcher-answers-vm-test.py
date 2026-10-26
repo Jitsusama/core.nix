@@ -119,10 +119,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         assert desktop.as_account("wl-paste --no-newline") == expected
 
-    copied("12*7", "84")
-    # The vendor comes from the list built from hwdata, so this proves it's there.
+    # What a sum or a measure says is tests/answers.qml's to hold; here,
+    # only what needs the machine. The vendor comes from the list built
+    # from hwdata, so this proves it's there, and that Return copies.
     copied("3c:22:fb:12:34:56", "Apple, Inc.")
-    copied("5 km in mi", "3.10686")
     # The battery's charge leads, as the kernel's stand-in has it.
     charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
     desktop.answer("battery")
