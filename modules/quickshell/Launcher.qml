@@ -904,7 +904,7 @@ Scope {
                 continue;
             const best = found[0];
             const noun = source.collection.noun;
-            rows.push(Object.assign({}, best, {
+            const gathered = Object.assign({}, best, {
                 side: found.length > 1 ? `${found.length - 1} more ${noun}` : noun,
                 chip: noun,
                 title: source.collection.title,
@@ -916,9 +916,31 @@ Scope {
                 // (Rank.js's placed).
                 tier: 1,
                 verbs: () => found
-            }));
+            });
+            // One with no act of its own, only more inside (an
+            // orchestrator, a device), lands inside it on Return, its
+            // collection's crumb before its own, as the approved proposal's
+            // one feel has it; the right arrow still lists all it found.
+            if (!best.run && (best.verbs || best.targets))
+                Object.assign(gathered, {
+                    stays: true,
+                    run: () => root.landInside(gathered, best)
+                });
+            rows.push(gathered);
         }
         return rows;
+    }
+
+    // Steps into a collection's matches, and then into the one of them that
+    // was found, by what it is.
+    function landInside(gathered, best) {
+        if (!enter(gathered))
+            return;
+        const at = matches.findIndex(row => steadyId(row) === steadyId(best));
+        if (at < 0)
+            return;
+        current = at;
+        enter(matches[at]);
     }
 
     // How tall the list is while the launcher's open: always its rows, and
