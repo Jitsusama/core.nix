@@ -438,6 +438,24 @@ fn never_sends_twice_when_drive_took_a_file_but_answered_busy() {
 }
 
 #[test]
+fn leaves_the_sending_to_a_run_already_going() {
+    let google = StandIn::start();
+    let account = Account::new(&google);
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    fs::create_dir_all(account.root.join("state")).unwrap();
+    let going = File::create(account.root.join("state/sent.lock")).unwrap();
+    going.lock().unwrap();
+
+    let done = account.run().unwrap();
+
+    assert!(done.held, "{done:?}");
+    assert_eq!(done.sent, 0);
+    assert!(google.calls().is_empty(), "{:?}", google.calls());
+    drop(going);
+    assert_eq!(account.run().unwrap().sent, 1);
+}
+
+#[test]
 fn finds_what_drive_took_before_the_ledger_said_so() {
     let google = StandIn::start();
     let account = Account::new(&google);

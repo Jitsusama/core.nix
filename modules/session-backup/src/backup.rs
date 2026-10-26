@@ -1,6 +1,6 @@
 //! One run: every settled log not yet in the ledger, sealed and sent.
 
-use std::fs;
+use std::fs::{self, File, TryLockError};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -25,6 +25,8 @@ pub struct Done {
     /// Why the run stopped early, when Drive stayed busy through every
     /// retry; the logs left wait for the next run.
     pub busy: Option<String>,
+    /// Another run held the lock, so this one sent nothing.
+    pub held: bool,
 }
 
 /// Seal and send every settled log the ledger lacks, oldest first, up to
@@ -33,7 +35,18 @@ pub struct Done {
 /// there without failing, saying so in `busy`. Any other refusal fails
 /// the run at that log, since what stops one, such as the login, stops
 /// the rest. Either way the next run carries on from there.
+///
+/// One run at a time: a run holds a lock beside the ledger from before it
+/// reads the ledger until it is done, since two would share the scratch a
+/// seal is written to and could each send the other's half-written copy.
+/// A run that finds the lock held sends nothing and says so in `held`.
 pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done, String> {
+    let Some(_lock) = lock(config)? else {
+        return Ok(Done {
+            held: true,
+            ..Done::default()
+        });
+    };
     let mut ledger = Ledger::open(&config.ledger)?;
     let settled = names::settled(&config.sessions, &config.host, config.settled, now)?;
     let waiting: Vec<&Settled> = settled
@@ -56,10 +69,6 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         folder: &config.folder,
     };
     let scratch = config.ledger.with_extension("sealing");
-    if let Some(state) = scratch.parent() {
-        fs::create_dir_all(state)
-            .map_err(|why| format!("can't make {}: {why}", state.display()))?;
-    }
     for log in waiting.into_iter().take(most.unwrap_or(usize::MAX)) {
         let at = seconds(SystemTime::now());
         let held = patiently(&config.retries, || {
@@ -112,6 +121,23 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         }
     }
     Ok(done)
+}
+
+/// The run's lock, held until it is dropped, or `None` when another run
+/// holds it.
+fn lock(config: &Config) -> Result<Option<File>, String> {
+    let path = config.ledger.with_extension("lock");
+    if let Some(state) = path.parent() {
+        fs::create_dir_all(state)
+            .map_err(|why| format!("can't make {}: {why}", state.display()))?;
+    }
+    let file =
+        File::create(&path).map_err(|why| format!("can't open {}: {why}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(why)) => Err(format!("can't lock {}: {why}", path.display())),
+    }
 }
 
 /// A call made again after each of `waits` while Drive answers it busy.

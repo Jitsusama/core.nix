@@ -21,7 +21,9 @@
 //! ledger saying so finds it by name rather than sending it twice. When
 //! Drive answers busy (429 or 5xx) or can't be reached, a call is tried
 //! again after a few waits; if it stays busy, the run ends without failing
-//! and leaves the rest for the next one (backup.rs).
+//! and leaves the rest for the next one (backup.rs). One run goes at a
+//! time, under a lock beside the ledger, so a timer's run and a hand-run
+//! one never share the scratch a seal is written to.
 //!
 //! It signs in as the account's gcloud application-default login, refreshing
 //! its token straight from Google's endpoint (token.rs) rather than running
