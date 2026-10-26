@@ -37,8 +37,9 @@ guide wrote can recover a machine; only the machine's own can install it.
 
 ## The Disk Asks Again After the PIN
 
-The TPM didn't release its key, so the prompt has moved on to the YubiKey.
-Type the YubiKey's PIN and touch it, and the disk opens. On a machine the
+The TPM didn't release its key. A prompt for the "TPM2 PIN" still wants the
+TPM's PIN; one for the "security token PIN" has moved on to the YubiKey.
+Type the YubiKey's PIN there and touch it, and the disk opens. On a machine the
 guide installed that's a PIN of its own, not the TPM's: the TPM's PIN was
 tried on the YubiKey first, which cost it one wrong try. [When the TPM
 Refuses][2] says why that happens and how to seal the disk to the TPM again.

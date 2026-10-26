@@ -191,20 +191,26 @@ def unlock(machine: QemuMachine, secret: str) -> None:
 
 
 def unlock_as_asked(machine: QemuMachine, tpm_pin: str, key_pin: str) -> str:
-    """Answer the disk's first prompt with the TPM's PIN and the rest with the key's.
+    """Answer each of the disk's prompts with the PIN it names, and say which opened it.
 
-    Say which of them opened it.
+    A security token's prompt takes the key's PIN; the token plugins' and
+    the TPM's own take the TPM's, since a wrong PIN counts towards the
+    TPM's lockout even when its policy would refuse the boot anyway.
     """
-    asked = r"Please enter (?:LUKS2 token|TPM2|security token) PIN"
+    asked = r"Please enter (LUKS2 token|TPM2|security token) PIN"
     since = len(machine.get_console_log())
-    for tries in range(8):
+    answered = 0
+    for _ in range(8):
         machine.wait_for_console_text(f"{asked}|{OPENED}")
         boot = machine.get_console_log()[since:]
         if re.search(OPENED, boot):
             # systemd asks a YubiKey only once the TPM has refused.
             return "the key" if "Asking FIDO2 token" in boot else "the TPM"
-        # The TPM is asked first, and a prompt after it is a key's.
-        machine.send_console((tpm_pin if tries == 0 else key_pin) + "\n")
+        prompts_now = re.findall(asked, boot)
+        if len(prompts_now) > answered:
+            answered = len(prompts_now)
+            pin = key_pin if prompts_now[-1] == "security token" else tpm_pin
+            machine.send_console(pin + "\n")
     message = "the disk never opened with the TPM's PIN or the key's"
     raise RuntimeError(message)
 

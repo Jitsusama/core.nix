@@ -278,9 +278,12 @@ signing keys, and to the machine repository's
 At boot, systemd asks for the TPM's PIN and tries it on each key in turn, the
 TPM first. When the TPM won't release the key, what was typed goes to a
 plugged-in YubiKey too, and since the TPM has a PIN of its own, that costs the
-YubiKey one wrong try; a TPM refusing the boot costs none. systemd then asks
-again, as "security token PIN": type the YubiKey's PIN and touch it when it
-blinks. With no YubiKey plugged in, nothing is spent. The recovery key is the
+YubiKey one wrong try; a TPM refusing the boot costs none. Each prompt names
+which PIN it wants: "LUKS2 token PIN" and "TPM2 PIN" take the TPM's PIN,
+and "security token PIN" takes the YubiKey's, then a touch when it blinks. A
+YubiKey's PIN typed where the TPM's is asked costs the TPM a try, which counts
+towards its lockout even on a boot its policy refuses. With no YubiKey plugged
+in, nothing is spent. The recovery key is the
 seven words exactly as the guide showed them, lowercase and one space apart.
 The recovery key is tried only once the YubiKey is unplugged or blocked, so
 typed while it is plugged in it opens nothing; to use it, unplug the YubiKey.
