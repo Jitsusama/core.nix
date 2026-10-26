@@ -1096,6 +1096,31 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # An answer's part is found the same way: the stand-in battery's
+    # Health, inside Battery, inside Power, inside Machine.
+    inside = "Machine \u203a Power \u203a Battery"
+
+    def health(shown: Json) -> int:
+        """Give where the battery's Health is listed, saying where it lives, or -1."""
+        for at, thing in enumerate(shown["things"]):
+            if thing["reads"].startswith("Health ") and inside in thing["reads"]:
+                return at
+        return -1
+
+    desktop.answer("health")
+    desktop.launcher_until(lambda shown: health(shown) >= 0)
+    for _ in range(health(desktop.showing())):
+        machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == inside)
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Machine", "Power", "Battery"]
+            and (shown["selected"] or {}).get("name") == "Health"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(

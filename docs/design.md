@@ -608,6 +608,12 @@ works the same way everywhere.
   display's Scale "175%", Refresh, Resolution and Rotation, then what
   its EDID says (Colour depth "10 bit"). What's typed beside them finds
   their choices too, so "scale 150" is Scale to 150% without a step in.
+  A part is found from the top by its name, three letters or more,
+  saying where it lives (Rotation, Desktop › Screens › Built-in screen;
+  Health, Machine › Power › Battery), and Return goes there, the path
+  filled, so the left arrow climbs back out. A part named as something
+  asked whole at the top (the processor's Cores) is that answer instead.
+  Only what a thing reads or holds is found so, never what it does.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep awake, Sleep, Lock, Log out,
