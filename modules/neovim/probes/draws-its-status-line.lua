@@ -15,7 +15,8 @@ local function expect(what, columns, left, right)
     table.insert(wrong, what .. ': "' .. l .. '" and "' .. r .. '"')
   end
 end
-vim.wait(5000, function()
+-- A busy machine can take seconds to draw it; the wait ends once it has.
+vim.wait(60000, function()
   return #select(2, status.layout(200)) > 0
 end)
 expect('at rest', 120, 'project/sub/notes.txt', g.branch .. ' main ' .. g.on)

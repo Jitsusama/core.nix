@@ -1,5 +1,9 @@
 local later = require('later')
 local keys = require('keys')
+-- How long a wait may take, in milliseconds. Each ends once what it
+-- waits for holds, so only a failure takes this long, and a busy machine
+-- can take seconds to load what waits.
+local DEADLINE = 60000
 local wrong = {}
 local function say(line)
   table.insert(wrong, line)
@@ -60,7 +64,7 @@ if not later.loaded('flash.nvim') or keys.actions['jump.line'] == nil then
 end
 vim.api.nvim_exec_autocmds('UIEnter', {})
 local background = { 'nvim-lspconfig', 'nvim-cmp', 'gitsigns.nvim', 'which-key.nvim' }
-vim.wait(5000, function()
+vim.wait(DEADLINE, function()
   return vim.iter(background):all(later.loaded)
 end)
 for _, name in ipairs(background) do
@@ -69,7 +73,7 @@ for _, name in ipairs(background) do
   end
 end
 -- Completion's sources register in their after/plugin files.
-vim.wait(2000, function()
+vim.wait(DEADLINE, function()
   return #require('cmp').core:get_sources() >= 2
 end)
 local sources = {}

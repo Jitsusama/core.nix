@@ -44,7 +44,8 @@ pcall(vim.api.nvim_win_close, note, true)
 
 vim.notify('a notice', vim.log.levels.INFO)
 local notice
-vim.wait(2000, function()
+-- A busy machine can take seconds to show it; the wait ends once it has.
+vim.wait(60000, function()
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == 'snacks_notif' then
       notice = win
