@@ -113,17 +113,17 @@ let
           "/"
         ];
         action = "Keys";
-        does = "These keys";
+        does = "The reader's keys";
       }
       {
         chord = [ "Escape" ];
         action = "Quit";
-        does = "Close";
+        does = "Close the reader";
       }
       {
         chord = [ "q" ];
         action = "Quit";
-        does = "Close";
+        does = "Close the reader";
       }
     ];
 
