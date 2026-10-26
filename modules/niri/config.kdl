@@ -44,13 +44,8 @@ input {
     warp-mouse-to-focus
 }
 
-// The laptop's own panel shows colours as sRGB, as the monitor beside it
-// does and a Mac does, rather than stretched to its wider primaries
-// (nixos.nix's srgb-gamut.patch). A panel that is sRGB already is left as
-// it is.
-output "eDP-1" {
-    srgb-gamut
-}
+// Each screen's block is written after this from jitsusama.niri.outputs
+// (home.nix), one block a screen, since niri reads only the first.
 
 // The gaps, border width and corners come from theme.kdl.
 layout {

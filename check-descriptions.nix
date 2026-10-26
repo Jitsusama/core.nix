@@ -427,6 +427,10 @@
   niri-cursor-has-its-shapes = ''
     the cursor theme niri names has the shapes programs ask for
   '';
+  niri-names-each-screen-once = ''
+    niri's config names each screen in one output block, the panel's holding srgb-gamut, and refuses a
+    second block for a screen, which niri would ignore
+  '';
   niri-never-shows-its-own-screens = ''
     no niri key opens its screenshot screen, its key list or a quit that asks, and the launcher's
     Log Out quits without asking
