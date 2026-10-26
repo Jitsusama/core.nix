@@ -51,7 +51,7 @@
             cap.allowance = 4000;
             zone = "America/Toronto";
             premium = [ "big-model" ];
-            detectors.quiet = [ "spikes" ];
+            detectors.notesOnly = [ "spikes" ];
           };
         }
       ]);

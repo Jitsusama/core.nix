@@ -51,14 +51,14 @@
   # comes back after systemd-oomd ends it, and a window's own scope, where
   # the shell and pi live, isn't idle as well. A dash in the slice's name
   # would nest it under a parent at the default weight, and nothing says so.
-  work-yields-to-what-the-user-works-in =
+  work-yields-to-what-the-person-works-in =
     let
       inherit (graphical.config) systemd environment;
       jobs = systemd.user.services.jobs.serviceConfig;
       sorter = systemd.user.services.jobs-sorter.serviceConfig;
       scope = systemd.user.units."kitty-.scope".text or "";
     in
-    holds "work-yields-to-what-the-user-works-in"
+    holds "work-yields-to-what-the-person-works-in"
       "jobs isn't idle beside app.slice, its sorter runs inside what it sorts, pi can't find it, it stays gone once stopped, or a window's own scope is idle."
       (
         systemd.user.slices.jobs.sliceConfig.CPUWeight == "idle"
@@ -166,7 +166,7 @@
   # user.slice and session machines in its machine.slice, where their daemon
   # runs, are idle. A machine anywhere else takes an app's weight, and
   # nothing says so.
-  machines-yield-to-what-the-user-works-in =
+  machines-yield-to-what-the-person-works-in =
     let
       inherit
         ((bareNixos [
@@ -180,7 +180,7 @@
       daemon = systemd.user.services.virtqemud.serviceConfig;
       build = systemd.slices.build.sliceConfig.CPUWeight or 100;
     in
-    holds "machines-yield-to-what-the-user-works-in"
+    holds "machines-yield-to-what-the-person-works-in"
       "A machine or container runs at an app's weight: machine.slice isn't weighed as a build is, the account's user.slice or machine.slice isn't idle, or session machines run outside it."
       (
         build < 100

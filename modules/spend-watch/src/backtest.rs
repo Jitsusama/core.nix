@@ -104,7 +104,7 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
         ));
         let cap_total: u32 = caps.values().sum();
         notes.push(format!(
-            "The caps would have asked {cap_total} times, outside the budget: cap changes, notices \
+            "The caps would have asked {cap_total} times, outside the week's few: cap changes, notices \
              and the {refused_days} days refused."
         ));
         for (week, count) in alarms.iter().filter(|(_, c)| **c > 0).rev().take(8) {
@@ -260,7 +260,7 @@ mod tests {
     }
 
     // A burn is listed, never told, so the backtest counts the days it
-    // would have been found, not notices against their weekly budget.
+    // would have been found, not notices against the few a week.
     #[test]
     fn a_burn_is_counted_as_found_not_asked() {
         let history = History::memory();

@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 # Matches each udev rule's patterns, as udev matches them, against the I2C
-# buses of a laptop with a monitor behind a USB-C hub, and checks only the
-# buses that reach external DisplayPort monitors, a connector's AUX channel
+# buses of a laptop with a screen behind a USB-C hub, and checks only the
+# buses that reach external DisplayPort screens, a connector's AUX channel
 # and an MST branch's, are tagged for the seat: not the panel's eDP, not
 # HDMI's, not the touchpad's. The rules must also come before systemd's
 # 73-seat-late.rules, which reads the tag.
-# usage: only-external-monitors-reach-the-seat.sh <rules file>
+# usage: only-external-screens-reach-the-seat.sh <rules file>
 set -euo pipefail
 
 rules=$1

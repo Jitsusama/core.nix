@@ -101,7 +101,7 @@ pub struct AgentLogs {
 pub struct NoticeConfig {
     pub enable: bool,
     /// Notices a week outside cap events.
-    pub budget: u32,
+    pub per_week: u32,
     /// One quiet line at the day's first unlock.
     pub daily: bool,
 }
@@ -110,7 +110,7 @@ impl Default for NoticeConfig {
     fn default() -> Self {
         NoticeConfig {
             enable: true,
-            budget: 3,
+            per_week: 3,
             daily: true,
         }
     }
@@ -125,8 +125,8 @@ pub struct DetectorConfig {
     pub false_discovery: f64,
     /// The least excess, in dollars, a finding is made for.
     pub floor: f64,
-    /// Detectors that never notify, by name.
-    pub quiet: Vec<String>,
+    /// Detectors whose findings are only ever notes, by name.
+    pub notes_only: Vec<String>,
 }
 
 impl Default for DetectorConfig {
@@ -135,7 +135,7 @@ impl Default for DetectorConfig {
             burn_run_length_days: 30.0,
             false_discovery: 0.05,
             floor: 25.0,
-            quiet: Vec::new(),
+            notes_only: Vec::new(),
         }
     }
 }
