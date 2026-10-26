@@ -1754,6 +1754,12 @@
       "glyph": "picture"
     },
     {
+      "id": "shortcuts:inlyne",
+      "in": "shortcuts",
+      "name": "Markdown reader",
+      "glyph": "document"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2309,6 +2315,16 @@
       "id": "shortcuts:swayimg:picture",
       "in": "shortcuts",
       "name": "The picture"
+    },
+    {
+      "id": "shortcuts:inlyne:moving",
+      "in": "shortcuts",
+      "name": "Moving"
+    },
+    {
+      "id": "shortcuts:inlyne:size",
+      "in": "shortcuts",
+      "name": "Size"
     },
     {
       "id": "on",

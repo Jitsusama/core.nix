@@ -955,6 +955,11 @@ in
     console = "p";
     means = "a picture";
   };
+  document = {
+    glyph = nerd "f0219";
+    console = "d";
+    means = "a document, read as a page";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";

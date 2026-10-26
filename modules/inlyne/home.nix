@@ -34,90 +34,98 @@ let
     ];
   });
 
-  # What each key does, in the order the keys page says them.
-  keys = [
-    {
-      chord = [ "Left" ];
-      action = "HistoryPrevious";
-      does = "back to the page before";
-    }
-    {
-      chord = [ "Right" ];
-      action = "HistoryNext";
-      does = "forward again";
-    }
-    {
-      chord = [ "Up" ];
-      action = "ScrollUp";
-      does = "up a few lines";
-    }
-    {
-      chord = [ "Down" ];
-      action = "ScrollDown";
-      does = "down a few lines";
-    }
-    {
-      chord = [ "PageUp" ];
-      action = "PageUp";
-      does = "up a screen";
-    }
-    {
-      chord = [ "PageDown" ];
-      action = "PageDown";
-      does = "down a screen";
-    }
-    {
-      chord = [ "Home" ];
-      action = "ToTop";
-      does = "the top";
-    }
-    {
-      chord = [ "End" ];
-      action = "ToBottom";
-      does = "the bottom";
-    }
-    {
-      chord = [ "=" ];
-      action = "ZoomIn";
-      does = "larger";
-    }
-    {
-      chord = [ "-" ];
-      action = "ZoomOut";
-      does = "smaller";
-    }
-    {
-      chord = [ "0" ];
-      action = "ZoomReset";
-      does = "as it was";
-    }
-    {
-      chord = [
-        "Ctrl"
-        "c"
-      ];
-      action = "Copy";
-      does = "copy what's selected";
-    }
-    {
-      chord = [
-        "Shift"
-        "/"
-      ];
-      action = "Keys";
-      does = "these keys";
-    }
-    {
-      chord = [ "Escape" ];
-      action = "Quit";
-      does = "close";
-    }
-    {
-      chord = [ "q" ];
-      action = "Quit";
-      does = "close";
-    }
-  ];
+  # What each key does, in the order the keys page says them, and the
+  # group the launcher lists it in over inlyne's window, where it has one.
+  moving = map (key: key // { group = "moving"; });
+  size = map (key: key // { group = "size"; });
+  keys =
+    moving [
+      {
+        chord = [ "Left" ];
+        action = "HistoryPrevious";
+        does = "Back to the page before";
+      }
+      {
+        chord = [ "Right" ];
+        action = "HistoryNext";
+        does = "Forward again";
+      }
+      {
+        chord = [ "Up" ];
+        action = "ScrollUp";
+        does = "Up a few lines";
+      }
+      {
+        chord = [ "Down" ];
+        action = "ScrollDown";
+        does = "Down a few lines";
+      }
+      {
+        chord = [ "PageUp" ];
+        action = "PageUp";
+        does = "Up a screen";
+      }
+      {
+        chord = [ "PageDown" ];
+        action = "PageDown";
+        does = "Down a screen";
+      }
+      {
+        chord = [ "Home" ];
+        action = "ToTop";
+        does = "The top";
+      }
+      {
+        chord = [ "End" ];
+        action = "ToBottom";
+        does = "The bottom";
+      }
+    ]
+    ++ size [
+      {
+        chord = [ "=" ];
+        action = "ZoomIn";
+        does = "Larger";
+      }
+      {
+        chord = [ "-" ];
+        action = "ZoomOut";
+        does = "Smaller";
+      }
+      {
+        chord = [ "0" ];
+        action = "ZoomReset";
+        does = "As it was";
+      }
+    ]
+    ++ [
+      {
+        chord = [
+          "Ctrl"
+          "c"
+        ];
+        action = "Copy";
+        does = "Copy what's selected";
+      }
+      {
+        chord = [
+          "Shift"
+          "/"
+        ];
+        action = "Keys";
+        does = "These keys";
+      }
+      {
+        chord = [ "Escape" ];
+        action = "Quit";
+        does = "Close";
+      }
+      {
+        chord = [ "q" ];
+        action = "Quit";
+        does = "Close";
+      }
+    ];
 
   # A chord as inlyne reads one: its last key, with the others as modifiers.
   combo =
@@ -204,9 +212,19 @@ let
   file = (pkgs.formats.toml { }).generate "inlyne.toml" settings;
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../keys/home.nix
+    ../theme/home.nix
+  ];
 
   home.packages = [ inlyne ];
+
+  # The launcher lists these over inlyne's window, by the same words.
+  jitsusama.keys.inlyne = map (key: {
+    inherit (key) does;
+    chord = lib.concatStringsSep "+" key.chord;
+    group = key.group or "";
+  }) keys;
 
   # Where inlyne looks for its settings: the configuration folder on Linux,
   # Application Support on a Mac.
