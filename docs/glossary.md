@@ -48,8 +48,9 @@ the-launcher-names-each-thing-its-term holds the row's name to it.
 Seven contexts are the launcher's places. Six are home's rows, in its order
 after Now: Agents, Programs, Desktop, Machine, Network and Keyboards, so home
 has seven rows. Disk's place is inside Machine, beside Processor, Memory and
-Heat. Three contexts are never places: Security, which the others lean on,
-and the Library and Checks, which are core.nix's own.
+Heat, and Mail and Calendar are places inside Programs. Three contexts are
+never places: Security, which the others lean on, and the Library and Checks,
+which are core.nix's own.
 
 - **Desktop shows every context.** Each launcher place belongs to one; Now is a
   view onto the others' rows, each kept in its own place, with one row of its
@@ -129,15 +130,27 @@ first in the queue and conclude.
 
 ## Programs
 
-What Joel runs, and the terminal he types commands into. A program can be
-opened, opened below, given a new window and quit; a call is the calling
-program's.
+What Joel runs, and the terminal he types commands into, and the mail,
+meetings and calls he has through them. A program can be opened, opened below,
+given a new window and quit. A meeting can be joined, and an invitation
+answered yes, maybe or no; mail can be read, marked unread and archived.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | program | something Joel runs, with or without a window | app, application | the `applications` provider |
 | shell | zsh, which Joel types commands into in a terminal | | zsh |
 | prompt | the line the shell writes before each command | | |
+| Google account | the account Joel's mail and calendar are kept in, which the desktop's own program holds | | the `google` program |
+| mail | Joel's messages in his Google account, and the place in Programs holding them | | Gmail |
+| wants you | mail waiting on Joel's answer | | |
+| unread | mail Joel hasn't opened yet | | |
+| read | mail Joel has opened | | |
+| archive | taking mail out of the inbox, kept where it's found again | | |
+| calendar | Joel's meetings in his Google account, and the place in Programs holding them | | Google Calendar |
+| meeting | an event on Joel's calendar with a call or with others | | |
+| invitation | a meeting someone asks Joel to, answered yes, maybe or no | | |
+| call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
+| join | going into a meeting's call, or a call another sends | | |
 
 ## Desktop
 
