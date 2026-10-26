@@ -1227,6 +1227,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
 ) -> None:
     """The launcher's home lists the categories to browse, each saying what it holds."""
     machine = desktop.machine
+    # Desktop holds This window while one is focused, so one is, whatever
+    # ran before.
+    desktop.focused_kitty()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
