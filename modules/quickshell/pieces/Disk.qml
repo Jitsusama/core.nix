@@ -2,9 +2,12 @@
 // the worst of them has left and how the guard stands. It reads the status
 // files the account's guard and the machine's write in their runtime
 // directories, so it asks nothing, and a disk both watch is as the worse of
-// them says. Under pressure the guard is only doing its routine work, so
-// the piece just says how much is free. From urgent it's true and takes the
-// warning colour, and at critical the alert colour, when it wants Joel now:
+// them says. While a disk is filling the guard is only doing its routine
+// work, so the piece just says how much is free, unless the disk will be
+// nearly full within a day, when it's true and Now shows it with when
+// (Joel, 2026-10-26: Now shows a filling disk with its forecast). From
+// nearly full it's true and takes the warning colour, and at critically
+// full the alert colour, when it wants Joel now:
 // the guard is taking all it safely can. A writer the guard froze for
 // filling a disk wants him now too, with a way to let it go on. It's true
 // as well when a guard has stopped writing, since then nothing watches the
@@ -34,6 +37,10 @@ Piece {
         (worst, disk) => worst === null || worse(disk, worst) ? disk : worst, null)
     readonly property bool short: worst !== null && worst.band !== "healthy"
     readonly property bool pressed: short && worst.band !== "pressure"
+    // A filling disk that will be nearly full within a day.
+    readonly property real day: 24 * 60 * 60
+    readonly property bool soon: short && worst.band === "pressure"
+        && typeof worst.forecast === "number" && worst.forecast < day
     readonly property bool critical: short && worst.band === "critical"
     // Each guard writes its status at least every 30 seconds while it runs.
     readonly property bool silent: account.silent || machine.silent
@@ -57,7 +64,7 @@ Piece {
         status.holders_at ?? 0), 0)
 
     present: said.length > 0
-    active: pressed || silent || frozen.length > 0
+    active: pressed || soon || silent || frozen.length > 0
     role: critical || frozen.length > 0 ? "alert" : active ? "warning" : "text"
     // Only critical or frozen wants Joel, and then at once.
     wants: critical || frozen.length > 0
@@ -74,8 +81,9 @@ Piece {
         : silent ? "Nothing is watching the disks" : value
     context: {
         const parts = [];
-        if (short && worst.forecast !== null && worst.forecast !== undefined)
-            parts.push(`the next band in ${duration(worst.forecast)}`);
+        const next = short ? bands[bands.indexOf(worst.band) + 1] : undefined;
+        if (next && typeof worst.forecast === "number")
+            parts.push(`${banded(next)} in ${duration(worst.forecast)}`);
         if (last !== null && last.band !== "healthy") {
             parts.push(last.end === "reached" ? `freed ${shown(last.freed)} on ${last.path}`
                 : last.end === "exhausted" ? "nothing more is safe to take"
@@ -124,7 +132,12 @@ Piece {
             : `${(Math.floor(bytes / 2 ** shift * 10) / 10).toFixed(1)} ${unit}`;
     }
 
+    // How long, as the battery's "full in" says it, and past a day in days.
     function duration(seconds) {
+        if (seconds >= day) {
+            const days = Math.round(seconds / day);
+            return days === 1 ? "a day" : `${days} days`;
+        }
         const minutes = Math.round(seconds / 60);
         return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0");
     }
