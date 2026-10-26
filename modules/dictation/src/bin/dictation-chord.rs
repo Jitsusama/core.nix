@@ -1,11 +1,14 @@
 //! Says when dictation's chord, Super and D, is let go, and how long it was
-//! held, so holding it can mean "listen until I let go". niri runs a
+//! held, so holding it can mean "listen until I let go". The Copilot key is
+//! the chord too: a keyboard sends it as Super, Shift and F23 together.
+//! Its Shift changes nothing here, as it changes nothing in niri's bind,
+//! which matches F23 under Super whichever Shift is held. niri runs a
 //! chord's command as it's pressed and says nothing of its release, and the
 //! keys themselves are the input group's, which an account mustn't join, or
 //! anything it runs could read every key.
 //!
-//! So this runs as its own user in that group and takes only D and the two
-//! Super keys from each keyboard: the kernel filters out every other key
+//! So this runs as its own user in that group and takes only D, F23 and
+//! the two Super keys from each keyboard: the kernel filters out every other key
 //! before it reaches it. Whoever connects to the socket it's given hears a
 //! line as the chord is let go, `up` and the milliseconds it was held, and
 //! nothing else, so what it tells is only when the chord was used.
@@ -35,6 +38,10 @@ const EV_MAX: usize = 0x1f;
 const KEY_D: u16 = 32;
 const KEY_LEFTMETA: u16 = 125;
 const KEY_RIGHTMETA: u16 = 126;
+const KEY_F23: u16 = 193;
+// The keys that make the chord under a Super.
+const TRIGGERS: [u16; 2] = [KEY_D, KEY_F23];
+const CHORD_KEYS: [u16; 4] = [KEY_D, KEY_F23, KEY_LEFTMETA, KEY_RIGHTMETA];
 const KEY_MAX: usize = 0x2ff;
 
 const IN_CLOEXEC: c_int = 0o2_000_000;
@@ -90,7 +97,7 @@ fn mark(bits: &mut [u64], bit: u16) {
 #[derive(Default)]
 pub struct Chord {
     meta: HashSet<(u64, u16)>,
-    d: HashSet<u64>,
+    triggers: HashSet<(u64, u16)>,
     since: Option<Instant>,
 }
 
@@ -99,11 +106,11 @@ impl Chord {
     /// chord was held, in ms, when this change let it go.
     pub fn key(&mut self, device: u64, code: u16, down: bool, now: Instant) -> Option<u128> {
         match (code, down) {
-            (KEY_D, true) => {
-                self.d.insert(device);
+            (KEY_D | KEY_F23, true) => {
+                self.triggers.insert((device, code));
             }
-            (KEY_D, false) => {
-                self.d.remove(&device);
+            (KEY_D | KEY_F23, false) => {
+                self.triggers.remove(&(device, code));
             }
             (KEY_LEFTMETA | KEY_RIGHTMETA, true) => {
                 self.meta.insert((device, code));
@@ -113,11 +120,11 @@ impl Chord {
             }
             _ => return None,
         }
-        let held = !self.meta.is_empty() && !self.d.is_empty();
+        let held = !self.meta.is_empty() && !self.triggers.is_empty();
         match (self.since, held) {
-            // D pressed under Super starts it; Super pressed under D doesn't,
-            // as niri doesn't take that for the chord either.
-            (None, true) if code == KEY_D => {
+            // D or F23 pressed under Super starts it; Super pressed under
+            // them doesn't, as niri doesn't take that for the chord either.
+            (None, true) if TRIGGERS.contains(&code) => {
                 self.since = Some(now);
                 None
             }
@@ -132,8 +139,8 @@ impl Chord {
     /// Forgets what a device that went was holding.
     pub fn gone(&mut self, device: u64, now: Instant) -> Option<u128> {
         self.meta.retain(|(held, _)| *held != device);
-        self.d.remove(&device);
-        let held = !self.meta.is_empty() && !self.d.is_empty();
+        self.triggers.retain(|(held, _)| *held != device);
+        let held = !self.meta.is_empty() && !self.triggers.is_empty();
         match (self.since, held) {
             (Some(since), false) => {
                 self.since = None;
@@ -161,13 +168,13 @@ impl Shared {
     }
 }
 
-/// Lets through keys alone, and of them D and the two Super keys alone. The
-/// mask in `EV_SYN`'s place is one of event types; the frames always pass.
+/// Lets through keys alone, and of them the chord's alone. The mask in
+/// `EV_SYN`'s place is one of event types; the frames always pass.
 fn filter(fd: c_int) -> bool {
     const _: () = assert!(words(EV_MAX + 1) == 1);
     let kinds = [1_u64 << EV_KEY];
     let mut keys = [0_u64; KEY_WORDS];
-    for key in [KEY_D, KEY_LEFTMETA, KEY_RIGHTMETA] {
+    for key in CHORD_KEYS {
         mark(&mut keys, key);
     }
     [(EV_SYN, &kinds[..]), (u32::from(EV_KEY), &keys[..])]
@@ -183,8 +190,8 @@ fn filter(fd: c_int) -> bool {
         })
 }
 
-/// Takes a device on if it has D and a Super key, and listens to it until
-/// it goes.
+/// Takes a device on if it has D or F23 and a Super key, and listens to it
+/// until it goes.
 fn take(name: &str, shared: &Arc<Shared>) {
     if !name.starts_with("event") {
         return;
@@ -197,7 +204,8 @@ fn take(name: &str, shared: &Arc<Shared>) {
     let size = size_of_val(&keys);
     // SAFETY: the kernel writes at most `size` bytes into `keys`.
     let supported = unsafe { ioctl(fd, keys_supported(size), keys.as_mut_ptr().cast::<c_void>()) };
-    let keyboard = has(&keys, KEY_D) && (has(&keys, KEY_LEFTMETA) || has(&keys, KEY_RIGHTMETA));
+    let keyboard = TRIGGERS.iter().any(|key| has(&keys, *key))
+        && (has(&keys, KEY_LEFTMETA) || has(&keys, KEY_RIGHTMETA));
     if supported < 0 || !keyboard || !filter(fd) {
         return;
     }
@@ -398,6 +406,34 @@ mod tests {
     }
 
     #[test]
+    fn the_copilot_key_is_the_chord_too() {
+        let mut chord = Chord::default();
+        let start = Instant::now();
+        // Super, Shift and F23, as the keyboard sends the Copilot key; the
+        // kernel's filter keeps the Shift out.
+        assert_eq!(chord.key(KEYBOARD, KEY_LEFTMETA, true, start), None);
+        assert_eq!(chord.key(KEYBOARD, KEY_F23, true, start), None);
+        let later = start + Duration::from_millis(800);
+        assert_eq!(chord.key(KEYBOARD, KEY_F23, false, later), Some(800));
+        assert_eq!(chord.key(KEYBOARD, KEY_LEFTMETA, false, later), None);
+        // F23 alone isn't.
+        chord.key(KEYBOARD, KEY_F23, true, later);
+        assert_eq!(chord.key(KEYBOARD, KEY_F23, false, later), None);
+    }
+
+    #[test]
+    fn letting_go_of_one_trigger_while_another_is_held_keeps_it() {
+        let mut chord = Chord::default();
+        let start = Instant::now();
+        chord.key(KEYBOARD, KEY_LEFTMETA, true, start);
+        chord.key(KEYBOARD, KEY_D, true, start);
+        chord.key(KEYBOARD, KEY_F23, true, start);
+        assert_eq!(chord.key(KEYBOARD, KEY_D, false, start), None);
+        let later = start + Duration::from_millis(200);
+        assert_eq!(chord.key(KEYBOARD, KEY_F23, false, later), Some(200));
+    }
+
+    #[test]
     fn a_keyboard_that_goes_lets_its_keys_go() {
         let mut chord = Chord::default();
         let start = Instant::now();
@@ -411,12 +447,12 @@ mod tests {
     #[test]
     fn the_filter_masks_name_the_chord_keys_alone() {
         let mut keys = [0_u64; KEY_WORDS];
-        for key in [KEY_D, KEY_LEFTMETA, KEY_RIGHTMETA] {
+        for key in CHORD_KEYS {
             mark(&mut keys, key);
         }
         let marked: Vec<u16> = (0..=u16::try_from(KEY_MAX).unwrap_or(0))
             .filter(|key| has(&keys, *key))
             .collect();
-        assert_eq!(marked, [KEY_D, KEY_LEFTMETA, KEY_RIGHTMETA]);
+        assert_eq!(marked, [KEY_D, KEY_LEFTMETA, KEY_RIGHTMETA, KEY_F23]);
     }
 }

@@ -7,7 +7,8 @@
 // chord falls in a group, each row of a grouped layer is listed once, the
 // chords below land where Joel would look for them, a chord niri adds
 // tomorrow finds a group without being told, a bind that names its group is
-// put there, and a short layer stays whole. Each level is the right size for
+// put there, a short layer stays whole, and the Copilot key dictates in
+// Super+D's row. Each level is the right size for
 // the card's eight rows: no group holds fewer than three chords, none sits
 // more than two levels below its layer, and no level lists more than
 // thirteen rows, as Neovim's longest do. Every group the table lists is named in the vocabulary,
@@ -150,6 +151,11 @@ QtObject {
         ]);
         expect("two chords for one act, one row",
             twins.map(row => [row.chord, row.also]), [["Super+L", ["XF86ScreenSaver"]]]);
+        // The Copilot key dictates as Super+D does, a second way in its row.
+        const dictating = (rowsOf.desktop ?? []).filter(row => row.does
+            === "Dictate into the focused window, or stop and type it");
+        expect("the Copilot key in Super+D's row", dictating.map(row => [row.chord, row.also]),
+            [["Super+D", ["Super+Shift+XF86TouchpadOff"]]]);
         expect("elsewhere, a row of its own", KeyGroups.merged("neovim", [
             { chord: "Space g c Return", does: "Commit", keys: "space g c return", when: "" },
             { chord: "c c", does: "Commit", keys: "c c", when: "in git's status" }
