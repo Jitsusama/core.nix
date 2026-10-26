@@ -969,6 +969,11 @@ in
     console = "d";
     means = "a document, read as a page";
   };
+  book = {
+    glyph = nerd "f05da";
+    console = "b";
+    means = "a document of pages, turned one by one";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";
