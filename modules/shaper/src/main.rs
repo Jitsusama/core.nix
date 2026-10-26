@@ -202,8 +202,9 @@ fn network_of(uplink: &links::Uplink) -> String {
         .unwrap_or_else(|| format!("link {}", uplink.name))
 }
 
-/// The most a link can carry, in kbit/s: Ethernet says, Wi-Fi doesn't.
-fn ceiling(link: &str) -> u64 {
+/// The most a link can carry each way, in kbit/s: Ethernet says, Wi-Fi
+/// doesn't.
+fn ceiling(link: &str) -> links::Ceiling {
     links::ceiling(read_number(
         &Path::new("/sys/class/net").join(link).join("speed"),
     ))
@@ -232,11 +233,17 @@ fn start(
         .is_dir();
     let controller = Controller::new(
         Settings::for_link(wireless),
-        Direction::new(Bounds { min: FLOOR.up, max }, held.up),
+        Direction::new(
+            Bounds {
+                min: FLOOR.up,
+                max: max.up,
+            },
+            held.up,
+        ),
         Direction::new(
             Bounds {
                 min: FLOOR.down,
-                max,
+                max: max.down,
             },
             held.down,
         ),
