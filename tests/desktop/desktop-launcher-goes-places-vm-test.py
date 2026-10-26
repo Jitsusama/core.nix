@@ -1195,6 +1195,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     assert reads["category:desktop"].startswith("Desktop \u00b7 This window, Windows, Screens, "), (
         f"desktop reads {reads['category:desktop']!r}"
     )
+    assert reads["category:computer"].startswith("Machine \u00b7 Power, Bluetooth, "), (
+        f"machine reads {reads['category:computer']!r}"
+    )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
     assert reads["collection:applications"].startswith("Programs \u00b7 "), reads
     # Home holds still while the machine's queue changes, which a busy
