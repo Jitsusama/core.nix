@@ -23,6 +23,10 @@
 # move on, for as long as its name shows, and ? lists them all until it's
 # pressed again.
 #
+# The keys are the picture viewer's layer of jitsusama.keys, so the
+# launcher lists them over its window, and init.lua binds and lists them
+# from the same list, handed over in nix.lua.
+#
 # The launcher finds the screenshots folder's gallery by typing
 # (Screenshots.qml).
 { niri, quickshell }:
@@ -58,6 +62,162 @@ let
 
   lua = lib.generators.toLua { };
 
+  # Where in swayimg a key works, when not everywhere.
+  places = {
+    viewer = "on a picture";
+    gallery = "in the gallery";
+  };
+
+  # Every key worth knowing, as swayimg's keys spell it, with what it does
+  # and where. A key with an act is bound by init.lua to that act; one
+  # without is swayimg's own, listed as swayimg binds it.
+  keys = [
+    {
+      chord = "Left";
+      does = "Previous picture";
+      when = places.viewer;
+      act = "prev";
+    }
+    {
+      chord = "Right";
+      does = "Next picture";
+      when = places.viewer;
+      act = "next";
+    }
+    {
+      chord = "Home";
+      does = "First picture";
+      when = places.viewer;
+      act = "first";
+    }
+    {
+      chord = "End";
+      does = "Last picture";
+      when = places.viewer;
+      act = "last";
+    }
+    {
+      chord = "Return";
+      does = "Every picture";
+      when = places.viewer;
+    }
+    {
+      chord = "Shift+plus";
+      does = "Closer";
+      when = places.viewer;
+    }
+    {
+      chord = "minus";
+      does = "Further";
+      when = places.viewer;
+    }
+    {
+      chord = "bracketleft";
+      does = "Turn left";
+      when = places.viewer;
+    }
+    {
+      chord = "bracketright";
+      does = "Turn right";
+      when = places.viewer;
+    }
+    {
+      chord = "f";
+      does = "Full screen";
+      when = places.viewer;
+    }
+  ]
+  ++
+    map
+      (chord: {
+        inherit chord;
+        does = "Choose a picture that way";
+        when = places.gallery;
+      })
+      [
+        "Left"
+        "Right"
+        "Up"
+        "Down"
+      ]
+  ++ [
+    {
+      chord = "Home";
+      does = "First picture";
+      when = places.gallery;
+    }
+    {
+      chord = "End";
+      does = "Last picture";
+      when = places.gallery;
+    }
+    {
+      chord = "Return";
+      does = "Open the picture";
+      when = places.gallery;
+    }
+    {
+      chord = "Shift+plus";
+      does = "Larger";
+      when = places.gallery;
+    }
+    {
+      chord = "minus";
+      does = "Smaller";
+      when = places.gallery;
+    }
+    {
+      chord = "e";
+      does = "Edit in GIMP, or Inkscape for a drawing";
+      act = "edit";
+    }
+    {
+      chord = "y";
+      does = "Copy the picture";
+      act = "copy";
+    }
+    {
+      chord = "Delete";
+      does = "Move to the trash";
+      act = "trash";
+    }
+    {
+      chord = "Escape";
+      does = "Close";
+    }
+    # As in mpv.
+    {
+      chord = "q";
+      does = "Close";
+      act = "close";
+    }
+    {
+      chord = "Shift+slash";
+      does = "These keys";
+      act = "keys";
+    }
+  ];
+
+  # How a key is drawn, as the desktop draws it: a shifted key as what it
+  # types, a letter as a capital. swayimg draws its words in the one face,
+  # with no other to fall back on, and the sans face has no return arrow,
+  # so there Return is its name.
+  faces = config.jitsusama.theme.keys;
+  themed = {
+    bracketleft = "BracketLeft";
+    bracketright = "BracketRight";
+    minus = "Minus";
+  };
+  typed = {
+    "Shift+slash" = "?";
+    "Shift+plus" = "+";
+    Return = "Enter";
+  };
+  drawn =
+    chord:
+    typed.${chord} or faces.${themed.${chord} or chord}.text
+      or (if lib.stringLength chord == 1 then lib.toUpper chord else chord);
+
   given = {
     colour = {
       deepest = opaque roles.deepest;
@@ -76,12 +236,8 @@ let
       inherit (space) s l;
     };
     inherit (shape) border;
-    # How each key is drawn, as the desktop draws it, for the line of keys.
-    # swayimg draws its words in the one face, with no other to fall back
-    # on, and the sans face has no return arrow, so there Return is its name.
-    keys = lib.mapAttrs (_: face: face.text) config.jitsusama.theme.keys // {
-      Return = "Enter";
-    };
+    inherit places;
+    keys = map (key: key // { face = drawn key.chord; }) keys;
     # A gallery cell, about ten across a window the width of the screen.
     thumbnail = 160;
     wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
@@ -130,6 +286,8 @@ in
         default-window-height { proportion 0.8; }
     }
   '';
+
+  jitsusama.keys.swayimg = map (key: removeAttrs key [ "act" ]) keys;
 
   # After GIMP's, since it's about the same pictures.
   jitsusama.quickshell.launcher.providers.swayimg = {

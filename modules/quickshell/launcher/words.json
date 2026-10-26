@@ -2300,6 +2300,25 @@
       "name": "Models"
     },
     {
+      "id": "shortcuts:swayimg:moving",
+      "in": "shortcuts",
+      "name": "Moving",
+      "words": [
+        "next",
+        "previous",
+        "gallery"
+      ]
+    },
+    {
+      "id": "shortcuts:swayimg:picture",
+      "in": "shortcuts",
+      "name": "The picture",
+      "words": [
+        "zoom",
+        "turn"
+      ]
+    },
+    {
       "id": "on",
       "name": "Now",
       "noun": "now",

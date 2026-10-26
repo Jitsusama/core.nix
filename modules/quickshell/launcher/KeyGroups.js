@@ -326,6 +326,16 @@ const TABLE = {
             ["message", "does", /\bmessages?\b|\bnew line\b/i],
             ["editing", "does", /\b(paste|undo|delete|typed)\b/i]
         ]
+    },
+    // The picture viewer's by what a key does: going between pictures, or
+    // changing how the one in view is shown. Editing, copying, the trash,
+    // closing and its keys are few enough to stay loose.
+    swayimg: {
+        order: ["moving", "picture"],
+        rules: [
+            ["moving", "does", /^((Previous|Next|First|Last|Every) picture|Choose a picture|Open the picture)/],
+            ["picture", "does", /^(Closer|Further|Larger|Smaller|Turn|Full screen)/]
+        ]
     }
 };
 
