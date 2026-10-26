@@ -4,8 +4,9 @@
 # to its current release, and pi never installs or changes a package named
 # that way, so `pi update` can't reach it either.
 #
-# It runs at each switch, before pi's settings are written, and every
-# fifteen minutes in the background; `pi-packages update` runs it now,
+# It installs a package with no release yet at a switch, before pi's
+# settings are written, and updates every fifteen minutes in the
+# background, a switch starting a run without waiting on it; `pi-packages update` runs it now,
 # after a merge, and `pi-packages status` says where each package is. A
 # package whose first install fails, as with no network at the switch,
 # has no link yet, and pi warns that it is missing until a later run
@@ -21,15 +22,16 @@ let
   package = pkgs.callPackage ./package.nix { };
   # The node and pnpm a release is installed and checked with, and git with
   # them, whatever a shell has on its PATH; pnpm runs install scripts
-  # through sh. A native module with no prebuilt binding for this node
+  # through sh, and its shims for a dependency's programs use sed. A native module with no prebuilt binding for this node
   # would need a compiler too, which isn't given: its build fails, and the
   # release is never swapped in.
   tools = [
     pkgs.git
-    pkgs.nodejs
+    cfg.node
     pkgs.pnpm
     pkgs.bash
     pkgs.coreutils
+    pkgs.gnused
   ];
   gitPackages = builtins.filter (source: lib.hasPrefix "git:" source) cfg.sources;
   urlOf = source: "https://${lib.removePrefix "git:" source}";
@@ -38,9 +40,9 @@ let
       inherit (cfg) root keepDays;
       packages = map (source: { url = urlOf source; }) gitPackages;
       git = lib.getExe pkgs.git;
-      node = lib.getExe pkgs.nodejs;
+      node = lib.getExe cfg.node;
       pnpm = lib.getExe pkgs.pnpm;
-      path = map (tool: "${lib.getBin tool}/bin") tools;
+      path = map (tool: "${lib.getBin tool}/bin") tools ++ cfg.extraPath;
       # The account's one pnpm store (modules/pnpm), so a release clones
       # its files from there rather than filling a store of its own.
       env = lib.filterAttrs (
@@ -73,6 +75,29 @@ in
       default = "${config.xdg.dataHome}/pi-packages";
       defaultText = lib.literalExpression ''"''${config.xdg.dataHome}/pi-packages"'';
     };
+    extraPath = lib.mkOption {
+      description = ''
+        Folders a build may run programs from after its own, such as the
+        credential helper the account's git config names for a private
+        package. Its own git, node and pnpm always come first, and npm's
+        settings from a shell never reach it.
+      '';
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "${config.home.profileDirectory}/bin"
+      ]
+      ++ lib.optional pkgs.stdenv.hostPlatform.isLinux "/run/current-system/sw/bin";
+      defaultText = lib.literalExpression ''[ "''${config.home.profileDirectory}/bin" "/run/current-system/sw/bin" ]'';
+    };
+    node = lib.mkOption {
+      description = ''
+        The node pi runs on, which a release's native modules are built for
+        and loaded with before it is swapped in.
+      '';
+      type = lib.types.package;
+      default = pkgs.nodejs;
+      defaultText = lib.literalExpression "pkgs.nodejs";
+    };
     keepDays = lib.mkOption {
       description = ''
         How long a release the link has left is kept, at least. It goes only
@@ -98,10 +123,22 @@ in
   config = lib.mkIf (gitPackages != [ ]) {
     home.packages = [ configured ];
 
-    # Before pi's settings name the links, so a first switch has them; a run
-    # that fails leaves the switch to go on.
+    # Before pi's settings name the links: a package with no release yet is
+    # installed then and there, so a first switch has it, and a run that
+    # fails leaves the switch to go on. Once each has one, a switch only
+    # starts the service and goes on, rather than waiting on a fetch.
     home.activation.piPackagesInstall = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      run ${command} || echo "pi-packages: not every package was updated; the next run tries again" >&2
+      missing=
+      for link in ${lib.escapeShellArgs (builtins.filter (lib.hasSuffix "/current") cfg.links)}; do
+        [ -e "$link" ] || missing=1
+      done
+      if [ -n "$missing" ]; then
+        run ${command} || echo "pi-packages: not every package was installed; the next run tries again" >&2
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+        else
+          run ${config.systemd.user.systemctlPath} --user start --no-block pi-packages.service || true
+      ''}
+      fi
     '';
 
     systemd.user.services.pi-packages = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
