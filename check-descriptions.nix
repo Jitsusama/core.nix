@@ -342,8 +342,10 @@
     comes back; a careful save leaves its newest text whole, nothing half written, and no file once
     the probe is done; a STUN request a stand-in server answers is timed and one it never answers
     is lost; each sound node's errors are read from pw-top's last iteration, cameras left out, and
-    only those that rose on a running node named; and the middle, 95th and 99th percentiles and
-    worst of the times are read from them
+    only those that rose on a running node named; the middle, 95th and 99th percentiles and worst
+    of the times are read from them; and a loaded reading within each signal's margin of an idle
+    one passes, one past any margin fails saying its figures, and one missing a signal or a figure
+    fails
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
