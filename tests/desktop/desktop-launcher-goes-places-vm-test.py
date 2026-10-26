@@ -277,6 +277,128 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     assert "waiting" not in margin_holds(), "pi's notice counted as missed"
 
 
+HARNESS = "~/.local/state/pi/agentic-harness.pi"
+INBOX = f"{HARNESS}/steer/TESTQA"
+
+
+def an_orchestrator(desktop: Desktop) -> None:
+    """Make pi's session an orchestrator, Lighthouse, as the harness lists one, its inbox empty."""
+    desktop.pi_session()
+    listed = {
+        "orchestrators": [
+            {"quest": "QEST-20261022-TESTQA", "address": "TESTQA", "short": "Lighthouse",
+             "title": "Keep the lighthouse lit"},
+        ]
+    }  # fmt: skip
+    desktop.as_account(
+        f"mkdir -p {HARNESS}/quest-workflow && echo '{json.dumps(listed)}'"
+        f" > {HARNESS}/quest-workflow/.o && mv {HARNESS}/quest-workflow/.o"
+        f" {HARNESS}/quest-workflow/orchestrators.json && rm -rf {INBOX}"
+    )
+
+
+def into_lighthouse(desktop: Desktop) -> None:
+    """Open Orchestrators, and step into Lighthouse."""
+    desktop.as_account("qs ipc call launcher collection orchestrators")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lighthouse")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
+
+
+def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
+    desktop: Desktop,
+) -> None:
+    """An orchestrator is found by its name, and talked to through its session's inbox."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    # Listed busy, as its presence says.
+    desktop.as_account("qs ipc call launcher collection orchestrators")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Lighthouse"
+            and str(shown["selected"]["side"]).startswith("busy")
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Found from the root by its name, Return lands inside it, its
+    # collection's crumb before its own.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Orchestrators", "Lighthouse"]
+            and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
+        )
+    )
+    # Talk asks for words, which go to its session's inbox as Joel's,
+    # opening a talk its session follows.
+    desktop.type_in("talk", selecting="Talk")
+    desktop.step_in("ret")
+    machine.send_chars("keep the lamp lit")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"text":"keep the lamp lit"\''),
+        timeout=dt.timedelta(seconds=10),
+    )
+    said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
+    assert said["from"] == "joel", said
+    assert str(said.get("id", "")).startswith("talk-"), said
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> None:
+    """An orchestrator's earlier talks say how each went, and read its reply."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    talk = [
+        {"at": "2026-10-26T04:00:00Z", "stage": "delivered", "session": "s",
+         "text": "keep watch tonight"},
+        {"at": "2026-10-26T04:00:05Z", "stage": "replied", "text": "Watching. All quiet."},
+    ]  # fmt: skip
+    lines = "\n".join(json.dumps(event) for event in talk)
+    desktop.as_account(
+        f"mkdir -p {INBOX}/replies && printf '%s\\n' '{lines}' > {INBOX}/replies/t1.jsonl"
+    )
+    # Listed after its actions, saying how it went.
+    into_lighthouse(desktop)
+    desktop.launcher_until(lambda shown: "keep watch tonight" in shown["rows"])
+    desktop.type_in("keep watch", selecting="keep watch tonight")
+    assert desktop.showing()["selected"]["side"] == "replied", desktop.showing()["selected"]
+    # Read, it says his words, how it went, and the reply below.
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:2] == ["You said", "How it went"]
+            and "Watching" in str((shown["selected"] or {}).get("reads", ""))
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
+    """An orchestrator is paused with no words, an act in its inbox."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    into_lighthouse(desktop)
+    desktop.type_in("pause", selecting="Pause")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_pi_on_another(
     desktop: Desktop,
 ) -> None:
