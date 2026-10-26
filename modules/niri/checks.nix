@@ -63,7 +63,8 @@ onLinux {
   niri-names-each-screen-once =
     let
       refused =
-        home: lib.any (check: !check.assertion && lib.hasInfix "output block" check.message) home.assertions;
+        home:
+        lib.any (check: !check.assertion && lib.hasInfix "output block" check.message) home.assertions;
       home = account graphical;
       twice = account (
         graphical.extendModules {
@@ -85,7 +86,10 @@ onLinux {
     holds "niri-names-each-screen-once"
       "The panel needs one output block holding srgb-gamut, and a second block for a screen must be refused."
       (
-        !refused home && refused twice && panel == 1 && lib.elem "srgb-gamut" home.jitsusama.niri.outputs."eDP-1"
+        !refused home
+        && refused twice
+        && panel == 1
+        && lib.elem "srgb-gamut" home.jitsusama.niri.outputs."eDP-1"
       );
 
   # niri reads back the files an account gets and rejects anything it
