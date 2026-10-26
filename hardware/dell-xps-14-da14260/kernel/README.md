@@ -11,9 +11,12 @@ fixes and why.
 | `next.nix`, `next/`           | fixes no release has yet, each header saying where from |
 | `local.nix`, `local/`         | fixes written here and in no tree yet                   |
 
-Four patches in `local/` came from elsewhere and wait to move at the
-stack's next regeneration, as `local.nix` says; the camera's own kernel
-patches are applied from `../camera/camera.nix`.
+Eight patches in `local/` came from elsewhere and wait to move at the
+stack's next regeneration, since moving them reorders the stack: four
+that `local.nix` applies and names, and four of the camera's, which
+`../camera/camera.nix` applies (ipu-bridge-hm1092 from
+mainline, ipu7-isys-releases-firmware from linux-next, and
+hm1092-ir-sensor and ipu7-mono-formats from the media list).
 
 ## How a Patch Moves
 

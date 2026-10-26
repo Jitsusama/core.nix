@@ -29,7 +29,7 @@ let
     '';
   });
 
-  npuCompiler = pkgs.callPackage ./npu-compiler.nix { };
+  npuCompiler = pkgs.callPackage ./programs/npu-compiler.nix { };
 
   # turbostat's Makefile calls the compiler gcc, and the kernel's packages
   # build with clang, which has no gcc, so nixpkgs's turbostat fails to
@@ -48,7 +48,7 @@ let
   # daemon runs its own tests, two of which read a value before it settles
   # (power-profiles-tests-wait.patch).
   powerProfiles = pkgs.power-profiles-daemon.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./power-profiles-tests-wait.patch ];
+    patches = (old.patches or [ ]) ++ [ ./programs/power-profiles-tests-wait.patch ];
     postPatch = (old.postPatch or "") + ''
       substituteInPlace src/ppd-driver-intel-pstate.c \
         --replace-fail 'return "performance";' 'return "balance_performance";'
@@ -277,7 +277,7 @@ in
   nixpkgs.overlays = [
     (_final: prev: {
       level-zero = prev.level-zero.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./level-zero-driver-link.patch ];
+        patches = (old.patches or [ ]) ++ [ ./programs/level-zero-driver-link.patch ];
         postPatch = (old.postPatch or "") + ''
           substituteInPlace source/loader/linux/driver_discovery_lin.cpp \
             --replace-fail @driverLink@ ${prev.addDriverRunpath.driverLink}
@@ -307,7 +307,7 @@ in
   # thread to end (thermald-joins-its-thread.patch).
   services.thermald.enable = true;
   services.thermald.package = pkgs.thermald.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./thermald-joins-its-thread.patch ];
+    patches = (old.patches or [ ]) ++ [ ./programs/thermald-joins-its-thread.patch ];
   });
   # When its adaptive mode can't run, thermald leaves itself a note and
   # stops, so that its next start runs without it. This CPU runs only in
@@ -337,7 +337,7 @@ in
   # they should be (bolt-panther-lake.patch).
   services.hardware.bolt.enable = true;
   services.hardware.bolt.package = pkgs.bolt.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./bolt-panther-lake.patch ];
+    patches = (old.patches or [ ]) ++ [ ./programs/bolt-panther-lake.patch ];
   });
 
   # Dell publishes this laptop's BIOS and firmware updates through LVFS.
