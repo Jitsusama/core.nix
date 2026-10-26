@@ -94,7 +94,7 @@ def overlay(values: dict[str, Any]) -> Generator[str]:
 def writer(machines: dict[str, BaseMachine], overlay: str) -> QemuMachine:
     """Give the writer booted, its stick plugged in."""
     del overlay
-    booted = cast("QemuMachine", machines["host"])
+    booted = cast("QemuMachine", machines["writer"])
     booted.wait_for_unit("multi-user.target")
     return booted
 
