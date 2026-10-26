@@ -106,6 +106,7 @@ first in the queue and conclude.
 | change | work put up for review | PR, pull request, proposal | |
 | AI spend | what agents have cost | cost, usage, tokens, budget | spend-watch |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
+| AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a Claude plan one window allows: five hours, or a week | limit | `5h`, `wk` |
 | person | the human a session works for | user, human, operator | |
@@ -253,8 +254,9 @@ layer and set its light; its keys and shortcuts are listed inside it.
 
 ## Security
 
-What proves it's Joel or his agents, and keeps the disk sealed. Never a
-launcher place: each of its things shows where it's used.
+What proves it's Joel or his agents, keeps the disk sealed, and installs or
+recovers a machine from a stick. Never a launcher place: each of its things
+shows where it's used.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -268,6 +270,9 @@ launcher place: each of its things shows where it's used.
 | keyring | where passwords programs keep are held, opened at sign-in | | gnome-keyring |
 | greeter | what asks Joel to sign in when the machine starts | | greetd, tuigreet |
 | lock screen | what hides the desktop while Joel is away, until he signs in again | | swayidle |
+| stick | the USB stick the guide writes for one machine, to install or reinstall it | reinstall stick | |
+| repair stick | a stick written for no machine, to repair any | | |
+| writer | the machine writing a stick for another, which the guide shows beside the machine it's for | | `guide host` |
 
 ## The Library
 
