@@ -26,6 +26,10 @@
 //! lid all end in it. Each monitor plugged in follows it over DDC/CI, set to
 //! the same share of its own brightest (monitor.rs).
 //!
+//! The keyboard's light follows the room too (keyboard.rs): lit in the dark,
+//! out in daylight, and left as Joel sets it with its key until the light
+//! moves well away from where he did (follow.rs).
+//!
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
 //! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
@@ -33,6 +37,7 @@
 mod curve;
 mod facts;
 mod follow;
+mod keyboard;
 mod light;
 mod monitor;
 mod screen;
@@ -52,7 +57,8 @@ use zbus::proxy::PropertyStream;
 use zbus::{Connection, proxy};
 
 use curve::Curve;
-use follow::Follow;
+use follow::{Follow, Keys};
+use keyboard::Keyboard;
 use light::{Readings, Sensor};
 use monitor::Monitors;
 use screen::Screen;
@@ -194,6 +200,20 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let shut = manager.lid_closed().await?;
     let mut watch = screen.watch()?;
     let seen = screen.brightness()?;
+    let keyboard = match Keyboard::find(Path::new("/sys/class/leds")) {
+        Ok(Some(keyboard)) => match keyboard.level() {
+            Ok(level) => Some((Keys::new(level), keyboard)),
+            Err(error) => {
+                eprintln!("<4>can't read {}: {error}", keyboard.name);
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(error) => {
+            eprintln!("<4>can't look for a keyboard light: {error}");
+            None
+        }
+    };
     let mut backlight = Backlight {
         screen,
         session,
@@ -202,6 +222,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         chosen,
         seen,
         wrote: None,
+        keyboard,
     };
     backlight.lid(shut);
     let mut monitors = Monitors::find(backlight.screen.level_of(seen));
@@ -251,6 +272,8 @@ struct Backlight<'a> {
     seen: u32,
     /// The brightness this daemon last set, in steps.
     wrote: Option<u32>,
+    /// The keyboard's light, when there is one, and when it follows the room.
+    keyboard: Option<(Keys, Keyboard)>,
 }
 
 impl Backlight<'_> {
@@ -261,11 +284,67 @@ impl Backlight<'_> {
         if self.follow.heard(lux, shown, Instant::now()) {
             self.keep();
         }
+        self.keyboard_read();
+        if let Some((keys, _)) = &mut self.keyboard {
+            keys.heard(lux, Instant::now());
+        }
+    }
+
+    /// Reads the keyboard's level, which its key may have changed unheard,
+    /// says when Joel set it, and gives it.
+    fn keyboard_read(&mut self) -> Option<u32> {
+        let (keys, keyboard) = self.keyboard.as_mut()?;
+        match keyboard.level() {
+            Ok(level) => {
+                if keys.saw(level) {
+                    eprintln!(
+                        "<6>the keyboard light is at {level} of {}, as set",
+                        keyboard.max
+                    );
+                }
+                Some(level)
+            }
+            Err(error) => {
+                eprintln!("<4>can't read {}: {error}", keyboard.name);
+                None
+            }
+        }
+    }
+
+    /// Sets the keyboard's light once the light has held (follow.rs).
+    async fn keyboard_step(&mut self, now: Instant) {
+        // Unread, the level can't be known to be anybody's but Joel's, so
+        // what the light asked for is let go.
+        let Some(was) = self.keyboard_read() else {
+            if let Some((keys, _)) = &mut self.keyboard {
+                keys.forget();
+            }
+            return;
+        };
+        let lux = self.follow.lux().unwrap_or_default();
+        let Some((keys, keyboard)) = &mut self.keyboard else {
+            return;
+        };
+        let Some(level) = keys.due(now) else {
+            return;
+        };
+        eprintln!("<6>follows {lux:.0} lux with the keyboard light at {level}");
+        if let Err(error) = self
+            .session
+            .set_brightness("leds", &keyboard.name, level)
+            .await
+        {
+            eprintln!("<4>can't set the keyboard light: {error}");
+            keys.unset(was);
+        }
     }
 
     /// The lid opened or shut, and the light heard is the lid's until it
     /// opens (follow.rs).
     fn lid(&mut self, shut: bool) {
+        if let Some((keys, _)) = &mut self.keyboard {
+            keys.lid(shut);
+        }
         if !self.follow.lid(shut) {
             return;
         }
@@ -312,13 +391,18 @@ impl Backlight<'_> {
 
     /// When to step next (follow.rs).
     fn wake(&self) -> Option<Instant> {
-        self.follow.wake(Instant::now())
+        let keys = self.keyboard.as_ref().and_then(|(keys, _)| keys.wake());
+        match (self.follow.wake(Instant::now()), keys) {
+            (Some(screen), Some(keys)) => Some(screen.min(keys)),
+            (screen, keys) => screen.or(keys),
+        }
     }
 
     /// Starts the move the light asked for once it's due, and takes the next
     /// step of the move under way.
     async fn step(&mut self) {
         let now = Instant::now();
+        self.keyboard_step(now).await;
         let from = self.screen.level_of(self.seen);
         if let Some(to) = self.follow.start(from, now) {
             let lux = self.follow.lux().unwrap_or_default();
