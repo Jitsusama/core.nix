@@ -364,8 +364,9 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
+    # Return's own Copy, then the camera.
     desktop.step_in()
-    assert desktop.showing()["rows"] == ["Built-in camera"]
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Built-in camera"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.answer("built-in camera")

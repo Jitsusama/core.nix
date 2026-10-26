@@ -298,7 +298,10 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("reads") == "Quarry take\nz.mp4"
     )
+    # Return's own act, copying what it said, leads; what it offers follows.
     desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy what it said", "Play it"])
+    machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
     machine.send_key("ret")
     assert desktop.answered() == "play", "a notice whose time was up lost what it offered"

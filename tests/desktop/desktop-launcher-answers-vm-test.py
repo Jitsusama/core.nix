@@ -286,13 +286,15 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(lambda shown: str((shown["selected"] or {}).get("name")).endswith(" lx"))
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # The screen the backlight lights leads with its Brightness, a
-    # setting whose levels are a step in by Return, and the Room light
-    # beside it.
+    # The screen the backlight lights holds its Brightness after Return's
+    # own Focus, a setting whose levels are a step in by Return, and the
+    # Room light beside it.
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Brightness", "Room light"])
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Focus", "Brightness", "Room light"])
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Brightness")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Brightness to 40%" in shown["rows"])
     desktop.type_in("40", selecting="Brightness to 40%")

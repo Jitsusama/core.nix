@@ -68,21 +68,43 @@ function kindOf(row) {
     return holds && !row.run && !row.given ? "place" : "action";
 }
 
+// What a row's name says without what it's done to, "Turn it off" as
+// "turn off".
+const DONE_TO = / (?:it|them)\b/;
+
+// Whether a row inside does this act: its verb is it, or its name is it
+// or starts with it ("Disconnect it", "Copy what it said").
+function saysAct(one, said) {
+    if (verbOf(one).toLowerCase() === said) {
+        return true;
+    }
+    const name = String(one.name ?? "").toLowerCase().replace(DONE_TO, "");
+    return name === said || name.startsWith(`${said} `);
+}
+
 // What a step into a row holds, as the right arrow and the catalogue
 // both show it: everything it can be told, Return's own act first, even
 // where its provider left it out, so the right arrow always does more
 // than Return and never less (Joel's concept map: Return is the default
 // act and the right arrow does more; agreed with 15J7N3 for every row).
 // A row that only steps in, asks first or asks for words has no act of
-// its own to add, nor does one holding nothing.
+// its own to add, nor does one holding nothing. One already inside, by its
+// verb or its name, is moved first rather than said twice.
 function leading(row, inside) {
     if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given) {
         return inside;
     }
     const verb = verbOf(row);
     const said = verb.toLowerCase();
-    if (said === "" || inside.some(one => verbOf(one).toLowerCase() === said)) {
+    if (said === "") {
         return inside;
+    }
+    const already = inside.findIndex(one => saysAct(one, said));
+    if (already === 0) {
+        return inside;
+    }
+    if (already > 0) {
+        return [inside[already]].concat(inside.slice(0, already), inside.slice(already + 1));
     }
     // Every field a provider's row has (Provider.qml's `thing`), so the
     // list draws it as it draws them; the launcher prepares its name.

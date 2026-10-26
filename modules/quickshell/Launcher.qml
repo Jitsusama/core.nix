@@ -1635,7 +1635,7 @@ Scope {
     // provider's rows are.
     function led(row, made) {
         const own = Catalogue.leading(row, made);
-        if (own !== made)
+        if (own !== made && String(own[0].key).startsWith("return:"))
             own[0].prepared = Fuzzy.prepare(own[0].name);
         return own;
     }

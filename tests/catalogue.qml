@@ -113,6 +113,17 @@ QtObject {
             [0, "", ""]);
         expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "switch", run: does,
             verbs: opens }, [{ name: "Switch", verb: "switch", run: does }])), "Switch");
+        // One already inside, named as it's done, is moved first, not doubled.
+        const joined = { name: "Lantern", verb: "disconnect", run: does, verbs: opens };
+        expect("found by its name", names(Catalogue.leading(joined, [{ name: "Sign in to it",
+            verb: "open", run: does }, { name: "Disconnect it", run: does }])),
+            "Disconnect it, Sign in to it");
+        expect("or by how its name starts", names(Catalogue.leading({ name: "Quarry",
+            verb: "copy", run: does, verbs: opens }, [{ name: "Play it", run: does },
+            { name: "Copy what it said", run: does }])), "Copy what it said, Play it");
+        expect("read without what it's done to", names(Catalogue.leading({ name: "Radio",
+            verb: "turn off", run: does, verbs: opens }, [{ name: "Turn it off", run: does }])),
+            "Turn it off");
         expect("not for a row that only steps in", names(Catalogue.leading({ name: "Space",
             verb: "more", run: does, verbs: opens }, offers)), "Copy, Forget");
         expect("not for one that asks first", names(Catalogue.leading({ name: "Reboot",
