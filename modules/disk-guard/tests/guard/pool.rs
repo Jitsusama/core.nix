@@ -46,7 +46,11 @@ fn a_filesystem_of_one_volume_is_known_by_its_device() {
         assert_eq!(known, fs::metadata(dir.path()).unwrap().dev());
     }
     // Another filesystem on both systems: a Mac has no /proc.
-    let elsewhere = if cfg!(target_os = "macos") { "/dev" } else { "/proc" };
+    let elsewhere = if cfg!(target_os = "macos") {
+        "/dev"
+    } else {
+        "/proc"
+    };
     assert_ne!(pool(Path::new(elsewhere)).unwrap(), known);
     assert!(pool(&dir.path().join("gone")).is_err());
 }
