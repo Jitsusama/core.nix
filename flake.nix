@@ -258,6 +258,7 @@
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;
         niri = ./modules/niri/nixos.nix;
+        niri-off-cpu = ./modules/niri-off-cpu/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
