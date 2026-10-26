@@ -6,8 +6,10 @@
 # back. The rescue bundles the old stick carried, read from its vault
 # mounted only for reading before it's written over, and the host's own
 # machine's, go onto the new stick and stay with the person. The stick is
-# the host's own machine's, so the bundle it keeps for itself is opened
-# with its passphrase and signs the stick with the machine's db key.
+# the host's own machine's, so the bundle it keeps for itself, sealed to a
+# real FIDO2 key, is opened with that key's PIN and signs the stick with
+# the machine's db key. The key is a canokey (canokeys.nix), its PIN and
+# recipient made at boot as a person makes them (make-recipient.py).
 # Written over again, the stick keeps the passphrase its vault has: the
 # person types it back, proven against the old vault, and no new words are
 # made.
@@ -18,6 +20,16 @@
 let
   inherit (pkgs) lib;
   guide = pkgs.callPackage ../modules/guide/package.nix { };
+  # One key, made by QEMU at its start, standing in for the Nano.
+  inherit (import ./canokeys.nix { inherit pkgs; }) qemu setPin;
+  pin = "123456";
+  # A recipient made as a person makes one, the plugin's questions
+  # answered as its README says.
+  makeRecipient = pkgs.writers.writePython3Bin "make-recipient" { doCheck = false; } (
+    builtins.replaceStrings [ "@plugin@" ] [ (lib.getExe pkgs.age-plugin-fido2-hmac) ] (
+      builtins.readFile ./make-recipient.py
+    )
+  );
   image = "${self.packages.x86_64-linux.stick}/stick_1.raw";
   # The machine the stick installs, small, as its repository would say it.
   machine =
@@ -81,6 +93,7 @@ let
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-host";
+  qemu.package = qemu;
 
   nodes.host = {
     services.udisks2.enable = true;
@@ -107,12 +120,27 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         Type = "oneshot";
         RemainAfterExit = true;
       };
+      path = [
+        pkgs.libfido2
+        pkgs.systemd
+      ];
       script = ''
         ${lib.getExe pkgs.sbctl} create-keys --export /var/lib/sbctl/keys \
           --database-path /var/lib/sbctl/GUID
         mkdir -p /var/lib/guide
+        # The key, once udev has it, given its PIN and a recipient, which
+        # the machine's target names as the Nano's.
+        for _ in $(seq 60); do
+          udevadm settle
+          [ -n "$(fido2-token -L)" ] && break
+          sleep 1
+        done
+        ${lib.getExe setPin} ${pin}
+        recipient=$(${lib.getExe makeRecipient} ${pin})
+        ${lib.getExe pkgs.jq} --arg recipient "$recipient" '.recipients = [$recipient]' \
+          ${payload}/target.json > /run/target.json
         echo ${lib.escapeShellArg bundlePassphrase} |
-          ${lib.getExe guide} seal-keys ${payload}/target.json /var/lib/guide/rescue-bundle.json
+          ${lib.getExe guide} seal-keys /run/target.json /var/lib/guide/rescue-bundle.json
         chmod 0644 /var/lib/guide/rescue-bundle.json
       '';
     };
@@ -136,6 +164,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       memorySize = 2048;
       qemu.options = [
         "-device qemu-xhci,id=xhci"
+        "-device canokey,id=key,bus=xhci.0,file=/tmp/canokey-host"
         "-drive if=none,id=stick,format=qcow2,file=$STICK_IMAGE"
         "-device usb-storage,bus=xhci.0,drive=stick"
       ];
@@ -154,7 +183,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           qemuImg = "${pkgs.qemu}/bin/qemu-img";
           used = "${used}/stick.raw";
           desktopBundle = "${bundle "desktop"}";
-          inherit bundlePassphrase;
+          inherit bundlePassphrase pin;
         }
       );
     in

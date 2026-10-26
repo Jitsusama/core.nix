@@ -26,9 +26,9 @@ let
   # Spaces inside, which ssh-tpm-keygen keeps.
   keyPin = "the keys PIN";
   password = "a password for alice";
-  passphrase = "the stick's recovery passphrase";
+  passphrase = "the stick's own passphrase";
   # Typed into a shell as it is, so a word with nothing to quote.
-  bundlePassphrase = "the-bundles-recovery-passphrase";
+  bundlePassphrase = "the-bundles-own-passphrase";
 
   canokeys = import ./canokeys.nix { inherit pkgs; };
   inherit (canokeys) qemu setPin;

@@ -174,6 +174,10 @@ fn manifest() -> Manifest {
     }
 }
 
+/// The vault's key as these tests seal it, to an identity standing in for
+/// whatever opens a real one.
+const KEY: &str = "key.age";
+
 fn fill(
     key: &VaultKey,
     nano: &age::x25519::Identity,
@@ -183,7 +187,7 @@ fn fill(
         .unwrap();
     let opened = VaultKey::open(&sealed, nano).unwrap();
     move |store| {
-        store.create(vault::KEY)?.write_all(&sealed).unwrap();
+        store.create(KEY)?.write_all(&sealed).unwrap();
         let mut packer = Packer::new(store, &opened);
         packer.add("cache/nix-cache-info", &b"StoreDir: /nix/store\n"[..])?;
         let big: Vec<u8> = (0..3_000_000u32).map(|n| (n % 251) as u8).collect();
@@ -240,7 +244,7 @@ fn a_written_stick_is_whole_to_sfdisk_fsck_and_its_key() {
     stick::verify(&written, &mut disk, &Meter::new(), |store| {
         assert_eq!(vault::manifest(store)?, manifest());
         let mut sealed = vec![];
-        store.open(vault::KEY)?.read_to_end(&mut sealed).unwrap();
+        store.open(KEY)?.read_to_end(&mut sealed).unwrap();
         let mut vault = Vault::open(store, VaultKey::open(&sealed, &nano)?)?;
         let paths: Vec<String> = vault.files().iter().map(|file| file.path.clone()).collect();
         for path in paths {

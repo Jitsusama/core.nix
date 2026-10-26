@@ -114,9 +114,10 @@ def mounted(host: QemuMachine) -> QemuMachine:
 def bundle_opened(mounted: QemuMachine, values: dict[str, Any]) -> QemuMachine:
     """Open the bundle the host keeps for the machine with its passphrase."""
     on_screen(mounted, "Write laptop's stick")
-    # Sealed to no YubiKey, since the payload carries no recipients.
-    on_screen(mounted, "which opens")
-    type_in(mounted, values["bundlePassphrase"])
+    # Sealed to the key too, so its PIN opens it, the key touched by
+    # itself as a canokey is.
+    on_screen(mounted, r"type\s+its\s+PIN")
+    type_in(mounted, values["pin"])
     return mounted
 
 
@@ -164,8 +165,8 @@ def test_used_stick_has_a_partition_the_desktop_mounted(mounted: QemuMachine) ->
     mounted.succeed("findmnt /dev/sda1")
 
 
-def test_hosts_bundle_opens_with_its_passphrase(bundle_opened: QemuMachine) -> None:
-    """The bundle the host keeps for the machine is opened with its passphrase."""
+def test_hosts_bundle_opens_with_its_keys_pin(bundle_opened: QemuMachine) -> None:
+    """The bundle the host keeps for the machine, sealed to a real key, opens with its PIN."""
     on_screen(bundle_opened, "is the stick to write")
 
 
@@ -235,7 +236,9 @@ def rewritten(written: QemuMachine, passphrase: str, values: dict[str, Any]) -> 
     type_in(written, "")
     written.wait_until_fails("pgrep -u alice -f 'guide host'")
     type_in(written, "write-the-stick-again")
-    on_screen(written, "which opens")
+    # Its passphrase opens it as well, tried before the key that's still
+    # plugged in, so none of the key's PIN tries is spent.
+    on_screen(written, r"type\s+its\s+PIN")
     type_in(written, values["bundlePassphrase"])
     on_screen(written, "is the stick to write")
     type_in(written, "")

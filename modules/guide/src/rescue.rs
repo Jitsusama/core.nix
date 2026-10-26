@@ -1,5 +1,5 @@
 //! A machine's rescue bundle: its Secure Boot keys as sbctl keeps them,
-//! sealed so either of its YubiKeys opens them, or the recovery passphrase
+//! sealed so either of its YubiKeys opens them, or the bundle's passphrase
 //! when neither can. It's a few KB of text and nothing but ciphertext, so
 //! it can go anywhere: another machine, a stick's vault beside its sealed
 //! files, anyone's disk. With
@@ -53,10 +53,19 @@ pub fn carried_as(machine: &str) -> String {
     format!("{machine}-rescue-bundle.json")
 }
 
-/// What opens a bundle besides its YubiKeys: a passphrase chosen for it,
-/// or, for one an install made, the disk's recovery key.
-pub const RECOVERY_PASSPHRASE: &str = "the recovery passphrase";
+/// What opens a bundle besides its YubiKeys: a passphrase made for it,
+/// named as the person's phone keeps it, or, for one an install made, the
+/// disk's recovery key.
+pub fn rescue_passphrase(machine: &str) -> String {
+    format!(
+        "the bundle's passphrase, the seven words in 1Password named \"{}\"",
+        crate::words::machines(machine, "Rescue")
+    )
+}
 pub const RECOVERY_KEY: &str = "the disk's recovery key";
+
+/// What a bundle that doesn't say what opens it is opened by.
+const ITS_PASSPHRASE: &str = "the bundle's passphrase";
 
 /// A bundle as it's written: who it's for and what opens it, in the
 /// plain, and the keys sealed under a key of its own, which is sealed in
@@ -334,13 +343,13 @@ impl Bundle {
         }
     }
 
-    /// What its passphrase is: the recovery passphrase, or the disk's
+    /// What its passphrase is: the one made for it, or the disk's
     /// recovery key.
     pub fn passphrase(&self) -> &str {
         self.written
             .opened_by
             .last()
-            .map_or(RECOVERY_PASSPHRASE, String::as_str)
+            .map_or(ITS_PASSPHRASE, String::as_str)
     }
 
     /// When it was sealed, in seconds since 1970, or 0 when it doesn't say.
@@ -511,7 +520,8 @@ impl Step for SealKeys {
             }
         }
         let keys = Keys::read(machine)?;
-        let bytes = Bundle::seal(&self.target, &keys, passphrase, RECOVERY_PASSPHRASE, None)?;
+        let called = rescue_passphrase(&self.target.machine);
+        let bytes = Bundle::seal(&self.target, &keys, passphrase, &called, None)?;
         machine.write(&self.bundle.display().to_string(), &bytes)
     }
 }

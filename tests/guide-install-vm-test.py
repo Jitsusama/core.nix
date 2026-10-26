@@ -1075,7 +1075,8 @@ def test_stick_carrying_the_machines_keys_is_written_on_a_host(host_stick: HostS
     assert host_stick.installed["owner"] == host_stick.owner
     own, installed = host_stick.own, host_stick.installed
     assert (own["owner"], own["db"]) == (installed["owner"], installed["db"])
-    assert own["opened_by"][-1] == "the recovery passphrase", own["opened_by"]
+    # Named as the phone keeps it, after the machine.
+    assert 'named "Machine Rescue Phrase"' in own["opened_by"][-1], own["opened_by"]
 
 
 def test_machines_own_stick_reinstalls_with_the_keys_put_back(

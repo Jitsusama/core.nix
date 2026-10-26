@@ -236,11 +236,9 @@ let
     # a TPM together, driven by its keys as a person drives it.
     vm-guide-installs = import ./tests/guide-install.nix { inherit self pkgs; };
     # Writing a stick on a host is UDisks2, polkit and a USB disk together,
-    # as the person rather than root.
+    # as the person rather than root, and a bundle sealed to a FIDO2 key
+    # opens only where the plugin, the key and its PIN meet.
     vm-guide-writes-a-stick = import ./tests/guide-host.nix { inherit self pkgs; };
-    # A vault sealed to a YubiKey opens with it only where the plugin, the
-    # key and its PIN meet, and only a running machine has all three.
-    vm-guide-opens-the-vault = import ./tests/guide-vault.nix { inherit pkgs; };
     # Recovering is a stick, a laid-out disk and its subvolumes together,
     # with nothing of the machine's on the stick.
     vm-guide-recovers = import ./tests/guide-recover.nix { inherit self pkgs; };

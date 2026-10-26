@@ -1055,9 +1055,6 @@
     unsigned, and the TPM alone opens the disk once they're enrolled, the TPM and the YubiKeys
     sharing one PIN so no boot costs either a try
   '';
-  vm-guide-opens-the-vault = ''
-    a stick's vault sealed to a FIDO2 key stays shut to its PIN on the install's screen, and opens by the passphrase
-  '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, mounts it whole, sets
     which generation boots next, replaces a lost key, reinstalls a boot loader gone from the ESP,
@@ -1068,9 +1065,10 @@
     was mounted from it, its passphrase seven words shown alone for a phone and typed back,
     another's words refused, the old stick's rescue bundles read from its vault mounted only for
     reading and the host's own kept for the person and carried onto the new stick, which is the
-    host's own machine's, so the bundle it keeps for itself is opened with its passphrase and signs
-    the stick's boot program with the machine's db key; written again, the stick keeps its
-    passphrase, typed back and proven against its old vault
+    host's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
+    that key's PIN and signs the stick's boot program with the machine's db key; written again, the
+    stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
+    by its passphrase with the key still plugged in
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame

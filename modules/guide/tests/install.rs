@@ -109,11 +109,10 @@ fn plugged(fake: &mut Fake, keys: &[(&str, &str)]) {
     fake.prints(Tool::Fido2Token, &["-L"], &listed);
 }
 
-const PASSPHRASE: &str = "the vault's recovery passphrase";
+const PASSPHRASE: &str = "the stick's own passphrase";
 
 /// A fake machine on the stick, its vault still shut: its key sealed to
-/// `PASSPHRASE`, and a copy for the YubiKeys that nothing here opens, so
-/// a test that reaches for a key fails.
+/// `PASSPHRASE`, as the host seals it.
 fn shut_stick(directory: &std::path::Path, target: &Target) -> Fake {
     let mut fake = stick(directory, target);
     let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
@@ -126,19 +125,10 @@ fn shut_stick(directory: &std::path::Path, target: &Target) -> Fake {
                 .unwrap(),
         )
         .unwrap();
-    store
-        .create(vault::KEY)
-        .unwrap()
-        .write_all(b"no key opens this")
-        .unwrap();
     let manifest = Manifest {
         format: 1,
         machine: target.machine.clone(),
-        opened_by: vec![
-            "the Nano".into(),
-            "the 5C".into(),
-            "the recovery passphrase".into(),
-        ],
+        opened_by: vec!["the stick's passphrase".into()],
     };
     store
         .create(vault::MANIFEST)

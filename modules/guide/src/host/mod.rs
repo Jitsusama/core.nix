@@ -1,6 +1,6 @@
 //! The host's part: writing a stick, from a machine's image and, for a
 //! reinstall stick, its payload (payload.nix) sealed into the vault with
-//! the recovery passphrase. The stick is a whole USB or removable disk,
+//! the stick's passphrase. The stick is a whole USB or removable disk,
 //! only ever one plugged in at once, opened for writing through the
 //! system's own way of letting a person do so (`stick::device`), so nothing
 //! on a host runs as root. Every stick carries on the rescue bundles the
@@ -245,36 +245,14 @@ pub fn write(
     };
     let needed = fits(&image, disk, payload)?;
     let key = VaultKey::generate();
+    // Sealed to the passphrase alone: a YubiKey opens a vault only beside
+    // the stick, which a laptop with one port both fit has no room for, so
+    // every machine opens it the same way.
     let sealed = key.seal_with_passphrase(passphrase, None)?;
-    // Sealed to the YubiKeys too when the machine names their recipients,
-    // so one touch opens it and the passphrase stays for when none can.
-    let target = &payload.target;
-    if !target.recipients.is_empty() && target.recipients.len() != target.yubikeys.len() {
-        return Err(Fault::Blocked {
-            step: "write-stick",
-            why: format!(
-                "{} names {} YubiKeys and {} recipients for them",
-                target.machine,
-                target.yubikeys.len(),
-                target.recipients.len()
-            ),
-        });
-    }
-    let to_keys = if target.recipients.is_empty() {
-        None
-    } else {
-        Some(key.seal_to_keys(&target.recipients)?)
-    };
-    let mut opened_by = if to_keys.is_some() {
-        target.yubikeys.clone()
-    } else {
-        vec![]
-    };
-    opened_by.push("the recovery passphrase".into());
     let manifest = Manifest {
         format: 1,
-        machine: target.machine.clone(),
-        opened_by,
+        machine: payload.target.machine.clone(),
+        opened_by: vec!["the stick's passphrase".into()],
     };
     meter.stage(WRITING, Some(imaged + needed));
     let written = stick::write(
@@ -288,9 +266,6 @@ pub fn write(
                 .create(vault::KEY_PASSPHRASE)?
                 .write_all(&sealed)
                 .map_err(kept)?;
-            if let Some(to_keys) = &to_keys {
-                store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
-            }
             carry(bundles, store)?;
             let mut packer = Packer::new(store, &key);
             for (name, from) in payload.files() {
