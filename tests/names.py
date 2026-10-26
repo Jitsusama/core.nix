@@ -28,6 +28,7 @@ from glossary import Thing, read
 OTHER_SENSE = {
     "a-quiet-file-says-nothing": "quiet is FileView printing no errors, not Do not disturb",
     "bluetooth-keeps-its-power-limits": "the limits are a radio's SAR table, not an allowance",
+    "jitsusama.kernel.cpu": "the CPU Clang's -march and -mtune name, in Clang's word",
     "jitsusama.kernel.packageOverlays": "an overlay is Nix's, not a meter",
     "jitsusama.theme.icons": "the icon theme is GTK's, named as it names it",
     "jitsusama.theme.palette": "a theme's palette is its colours, not the launcher",
@@ -48,7 +49,6 @@ WAITING = {
     "palette-graphs-draw-in-braille": "Launcher (Y2YBTS): palette to launcher",
     "palette-rows-keep-their-words-apart": "Launcher (Y2YBTS): palette to launcher",
     "jitsusama.quickshell.quiet.whileSharing": "Launcher (Y2YBTS): quiet to Do not disturb",
-    "jitsusama.kernel.cpu": "Hardware (M4RL61): cpu to processor",
     "jitsusama.dellXps14.cameraModule": "Repos (Y9XISP): camera module to camera board",
     "jitsusama.spend-watch.detectors.quiet": "Repos (Y9XISP): quiet, for notes only",
     "jitsusama.spend-watch.notices.budget": "Repos (Y9XISP): budget, for notices a week",
