@@ -240,12 +240,13 @@ def rewritten(written: QemuMachine, passphrase: str, values: dict[str, Any]) -> 
     # plugged in, so none of the key's PIN tries is spent.
     on_screen(written, r"type\s+its\s+PIN")
     type_in(written, values["bundlePassphrase"])
-    on_screen(written, "is the stick to write")
-    type_in(written, "")
+    # Whether to keep it comes first, as a step of its own, then the stick.
     on_screen(written, "has its passphrase already")
     # Keeping it is the first choice, and taken with Return.
     type_in(written, "")
-    on_screen(written, "which it keeps")
+    on_screen(written, "is the stick to write")
+    type_in(written, "")
+    on_screen(written, r"which\s+it\s+keeps")
     type_in(written, passphrase)
     on_screen(written, "The stick is written", timeout=WRITTEN)
     return written
