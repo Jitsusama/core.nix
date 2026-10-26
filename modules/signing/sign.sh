@@ -6,7 +6,7 @@
 # agent_key, what ssh-keygen's -f takes for each key; and makes_keys, what
 # makes a key that's missing. It may export what that ssh-keygen needs to
 # reach the keys, too, and defines agent_environment, which exports what it
-# needs to reach the agent's key alone.
+# needs to reach the agents' key alone.
 #
 # git runs it for verifying as well, so anything but a signature goes
 # straight to ssh-keygen. A signature is made with the chosen key in place of
@@ -72,7 +72,7 @@ check_signature() {
     rm -f "$file.sig"
     echo "$name: $signer's signature doesn't verify, so nothing was signed." >&2
     if [ "$signer" = joel ]; then
-      echo "$name: SIGN_AS=agent signs with the agent's key, which asks nothing." >&2
+      echo "$name: SIGN_AS=agent signs with the agents' key, which asks nothing." >&2
     fi
     exit 1
   fi

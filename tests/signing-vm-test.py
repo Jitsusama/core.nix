@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from test_driver.machine import BaseMachine
 
-# Where Joel's key and the agent's key are made, as docs/installing.md makes them.
+# Where Joel's key and the agents' key are made, as docs/installing.md makes them.
 JOEL_KEY = "~/.local/share/signing/joel-signing"
 AGENT_KEY = "~/.ssh/agent-signing"
 # How long the askpass may take to be asked, or a held commit to end once answered.
