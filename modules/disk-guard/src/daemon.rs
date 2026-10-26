@@ -180,6 +180,44 @@ const LISTING_FRESH: f64 = 6.0 * 3600.0;
 const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
+/// How soon after the last listing began one comes again once a root has
+/// left, so a build's result deleted is garbage gone within a minute; and
+/// once a process holding paths has ended, which happens every few seconds
+/// on a busy machine, so the listing's minute of the disk's time is spent
+/// at most every two.
+const ROOT_LEFT_GAP: f64 = 30.0;
+const HELD_ENDED_GAP: f64 = 120.0;
+
+/// What holds the store, as cheaply read as it changes: the processes with
+/// temporary roots, by their files' names, and each of Nix's roots that
+/// still leads somewhere, by its link.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Holding {
+    processes: BTreeSet<OsString>,
+    roots: BTreeSet<PathBuf>,
+}
+
+impl Holding {
+    fn read(temp_roots: &Path, roots: &Path) -> Holding {
+        let names = |dir: &Path| -> Vec<fs::DirEntry> {
+            fs::read_dir(dir)
+                .map(|entries| entries.filter_map(Result::ok).collect())
+                .unwrap_or_default()
+        };
+        let processes = names(temp_roots)
+            .into_iter()
+            .map(|entry| entry.file_name())
+            .collect();
+        // Following each link, as Nix does: a result deleted leaves its
+        // link behind, leading nowhere, until a collection tidies it.
+        let roots = names(&roots.join("auto"))
+            .into_iter()
+            .map(|entry| entry.path())
+            .filter(|link| fs::metadata(link).is_ok())
+            .collect();
+        Holding { processes, roots }
+    }
+}
 /// The most paths deleted in one go. Each delete costs Nix a whole look
 /// for roots, most of a second on a busy machine, which batches of 300 paid
 /// almost twice a second, most of a core, while a backlog drained. Nix
@@ -253,6 +291,16 @@ pub struct Guard {
     /// Whether garbage is to be listed again at once, generations having
     /// expired since the listing began, or a batch having found it stale.
     relist: bool,
+    /// What held the store at the last look: the processes with temporary
+    /// roots, and the results Nix's roots link to that are still there.
+    holding: Option<Holding>,
+    /// Whether a root left since the listing began, or a process holding
+    /// paths ended, either of which makes garbage the listing lacks.
+    root_left: bool,
+    held_ended: bool,
+    /// Whether the listing's garbage is to be looked at for a pass of its
+    /// own, something having let some of it go.
+    collect: bool,
     /// A run linking the store's identical files: when it began, what
     /// stops it, and where it tells how it ended.
     dedupe_out: Option<DedupeOut>,
@@ -543,6 +591,10 @@ impl Guard {
             running: places.running.clone(),
             system_heard: false,
             relist: false,
+            holding: None,
+            root_left: false,
+            held_ended: false,
+            collect: false,
             dedupe_out: None,
             dedupe_failed: None,
             uses: Arc::new(Mutex::new(uses)),
@@ -888,7 +940,9 @@ impl Guard {
                 due.push((device, decision, thresholds));
             }
         }
+        self.watch_roots();
         self.list_garbage(tick.wall, spare_moment);
+        self.collect_garbage(tick.wall, &mut due);
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
         // waits for a calm disk.
@@ -1076,6 +1130,7 @@ impl Guard {
                     dead,
                 };
                 state::save(&self.listing_path, &listing)?;
+                self.collect = true;
                 if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
                     self.memory.upkept = None;
                 }
@@ -1087,10 +1142,71 @@ impl Guard {
         Ok(())
     }
 
-    /// Begins listing Nix's garbage on its own thread when it's due: six
-    /// hours on at a spare moment, or a day on whenever there's power, at
-    /// idle priority; and at once when the store's filesystem is under
-    /// pressure and the listing is an hour old.
+    /// Notes what holds the store, and whether anything let go of it since
+    /// the last look: a root that left is garbage made, and a process that
+    /// ended may have let go of a build nothing else holds.
+    fn watch_roots(&mut self) {
+        if self.store().is_none() {
+            return;
+        }
+        let nix = &self.config.nix;
+        let now = Holding::read(&nix.temp_roots, &nix.roots);
+        if let Some(before) = &self.holding {
+            if before.roots.iter().any(|root| !now.roots.contains(root)) {
+                self.root_left = true;
+            }
+            if before
+                .processes
+                .iter()
+                .any(|process| !now.processes.contains(process))
+            {
+                self.held_ended = true;
+                self.collect = true;
+            }
+        }
+        self.holding = Some(now);
+    }
+
+    /// Has the listing's garbage go in a pass of its own, once something
+    /// let some of it go and no other pass is due on the store's disk: a
+    /// healthy disk keeps none of it, unless told to as a rebuild cache.
+    fn collect_garbage(&mut self, now: f64, due: &mut Vec<(u64, Decision, Thresholds)>) {
+        if !self.collect {
+            return;
+        }
+        self.collect = false;
+        let Some((_, device)) = self.store() else {
+            return;
+        };
+        if due.iter().any(|(on, _, _)| *on == device) {
+            return;
+        }
+        let Some(watched) = self.watched.get(&device) else {
+            return;
+        };
+        // Under pressure a user daemon speaking for the disk orders what
+        // goes, its own caches against the store's garbage; healthy, the
+        // garbage is the store's alone.
+        if watched.band > Band::Healthy && spoken_for(self.hearing.as_ref(), device) {
+            return;
+        }
+        let Some(space) = watched.space else {
+            return;
+        };
+        let Some(listing) = &self.listing else {
+            return;
+        };
+        if self.batches(listing, now).iter().any(|batch| !batch.kept) {
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            due.push((device, Decision::Collect, thresholds));
+        }
+    }
+
+    /// Begins listing Nix's garbage on its own thread when it's due: soon
+    /// after a root leaves or a process holding paths ends, six hours on
+    /// at a spare moment, or a day on whenever there's power, at idle
+    /// priority; and at once when the store's filesystem is under pressure
+    /// and the listing is an hour old.
     fn list_garbage(&mut self, now: f64, spare: bool) {
         if self.listing_out.is_some() {
             return;
@@ -1109,8 +1225,11 @@ impl Guard {
         } else {
             LISTING_RETRY
         };
+        let since = age(self.listing_begun);
         let due = self.relist
-            || age(self.listing_begun) >= retry
+            || self.root_left && since >= ROOT_LEFT_GAP
+            || self.held_ended && since >= HELD_ENDED_GAP
+            || since >= retry
                 && if pressed {
                     listed >= LISTING_PRESSED
                 } else {
@@ -1129,6 +1248,8 @@ impl Guard {
             });
         self.listing_begun = Some(now);
         self.relist = false;
+        self.root_left = false;
+        self.held_ended = false;
         match listing {
             Ok(_) => self.listing_out = Some((now, out)),
             Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
@@ -1433,7 +1554,17 @@ impl Guard {
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
-        let (mut scan, offers) = self.offers(tick)?;
+        // Garbage alone needs no survey, which walks every source.
+        let (mut scan, offers) = if due
+            .iter()
+            .all(|(_, decision, _)| *decision == Decision::Collect)
+        {
+            let me = std::process::id();
+            let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
+            (scan, self.garbage_offers(tick))
+        } else {
+            self.offers(tick)?
+        };
         for &(device, decision, thresholds) in due {
             if !self.watched.contains_key(&device) {
                 continue;

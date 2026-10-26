@@ -119,6 +119,8 @@ pub enum Decision {
     Rest,
     /// A healthy disk's routine work.
     Upkeep,
+    /// Nix's garbage alone, once something has let it go.
+    Collect,
     /// Free space back to the target, planned by this band's windows.
     Reach(Band),
 }
