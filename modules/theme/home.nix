@@ -291,6 +291,20 @@ let
   # stand-in a console font can draw (glyphs.nix).
   glyphs = import ./glyphs.nix { inherit lib; };
 
+  keyFace = lib.types.submodule {
+    options = {
+      text = lib.mkOption {
+        type = lib.types.str;
+        description = "What the key's cap shows.";
+      };
+      wide = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Whether it's an icon mark, drawn wider than a letter and given room.";
+      };
+    };
+  };
+
   glyph = lib.types.submodule {
     options = {
       glyph = lib.mkOption {
@@ -595,6 +609,18 @@ in
         The marks every surface draws, by what they mean, each with a stand-in
         a console font can draw. A surface looks a mark up here and never
         types one of its own.
+      '';
+    };
+
+    keys = lib.mkOption {
+      type = lib.types.attrsOf keyFace;
+      default = import ./keys.nix { mark = name: cfg.glyphs.${name}.glyph; };
+      defaultText = lib.literalMD "the faces in keys.nix, wearing the theme's marks";
+      description = ''
+        How a key is drawn wherever a surface names one, by its xkb name: its
+        own glyph where a proper one exists, its name where none does. A
+        surface that draws a key looks it up here; a key not here is drawn
+        as its name, and a letter as itself.
       '';
     };
 

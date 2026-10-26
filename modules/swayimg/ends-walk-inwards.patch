@@ -1,0 +1,21 @@
+viewer: walk inwards from a first or last entry that fails to open
+
+Opening the first or last entry walks on to the next one that opens when
+it fails, as a directory's other files do once imagelist.adjacent lists
+them. The walk's direction counted First as backward and Last as forward,
+so a failed last entry walked past the end and wrapped to the first image,
+and a failed first entry wrapped to the last. From the first it now walks
+onwards, and from the last back.
+
+--- a/src/viewer.cpp
++++ b/src/viewer.cpp
+@@ -69,7 +69,8 @@
+         next = il.get(nullptr, ImageList::Dir::First);
+     }
+ 
+-    const bool forward = dir != ImageList::Dir::First &&
++    // A failed end walks inwards: from the first onwards, from the last back.
++    const bool forward = dir != ImageList::Dir::Last &&
+         dir != ImageList::Dir::Prev && dir != ImageList::Dir::PrevParent;
+ 
+     while (true) {
