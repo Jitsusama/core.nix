@@ -696,11 +696,11 @@ works the same way everywhere.
   says it, the programs Using it, the Load, the Kinds of core and the
   Model), "memory" (Used, Pressure, Swap, Cached, Using it and the Type
   read at boot), "disk" (the Space the disk guard says, Speed, Busy,
-  Latency, Temperature, Health as UDisks has it, and the Model), "network
-  speed" (what the cards carry In and Out now, the Line as the shaper
-  last measured it and how full it is, the Round trip while it's quiet,
-  each server a step in, what's Dropped, and each of the Connections,
-  tunnels too), "uptime" and "queue". The devices hold as much: "heat"
+  Latency, Temperature, Health as UDisks has it, and the Model), "speed"
+  (what the cards carry In and Out now, the Connection as the shaper last
+  measured it and how full it is, the Round trip while it's quiet, each
+  server a step in, what's Dropped, and each of the Connections, VPNs
+  too), "uptime" and "queue". The devices hold as much: "heat"
   (each part against its critical point, the processor's Cores, the fans
   against what they're rated for, and how often it Throttled), Bluetooth
   (each device's Battery, Signal and Link quality, Codec and Connection,
