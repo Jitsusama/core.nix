@@ -573,7 +573,7 @@
   '';
   session-backup-stays-in-the-background = ''
     an account naming a folder backs its sessions up hourly in background.slice, catching up on an
-    hour slept through, and one naming none runs nothing
+    hour slept through and left running by a switch, and one naming none runs nothing
   '';
   session-machines-have-a-bridge = ''
     libvirt's bridge helper lets session machines onto virbr0, and its default network starts at

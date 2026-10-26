@@ -101,8 +101,17 @@
           };
         }
       );
+      # The same program as the workstation builds it: the workstation is
+      # always Linux, and a check run on a Mac builds the one it runs for
+      # the Mac, at another path.
+      activated = lib.getExe (
+        import ./settings.nix {
+          inherit (workstation) pkgs;
+          inherit (home.jitsusama.pi) settings;
+        }
+      );
     in
-    assert lib.assertMsg (lib.hasInfix (builtins.unsafeDiscardStringContext program) (
+    assert lib.assertMsg (lib.hasInfix (builtins.unsafeDiscardStringContext activated) (
       builtins.unsafeDiscardStringContext home.home.activation.piTakesCoresSettings.data
     )) "pi's activation doesn't run the settings program the check tests.";
     pkgs.runCommandLocal "pi-keeps-its-own-settings" { nativeBuildInputs = [ pkgs.jq ]; } ''
