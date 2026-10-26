@@ -193,6 +193,12 @@ in
         lima = lib.mkDefault (
           cache 70 (if isDarwin then "${home}/Library/Caches/lima" else "${cacheHome}/lima")
         );
+        # JetBrains' IDEs' indexes, a folder for each release, which an IDE
+        # builds again as it opens a project: slow, so after Lima's images.
+        # A release upgraded past leaves its folder behind for good.
+        jetbrains = lib.mkDefault (
+          cache 80 (if isDarwin then "${home}/Library/Caches/JetBrains" else "${cacheHome}/JetBrains")
+        );
         # Xcode's builds, which it makes again as a target is.
         derived-data = lib.mkIf isDarwin (
           lib.mkDefault (cache 50 "${home}/Library/Developer/Xcode/DerivedData")
