@@ -680,9 +680,11 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
-      mkdir runtime && chmod 700 runtime
+      mkdir runtime launcher && chmod 700 runtime
       cp ${./pieces/Piece.qml} Piece.qml
       cp ${./pieces/Disk.qml} Disk.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${./pieces/StatusFile.qml} StatusFile.qml
       cp ${../../tests/disk.qml} shell.qml
       cp ${niri} Niri.qml

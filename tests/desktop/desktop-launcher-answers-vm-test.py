@@ -375,7 +375,13 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         "filesystems": [
             # Less room than /nix, but healthy, so /nix still leads.
             {"path": "/", "band": "healthy", "free": 10 * 2**30, "total": 30 * 2**30},
-            {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
+            {
+                "path": "/nix",
+                "band": "pressure",
+                "free": 20 * 2**30,
+                "total": 900 * 2**30,
+                "says": "The disk is filling, with 20.0 GiB free.",
+            },
         ],
         "frozen": [],
     }
@@ -384,8 +390,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
     desktop.answer("disk")
+    # The guard's own words are read below the rows.
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+        lambda shown: (
+            (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+            and shown["selected"]["reads"] == "The disk is filling, with 20.0 GiB free."
+        )
     )
     desktop.photograph("launcher-disks")
     # Its first part, a step in, is the space the headline's disk has,
@@ -403,7 +413,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
-            and shown["selected"]["side"] == "20.0 GiB free \u00b7 pressure"
+            and shown["selected"]["side"] == "20.0 GiB free \u00b7 filling"
         )
     )
     machine.send_key("esc")

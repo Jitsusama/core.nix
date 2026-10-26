@@ -52,7 +52,7 @@ ShellRoot {
             { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => !piece.active && piece.role === "text" && !piece.wants && !piece.now
-            && piece.value === "120.5 GiB free on /, pressure"
+            && piece.value === "120.5 GiB free on /, filling"
             && piece.context === "the next band in 1:30; nothing more is safe to take"
     }, {
         what: "a critical disk",
@@ -60,7 +60,7 @@ ShellRoot {
             { at: root.now, path: "/", band: "critical", end: "reached", freed: 3 * gib }),
         machine: status([]),
         holds: piece => piece.active && piece.role === "alert" && piece.wants && piece.now
-            && piece.value === "8.2 GiB free on /, critical"
+            && piece.value === "8.2 GiB free on /, critically full"
             && piece.hint === "/ is short of room: 8.2 GiB free"
             && piece.context === "freed 3.0 GiB on /"
             && piece.actions.length === 0
@@ -69,12 +69,12 @@ ShellRoot {
         account: status([disk("/", "healthy", 200)]),
         machine: status([disk("/", "urgent", 60)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
-            && piece.value === "60.0 GiB free on /, urgent"
+            && piece.value === "60.0 GiB free on /, nearly full"
     }, {
         what: "a disk only the machine watches",
         account: status([disk("/", "healthy", 400)]),
         machine: status([disk("/", "healthy", 400), disk("/boot", "critical", 0.01)]),
-        holds: piece => piece.wants && piece.value === "10.2 MiB free on /boot, critical"
+        holds: piece => piece.wants && piece.value === "10.2 MiB free on /boot, critically full"
     }, {
         what: "a writer frozen",
         // Thawed only above urgent, so frozen still at urgent.
