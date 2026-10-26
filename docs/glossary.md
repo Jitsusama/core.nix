@@ -64,6 +64,8 @@ What a machine is made of, and the programs that look after each part.
 | slice | a share of the machine's CPU, memory and disk that a group of programs runs in | | | a systemd `.slice` |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | | `shaper`, CAKE |
 | connection | the network link out of the machine | uplink | line | |
+| connection speed | how fast the connection carries data now, each way | network speed, bandwidth | | `traffic` |
+| network address | an address the machine has on a network, such as its IP | IP | | `networks` |
 | tunnel | a VPN's link through the network | VPN | | `jitsusama.shaper.tunnels` |
 | Wi-Fi | the network without a cable | wireless | WLAN | `wifid`, `wifi` |
 | network sign-in page | the page a network shows before it lets the machine out, as a hotel's does | | captive portal | `wifid-sign-in` |
@@ -114,11 +116,19 @@ What Joel sees and reaches for on the desktop.
 | mark | one drawn symbol, such as each one in the margin | glyph | icon | `glyphs.nix` |
 | question | a centred box asking Joel something, such as a password or a yes | | | `Polkit.qml`, `Askpass.qml` |
 | layer | what a keyboard's keys do, one set of several, which a key switches between | | | the ErgoDox's layers, `Layer.qml` |
-| Power and modes | the launcher's row for sleep, locking, signing out and the desktop's modes | | | |
+| Power and modes | the launcher's row for sleep, locking, logging out and the desktop's modes | | | `session:` |
+| log out | ending the desktop, back to the greeter | sign out | | |
+| reboot | starting the machine again | restart | | |
+| power off | turning the machine off | shut down | | |
+| Keys and layers | the launcher's collection of a keyboard's keys and its layers | | | `keyboard` |
+| lag | how long the desktop takes to answer a key or a click | slow, jank, stutter | | `lag-watch` |
+| screenshot | a picture Joel takes of the screen | screen shot | | |
+| clipboard | what was copied last, and what was copied before it | | | |
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | | palette, command palette | `Launcher.qml` |
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | | `foot` |
 | margin | the row of marks at the top of the screen saying what's true now | | corner | `Margin.qml`, `overview.pieces` |
 | Now | the launcher's list of what's on and waiting, on Super+O | | What's on | `WhatsOn.qml` |
+| Waiting on you | everything waiting on Joel, each with its minutes, in Now | | | |
 | meter | a level shown while it changes, such as the volume | | overlay | `Meter.qml` |
 | map | the keyboard's layout, shown on screen | | | `KeyboardMap.qml` |
 | wallpaper | the picture behind every window | | painting | |
@@ -136,7 +146,10 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 
 | Word | Means | Also | Not | In code |
 | ---- | ----- | ---- | --- | ------- |
-| quest | a piece of Joel's work, with its own folder, README and documents | | | `QEST-` ids, the `quest` tool |
+| agent | a model working for Joel, as a session or a subagent | AI, assistant, bot | | |
+| Agents | the launcher's one place for everything agents do: sessions, quests, fleets and councils, spend | | | |
+| quest | a piece of Joel's work, with its own folder, README and documents | task, project, todo | | `QEST-` ids, the `quest` tool |
+| short name | a quest's name in two or three words, on its windows and in the launcher | | | `short:` |
 | subquest | a quest that is part of another's work | | | `kind: subquest` |
 | sidequest | a quest that came up beside another, not part of it | | | `kind: sidequest` |
 | plan | a quest's document for building something, through think, draft and build | | | `PLAN-` ids |
@@ -144,9 +157,14 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | brief | a quest's document asking someone for something: audience, ask, background, recommendation | | | `BRIF-` ids |
 | report | a quest's document on what happened, its outcomes and lessons | | | |
 | Journey | a quest's dated log of what happened | | | `quest journal` |
-| session | a pi working for Joel, in a window of its own | | | |
+| session | a pi working for Joel, in a window of its own | | | `agents` in the launcher |
+| Working on | the line a session tells its peers about its work | | Works on | `worksOn` |
 | peer | another session on the same machine, reached over the mesh | | instance, swarm | |
 | mesh | how sessions on one machine message each other | | | `mesh_send` |
+| address | a peer's own group on the mesh, six letters | | | |
+| group | a set of peers a mesh message goes to, such as a quest's | | | `#quest/<id>` |
+| mesh question | a mesh message asking peers for an answer | | | `intent: question` |
+| unanswered question | a mesh question no peer has answered in five minutes | stuck question | | |
 | turn | a mesh message that starts a peer's turn at once, the mesh's loudest attention level | | | |
 | glance | a mesh message given to a peer as one line, since it's another peer's own business | | | |
 | hold | a peer asking every other to put something off, such as a switch, until it says it's over | | | `intent: hold` |
@@ -163,7 +181,10 @@ The words of the agents' tooling: quests, sessions, trees and reviews.
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | | the quest workspace |
 | background command | a command a session runs without waiting on it | | | the `jobs` tool |
 | fleet | subagents run at once on one piece of work | | fan-out, batch | the `subagent` tool |
-| subagent | a pi a session starts to do part of its work | | sub-agent, worker, lane | |
+| subagent | a pi a session starts to do part of its work | helper | sub-agent, worker, lane | `runs` in the launcher |
+| AI spend | what agents have cost | cost, usage, tokens, bill, budget | | spend-watch |
+| Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | | `claude-plan` |
+| allowance | how much of a Claude plan one window allows: five hours, or a week | limit | | `5h`, `wk` |
 | council | reviewing models each reading one change on their own | | | `review_ask council` |
 | judge | the model that consolidates a council's findings | | | |
 | finding | something a review raised | | | |
