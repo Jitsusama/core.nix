@@ -1044,6 +1044,11 @@ def test_after_the_restart_the_tpm_opens_the_disk(signed_in: QemuMachine, restar
     # only once the TPM has refused.
     assert prompts(restarted) == ["Please enter LUKS2 token PIN:"], prompts(restarted)
     assert "Asking FIDO2 token" not in restarted
+    # Started again in the same boot, as a switch does, it leaves the first
+    # console, and the session signed in there, alone.
+    signed_in.succeed("systemctl start guide-installed")
+    assert signed_in.succeed("systemctl show -P ConditionResult guide-installed").strip() == "no"
+    assert signed_in.succeed("systemctl show -P Result guide-installed").strip() == "success"
 
 
 def test_cleared_tpm_is_sealed_again(
