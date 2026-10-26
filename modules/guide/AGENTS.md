@@ -395,10 +395,10 @@ driven on; the installed machine's steps come later.
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
-| `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
+| `../../tests/vm/guide/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
-| `../../tests/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
-| `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
+| `../../tests/vm/guide/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
+| `../../tests/vm/guide/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It
 

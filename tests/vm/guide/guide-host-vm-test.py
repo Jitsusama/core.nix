@@ -1,13 +1,14 @@
 """A stick written on a Linux host by the guide, as the person signed in there and not root.
 
-tests/guide-host.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. The guide's screens come one after another, so
-each state a test starts from is a fixture that walks the guide one screen further than the
-fixture it asks for: the used stick mounted, the host's bundle opened, the stick named, its
-passphrase typed back, the stick written, then written again keeping it. A fixture's work is
-done once a run, so any test runs alone with `-k`, walking only as far as it needs. What the
-tests need from Nix, the used stick and the tool to put an overlay on it, the old stick's bundle
-and the passphrase of the host's own, are guide-host.nix's, given as the `values` fixture.
+guide-host.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. The guide's screens
+come one after another, so each state a test starts from is a fixture that walks the guide one
+screen further than the fixture it asks for: the used stick mounted, the host's bundle opened,
+the stick named, its passphrase typed back, the stick written, then written again keeping it. A
+fixture's work is done once a run, so any test runs alone with `-k`, walking only as far as it
+needs. What the tests need from Nix, the used stick and the tool to put an overlay on it, the
+old stick's bundle and the passphrase of the host's own, are guide-host.nix's, given as the
+`values` fixture.
 """
 
 from __future__ import annotations

@@ -1,18 +1,18 @@
 """A machine installed from its stick by the guide, driven by its keys, in a virtual machine.
 
-tests/guide-install.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
-and its opening comment says what the test proves. One machine plays the whole of it, as a
-laptop does, so each state a test starts from is a fixture that walks the machine one stage
-further than the fixture it asks for, in the order a person meets them: the stick booted, its
-vault opened, the disk confirmed, each key enrolled, the recovery key kept, the install stopped
-and carried on, the system installed, the machine's first boots, the TPM sealed, the account's
-keys and spares made, the TPM cleared, a stick written on a host, the reinstall from the
-machine's own stick, and the firmware cleared of its keys. A fixture's work is done once a run,
-so any test runs alone with `-k`, walking only as far as it needs. What a screen shows only in
-passing is checked where it shows, in the fixture that reaches it; what stays is checked by the
-tests. What the tests need from Nix, the keys' state, the sticks' images, the payload, the
-programs run beside the driver and the secrets typed at the guide, are guide-install.nix's,
-given as the `values` fixture.
+guide-install.nix, beside this, runs this through pytest inside the driver
+(tests/lib/vm_pytest.py), and its opening comment says what the test proves. One machine plays
+the whole of it, as a laptop does, so each state a test starts from is a fixture that walks the
+machine one stage further than the fixture it asks for, in the order a person meets them: the
+stick booted, its vault opened, the disk confirmed, each key enrolled, the recovery key kept,
+the install stopped and carried on, the system installed, the machine's first boots, the TPM
+sealed, the account's keys and spares made, the TPM cleared, a stick written on a host, the
+reinstall from the machine's own stick, and the firmware cleared of its keys. A fixture's work
+is done once a run, so any test runs alone with `-k`, walking only as far as it needs. What a
+screen shows only in passing is checked where it shows, in the fixture that reaches it; what
+stays is checked by the tests. What the tests need from Nix, the keys' state, the sticks'
+images, the payload, the programs run beside the driver and the secrets typed at the guide, are
+guide-install.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations

@@ -36,9 +36,9 @@ let
     "nano"
     "fivec"
   ];
-  guide = pkgs.callPackage ../modules/guide/package.nix { };
+  guide = pkgs.callPackage ../../../modules/guide/package.nix { };
 in
-import ./lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-install";
   globalTimeout = 60 * 60;
   qemu.package = qemu;
@@ -145,7 +145,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   values =
     { nodes, ... }:
     let
-      payload = pkgs.callPackage ../modules/guide/payload.nix { } {
+      payload = pkgs.callPackage ../../../modules/guide/payload.nix { } {
         config = nodes.machine;
         yubikeys = [
           "the Nano"
