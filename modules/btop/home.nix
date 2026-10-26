@@ -13,8 +13,8 @@
 # memory box, keeping the processor and the processes, and they come back
 # when the window grows (gives-way.patch).
 #
-# Escape backs out a step, as it does everywhere else: off the process
-# chosen, then out of its details, then out of btop, and m alone opens the
+# Escape backs out a step, as it does everywhere else: out of a process's
+# details, off the process chosen, then out of btop, and m alone opens the
 # menu Escape used to (escape-backs-out.patch). Left and Right choose what
 # the processes are sorted by, that way along their columns.
 {

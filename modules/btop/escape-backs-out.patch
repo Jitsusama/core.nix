@@ -5,8 +5,8 @@
  					clean_quit(0);
  				}
 -				else if (is_in(key, "escape", "m")) {
-+				//? Escape backs out a step: off the process chosen, then out of its
-+				//? details, then out of btop; m alone opens the menu.
++				//? Escape backs out a step: out of a process's details, off the
++				//? process chosen, then out of btop; m alone opens the menu.
 +				else if (key == "escape" and not (Proc::shown and (Config::getI("proc_selected") > 0 or Config::getB("show_detailed")))) {
 +					clean_quit(0);
 +				}
