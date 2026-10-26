@@ -277,6 +277,59 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     assert "waiting" not in margin_holds(), "pi's notice counted as missed"
 
 
+def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desktop) -> None:
+    """An orchestrator is talked to, and paused, through its session's inbox."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.pi_session()
+    harness = "~/.local/state/pi/agentic-harness.pi"
+    inbox = f"{harness}/steer/TESTQA"
+    listed = {
+        "orchestrators": [
+            {"quest": "QEST-20261022-TESTQA", "address": "TESTQA", "short": "Lighthouse",
+             "title": "Keep the lighthouse lit"},
+        ]
+    }  # fmt: skip
+    desktop.as_account(
+        f"mkdir -p {harness}/quest-workflow && echo '{json.dumps(listed)}'"
+        f" > {harness}/quest-workflow/.o && mv {harness}/quest-workflow/.o"
+        f" {harness}/quest-workflow/orchestrators.json && rm -rf {inbox}"
+    )
+    # Listed in Agents by its short name, busy as its presence says.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    assert str(desktop.showing()["selected"]["side"]).startswith("busy"), desktop.showing()
+    # Inside it, Talk asks for words, which go to its session's inbox.
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: {"Talk", "Pause", "Stop"} <= set(shown["rows"]))
+    desktop.type_in("talk", selecting="Talk")
+    desktop.step_in("ret")
+    machine.send_chars("keep the lamp lit")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'cat {inbox}/*.json | grep -q \'"text":"keep the lamp lit"\''),
+        timeout=dt.timedelta(seconds=10),
+    )
+    said = json.loads(desktop.as_account(f"cat {inbox}/*.json"))
+    assert said["from"] == "joel", said
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Pause is an act, with no words.
+    desktop.as_account(f"rm -f {inbox}/*.json")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.step_in("ret")
+    desktop.type_in("pause", selecting="Pause")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'cat {inbox}/*.json | grep -q \'"act":"pause"\''),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_pi_on_another(
     desktop: Desktop,
 ) -> None:

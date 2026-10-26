@@ -99,6 +99,7 @@
       "what": "agent",
       "glyph": "agent",
       "parts": [
+        "orchestrators",
         "quests",
         "runs",
         "spend"
@@ -3447,6 +3448,67 @@
       "name": "Switch",
       "verb": "switch",
       "glyph": "windows"
+    },
+    {
+      "id": "orchestrators",
+      "in": "agents",
+      "name": "Orchestrators",
+      "noun": "orchestrators",
+      "what": "orchestrator",
+      "glyph": "agent",
+      "ask": "which orchestrator?",
+      "empty": "No orchestrators.",
+      "said": {
+        "waiting": "waiting on you",
+        "listening": "listening",
+        "busy": "busy",
+        "paused": "paused",
+        "off": "not running",
+        "sent": "said to {name}"
+      }
+    },
+    {
+      "id": "verb:orchestrator:talk",
+      "in": "orchestrators",
+      "name": "Talk",
+      "verb": "say",
+      "glyph": "reply",
+      "ask": "say something"
+    },
+    {
+      "id": "verb:orchestrator:open",
+      "in": "orchestrators",
+      "name": "Open its window",
+      "verb": "switch",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:orchestrator:pause",
+      "in": "orchestrators",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:orchestrator:resume",
+      "in": "orchestrators",
+      "name": "Resume",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:orchestrator:stop",
+      "in": "orchestrators",
+      "name": "Stop",
+      "verb": "stop",
+      "glyph": "stopped"
+    },
+    {
+      "id": "verb:orchestrator:start",
+      "in": "orchestrators",
+      "name": "Start a session",
+      "verb": "start",
+      "glyph": "agent"
     },
     {
       "id": "verb:quest:switch",

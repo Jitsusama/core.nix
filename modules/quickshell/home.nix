@@ -502,6 +502,7 @@ let
     cameras = ./launcher/Cameras.qml;
     spend = ./launcher/Spend.qml;
     agents = ./launcher/Agents.qml;
+    orchestrators = ./launcher/Orchestrators.qml;
     quests = ./launcher/Quests.qml;
     runs = ./launcher/Runs.qml;
     byhand = ./launcher/ByHand.qml;
@@ -1096,6 +1097,13 @@ in
       agents = {
         order = 109;
         source = "agents";
+        weight = 0.9;
+      };
+      # The orchestrators, each talked to, paused or stopped through its
+      # session's steer inbox.
+      orchestrators = {
+        order = 110;
+        source = "orchestrators";
         weight = 0.9;
       };
       # pi's quests, found by their titles and ids, which go to the session
