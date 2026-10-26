@@ -29,7 +29,8 @@ and no `jitsusama.*` option's says a replaced name, but the ones
 `tests/names-kept.nix` keeps as another sense of the word or as a rename still
 waiting on its owner, and what it keeps only shrinks. A repository built on
 core holds its own names the same way, through `core.lib.namesSayTheGlossary`.
-A launcher row that names a thing gives its term as `Context/word`, and
+A launcher row that names a thing gives its term as `Context/word`, and a
+place named for a context gives the context alone, as `Network`;
 the-launcher-names-each-thing-its-term holds the row's name to it.
 
 ## The Context Map
@@ -194,7 +195,7 @@ machine can sleep, lock, log out, reboot and power off.
 | camera board | the part in the lid holding the built-in camera, which Dell fits in more than one kind | camera module | `jitsusama.dellXps14.cameraBoard` |
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
-| desk light | the light on the monitor, lit while a camera is in use | | Litra |
+| desk light | the light on the screen, lit while a camera is in use | | Litra |
 | console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | kmscon |
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |

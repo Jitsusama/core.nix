@@ -13,6 +13,7 @@
     {
       "id": "desktop",
       "name": "Desktop",
+      "term": "Desktop",
       "holds": [
         "windows:this",
         "windows",
@@ -51,6 +52,7 @@
     {
       "id": "computer",
       "name": "Machine",
+      "term": "Machine",
       "holds": [
         "power",
         "session:profile",
@@ -76,6 +78,7 @@
     {
       "id": "network",
       "name": "Network",
+      "term": "Network",
       "holds": [
         "wifi",
         "wifi:radio",
@@ -95,6 +98,7 @@
     {
       "id": "agents",
       "name": "Agents",
+      "term": "Agents/agent",
       "noun": "agents",
       "what": "agent",
       "glyph": "agent",
@@ -145,6 +149,7 @@
     {
       "id": "quests",
       "name": "Quests",
+      "term": "Agents/quest",
       "noun": "quests",
       "what": "quest",
       "glyph": "agent",
@@ -179,6 +184,7 @@
     {
       "id": "runs",
       "name": "Subagents",
+      "term": "Agents/subagent",
       "noun": "subagents",
       "what": "subagent",
       "glyph": "running",
@@ -188,6 +194,7 @@
     {
       "id": "spend",
       "name": "AI spend",
+      "term": "Agents/AI spend",
       "noun": "spend",
       "glyph": "agent",
       "ask": "which?",
@@ -206,6 +213,7 @@
     {
       "id": "jobs",
       "name": "Queue",
+      "term": "Machine/queue",
       "provider": "machine",
       "question": "queue",
       "answers": [
@@ -221,6 +229,7 @@
     {
       "id": "machine",
       "name": "Machine",
+      "term": "Machine/machine",
       "question": "processor",
       "parts": [
         "machine:memory",
@@ -231,6 +240,7 @@
     {
       "id": "machine:memory",
       "name": "Memory",
+      "term": "Machine/memory",
       "glyph": "memory",
       "answers": [
         "memory",
@@ -284,6 +294,7 @@
     {
       "id": "machine:cpu",
       "name": "Processor",
+      "term": "Machine/processor",
       "glyph": "processor",
       "answers": [
         "processor",
@@ -383,6 +394,7 @@
     {
       "id": "machine:disk",
       "name": "Disk",
+      "term": "Disk/disk",
       "provider": "machine",
       "question": "disk",
       "glyph": "disk",
@@ -508,6 +520,7 @@
     {
       "id": "traffic",
       "name": "Speed",
+      "term": "Network/speed",
       "question": "speed",
       "glyph": "traffic",
       "answers": [
@@ -778,6 +791,7 @@
     {
       "id": "waits",
       "name": "Lag",
+      "term": "Desktop/lag",
       "answers": [
         "lag"
       ]
@@ -934,6 +948,7 @@
     {
       "id": "keyboards",
       "name": "Keyboards",
+      "term": "Keyboards/keyboard",
       "answers": [
         "keyboards",
         "caps lock"
@@ -1031,6 +1046,7 @@
     {
       "id": "networks",
       "name": "Address",
+      "term": "Network/address",
       "answers": [
         "address"
       ]
@@ -1646,6 +1662,7 @@
     {
       "id": "keyboard",
       "name": "Keyboard",
+      "term": "Keyboards/keyboard",
       "noun": "keys",
       "lead": "parts",
       "glyph": "keyboard",
@@ -1716,6 +1733,7 @@
     {
       "id": "shortcuts",
       "name": "Shortcuts",
+      "term": "Keyboards/shortcut",
       "noun": "shortcuts",
       "glyph": "shortcuts",
       "ask": "which shortcut?"
@@ -2313,6 +2331,7 @@
     {
       "id": "on",
       "name": "Now",
+      "term": "Desktop/Now",
       "noun": "now",
       "what": "on",
       "glyph": "now",
@@ -2333,6 +2352,7 @@
     {
       "id": "clipboard",
       "name": "Clipboard",
+      "term": "Desktop/clipboard",
       "noun": "copies",
       "glyph": "clipboard",
       "ask": "which copy?"
@@ -2340,6 +2360,7 @@
     {
       "id": "notices",
       "name": "Notices",
+      "term": "Desktop/notice",
       "noun": "notices",
       "glyph": "notifications",
       "ask": "which notice?"
@@ -2347,6 +2368,7 @@
     {
       "id": "wifi",
       "name": "Wi-Fi",
+      "term": "Network/Wi-Fi",
       "noun": "networks",
       "glyph": "wireless",
       "ask": "which network?"
@@ -2354,6 +2376,7 @@
     {
       "id": "bluetooth",
       "name": "Bluetooth",
+      "term": "Machine/Bluetooth",
       "noun": "devices",
       "glyph": "bluetooth",
       "ask": "which device?"
@@ -2361,6 +2384,7 @@
     {
       "id": "displays",
       "name": "Screens",
+      "term": "Desktop/screen",
       "noun": "screens",
       "glyph": "display",
       "ask": "which screen?",
@@ -2466,6 +2490,7 @@
     {
       "id": "capture",
       "name": "Capture",
+      "term": "Desktop/capture",
       "noun": "captures",
       "glyph": "capture",
       "ask": "of what?"
@@ -2645,12 +2670,14 @@
     {
       "id": "applications",
       "name": "Programs",
+      "term": "Programs/program",
       "noun": "programs",
       "glyph": "program"
     },
     {
       "id": "windows",
       "name": "Windows",
+      "term": "Desktop/window",
       "noun": "windows",
       "glyph": "windows",
       "ask": "which window?",
@@ -2659,12 +2686,14 @@
     {
       "id": "windows:this",
       "name": "This window",
+      "term": "Desktop/This window",
       "verb": "open",
       "glyph": "windows"
     },
     {
       "id": "session:awake",
       "name": "Keep awake",
+      "term": "Machine/Keep awake",
       "verb": "start",
       "glyph": "awake",
       "states": {
@@ -2677,6 +2706,7 @@
     {
       "id": "session:quiet",
       "name": "Do not disturb",
+      "term": "Desktop/Do not disturb",
       "verb": "start",
       "glyph": "quiet",
       "states": {
@@ -2707,6 +2737,7 @@
     {
       "id": "session:profile",
       "name": "Power profile",
+      "term": "Machine/power profile",
       "glyph": "balanced"
     },
     {
@@ -2742,12 +2773,14 @@
     {
       "id": "session:Suspend",
       "name": "Sleep",
+      "term": "Machine/sleep",
       "verb": "sleep",
       "glyph": "suspend"
     },
     {
       "id": "session:Log Out",
       "name": "Log out",
+      "term": "Machine/log out",
       "verb": "leave",
       "glyph": "logout",
       "sure": "Log out now"
@@ -2755,6 +2788,7 @@
     {
       "id": "session:Reboot",
       "name": "Reboot",
+      "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
       "sure": "Reboot now"
@@ -2762,6 +2796,7 @@
     {
       "id": "session:Power Off",
       "name": "Power off",
+      "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
       "sure": "Power off now"
