@@ -47,6 +47,7 @@ import QtQuick.Effects
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
+import "launcher/Catalogue.js" as Catalogue
 import "launcher/Rank.js" as Rank
 import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
@@ -537,7 +538,8 @@ Scope {
         held = [];
         restart("");
         for (const step of spot.trail) {
-            const rows = held.length === 0 ? categories : offered;
+            // From the top, a place or an answer home is, such as Disk.
+            const rows = held.length === 0 ? categories.concat(home()) : offered;
             const row = rows.find(one => steadyId(one) === step) ?? null;
             if (row === null || !enter(row))
                 return;
@@ -547,6 +549,111 @@ Scope {
             current = at;
             list.positionViewAtIndex(at, ListView.Contain);
         }
+    }
+
+    // The catalogue (launcher/Catalogue.js): every place and every thing's
+    // actions, walked from home by the rows the launcher shows, so what asks
+    // from outside does what Return would. Each id is the row's path, its
+    // steps' steady ids joined by a "\u203a", which no key holds.
+    readonly property string catalogueStep: "\u203a"
+
+    function catalogue() {
+        const out = [];
+        const seen = new Set();
+        const walk = (rows, above, ids, names, depth) => {
+            for (const row of rows.filter(one => Catalogue.listed(one))) {
+                const path = ids.concat([steadyId(row)]);
+                const id = path.join(catalogueStep);
+                if (!seen.has(id)) {
+                    seen.add(id);
+                    out.push(Catalogue.entry(row, id, names));
+                    if (Catalogue.descends(row, depth, above))
+                        walk(catalogueHolds(row, above === null || collects({ row: above })),
+                            row, path, names.concat([row.name]), depth + 1);
+                }
+            }
+        };
+        walk(home(), null, [], [], 0);
+        return out;
+    }
+
+    // What a row holds as `enter` shows it stepped into: from home or a
+    // collection (`things`), what can be done to it, then its parts; from
+    // a thing's own verbs, what each is done to. One whose rows can't be
+    // made out of the launcher's step holds nothing here.
+    function catalogueHolds(row, things) {
+        try {
+            const making = things ? row.verbs : row.targets;
+            const own = making ? making() ?? [] : [];
+            return things ? own.concat(partsIn(row)) : own;
+        } catch (error) {
+            return [];
+        }
+    }
+
+    // The rows an id is the path to, from home, or null for one not there.
+    function catalogued(id) {
+        let rows = home();
+        let things = true;
+        const path = [];
+        for (const step of String(id).split(catalogueStep)) {
+            const row = rows.find(one => Catalogue.listed(one) && steadyId(one) === step) ?? null;
+            if (row === null)
+                return null;
+            path.push(row);
+            rows = catalogueHolds(row, things);
+            things = collects({ row: row });
+        }
+        return path.length > 0 ? path : null;
+    }
+
+    // Does what an id names, as asked from outside, saying what it did: a
+    // place opens, an action is done, and one that ends something is shown
+    // ready, selected, for Joel's own Return. Said in the journal too, as
+    // the launcher's picks are.
+    function catalogueRun(id, words) {
+        const path = catalogued(id);
+        if (path === null)
+            return { error: `the launcher has nothing called ${id}` };
+        const target = path[path.length - 1];
+        const said = path.map(row => row.name).join(" \u203a ");
+        const ids = path.map(row => steadyId(row));
+        console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} ${said}`);
+        if (Catalogue.kindOf(target) === "place") {
+            open = true;
+            goTo({ trail: ids, spot: "" });
+            return { done: true, said: `opened ${said}` };
+        }
+        if (Catalogue.disruptive(target)) {
+            open = true;
+            goTo({ trail: ids.slice(0, -1), spot: ids[ids.length - 1] });
+            return { done: false, offered: true, said: `${said}, ready for Return` };
+        }
+        if (target.given) {
+            if ((words ?? "") === "")
+                return { error: `${said} takes words: ${target.ask ?? ""}` };
+            target.given(words);
+            return { done: true, said: said };
+        }
+        // As Return does it, save that what's typed, Ask's question, picks
+        // nothing: one whose outcome takes a while keeps the launcher, and
+        // the rest close it first.
+        trials.picked(target, "", path.length - 1);
+        if (target.stays) {
+            target.run();
+            return { done: true, said: said };
+        }
+        if (target.now)
+            target.run();
+        open = false;
+        if (target.now)
+            return { done: true, said: said };
+        if (target.later) {
+            pending = target;
+            later.restart();
+        } else
+            target.run();
+        return { done: true, said: said };
     }
 
     // A row's parts as they're named inside it: "Theme" in Slack.
@@ -1996,6 +2103,22 @@ Scope {
 
         function showing(): string {
             return root.showing();
+        }
+
+        // The catalogue, every place and action by id, as one line of JSON.
+        function list(): string {
+            return JSON.stringify(root.catalogue());
+        }
+
+        // Does what an id names, or shows it ready when it ends something,
+        // saying what it did as JSON.
+        function run(id: string): string {
+            return JSON.stringify(root.catalogueRun(id, ""));
+        }
+
+        // The same, for an action that takes words, such as Talk.
+        function runWith(id: string, words: string): string {
+            return JSON.stringify(root.catalogueRun(id, words));
         }
 
         // Where every word on the card is drawn, for the check that nothing

@@ -435,6 +435,24 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's catalogue, what pi-ask's tool lists and runs, tells a
+  # place from an action and offers what ends something rather than doing
+  # it, as tests/catalogue.qml holds launcher/Catalogue.js to it in Qt's
+  # own engine.
+  the-launcher-catalogues-what-it-does =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-catalogues-what-it-does" { } ''
+      cp ${../../tests/catalogue.qml} catalogue.qml
+      cp ${./launcher/Catalogue.js} Catalogue.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml catalogue.qml
+      touch $out
+    '';
+
   # A list the launcher shows holds still as what's in it changes: its rows
   # keep their order, new ones come last and the selection keeps its row, as
   # tests/steady.qml holds launcher/Steady.js to it in Qt's own engine.

@@ -56,7 +56,10 @@ Joel sees.
   row holds. Every name, word and glyph a provider shows or is found by is
   said once, in [`launcher/words.json`][words], read through `Words.qml`;
   `the-launcher-means-one-thing-a-word` fails on a word that finds two
-  things, and prints each.
+  things, and prints each. What it can do is asked from outside through
+  its catalogue, `qs ipc call launcher list`, `run` and `runWith`, which
+  walks the same rows Return takes by `launcher/Catalogue.js`'s rules, so
+  pi-ask acts by what the launcher holds and gains whatever it gains.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.

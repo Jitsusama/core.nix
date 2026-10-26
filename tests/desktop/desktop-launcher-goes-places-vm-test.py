@@ -1153,6 +1153,72 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_something(
+    desktop: Desktop,
+) -> None:
+    """The launcher's catalogue opens places, does actions and offers what ends something."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    def listed() -> list[Json]:
+        return cast("list[Json]", json.loads(desktop.as_account("qs ipc call launcher list")))
+
+    def ran(entry: Json) -> Json:
+        said = desktop.as_account(f"qs ipc call launcher run {shlex.quote(str(entry['id']))}")
+        return cast("Json", json.loads(said))
+
+    def one(entries: list[Json], words: str, within: str) -> Json:
+        found = [e for e in entries if e["words"] == words and e["in"] == within]
+        assert len(found) == 1, f"{words} in {within}: {found}"
+        return found[0]
+
+    entries = listed()
+    ids = [entry["id"] for entry in entries]
+    assert len(ids) == len(set(ids)), "an id is listed twice"
+    # Programs lists each program, but not each one's own Quit.
+    kitty = one(entries, "kitty", "Programs")
+    assert kitty["kind"] == "action"
+    assert not [e for e in entries if e["in"].startswith("Programs \u203a ")]
+    # A place opens there.
+    assert ran(one(entries, "Power", "Machine")) == {
+        "done": True,
+        "said": "opened Machine \u203a Power",
+    }
+    desktop.launcher_until(lambda shown: shown["open"] and shown["path"] == ["Machine", "Power"])
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # One that ends something is shown ready, never done.
+    reboot = one(entries, "Reboot", "Machine \u203a Power")
+    assert reboot["disruptive"]
+    assert ran(reboot)["offered"]
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Machine", "Power"]
+            and (shown["selected"] or {}).get("name") == "Reboot"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # A harmless one is done at once, and once it ends something, offered.
+    awake = one(entries, "Keep awake", "Machine \u203a Power")
+    assert not awake["disruptive"]
+    assert ran(awake) == {"done": True, "said": "Machine \u203a Power \u203a Keep awake"}
+    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
+    sleep = one(listed(), "Let it sleep", "Machine \u203a Power")
+    assert sleep["id"] == awake["id"], "its id changed with its state"
+    assert ran(sleep)["offered"]
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let it sleep")
+    machine.send_key("ret")
+    machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
+    if machine.execute(closed)[0] == 0:
+        machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # One not there says so.
+    assert "error" in ran({"id": "nothing:here"})
+
+
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
     desktop: Desktop,
 ) -> None:
