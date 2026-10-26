@@ -7,7 +7,7 @@
 // lighting it; what's typed beside them finds their choices too, so
 // "brighter" needs no step in. The bar the keys show says where it got to.
 // The screen's brightness is the screen's own (Displays.qml), and a
-// keyboard's backlight the keyboard's (Keyboards.qml).
+// keyboard's light the keyboard's (Keyboards.qml).
 import qs
 import QtQuick
 

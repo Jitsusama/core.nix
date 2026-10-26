@@ -14,8 +14,8 @@
 // (its Polling rate, Keys and Firmware). Every name is the vocabulary's
 // (Words.qml).
 //
-// The keyboards' lights are asked alone too, by "keyboard light",
-// "keyboard backlight" or "key light": one keyboard's choices are the
+// The keyboards' lights are asked alone too, by "keyboard light", as
+// the glossary names a keyboard's own light: one keyboard's choices are the
 // answer's rows, and of several, each keyboard holds its own.
 //
 // Read from the kernel's list of input devices when asked, caps lock from
@@ -280,8 +280,8 @@ Provider {
         const first = lit[0].rows[0];
         if (lit.length === 1)
             return {
-                headline: first.side !== "" ? `the keyboard's backlight is ${first.side}`
-                    : "the keyboard's backlight",
+                headline: first.side !== "" ? `the keyboard's light is ${first.side}`
+                    : "the keyboard's light",
                 graph: first.graph,
                 glyph: Theme.glyph.brightness,
                 rows: inside(lit[0]),
@@ -289,7 +289,7 @@ Provider {
                 live: provider
             };
         return {
-            headline: `${lit.length} keyboards' backlights`,
+            headline: `${lit.length} keyboards' lights`,
             glyph: Theme.glyph.brightness,
             rows: lit.map(each => holderRow({
                 key: `keyboards:${each.device.phys || each.device.name}:lit`,

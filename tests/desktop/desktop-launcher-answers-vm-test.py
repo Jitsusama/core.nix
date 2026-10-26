@@ -69,7 +69,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
     ]  # fmt: skip
     audited = [
         "keyboard layout", "stop rec", "tuesday", "this window", "headphones",
-        "bluetooth", "clipboard", "keyboard", "dim", "keyboard backlight", "camera",
+        "bluetooth", "clipboard", "keyboard", "dim", "keyboard light", "camera",
         "quest", "terminal", "below", "zsh",
     ]  # fmt: skip
     listed_twice: list[str] = []
@@ -302,27 +302,25 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         timeout=dt.timedelta(seconds=10),
     )
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # "keyboard backlight" asks it alone, as the stand-in's
+    # "keyboard light" asks it alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
     kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
     kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
     kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
-    kbd_levels = ["Backlight off", "Backlight to 1 of 2", "Backlight to 2 of 2"]
-    desktop.answer("keyboard backlight")
+    kbd_levels = ["Light off", "Light to 1 of 2", "Light to 2 of 2"]
+    desktop.answer("keyboard light")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
-            and (shown["selected"] or {}).get("name") == f"the keyboard's backlight is {kbd_said}"
+            and (shown["selected"] or {}).get("name") == f"the keyboard's light is {kbd_said}"
         )
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    for _ in range(kbd_levels.index("Backlight to 2 of 2")):
+    for _ in range(kbd_levels.index("Light to 2 of 2")):
         machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Backlight to 2 of 2"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
@@ -624,24 +622,24 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
-            and {"Repeat", "Backlight", "Connection", "Keys"} <= set(shown["rows"])
+            and {"Repeat", "Light", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
-    # Its Backlight is a setting saying how lit it is, the level set
+    # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
-    for _ in range(desktop.showing()["rows"].index("Backlight")):
+    for _ in range(desktop.showing()["rows"].index("Light")):
         machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Backlight"
+            (shown["selected"] or {}).get("name") == "Light"
             and shown["selected"]["side"] == "2 of 2"
         ),
     )
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Backlight off")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light off")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=dt.timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
