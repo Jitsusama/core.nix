@@ -112,5 +112,5 @@ a change to one surface can move another.
 [provider]: launcher/Provider.qml
 [words]: launcher/words.json
 [skill]: ../theme/SKILL.md
-[logic]: ../../docs/testing.md#the-shells-logic
+[logic]: ../../docs/testing.md#the-desktops-logic
 [testing]: ../../docs/testing.md#what-changed-on-screen
