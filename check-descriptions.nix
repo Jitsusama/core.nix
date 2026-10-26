@@ -595,6 +595,10 @@
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
     and pictures open in it
   '';
+  swayimg-moves-by-its-keys = ''
+    in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
+    End and Home to the last and first
+  '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
     s after the shell goes unless it comes back

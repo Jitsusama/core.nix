@@ -46,4 +46,40 @@ onLinux {
         fi
         touch $out
       '';
+
+  # The arrows go to the previous and the next picture, and Home and End to
+  # the first and the last, pressed as a keyboard presses them, with the
+  # account's settings: swayimg's own arrows only move a picture larger
+  # than its window, which is how Joel was left unable to go on.
+  swayimg-moves-by-its-keys =
+    let
+      home = account graphical;
+      files = home.xdg.configFile;
+      fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+    in
+    pkgs.runCommandLocal "swayimg-moves-by-its-keys"
+      {
+        nativeBuildInputs = [
+          home.programs.swayimg.package
+          pkgs.bash
+          pkgs.cage
+          pkgs.inotify-tools
+          pkgs.wtype
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run
+        export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
+        export WLR_LIBINPUT_NO_DEVICES=1
+        mkdir -p config/swayimg run
+        chmod 700 run
+        cp ${files."swayimg/init.lua".source} config/swayimg/init.lua
+        cp ${files."swayimg/nix.lua".source} config/swayimg/nix.lua
+        for name in a b c; do
+          printf 'P3\n1 1\n255\n0 0 0\n' > $name.ppm
+        done
+        timeout 60 cage -- bash ${./tests/swayimg-moves-by-its-keys.sh} || true
+        test -e moved
+        touch $out
+      '';
 }

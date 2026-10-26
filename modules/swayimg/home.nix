@@ -13,11 +13,15 @@
 # little so it's found on a busy picture.
 #
 # It opens floating in the middle of the screen, a look rather than a place
-# to work, and Escape or q puts it away. Its keys are swayimg's own, Enter
-# going between the picture and the gallery of its folder, with these:
-# e edits in GIMP, or Inkscape for a drawing, and closes the viewer; y
-# copies the picture as shown; Delete moves it to the trash rather than
-# deleting it; q closes it, as in mpv.
+# to work, and Escape or q puts it away. Its keys follow the keyboard's one
+# language: the arrows go that way, to the previous and next picture, or
+# around the gallery; Home and End to the first and last; Enter goes
+# between the picture and the gallery of its folder; e edits in GIMP, or
+# Inkscape for a drawing, and closes the viewer; y copies the picture as
+# shown; Delete moves it to the trash rather than deleting it; q closes it,
+# as in mpv. As a picture opens, a quiet line under it names the keys that
+# move on, for as long as its name shows, and ? lists them all until it's
+# pressed again.
 #
 # The launcher finds the screenshots folder's gallery by typing
 # (Screenshots.qml).
@@ -72,6 +76,12 @@ let
       inherit (space) s l;
     };
     inherit (shape) border;
+    # How each key is drawn, as the desktop draws it, for the line of keys.
+    # swayimg draws its words in the one face, with no other to fall back
+    # on, and the sans face has no return arrow, so there Return is its name.
+    keys = lib.mapAttrs (_: face: face.text) config.jitsusama.theme.keys // {
+      Return = "Enter";
+    };
     # A gallery cell, about ten across a window the width of the screen.
     thumbnail = 160;
     wl_copy = lib.getExe' pkgs.wl-clipboard "wl-copy";
@@ -95,6 +105,11 @@ in
 
   programs.swayimg = {
     enable = true;
+    # Home and End reach the first and last picture even when the folder's
+    # first or last file isn't one; see the patch's own words.
+    package = pkgs.swayimg.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./ends-walk-inwards.patch ];
+    });
     initLua = ./init.lua;
   };
 
