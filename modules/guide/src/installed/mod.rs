@@ -263,7 +263,8 @@ impl Step for SealTpm {
         });
         if proven && policy_current(machine)? {
             return Ok(Standing::Done {
-                evidence: "the TPM opens the disk with its own PIN, tried before the YubiKeys".into(),
+                evidence: "the TPM opens the disk with its own PIN, tried before the YubiKeys"
+                    .into(),
             });
         }
         // Sealing again now would lock this boot's firmware programs in,
@@ -308,7 +309,8 @@ impl Step for SealTpm {
                 ask: "key-pin",
             });
         };
-        let (Some(pin), Some(again)) = (secret(answers, "tpm-pin"), secret(answers, "tpm-pin-again"))
+        let (Some(pin), Some(again)) =
+            (secret(answers, "tpm-pin"), secret(answers, "tpm-pin-again"))
         else {
             return Err(Fault::Unanswered {
                 step: self.id(),
