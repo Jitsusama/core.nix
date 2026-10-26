@@ -546,6 +546,20 @@ fn look(
                 if !s.probes.running() {
                     s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send);
                 }
+                // A cable moved to another port can link at another speed
+                // without the link going away: a desk's went from 100 Mbit/s
+                // to gigabit, and its rates stayed held under the old wire.
+                let max = ceiling(&s.uplink.name);
+                let up = s.controller.up.bound(max.up);
+                if s.controller.down.bound(max.down) || up {
+                    eprintln!(
+                        "{}: the link's speed changed, so its rates are held under {} up and {} \
+                         down",
+                        s.uplink.name,
+                        mbit(max.up),
+                        mbit(max.down)
+                    );
+                }
                 // The router answers ARP a moment after the link comes up,
                 // so a link first named by itself learns its network later.
                 if s.network.starts_with("link ") || s.uplink.gateway != uplink.gateway {
