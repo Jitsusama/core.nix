@@ -232,9 +232,7 @@ in
     };
     # The contents close on the key that opened them, as on Escape.
     mappings =
-      lib.listToAttrs (
-        map (key: lib.nameValuePair key.key key.run) (lib.filter (key: key ? run) keys)
-      )
+      lib.listToAttrs (map (key: lib.nameValuePair key.key key.run) (lib.filter (key: key ? run) keys))
       // {
         "[index] c" = "toggle_index";
       };

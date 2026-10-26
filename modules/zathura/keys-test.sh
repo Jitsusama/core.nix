@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Presses zathura's keys in a compositor of its own and reads back, over
 # zathura's D-Bus service, the page each one leaves it on. Run inside cage
 # with a session bus, as `keys-test.sh <document of three pages>`, and a
