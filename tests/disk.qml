@@ -9,8 +9,9 @@
 // machine's guard watches counts, a writer frozen wants Joel with a way to let
 // it go on, a guard that stopped writing is a warning
 // of its own with a way to start it, as is one whose heartbeat ages past
-// silence with nothing written after it, and a guard that never wrote
-// leaves no piece. It exits 0 once every case holds, and otherwise 1, saying which
+// silence with nothing written after it, what holds the disks is one list
+// from both guards, biggest first, and a guard that never wrote leaves no
+// piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -34,6 +35,18 @@ ShellRoot {
             filesystems: disks, last: last ?? null, frozen: frozen ?? [] });
     }
 
+    // A status with what holds the disks, measured at `at`.
+    function held(said, holders, at) {
+        return JSON.stringify(Object.assign(JSON.parse(said), { holders: holders,
+            holders_at: at }));
+    }
+
+    function holder(path, size, kind, name) {
+        return { path: path, bytes: size * gib, owner: { kind: kind, name: name },
+            clearable: kind === "worktree", why: kind === "worktree" ? null : "not now",
+            says: `${name} holds it.` };
+    }
+
     // Each case: what each guard says (null: nothing written), and what
     // the piece makes of it.
     readonly property var cases: [{
@@ -46,6 +59,22 @@ ShellRoot {
         account: status([disk("/", "healthy", 400)]),
         machine: status([disk("/", "healthy", 400), disk("/boot", "healthy", 0.5)]),
         holds: piece => piece.present && !piece.active && piece.role === "text"
+            && piece.holders.length === 0 && piece.holdersAt === 0
+    }, {
+        what: "what holds the disks, from both guards",
+        // A tree both measured is one holder, as the later measure says,
+        // and every holder is listed biggest first.
+        account: held(status([disk("/", "pressure", 120.5), disk("/boot", "healthy", 0.5)]), [
+            holder("/home/joel/.cache/karst", 17, "cache", "karst"),
+            holder("/home/joel/trees/lamp", 40, "worktree", "worktree-lamp")], root.now - 60),
+        machine: held(status([disk("/", "healthy", 400)]), [
+            holder("/var/lib/containers", 24, "containers", "podman"),
+            holder("/home/joel/trees/lamp", 41, "worktree", "worktree-lamp")], root.now),
+        holds: piece => piece.holders.map(one => one.path).join(" ")
+                === "/home/joel/trees/lamp /var/lib/containers /home/joel/.cache/karst"
+            && piece.holders[0].bytes === 41 * root.gib && piece.holdersAt === root.now
+            && piece.holding("/home/joel/trees/lamp").path === "/"
+            && piece.holding("/boot/efi").path === "/boot" && piece.holding("/bootstrap").path === "/"
     }, {
         what: "a disk under pressure",
         account: status([disk("/", "pressure", 120.5, 5400)],

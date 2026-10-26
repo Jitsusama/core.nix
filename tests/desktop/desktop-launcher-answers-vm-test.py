@@ -384,6 +384,27 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
             },
         ],
         "frozen": [],
+        # What the guard measured filling the disks, biggest first.
+        "holders": [
+            {
+                "path": "/var/lib/containers",
+                "bytes": 12 * 2**30,
+                "owner": {"kind": "containers", "name": "podman"},
+                "clearable": False,
+                "why": "podman prunes only images no container uses",
+                "says": "Container storage holds 12.0 GiB; podman prunes only images no"
+                " container uses.",
+            },
+            {
+                "path": "/nix/var/cache",
+                "bytes": 6 * 2**30,
+                "owner": {"kind": "cache", "name": "nix"},
+                "clearable": True,
+                "why": None,
+                "says": "The nix cache holds 6.0 GiB.",
+            },
+        ],
+        "holders_at": time.time(),
     }
     machine.succeed(
         f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
@@ -414,6 +435,24 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
             and shown["selected"]["side"] == "20.0 GiB free \u00b7 filling"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # After Space, what's filling the disks, the biggest beside it, and a
+    # step in each holder, saying whether the guard clears any of it or
+    # why not, its own sentence below.
+    desktop.answer("disk")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's filling it"])
+    desktop.type_in("filling", selecting="What's filling it")
+    assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Containers", "Nix cache"]
+            and shown["selected"]["side"] == "12.0 GiB"
+            and str(shown["selected"]["reads"]).startswith("Container storage holds")
         )
     )
     machine.send_key("esc")

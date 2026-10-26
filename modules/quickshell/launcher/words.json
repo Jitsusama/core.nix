@@ -417,6 +417,7 @@
       },
       "parts": [
         "machine:disk:space",
+        "machine:disk:filling",
         "machine:disk:speed",
         "machine:disk:busy",
         "machine:disk:latency",
@@ -429,6 +430,21 @@
       "id": "machine:disk:space",
       "in": "machine:disk",
       "name": "Space"
+    },
+    {
+      "id": "machine:disk:filling",
+      "in": "machine:disk",
+      "name": "What's filling it",
+      "said": {
+        "quest": "{name}",
+        "worktree": "{name}",
+        "cache": "{name} cache",
+        "containers": "containers",
+        "other": "{name}",
+        "clears": "some is builds or caches the guard clears once idle",
+        "now": "measured just now",
+        "ago": "measured {minutes} min ago"
+      }
     },
     {
       "id": "machine:disk:speed",
