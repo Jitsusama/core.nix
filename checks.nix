@@ -708,9 +708,9 @@ gather (
       # Every folder says what goes in it, so a reader reaches any file from the
       # map by names alone: in a README, the opening comment of its entry file
       # or of a file beside it of its name, a line of its parent's README
-      # opening with its name, or a row of AGENTS.md's map. The
-      # folders below are still waiting for their note, and the check fails
-      # once one has it or is gone, so the list only shrinks.
+      # opening with its name, or a line of the top README's or AGENTS.md's
+      # map. The folders below are still waiting for their note, and the check
+      # fails once one has it or is gone, so the list only shrinks.
       every-folder-says-what-it-holds =
         let
           waiting = [
@@ -725,10 +725,10 @@ gather (
             "modules/ergodox/keymap"
           ];
         in
-        pkgs.runCommandLocal "every-folder-says-what-it-holds" { } ''
-          ${lib.getExe pkgs.bash} ${./tests/every-folder-says-what-it-holds.sh} ${./.} ${pkgs.writeText "waiting" (lib.concatLines waiting)}
-          touch $out
-        '';
+        self.lib.everyFolderSaysWhatItHolds pkgs {
+          src = ./.;
+          inherit waiting;
+        };
 
       # A doc names only what's there, so a move or a rename that leaves a guide
       # pointing at nothing fails here rather than misleading the next reader:
