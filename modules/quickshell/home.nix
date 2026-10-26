@@ -247,7 +247,13 @@ let
       text = mark "quietKey";
       wide = true;
     };
+    # The Copilot key, by what it prints, though xkb names it for F23.
+    XF86TouchpadOff.text = "Copilot";
   };
+  # Keys that send their modifiers themselves, as the Copilot key sends
+  # Shift and Super with F23, so a chord of them is drawn as the one key
+  # pressed.
+  wholeKeys = [ "xf86touchpadoff" ];
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
@@ -272,6 +278,7 @@ let
       };
       key = if lib.hasSuffix "++" keys then "+" else lib.last (lib.splitString "+" keys);
       held = lib.init (lib.splitString "+" (lib.removeSuffix "+" keys));
+      pressed = if lib.elem key wholeKeys then [ key ] else held ++ [ key ];
       face =
         word:
         {
@@ -286,7 +293,7 @@ let
         }
         );
     in
-    map face (held ++ [ key ]);
+    map face pressed;
 
   # Every layer's shortcuts, top to bottom, for the launcher's collection of
   # them: what each does, its chord, in its one spelling too, and the group

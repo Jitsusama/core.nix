@@ -9,7 +9,8 @@
 // groups, Code's each a dozen or fewer; and the window the launcher opened
 // over, as the launcher says it as Shortcuts opens, puts its program's
 // layers first, its own chord opening on the first of them, until the
-// launcher closes. It exits 0 once every case holds, and otherwise 1, saying which
+// launcher closes; and a key that sends its own modifiers, as the Copilot
+// key does, is said as the one key. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -91,6 +92,12 @@ ShellRoot {
             // A second chord for one act is said in the first's note.
             const spelt = map.spelled([{ text: "Super" }, { text: "L" }, { text: "g", after: true }]);
             expect("a chord as words", spelt === "Super+L g", spelt);
+            // The Copilot key, which sends its own Shift and Super, is said
+            // as the one key pressed.
+            const copilot = Shortcuts.layers[0].binds.find(bind => bind.keys
+                === "super+shift+xf86touchpadoff");
+            const pressed = map.spelled(copilot?.chord);
+            expect("the Copilot key as one key", pressed === "Copilot", pressed);
             // And no two rows read alike: one act in one place is one row.
             const read = map.all.map(one => `${one.name} (${one.note})`);
             const twice = read.filter((one, at) => read.indexOf(one) !== at);

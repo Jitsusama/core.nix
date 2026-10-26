@@ -104,6 +104,17 @@ in
     action = ''spawn "dictation" "hold";'';
     flags.repeat = "false";
   }
+  # The Copilot key dictates too (Joel, 2026-10-25), in Super+D's row of
+  # the shortcuts, as a second way. It sends Shift, Super and F23, and niri
+  # matches a key by what it types unshifted, which xkb names
+  # XF86TouchpadOff for F23.
+  {
+    chord = "Super+Shift+XF86TouchpadOff";
+    does = "Dictate into the focused window, or stop and type it";
+    also = "copilot assistant speak voice talk transcribe speech";
+    action = ''spawn "dictation" "hold";'';
+    flags.repeat = "false";
+  }
   {
     chord = "Super+N";
     does = "Take the notices by the keys, or find one that came earlier";
