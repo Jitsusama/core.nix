@@ -87,6 +87,8 @@ first in the queue and conclude.
 | turn | a mesh message that starts a peer's turn at once, the mesh's loudest attention level | | |
 | glance | a mesh message given to a peer as one line, since it's another peer's own business | | |
 | hold | a peer asking every other to put something off, such as a switch, until it says it's over | | `intent: hold` |
+| pivot | an orchestrator changing what a session it orchestrates is doing, each answering once it has changed course | | `intent: pivot` |
+| fyi | a mesh message given as context only, asking nothing | | `intent: fyi` |
 | hand | a subagent, seen on the mesh as its parent's hands | | `hand.ts` |
 | tree | a folder holding a repository's files to work in: a worktree or a snapshot | working tree | the `work` tool |
 | worktree | a tree checked out at a branch, one session's alone | | `git worktree` |
@@ -97,12 +99,13 @@ first in the queue and conclude.
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
-| background command | a command a session runs without waiting on it | | the `jobs` tool |
+| background command | a command a session runs without waiting on it | background job | the `jobs` tool |
+| background work | a session's background commands, fleets and review rounds together | | `/jobs` |
 | fleet | subagents run at once on one piece of work | fan-out, batch | the `subagent` tool |
 | subagent | a pi a session starts to do part of its work | helper, sub-agent, worker, lane | `runs` in the launcher |
 | council | reviewing models each reading one change on their own | | `review_ask council` |
 | judge | the model that consolidates a council's findings | | |
-| finding | something a review raised | | |
+| finding | something a review or a peer found, for whoever owns what it's about | | `intent: finding` |
 | change | work put up for review | PR, pull request, proposal | |
 | AI spend | what agents have cost | cost, usage, tokens, budget | spend-watch |
 | bill | what a provider charged for AI spend, as its feed reports it, rather than estimated from list prices | | |
