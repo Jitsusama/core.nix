@@ -707,7 +707,8 @@ gather (
 
       # Every folder says what goes in it, so a reader reaches any file from the
       # map by names alone: in a README, the opening comment of its entry file
-      # or of a file beside it of its name, or a row of AGENTS.md's map. The
+      # or of a file beside it of its name, a line of its parent's README
+      # opening with its name, or a row of AGENTS.md's map. The
       # folders below are still waiting for their note, and the check fails
       # once one has it or is gone, so the list only shrinks.
       every-folder-says-what-it-holds =
@@ -716,11 +717,7 @@ gather (
             # The guide's machines, as it sees them in its tests.
             "modules/guide/fixtures/dell-xps-14-da14260"
             "modules/guide/fixtures/microsoft-surface-laptop-4-1958"
-            "modules/guide/fixtures/qemu-canokey"
             "modules/guide/fixtures/tpm-simulator"
-            # The shell's launcher steps and margin pieces.
-            "modules/quickshell/launcher"
-            "modules/quickshell/pieces"
             # Neovim's colours, patches, plugins and probes.
             "modules/neovim/colors"
             "modules/neovim/patches"
