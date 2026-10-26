@@ -11,6 +11,12 @@
 # setting ($PLAN): "pi" for pi's own provider, or "claude" for Joel's own
 # Claude plan through pi-claude ($PI_CLAUDE), on $MODEL either way.
 #
+# A device whose pi extensions are managed centrally has a pi that refuses
+# --no-extensions, since it delivers the managed ones itself. pi is asked once
+# whether it takes the flag, which works wherever the managed list is kept,
+# and where it doesn't, pi loads what it would; with no session it stays off
+# the mesh all the same.
+#
 # usage: pi-ask [more of pi's arguments]
 set -euo pipefail
 
@@ -19,7 +25,6 @@ arguments=(
   --mode rpc
   --no-session
   --no-tools
-  --no-extensions
   --no-skills
   --no-context-files
   --no-prompt-templates
@@ -34,6 +39,11 @@ while IFS= read -r extension; do
 done <<< "$EXTENSIONS"
 
 case $PLAN in
-  claude) exec "$PI_CLAUDE" "${arguments[@]}" "$@" ;;
-  *) exec pi "${arguments[@]}" "$@" ;;
+  claude) exec "$PI_CLAUDE" --no-extensions "${arguments[@]}" "$@" ;;
+  *)
+    if pi --no-extensions --version > /dev/null 2>&1; then
+      arguments=(--no-extensions "${arguments[@]}")
+    fi
+    exec pi "${arguments[@]}" "$@"
+    ;;
 esac
