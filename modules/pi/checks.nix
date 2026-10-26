@@ -166,6 +166,14 @@
     touch $out
   '';
 
+  # pi-ask's one tool lists the launcher's places and actions and runs one,
+  # passing on what was done, or that a disruptive one waits for Return.
+  pi-ask-runs-the-launcher = pkgs.runCommandLocal "pi-ask-runs-the-launcher" { } ''
+    ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
+      ${../../tests/pi-ask-runs-the-launcher.mjs} ${./ask-launcher.ts}
+    touch $out
+  '';
+
   # The patched provider starts Claude Code to ask for its login once for any
   # number of asks within a minute, and asks again while it isn't logged in.
   pi-asks-claude-code-its-login-once =

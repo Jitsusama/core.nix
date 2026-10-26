@@ -2,8 +2,9 @@
 # Runs pi-ask (modules/pi/ask.nix) as two machines set it up, over stand-ins
 # for pi and pi-claude that write down how they were started. On pi's own
 # plan, pi is started speaking RPC with nothing loaded but the extensions the
-# machine names and the digest of what's true on it, on the model it names; on the Claude plan, pi-claude is
-# started the same way instead, and pi is not. On a device whose extensions
+# machine names, the digest of what's true on it and the launcher's tool, its
+# one tool, on the model it names; on the Claude plan, pi-claude is started
+# the same way instead, and pi is not. On a device whose extensions
 # are managed centrally, where pi refuses --no-extensions, pi-ask leaves the
 # flag out and loads the machine's extensions all the same. Started with no
 # more than a user service has, as the launcher starts it, pi-ask puts the
@@ -61,10 +62,18 @@ digests() {
   grep -A1 -xF -- "arg -e" "$said" | grep -q -- '-ask-digest.ts$' ||
     fail "the digest wasn't loaded"
 }
+# Where there's a launcher, its tool is the one tool, and no MCP server's.
+launches() {
+  grep -A1 -xF -- "arg -e" "$said" | grep -q -- '-ask-launcher.ts$' ||
+    fail "the launcher's tool wasn't loaded"
+  follows --tools launcher
+  follows --exclude-tools 'mcp__*'
+  lacks "arg --no-tools"
+}
 
 "$on_pi" --verbose
 has "started pi"
-for argument in --mode --no-session --no-tools --no-extensions --no-skills \
+for argument in --mode --no-session --no-extensions --no-skills \
   --no-context-files --no-prompt-templates --verbose; do
   has "arg $argument"
 done
@@ -75,9 +84,10 @@ grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/a-proxy" ||
   fail "the machine's first extension wasn't loaded"
 grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/another" ||
   fail "the machine's second extension wasn't loaded"
-[ "$(grep -cxF -- "arg -e" "$said")" = 3 ] ||
-  fail "it loaded more than the machine named and the digest"
+[ "$(grep -cxF -- "arg -e" "$said")" = 4 ] ||
+  fail "it loaded more than the machine named, the digest and the launcher's tool"
 digests
+launches
 
 : > "$said"
 env -i PATH="$work/bin" SAID="$said" "$on_pi"
@@ -90,9 +100,10 @@ has "started pi"
 lacks "arg --no-extensions"
 follows --mode rpc
 follows --model anthropic/claude-haiku-4-5
-[ "$(grep -cxF -- "arg -e" "$said")" = 3 ] ||
+[ "$(grep -cxF -- "arg -e" "$said")" = 4 ] ||
   fail "on a managed device, the machine's extensions weren't loaded"
 digests
+launches
 
 : > "$said"
 "$on_claude"
@@ -101,5 +112,6 @@ lacks "started pi"
 follows --mode rpc
 follows --model claude-code/claude-haiku-4-5-20251001
 has "arg --no-extensions"
-[ "$(grep -cxF -- "arg -e" "$said")" = 1 ] || fail "it loaded more than the digest"
+[ "$(grep -cxF -- "arg -e" "$said")" = 2 ] || fail "it loaded more than the digest and the launcher's tool"
 digests
+launches
