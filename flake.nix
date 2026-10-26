@@ -356,6 +356,12 @@
       # check that the package passes, with its lints and core's settings.
       lib.clippy = pkgs: pkgs.callPackage ./modules/clippy/clippy.nix { };
 
+      # How a repository built on core holds its docs to naming only what
+      # exists, as core does: `core.lib.docsNameWhatExists pkgs { src = ./.;
+      # exempt = [ ... ]; }` is a check that fails on a link or a backticked
+      # path from one of its top folders that names nothing.
+      lib.docsNameWhatExists = pkgs: pkgs.callPackage ./tests/docs-name-what-exists.nix { };
+
       # What VM tests' scripts share, for a repository built on core to give
       # its own: `extraPythonPackages = core.lib.vmHelpers pkgs;` lets a
       # script import vm_helpers, and core's linters read its types.
