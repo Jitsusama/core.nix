@@ -1,5 +1,6 @@
 # Who Joel is on a machine, for the tools that attribute his work to him.
-# The name is the same everywhere; each layer sets the email it works under.
+# The name is the same everywhere; each machine repository sets the email it
+# works under.
 { lib, ... }:
 {
   options.jitsusama.identity = {
