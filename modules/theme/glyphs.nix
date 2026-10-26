@@ -506,6 +506,15 @@ in
       "A1 1 0 0 1 1 0Z"
     ];
   };
+  # The agent's robot drawn in outline: one an agent sent away to work for
+  # it. It was the running arrow, which Joel couldn't read as anything
+  # (2026-10-25: "i have no clue what the arrow glyph with x running even
+  # means").
+  subagent = {
+    glyph = nerd "f167a";
+    console = "s";
+    means = "a subagent: an agent another sent away to work for it, alone or in a fleet";
+  };
   # A person with a clock: something the agents can't go on without until
   # Joel has done it.
   waitsOnJoel = {

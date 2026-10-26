@@ -193,7 +193,7 @@
       "term": "Agents/subagent",
       "noun": "subagents",
       "what": "subagent",
-      "glyph": "running",
+      "glyph": "subagent",
       "ask": "which subagent?",
       "empty": "No subagents today."
     },
