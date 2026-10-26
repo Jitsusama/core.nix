@@ -17,6 +17,12 @@ config = {
   missing_probes = "warn"
 }
 
+// A busy buffer is counted once, by a set big enough for every buffer a
+// trace's ten minutes meets: the default 4096 keys would fill, and every
+// buffer past them would be counted again on every pass. Only this map is
+// made bigger, since the others hold a key per thread or per kind.
+let @passed = hash(65536);
+
 BEGIN
 {
   printf("graphics buffers backed up and read back; shared 1 is through dma-buf, ");
@@ -75,8 +81,11 @@ kretprobe:ttm_bo_populate
   delete(@pages, tid);
 }
 
-// Busy is -EBUSY. A buffer is counted the first time it's passed over, so
-// the pages are what stayed resident at once, at most.
+// Busy is -EBUSY, which the shrinker also returns for a buffer not worth
+// evicting or one it can't map, so this is everything it passed over: at
+// most what it keeps for its caching. A buffer is counted the first time
+// it's passed over, so the pages are what stayed resident at once, at
+// most.
 kprobe:xe_bo_shrink
 {
   $bo = (struct ttm_buffer_object *)arg1;
