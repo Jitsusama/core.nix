@@ -1,5 +1,5 @@
 //! google holds the Google account for the desktop, so the launcher can
-//! show Joel's next meeting and join it.
+//! show Joel's next meeting and join it, and the mail that wants him.
 //!
 //! It asks Google's own API as the account the harness signed in (pi's
 //! `/google-auth`), reading the harness's file and never writing it

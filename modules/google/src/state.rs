@@ -4,6 +4,7 @@
 use serde::Serialize;
 
 use crate::calendar::Meeting;
+use crate::mail::Mail;
 
 /// How the account stands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -26,6 +27,10 @@ pub enum Standing {
 pub struct State {
     pub account: Standing,
     pub meetings: Vec<Meeting>,
+    /// The mail that wants Joel, newest first.
+    pub mail: Vec<Mail>,
+    /// How many in the inbox are unread, or none until Gmail says.
+    pub unread: Option<u64>,
     /// When Google last answered, in milliseconds since the epoch.
     pub heard: Option<i64>,
 }
@@ -56,7 +61,7 @@ mod tests {
         let line = State::without(Standing::SignedOut).line();
         assert_eq!(
             line,
-            "{\"account\":\"signedOut\",\"meetings\":[],\"heard\":null}\n"
+            "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\"heard\":null}\n"
         );
     }
 }
