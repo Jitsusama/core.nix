@@ -147,6 +147,18 @@ impl Request {
     }
 }
 
+/// One of the shell's ipc targets, and the longest answer it can give.
+struct Target {
+    name: &'static str,
+    longest: usize,
+}
+
+/// The shell's chooser of an app, whose answer is an app's id.
+const OPEN_WITH: Target = Target {
+    name: "open-with",
+    longest: 4096,
+};
+
 /// The shell, asked through qs, and the folder of sockets it answers on.
 struct Shell {
     qs: PathBuf,
@@ -157,8 +169,9 @@ struct Shell {
 impl Shell {
     /// Calls one of the shell's functions with these words, saying whether
     /// it took them. A shell that doesn't have the function refuses them.
-    async fn tell(&self, target: &'static str, function: &'static str, words: Vec<String>) -> bool {
+    async fn tell(&self, target: &Target, function: &'static str, words: Vec<String>) -> bool {
         let qs = self.qs.clone();
+        let target = target.name;
         tokio::task::spawn_blocking(move || {
             Command::new(qs)
                 .args(["ipc", "call", target, function])
@@ -180,13 +193,12 @@ impl Shell {
     /// the ask is kept in `waiting` while it waits, when given.
     async fn ask(
         &self,
-        target: &'static str,
+        target: &Target,
         handle: &OwnedObjectPath,
         server: &ObjectServer,
         offered: Vec<String>,
         words: Vec<String>,
         waiting: Option<&Mutex<HashMap<OwnedObjectPath, Arc<Pending>>>>,
-        longest: usize,
     ) -> (Ended, Arc<Pending>) {
         let asked = self.asked.fetch_add(1, Ordering::Relaxed);
         let socket = self.sockets.join(format!("{asked}.sock"));
@@ -221,7 +233,7 @@ impl Shell {
         let told = std::iter::once(place.clone()).chain(words).collect();
         let ended = if self.tell(target, "ask", told).await {
             tokio::select! {
-                said = answer(&listener, longest) => said.map_or(Ended::Unasked, Ended::Said),
+                said = answer(&listener, target.longest) => said.map_or(Ended::Unasked, Ended::Said),
                 _ = closed => Ended::Closed,
                 () = tokio::time::sleep(WAITING) => Ended::Late,
             }
@@ -237,7 +249,9 @@ impl Shell {
         if let Some(waiting) = waiting {
             held(waiting).remove(handle);
         }
-        let _ = server.remove::<Request, _>(handle.clone().into_inner()).await;
+        let _ = server
+            .remove::<Request, _>(handle.clone().into_inner())
+            .await;
         (ended, pending)
     }
 }
@@ -268,17 +282,15 @@ impl Chooser {
             text(&options, "last_choice").unwrap_or_default(),
             choices.join(";"),
         ];
-        // An app's id is short; a line this long is no answer.
         let (ended, pending) = self
             .shell
             .ask(
-                "open-with",
+                &OPEN_WITH,
                 &handle,
                 server,
                 choices,
                 words,
                 Some(&self.pending),
-                4096,
             )
             .await;
 
@@ -306,7 +318,7 @@ impl Chooser {
         held(&pending.offered).clone_from(&choices);
         self.shell
             .tell(
-                "open-with",
+                &OPEN_WITH,
                 "update",
                 vec![pending.place.clone(), choices.join(";")],
             )

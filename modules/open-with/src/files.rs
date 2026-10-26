@@ -28,14 +28,18 @@ use zbus::object_server::ObjectServer;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{Connection, interface};
 
-use crate::{Ended, NEITHER, PATH, PICKED, REFUSED, Shell, text};
+use crate::{Ended, NEITHER, PATH, PICKED, REFUSED, Shell, Target, text};
 
 /// GTK's portal, which answers when the shell can't be asked.
 const GTK: &str = "org.freedesktop.impl.portal.desktop.gtk";
 const INTERFACE: &str = "org.freedesktop.impl.portal.FileChooser";
 
-/// The longest answer heard, room for a great many paths.
-const LONGEST: usize = 1 << 20;
+/// The shell's chooser of files, whose answer has room for a great many
+/// paths.
+const FILE_CHOOSER: Target = Target {
+    name: "file-chooser",
+    longest: 1 << 20,
+};
 
 /// A filter: its name, and its rules, each a glob (0) or a kind (1).
 type Filter = (String, Vec<(u32, String)>);
@@ -260,7 +264,11 @@ async fn forward(
             &(handle, app_id, parent_window, title, options),
         )
         .await
-        .and_then(|reply| Ok(reply.body().deserialize::<(u32, HashMap<String, OwnedValue>)>()?));
+        .and_then(|reply| {
+            reply
+                .body()
+                .deserialize::<(u32, HashMap<String, OwnedValue>)>()
+        });
     reply.unwrap_or_else(|error| {
         eprintln!("<3>open-with: GTK's portal can't choose the file either: {error}");
         (NEITHER, HashMap::new())
@@ -276,7 +284,10 @@ impl Files {
         Files { shell }
     }
 
-    #[expect(clippy::too_many_arguments, reason = "the portal's own arguments, passed on whole")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the portal's own arguments, passed on whole"
+    )]
     async fn choose(
         &self,
         mode: Mode,
@@ -292,10 +303,15 @@ impl Files {
         let words = vec![asked.request(&title, &options).to_string()];
         let (ended, _) = self
             .shell
-            .ask("file-chooser", &handle, server, Vec::new(), words, None, LONGEST)
+            .ask(&FILE_CHOOSER, &handle, server, Vec::new(), words, None)
             .await;
         if ended == Ended::Unasked {
-            let asking = (&handle, app_id.as_str(), parent_window.as_str(), title.as_str());
+            let asking = (
+                &handle,
+                app_id.as_str(),
+                parent_window.as_str(),
+                title.as_str(),
+            );
             return forward(connection, mode, asking, &options).await;
         }
         let (code, picked) = asked.response(&ended);
@@ -305,6 +321,10 @@ impl Files {
 
 #[interface(name = "org.freedesktop.impl.portal.FileChooser")]
 impl Files {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the portal's call, as its interface gives it"
+    )]
     #[zbus(out_args("response", "results"))]
     async fn open_file(
         &self,
@@ -316,10 +336,23 @@ impl Files {
         #[zbus(object_server)] server: &ObjectServer,
         #[zbus(connection)] connection: &Connection,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        self.choose(Mode::Open, handle, app_id, parent_window, title, options, server, connection)
-            .await
+        self.choose(
+            Mode::Open,
+            handle,
+            app_id,
+            parent_window,
+            title,
+            options,
+            server,
+            connection,
+        )
+        .await
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the portal's call, as its interface gives it"
+    )]
     #[zbus(out_args("response", "results"))]
     async fn save_file(
         &self,
@@ -331,10 +364,23 @@ impl Files {
         #[zbus(object_server)] server: &ObjectServer,
         #[zbus(connection)] connection: &Connection,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        self.choose(Mode::Save, handle, app_id, parent_window, title, options, server, connection)
-            .await
+        self.choose(
+            Mode::Save,
+            handle,
+            app_id,
+            parent_window,
+            title,
+            options,
+            server,
+            connection,
+        )
+        .await
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the portal's call, as its interface gives it"
+    )]
     #[zbus(out_args("response", "results"))]
     async fn save_files(
         &self,
@@ -399,18 +445,38 @@ mod tests {
     }
 
     fn reencode() -> Choice {
-        ("reencode".to_owned(), "Re-encode".to_owned(), Vec::new(), "false".to_owned())
+        (
+            "reencode".to_owned(),
+            "Re-encode".to_owned(),
+            Vec::new(),
+            "false".to_owned(),
+        )
     }
 
     fn options() -> HashMap<String, OwnedValue> {
         HashMap::from([
-            ("accept_label".to_owned(), value(Value::from(Str::from("_Open")))),
+            (
+                "accept_label".to_owned(),
+                value(Value::from(Str::from("_Open"))),
+            ),
             ("modal".to_owned(), value(Value::from(false))),
             ("multiple".to_owned(), value(Value::from(true))),
-            ("filters".to_owned(), value(Value::from(vec![pictures(), everything()]))),
-            ("current_filter".to_owned(), value(Value::from(everything()))),
-            ("choices".to_owned(), value(Value::from(vec![encoding(), reencode()]))),
-            ("current_folder".to_owned(), value(Value::from(bytes("/home/someone/Pictures")))),
+            (
+                "filters".to_owned(),
+                value(Value::from(vec![pictures(), everything()])),
+            ),
+            (
+                "current_filter".to_owned(),
+                value(Value::from(everything())),
+            ),
+            (
+                "choices".to_owned(),
+                value(Value::from(vec![encoding(), reencode()])),
+            ),
+            (
+                "current_folder".to_owned(),
+                value(Value::from(bytes("/home/someone/Pictures"))),
+            ),
         ])
     }
 
@@ -477,7 +543,10 @@ mod tests {
 
     #[test]
     fn nothing_picked_is_refused() {
-        assert_eq!(Asked::new(Mode::Open, &HashMap::new()).response(&said("")), (REFUSED, None));
+        assert_eq!(
+            Asked::new(Mode::Open, &HashMap::new()).response(&said("")),
+            (REFUSED, None)
+        );
     }
 
     #[test]
@@ -535,12 +604,18 @@ mod tests {
             value(Value::from(vec![bytes("one.txt"), bytes("../two.txt")])),
         )]);
         let asked = Asked::new(Mode::SaveFiles, &options);
-        assert_eq!(asked.request("Save", &options)["files"], json!(["one.txt", "../two.txt"]));
+        assert_eq!(
+            asked.request("Save", &options)["files"],
+            json!(["one.txt", "../two.txt"])
+        );
         let (code, picked) = asked.response(&said(r#"{"paths": ["/home/someone/Saved"]}"#));
         assert_eq!(code, PICKED);
         assert_eq!(
             picked.unwrap().uris,
-            ["file:///home/someone/Saved/one.txt", "file:///home/someone/Saved/two.txt"]
+            [
+                "file:///home/someone/Saved/one.txt",
+                "file:///home/someone/Saved/two.txt"
+            ]
         );
     }
 
@@ -553,7 +628,11 @@ mod tests {
         });
         let uris: Vec<String> = results["uris"].try_clone().unwrap().try_into().unwrap();
         assert_eq!(uris, ["file:///a"]);
-        let filter: Filter = results["current_filter"].try_clone().unwrap().try_into().unwrap();
+        let filter: Filter = results["current_filter"]
+            .try_clone()
+            .unwrap()
+            .try_into()
+            .unwrap();
         assert_eq!(filter, pictures());
         let choices: Vec<(String, String)> =
             results["choices"].try_clone().unwrap().try_into().unwrap();

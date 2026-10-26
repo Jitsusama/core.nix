@@ -245,6 +245,10 @@
   example-nixos = ''
     a NixOS workstation with a screen evaluates
   '';
+  files-are-chosen-with-or-without-the-picker = ''
+    open-with chooses a file in the shell when it answers, and in GTK's portal, given the call as
+    it was asked, when the shell has no picker
+  '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';

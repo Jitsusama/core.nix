@@ -16,6 +16,29 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
 
+  # open-with chooses a file in the shell when the shell answers, and in
+  # GTK's portal when it refuses, as a shell with no picker does, each
+  # stood in for on a session bus of its own (files-chosen.py).
+  files-are-chosen-with-or-without-the-picker =
+    let
+      python = pkgs.python3.withPackages (python: [ python.jeepney ]);
+      picked = "/home/someone/picked.md";
+      answers = pkgs.writeShellScript "qs-answers" ''
+        [ "$3 $4" = "file-chooser ask" ] || exit 1
+        echo '{"paths": ["${picked}"]}' | ${lib.getExe pkgs.socat} - UNIX-CONNECT:"$5"
+      '';
+    in
+    pkgs.runCommandLocal "files-are-chosen-with-or-without-the-picker" { } ''
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
+      ${lib.getExe' pkgs.coreutils "timeout"} 120 ${lib.getExe' pkgs.dbus "dbus-run-session"} \
+        --dbus-daemon=${lib.getExe' pkgs.dbus "dbus-daemon"} \
+        --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
+        ${lib.getExe python} ${./files-chosen.py} \
+        ${lib.getExe (pkgs.callPackage ./package.nix { })} ${lib.getExe' pkgs.coreutils "false"} \
+        ${answers} ${picked}
+      touch $out
+    '';
+
   # A graphical machine's portal asks the launcher for a file to open or
   # save, which hands it to GTK's dialog while the shell has no picker
   # (src/files.rs), and open-with's description says it answers that.
