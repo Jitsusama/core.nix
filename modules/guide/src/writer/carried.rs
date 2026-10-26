@@ -1,17 +1,17 @@
-//! The rescue bundles sticks carry from machine to machine. A host keeps
+//! The rescue bundles sticks carry from machine to machine. A writer keeps
 //! every bundle a stick it's about to write over carries, along with its
 //! own machine's, and writes every bundle it keeps onto each stick it
 //! writes, so a machine's bundle reaches every laptop and stick just by
 //! their being used, with no network and nothing for the person to do. A
-//! host writing a stick for a machine whose bundle it keeps signs the
+//! writer making a stick for a machine whose bundle it keeps signs the
 //! stick with it, a YubiKey's touch opening it.
 //!
 //! They're ciphertext, so they can go anywhere, and a forged one does no
 //! harm to a machine: an install puts keys back only when the firmware
 //! enforces Secure Boot and its db already trusts them, so a stick signed
-//! from one only fails to boot. What a forged one could cost is a host's
-//! copy of a real one, so a bundle can't displace the host's own
-//! machine's, one sealed later than a day from now isn't kept, and a host
+//! from one only fails to boot. What a forged one could cost is a writer's
+//! copy of a real one, so a bundle can't displace the writer's own
+//! machine's, one sealed later than a day from now isn't kept, and a writer
 //! keeps at most `MACHINES` machines' bundles.
 
 use std::collections::BTreeMap;
@@ -27,17 +27,17 @@ use crate::vault::store::{Fat, Store};
 /// A bundle is a few KB; anything far bigger isn't one.
 const MOST: u64 = 1 << 20;
 
-/// How many machines' bundles a host keeps and a stick carries, which is
+/// How many machines' bundles a writer keeps and a stick carries, which is
 /// more than one person has machines and few enough that the most they
 /// could all be fits easily in a stick's vault.
 pub const MACHINES: usize = 32;
 
-/// How far past the host's clock a bundle may say it was sealed, for a
+/// How far past the writer's clock a bundle may say it was sealed, for a
 /// clock set a little wrong, before it's taken for one stamped to win.
 const AHEAD: u64 = 24 * 60 * 60;
 
 /// Whether a machine's name makes a bundle's file name every vault and
-/// host keeps apart from every other: lowercase, as a hostname is, so no
+/// writer keeps apart from every other: lowercase, as a hostname is, so no
 /// two differ only in case, which FAT doesn't tell apart.
 fn named_plainly(machine: &str) -> bool {
     (1..=63).contains(&machine.len())
@@ -78,7 +78,7 @@ impl Carried {
 }
 
 /// The bundle a stick for `machine` is signed from: the one given, else
-/// the one the host keeps for that machine, else none, and a repair stick,
+/// the one the writer keeps for that machine, else none, and a repair stick,
 /// for no machine, from only the one given.
 pub fn bundle_for(
     given: Option<Bundle>,
@@ -148,11 +148,11 @@ pub fn on_stick(disk: &mut File) -> Vec<Carried> {
     read().unwrap_or_default()
 }
 
-/// Keeps the host's `own` machine's bundle, the one its install left on
+/// Keeps the writer's `own` machine's bundle, the one its install left on
 /// its disk, in place of any other for it, and each `found` on a stick
-/// unless the host keeps a newer one for that machine already, it's for
-/// the host's own, it says it was sealed more than a day past `now`, or
-/// the host keeps `MACHINES` others already. Says what it keeps
+/// unless the writer keeps a newer one for that machine already, it's for
+/// the writer's own, it says it was sealed more than a day past `now`, or
+/// the writer keeps `MACHINES` others already. Says what it keeps
 /// afterwards.
 pub fn keep(
     store: &mut dyn Store,

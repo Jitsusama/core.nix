@@ -241,7 +241,7 @@ let
     # Writing a stick on a host is UDisks2, polkit and a USB disk together,
     # as the person rather than root, and a bundle sealed to a FIDO2 key
     # opens only where the plugin, the key and its PIN meet.
-    vm-guide-writes-a-stick = import ./tests/vm/guide/guide-host.nix { inherit self pkgs; };
+    vm-guide-writes-a-stick = import ./tests/vm/guide/guide-writer.nix { inherit self pkgs; };
     # Recovering is a stick, a laid-out disk and its subvolumes together,
     # with nothing of the machine's on the stick.
     vm-guide-recovers = import ./tests/vm/guide/guide-recover.nix { inherit self pkgs; };

@@ -1,12 +1,12 @@
-# A stick written on a Linux host by the guide, as the person signed in
+# A stick written on Linux by the guide, as the person signed in
 # there and not root: the one USB stick plugged in is named, a partition a
 # desktop mounted from it is unmounted, and UDisks2 opens its whole disk,
 # which the guide writes with a machine's payload sealed to a passphrase of
 # seven words it made, shown alone for a phone and typed back, then reads
 # back. The rescue bundles the old stick carried, read from its vault
-# mounted only for reading before it's written over, and the host's own
+# mounted only for reading before it's written over, and the writer's own
 # machine's, go onto the new stick and stay with the person. The stick is
-# the host's own machine's, so the bundle it keeps for itself, sealed to a
+# the writer's own machine's, so the bundle it keeps for itself, sealed to a
 # real FIDO2 key, is opened with that key's PIN and signs the stick with
 # the machine's db key. The key is a canokey (canokeys.nix), its PIN and
 # recipient made at boot as a person makes them (make-recipient.py).
@@ -15,7 +15,7 @@
 # made.
 # polkit lets the person open a removable disk without the password a
 # desktop's agent would ask for, since a test has no agent to answer it.
-# The tests are guide-host-vm-test.py, run through pytest.
+# The tests are guide-writer-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -49,9 +49,9 @@ let
     yubikeys = [ "the Nano" ];
     account = "alice";
   };
-  # What opens the bundle the host keeps for itself.
-  bundlePassphrase = "the host's own bundle's passphrase";
-  # Rescue bundles as far as a host reads one it carries on: which
+  # What opens the bundle the writer keeps for itself.
+  bundlePassphrase = "the writer's own bundle's passphrase";
+  # Rescue bundles as far as a writer reads one it carries on: which
   # machine's it is, and when it was sealed.
   bundle =
     machine:
@@ -92,10 +92,10 @@ let
       '';
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
-  name = "guide-host";
+  name = "guide-writer";
   qemu.package = qemu;
 
-  nodes.host = {
+  nodes.writer = {
     services.udisks2.enable = true;
     users.users.alice = {
       isNormalUser = true;
@@ -110,7 +110,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         }
       });
     '';
-    # The host is the machine the stick is for, and keeps its bundle as
+    # The writer is the machine the stick is for, and keeps its bundle as
     # its install, or `guide seal-keys`, leaves one for anyone to read,
     # before the person signs in.
     systemd.services.seal-own-bundle = {
@@ -164,7 +164,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       memorySize = 2048;
       qemu.options = [
         "-device qemu-xhci,id=xhci"
-        "-device canokey,id=key,bus=xhci.0,file=/tmp/canokey-host"
+        "-device canokey,id=key,bus=xhci.0,file=/tmp/canokey-writer"
         "-drive if=none,id=stick,format=qcow2,file=$STICK_IMAGE"
         "-device usb-storage,bus=xhci.0,drive=stick"
       ];
@@ -173,12 +173,12 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
 
   # The driver runs beside the machine, not on it, so what the tests need
   # from Nix, the used stick, the tool to put an overlay on it, the old
-  # stick's bundle and the passphrase of the host's own, reaches them as
+  # stick's bundle and the passphrase of the writer's own, reaches them as
   # their values fixture rather than on the machine's path.
-  tests = ./guide-host-vm-test.py;
+  tests = ./guide-writer-vm-test.py;
   values =
     let
-      values = pkgs.writeText "guide-host-values.json" (
+      values = pkgs.writeText "guide-writer-values.json" (
         builtins.toJSON {
           qemuImg = "${pkgs.qemu}/bin/qemu-img";
           used = "${used}/stick.raw";

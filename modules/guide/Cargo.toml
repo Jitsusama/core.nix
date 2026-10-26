@@ -8,7 +8,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# With its plugins, for the vault's key sealed to each YubiKey through
+# With its plugins, for rescue bundles sealed to each YubiKey through
 # age-plugin-fido2-hmac.
 age = { version = "0.12", features = ["plugin"] }
 base64 = "0.22"

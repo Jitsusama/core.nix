@@ -200,7 +200,7 @@ def replaced(generation_chosen: QemuMachine, keys: str, values: dict[str, Any]) 
 
 @pytest.fixture(scope="module")
 def boot_loader_back(replaced: QemuMachine) -> QemuMachine:
-    """Take the boot loader off the ESP, and have the guide install it again."""
+    """Take the boot loader off the boot partition, and have the guide install it again."""
     replaced.succeed("rm -r /mnt/boot/EFI/systemd /mnt/boot/loader/entries")
     for _ in range(3):
         replaced.send_key("down")
@@ -254,8 +254,8 @@ def test_lost_yubikey_is_replaced(replaced: QemuMachine, keys: str, values: dict
     assert not opens(replaced, keys, "lost", pin), "the lost key still opens the disk"
 
 
-def test_esp_gets_its_boot_loader_again(boot_loader_back: QemuMachine) -> None:
-    """An ESP that lost its boot loader gets it again from the installed system."""
+def test_boot_partition_gets_its_boot_loader_again(boot_loader_back: QemuMachine) -> None:
+    """A boot partition that lost its boot loader gets it again from the installed system."""
     boot_loader_back.succeed("test -s /mnt/boot/EFI/systemd/systemd-bootx64.efi")
     boot_loader_back.succeed("ls /mnt/boot/loader/entries/*.conf")
 

@@ -1,10 +1,10 @@
-//! The host's part: writing a stick, from a machine's image and, for a
-//! reinstall stick, its payload (payload.nix) sealed into the vault with
+//! The writer's part: writing a stick, from a machine's image and, for a
+//! stick, its payload (payload.nix) sealed into the vault with
 //! the stick's passphrase. The stick is a whole USB or removable disk,
 //! only ever one plugged in at once, opened for writing through the
 //! system's own way of letting a person do so (`stick::device`), so nothing
-//! on a host runs as root. Every stick carries on the rescue bundles the
-//! host keeps (carried).
+//! on a writer runs as root. Every stick carries on the rescue bundles the
+//! writer keeps (carried).
 
 pub mod carried;
 
@@ -28,7 +28,7 @@ fn unread(path: &Path) -> impl Fn(std::io::Error) -> Fault + '_ {
     move |why| Fault::unreadable(path.display().to_string(), why)
 }
 
-/// What a reinstall stick carries for one machine, as payload.nix built it.
+/// What a stick carries for one machine, as payload.nix built it.
 pub struct Payload {
     root: PathBuf,
     pub target: Target,
@@ -384,14 +384,14 @@ fn the_stick(machine: &mut dyn Machine) -> Result<Result<Disk, Standing>, Fault>
     })
 }
 
-/// The rescue bundles the plugged-in stick carries, kept on the host
-/// before anything is written over them, with the host's own machine's
+/// The rescue bundles the plugged-in stick carries, kept on the writer
+/// before anything is written over them, with the writer's own machine's
 /// too, which its install left where anyone can read it. A stick the
 /// guide never wrote has none, and one whose vault won't be read doesn't
 /// stop it being written, which is said; failing to keep what was read
 /// does, since the stick's copies would be lost.
 pub struct GatherBundles {
-    /// Where the host keeps them, the person's own.
+    /// Where the writer keeps them, the person's own.
     pub kept: PathBuf,
     /// Why the stick's vault couldn't be read, when it couldn't.
     pub unread: std::cell::RefCell<Option<String>>,
@@ -417,7 +417,7 @@ impl Step for GatherBundles {
     }
 
     fn place(&self) -> Place {
-        Place::Host
+        Place::Writer
     }
 
     fn title(&self) -> &'static str {
@@ -433,9 +433,9 @@ impl Step for GatherBundles {
             let count = carried::kept(&mut vault::store::Directory::new(&self.kept)).len();
             Standing::Done {
                 evidence: match self.unread.borrow().as_deref() {
-                    None => format!("the host keeps {count} rescue bundles"),
+                    None => format!("the writer keeps {count} rescue bundles"),
                     Some(why) => format!(
-                        "the host keeps {count} rescue bundles, but none of the stick's, since its vault couldn't be read: {why}"
+                        "the writer keeps {count} rescue bundles, but none of the stick's, since its vault couldn't be read: {why}"
                     ),
                 },
             }
@@ -521,7 +521,7 @@ impl Step for ChoosePhrase {
     }
 
     fn place(&self) -> Place {
-        Place::Host
+        Place::Writer
     }
 
     fn title(&self) -> &'static str {
@@ -699,7 +699,7 @@ impl Step for WriteStick {
     }
 
     fn place(&self) -> Place {
-        Place::Host
+        Place::Writer
     }
 
     fn title(&self) -> &'static str {

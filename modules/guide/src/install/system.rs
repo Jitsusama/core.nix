@@ -506,7 +506,7 @@ impl Step for ReadyEnrolment {
             return Ok(());
         };
         // Inside the installed system, as its first boot would: its own
-        // sbctl and keys, and its ESP at /boot.
+        // sbctl and keys, and its boot partition at /boot.
         let readied = machine.run_given(
             Program::Tool(Tool::NixosEnter),
             &["--root", ROOT, "-c", &program],
@@ -522,12 +522,12 @@ impl Step for ReadyEnrolment {
     }
 }
 
-/// What the stick's image names its EFI system partition.
-const ESP_NAME: &str = "esp";
+/// What the stick's image names its boot partition.
+const BOOT_LABEL: &str = "esp";
 
 /// The stick made the machine's own once its install has its keys: the
 /// keys sealed into the stick's vault, where a reinstall takes them from,
-/// the machine's rescue bundle beside them, where a host writing a stick
+/// the machine's rescue bundle beside them, where a writer
 /// finds it, and the stick's boot program signed with the machine's db
 /// key. Pulled out, it's the machine's repair stick: the firmware boots it
 /// once it enforces the machine's keys, and reinstalling from it needs no
@@ -585,12 +585,14 @@ impl Step for KeepOnStick {
         })?;
         // Only this stick's own boot partition: the one named for it on the
         // disk its vault is on, never one on a disk beside it.
-        let no_esp = || Fault::Blocked {
+        let no_boot_partition = || Fault::Blocked {
             step: "keep-on-stick",
             why: "the stick's vault is on a disk with no boot partition beside it".into(),
         };
-        let vault = machine.resolve(STICK_VAULT)?.ok_or_else(no_esp)?;
-        let esp = disks::observe(machine)?
+        let vault = machine
+            .resolve(STICK_VAULT)?
+            .ok_or_else(no_boot_partition)?;
+        let boot_partition = disks::observe(machine)?
             .into_iter()
             .find(|disk| {
                 disk.partitions
@@ -600,9 +602,9 @@ impl Step for KeepOnStick {
             .and_then(|disk| {
                 disk.partitions
                     .into_iter()
-                    .find(|partition| partition.label.as_deref() == Some(ESP_NAME))
+                    .find(|partition| partition.label.as_deref() == Some(BOOT_LABEL))
             })
-            .ok_or_else(no_esp)?;
+            .ok_or_else(no_boot_partition)?;
         let carried = rescue::carried_as(&target.machine);
         // Refused before the stick is touched, if the keys can't sign.
         let signer = keys.signer()?;
@@ -623,10 +625,10 @@ impl Step for KeepOnStick {
         })?;
         // The stick mounts its own boot partition at /boot as it starts, and
         // nothing may read it there while it's changed underneath.
-        for mounted in &esp.mounted {
+        for mounted in &boot_partition.mounted {
             machine.run(Tool::Umount, &[mounted])?.ok()?;
         }
-        stick::sign_in_place(&mut machine.open_partition(&esp.path)?, &signer)?;
+        stick::sign_in_place(&mut machine.open_partition(&boot_partition.path)?, &signer)?;
         machine
             .journal()
             .record(self.id(), &rescue::fingerprint(keys.file("keys/db/db.pem")))

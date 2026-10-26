@@ -34,7 +34,7 @@ pub enum Fault {
         step: &'static str,
         ask: &'static str,
     },
-    /// A fake machine was asked for something its test never told it.
+    /// A stand-in machine was asked for something its test never told it.
     Unscripted { call: String },
     /// What's next needs the stick, and it's out.
     StickOut,

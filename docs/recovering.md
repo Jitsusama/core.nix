@@ -139,8 +139,8 @@ The TPM's keys were files on the old disk, so the first boot makes new ones:
 the everyday SSH key and both signing keys. GitHub still holds the old public
 keys until they're replaced:
 
-1. Delete the old `<account>@<host>` SSH key and the two signing keys
-   (`<account>@<host> signing` and `<account>@<host> agents`) from GitHub,
+1. Delete the old `<account>@<machine>` SSH key and the two signing keys
+   (`<account>@<machine> signing` and `<account>@<machine> agents`) from GitHub,
    and add the new ones.
 2. Put the new signing keys in the machine repository's
    `jitsusama.signing.allowedSigners` in place of the old.
@@ -159,7 +159,7 @@ Taken while asleep or locked rather than off, the disk is already open and
 only the lock screen stands in the way. So revoke what it holds at once, from
 another machine, either way:
 
-1. On GitHub, delete the laptop's `<account>@<host>` SSH key and both of its
+1. On GitHub, delete the laptop's `<account>@<machine>` SSH key and both of its
    signing keys. Leave the spare of any YubiKey still held.
 2. Take its signing keys out of `jitsusama.signing.allowedSigners`, so
    nothing it signs from now on counts as Joel's.

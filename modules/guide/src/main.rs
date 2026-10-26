@@ -7,7 +7,7 @@
 //! holding everything to install it, sealed to the stick's passphrase;
 //! given `--rescue-bundle` too, the machine's Secure Boot keys, opened
 //! from its bundle, sign the boot program and go into the vault, as the
-//! bundle the host keeps for the machine does when neither that nor
+//! bundle the writer keeps for the machine does when neither that nor
 //! `--sign-with` is given, unless `--no-rescue-bundle` is.
 //! `guide write-stick IMAGE FILE` does the same into a file the size of a
 //! stick, the passphrases read from standard input. `guide seal-keys
@@ -23,8 +23,6 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use guide::host::carried;
-use guide::host::{self, GatherBundles, Payload, WriteStick};
 use guide::install;
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
 use guide::recover::AlreadyThere;
@@ -36,6 +34,8 @@ use guide::sign::Signer;
 use guide::system::System;
 use guide::vault;
 use guide::vault::store::{Directory, Fat, Store};
+use guide::writer::carried;
+use guide::writer::{self, GatherBundles, Payload, WriteStick};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
@@ -86,7 +86,7 @@ fn main() -> ExitCode {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
                 reported(written.open().and_then(|(signer, payload, bundle)| {
-                    host(image, signer, payload, bundle, written.uses_kept())
+                    writer(image, signer, payload, bundle, written.uses_kept())
                 }))
             } else {
                 eprintln!("{USAGE}");
@@ -120,7 +120,7 @@ struct Written<'a> {
     sign_with: Option<&'a str>,
     install: Option<&'a str>,
     rescue_bundle: Option<&'a str>,
-    /// Whether no bundle the host keeps may be used.
+    /// Whether no bundle the writer keeps may be used.
     no_rescue_bundle: bool,
 }
 
@@ -155,7 +155,7 @@ impl<'a> Written<'a> {
             .filter(|written| !(written.rescue_bundle.is_some() && written.no_rescue_bundle))
     }
 
-    /// Whether the bundle the host keeps for the machine signs its stick:
+    /// Whether the bundle the writer keeps for the machine signs its stick:
     /// only when no bundle or key is named, nor none asked for.
     fn uses_kept(&self) -> bool {
         !self.no_rescue_bundle && self.sign_with.is_none() && self.rescue_bundle.is_none()
@@ -266,7 +266,7 @@ fn write_stick(
         }
         None => (signer, payload),
     };
-    let vault = host::write(
+    let vault = writer::write(
         Path::new(image),
         &mut disk,
         signer.as_ref(),
@@ -300,9 +300,9 @@ fn own_state() -> Option<PathBuf> {
     Some(state.join("guide"))
 }
 
-/// Where the host keeps its log: the person's own state, readable only by
+/// Where the writer keeps its log: the person's own state, readable only by
 /// them.
-fn host_log() -> Option<File> {
+fn writer_log() -> Option<File> {
     let directory = own_state()?;
     std::os::unix::fs::DirBuilderExt::mode(std::fs::DirBuilder::new().recursive(true), 0o700)
         .create(&directory)
@@ -312,9 +312,14 @@ fn host_log() -> Option<File> {
         .ok()
 }
 
-/// The host's journey: a stick written for a machine, or a repair stick,
+/// The writer's steps as a journey, or why they aren't one.
+fn writer_journey(steps: Vec<Box<dyn Step>>) -> Result<Journey, Fault> {
+    Journey::new(steps).map_err(|why| Fault::unreadable("the writer's steps", why))
+}
+
+/// The writer's journey: a stick written for a machine, or a repair stick,
 /// on the screen of whatever machine writes it, as the person, not root.
-fn host(
+fn writer(
     image: &str,
     signer: Option<Signer>,
     payload: Option<Payload>,
@@ -336,7 +341,7 @@ fn host(
         Some(name) => format!("Write {name}'s stick"),
         None => "Write a repair stick".into(),
     };
-    let mut machine = System::new(Journal::in_memory(), host_log());
+    let mut machine = System::new(Journal::in_memory(), writer_log());
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
 
@@ -345,14 +350,13 @@ fn host(
     let kept = own_state().map(|state| state.join("rescue"));
     let gather = kept.clone().map(GatherBundles::new);
     let phrase = gather.as_ref().map(|gather| Rc::clone(&gather.phrase));
-    let gathering = Journey::new(match gather {
+    let gathering = writer_journey(match gather {
         Some(gather) => vec![Box::new(gather) as Box<dyn Step>],
         None => vec![],
-    })
-    .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    })?;
     let mut walk = Walk {
         journey: &gathering,
-        here: Place::Host,
+        here: Place::Writer,
         name: &title,
         theme: &theme,
         log: None,
@@ -366,7 +370,7 @@ fn host(
         .as_ref()
         .map(|kept| carried::kept(&mut Directory::new(kept)))
         .unwrap_or_default();
-    // A machine whose bundle the host keeps has its stick signed with it,
+    // A machine whose bundle the writer keeps has its stick signed with it,
     // unless another, a key, or none was given.
     let given = bundle.is_some();
     let bundle = if uses_kept {
@@ -380,7 +384,7 @@ fn host(
         (false, Some(kept)) => Err(Fault::Blocked {
             step: "write-stick",
             why: format!(
-                "the rescue bundle this host keeps for {machine}, {}, wasn't opened; to write the stick without it, run this again with --no-rescue-bundle",
+                "the rescue bundle this writer keeps for {machine}, {}, wasn't opened; to write the stick without it, run this again with --no-rescue-bundle",
                 kept.join(guide::rescue::carried_as(machine)).display()
             ),
         }),
@@ -397,7 +401,7 @@ fn host(
         })],
         None => vec![],
     };
-    let opening = Journey::new(steps).map_err(|why| Fault::unreadable("the host's steps", why))?;
+    let opening = writer_journey(steps)?;
     walk.journey = &opening;
     let (signer, payload) = match bundle_of {
         Some(machine_of) => {
@@ -418,7 +422,7 @@ fn host(
         Some(payload) => payload.next(),
         None => "Start the machine to repair from the stick.".into(),
     };
-    // Only a host that gathered bundles carries them, and then writes over
+    // Only a writer that gathered bundles carries them, and then writes over
     // only the stick it gathered them from.
     let write = WriteStick::new(PathBuf::from(image), payload, signer);
     let write = match &kept {
@@ -426,8 +430,7 @@ fn host(
         None => write,
     };
     let sealed = phrase.and_then(|phrase| phrase.take());
-    let journey = Journey::new(host::writing(write, sealed))
-        .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    let journey = writer_journey(writer::writing(write, sealed))?;
     walk.journey = &journey;
     walk.whole = true;
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
@@ -445,7 +448,7 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
         &std::fs::read(target).map_err(|why| Fault::unreadable(target, why))?,
     )
     .map_err(|why| Fault::unreadable("the payload's target.json", why))?;
-    let mut machine = System::new(Journal::in_memory(), host_log());
+    let mut machine = System::new(Journal::in_memory(), writer_log());
     if !std::io::stdin().is_terminal() {
         let passphrase = passphrase()?;
         let keys = Keys::read(&mut machine)?;
@@ -524,7 +527,7 @@ fn installed() -> Result<(), Fault> {
         Some(state) => Journal::open(&state.join("journal"))?,
         None => Journal::in_memory(),
     };
-    let mut machine = System::new(journal, host_log());
+    let mut machine = System::new(journal, writer_log());
     // At boot it's looked at every time, so a machine with nothing to do
     // shows nothing, and the sign-in follows at once.
     let journey = Journey::new(guide::installed::steps(&mut machine)?)
@@ -1037,7 +1040,7 @@ mod tests {
     }
 
     #[test]
-    fn the_bundle_the_host_keeps_is_used_only_when_nothing_else_is_named() {
+    fn the_bundle_the_writer_keeps_is_used_only_when_nothing_else_is_named() {
         assert_eq!(uses_kept(&["--install", "p"]), Some(true));
         assert_eq!(uses_kept(&[]), Some(true));
         assert_eq!(

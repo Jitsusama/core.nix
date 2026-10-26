@@ -96,9 +96,7 @@ mod fixtures {
 }
 
 pub mod awake;
-pub mod fake;
 pub mod fault;
-pub mod host;
 pub mod install;
 pub mod installed;
 pub mod journal;
@@ -112,12 +110,14 @@ pub mod recover;
 pub mod rescue;
 pub mod screen;
 pub mod sign;
+pub mod stand_in;
 pub mod step;
 pub mod stick;
 pub mod system;
 pub mod tool;
 pub mod vault;
 pub mod words;
+pub mod writer;
 
 pub use fault::Fault;
 pub use journal::Journal;

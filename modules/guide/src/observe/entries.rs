@@ -38,9 +38,9 @@ impl Entry {
     }
 }
 
-/// The entries on a machine's ESP mounted elsewhere, as from a stick.
-pub fn list_at(machine: &mut dyn Machine, esp: &str) -> Result<Vec<Entry>, Fault> {
-    let path = format!("--esp-path={esp}");
+/// The entries on a machine's boot partition mounted elsewhere, as from a stick.
+pub fn list_at(machine: &mut dyn Machine, boot_partition: &str) -> Result<Vec<Entry>, Fault> {
+    let path = format!("--esp-path={boot_partition}");
     parse_list(
         &machine
             .run(Tool::Bootctl, &[&path, "list", "--json=short"])?
@@ -76,7 +76,7 @@ pub fn parse_list(json: &str) -> Result<Vec<Entry>, Fault> {
         kind: String,
         title: String,
         // Listed from outside the machine, as from a stick, bootctl gives
-        // isSelected as null, since nothing on that ESP is what booted.
+        // isSelected as null, since nothing on that boot partition is what booted.
         #[serde(default)]
         is_default: Option<bool>,
         #[serde(default)]
@@ -133,7 +133,7 @@ fn generation(id: &str) -> Option<u32> {
 
 /// `bootctl status`'s fields, each `Name: value` line by its name, the
 /// first of each kept. It says what it can and exits 1 when it can't read
-/// the ESP, as for anyone but root, so what it printed is read either way.
+/// the boot partition, as for anyone but root, so what it printed is read either way.
 pub fn status(machine: &mut dyn Machine) -> Result<Fields, Fault> {
     let ran = machine.run(Tool::Bootctl, &["status"])?;
     let text = String::from_utf8(ran.stdout)
@@ -183,7 +183,7 @@ impl Fields {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::Fake;
+    use crate::stand_in::StandIn;
 
     #[test]
     fn the_surface_boots_generation_15_from_a_uki() {
@@ -242,16 +242,16 @@ mod tests {
     }
 
     #[test]
-    fn status_is_read_though_bootctl_couldnt_reach_the_esp() {
-        let mut fake = Fake::new();
-        fake.answers(
+    fn status_is_read_though_bootctl_couldnt_reach_the_boot_partition() {
+        let mut stand_in = StandIn::new();
+        stand_in.answers(
             crate::Program::Tool(Tool::Bootctl),
             &["status"],
             1,
             xps!("bootctl-status.txt"),
             xps!("bootctl-status.err"),
         );
-        let fields = status(&mut fake).unwrap();
+        let fields = status(&mut stand_in).unwrap();
         assert_eq!(fields.get("Secure Boot"), Some("enabled (deployed)"));
         assert_eq!(fields.get("Product"), Some("systemd-boot 261.3"));
     }

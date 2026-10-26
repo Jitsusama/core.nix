@@ -571,10 +571,10 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::fake::Fake;
     use crate::screen::plain;
     use crate::screen::terminal::{Keys, Paint, Screen};
     use crate::screen::view::Drawn;
+    use crate::stand_in::StandIn;
     use crate::{Standing, Step};
 
     /// Keys pressed in turn, and every screen drawn, from the walk's own
@@ -775,7 +775,7 @@ mod tests {
         let theme = Theme::from("", "", true);
         let mut stand = Stand::default();
         let ended = walk(&journey, &theme)
-            .walk(&mut fake(), &mut stand)
+            .walk(&mut stand_in(), &mut stand)
             .unwrap();
         assert_eq!(ended, Ended::Finished, "no key was pressed");
         let shown = stand.shown.lock().unwrap().clone();
@@ -812,10 +812,10 @@ mod tests {
         }
     }
 
-    fn fake() -> Fake {
-        let mut fake = Fake::new();
-        fake.no_file("/copied").no_file("/pin");
-        fake
+    fn stand_in() -> StandIn {
+        let mut stand_in = StandIn::new();
+        stand_in.no_file("/copied").no_file("/pin");
+        stand_in
     }
 
     #[test]
@@ -827,7 +827,7 @@ mod tests {
             ..Stand::default()
         };
         let ended = walk(&journey, &theme)
-            .walk(&mut fake(), &mut stand)
+            .walk(&mut stand_in(), &mut stand)
             .unwrap();
         assert_eq!(ended, Ended::Finished);
         let shown = stand.shown.lock().unwrap().clone();
@@ -871,7 +871,7 @@ mod tests {
             ..Stand::default()
         };
         walk(&journey, &theme)
-            .walk(&mut fake(), &mut stand)
+            .walk(&mut stand_in(), &mut stand)
             .unwrap();
         let stopped = stand.stopped.lock().unwrap().clone();
         assert_eq!(stopped, ["Copy something slowly"]);
@@ -890,7 +890,7 @@ mod tests {
         let theme = Theme::from("", "", true);
         let mut stand = Stand::default();
         stand.keys.extend([Press::Char('1'), Press::Return]);
-        let mut machine = fake();
+        let mut machine = stand_in();
         machine.file("/copied", b"yes");
         walk(&journey, &theme)
             .walk(&mut machine, &mut stand)
@@ -911,7 +911,7 @@ mod tests {
         let theme = Theme::from("", "", true);
         let mut stand = Stand::default();
         stand.keys.extend([Press::Char('1'), Press::Return]);
-        let mut machine = fake();
+        let mut machine = stand_in();
         machine.file("/copied", b"yes");
         let mut walk = walk(&opening, &theme);
         walk.walk(&mut machine, &mut stand).unwrap();
@@ -934,7 +934,7 @@ mod tests {
         let mut stand = Stand::default();
         stand.keys.extend([Press::Char('1'), Press::Return]);
         walk(&journey, &theme)
-            .walk(&mut fake(), &mut stand)
+            .walk(&mut stand_in(), &mut stand)
             .unwrap();
         let shown = stand.shown.lock().unwrap().clone();
         let asking = shown

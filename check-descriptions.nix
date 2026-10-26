@@ -1118,7 +1118,7 @@
     the next boot, leaving one systemd-pcrlock policy; makes the account's TPM keys under one PIN
     and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
     opens with a YubiKey, seals again, makes the keys it lost again and downloads a lost spare; a
-    host writes a stick from the rescue bundle the install sealed to the recovery key, which the
+    writer writes a stick from the rescue bundle the install sealed to the recovery key, which the
     firmware boots while enforcing; then the install's own stick, which it made the machine's by
     carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
     machine with the same keys, whose guide frees the first install's policy; and a firmware cleared
@@ -1128,15 +1128,15 @@
   '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, mounts it whole, sets
-    which generation boots next, replaces a lost key, reinstalls a boot loader gone from the ESP,
-    and gives a root shell inside
+    which generation boots next, replaces a lost key, reinstalls a boot loader gone from the boot
+    partition, and gives a root shell inside
   '';
   vm-guide-writes-a-stick = ''
-    the guide writes a stick as the person, holding the host awake, through UDisks2, unmounting what
-    was mounted from it, its passphrase seven words shown alone for a phone and typed back,
+    the guide writes a stick as the person, holding the writer awake, through UDisks2, unmounting
+    what was mounted from it, its passphrase seven words shown alone for a phone and typed back,
     another's words refused, the old stick's rescue bundles read from its vault mounted only for
-    reading and the host's own kept for the person and carried onto the new stick, which is the
-    host's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
+    reading and the writer's own kept for the person and carried onto the new stick, which is the
+    writer's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
     that key's PIN and signs the stick's boot program with the machine's db key; written again, the
     stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
     by its passphrase with the key still plugged in
@@ -1235,7 +1235,7 @@
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
     bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the
-    host is as it starts, from as long as it says to four times that, describing the machine when
+    writer is as it starts, from as long as it says to four times that, describing the machine when
     one fails; a VM test written for pytest gets the driver's machines as fixtures, each test is a
     subtest named by its docstring, a failure fails it with pytest's account of why, and the
     driver ends as a failed subtest ends it

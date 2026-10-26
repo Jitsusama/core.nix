@@ -38,7 +38,7 @@ driven on; the installed machine's steps come later.
   stick's is `STICK_PHRASE`, the same for every machine, and a machine's
   own are its name and a kind, as `machines` makes "Hedgehog Recovery
   Phrase" from hedgehog. A stick written over again keeps its phrase
-  unless the person asks for new words: the host reads the sealed copy of
+  unless the person asks for new words: the writer reads the sealed copy of
   the vault's key from the old vault as it gathers the rescue bundles, and
   what's typed back is proven against it before anything is written.
 - **Journal.** What observing can't show, such as a recovery key proven by
@@ -65,18 +65,18 @@ driven on; the installed machine's steps come later.
   then compares both tables, hashes each partition again and opens the
   vault.
 - **Signing.** A stick for one machine has its boot program,
-  `EFI/BOOT/BOOTX64.EFI` and nothing else on its ESP, signed with that
+  `EFI/BOOT/BOOTX64.EFI` and nothing else on its boot partition, signed with that
   machine's db key, so it boots there with Secure Boot enforced. The
   signature is byte for byte what sbsign makes from the same key at the same
   moment, since sbsign's is what every machine here boots; sbsign itself is
-  Linux's alone. The ESP is signed in memory before anything reaches the
+  Linux's alone. The boot partition is signed in memory before anything reaches the
   stick, so a key that won't sign leaves the stick as it was. A program
   signed already, its signature at its end as sbsign leaves it, is signed
   again in place of that signature, which at the same moment is exactly
   what signing it the first time made; a signature anywhere else is
   refused. Keys are sbctl's file keys, a `db.key` and `db.pem` in one
   directory.
-- **The host.** A stick is written on whatever machine writes it, as the
+- **The writer.** A stick is written on whatever machine writes it, as the
   person and never root. Only a whole USB or removable disk counts, and
   only one may be plugged in; what's mounted from it is unmounted, and its
   disk is opened through the system's own way of letting a person write
@@ -114,7 +114,7 @@ driven on; the installed machine's steps come later.
   network, the account given its password and the key held in memory
   taken off the disk, and the stick is made the machine's own (below)
   last, since it needs none of those and a stick that won't take it
-  should cost only the stick. A host gives the stick the keys
+  should cost only the stick. A writer gives the stick the keys
   from the machine's bundle, the one it keeps or one `--rescue-bundle`
   names, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
@@ -124,7 +124,7 @@ driven on; the installed machine's steps come later.
   disk, an encrypted partition beside its `<name>-boot`. The disk is shown
   before anything is typed, opened with the recovery key or the plugged-in
   YubiKey's PIN (never the TPM, whose seal a stick's boot doesn't match),
-  every subvolume and the ESP mounted under
+  every subvolume and the boot partition mounted under
   /mnt. Then a choice, back after each: a root shell inside it; which
   generation boots next, set in the firmware's `LoaderEntryDefault` as
   `bootctl set-default` would, since from a stick bootctl refuses; or a
@@ -238,18 +238,18 @@ driven on; the installed machine's steps come later.
   names the db certificate's fingerprint, so a machine knows its bundle
   is current without opening it. The install seals one to the disk's
   recovery key in place of a passphrase, kept at
-  `/var/lib/guide/rescue-bundle.json` where anyone can read it. A host
+  `/var/lib/guide/rescue-bundle.json` where anyone can read it. A writer
   writing the machine's stick opens it with a YubiKey or what its
   passphrase is, holding the keys only in memory, so plain Secure Boot
   keys are never an input anywhere.
-- **Spreading the bundles.** Before a host writes over a stick, it keeps
+- **Spreading the bundles.** Before a writer writes over a stick, it keeps
   every bundle the stick's vault carries, read where a desktop mounted it
   or else mounted only for reading, which needs no password as opening
   the disk would, and its own machine's,
   under `$XDG_STATE_HOME/guide/rescue/`, each written whole before it
-  takes an older one's place. The host's own machine's always stays for
+  takes an older one's place. The writer's own machine's always stays for
   that machine; of two others for one machine the one sealed later stays,
-  never one said to be sealed more than a day past the host's clock, for
+  never one said to be sealed more than a day past the writer's clock, for
   at most 32 machines, each named as a hostname is. Every stick it writes
   carries all it keeps beside the vault's sealed files, read back as
   written, and a stick for a machine it keeps a bundle for is signed from
@@ -260,7 +260,7 @@ driven on; the installed machine's steps come later.
   machine: an install puts keys back only when the firmware has a
   platform key and its db trusts them already, so a stick signed from one
   only fails to boot. A vault
-  that won't be read doesn't stop a stick being written, and the host
+  that won't be read doesn't stop a stick being written, and the writer
   says its bundles weren't kept; failing to keep what was read does.
 - **The machine's own stick.** Once the install has the machine's keys,
   it puts them into the stick's vault under `sbctl/`, where a reinstall
@@ -341,7 +341,7 @@ driven on; the installed machine's steps come later.
   never finished. Every file sits at the top, since fatfs 0.3.6 writes
   directories fsck.fat has to repair.
 - **Opening the vault.** The stick's vault is sealed to its passphrase
-  alone, named as the host had the person save it on their phone: a key
+  alone, named as the writer had the person save it on their phone: a key
   works only beside the stick, and a laptop with one port both fit has no
   room for it. A rescue bundle also opens with a key's PIN, through
   age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
@@ -368,7 +368,7 @@ driven on; the installed machine's steps come later.
 | `src/place.rs`        | where the guide runs                                      |
 | `src/machine.rs`      | what a step observes and acts through                     |
 | `src/system.rs`       | the real machine: tools by store path, and the log        |
-| `src/fake.rs`         | the machine tests give steps, which answers only what it's told |
+| `src/stand_in.rs`         | the machine tests give steps, which answers only what it's told |
 | `src/tool.rs`         | every program the guide runs, and where this build finds it |
 | `src/journal.rs`      | the facts observing can't show                            |
 | `src/fault.rs`        | what stops a step, in a person's words                    |
@@ -378,14 +378,14 @@ driven on; the installed machine's steps come later.
 | `src/sign/`           | Authenticode: what a signature covers, and the signature sbsign would make |
 | `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
-| `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
+| `src/writer/`           | writing a stick, and what it carries for a machine |
 | `src/rescue.rs`       | the rescue bundle: a machine's Secure Boot keys sealed, made and opened |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
 | `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
-| `payload.nix`         | what a reinstall stick carries for one machine            |
+| `payload.nix`         | what a stick carries for one machine            |
 | `stick.nix`           | the stick's own system                                    |
 | `theme.nix`           | the theme as the guide and the stick's console draw it    |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
@@ -393,9 +393,9 @@ driven on; the installed machine's steps come later.
 | `tests/stick.rs`      | whole sticks written into files, judged by sfdisk, fsck.fat and sbverify |
 | `tests/sign.rs`       | signatures compared byte for byte with sbsign's           |
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
-| `tests/host.rs`       | the one stick written, never another disk              |
+| `tests/writer.rs`       | the one stick written, never another disk              |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
-| `../../tests/vm/guide/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
+| `../../tests/vm/guide/guide-writer.nix` | a stick written through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
 | `../../tests/vm/guide/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
 | `../../tests/vm/guide/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
@@ -420,11 +420,11 @@ program for that machine. It carries no rescue bundles, which only
   Surface's firmware has no `AuditMode` or `DeployedMode`) gets its own
   fixture.
 - Replace what names a person's machine rather than its hardware, such as a
-  host name or a drive's serial, and say so in `fixtures/README.md`.
+  machine's name or a drive's serial, and say so in `fixtures/README.md`.
 - Write a test first and see it fail on its assertion before making it pass.
   Before trusting a test of a rule already written, break the rule and watch
   the test fail.
 - A test never reaches the machine. Steps take `&mut dyn Machine`, and tests
-  give them `Fake`, which refuses any call or file its test didn't script.
+  give them `StandIn`, which refuses any call or file its test didn't script.
 - A new program goes in `src/tool.rs` and `tools.nix` together, and
   `guide tools` fails the build until it has a path.

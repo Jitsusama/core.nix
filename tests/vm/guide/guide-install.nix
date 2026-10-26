@@ -171,7 +171,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
             truncate -s $(( $(stat -c %s ${image}) + (room << 20) + (512 << 20) + 7 * 512 )) $out/stick.raw
             echo ${lib.escapeShellArg passphrase} | guide write-stick ${image} $out/stick.raw --install ${payload}
           '';
-      # The driver runs on the host, so what the tests need from Nix, the
+      # The driver runs outside the virtual machines, so what the tests need from Nix, the
       # keys' state, the sticks' images, the programs they run and the secrets
       # to type, reaches them as their values fixture. tpm2_clear is run on the machine by
       # its place in the store, rather than put on the machine's path, which

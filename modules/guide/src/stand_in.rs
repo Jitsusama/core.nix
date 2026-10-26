@@ -11,12 +11,12 @@ use std::io::Write;
 use crate::vault::store::Store;
 use crate::{Fault, Given, Journal, Machine, Program, Ran, Tool};
 
-/// A call as the Fake keys what it answers: the program, then its
+/// A call as the `StandIn` keys what it answers: the program, then its
 /// arguments.
 type Call = (String, Vec<String>);
 
 #[derive(Default)]
-pub struct Fake {
+pub struct StandIn {
     answers: BTreeMap<Call, Vec<Ran>>,
     /// The files a program leaves behind when run with these arguments.
     left: BTreeMap<Call, Vec<(String, Vec<u8>)>>,
@@ -40,20 +40,26 @@ pub struct Fake {
     pub secrets: Vec<(String, String)>,
 }
 
-impl Fake {
-    pub fn new() -> Fake {
-        Fake::default()
+impl StandIn {
+    pub fn new() -> StandIn {
+        StandIn::default()
     }
 
     /// What the tool prints, finishing well, when run with these
     /// arguments. Said more than once, the answers are given in turn and
     /// the last one stays.
-    pub fn prints(&mut self, tool: Tool, args: &[&str], stdout: &str) -> &mut Fake {
+    pub fn prints(&mut self, tool: Tool, args: &[&str], stdout: &str) -> &mut StandIn {
         self.answers(Program::Tool(tool), args, 0, stdout, "")
     }
 
     /// What the tool says when it refuses, with these arguments.
-    pub fn refuses(&mut self, tool: Tool, args: &[&str], status: i32, stderr: &str) -> &mut Fake {
+    pub fn refuses(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        status: i32,
+        stderr: &str,
+    ) -> &mut StandIn {
         self.answers(Program::Tool(tool), args, status, "", stderr)
     }
 
@@ -66,7 +72,7 @@ impl Fake {
         status: i32,
         stdout: &str,
         stderr: &str,
-    ) -> &mut Fake {
+    ) -> &mut StandIn {
         self.answers
             .entry(key(program, args))
             .or_default()
@@ -81,7 +87,7 @@ impl Fake {
 
     /// A file the tool leaves behind when run with these arguments, as
     /// ssh-keygen leaves the keys it downloads.
-    pub fn leaves(&mut self, tool: Tool, args: &[&str], path: &str, bytes: &[u8]) -> &mut Fake {
+    pub fn leaves(&mut self, tool: Tool, args: &[&str], path: &str, bytes: &[u8]) -> &mut StandIn {
         self.left
             .entry(key(Program::Tool(tool), args))
             .or_default()
@@ -90,21 +96,21 @@ impl Fake {
     }
 
     /// A file and what it holds.
-    pub fn file(&mut self, path: &str, bytes: &[u8]) -> &mut Fake {
+    pub fn file(&mut self, path: &str, bytes: &[u8]) -> &mut StandIn {
         self.absent.retain(|absent| absent != path);
         self.files.insert(path.into(), bytes.into());
         self
     }
 
     /// A file there's none of.
-    pub fn no_file(&mut self, path: &str) -> &mut Fake {
+    pub fn no_file(&mut self, path: &str) -> &mut StandIn {
         self.files.remove(path);
         self.absent.push(path.into());
         self
     }
 
     /// Takes the stick out, or puts it back, its vault with it.
-    pub fn stick_out(&mut self, out: bool) -> &mut Fake {
+    pub fn stick_out(&mut self, out: bool) -> &mut StandIn {
         self.stick_out = out;
         self
     }
@@ -115,20 +121,20 @@ impl Fake {
     }
 
     /// Where a link leads, or that nothing's there.
-    pub fn link(&mut self, path: &str, to: Option<&str>) -> &mut Fake {
+    pub fn link(&mut self, path: &str, to: Option<&str>) -> &mut StandIn {
         self.links.insert(path.into(), to.map(Into::into));
         self
     }
 
     /// A link and what it holds, for following one step at a time.
-    pub fn pointer(&mut self, path: &str, to: &str) -> &mut Fake {
+    pub fn pointer(&mut self, path: &str, to: &str) -> &mut StandIn {
         self.pointers.insert(path.into(), to.into());
         self
     }
 
     /// A disk a step may open for writing, standing in for a device by a
     /// file the test made.
-    pub fn disk(&mut self, device: &str, file: &std::path::Path) -> &mut Fake {
+    pub fn disk(&mut self, device: &str, file: &std::path::Path) -> &mut StandIn {
         self.disks.insert(device.into(), file.into());
         self
     }
@@ -136,20 +142,20 @@ impl Fake {
     /// The stick's vault, as a test made it.
     /// A partition a step may mount for reading, standing in for it by
     /// a directory.
-    pub fn mount(&mut self, device: &str, directory: &std::path::Path) -> &mut Fake {
+    pub fn mount(&mut self, device: &str, directory: &std::path::Path) -> &mut StandIn {
         self.mounts.insert(device.into(), directory.into());
         self
     }
 
-    pub fn with_vault(&mut self, vault: Box<dyn Store>) -> &mut Fake {
+    pub fn with_vault(&mut self, vault: Box<dyn Store>) -> &mut StandIn {
         self.vault = Some(vault);
         self
     }
 }
 
-/// A file being written to the fake, kept once it's dropped.
+/// A file being written to the stand-in, kept once it's dropped.
 struct Writing<'f> {
-    fake: &'f mut Fake,
+    stand_in: &'f mut StandIn,
     path: String,
     bytes: Vec<u8>,
 }
@@ -168,7 +174,7 @@ impl Write for Writing<'_> {
 impl Drop for Writing<'_> {
     fn drop(&mut self) {
         let bytes = std::mem::take(&mut self.bytes);
-        self.fake.file(&self.path, &bytes);
+        self.stand_in.file(&self.path, &bytes);
     }
 }
 
@@ -180,7 +186,7 @@ fn key(program: Program, args: &[&str]) -> (String, Vec<String>) {
     (name, args.iter().map(ToString::to_string).collect())
 }
 
-impl Machine for Fake {
+impl Machine for StandIn {
     fn run_given(&mut self, program: Program, args: &[&str], given: Given) -> Result<Ran, Fault> {
         let (name, _) = key(program, &[]);
         let mut call = std::iter::once(name.as_str())
@@ -251,7 +257,7 @@ impl Machine for Fake {
     fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault> {
         self.calls.push(format!("writing {path}"));
         Ok(Box::new(Writing {
-            fake: self,
+            stand_in: self,
             path: path.into(),
             bytes: vec![],
         }))

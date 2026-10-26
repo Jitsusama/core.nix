@@ -137,17 +137,17 @@ fn mounted(device: &Device) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::Fake;
+    use crate::stand_in::StandIn;
 
     #[test]
     fn the_surfaces_own_drive_is_internal_and_in_use() {
-        let mut fake = Fake::new();
-        fake.prints(
+        let mut stand_in = StandIn::new();
+        stand_in.prints(
             Tool::Lsblk,
             &["--json", "--output-all", "--bytes"],
             surface!("lsblk.json"),
         );
-        let disks = observe(&mut fake).unwrap();
+        let disks = observe(&mut stand_in).unwrap();
         assert_eq!(disks.len(), 1);
         let disk = &disks[0];
         assert_eq!(disk.by_id.as_deref(), Some("nvme-eui.ace42e0005506bd1"));

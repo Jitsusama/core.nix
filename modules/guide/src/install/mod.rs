@@ -49,7 +49,7 @@ pub const LAYOUT_SCRIPT: &str = "layout.sh";
 pub const MOUNT_SCRIPT: &str = "mount.sh";
 pub const SYSTEM_CACHE: &str = "cache/system";
 
-/// What a reinstall stick installs, as the host that wrote it said, sealed
+/// What a stick installs, as the writer that wrote it said, sealed
 /// in the vault.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {

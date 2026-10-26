@@ -43,7 +43,7 @@ pub struct Signed {
     pub signed: bool,
 }
 
-/// What `sbctl verify --json` says of every file on the ESP it checks.
+/// What `sbctl verify --json` says of every file on the boot partition it checks.
 pub fn verify(machine: &mut dyn Machine) -> Result<Vec<Signed>, Fault> {
     parse_verified(&machine.run(Tool::Sbctl, &["verify", "--json"])?.ok()?)
 }
@@ -74,18 +74,18 @@ pub fn parse_verified(json: &str) -> Result<Vec<Signed>, Fault> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::Fake;
+    use crate::stand_in::StandIn;
 
     #[test]
     fn the_surface_holds_its_own_keys_and_enforces() {
-        let mut fake = Fake::new();
-        fake.prints(
+        let mut stand_in = StandIn::new();
+        stand_in.prints(
             Tool::Sbctl,
             &["status", "--json"],
             surface!("sbctl-status.json"),
         );
         assert_eq!(
-            Status::observe(&mut fake).unwrap(),
+            Status::observe(&mut stand_in).unwrap(),
             Status {
                 installed: true,
                 guid: Some("22f0175f-c166-49d2-96ab-c61575cddac5".into()),
@@ -136,15 +136,15 @@ mod tests {
 
     #[test]
     fn sbctl_refusing_is_a_fault_not_a_status() {
-        let mut fake = Fake::new();
-        fake.refuses(
+        let mut stand_in = StandIn::new();
+        stand_in.refuses(
             Tool::Sbctl,
             &["status", "--json"],
             1,
             "sbctl requires root to run\n",
         );
         assert!(matches!(
-            Status::observe(&mut fake),
+            Status::observe(&mut stand_in),
             Err(Fault::Refused { said, .. }) if said == "sbctl requires root to run"
         ));
     }

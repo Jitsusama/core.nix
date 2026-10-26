@@ -90,7 +90,7 @@ def enrolled(machine: QemuMachine, overlay: str, values: dict[str, Any]) -> Qemu
     # Every boot's shell is connected in turn, or a later connection
     # reads an earlier boot's.
     machine.connect()
-    # lanzaboote reboots once its keys are on the ESP; systemd-boot then
+    # lanzaboote reboots once its keys are on the boot partition; systemd-boot then
     # enrols them and the firmware comes back with Secure Boot on.
     machine.wait_for_console_text("Exporting as auth files")
     machine.wait_for_console_text("Linux version")
@@ -168,13 +168,13 @@ def test_first_boot_makes_the_keys_and_enrols_them(enrolled: QemuMachine) -> Non
     print(enrolled.succeed("sbctl verify"))
 
 
-def test_keys_files_leave_the_esp_once_the_firmware_enforces(enrolled: QemuMachine) -> None:
-    """Once the firmware enforces, the keys' files leave the ESP, and none are written again."""
+def test_keys_files_leave_the_boot_partition_once_enforcing(enrolled: QemuMachine) -> None:
+    """Once the firmware enforces, the keys' files leave the boot partition, never written again."""
     # Left there, a firmware cleared for a fresh install would have the
     # keys put back by systemd-boot before any disk asked for a PIN.
     enrolled.wait_until_succeeds("test ! -e /boot/loader/keys/auto", timeout=SETTLE)
     enrolled.succeed("journalctl -b -u secure-boot-enrolled.service | grep -q 'Finished'")
-    # As a reinstall's new ESP leaves it, its keys carried and enrolled.
+    # As a reinstall's new boot partition leaves it, its keys carried and enrolled.
     boot = enrolled.succeed("cat /proc/sys/kernel/random/boot_id")
     enrolled.succeed("systemctl start prepare-sb-auto-enroll.service")
     enrolled.succeed("journalctl -b -u prepare-sb-auto-enroll.service | grep -q 'unmet condition'")

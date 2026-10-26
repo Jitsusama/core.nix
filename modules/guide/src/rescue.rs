@@ -3,7 +3,7 @@
 //! when neither can. It's a few KB of text and nothing but ciphertext, so
 //! it can go anywhere: another machine, a stick's vault beside its sealed
 //! files, anyone's disk. With
-//! it, a host signs a stick the machine's firmware boots while enforcing
+//! it, a writer signs a stick the machine's firmware boots while enforcing
 //! its own keys, and the stick puts those keys back on a reinstall, so the
 //! firmware's setup screens are never visited. It's made on the machine
 //! the keys belong to, which reads them as root and seals them in memory,
@@ -48,7 +48,7 @@ pub const KEYS: [&str; 7] = [
 pub const KEPT: &str = "/var/lib/guide/rescue-bundle.json";
 
 /// What a machine's rescue bundle is called on a stick's vault, beside
-/// its sealed files, where any host writing a stick can read it.
+/// its sealed files, where any writer can read it.
 pub fn carried_as(machine: &str) -> String {
     format!("{machine}-rescue-bundle.json")
 }
@@ -526,7 +526,7 @@ impl Step for SealKeys {
     }
 }
 
-/// A rescue bundle opened on the host writing a stick, with its passphrase
+/// A rescue bundle opened on the writer, with its passphrase
 /// or a YubiKey's PIN, tried in that order so the passphrase typed with a
 /// key plugged in never spends one of the key's PIN tries. The keys are
 /// held here, in memory, for the stick's writing to take.
@@ -541,7 +541,7 @@ impl Step for OpenRescueBundle {
     }
 
     fn place(&self) -> Place {
-        Place::Host
+        Place::Writer
     }
 
     fn title(&self) -> &'static str {

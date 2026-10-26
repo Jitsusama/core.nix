@@ -6,7 +6,7 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Place {
     /// The machine a stick is made on, which may be the one it's for.
-    Host,
+    Writer,
     /// The stick, booted on the machine it installs or repairs.
     Stick,
     /// The machine as installed, from its first boot on.
@@ -16,7 +16,7 @@ pub enum Place {
 impl fmt::Display for Place {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Place::Host => "the machine making the stick",
+            Place::Writer => "the machine making the stick",
             Place::Stick => "the stick",
             Place::Installed => "the installed machine",
         })

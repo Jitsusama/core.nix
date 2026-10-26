@@ -1,6 +1,6 @@
 //! The machine a step observes and acts on: the programs it runs, the
 //! files it reads and writes, and the journal of what can't be observed.
-//! The real one is `system::System`; tests give steps `fake::Fake`.
+//! The real one is `system::System`; tests give steps `stand_in::StandIn`.
 
 use std::io::Write;
 
@@ -282,10 +282,11 @@ mod tests {
 
     #[test]
     fn a_profile_is_followed_inside_the_system_it_belongs_to() {
-        let mut fake = crate::fake::Fake::new();
+        let mut stand_in = crate::stand_in::StandIn::new();
         // An absolute link to another link, which only the installed
         // system's root holds.
-        fake.pointer("/mnt/nix/var/nix/profiles/system", "system-1-link")
+        stand_in
+            .pointer("/mnt/nix/var/nix/profiles/system", "system-1-link")
             .pointer(
                 "/mnt/nix/var/nix/profiles/system-1-link",
                 "/nix/var/nix/gcroots/booted",
@@ -295,7 +296,8 @@ mod tests {
                 "/nix/store/abc-nixos-system-machine",
             );
         assert_eq!(
-            fake.resolve_inside("/mnt", "/mnt/nix/var/nix/profiles/system")
+            stand_in
+                .resolve_inside("/mnt", "/mnt/nix/var/nix/profiles/system")
                 .unwrap()
                 .as_deref(),
             Some("/nix/store/abc-nixos-system-machine")
