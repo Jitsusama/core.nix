@@ -12,6 +12,9 @@ const API: &str = "https://www.googleapis.com";
 const TOKEN: &str = "https://oauth2.googleapis.com/token";
 /// How long a log goes unwritten before it counts as settled.
 const SETTLED_HOURS: u64 = 48;
+/// How long to wait before each retry of a call Drive was too busy for:
+/// about a minute in all, well inside the hour before the next run.
+const RETRY_SECONDS: [u64; 3] = [2, 10, 30];
 
 /// One run's settings.
 #[derive(Debug, Clone)]
@@ -30,6 +33,8 @@ pub struct Config {
     /// The gcloud application-default login.
     pub credentials: PathBuf,
     pub settled: Duration,
+    /// The wait before each retry of a call Drive was busy for.
+    pub retries: Vec<Duration>,
     pub api: String,
     pub token: String,
 }
@@ -70,6 +75,16 @@ impl Config {
             .get("settledHours")
             .and_then(Value::as_u64)
             .unwrap_or(SETTLED_HOURS);
+        let retries = value
+            .get("retrySeconds")
+            .and_then(Value::as_array)
+            .map_or_else(
+                || RETRY_SECONDS.to_vec(),
+                |all| all.iter().filter_map(Value::as_u64).collect(),
+            )
+            .into_iter()
+            .map(Duration::from_secs)
+            .collect();
         Ok(Config {
             sessions: text("sessions")?.into(),
             ledger: text("ledger")?.into(),
@@ -78,6 +93,7 @@ impl Config {
             recipients,
             credentials: text("credentials")?.into(),
             settled: Duration::from_hours(hours),
+            retries,
             api: text("api").unwrap_or_else(|_| API.into()),
             token: text("token").unwrap_or_else(|_| TOKEN.into()),
         })

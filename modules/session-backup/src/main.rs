@@ -40,6 +40,10 @@ fn main() -> ExitCode {
 fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
     let config = Config::read(file)?;
     let done = backup::run(&config, SystemTime::now(), most)?;
+    if done.held {
+        println!("another run is sending, so this one leaves it to that");
+        return Ok(());
+    }
     println!(
         "sent {} logs ({} MB sealed), found {} already on Drive; {} were sent before",
         done.sent,
@@ -47,6 +51,9 @@ fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
         done.found,
         done.before
     );
+    if let Some(why) = done.busy {
+        println!("Drive stayed busy, so the rest wait for the next run: {why}");
+    }
     Ok(())
 }
 

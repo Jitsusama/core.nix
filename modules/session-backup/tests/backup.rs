@@ -30,8 +30,11 @@ struct Google {
     files: HashMap<String, (String, Vec<u8>)>,
     /// Uploads opened, by session: the name each makes.
     opened: HashMap<String, String>,
-    /// Fail this many sends from now on, as a lost connection would.
+    /// Answer this many sends busy from now on, keeping nothing.
     fail_sends: usize,
+    /// Keep this many sends but answer them busy, as when Drive's answer
+    /// is lost after it took the file.
+    lose_answers: usize,
     /// Refuse the next token this many times, as an expired one is.
     expire: usize,
     /// Refuse every Drive call as a login made without a Drive scope is.
@@ -205,6 +208,10 @@ fn answer(
             let name = google.opened[session].clone();
             let id = format!("id-{}", google.files.len());
             google.files.insert(name, (id.clone(), body));
+            if google.lose_answers > 0 {
+                google.lose_answers -= 1;
+                return (503, String::new(), "{}".into());
+            }
             (200, String::new(), json!({ "id": id }).to_string())
         }
         _ => {
@@ -266,6 +273,7 @@ impl Account {
             "credentials": credentials,
             "api": google.url,
             "token": format!("{}/token", google.url),
+            "retrySeconds": [0, 0],
         }))
         .unwrap();
         Account {
@@ -372,13 +380,17 @@ fn carries_on_where_a_stopped_run_left_off() {
     account.log("--a--", "old.jsonl", "old\n", 4 * DAY);
     account.log("--a--", "older.jsonl", "older\n", 6 * DAY);
     account.log("--a--", "oldest.jsonl", "oldest\n", 8 * DAY);
-    // One run sends the oldest; the next loses its first send, as when the
-    // network goes mid-run.
+    // One run sends the oldest; Drive is busy for the next one's first send
+    // through both retries, so that run ends there without failing.
     backup::run(&account.config, SystemTime::now(), Some(1)).unwrap();
-    google.google.lock().unwrap().fail_sends = 1;
+    google.google.lock().unwrap().fail_sends = 3;
 
-    let stopped = account.run();
-    assert!(stopped.is_err(), "{stopped:?}");
+    let stopped = account.run().unwrap();
+    assert_eq!(stopped.sent, 0);
+    assert!(
+        stopped.busy.as_deref().unwrap_or("").contains("(503)"),
+        "{stopped:?}"
+    );
     assert_eq!(google.names().len(), 1);
 
     let done = account.run().unwrap();
@@ -388,6 +400,59 @@ fn carries_on_where_a_stopped_run_left_off() {
     // Nothing left behind half sealed.
     assert!(!account.root.join("state/sent.sealing").exists());
     only_backup_calls(&google);
+}
+
+#[test]
+fn sends_again_when_drive_is_busy_for_a_moment() {
+    let google = StandIn::start();
+    let account = Account::new(&google);
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    account.log("--a--", "two.jsonl", "two\n", 4 * DAY);
+    google.google.lock().unwrap().fail_sends = 2;
+
+    let done = account.run().unwrap();
+
+    assert_eq!((done.sent, done.busy), (2, None));
+    assert_eq!(google.names().len(), 2);
+    only_backup_calls(&google);
+}
+
+#[test]
+fn never_sends_twice_when_drive_took_a_file_but_answered_busy() {
+    let google = StandIn::start();
+    let account = Account::new(&google);
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    google.google.lock().unwrap().lose_answers = 1;
+
+    let done = account.run().unwrap();
+
+    assert_eq!((done.sent, done.found, done.busy), (0, 1, None));
+    assert_eq!(google.names().len(), 1);
+    let opened = google
+        .calls()
+        .iter()
+        .filter(|call| call.starts_with("POST /upload"))
+        .count();
+    assert_eq!(opened, 1);
+    only_backup_calls(&google);
+}
+
+#[test]
+fn leaves_the_sending_to_a_run_already_going() {
+    let google = StandIn::start();
+    let account = Account::new(&google);
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    fs::create_dir_all(account.root.join("state")).unwrap();
+    let going = File::create(account.root.join("state/sent.lock")).unwrap();
+    going.lock().unwrap();
+
+    let done = account.run().unwrap();
+
+    assert!(done.held, "{done:?}");
+    assert_eq!(done.sent, 0);
+    assert!(google.calls().is_empty(), "{:?}", google.calls());
+    drop(going);
+    assert_eq!(account.run().unwrap().sent, 1);
 }
 
 #[test]

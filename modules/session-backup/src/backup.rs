@@ -1,7 +1,8 @@
 //! One run: every settled log not yet in the ledger, sealed and sent.
 
-use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs::{self, File, TryLockError};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::drive::{self, Drive, Fault};
@@ -21,13 +22,31 @@ pub struct Done {
     pub bytes: u64,
     /// Settled logs sent before this run.
     pub before: usize,
+    /// Why the run stopped early, when Drive stayed busy through every
+    /// retry; the logs left wait for the next run.
+    pub busy: Option<String>,
+    /// Another run held the lock, so this one sent nothing.
+    pub held: bool,
 }
 
 /// Seal and send every settled log the ledger lacks, oldest first, up to
-/// `most` of them when given. Stops at the first log that can't be sent,
-/// since what stops one, such as the login, stops the rest; the next run
-/// carries on from there.
+/// `most` of them when given. A call Drive is busy for is tried again
+/// after each of the configured waits; when it stays busy, the run ends
+/// there without failing, saying so in `busy`. Any other refusal fails
+/// the run at that log, since what stops one, such as the login, stops
+/// the rest. Either way the next run carries on from there.
+///
+/// One run at a time: a run holds a lock beside the ledger from before it
+/// reads the ledger until it is done, since two would share the scratch a
+/// seal is written to and could each send the other's half-written copy.
+/// A run that finds the lock held sends nothing and says so in `held`.
 pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done, String> {
+    let Some(_lock) = lock(config)? else {
+        return Ok(Done {
+            held: true,
+            ..Done::default()
+        });
+    };
     let mut ledger = Ledger::open(&config.ledger)?;
     let settled = names::settled(&config.sessions, &config.host, config.settled, now)?;
     let waiting: Vec<&Settled> = settled
@@ -50,29 +69,92 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
         folder: &config.folder,
     };
     let scratch = config.ledger.with_extension("sealing");
-    if let Some(state) = scratch.parent() {
-        fs::create_dir_all(state)
-            .map_err(|why| format!("can't make {}: {why}", state.display()))?;
-    }
     for log in waiting.into_iter().take(most.unwrap_or(usize::MAX)) {
         let at = seconds(SystemTime::now());
-        if let Some(id) = again(&mut login, &agent, |token| drive.find(token, &log.name))? {
+        let held = patiently(&config.retries, || {
+            again(&mut login, &agent, |token| drive.find(token, &log.name))
+        });
+        let held = match held {
+            Err(Fault::Busy(why)) => {
+                done.busy = Some(why);
+                break;
+            }
+            other => other.map_err(|fault| fault.to_string())?,
+        };
+        if let Some(id) = held {
             ledger.record(&log.name, &id, 0, at)?;
             done.found += 1;
             continue;
         }
         let bytes = seal::seal(&log.path, &scratch, &recipients)?;
-        let sent = again(&mut login, &agent, |token| {
-            drive.create(token, &log.name, &scratch, bytes)
+        let mut tried = false;
+        let sent = patiently(&config.retries, || {
+            // A send Drive answered busy may still have landed, so a retry
+            // looks before it sends again, and never makes a second copy.
+            if std::mem::replace(&mut tried, true)
+                && let Some(id) = again(&mut login, &agent, |token| drive.find(token, &log.name))?
+            {
+                return Ok((id, false));
+            }
+            again(&mut login, &agent, |token| {
+                drive.create(token, &log.name, &scratch, bytes)
+            })
+            .map(|id| (id, true))
         });
         // The sealed copy is scratch whether it went or not.
         let _ = fs::remove_file(&scratch);
-        let id = sent?;
-        ledger.record(&log.name, &id, bytes, at)?;
-        done.sent += 1;
-        done.bytes += bytes;
+        match sent {
+            Err(Fault::Busy(why)) => {
+                done.busy = Some(why);
+                break;
+            }
+            Err(fault) => return Err(fault.to_string()),
+            Ok((id, false)) => {
+                ledger.record(&log.name, &id, 0, at)?;
+                done.found += 1;
+            }
+            Ok((id, true)) => {
+                ledger.record(&log.name, &id, bytes, at)?;
+                done.sent += 1;
+                done.bytes += bytes;
+            }
+        }
     }
     Ok(done)
+}
+
+/// The run's lock, held until it is dropped, or `None` when another run
+/// holds it.
+fn lock(config: &Config) -> Result<Option<File>, String> {
+    let path = config.ledger.with_extension("lock");
+    if let Some(state) = path.parent() {
+        fs::create_dir_all(state)
+            .map_err(|why| format!("can't make {}: {why}", state.display()))?;
+    }
+    let file =
+        File::create(&path).map_err(|why| format!("can't open {}: {why}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(why)) => Err(format!("can't lock {}: {why}", path.display())),
+    }
+}
+
+/// A call made again after each of `waits` while Drive answers it busy.
+fn patiently<T>(
+    waits: &[Duration],
+    mut call: impl FnMut() -> Result<T, Fault>,
+) -> Result<T, Fault> {
+    let mut waits = waits.iter();
+    loop {
+        match call() {
+            Err(Fault::Busy(why)) => match waits.next() {
+                Some(wait) => thread::sleep(*wait),
+                None => return Err(Fault::Busy(why)),
+            },
+            other => return other,
+        }
+    }
 }
 
 /// A call to Drive with a token, made once more with a fresh token when
@@ -81,13 +163,13 @@ fn again<T>(
     login: &mut Login,
     agent: &ureq::Agent,
     call: impl Fn(&str) -> Result<T, Fault>,
-) -> Result<T, String> {
-    match call(&login.token(agent)?) {
+) -> Result<T, Fault> {
+    match call(&login.token(agent).map_err(Fault::Other)?) {
         Err(Fault::Unauthorized) => {
             login.forget();
-            call(&login.token(agent)?).map_err(|fault| fault.to_string())
+            call(&login.token(agent).map_err(Fault::Other)?)
         }
-        other => other.map_err(|fault| fault.to_string()),
+        other => other,
     }
 }
 
