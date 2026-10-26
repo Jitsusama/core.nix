@@ -800,12 +800,18 @@ Scope {
         if (letters.replace(/\s+/g, "").length < 2)
             return [];
         const rows = [];
+        // What each collection took, in milliseconds, for a key that's slow
+        // to say which (Trials.qml).
+        const took = {};
+        listsTook = took;
         for (const source of among ?? collections) {
             // One opened only by its own chord adds no row to a search, but
             // does inside a category that holds it.
             if (source.collection.searched === false && !among)
                 continue;
+            const asked = Date.now();
             const said = source.gather(letters);
+            took[source.settings.name] = Date.now() - asked;
             // Inside a category, its best is one named what's typed before
             // one picked for it.
             const learned = learnedFirst(said.rows, letters);
@@ -1608,12 +1614,14 @@ Scope {
         compose(true);
         list.positionViewAtBeginning();
         searchParts = { lists: listed - began, rows: matched - listed,
-            answers: Date.now() - matched };
+            answers: Date.now() - matched, each: listsTook };
     }
 
     // What the last search at the top level spent its time on, or null for
     // one inside a step.
     property var searchParts: null
+    // What each collection took in the last search of them.
+    property var listsTook: ({})
 
     // Times each key from its search to the first frame shown after it,
     // the one its new rows are in: the window says when a frame's been

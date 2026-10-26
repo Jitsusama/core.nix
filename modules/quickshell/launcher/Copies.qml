@@ -215,13 +215,14 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of all) {
+        for (const row of poolFor(all, typed)) {
             if ((row.prepared.mask & need) !== need)
                 continue;
             const m = Fuzzy.match(row.prepared, words, false);
             if (m.score >= 0)
                 found.push({ item: row.prepared, score: m.score, grade: m.grade, row: row });
         }
+        matchedIn(all, typed, found.map(f => f.row));
         // Newest first among equals, not shortest, since a copy is wanted
         // by when it was made.
         let finest = 3;

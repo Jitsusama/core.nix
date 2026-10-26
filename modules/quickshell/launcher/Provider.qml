@@ -155,6 +155,25 @@ Scope {
         return { rows: [], grade: 0 };
     }
 
+    // What a search has to look through: every word typed has to start a
+    // word of a row, so typing on only ever finds fewer, and while what's
+    // typed goes on from the last search of the same rows, only the rows
+    // that one matched are looked at again, as Emoji's are. Rows made
+    // anew, as a new notice makes them, are looked through whole. A search
+    // says what it matched, at any grade, with `matchedIn`.
+    property var lastMatched: ({ from: null, words: "", rows: [] })
+
+    function poolFor(rows, typed) {
+        const words = Fuzzy.words(typed).join(" ");
+        const last = lastMatched;
+        return last.from === rows && last.words !== "" && words.startsWith(last.words)
+            ? last.rows : rows;
+    }
+
+    function matchedIn(rows, typed, matched) {
+        lastMatched = { from: rows, words: Fuzzy.words(typed).join(" "), rows: matched };
+    }
+
     // Its row in the main search: its matches, unless it answered what's
     // typed, since its answer above them already lists them.
     function gather(typed) {
