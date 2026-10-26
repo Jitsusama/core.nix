@@ -197,12 +197,14 @@ fn compare(
     // store has collected since is built from the flake, as before.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
-        .args(targets.iter().map(|name| {
-            match after.get(*name).and_then(Option::as_deref) {
-                Some(derivation) if Path::new(derivation).exists() => format!("{derivation}^*"),
-                _ => format!("{flake}#checks.{system}.{name}"),
-            }
-        }))
+        .args(
+            targets
+                .iter()
+                .map(|name| match after.get(*name).and_then(Option::as_deref) {
+                    Some(derivation) if Path::new(derivation).exists() => format!("{derivation}^*"),
+                    _ => format!("{flake}#checks.{system}.{name}"),
+                }),
+        )
         .status()
         .map_err(|error| format!("running nix: {error}"))?;
     noted.built(targets.len(), began.elapsed(), built.success());
