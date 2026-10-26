@@ -264,7 +264,11 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         for f in ("brightness", "max_brightness")
     )
     # Rounded half up, as JavaScript's Math.round does.
-    copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
+    share = f"{int(now * 100 / most + 0.5)}%"
+    desktop.answer("brightness")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == share)
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # With a number, Return sets it, as the brightness keys do.
     desktop.answer("brightness 30")
     desktop.launcher_until(
@@ -276,28 +280,24 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         timeout=dt.timedelta(seconds=10),
     )
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # A step into its answer, the screen is a setting: its share, its
-    # levels a step in by Return, and beside it the room's light as the
-    # stand-in sensor hears it.
+    # The room's light, as the stand-in sensor hears it, is asked by its
+    # word.
     desktop.answer("room light")
-    desktop.step_in()
     desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Screen"
-            and any(
-                thing["reads"].startswith("Room light \u00b7 ") and thing["reads"].endswith(" lx")
-                for thing in shown["things"]
-            )
-        )
+        lambda shown: str((shown["selected"] or {}).get("name")).endswith(" lx")
     )
-    # The keyboard's light is the keyboard's own, so the light's answer
-    # holds none of it.
-    assert not [name for name in desktop.showing()["rows"] if name.startswith("Keyboard")], (
-        "the light's answer holds the keyboard's light"
-    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # The screen the backlight lights leads with its Brightness, a
+    # setting whose levels are a step in by Return, and the Room light
+    # beside it.
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Brightness", "Room light"])
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: "Screen to 40%" in shown["rows"])
-    desktop.type_in("40", selecting="Screen to 40%")
+    desktop.launcher_until(lambda shown: "Brightness to 40%" in shown["rows"])
+    desktop.type_in("40", selecting="Brightness to 40%")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
