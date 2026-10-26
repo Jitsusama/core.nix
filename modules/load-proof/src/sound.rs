@@ -6,8 +6,11 @@
 //! `pw-top` shows. Nothing playing, every sink is suspended and nothing can
 //! miss a turn, so the signal plays silence of its own, at the latency a
 //! call asks for, to keep the default sink's graph running. It reads every
-//! node's errors before and after, and which nodes run halfway through,
-//! and says which of those rose. Silence makes no
+//! node's errors once the silence has woken the sink and again at the end,
+//! and which nodes run halfway through, and says which of those rose. A
+//! sink and its filters miss turns as they wake from suspend, which no load
+//! causes: a speaker's tuning filter counted 2 in every reading as it
+//! woke, idle included. Silence makes no
 //! sound, so it can run while Joel sleeps; whatever else plays meanwhile,
 //! Spotify or a call, is counted too.
 
@@ -26,6 +29,10 @@ const LATENCY: &str = "256/48000";
 const RATE: usize = 48_000;
 /// Two channels of 16-bit samples.
 const FRAME: usize = 4;
+
+/// How long a suspended sink and its filters take to wake once the silence
+/// starts, after which a missed turn is the load's.
+const WAKE: Duration = Duration::from_secs(1);
 
 /// Nodes whose errors aren't sound: cameras, which PipeWire also carries.
 const NOT_SOUND: [&str; 2] = ["v4l2_", "libcamera"];
@@ -96,9 +103,11 @@ pub fn rose(
 /// Plays silence for `length` and gives the nodes carrying sound whose
 /// errors rose. Which nodes carry sound is read halfway through.
 pub fn watch(length: Duration) -> Result<Vec<(String, u64)>, String> {
-    let before = errors(&top()?);
+    let began = Instant::now();
     let player = std::thread::spawn(move || play_silence(length));
-    std::thread::sleep(length / 2);
+    std::thread::sleep(WAKE.min(length / 4));
+    let before = errors(&top()?);
+    std::thread::sleep((length / 2).saturating_sub(began.elapsed()));
     let carrying = running(&top()?);
     player
         .join()

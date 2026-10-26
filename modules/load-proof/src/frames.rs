@@ -208,9 +208,8 @@ pub fn watch(length: Duration) -> Result<Vec<Frame>, String> {
     file.write_all_at(&[0, 0, 0, 1, 0, 0, 0, 2], 0)
         .map_err(|e| format!("the probe's pixels: {e}"))?;
     let pool = shm.create_pool(file.as_fd(), 8, &qh, ());
-    let buffers = [0, 4].map(|offset| {
-        pool.create_buffer(offset, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ())
-    });
+    let buffers =
+        [0, 4].map(|offset| pool.create_buffer(offset, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ()));
 
     let end = Instant::now() + length;
     probe.due = true;
