@@ -553,6 +553,10 @@
     the harness's measure runs each morning in background.slice with the store's node, catching up on
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
   '';
+  pi-packages-compiles-for-macos = ''
+    pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
+    processes use a version
+  '';
   pi-packages-passes-clippy = ''
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
     through an update and never swap in a build that fails or leaves a native module unbuilt
