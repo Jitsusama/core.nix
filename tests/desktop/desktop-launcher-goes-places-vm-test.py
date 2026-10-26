@@ -277,13 +277,13 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     assert "waiting" not in margin_holds(), "pi's notice counted as missed"
 
 
-def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desktop) -> None:
-    """An orchestrator is talked to, and paused, through its session's inbox."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
+HARNESS = "~/.local/state/pi/agentic-harness.pi"
+INBOX = f"{HARNESS}/steer/TESTQA"
+
+
+def an_orchestrator(desktop: Desktop) -> None:
+    """Make pi's session an orchestrator, Lighthouse, as the harness lists one, its inbox empty."""
     desktop.pi_session()
-    harness = "~/.local/state/pi/agentic-harness.pi"
-    inbox = f"{harness}/steer/TESTQA"
     listed = {
         "orchestrators": [
             {"quest": "QEST-20261022-TESTQA", "address": "TESTQA", "short": "Lighthouse",
@@ -291,16 +291,43 @@ def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desk
         ]
     }  # fmt: skip
     desktop.as_account(
-        f"mkdir -p {harness}/quest-workflow && echo '{json.dumps(listed)}'"
-        f" > {harness}/quest-workflow/.o && mv {harness}/quest-workflow/.o"
-        f" {harness}/quest-workflow/orchestrators.json && rm -rf {inbox}"
+        f"mkdir -p {HARNESS}/quest-workflow && echo '{json.dumps(listed)}'"
+        f" > {HARNESS}/quest-workflow/.o && mv {HARNESS}/quest-workflow/.o"
+        f" {HARNESS}/quest-workflow/orchestrators.json && rm -rf {INBOX}"
     )
-    # Listed in Agents by its short name, busy as its presence says.
+
+
+def into_lighthouse(desktop: Desktop) -> None:
+    """Open Orchestrators, and step into Lighthouse."""
+    desktop.as_account("qs ipc call launcher collection orchestrators")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lighthouse")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
+
+
+def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
+    desktop: Desktop,
+) -> None:
+    """An orchestrator is found by its name, and talked to through its session's inbox."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    # Found from the root by its name, which lands on it in Orchestrators,
+    # busy as its presence says.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    assert str(desktop.showing()["selected"]["side"]).startswith("busy"), desktop.showing()
-    # Inside it, Talk asks for words, which go to its session's inbox.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Orchestrators"]
+            and (shown["selected"] or {}).get("name") == "Lighthouse"
+            and str(shown["selected"]["side"]).startswith("busy")
+        )
+    )
+    # Inside it, Talk asks for words, which go to its session's inbox as
+    # Joel's, opening a talk its session follows.
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: {"Talk", "Pause", "Stop"} <= set(shown["rows"]))
     desktop.type_in("talk", selecting="Talk")
@@ -308,16 +335,21 @@ def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desk
     machine.send_chars("keep the lamp lit")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        desktop.in_session(f'cat {inbox}/*.json | grep -q \'"text":"keep the lamp lit"\''),
+        desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"text":"keep the lamp lit"\''),
         timeout=dt.timedelta(seconds=10),
     )
-    said = json.loads(desktop.as_account(f"cat {inbox}/*.json"))
+    said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
     assert said["from"] == "joel", said
+    assert str(said.get("id", "")).startswith("talk-"), said
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # The talk opened an id its session follows, and what became of one
-    # is listed after the actions, newest first, saying how it went.
-    assert str(said.get("id", "")).startswith("talk-"), said
+
+
+def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> None:
+    """An orchestrator's earlier talks say how each went, and read its reply."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
     talk = [
         {"at": "2026-10-26T04:00:00Z", "stage": "delivered", "session": "s",
          "text": "keep watch tonight"},
@@ -325,12 +357,10 @@ def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desk
     ]  # fmt: skip
     lines = "\n".join(json.dumps(event) for event in talk)
     desktop.as_account(
-        f"mkdir -p {inbox}/replies && printf '%s\\n' '{lines}' > {inbox}/replies/t1.jsonl"
+        f"mkdir -p {INBOX}/replies && printf '%s\\n' '{lines}' > {INBOX}/replies/t1.jsonl"
     )
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.step_in("ret")
+    # Listed after its actions, saying how it went.
+    into_lighthouse(desktop)
     desktop.launcher_until(lambda shown: "keep watch tonight" in shown["rows"])
     desktop.type_in("keep watch", selecting="keep watch tonight")
     assert desktop.showing()["selected"]["side"] == "replied", desktop.showing()["selected"]
@@ -344,16 +374,18 @@ def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desk
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Pause is an act, with no words.
-    desktop.as_account(f"rm -f {inbox}/*.json")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("lighthouse", selecting="Lighthouse")
-    desktop.step_in("ret")
+
+
+def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
+    """An orchestrator is paused with no words, an act in its inbox."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    an_orchestrator(desktop)
+    into_lighthouse(desktop)
     desktop.type_in("pause", selecting="Pause")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        desktop.in_session(f'cat {inbox}/*.json | grep -q \'"act":"pause"\''),
+        desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
         timeout=dt.timedelta(seconds=10),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

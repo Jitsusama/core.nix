@@ -27,6 +27,7 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "../Fuzzy.js" as Fuzzy
 
 Provider {
     id: provider
@@ -261,6 +262,22 @@ Provider {
 
     function everything() {
         return all;
+    }
+
+    // Found by its name, or by its quest's title, best first.
+    function search(typed) {
+        const words = Fuzzy.words(typed);
+        const found = [];
+        for (const row of all) {
+            const byName = Fuzzy.match(row.prepared, words, false);
+            const byTitle = row.note !== "" ? Fuzzy.match(Fuzzy.prepare(row.note), words, false)
+                : byName;
+            const best = byName.score >= byTitle.score ? byName : byTitle;
+            if (best.score >= 0)
+                found.push({ score: best.score, grade: best.grade, row: row });
+        }
+        found.sort((a, b) => b.score - a.score);
+        return { rows: found.map(f => f.row), grade: 0 };
     }
 
     // Each orchestrator's talks: its replies folder listed, and its newest
