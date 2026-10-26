@@ -1,0 +1,17 @@
+--- a/src/screencasting/pw_utils.rs
++++ b/src/screencasting/pw_utils.rs
+@@ -319,6 +319,14 @@
+             cursor_mode = CursorMode::Embedded;
+         }
+ 
++        // A cast asking for no pointer draws it in anyway: Tuple's Linux
++        // client asks for none and sends none of its own, so whoever
++        // watches the screen can't see where it is.
++        if cursor_mode == CursorMode::Hidden {
++            debug!("hidden cursor mode requested; drawing the cursor in");
++            cursor_mode = CursorMode::Embedded;
++        }
++
+         let pending_size = Size::from((size.w as u32, size.h as u32));
+ 
+         // Like in good old wayland-rs times...
