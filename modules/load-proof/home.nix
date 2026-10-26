@@ -4,7 +4,10 @@
 # service: it draws nothing Joel can see, but while it runs it asks niri for
 # a frame at every refresh, saves a file under ~/.cache/load-proof a few
 # times a second, asks Google's STUN server for its address fifty times a
-# second, as a call would, or plays silence, which makes no sound.
+# second, as a call would, or plays silence, which makes no sound. A whole
+# run, `load-proof run`, also fills the machine for under four minutes with
+# up to twenty release builds in jobs.slice and the line both ways, and
+# stops them if free memory runs low.
 { pkgs, ... }:
 {
   home.packages = [ (pkgs.callPackage ./package.nix { }) ];

@@ -345,7 +345,9 @@
     only those that rose on a running node named; the middle, 95th and 99th percentiles and worst
     of the times are read from them; and a loaded reading within each signal's margin of an idle
     one passes, one past any margin fails saying its figures, and one missing a signal or a figure
-    fails
+    fails; a run fits in five minutes, climbs to twenty builds, reads free memory as the kernel's
+    MemAvailable, builds its own source only from the vendored crates, copies that source whole
+    and writable, and passes only when every step did and nothing stopped it
   '';
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests

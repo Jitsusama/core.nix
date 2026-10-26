@@ -17,8 +17,9 @@ onLinux {
   # text whole; a call's request answered by a STUN server's stand-in is
   # timed and one never answered is lost; each sound node's errors are read
   # from pw-top, cameras' left out, and counted only while it runs; the
-  # times are summed; and a loaded reading is judged against an idle one
-  # by each signal's margin.
+  # times are summed; a loaded reading is judged against an idle one by
+  # each signal's margin; and a run fits in five minutes, climbs to twenty
+  # builds, builds offline from its own source, and stops on low memory.
   load-proof-reads-its-signals = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in load-proof, its tests included.
   load-proof-passes-clippy = passesClippy "load-proof-passes-clippy" (
