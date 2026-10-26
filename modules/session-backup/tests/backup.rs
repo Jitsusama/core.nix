@@ -34,6 +34,8 @@ struct Google {
     fail_sends: usize,
     /// Refuse the next token this many times, as an expired one is.
     expire: usize,
+    /// Refuse every Drive call as a login made without a Drive scope is.
+    no_drive_scope: bool,
     tokens: usize,
 }
 
@@ -147,6 +149,14 @@ fn answer(
             google.expire -= 1;
             (401, String::new(), "{}".into())
         }
+        _ if google.no_drive_scope => (
+            403,
+            String::new(),
+            json!({ "error": { "code": 403, "message": "Request had insufficient authentication scopes.",
+                "status": "PERMISSION_DENIED",
+                "details": [{ "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT" }] } })
+            .to_string(),
+        ),
         ("GET", "/drive/v3/files") => {
             let q = decode(
                 query
@@ -434,6 +444,22 @@ fn signs_in_again_when_drive_stops_taking_the_token() {
 }
 
 #[test]
+fn says_how_to_sign_in_when_the_login_may_not_use_drive() {
+    let google = StandIn::start();
+    let account = Account::new(&google);
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    google.google.lock().unwrap().no_drive_scope = true;
+
+    let why = account.run().unwrap_err();
+
+    assert!(
+        why.contains("may not use Drive") && why.contains("https://www.googleapis.com/auth/drive"),
+        "{why}"
+    );
+    assert!(google.names().is_empty());
+}
+
+#[test]
 fn says_how_to_sign_in_when_there_is_no_login() {
     let google = StandIn::start();
     let account = Account::new(&google);
@@ -443,7 +469,8 @@ fn says_how_to_sign_in_when_there_is_no_login() {
     let why = account.run().unwrap_err();
 
     assert!(
-        why.contains("gcloud auth application-default login"),
+        why.contains("gcloud auth application-default login")
+            && why.contains("https://www.googleapis.com/auth/drive"),
         "{why}"
     );
     assert!(google.calls().is_empty());

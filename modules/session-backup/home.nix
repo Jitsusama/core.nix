@@ -9,11 +9,19 @@
 #   };
 #
 # With no folder named, nothing runs. It signs in as the account's gcloud
-# application-default login, so the account signs in once with
+# application-default login, which needs a Drive scope gcloud doesn't ask
+# for by itself, so the account signs in once with
 #
-#   gcloud auth application-default login
+#   gcloud auth application-default login --scopes=openid,\
+#     https://www.googleapis.com/auth/userinfo.email,\
+#     https://www.googleapis.com/auth/cloud-platform,\
+#     https://www.googleapis.com/auth/drive
 #
-# and `session-backup status` says what is sent and what waits. A copy is
+# That rewrites the one login other tools may use too. To give the backup
+# its own, sign in with CLOUDSDK_CONFIG set to a folder of its own and name
+# the file it writes there as `credentials`.
+#
+# `session-backup status` says what is sent and what waits. A copy is
 # opened with age and one of the recipients' keys, then zstd -d.
 {
   config,
@@ -34,7 +42,7 @@ let
         recipients
         settledHours
         ;
-      credentials = "${config.xdg.configHome}/gcloud/application_default_credentials.json";
+      inherit (cfg) credentials;
     }
   );
   # The command, told its settings, for the account to ask what's sent.
@@ -62,6 +70,15 @@ in
       '';
       type = lib.types.listOf lib.types.str;
       default = [ ];
+    };
+    credentials = lib.mkOption {
+      description = ''
+        The gcloud application-default login the backup signs in as: the
+        account's own by default, or one made for the backup alone.
+      '';
+      type = lib.types.str;
+      default = "${config.xdg.configHome}/gcloud/application_default_credentials.json";
+      defaultText = lib.literalExpression ''"''${config.xdg.configHome}/gcloud/application_default_credentials.json"'';
     };
     host = lib.mkOption {
       description = "The machine, as each copy's name begins.";

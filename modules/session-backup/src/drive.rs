@@ -144,6 +144,17 @@ fn read(
     match status {
         200..=299 => Ok(body),
         401 => Err(Fault::Unauthorized),
+        // A login made without a Drive scope is refused this way, which
+        // signing in again with one fixes.
+        403 if body.contains("insufficient authentication scopes")
+            || body.contains("ACCESS_TOKEN_SCOPE_INSUFFICIENT") =>
+        {
+            Err(Fault::Other(format!(
+                "Drive refused to {doing} {name}, since the login may not use Drive; \
+                 sign in with {}",
+                crate::token::SIGN_IN
+            )))
+        }
         _ => Err(Fault::Other(format!(
             "Drive refused to {doing} {name} ({status}): {}",
             body.trim()
