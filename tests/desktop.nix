@@ -122,6 +122,14 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/touchscreen.py);
 
+  # A stand-in Copilot key, sending Super, Shift and F23 as the laptop's
+  # does, each time it's told through /run/copilot-key
+  # (desktop/copilot-key.py).
+  copilotKey = pkgs.writers.writePython3 "copilot-key" {
+    libraries = [ pkgs.python3Packages.evdev ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/copilot-key.py);
+
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
   page = import ./page.nix {
@@ -581,6 +589,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             track
             ;
           ask_portal = askPortal;
+          copilot_key = copilotKey;
           tuple_window = tupleWindow;
           inherit (pkgs)
             coreutils
