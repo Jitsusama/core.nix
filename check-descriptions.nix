@@ -871,6 +871,10 @@
     every mark the margin can show is the theme's drawing of it, standing the grid's full height and
     centred across it as Qt draws it
   '';
+  the-mic-mute-light-follows-the-mute = ''
+    `mic-mute-light` asks after the mute only once a change to a mute or the default source has
+    ended, and lights the light for a muted source alone
+  '';
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';
