@@ -29,7 +29,6 @@
     palette-graphs-draw-in-braille = "Launcher (Y2YBTS): palette to launcher";
     palette-rows-keep-their-words-apart = "Launcher (Y2YBTS): palette to launcher";
     "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
-    "jitsusama.shaper.tunnels" = "Speed (5FWIUS): tunnel to VPN";
     xdg-open-opens-each-kind-in-its-app = "Look and programs (QGB4ON): app to program";
   };
 }
