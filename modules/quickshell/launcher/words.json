@@ -76,6 +76,7 @@
         "swayimg",
         "shortcuts",
         "session:recording",
+        "steer",
         "tuple",
         "quests",
         "time",
@@ -2703,6 +2704,47 @@
       "empty": "Nothing's on or waiting."
     },
     {
+      "id": "on:waiting",
+      "in": "on",
+      "name": "Waiting on you",
+      "verb": "switch",
+      "glyph": "waitsOnJoel",
+      "words": [
+        "waiting",
+        "to do",
+        "queue",
+        "asks"
+      ],
+      "hidden": [
+        "todo",
+        "joel's queue"
+      ],
+      "said": {
+        "first": "{title}, {minutes} min",
+        "minutes": "{minutes} min"
+      }
+    },
+    {
+      "id": "steer",
+      "name": "Steer",
+      "verb": "tell",
+      "glyph": "steer",
+      "ask": "what to tell it",
+      "words": [
+        "tell",
+        "pivot",
+        "redirect"
+      ],
+      "hidden": [
+        "orchestrator",
+        "steward"
+      ],
+      "said": {
+        "note": "your words go to {steward}, the agent steering the others, as your message",
+        "sent": "tell {steward}"
+      }
+    },
+    {
       "id": "clipboard",
       "name": "Clipboard",
       "noun": "copies",
@@ -4351,6 +4393,17 @@
       "verb": "set",
       "words": [
         "screen"
+      ]
+    },
+    {
+      "id": "command:steer",
+      "provider": "steer",
+      "start": "steer ",
+      "form": "⟨what to tell it⟩",
+      "says": "tells the agent steering the others, as you",
+      "verb": "tell",
+      "words": [
+        "tell"
       ]
     },
     {

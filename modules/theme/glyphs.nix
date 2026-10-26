@@ -506,6 +506,19 @@ in
       "A1 1 0 0 1 1 0Z"
     ];
   };
+  # A person with a clock: something the agents can't go on without until
+  # Joel has done it.
+  waitsOnJoel = {
+    glyph = nerd "f0b56";
+    console = "W";
+    means = "what the agents have waiting on Joel, for him to do";
+  };
+  # A steering wheel: Joel's words to the agent that steers the others.
+  steer = {
+    glyph = nerd "f04d4";
+    console = "S";
+    means = "telling the agent steering the others something, as Joel";
+  };
   thinking = {
     glyph = nerd "f09d1";
     console = "t";
