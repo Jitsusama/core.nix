@@ -13,7 +13,17 @@
 // listening. One not running offers Start a session on its quest instead.
 // What's written is a file renamed into the inbox, so its session takes it
 // whole; nothing waits on it here, and nothing is read for a key.
+//
+// After its actions come the talks Joel has had with it, newest first, as
+// its session writes what became of each (the harness's talk files, one a
+// talk, under the inbox's replies): his words, and beside them how it went,
+// in one word that changes in place (delivered, reading, replying,
+// replied, not delivered). The right arrow reads one: his words, how it
+// went, and the reply below. The newest 20 are read, and watched while the
+// shell runs, so a reply being written is seen as it's written.
+pragma ComponentBehavior: Bound
 import qs
+import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -114,17 +124,119 @@ Provider {
             : act("pause", { run: () => provider.steer(one, { act: "pause" }) }));
         if (stands === "busy")
             rows.push(act("stop", { run: () => provider.steer(one, { act: "stop" }) }));
-        return rows;
+        return rows.concat(talksOf(one.address));
+    }
+
+    // Each talk with an orchestrator, by its address, newest first, as
+    // its file says: { id, at, words, stage, after, reply, why, came }.
+    property var talks: ({})
+
+    function heardTalk(address, file, text) {
+        // A folder Qt fell back to when the replies folder isn't there.
+        if (!file.startsWith(inboxes))
+            return;
+        const id = file.replace(/^.*\//, "").replace(/\.jsonl$/, "");
+        const talk = { id: id, at: "", words: "", stage: "", after: "", reply: "", why: "",
+            came: "" };
+        for (const line of text.split("\n")) {
+            let event;
+            try {
+                event = JSON.parse(line);
+            } catch (e) {
+                event = null;
+            }
+            if (event)
+                folded(talk, event);
+        }
+        const kept = (talks[address] ?? []).filter(one => one.id !== id).concat([talk])
+            .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+        const next = Object.assign({}, talks);
+        next[address] = kept;
+        talks = next;
+    }
+
+    // One event of a talk folded into it, as the harness's talk.ts writes
+    // them in turn.
+    function folded(talk, event) {
+        if (event.stage === "delivered") {
+            talk.at = event.at ?? talk.at;
+            talk.words = event.text ?? "";
+        } else if (event.stage === "reading") {
+            talk.after = event.after ?? "";
+        } else if (event.stage === "replying" || event.stage === "replied") {
+            talk.reply = event.text ?? talk.reply;
+        } else if (event.stage === "failed") {
+            talk.why = event.why ?? "";
+        } else if (event.stage === "came") {
+            talk.came = event.what ?? "";
+            return;
+        }
+        talk.stage = event.stage ?? talk.stage;
+    }
+
+    // The mark each stage wears: hollow to full, as the queue's do.
+    readonly property var stageMarks: ({
+        delivered: "pending",
+        reading: "active",
+        replying: "active",
+        replied: "complete",
+        failed: "failed"
+    })
+
+    function stageSaid(talk) {
+        const words = (Words.of("orchestrators:talk").said ?? {})[talk.stage] ?? talk.stage;
+        return talk.stage === "reading" && talk.after !== "" ? `${words}, ${talk.after}` : words;
+    }
+
+    function talksOf(address) {
+        return (talks[address] ?? []).filter(talk => talk.words !== "").map(talk => thing({
+            key: `talk:${address}:${talk.id}`,
+            verb: "read",
+            name: talk.words,
+            glyph: Theme.glyph[stageMarks[talk.stage] ?? "pending"],
+            hue: "voice",
+            side: stageSaid(talk),
+            reads: talk.reply !== "" ? talk.reply : talk.why,
+            nested: true,
+            verbs: () => provider.talkRows(address, talk.id)
+        }));
+    }
+
+    // A talk read: his words, how it went, and what came of it, each a row
+    // Return copies, the reply below the rows.
+    function talkRows(address, id) {
+        const talk = (talks[address] ?? []).find(one => one.id === id);
+        if (!talk)
+            return [];
+        const said = Words.of("orchestrators:talk").said ?? {};
+        const row = (key, name, side, copy) => copyRow({
+            key: `talk:${id}:${key}`,
+            name: name,
+            side: side,
+            copy: copy,
+            glyph: "",
+            reads: talk.reply
+        });
+        return [
+            row("words", said.yours ?? "", talk.words, talk.words),
+            row("stage", said.went ?? "", stageSaid(talk),
+                talk.reply !== "" ? talk.reply : talk.why),
+            talk.came !== "" ? row("came", said.came ?? "", talk.came, talk.came) : null
+        ].filter(one => one !== null);
     }
 
     // What the foot says once words have gone.
     property string told: ""
+    // How many times the launcher has opened, so the talks are listed
+    // again each time.
+    property int looked: 0
 
     function talk(one, words) {
         const text = words.trim();
         if (text === "")
             return;
-        steer(one, { text: text });
+        // An id opens a talk its session writes what became of.
+        steer(one, { text: text, id: `talk-${Date.now()}` });
         told = (Words.of("orchestrators").said ?? {}).sent?.replace("{name}", one.short
             || one.address) ?? "";
     }
@@ -151,6 +263,47 @@ Provider {
         return all;
     }
 
+    // Each orchestrator's talks: its replies folder listed, and its newest
+    // files read and watched.
+    Instantiator {
+        model: provider.listed
+
+        delegate: Scope {
+            id: inbox
+
+            required property var modelData
+            readonly property string address: String(modelData.address ?? "").toUpperCase()
+            property var newest: []
+
+            FolderListModel {
+                id: replies
+                // Looked at again as the launcher opens, since a folder
+                // made since can't be watched until it's listed: the
+                // trailing slash comes and goes, so the folder is new.
+                folder: `file://${provider.inboxes}/${inbox.address}/replies`
+                    + (provider.looked % 2 === 1 ? "/" : "")
+                showDirs: false
+                nameFilters: ["*.jsonl"]
+                sortField: FolderListModel.Time
+                onCountChanged: inbox.newest = Array.from({ length: Math.min(count, 20) },
+                    (_, at) => String(get(at, "filePath")))
+            }
+
+            Instantiator {
+                model: inbox.newest
+
+                delegate: FileView {
+                    required property var modelData
+                    path: String(modelData)
+                    watchChanges: true
+                    printErrors: false
+                    onFileChanged: reload()
+                    onLoaded: provider.heardTalk(inbox.address, path, text())
+                }
+            }
+        }
+    }
+
     // Read again as the launcher opens too, since a file that wasn't there
     // when the shell started can't be watched until it's read.
     Connections {
@@ -161,6 +314,7 @@ Provider {
             if (provider.launcher.open) {
                 orchestrators.reload();
                 questIndex.reload();
+                provider.looked += 1;
             }
         }
     }

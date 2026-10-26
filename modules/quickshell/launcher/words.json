@@ -3468,6 +3468,21 @@
       }
     },
     {
+      "id": "orchestrators:talk",
+      "in": "orchestrators",
+      "name": "Talks",
+      "said": {
+        "delivered": "delivered",
+        "reading": "reading",
+        "replying": "replying",
+        "replied": "replied",
+        "failed": "not delivered",
+        "yours": "You said",
+        "went": "How it went",
+        "came": "What came of it"
+      }
+    },
+    {
       "id": "verb:orchestrator:talk",
       "in": "orchestrators",
       "name": "Talk",

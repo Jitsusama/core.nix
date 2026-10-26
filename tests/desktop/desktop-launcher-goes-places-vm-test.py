@@ -315,6 +315,35 @@ def test_an_orchestrator_is_talked_to_and_paused_through_its_inbox(desktop: Desk
     assert said["from"] == "joel", said
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # The talk opened an id its session follows, and what became of one
+    # is listed after the actions, newest first, saying how it went.
+    assert str(said.get("id", "")).startswith("talk-"), said
+    talk = [
+        {"at": "2026-10-26T04:00:00Z", "stage": "delivered", "session": "s",
+         "text": "keep watch tonight"},
+        {"at": "2026-10-26T04:00:05Z", "stage": "replied", "text": "Watching. All quiet."},
+    ]  # fmt: skip
+    lines = "\n".join(json.dumps(event) for event in talk)
+    desktop.as_account(
+        f"mkdir -p {inbox}/replies && printf '%s\\n' '{lines}' > {inbox}/replies/t1.jsonl"
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "keep watch tonight" in shown["rows"])
+    desktop.type_in("keep watch", selecting="keep watch tonight")
+    assert desktop.showing()["selected"]["side"] == "replied", desktop.showing()["selected"]
+    # Read, it says his words, how it went, and the reply below.
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:2] == ["You said", "How it went"]
+            and "Watching" in str((shown["selected"] or {}).get("reads", ""))
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Pause is an act, with no words.
     desktop.as_account(f"rm -f {inbox}/*.json")
     desktop.as_account("qs ipc call launcher toggle")
