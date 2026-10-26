@@ -1144,6 +1144,21 @@ so the desktop's full volume is the mics' own level. It's given through a
 profile set for the analog card alone; the headset jack and the outputs
 keep PipeWire's paths.
 
+### Temperatures and Fan
+
+The kernel's Surface Aggregator registry gives this model (ACPI MSHW0110)
+the Intel Laptop 3 and 4's devices, which have no thermal sensors or fan,
+so only the CPU's, the GPU's, the disk's and Wi-Fi's temperatures showed.
+Asked directly through `/dev/surface/aggregator`, the controller answers
+for both: its sensor list names eight sensors, I_RTS1, I_RTS3, I_RTS5,
+I_RTS6 and I_RTS8 and I_VTS1 to I_VTS3, at 26.6 °C to 34.2 °C on an idle
+laptop, and the fan reads 0 rpm. The module's kernel patch
+([`kernel/surface-laptop-amd-sensors-and-fan.patch`][22]) gives MSHW0110 a
+group of its own with both devices, so `surface_temp` and `surface_fan`
+bind and show them under hwmon; the device check expects both. The
+platform profile still doesn't drive the fan's own profile, since no fan
+profile command has been tried on this controller.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
@@ -1178,3 +1193,5 @@ keep PipeWire's paths.
 [20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
 [22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
+
+[22]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
