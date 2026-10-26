@@ -12,7 +12,9 @@ pragma ComponentBehavior: Bound
 // one for the Today row and Now's wants (Calendar.js says which), and
 // `join` goes into a meeting's call through google-opens (opens.sh), which
 // joins a Tuple link through Tuple and opens Google's own in a window of
-// their own.
+// their own. `answer` answers an invitation on the program's socket
+// (ask.rs), connecting only to ask, and the program says the meeting
+// answered, in the file, as soon as Google takes it.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -23,6 +25,7 @@ Singleton {
     id: root
 
     readonly property string told: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.json`
+    readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.sock`
 
     // "none", "signedOut", "unreachable" or "ready", as the program says.
     property string account: "none"
@@ -58,6 +61,38 @@ Singleton {
         return Said.span(meeting);
     }
 
+    // Its times and, for an invitation, his answer: "14:00 to 14:30, maybe".
+    function about(meeting) {
+        return Said.about(meeting);
+    }
+
+    // His answer as he'd say it, "going", or nothing for one he holds.
+    function answered(meeting) {
+        return Said.answered(meeting);
+    }
+
+    function invited(meeting) {
+        return Said.invited(meeting);
+    }
+
+    // The meeting `id` as it's held now, so what's said of one picked a
+    // while ago is what the program last said.
+    function meeting(id) {
+        return meetings.find(each => each.id === id) ?? null;
+    }
+
+    // Answers the invitation yes, maybe or no, through the program, which
+    // is running whenever there's a meeting to answer.
+    function answer(meeting, said) {
+        if (!meeting)
+            return;
+        asks = asks.concat([Said.answer(meeting, said)]);
+        asking.connected = true;
+    }
+
+    // What's to be asked of the program, said once the socket connects.
+    property var asks: []
+
     // Whether the next meeting is about to start, for Now's wants.
     readonly property bool starting: Said.aboutToStart(next, now)
 
@@ -89,6 +124,28 @@ Singleton {
         account = "none";
         meetings = [];
         heard = null;
+    }
+
+    // Connected only to ask: what's waiting is written, and the connection
+    // let go, since what the program says back comes in the file. One that
+    // won't connect lets what's waiting go, as the program isn't there to
+    // take it.
+    Socket {
+        id: asking
+        path: root.socket
+        onConnectionStateChanged: {
+            if (!connected)
+                return;
+            for (const ask of root.asks)
+                write(ask);
+            flush();
+            root.asks = [];
+            Qt.callLater(() => asking.connected = false);
+        }
+        onError: {
+            root.asks = [];
+            connected = false;
+        }
     }
 
     FileView {

@@ -1188,6 +1188,50 @@ def test_a_meeting_is_found_by_its_name_says_when_it_is_and_return_joins_it(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
+    desktop: Desktop,
+) -> None:
+    """An invitation is answered from a meeting's acts, its foot says the answer, and it stays."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    # The stand-in's Standup, answered yes, which it hears answered again.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Its acts: joining, its page and its link first, then the three answers.
+    for _ in range(6):
+        if (desktop.showing()["selected"] or {}).get("name") == "Answer Maybe":
+            break
+        before = (desktop.showing()["selected"] or {}).get("name")
+        machine.send_key("down")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
+        )
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Answer Maybe" and shown["footer"] == "going"
+        )
+    )
+    machine.send_key("ret")
+    line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
+    # The launcher stays where it was, its foot saying the answer Google took.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and (shown["selected"] or {}).get("name") == "Answer Maybe"
+            and shown["footer"] == "maybe"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop: Desktop,
 ) -> None:

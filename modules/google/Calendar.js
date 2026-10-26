@@ -1,6 +1,7 @@
 // What the shell works out from the meetings the google program keeps
-// (src/state.rs): which meeting is next, when it is in words, and whether
-// it's about to start. Calendar.qml holds the meetings and asks these, and
+// (src/state.rs): which meeting is next, when it is in words, whether it's
+// about to start, how Joel answered it, and the line that answers it
+// (src/ask.rs). Calendar.qml holds the meetings and asks these, and
 // the checks run them in Qt's own engine (tests/calendar.qml). Times are
 // milliseconds since 1970, as the program gives them.
 .pragma library
@@ -112,4 +113,28 @@ function span(meeting) {
         return "all day";
     }
     return `${clock(new Date(meeting.start))} to ${clock(new Date(meeting.end))}`;
+}
+
+// How Joel answered an invitation, as his calendar would say it to him,
+// or nothing for a meeting that isn't one, as one he holds.
+const ANSWERED = { yes: "going", maybe: "maybe", no: "not going", waiting: "not answered" };
+
+function answered(meeting) {
+    return ANSWERED[meeting?.answer] ?? "";
+}
+
+// A meeting's times and, for an invitation, his answer: "14:00 to 14:30,
+// maybe".
+function about(meeting) {
+    return [span(meeting), answered(meeting)].filter(part => part !== "").join(", ");
+}
+
+// Whether a meeting is an invitation, which takes an answer.
+function invited(meeting) {
+    return answered(meeting) !== "";
+}
+
+// The line that asks the program to answer a meeting yes, maybe or no.
+function answer(meeting, said) {
+    return `${JSON.stringify({ answer: { id: meeting.id, with: said } })}\n`;
 }
