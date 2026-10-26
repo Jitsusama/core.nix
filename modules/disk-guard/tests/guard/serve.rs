@@ -269,6 +269,37 @@ fn a_notice_the_desktop_missed_is_told_again_once_it_hears() {
 }
 
 #[test]
+fn a_disk_below_healthy_has_what_holds_it_measured_on_a_thread_of_its_own() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("kept"), vec![1u8; 64 * 1024]).unwrap();
+    let mut guard = guard_at(dir.path(), "100%");
+    let mut desk = Fake::default();
+    let read = || -> serde_json::Value {
+        serde_json::from_str(&fs::read_to_string(dir.path().join("status.json")).unwrap()).unwrap()
+    };
+    // The measure runs beside the steps, so it's looked for over several,
+    // with a deadline rather than a count it might outrun.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let status = loop {
+        stepped(&mut guard, 2, &mut desk);
+        let status = read();
+        if status["holders_at"].is_number() || std::time::Instant::now() > deadline {
+            break status;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let holder = &status["holders"][0];
+    assert_eq!(holder["owner"]["kind"], "other", "{status}");
+    assert_eq!(holder["owner"]["name"], "trash", "{status}");
+    assert!(
+        holder["bytes"]
+            .as_u64()
+            .is_some_and(|bytes| bytes >= 64 * 1024),
+        "{status}"
+    );
+}
+
+#[test]
 fn a_desktop_refusing_the_same_way_is_told_of_once_until_it_hears_again() {
     let mut unheard = Unheard::default();
     let refused = |why: &str| Err(why.to_owned());

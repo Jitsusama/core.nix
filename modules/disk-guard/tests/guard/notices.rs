@@ -31,6 +31,8 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
         frozen: Vec::new(),
         writer: None,
         notice: None,
+        holders: Vec::new(),
+        holders_at: None,
     }
 }
 

@@ -148,7 +148,7 @@ pub fn lower(name: &str) -> String {
 }
 
 /// A path, with the home folder written `~`.
-fn tilde(path: &Path, home: Option<&Path>) -> String {
+pub fn tilde(path: &Path, home: Option<&Path>) -> String {
     match home.and_then(|home| path.strip_prefix(home).ok()) {
         Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
         Some(rest) => format!("~/{}", rest.display()),
