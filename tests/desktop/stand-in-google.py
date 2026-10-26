@@ -1,8 +1,9 @@
 """Stand in for the google program, which would ask Google, on the socket it keeps.
 
-It speaks the program's protocol (modules/google/src/state.rs): a shell that connects is told the
-whole state as one line of JSON and kept, as the program keeps it for each change. The account is
-ready, with one meeting, Standup, half an hour from when the stand-in starts, joined on Meet.
+It speaks the program's protocol (modules/google/src/state.rs): the whole state as one line of
+JSON, left in google.json beside the socket, which the shell reads, and told to a shell that
+connects. The account is ready, with one meeting, Standup, half an hour from when the stand-in
+starts, joined on Meet.
 """
 
 import json
@@ -49,9 +50,17 @@ def keep(client: socket.socket, told: bytes) -> None:
         client.close()
 
 
+def leave(path: Path, told: bytes) -> None:
+    """Leave the state in the file beside the socket, replacing it whole as the program does."""
+    new = path.with_name(f"{path.name}.new")
+    new.write_bytes(told)
+    new.replace(path)
+
+
 def main() -> None:
-    """Listen on the socket the program is given, telling each shell that connects."""
+    """Leave the state beside the socket the program is given, and tell each shell that connects."""
     told = state()
+    leave(Path(sys.argv[1]).with_suffix(".json"), told)
     # One left by a stand-in before it would refuse the name.
     Path(sys.argv[1]).unlink(missing_ok=True)
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

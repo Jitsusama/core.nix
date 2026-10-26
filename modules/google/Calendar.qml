@@ -2,10 +2,11 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 // Joel's meetings, as the shell knows them, for the launcher's Today row
 // and its Calendar program: what the google program keeps of his Google
-// account (src/state.rs), heard on its socket, which says the whole state
-// as the shell connects and again whenever it changes. Until the program
-// runs, as on a machine nobody signed in to Google on, the account is
-// "none" and there are no meetings, so nothing shows.
+// account (src/state.rs), read from the file it leaves beside its socket,
+// google.json, which it replaces whole whenever the state changes. Until
+// the program runs, as on a machine nobody signed in to Google on, there's
+// no file, so the account is "none", there are no meetings and nothing
+// shows; nothing is tried again and again, since the file is watched.
 //
 // `next` is the meeting he's about to go to, or the one going on, the same
 // one for the Today row and Now's wants (Calendar.js says which), and
@@ -21,7 +22,7 @@ import "Calendar.js" as Said
 Singleton {
     id: root
 
-    readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.sock`
+    readonly property string told: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.json`
 
     // "none", "signedOut", "unreachable" or "ready", as the program says.
     property string account: "none"
@@ -82,34 +83,20 @@ Singleton {
         now = Date.now();
     }
 
-    // A fresh connection each time, since one refused or dropped doesn't
-    // try again by itself. What it says next replaces what was held; until
-    // it does, what was held stays, as the program keeps it while Google
-    // can't be reached.
-    LazyLoader {
-        id: link
-        active: true
-
-        Socket {
-            path: root.socket
-            connected: true
-            parser: SplitParser {
-                onRead: line => root.hear(line)
-            }
-            onConnectionStateChanged: {
-                if (!connected)
-                    again.restart();
-            }
-            onError: again.restart()
-        }
+    // The program gone, as it is once it stops, is no account: what it held
+    // may not be Joel's to see any more.
+    function forget() {
+        account = "none";
+        meetings = [];
+        heard = null;
     }
 
-    Timer {
-        id: again
-        interval: 2000
-        onTriggered: {
-            link.active = false;
-            link.active = true;
-        }
+    FileView {
+        path: root.told
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.hear(text())
+        onLoadFailed: root.forget()
     }
 }
