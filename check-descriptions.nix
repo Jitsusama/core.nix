@@ -207,6 +207,13 @@
     a Linux workstation signs through its TPM and a Mac through its Secure Enclave, both with one
     program and Joel's key by default, and signing alone, with no hardware, signs nothing
   '';
+  eero-passes-clippy = ''
+    clippy finds nothing in eero or its tests
+  '';
+  eero-reads-what-eero-says = ''
+    eero reads a network's line, speed test, conferencing setting and connected devices from what
+    eero's cloud answers, a missing field as unknown, and tells an aged session from other refusals
+  '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';

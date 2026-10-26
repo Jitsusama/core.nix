@@ -786,6 +786,7 @@ gather (
     ./modules/dictation/checks.nix
     ./modules/disk-guard/checks.nix
     ./modules/disko/checks.nix
+    ./modules/eero/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/firmware-settings/checks.nix
     ./modules/fonts/checks.nix
