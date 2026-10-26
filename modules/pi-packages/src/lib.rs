@@ -23,7 +23,7 @@
 //!
 //! A version `current` has left stays as it was, for the sessions still
 //! running it, until it has been out for `keepDays` and no process on the
-//! machine holds a file in it, maps one or stands in it (inuse.rs). A
+//! machine holds a file in it, maps one or stands in it (inuse/). A
 //! build that fails its check is removed and `current` is left alone; the
 //! next run tries again. One update runs at a time for each package, under
 //! a lock beside its versions.

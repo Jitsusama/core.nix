@@ -4,7 +4,7 @@
 //! files open, and the code it imports later read from the same folder.
 //! So a version `current` has left is removed only once nothing maps a
 //! file in it, holds one open or stands in it. Linux says so through
-//! `/proc` and macOS through libproc (inuse/macos.rs); elsewhere nothing
+//! `/proc` and macOS through libproc (macos.rs); elsewhere nothing
 //! is known to use it and its age alone decides.
 
 use std::fs;
