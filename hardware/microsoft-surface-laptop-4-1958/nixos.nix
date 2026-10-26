@@ -65,6 +65,19 @@
   ];
   boot.kernelModules = [ "kvm-amd" ];
 
+  # The GPU's driver in the initrd, so it takes the screen from the
+  # firmware's framebuffer before the disk's PIN is asked for. Loaded after
+  # the disk opened, it took the console over just as udev started the
+  # console's setup again for it, and loadkeys failed with an I/O error.
+  hardware.amdgpu.initrd.enable = true;
+
+  # The firmware's Time and Alarm Device registers as rtc0 ahead of the
+  # CMOS clock, but every read of it fails with an I/O error, so the kernel
+  # set no time at boot and each boot started at systemd's fallback date
+  # until NTP answered. Without it the CMOS clock, which the kernel keeps
+  # in step once NTP answers, is rtc0. docs/hardware.md has what was seen.
+  boot.blacklistedKernelModules = [ "acpi_tad" ];
+
   # The clock runs on HPET. Early in each boot the TSC and the platform's
   # timers disagree by up to 0.35%, so the kernel's watchdog throws the TSC
   # out, and with the watchdog off its calibration can come out 0.16% fast,
