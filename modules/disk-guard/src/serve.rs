@@ -138,15 +138,25 @@ pub fn steps(
     err: &mut dyn Write,
 ) {
     let mut unheard = Unheard::default();
+    // A notice the desktop didn't take, told again each step until it
+    // does or a newer one replaces it: the guard starts in the same second
+    // as the notification server at a boot or a switch, and a notice lost
+    // then was never told.
+    let mut untold: Option<crate::notices::Change> = None;
     loop {
         let stepped = crate::sys::tick().and_then(|tick| {
             let before = guard.status(tick.wall);
             guard.step(&tick, &senses(desk.saving()))?;
-            let change = crate::notices::change(&before, &guard.status(tick.wall));
-            if let Some(change) = change
-                && let Some(why) = unheard.said(desk.tell(&change))
-            {
-                let _ = writeln!(err, "disk-guard: telling the desktop: {why}");
+            let change =
+                crate::notices::change(&before, &guard.status(tick.wall)).or_else(|| untold.take());
+            if let Some(change) = change {
+                let told = desk.tell(&change);
+                if told.is_err() {
+                    untold = Some(change);
+                }
+                if let Some(why) = unheard.said(told) {
+                    let _ = writeln!(err, "disk-guard: telling the desktop: {why}");
+                }
             }
             Ok(())
         });

@@ -57,7 +57,7 @@ const GRACE: Duration = Duration::from_millis(200);
 /// guard's own priority, and its timeout bounds it either way. Done in the
 /// child alone, since an account can't raise a thread back from idle.
 #[cfg(target_os = "linux")]
-fn idle() {
+pub(crate) fn idle() {
     const IOPRIO_WHO_PROCESS: libc::c_int = 1;
     const IOPRIO_CLASS_IDLE: libc::c_int = 3;
     const IOPRIO_CLASS_SHIFT: libc::c_int = 13;

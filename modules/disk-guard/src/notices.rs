@@ -5,20 +5,25 @@
 //! pressure is the launcher's to show and never a notice: the guard passes
 //! over it every half hour or so, mostly taking nothing, and a notice each
 //! time taught Joel to ignore them. Routine upkeep and a disk easing say
-//! nothing either.
+//! nothing either. What stands to be told, from pressure on, is kept in
+//! the status file as well, for whoever looks after the machine to read
+//! without its person being shown it.
 
 use crate::band::Band;
 use crate::daemon::{FilesystemStatus, LastPass, Status};
 use crate::units::{shown, whole};
 use crate::words::{lower, named};
+use crate::writers::Frozen;
+use serde::Serialize;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Urgency {
     Normal,
     Critical,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Notice {
     pub summary: String,
     pub body: String,
@@ -44,21 +49,7 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
         .iter()
         .find(|frozen| !before.frozen.iter().any(|was| was.unit == frozen.unit))
     {
-        let disk = disk(&frozen.path);
-        let free = after
-            .filesystems
-            .iter()
-            .find(|filesystem| filesystem.path == frozen.path)
-            .map_or_else(|| "little".to_owned(), |filesystem| shown(filesystem.free));
-        return Some(Change::Show(Notice {
-            summary: format!("Froze {}, which was filling {}", frozen.name, lower(&disk)),
-            body: format!(
-                "{disk} had {free} free and nothing else was safe to clear. {} carries on by \
-                 itself once there's room, or now if you run disk-guard thaw.",
-                frozen.name
-            ),
-            urgency: Urgency::Critical,
-        }));
+        return Some(Change::Show(froze(frozen, after)));
     }
     if let Some(last) = &after.last
         && after.last != before.last
@@ -79,28 +70,7 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
         .filter(|filesystem| filesystem.band >= Band::Urgent && filesystem.band > was(filesystem))
         .max_by_key(|filesystem| filesystem.band);
     if let Some(filesystem) = entered {
-        let disk = disk(&filesystem.path);
-        let free = shown(filesystem.free);
-        let critical = filesystem.band == Band::Critical;
-        return Some(Change::Show(if critical {
-            Notice {
-                summary: format!("{disk} is critically full"),
-                body: format!(
-                    "{free} free, and saves may fail. The guard is clearing what it can, and \
-                     freezes whatever is filling the disk if that isn't enough."
-                ),
-                urgency: Urgency::Critical,
-            }
-        } else {
-            Notice {
-                summary: format!("{disk} is nearly full"),
-                body: format!(
-                    "{free} free. The guard is clearing everything it safely can; nothing is \
-                     needed from you yet."
-                ),
-                urgency: Urgency::Normal,
-            }
-        }));
+        return Some(Change::Show(full(filesystem)));
     }
     let pressed = |status: &Status| {
         status
@@ -111,7 +81,83 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
     (pressed(before) && !pressed(after)).then_some(Change::Withdraw)
 }
 
-/// The notice of `last`, a pass from urgent on that finished: what it
+/// What stands to be told now, whoever is told it: a writer frozen, else
+/// a pass that ended short on a disk still below healthy, in that band or
+/// a milder one since, else the worst disk from urgent on. Unlike
+/// `change`, it speaks from pressure on, since a pass under pressure that
+/// found nothing left is worth knowing to whoever can clear what the
+/// guard may not.
+pub fn standing(status: &Status) -> Option<Notice> {
+    if let Some(frozen) = status.frozen.first() {
+        return Some(froze(frozen, status));
+    }
+    let band = |path: &std::path::Path| {
+        status
+            .filesystems
+            .iter()
+            .find(|filesystem| filesystem.path == path)
+            .map_or(Band::Healthy, |filesystem| filesystem.band)
+    };
+    if let Some(last) = &status.last
+        && last.end != "reached"
+        && band(&last.path) != Band::Healthy
+        && last.band >= band(&last.path)
+    {
+        return Some(passed(last, status));
+    }
+    status
+        .filesystems
+        .iter()
+        .filter(|filesystem| filesystem.band >= Band::Urgent)
+        .max_by_key(|filesystem| filesystem.band)
+        .map(full)
+}
+
+/// The notice of a writer frozen, with how to let it go on.
+fn froze(frozen: &Frozen, status: &Status) -> Notice {
+    let disk = disk(&frozen.path);
+    let free = status
+        .filesystems
+        .iter()
+        .find(|filesystem| filesystem.path == frozen.path)
+        .map_or_else(|| "little".to_owned(), |filesystem| shown(filesystem.free));
+    Notice {
+        summary: format!("Froze {}, which was filling {}", frozen.name, lower(&disk)),
+        body: format!(
+            "{disk} had {free} free and nothing else was safe to clear. {} carries on by \
+             itself once there's room, or now if you run disk-guard thaw.",
+            frozen.name
+        ),
+        urgency: Urgency::Critical,
+    }
+}
+
+/// The notice of a disk nearly or critically full, before its pass ends.
+fn full(filesystem: &FilesystemStatus) -> Notice {
+    let disk = disk(&filesystem.path);
+    let free = shown(filesystem.free);
+    if filesystem.band == Band::Critical {
+        Notice {
+            summary: format!("{disk} is critically full"),
+            body: format!(
+                "{free} free, and saves may fail. The guard is clearing what it can, and \
+                 freezes whatever is filling the disk if that isn't enough."
+            ),
+            urgency: Urgency::Critical,
+        }
+    } else {
+        Notice {
+            summary: format!("{disk} is nearly full"),
+            body: format!(
+                "{free} free. The guard is clearing everything it safely can; nothing is \
+                 needed from you yet."
+            ),
+            urgency: Urgency::Normal,
+        }
+    }
+}
+
+/// The notice of `last`, a pass below healthy that finished: what it
 /// cleared, and what's left to do, if anything.
 fn passed(last: &LastPass, after: &Status) -> Notice {
     let disk = disk(&last.path);
@@ -162,10 +208,11 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
         ),
         None => what,
     };
-    let still = if last.band == Band::Critical {
-        "still critically full"
-    } else {
-        "still nearly full"
+    let still = match last.band {
+        Band::Critical => "still critically full",
+        Band::Urgent => "still nearly full",
+        _ if last.end == "exhausted" => "filling, with nothing left to clear",
+        _ => "still filling",
     };
     Notice {
         summary: format!("{disk} is {still}"),

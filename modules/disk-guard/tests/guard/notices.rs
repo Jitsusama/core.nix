@@ -1,6 +1,6 @@
 use disk_guard::band::Band;
 use disk_guard::daemon::{FilesystemStatus, LastPass, Status, Writing};
-use disk_guard::notices::{Change, Notice, Urgency, change};
+use disk_guard::notices::{Change, Notice, Urgency, change, standing};
 use std::path::PathBuf;
 
 const GIB: u64 = 1 << 30;
@@ -23,12 +23,16 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
                 fill_per_hour: None,
                 full_at: None,
                 says: String::new(),
+                exhausted: false,
             })
             .collect(),
         cleared: Vec::new(),
         last,
         frozen: Vec::new(),
         writer: None,
+        notice: None,
+        holders: Vec::new(),
+        holders_at: None,
     }
 }
 
@@ -73,6 +77,75 @@ fn a_writer_frozen_is_told_at_once_with_how_to_let_it_go_on() {
     );
     assert_eq!(notice.urgency, Urgency::Critical);
     assert_eq!(change(&frozen, &frozen), None, "told once");
+    assert_eq!(
+        standing(&frozen),
+        Some(notice),
+        "and it stands while frozen"
+    );
+}
+
+#[test]
+fn what_stands_now_is_kept_for_whoever_reads_the_status_file() {
+    let calm = status(&[("/", Band::Healthy, 400)], None);
+    assert_eq!(standing(&calm), None, "a healthy disk has nothing to say");
+    let pressed = status(&[("/", Band::Pressure, 140)], None);
+    assert_eq!(
+        standing(&pressed),
+        None,
+        "pressure before a pass, nothing yet"
+    );
+    let spent = status(
+        &[("/", Band::Pressure, 140)],
+        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+    );
+    let notice = standing(&spent).unwrap();
+    assert_eq!(
+        notice.summary,
+        "The disk is filling, with nothing left to clear"
+    );
+    assert_eq!(
+        notice.body,
+        "Nothing cleared, and only 140.0 GiB is free and nothing else is safe to clear. \
+         Delete something you don't need; disk-guard plan lists what's left."
+    );
+    assert_eq!(notice.urgency, Urgency::Normal);
+    assert_eq!(
+        change(&pressed, &spent),
+        None,
+        "still never a desktop notice"
+    );
+    let urgent = status(&[("/", Band::Urgent, 60)], None);
+    assert_eq!(
+        standing(&urgent).unwrap().summary,
+        "The disk is nearly full"
+    );
+    let short = status(
+        &[("/", Band::Urgent, 60)],
+        Some(pass(1.0, Band::Urgent, "exhausted", 0)),
+    );
+    assert_eq!(
+        standing(&short).unwrap().summary,
+        "The disk is still nearly full"
+    );
+    let reached = status(
+        &[("/", Band::Pressure, 200)],
+        Some(pass(1.0, Band::Pressure, "reached", 40)),
+    );
+    assert_eq!(standing(&reached), None, "a pass that made room");
+    let eased = status(
+        &[("/", Band::Healthy, 300)],
+        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+    );
+    assert_eq!(standing(&eased), None, "once the disk is healthy again");
+    let worse = status(
+        &[("/", Band::Urgent, 60)],
+        Some(pass(1.0, Band::Pressure, "exhausted", 0)),
+    );
+    assert_eq!(
+        standing(&worse).unwrap().summary,
+        "The disk is nearly full",
+        "a pass in a milder band says nothing of this one"
+    );
 }
 
 #[test]

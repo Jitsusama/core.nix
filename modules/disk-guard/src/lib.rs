@@ -27,6 +27,7 @@ pub mod freeze;
 pub mod freezer;
 pub mod garbage;
 pub mod generations;
+pub mod holders;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod host;
 pub mod journal;
