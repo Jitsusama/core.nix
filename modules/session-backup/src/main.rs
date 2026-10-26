@@ -47,6 +47,9 @@ fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
         done.found,
         done.before
     );
+    if let Some(why) = done.busy {
+        println!("Drive stayed busy, so the rest wait for the next run: {why}");
+    }
     Ok(())
 }
 

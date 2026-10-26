@@ -16,6 +16,8 @@ const CONNECT: Duration = Duration::from_secs(30);
 pub enum Fault {
     /// Drive no longer takes the token: trade for another and try again.
     Unauthorized,
+    /// Drive is busy or out of reach for now, and asks for a retry later.
+    Busy(String),
     Other(String),
 }
 
@@ -23,7 +25,7 @@ impl std::fmt::Display for Fault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Fault::Unauthorized => f.write_str("Drive no longer takes the login's token"),
-            Fault::Other(why) => f.write_str(why),
+            Fault::Busy(why) | Fault::Other(why) => f.write_str(why),
         }
     }
 }
@@ -63,7 +65,7 @@ impl Drive<'_> {
             .get(&url)
             .header("Authorization", format!("Bearer {token}"))
             .call()
-            .map_err(|why| Fault::Other(format!("can't reach Drive: {why}")))?;
+            .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
         let body = read(&mut answer, "look for", name)?;
         let value: Value = serde_json::from_str(&body)
             .map_err(|why| Fault::Other(format!("Drive's list of {name} isn't JSON: {why}")))?;
@@ -103,7 +105,7 @@ impl Drive<'_> {
             .header("X-Upload-Content-Length", bytes.to_string())
             .content_type("application/json; charset=UTF-8")
             .send(metadata.to_string())
-            .map_err(|why| Fault::Other(format!("can't reach Drive: {why}")))?;
+            .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
         let location = opened
             .headers()
             .get("location")
@@ -121,7 +123,7 @@ impl Drive<'_> {
             .header("Content-Length", bytes.to_string())
             .content_type("application/octet-stream")
             .send(ureq::SendBody::from_reader(&mut file))
-            .map_err(|why| Fault::Other(format!("can't send {name} to Drive: {why}")))?;
+            .map_err(|why| Fault::Busy(format!("can't send {name} to Drive: {why}")))?;
         let body = read(&mut sent, "send", name)?;
         let value: Value = serde_json::from_str(&body)
             .map_err(|why| Fault::Other(format!("Drive's answer for {name} isn't JSON: {why}")))?;
@@ -144,6 +146,11 @@ fn read(
     match status {
         200..=299 => Ok(body),
         401 => Err(Fault::Unauthorized),
+        // Drive answers these when it is busy, and asks to be tried again.
+        429 | 500..=599 => Err(Fault::Busy(format!(
+            "Drive refused to {doing} {name} ({status}): {}",
+            body.trim()
+        ))),
         // A login made without a Drive scope is refused this way, which
         // signing in again with one fixes.
         403 if body.contains("insufficient authentication scopes")

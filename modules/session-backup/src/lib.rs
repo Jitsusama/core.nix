@@ -18,7 +18,10 @@
 //! What was sent is kept in a ledger, one JSON line per object
 //! (ledger.rs), written as each lands. A run stopped part way carries on
 //! from the ledger, and one stopped between Drive taking an object and the
-//! ledger saying so finds it by name rather than sending it twice.
+//! ledger saying so finds it by name rather than sending it twice. When
+//! Drive answers busy (429 or 5xx) or can't be reached, a call is tried
+//! again after a few waits; if it stays busy, the run ends without failing
+//! and leaves the rest for the next one (backup.rs).
 //!
 //! It signs in as the account's gcloud application-default login, refreshing
 //! its token straight from Google's endpoint (token.rs) rather than running
