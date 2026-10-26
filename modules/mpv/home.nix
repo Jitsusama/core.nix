@@ -99,11 +99,11 @@ let
     ]
     ++ grouped "loudness" [
       {
-        chord = "9";
+        chord = "/";
         does = "Quieter";
       }
       {
-        chord = "0";
+        chord = "*";
         does = "Louder";
       }
       {
@@ -173,9 +173,15 @@ in
     enable = true;
     scripts = [ pkgs.mpvScripts.mpris ];
     # The keys whose meaning is ours rather than mpv's, from the list above.
-    bindings = lib.listToAttrs (
-      map (key: lib.nameValuePair key.chord key.run) (lib.filter (key: key ? run) keys)
-    );
+    # mpv's 0, louder beside 9's quieter, does nothing now that 9 plays the
+    # ninth in the list; / and * stay mpv's quieter and louder.
+    bindings =
+      lib.listToAttrs (
+        map (key: lib.nameValuePair key.chord key.run) (lib.filter (key: key ? run) keys)
+      )
+      // {
+        "0" = "ignore";
+      };
     config = {
       profile = "high-quality";
       vo = "gpu-next";
