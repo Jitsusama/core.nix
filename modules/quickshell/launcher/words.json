@@ -3379,6 +3379,13 @@
       }
     },
     {
+      "id": "verb:full-width",
+      "in": "windows",
+      "name": "Full width",
+      "verb": "widen",
+      "glyph": "columns"
+    },
+    {
       "id": "verb:title",
       "in": "windows",
       "name": "Copy title",

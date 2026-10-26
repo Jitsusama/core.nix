@@ -853,8 +853,18 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     rows = desktop.showing()["rows"]
     assert "Switch" not in rows, rows
     assert "Bring here" not in rows, rows
-    machine.send_key("esc")
+    # Full width makes its column the screen's width, as niri says.
+    before = desktop.window_titled("Notes for Tuesday")
+    desktop.type_in("full", selecting="Full width")
+    machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
+
+    def widened(_: bool) -> bool:
+        """Say whether the notes' window has grown wider."""
+        now = desktop.window_titled("Notes for Tuesday")
+        return bool(now["layout"]["window_size"][0] > before["layout"]["window_size"][0])
+
+    retry(widened, timeout=dt.timedelta(seconds=10))
 
 
 # Stepping back out of a collection finds the launcher as it was left,

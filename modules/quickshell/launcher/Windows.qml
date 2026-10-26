@@ -161,7 +161,8 @@ Provider {
     // The window Joel's in, as Desktop's first row (the approved proposal):
     // named This window, its title beside, and Return or the right arrow
     // holding what can be done to it, all but going to it, since it's the
-    // one he's in.
+    // one he's in, and with making its column the screen's full width,
+    // which niri does to the column in front, after floating it.
     function thisWindow(one) {
         const window = one.window;
         const entry = one.entry;
@@ -177,8 +178,15 @@ Provider {
             side: one.title,
             // The one Super+Tab leaves out, as it's where Joel is.
             focused: true,
-            verbs: () => provider.verbs(window, one.title, one.program, below)
-                .filter(row => row.key !== "verb:switch" && row.key !== "verb:bring")
+            verbs: () => {
+                const all = provider.verbs(window, one.title, one.program, below)
+                    .filter(row => row.key !== "verb:switch" && row.key !== "verb:bring");
+                const floated = all.findIndex(row => row.key === "verb:float");
+                all.splice(floated + 1, 0, provider.act("verb:full-width", "", {
+                    run: () => Niri.act({ MaximizeColumn: {} })
+                }));
+                return all;
+            }
         });
     }
 
