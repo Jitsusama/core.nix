@@ -1782,6 +1782,52 @@ Scope {
         function showing(): string {
             return root.showing();
         }
+
+        // Where every word on the card is drawn, for the check that nothing
+        // moves without changing.
+        function laidOut(): string {
+            return root.laidOut();
+        }
+    }
+
+    // Every word drawn in an item, the item itself and all inside it, each
+    // with where it's drawn on the card: its box's left and top and where
+    // its letters start, which an aligned text moves within its box.
+    function wordsIn(item, into) {
+        if (!item || !item.visible || item.opacity === 0)
+            return [];
+        const words = [];
+        if (typeof item.text === "string" && typeof item.contentWidth === "number"
+            && item.text !== "" && item.width > 0) {
+            const at = item.mapToItem(into, 0, 0);
+            const spare = Math.max(0, item.width - item.contentWidth);
+            const inset = item.horizontalAlignment === Qt.AlignRight ? spare
+                : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
+            words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
+                starts: Math.round(at.x + inset) });
+        }
+        for (const child of item.children)
+            for (const word of wordsIn(child, into))
+                words.push(word);
+        return words;
+    }
+
+    // Where the card's words are, as JSON: the field's, the foot's, and each
+    // row's shown, with what the row is and how it reads, so a test can say
+    // a row that reads the same was drawn in the same place (Joel,
+    // 2026-10-25: "text alignment and shit constantly shifting around").
+    function laidOut() {
+        const rows = [];
+        for (let at = 0; at < root.matches.length; at += 1) {
+            const drawn = list.itemAtIndex(at);
+            const row = root.matches[at];
+            if (drawn && drawn.visible)
+                rows.push({ at, is: Rank.identity(row), selected: at === root.current,
+                    reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
+                        .join(" \u00b7 "), words: wordsIn(drawn, card) });
+        }
+        return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
+            foot: wordsIn(foot, card), rows });
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,

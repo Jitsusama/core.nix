@@ -1353,6 +1353,88 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
         desktop.as_account(f"niri msg action close-window --id {window}")
 
 
+# Joel, 2026-10-25: "text alignment and shit constantly shifting around".
+# A word that moves without changing tells him nothing and costs him a
+# look, so after every key each word on the card that reads as it did must
+# be drawn where it was: in the field, in the foot, and in each row that
+# is still the same thing saying the same.
+
+
+def laid_out(desktop: Desktop) -> Json:
+    """Give where the launcher draws each word, once two reads in a row agree."""
+    was = None
+    for _ in range(20):
+        now = cast("Json", json.loads(desktop.as_account("qs ipc call launcher laidOut")))
+        if now == was:
+            return now
+        was = now
+    return cast("Json", was)
+
+
+def moved(before: Json, after: Json) -> list[str]:
+    """Say each word drawn in both that reads the same and isn't where it was."""
+    shifts = []
+
+    def compare(where: str, old: list[Json], new: list[Json]) -> None:
+        unmatched: dict[str, list[Json]] = {}
+        for word in old:
+            unmatched.setdefault(word["text"], []).append(word)
+        for word in new:
+            same = unmatched.get(word["text"])
+            if not same:
+                continue
+            was = same.pop(0)
+            if (was["starts"], was["y"]) != (word["starts"], word["y"]):
+                shifts.append(
+                    f"{where}: {word['text']!r} moved from {was['starts']},{was['y']}"
+                    f" to {word['starts']},{word['y']}"
+                )
+
+    compare("the field", before["field"], after["field"])
+    compare("the foot", before["foot"], after["foot"])
+    rows = {row["at"]: row for row in before["rows"]}
+    for row in after["rows"]:
+        was = rows.get(row["at"])
+        if was and (was["is"], was["reads"]) == (row["is"], row["reads"]):
+            compare(f"row {row['at']} ({row['reads']})", was["words"], row["words"])
+    return shifts
+
+
+def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:
+    """Nothing on the launcher moves unless it changes, as letters, erasures and arrows go."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    before = laid_out(desktop)
+    shifts: list[str] = []
+    typed = ""
+    keys = [*"sound", "backspace", "backspace", "down", "down", "up", *"nd", "down"]
+    for step, key in enumerate(keys):
+        was = desktop.showing()["selected"]
+        if len(key) == 1:
+            typed += key
+            machine.send_chars(key)
+        else:
+            typed = typed[:-1] if key == "backspace" else typed
+            machine.send_key(key)
+        # An arrow is heard once the selection moves, a letter once it's held.
+        arrowed = key in {"down", "up"}
+
+        def heard(
+            shown: Json, typed: str = typed, arrowed: bool = arrowed, was: Json = was
+        ) -> bool:
+            return shown["typed"] == typed and (not arrowed or shown["selected"] != was)
+
+        desktop.launcher_until(heard)
+        after = laid_out(desktop)
+        desktop.photograph(f"launcher-still-{step:02}-{key}")
+        shifts += [f"after {key!r} ({typed!r}) {shift}" for shift in moved(before, after)]
+        before = after
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
