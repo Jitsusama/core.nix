@@ -3,7 +3,7 @@
 //!
 //! Only a warning or an alert asks, once per finding, and its notice is
 //! withdrawn when the finding no longer holds or is marked expected. A
-//! cap's always may; the rest share a budget a week, so the watch can't
+//! cap's always may; the rest share a few a week, so the watch can't
 //! nag. Once a day, at the first pass after four in the morning that finds
 //! the screen unlocked, one quiet line says how yesterday went.
 //!
@@ -68,7 +68,7 @@ fn summary(finding: &Finding) -> String {
 pub fn plan(
     history: &History,
     findings: &[Finding],
-    budget: u32,
+    per_week: u32,
     now: f64,
 ) -> Result<Vec<Change>, String> {
     let shown: Vec<(String, u32)> = {
@@ -106,7 +106,7 @@ pub fn plan(
             });
         }
     }
-    let mut left = budget.saturating_sub(spent);
+    let mut left = per_week.saturating_sub(spent);
     // When each key was last noticed, so a finding that holds on is told
     // of once, and one that cleared and came back, starting anew, again.
     let told: HashMap<String, f64> = {
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn the_budget_holds_but_a_cap_always_asks() {
+    fn the_few_a_week_hold_but_a_cap_always_asks() {
         let history = History::memory();
         let mut desk = Fake { shown: Vec::new() };
         let findings: Vec<Finding> = (0..5)

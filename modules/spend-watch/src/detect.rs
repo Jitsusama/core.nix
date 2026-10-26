@@ -110,9 +110,14 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
     found.extend(prices(picture));
     found.extend(health(picture));
     found.extend(said(picture));
-    let quiet: HashSet<&str> = config.detectors.quiet.iter().map(String::as_str).collect();
+    let notes_only: HashSet<&str> = config
+        .detectors
+        .notes_only
+        .iter()
+        .map(String::as_str)
+        .collect();
     for finding in &mut found {
-        if quiet.contains(finding.detector.as_str()) && !finding.cap {
+        if notes_only.contains(finding.detector.as_str()) && !finding.cap {
             finding.severity = finding.severity.min(Severity::Note);
         }
     }

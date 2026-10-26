@@ -68,7 +68,7 @@ pub struct Finding {
     pub quest: Option<String>,
     pub action: Option<Action>,
     /// Whether it may ask for the person: a cap's events always may,
-    /// others within the notice budget.
+    /// others within the few notices a week.
     pub cap: bool,
     #[serde(default)]
     pub started: f64,

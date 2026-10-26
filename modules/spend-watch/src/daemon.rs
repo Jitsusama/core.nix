@@ -381,7 +381,7 @@ fn tell(
     findings: &[crate::findings::Finding],
     now: f64,
 ) -> Result<(), String> {
-    let changes = notices::plan(history, findings, config.notices.budget, now)?;
+    let changes = notices::plan(history, findings, config.notices.per_week, now)?;
     notices::apply(history, desk, changes, now)?;
     if config.notices.daily
         && let Some(line) = notices::daily(history, picture, now)?

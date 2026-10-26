@@ -28,8 +28,6 @@
     palette-rows-keep-their-words-apart = "Launcher (Y2YBTS): palette to launcher";
     "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
     "jitsusama.dellXps14.cameraModule" = "Repos (Y9XISP): camera module to camera board";
-    "jitsusama.spend-watch.detectors.quiet" = "Repos (Y9XISP): quiet, for notes only";
-    "jitsusama.spend-watch.notices.budget" = "Repos (Y9XISP): budget, for notices a week";
     xdg-open-opens-each-kind-in-its-app = "Look and programs (QGB4ON): app to program";
   };
 }

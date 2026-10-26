@@ -50,14 +50,14 @@ let
       inherit (feed) label command environment;
     }) cfg.feeds;
     notices = {
-      inherit (cfg.notices) enable budget daily;
+      inherit (cfg.notices) enable perWeek daily;
     };
     detectors = {
       inherit (cfg.detectors)
         burnRunLengthDays
         falseDiscovery
         floor
-        quiet
+        notesOnly
         ;
     };
     inherit (cfg)
@@ -186,7 +186,7 @@ in
         type = lib.types.bool;
         default = true;
       };
-      budget = lib.mkOption {
+      perWeek = lib.mkOption {
         description = "Notices a week, outside a cap's, so the watch never nags.";
         type = lib.types.ints.unsigned;
         default = 3;
@@ -215,7 +215,7 @@ in
         type = lib.types.numbers.nonnegative;
         default = 25;
       };
-      quiet = lib.mkOption {
+      notesOnly = lib.mkOption {
         description = "Detectors whose findings are only ever notes, by name.";
         type = lib.types.listOf lib.types.str;
         default = [ ];
