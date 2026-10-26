@@ -530,7 +530,8 @@ gather (
       # table's code points itself: a surface that did would keep its mark when
       # the table changes, and could drift from the mark the same idea wears
       # elsewhere. A code point is caught as a script writes one, 0xf023 or an
-      # escape; tests spell what they expect to see, which is their job.
+      # escape; tests spell what they expect to see, which is their job, so no
+      # tests folder is read, at the top or beside its module.
       nothing-spells-a-mark =
         pkgs.runCommandLocal "nothing-spells-a-mark" { nativeBuildInputs = [ pkgs.ripgrep ]; }
           ''
@@ -542,6 +543,7 @@ gather (
             # search, and only none passes.
             status=0
             rg --line-number --no-heading --hidden --ignore-case --glob '!modules/theme/**' \
+              --glob '!**/tests/**' \
               -e "(0x|\\\\u\\{?|\\\\U000)0*($codes)\\b" modules roles hardware examples flake.nix \
               || status=$?
             if [ $status = 0 ]; then
