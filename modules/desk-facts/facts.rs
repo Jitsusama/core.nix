@@ -684,14 +684,12 @@ struct Stream {
     settings: Vec<Setting>,
 }
 
-/// A USB card's speed and its playback and capture streams, from
-/// /proc/asound/cardN/stream0.
-fn streams(text: &str) -> (String, Stream, Stream) {
-    let speed = text
-        .lines()
-        .next()
-        .and_then(|line| line.rsplit_once(", ")?.1.split_once(" :"))
-        .map_or(String::new(), |(speed, _)| speed.to_owned());
+/// A USB card's playback and capture streams, from
+/// /proc/asound/cardN/stream0. Its first line ends in the card's speed, but
+/// the kernel cuts that line at 79 characters, and a long enough name cuts
+/// the speed ("full spee" for the Pebble X Plus), so the speed is read
+/// from the device instead.
+fn streams(text: &str) -> (Stream, Stream) {
     let (mut playback, mut capture) = (Stream::default(), Stream::default());
     let mut now: Option<&mut Stream> = None;
     for line in text.lines() {
@@ -736,7 +734,7 @@ fn streams(text: &str) -> (String, Stream, Stream) {
             }
         }
     }
-    (speed, playback, capture)
+    (playback, capture)
 }
 
 /// A sample format's bits, as ALSA names it: `S24_3LE` is 24.
@@ -893,7 +891,8 @@ fn sound(
         let firmware = fs::read_to_string(usb.join("bcdDevice"))
             .map(|bcd| format!("release {}", release(&bcd)))
             .unwrap_or_default();
-        let (speed, playback, capture) = streams(&stream0);
+        let speed = speed(&fs::read_to_string(usb.join("speed")).unwrap_or_default());
+        let (playback, capture) = streams(&stream0);
         let now =
             |sub: &str| fs::read_to_string(card.join(sub)).map_or(String::new(), |hw| running(&hw));
         if !playback.settings.is_empty() {
@@ -2562,8 +2561,7 @@ Capture:
 
     #[test]
     fn a_usb_card_s_streams_say_what_they_offer_and_how_they_run() {
-        let (speed, playback, capture) = streams(MV7);
-        assert_eq!(speed, "full speed");
+        let (playback, capture) = streams(MV7);
         assert!(!playback.running);
         assert_eq!(playback.clock, "adaptive");
         assert_eq!(
@@ -2593,7 +2591,8 @@ Capture:
 
     #[test]
     fn a_direction_says_what_plays_first_and_only_while_it_does() {
-        let (speed, playback, capture) = streams(MV7);
+        let (playback, capture) = streams(MV7);
+        let speed = speed("12\n");
         let recording = direction(&capture, &speed, "release 2.03", "48 kHz, 24 bit", false);
         assert_eq!(
             recording[0],
@@ -2602,8 +2601,40 @@ Capture:
         assert_eq!(named(&recording, "measured rate"), Some("48000 Hz"));
         let idle = direction(&playback, &speed, "release 2.03", "", true);
         assert_eq!(named(&idle, "playing"), None);
-        assert_eq!(named(&idle, "USB"), Some("full speed"));
+        assert_eq!(named(&idle, "USB"), Some("12 Mbit/s"));
         assert_eq!(named(&idle, "firmware"), Some("release 2.03"));
+    }
+
+    #[test]
+    fn a_usb_card_with_a_long_name_still_says_its_whole_speed() {
+        // The kernel cuts the stream file's first line at 79 characters,
+        // and the Pebble X Plus's name is long enough to cut its speed.
+        let sys = Sys::new("long-name");
+        put(&sys.0, "asound/card1/id", "Plus\n");
+        put(&sys.0, "asound/card1/usbid", "041e:329a\n");
+        put(
+            &sys.0,
+            "asound/card1/stream0",
+            "Creative Technology Ltd Creative Pebble X Plus at usb-0000:00:14.0-4, full spee : USB Audio
+
+Playback:
+  Status: Stop
+  Interface 1
+    Altset 1
+    Format: S16_LE
+    Channels: 2
+    Endpoint: 0x01 (1 OUT) (ADAPTIVE)
+    Rates: 48000
+",
+        );
+        fs::create_dir_all(sys.0.join("class/sound/card1/device")).unwrap();
+        put(&sys.0, "class/sound/card1/speed", "12\n");
+        put(&sys.0, "class/sound/card1/bcdDevice", "1310\n");
+        let all = sound(&sys.0.join("asound"), &sys.0, None, &|_| Control::default());
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].0, "Plus:out");
+        assert_eq!(named(&all[0].1, "USB"), Some("12 Mbit/s"));
+        assert_eq!(named(&all[0].1, "firmware"), Some("release 13.10"));
     }
 
     #[test]

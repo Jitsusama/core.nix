@@ -37,6 +37,11 @@
 //! controller and firmware level it lists, read by its thread only while
 //! no brightness is waiting to be set, so a key press never waits behind
 //! them.
+//!
+//! Both need to know which monitor a bus reaches, from its EDID. A monitor
+//! coming back after a sleep or a replug can answer for its brightness
+//! before its EDID answers, so its thread starts knowing none, and is told
+//! at the next look that reads it.
 
 use std::collections::{HashMap, VecDeque};
 use std::env;
@@ -357,11 +362,13 @@ impl Bus {
     }
 }
 
-/// What a monitor's thread is asked for: the latest level, and whether its
-/// bus has gone.
+/// What a monitor's thread is asked for: the latest level, which monitor it
+/// reaches once that's learned after it started, and whether its bus has
+/// gone.
 #[derive(Default)]
 struct Wanted {
     level: Option<f64>,
+    identity: Option<Identity>,
     gone: bool,
 }
 
@@ -400,6 +407,9 @@ impl Shared {
             if let Some(level) = wanted.take() {
                 return Next::Level(level);
             }
+            if let Some(identity) = wanted.identity.take() {
+                return Next::Identified(identity);
+            }
             if busy {
                 return Next::Idle;
             }
@@ -415,6 +425,7 @@ impl Shared {
 #[derive(Debug, PartialEq)]
 enum Next {
     Level(f64),
+    Identified(Identity),
     Idle,
     Gone,
 }
@@ -496,9 +507,11 @@ fn share(value: u16, max: u16) -> String {
     )
 }
 
-/// A monitor's thread, which ends once this is dropped.
+/// A monitor's thread, which ends once this is dropped, and whether it
+/// knows which monitor it reaches.
 struct Monitor {
     shared: Arc<Shared>,
+    identified: bool,
 }
 
 impl Monitor {
@@ -506,6 +519,7 @@ impl Monitor {
         let shared = Arc::new(Shared {
             wanted: Mutex::new(Wanted {
                 level: Some(level),
+                identity: None,
                 gone: false,
             }),
             woken: Condvar::new(),
@@ -515,11 +529,25 @@ impl Monitor {
         thread::Builder::new()
             .name(format!("monitor on {name}"))
             .spawn(move || follow(&owned, bus, identity, &theirs))?;
-        Ok(Monitor { shared })
+        Ok(Monitor {
+            shared,
+            identified: identity.is_some(),
+        })
     }
 
     fn want(&self, level: f64) {
         self.shared.wanted().want(level);
+        self.shared.woken.notify_one();
+    }
+
+    /// Tells a thread that started before its monitor's EDID answered
+    /// which monitor it reaches, once; one that knows is told nothing.
+    fn identify(&mut self, identity: Option<Identity>) {
+        let Some(identity) = identity.filter(|_| !self.identified) else {
+            return;
+        };
+        self.identified = true;
+        self.shared.wanted().identity = Some(identity);
         self.shared.woken.notify_one();
     }
 }
@@ -531,8 +559,38 @@ impl Drop for Monitor {
     }
 }
 
+/// What a monitor's thread does once it knows which monitor it reaches:
+/// holds a Z27k G3's hot-plug detection, and keeps its facts in a file of
+/// their own, starting with its brightness and capabilities.
+fn identified(
+    name: &str,
+    bus: &mut Bus,
+    identity: Option<Identity>,
+    brightness: String,
+) -> (Told, VecDeque<Chore>) {
+    let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let mut told = Told::new(runtime.as_deref(), identity.as_ref().map(|each| &each[..]));
+    told.set("brightness", brightness);
+    if identity.as_ref().is_some_and(holds_hot_plug)
+        && let Some(held) = hold_hot_plug(name, bus)
+    {
+        told.set("hot-plug detection", hot_plug_named(held).to_owned());
+    }
+    let mut chores = VecDeque::new();
+    if told.kept() {
+        chores.push_back(Chore::Capabilities {
+            offset: 0,
+            read: Vec::new(),
+            failed: 0,
+        });
+    }
+    (told, chores)
+}
+
 /// A monitor's thread: learns its brightest, holds a Z27k G3's hot-plug
 /// detection, then sets each level asked for, unless it already shows it.
+/// A bus can answer for brightness before its EDID answers, as a monitor
+/// comes back after a sleep, so the thread may learn its monitor later.
 fn follow(name: &str, mut bus: Bus, identity: Option<Identity>, shared: &Shared) {
     let found = bus
         .read_vcp(BRIGHTNESS)
@@ -548,22 +606,7 @@ fn follow(name: &str, mut bus: Bus, identity: Option<Identity>, shared: &Shared)
         }
     };
     eprintln!("<6>the monitor on {name} follows the panel, {now} of {max}");
-    let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    let mut told = Told::new(runtime.as_deref(), identity.as_ref().map(|each| &each[..]));
-    told.set("brightness", share(now, max));
-    if identity.as_ref().is_some_and(holds_hot_plug)
-        && let Some(held) = hold_hot_plug(name, &mut bus)
-    {
-        told.set("hot-plug detection", hot_plug_named(held).to_owned());
-    }
-    let mut chores = VecDeque::new();
-    if told.kept() {
-        chores.push_back(Chore::Capabilities {
-            offset: 0,
-            read: Vec::new(),
-            failed: 0,
-        });
-    }
+    let (mut told, mut chores) = identified(name, &mut bus, identity, share(now, max));
     let mut shown = now;
     let mut failing = false;
     loop {
@@ -575,6 +618,11 @@ fn follow(name: &str, mut bus: Bus, identity: Option<Identity>, shared: &Shared)
                     Some(work) => chores.extend(chore(name, &mut bus, &mut told, work)),
                     None => told.say(),
                 }
+                continue;
+            }
+            Next::Identified(identity) => {
+                eprintln!("<6>the monitor on {name} has answered with its EDID, so it's known now");
+                (told, chores) = identified(name, &mut bus, Some(identity), share(shown, max));
                 continue;
             }
             Next::Level(level) => level,
@@ -933,7 +981,8 @@ impl Monitors {
                 continue;
             }
             bus.left_to = None;
-            if bus.monitor.is_some() {
+            if let Some(monitor) = &mut bus.monitor {
+                monitor.identify(bus.identity);
                 continue;
             }
             let identity = bus.identity;
@@ -1086,6 +1135,7 @@ mod tests {
         let shared = Shared {
             wanted: Mutex::new(Wanted {
                 level: Some(0.5),
+                identity: None,
                 gone: true,
             }),
             woken: Condvar::new(),
@@ -1098,11 +1148,34 @@ mod tests {
         let shared = Shared {
             wanted: Mutex::new(Wanted {
                 level: Some(0.5),
+                identity: None,
                 gone: false,
             }),
             woken: Condvar::new(),
         };
         assert_eq!(shared.next(true), Next::Level(0.5));
+        assert_eq!(shared.next(true), Next::Idle);
+    }
+
+    #[test]
+    fn a_thread_learns_its_monitor_once_after_a_level_and_before_other_work() {
+        let identity = [0x22, 0x0E, 0xD3, 0x36, 1, 0, 0, 0, 0x1C, 0x1F];
+        let mut monitor = Monitor {
+            shared: Arc::new(Shared {
+                wanted: Mutex::new(Wanted::default()),
+                woken: Condvar::new(),
+            }),
+            identified: false,
+        };
+        monitor.identify(None);
+        monitor.want(0.5);
+        monitor.identify(Some(identity));
+        let shared = Arc::clone(&monitor.shared);
+        assert_eq!(shared.next(true), Next::Level(0.5));
+        assert_eq!(shared.next(true), Next::Identified(identity));
+        assert_eq!(shared.next(true), Next::Idle);
+        // One that knows its monitor isn't told again.
+        monitor.identify(Some(identity));
         assert_eq!(shared.next(true), Next::Idle);
     }
 
