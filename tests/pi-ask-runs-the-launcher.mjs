@@ -55,7 +55,7 @@ case "$4" in
   run)
     case "$5" in
       app:kitty) echo '{"done":true,"said":"Opened Kitty"}' ;;
-      category:computer›category:energy›session:Reboot) echo '{"done":false,"offered":true}' ;;
+      category:computer›category:energy›session:Reboot) echo '{"done":false,"offered":true,"said":"Reboot?"}' ;;
       *) echo '{"error":"no entry by that id"}' ;;
     esac ;;
   runWith)
@@ -93,7 +93,7 @@ assert.equal(await said({ action: "list", match: "toaster" }), 'Nothing in the l
 
 assert.equal(await said({ action: "run", id: "app:kitty" }), "Done: Opened Kitty");
 assert.equal(await said({ action: "run", id: "category:computer›setting:brightness", arg: "40" }), "Done: Brightness at 40%");
-assert.match(await said({ action: "run", id: "category:computer›category:energy›session:Reboot" }), /^Not done yet: .*Return does it/);
+assert.match(await said({ action: "run", id: "category:computer›category:energy›session:Reboot" }), /^Not done yet: .*a row \(Reboot\?\) and Return does it/);
 assert.equal(await said({ action: "run", id: "nothing" }), "Not done: no entry by that id");
 assert.equal(await said({ action: "run" }), "Name the id to run, as list gives it.");
 

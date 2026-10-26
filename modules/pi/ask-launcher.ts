@@ -90,7 +90,10 @@ export function outcome(printed: string): string {
   const ran: Ran = isRecord(parsed) ? parsed : {};
   if (typeof ran.error === "string") return `Not done: ${ran.error}`;
   if (ran.done) return `Done${ran.said ? `: ${ran.said}` : "."}`;
-  if (ran.offered) return "Not done yet: it's disruptive, so the launcher shows it as a row and Return does it.";
+  if (ran.offered) {
+    const row = ran.said ? ` (${ran.said})` : "";
+    return `Not done yet: it's disruptive, so the launcher shows it as a row${row} and Return does it.`;
+  }
   return `The launcher answered something unexpected: ${printed}`;
 }
 
