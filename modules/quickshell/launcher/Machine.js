@@ -52,8 +52,11 @@ const PERCENT = 100;
 const MAXED = 0.95;
 // Past this many maxed cores they're counted, not named.
 const NAMED = 4;
-// How many programs are named as using the machine.
-const TOP = 3;
+// How many programs are named as using the machine: as many as the
+// launcher's card shows at once, so the list fills it without scrolling.
+// Three left Joel asking what came after (2026-10-25, "why does memory
+// only show the top 3 using it?").
+const TOP = 8;
 // The longest a process's name is kept by the kernel, after which it's cut.
 const NAME_KEPT = 15;
 const WRAPPED = "-wrapped";
@@ -248,7 +251,7 @@ function processes(text) {
 }
 
 // The programs using most of something, by name, each program's
-// processes summed: [{ name, value }], at most three, none at nothing.
+// processes summed: [{ name, value }], at most TOP, none at nothing.
 function top(values) {
     return Object.keys(values)
         .map(name => ({ name, value: values[name] }))

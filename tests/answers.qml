@@ -431,6 +431,13 @@ QtObject {
             [{ name: "cc1 (odd) name", value: 0.4 }, { name: "kitty", value: 0.3 }]);
         machine("the programs holding the memory", Machine.holding(first),
             [{ name: "kitty", value: 8192000 }, { name: "systemd", value: 409600 }, { name: "cc1 (odd) name", value: 40960 }]);
+        // Eight are named, as many as the card shows, the smallest of nine
+        // left out.
+        const nine = Machine.processes(stats(1000, [1, 2, 3, 4, 5, 6, 7, 8, 9]
+            .map(n => `${n} (p${n}) ${fields(1, 1, n)}`)));
+        machine("the eight programs holding the most memory",
+            Machine.holding(nine).map(each => each.name),
+            ["p9", "p8", "p7", "p6", "p5", "p4", "p3", "p2"]);
         // Read by position rather than split: the machine's ticks, a
         // name closing a bracket of its own, and a last line unended.
         machine("the processes, the last line unended",
