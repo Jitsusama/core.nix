@@ -5,7 +5,8 @@
 //! `/google-auth`), reading the harness's file and never writing it
 //! (account.rs), and hands what it learns to the shell over a socket
 //! (socket.rs): the whole state as one JSON line when a shell connects,
-//! and again whenever it changes (state.rs).
+//! and again whenever it changes (state.rs), and the same line left in
+//! google.json beside the socket for the shell to watch.
 //!
 //! Google only pushes changes to a public web address, which a laptop
 //! hasn't got, so this program asks: once a minute while answers come,
@@ -56,7 +57,8 @@ fn main() -> ExitCode {
         eprintln!("<3>usage: google SOCKET CREDENTIALS");
         return ExitCode::from(2);
     };
-    let (socket, asked) = match Socket::listen(&path, State::default().line()) {
+    let told = path.with_extension("json");
+    let (socket, asked) = match Socket::listen(&path, &told, State::default().line()) {
         Ok(listening) => listening,
         Err(error) => {
             eprintln!("<3>couldn't listen at {}: {error}", path.display());

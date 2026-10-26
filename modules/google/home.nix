@@ -1,7 +1,7 @@
 # The Google account, for the desktop: google asks Google's own API for the
 # meetings on Joel's calendar and the mail that wants him, and keeps them
-# for the shell on a socket, $XDG_RUNTIME_DIR/google.sock (src/main.rs
-# says how).
+# for the shell on a socket, $XDG_RUNTIME_DIR/google.sock, and in a file
+# beside it, google.json, which the shell watches (src/main.rs says how).
 #
 # It asks as the account the harness signed in, from the harness's own
 # file, which pi writes when Joel signs in with /google-auth and rewrites
@@ -35,6 +35,9 @@ in
       ExecStart = "${lib.getExe google} %t/google.sock ${lib.escapeShellArg credentials}";
       Restart = "on-failure";
       RestartSec = 10;
+      # What it held goes with it, so the shell shows no account rather than
+      # what was true when it stopped.
+      ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/google.json %t/google.json.new";
     };
   };
 }
