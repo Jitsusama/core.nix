@@ -8,7 +8,7 @@ for one drawn on nothing or not drawn at all, its general category. The
 controls, which Unicode names only by their aliases, take those, and the
 Hangul syllables are left for the launcher to name by their parts.
 
-    python3 names.py > out
+    python3 character-names.py > out
 """
 
 import sys
