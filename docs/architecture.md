@@ -157,7 +157,7 @@ fixed:
 | `checks`                     | every module and role evaluated, the examples, formatting       |
 | `formatter`                  | treefmt, for `nix fmt`                                          |
 | `treefmtModules`             | the linters core holds itself to, for a repository's `nix fmt`  |
-| `lib`                        | `guide`, a machine's stick; `clippy`, core's Rust lints; `vmHelpers`, what VM tests share; `namesSayTheGlossary`, names held to the glossary |
+| `lib`                        | `guide`, a machine's stick; `clippy`, core's Rust lints; `vmHelpers`, what VM tests share; `namesSayTheGlossary`, names held to the glossary; `docsNameWhatExists`, docs naming only what's there |
 | `home-manager`, `nix-darwin` | what the machine repositories imported before the outputs above |
 | `wallpapers`, `neovim-pi`    | inputs the machine repositories reached through core.nix        |
 
