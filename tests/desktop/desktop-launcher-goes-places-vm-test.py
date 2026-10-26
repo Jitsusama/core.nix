@@ -744,14 +744,18 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
     pi = desktop.window_titled(PI_WINDOW)
     between = desktop.opened("Between the two")
     # Used in this order, so the pi window is the oldest of the three
-    # Super+Tab lists, and Elsewhere is where Joel is.
+    # Super+Tab lists, and Elsewhere is where Joel is. niri counts a window
+    # used only once it has kept focus a while (its recent windows'
+    # debounce, 750 ms), so each waits for its time of use to move.
     for window in [pi, between, desktop.notes_window(), desktop.window_titled("Elsewhere")]:
+        before = desktop.window_titled(window["title"]).get("focus_timestamp")
         desktop.as_account(f"niri msg action focus-window --id {window['id']}")
-        focused = f"'\"id\":{window['id']},'"
-        machine.wait_until_succeeds(
-            desktop.in_session(f"niri msg --json focused-window | grep -q {focused}"),
-            timeout=dt.timedelta(seconds=10),
-        )
+
+        def used(_: bool, title: str = window["title"], was: object = before) -> bool:
+            """Say whether niri has moved the window's time of use."""
+            return bool(desktop.window_titled(title).get("focus_timestamp") != was)
+
+        retry(used, timeout=dt.timedelta(seconds=10))
     closed = desktop.in_session(LAUNCHER_OPEN)
 
     def tabbed() -> None:
@@ -833,6 +837,56 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
         return bool(now["workspace_id"] != notes["workspace_id"])
 
     retry(moved, timeout=dt.timedelta(seconds=10))
+
+
+def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) -> None:
+    """The window Joel is in holds what can be done to it, as This window."""
+    machine = desktop.machine
+    notes = desktop.notes_window()
+    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Named This window, the window's title beside it.
+    desktop.type_in("this window", selecting="This window")
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "Notes for Tuesday", selected
+    # Return steps in, to what can be done to it, all but going to it,
+    # since it's the one he's in.
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Close" in shown["rows"])
+    rows = desktop.showing()["rows"]
+    assert "Switch" not in rows, rows
+    assert "Bring here" not in rows, rows
+    # Full width makes its column the screen's width, as niri says.
+    before = desktop.window_titled("Notes for Tuesday")
+    desktop.type_in("full", selecting="Full width")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+    def widened(_: bool) -> bool:
+        """Say whether the notes' window has grown wider."""
+        now = desktop.window_titled("Notes for Tuesday")
+        return bool(now["layout"]["window_size"][0] > before["layout"]["window_size"][0])
+
+    retry(widened, timeout=dt.timedelta(seconds=10))
+    # Size gives it a share of the screen, half of it narrower than all.
+    wide = desktop.window_titled("Notes for Tuesday")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("this window", selecting="This window")
+    desktop.step_in("ret")
+    desktop.type_in("size", selecting="Size")
+    desktop.step_in("ret")
+    desktop.type_in("half", selecting="Half the screen")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+    def halved(_: bool) -> bool:
+        """Say whether the notes' window is narrower than it was at full width."""
+        now = desktop.window_titled("Notes for Tuesday")
+        return bool(now["layout"]["window_size"][0] < wide["layout"]["window_size"][0])
+
+    retry(halved, timeout=dt.timedelta(seconds=10))
 
 
 # Stepping back out of a collection finds the launcher as it was left,
@@ -961,7 +1015,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # Each says what it holds after its name, in its own order, from the
     # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:desktop"].startswith("Desktop \u00b7 Windows, Screens, "), (
+    assert reads["category:desktop"].startswith("Desktop \u00b7 This window, Windows, Screens, "), (
         f"desktop reads {reads['category:desktop']!r}"
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
@@ -1003,7 +1057,11 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: shown["held"] == ["desktop"] and shown["rows"][:2] == ["Windows", "Screens"]
+        lambda shown: (
+            shown["held"] == ["desktop"]
+            # This window is there only while one is focused.
+            and [row for row in shown["rows"] if row != "This window"][:2] == ["Windows", "Screens"]
+        )
     )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])

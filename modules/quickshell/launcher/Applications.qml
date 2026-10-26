@@ -10,7 +10,8 @@
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
 // first (Switch, New window, New window below, its other windows by title,
-// its desktop entry's own actions, Quit), then its parts (Media while it
+// its desktop entry's own actions, its Shortcuts where it has keys of its
+// own, Quit), then its parts (Media while it
 // has a player, Sound while it plays or records, Notifications while the
 // history holds any of its), then any part another provider gives it, such
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
@@ -454,6 +455,16 @@ Provider {
         })];
     }
 
+    // Its own keys, where Shortcuts has a layer of them (KeyMap.qml's
+    // layerOf), as Shortcuts lists the layer, named Shortcuts here since
+    // the program already says whose they are.
+    function keysOf(entry) {
+        const map = (provider.launcher?.sources ?? [])
+            .find(source => typeof source.layerOf === "function") ?? null;
+        const layer = map ? map.layerOf(entry.id) : null;
+        return layer ? [Object.assign({}, layer, { name: Words.name("shortcuts") })] : [];
+    }
+
     // Everything the right arrow holds for a program, as it stands now.
     function controls(entry, start, below) {
         const looked = {};
@@ -471,7 +482,7 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), latest ? [quit(entry, windows)] : [],
+        return acts.concat(menu(entry, taken), keysOf(entry), latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             notices(same));

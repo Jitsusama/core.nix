@@ -14,6 +14,7 @@
       "id": "desktop",
       "name": "Desktop",
       "holds": [
+        "windows:this",
         "windows",
         "displays",
         "light",
@@ -2645,6 +2646,12 @@
       "empty": "No other windows."
     },
     {
+      "id": "windows:this",
+      "name": "This window",
+      "verb": "open",
+      "glyph": "windows"
+    },
+    {
       "id": "session:awake",
       "name": "Keep awake",
       "verb": "start",
@@ -3237,6 +3244,38 @@
       "glyph": "workspace"
     },
     {
+      "id": "verb:screen",
+      "in": "windows",
+      "name": "Move to a screen",
+      "verb": "choose",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:size",
+      "in": "windows",
+      "name": "Size",
+      "verb": "choose",
+      "glyph": "columns"
+    },
+    {
+      "id": "verb:size:third",
+      "in": "windows",
+      "name": "A third of the screen",
+      "verb": "size"
+    },
+    {
+      "id": "verb:size:half",
+      "in": "windows",
+      "name": "Half the screen",
+      "verb": "size"
+    },
+    {
+      "id": "verb:size:two-thirds",
+      "in": "windows",
+      "name": "Two thirds of the screen",
+      "verb": "size"
+    },
+    {
       "id": "verb:below",
       "in": "windows",
       "name": "New window below",
@@ -3370,6 +3409,13 @@
           "verb": "tile"
         }
       }
+    },
+    {
+      "id": "verb:full-width",
+      "in": "windows",
+      "name": "Full width",
+      "verb": "widen",
+      "glyph": "columns"
     },
     {
       "id": "verb:title",

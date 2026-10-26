@@ -12,8 +12,9 @@
 // below, and one whose player is found by its identity holds Media with
 // only what that player can do, and Sound with only its Microphone while
 // it records and plays nothing, Mute there reaching what it records alone.
-// Typing on looks only through what the last key found, and finds what
-// looking through everything would. It exits 0 once every case holds, and
+// A program with keys of its own holds them as its Shortcuts. Typing on
+// looks only through what the last key found, and finds what looking
+// through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -41,7 +42,22 @@ ShellRoot {
         property bool open: false
         property var held: []
         property var belowChord: []
-        property var sources: [notices]
+        property var sources: [notices, keys]
+    }
+
+    // Shortcuts as a program's row asks it: Quiet has keys of its own.
+    QtObject {
+        id: keys
+
+        function layerOf(app) {
+            return app !== "quiet" ? null : {
+                key: "shortcut-level:shortcuts:quiet",
+                name: "Quiet",
+                count: "4",
+                side: "Volume",
+                verbs: () => []
+            };
+        }
     }
 
     Launcher.PastNotices {
@@ -177,8 +193,10 @@ ShellRoot {
             same("and goes to its window, as the collection's does", acted(),
                 '[{"FocusWindow":{"id":11}}]');
 
-            same("a program with nothing more holds only its new windows",
-                names(program("quiet").verbs()), "New window, New window below");
+            const quiet = program("quiet").verbs();
+            same("a program with keys of its own holds them, and only its new windows besides",
+                names(quiet), "New window, New window below, Shortcuts");
+            same("its Shortcuts counts its keys", quiet[2].count, "4");
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
