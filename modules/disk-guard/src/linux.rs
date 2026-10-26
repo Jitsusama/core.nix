@@ -90,18 +90,110 @@ pub fn settle(path: &Path, settling: Settling) -> io::Result<()> {
         return sync_filesystem(&fd);
     }
     match settling {
-        Settling::Patient => wait_for_commit(&fd),
+        Settling::Patient => wait_for_commit(path, &fd),
         Settling::Hurried => commit_now(&fd),
     }
 }
 
-/// Waits for the transaction running now to commit in its own time. Only
+/// How often a patient settle reads the commit count, and looks for a stop.
+const COMMIT_LOOK: Duration = Duration::from_millis(200);
+
+/// The longest a patient settle waits, three of Btrfs's 30 s commit
+/// intervals: with nothing left to commit, the count never moves, and
+/// what was deleted shows at the next commit anyway.
+const COMMIT_LONGEST: Duration = Duration::from_secs(90);
+
+/// Waits for the transaction running now to commit in its own time, by
+/// reading the filesystem's commit count rather than waiting in the
+/// kernel. A thread waiting in `BTRFS_IOC_WAIT_SYNC` can't be ended, and a
+/// process can't exit while one of its threads is in it: a stop at a
+/// switch was taken at once and still held the unit 23 s, until Btrfs
+/// committed under load. A kernel without the count (before 6.0) waits
+/// in the kernel as before.
+fn wait_for_commit(path: &Path, fd: &rustix::fd::OwnedFd) -> io::Result<()> {
+    let stats = Path::new(BTRFS_SYSFS)
+        .join(btrfs_fsid(path)?)
+        .join("commit_stats");
+    if !stats.exists() {
+        return wait_in_the_kernel(fd);
+    }
+    committed(
+        || commits(&stats),
+        crate::commands::stop_waiting,
+        COMMIT_LOOK,
+        COMMIT_LONGEST,
+    )
+}
+
+/// What a Btrfs filesystem's `commit_stats` says of its commits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Commits {
+    /// How many have finished since it was mounted.
+    pub done: u64,
+    /// Whether one is under way.
+    pub underway: bool,
+}
+
+/// Reads a Btrfs filesystem's `commit_stats`. Btrfs counts a commit once
+/// its superblocks are written, and shows a commit under way as the time it
+/// has taken so far, and nothing between commits.
+///
+/// # Errors
+///
+/// When it can't be read, or doesn't say how many commits finished.
+pub fn commits(stats: &Path) -> io::Result<Commits> {
+    let text = fs::read_to_string(stats)?;
+    let field = |name: &str| {
+        text.lines()
+            .find_map(|line| line.strip_prefix(name)?.trim().parse::<u64>().ok())
+    };
+    let done = field("commits ")
+        .ok_or_else(|| io::Error::other(format!("{} doesn't count commits", stats.display())))?;
+    Ok(Commits {
+        done,
+        underway: field("cur_commit_ms ").is_some_and(|pending| pending > 0),
+    })
+}
+
+/// Waits, reading `read` every `look`, until the transaction running when
+/// it's called has committed: the next commit to finish, or the one after
+/// it when one was under way, since that one may have closed before what
+/// was deleted. A stop, which `stopping` says of, ends it at the next look;
+/// past `longest` it ends as settled.
+///
+/// # Errors
+///
+/// `Interrupted` when a stop came first, and whatever `read` fails with.
+pub fn committed(
+    mut read: impl FnMut() -> io::Result<Commits>,
+    stopping: impl Fn() -> bool,
+    look: Duration,
+    longest: Duration,
+) -> io::Result<()> {
+    let start = read()?;
+    let wanted = start.done + if start.underway { 2 } else { 1 };
+    let began = std::time::Instant::now();
+    loop {
+        if stopping() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+        }
+        if began.elapsed() >= longest {
+            return Ok(());
+        }
+        std::thread::sleep(look);
+        if read()?.done >= wanted {
+            return Ok(());
+        }
+    }
+}
+
+/// Waits in the kernel for the transaction running now to commit. Only
 /// `BTRFS_IOC_START_SYNC` makes Btrfs commit early; `BTRFS_IOC_WAIT_SYNC`
 /// on a transaction's id only waits for it, and on one already committed
 /// returns at once. The filesystem's generation names either the running
 /// transaction or the last committed, so the one after it is waited for
 /// first, and when Btrfs knows no such transaction, the generation itself.
-fn wait_for_commit(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
+fn wait_in_the_kernel(fd: &rustix::fd::OwnedFd) -> io::Result<()> {
     let generation = btrfs_generation(fd)?;
     for transaction in [generation + 1, generation] {
         // SAFETY: WAIT_SYNC only reads the u64, which outlives the call.
