@@ -301,6 +301,23 @@ onLinux {
       touch $out
     '';
 
+  # What the launcher shows says the glossary's words, never a name it
+  # replaces, but what tests/launcher-shown.py lists as another sense or a
+  # rename still waiting.
+  the-launcher-shows-no-replaced-word =
+    let
+      words =
+        pkgs.writeText "words.json"
+          (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+    in
+    pkgs.runCommandLocal "the-launcher-shows-no-replaced-word" { } ''
+      cp ${../../tests/glossary.py} glossary.py
+      cp ${../../tests/names.py} names.py
+      cp ${../../tests/launcher-shown.py} launcher-shown.py
+      ${lib.getExe pkgs.python3} launcher-shown.py ${../../docs/glossary.md} ${words}
+      touch $out
+    '';
+
   # Shortcuts groups every layer's chords by what each acts on, as
   # tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
   # binds, Neovim's and pi's among them, in Qt's own engine, each group
