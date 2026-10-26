@@ -835,6 +835,28 @@ def test_the_launcher_moves_a_window_and_copies_its_title(desktop: Desktop) -> N
     retry(moved, timeout=dt.timedelta(seconds=10))
 
 
+def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) -> None:
+    """The window Joel is in holds what can be done to it, as This window."""
+    machine = desktop.machine
+    notes = desktop.notes_window()
+    desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Named This window, the window's title beside it.
+    desktop.type_in("this window", selecting="This window")
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "Notes for Tuesday", selected
+    # Return steps in, to what can be done to it, all but going to it,
+    # since it's the one he's in.
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "Close" in shown["rows"])
+    rows = desktop.showing()["rows"]
+    assert "Switch" not in rows, rows
+    assert "Bring here" not in rows, rows
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 # Stepping back out of a collection finds the launcher as it was left,
 # on the row that was selected, not back at the top.
 
@@ -961,7 +983,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # Each says what it holds after its name, in its own order, from the
     # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:desktop"].startswith("Desktop \u00b7 Windows, Screens, "), (
+    assert reads["category:desktop"].startswith("Desktop \u00b7 This window, Windows, Screens, "), (
         f"desktop reads {reads['category:desktop']!r}"
     )
     assert reads["collection:on"].startswith("Now \u00b7 "), f"now reads {reads['collection:on']!r}"
@@ -1003,7 +1025,11 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: shown["held"] == ["desktop"] and shown["rows"][:2] == ["Windows", "Screens"]
+        lambda shown: (
+            shown["held"] == ["desktop"]
+            # This window is there only while one is focused.
+            and [row for row in shown["rows"] if row != "This window"][:2] == ["Windows", "Screens"]
+        )
     )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])

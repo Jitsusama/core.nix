@@ -122,7 +122,8 @@ Provider {
         const alike = {};
         for (const one of named)
             alike[one.title] = (alike[one.title] ?? 0) + 1;
-        return named.map(one => {
+        const current = named.find(one => one.window.id === Niri.current) ?? null;
+        return (current ? [provider.thisWindow(current)] : []).concat(named.map(one => {
                 const window = one.window;
                 const entry = one.entry;
                 const program = one.program;
@@ -154,7 +155,31 @@ Provider {
                     below: below,
                     verbs: () => provider.verbs(window, title, program, below)
                 });
-            });
+            }));
+    }
+
+    // The window Joel's in, as Desktop's first row (the approved proposal):
+    // named This window, its title beside, and Return or the right arrow
+    // holding what can be done to it, all but going to it, since it's the
+    // one he's in.
+    function thisWindow(one) {
+        const window = one.window;
+        const entry = one.entry;
+        const below = entry
+            ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
+        return thing({
+            key: "windows:this",
+            is: "windows:this",
+            verb: Words.verb("windows:this"),
+            name: Words.name("windows:this"),
+            glyph: Words.glyph("windows:this"),
+            hue: "program",
+            side: one.title,
+            // The one Super+Tab leaves out, as it's where Joel is.
+            focused: true,
+            verbs: () => provider.verbs(window, one.title, one.program, below)
+                .filter(row => row.key !== "verb:switch" && row.key !== "verb:bring")
+        });
     }
 
     // An act on a window, named, worded and worn as the vocabulary says

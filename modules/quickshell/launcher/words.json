@@ -14,6 +14,7 @@
       "id": "desktop",
       "name": "Desktop",
       "holds": [
+        "windows:this",
         "windows",
         "displays",
         "light",
@@ -2643,6 +2644,12 @@
       "glyph": "windows",
       "ask": "which window?",
       "empty": "No other windows."
+    },
+    {
+      "id": "windows:this",
+      "name": "This window",
+      "verb": "open",
+      "glyph": "windows"
     },
     {
       "id": "session:awake",

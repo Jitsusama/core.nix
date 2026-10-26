@@ -642,7 +642,7 @@ works the same way everywhere.
   order, eight rows and the card's full height,
   so home's shape never changes. Each says what it holds after its name,
   muted, by its members' own names in the place's own order (Desktop:
-  "Windows, Screens, Light, Notices"), as many whole as fit, so a glance
+  "This window, Windows, Screens, Light"), as many whole as fit, so a glance
   reminds Joel what there is. Inside a place, things come by importance
   and relation, never A to Z, and a typed command comes last in the place
   whose answer it gives (Network's "ip ⟨address or network⟩").
