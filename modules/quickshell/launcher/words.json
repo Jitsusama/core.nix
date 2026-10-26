@@ -1085,7 +1085,7 @@
     {
       "id": "networks:wired",
       "in": "networks",
-      "name": "Wired"
+      "name": "Ethernet"
     },
     {
       "id": "networks:tunnel",

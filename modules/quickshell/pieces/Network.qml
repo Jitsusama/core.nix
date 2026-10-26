@@ -21,7 +21,7 @@ Piece {
         : reach === "signIn" ? "sign in" : reach === "limited" ? "limited" : ""
     value: {
         if (Wifi.wired)
-            return "wired";
+            return "Ethernet";
         if (card === null)
             return "offline";
         if (reach === "signIn")
