@@ -461,19 +461,11 @@ let
               (wrong == [ ]);
 
           # Every check's name and every jitsusama.* option's says the
-          # glossary's words, never a name it replaces (tests/names.py).
-          no-name-says-a-replaced-word =
-            pkgs.runCommandLocal "no-name-says-a-replaced-word"
-              {
-                names = builtins.toJSON (named ++ optionNames);
-                passAsFile = [ "names" ];
-              }
-              ''
-                cp ${./tests/glossary.py} glossary.py
-                cp ${./tests/names.py} names.py
-                ${lib.getExe pkgs.python3} names.py ${./docs/glossary.md} "$namesPath"
-                touch $out
-              '';
+          # glossary's words, never a name it replaces, held as a repository
+          # built on core holds its own (tests/names.nix).
+          no-name-says-a-replaced-word = self.lib.namesSayTheGlossary pkgs (
+            { names = named ++ optionNames; } // import ./tests/names-kept.nix
+          );
         };
     in
     lib.mapAttrs (
