@@ -1,7 +1,7 @@
-# The front cameras: an OV08X40 behind Intel's CVS bridge, imaged by the IPU7's
-# hardware ISP, and beside it the HM1092 IR camera, whose greyscale frames are
-# captured raw. The kernel has the IPU's core and capture side and the bridge,
-# nixpkgs's hardware.ipu7 adds the ISP's module and firmware, and Intel's camera
+# The front cameras: an OV08X40 behind Intel's CVS bridge, imaged by Intel's IPU7
+# image processor, and beside it the HM1092 IR camera, whose greyscale frames are
+# captured raw. The kernel has the image processor's core and capture side and the
+# bridge, nixpkgs's hardware.ipu7 adds its processing module and firmware, and Intel's camera
 # HAL turns the sensor's raw frames into a picture with its tuning for this
 # sensor. Programs only speak V4L2, so a relay plays the HAL's picture into a
 # loopback camera they can open. nixos-hardware's profile for this laptop,
@@ -56,8 +56,8 @@ let
           --replace-fail '"OV08X40_KAFE799_PTL"' '"${tuning}"'
       '';
 
-  # Intel's IPU drivers, which hardware.ipu7 builds the ISP's module from. That
-  # module shares structs with the kernel's own IPU driver and is written for a
+  # Intel's image processor drivers, which hardware.ipu7 builds the processing
+  # module from. That module shares structs with the kernel's own driver and is written for a
   # kernel patched to match it, so the kernel patch and the module come from
   # this one revision.
   drivers = pkgs.fetchFromGitHub {
@@ -67,10 +67,10 @@ let
     hash = "sha256-a2hIJ4wMCHQeDb4gp+5pjLizJ/CCfA0JivVDWeqB4vY=";
   };
 
-  # The kernel's IPU driver, patched as the ISP's module needs.
+  # The kernel's image processor driver, patched as the processing module needs.
   ipuPatches = [
     {
-      # The ISP's module locks a mutex and sets a callback at the end of the
+      # The processing module locks a mutex and sets a callback at the end of the
       # kernel's device struct, which the kernel's driver doesn't have: it
       # writes past the end of what the kernel allocated, into whatever lies
       # next. From Intel's drivers, whose IoT release adds it to the kernel
@@ -90,7 +90,7 @@ let
       patch = "${drivers}/patch/v7.0.0_iot/0002-staging-ipu7-reclaim-pending-fw-msg-buffers-by-strea.patch";
     }
     {
-      # Without it one failed wake leaves the ISP failed until the next boot,
+      # Without it one failed wake leaves the image processor failed until the next boot,
       # and unbinding the driver oopses holding the device's lock, so suspend
       # and reboot hang. Written here; the patch says why.
       name = "ipu7-survives-resume";
@@ -98,7 +98,7 @@ let
     }
   ];
 
-  # The ISP's module, built against the kernel's own headers rather than
+  # The processing module, built against the kernel's own headers rather than
   # Intel's copies of them, so a struct can't be laid out differently on each
   # side again: a field the kernel lacks fails the build instead. Every header
   # the kernel also has is replaced, patched as the kernel is, and the build
@@ -107,7 +107,7 @@ let
     ipu7-drivers = prev.ipu7-drivers.overrideAttrs (old: {
       src = drivers;
       patches = old.patches or [ ] ++ [
-        # Without it a resume that couldn't wake the ISP leaves its firmware
+        # Without it a resume that couldn't wake the image processor leaves its firmware
         # unstarted on every open, and the camera dark, until the next boot.
         # Written here; the patch says why.
         ./ipu7-psys-authenticates.patch
@@ -160,7 +160,7 @@ let
     "videoflip method=rotate-180"
     squeeze
   ];
-  # The ISP scales for free, and 1080p moves a quarter of 4K's bytes through
+  # The image processor scales for free, and 1080p moves a quarter of 4K's bytes through
   # the loopback. A leaky queue drops a stale frame rather than delaying the
   # next one.
   output = lib.concatStringsSep " ! " [
@@ -276,7 +276,7 @@ in
       patch = ../kernel/local/ipu7-mono-formats.patch;
     }
     {
-      # Unbinding the IPU frees the capture side while WirePlumber still
+      # Unbinding the image processor frees the capture side while WirePlumber still
       # holds its nodes open, and the kernel oopses as they close. Written
       # here; the patch says why.
       name = "ipu7-outlives-open-files";
@@ -308,7 +308,7 @@ in
     ignoreUnits = [ "camera.service" ];
   };
   # The bridge carries the sensor's I2C over USB, so its drivers have to be up
-  # before the IPU looks for the sensor; otherwise the bridge resets under it,
+  # before the image processor looks for the sensor; otherwise the bridge resets under it,
   # over and over.
   boot.extraModprobeConfig = ''
     softdep intel_ipu7 pre: usbio gpio_usbio i2c_usbio intel_cvs intel_skl_int3472_discrete
@@ -316,7 +316,7 @@ in
 
   # nixos-hardware found the bridge wedges when USB suspends it. The match is
   # on the device's own attributes, since its interfaces inherit them and have
-  # no autosuspend to set. The camera service starts when the ISP appears, so
+  # no autosuspend to set. The camera service starts when the image processor appears, so
   # it never runs where there's no camera.
   services.udev.extraRules = ''
     SUBSYSTEM=="usb", ATTR{idVendor}=="06cb", ATTR{idProduct}=="0701", ATTR{power/autosuspend}="-1"
@@ -358,7 +358,7 @@ in
       # and like that relay it needs no network and no shared /tmp.
       PrivateNetwork = true;
       PrivateTmp = true;
-      # The sensor may bind a moment after the ISP appears.
+      # The sensor may bind a moment after the image processor appears.
       Restart = "always";
       RestartSec = 2;
     };

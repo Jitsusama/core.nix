@@ -567,7 +567,7 @@ mod tests {
             ("The thermal sensors", "are"),
             ("The firmware's settings", "are"),
             ("Bluetooth's adapter", "is"),
-            ("The camera's ISP", "is"),
+            ("The camera's image processor", "is"),
             ("The bus", "is"),
             ("The glass", "is"),
             ("The TPM", "is"),
