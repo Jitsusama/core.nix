@@ -38,10 +38,12 @@ tools! {
     Cat => "cat", "GUIDE_CAT";
     Chown => "chown", "GUIDE_CHOWN";
     Cryptsetup => "cryptsetup", "GUIDE_CRYPTSETUP";
+    Curl => "curl", "GUIDE_CURL";
     Dmsetup => "dmsetup", "GUIDE_DMSETUP";
     Env => "env", "GUIDE_ENV";
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
+    Gh => "gh", "GUIDE_GH";
     Losetup => "losetup", "GUIDE_LOSETUP";
     Lsblk => "lsblk", "GUIDE_LSBLK";
     Mkdir => "mkdir", "GUIDE_MKDIR";
