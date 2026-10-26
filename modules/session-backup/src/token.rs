@@ -8,6 +8,14 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+/// How to sign in so the login can reach Drive. gcloud's own login asks
+/// for no Drive scope, and insists on cloud-platform among any it is given.
+/// The whole of Drive, rather than only the files this makes, because a
+/// folder made in Drive's web page is one this could not otherwise add to.
+pub const SIGN_IN: &str = "gcloud auth application-default login \
+     --scopes=openid,https://www.googleapis.com/auth/userinfo.email,\
+     https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/drive";
+
 /// A token this close to its end is traded again before it is sent.
 const MARGIN: Duration = Duration::from_mins(5);
 
@@ -26,8 +34,7 @@ impl Login {
     pub fn read(path: &Path, endpoint: &str) -> Result<Login, String> {
         let text = fs::read_to_string(path).map_err(|why| {
             format!(
-                "can't read the Google login in {}: {why}; sign in once with gcloud auth \
-                 application-default login",
+                "can't read the Google login in {}: {why}; sign in once with {SIGN_IN}",
                 path.display()
             )
         })?;
@@ -76,8 +83,7 @@ impl Login {
         let body = answer.body_mut().read_to_string().unwrap_or_default();
         if status != 200 {
             return Err(format!(
-                "Google refused the login ({status}): {}; sign in again with gcloud auth \
-                 application-default login",
+                "Google refused the login ({status}): {}; sign in again with {SIGN_IN}",
                 body.trim()
             ));
         }
