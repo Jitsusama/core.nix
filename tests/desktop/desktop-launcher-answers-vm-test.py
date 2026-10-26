@@ -493,7 +493,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
     desktop.answer("disk")
-    desktop.launcher_until(lambda shown: shown["footer"] == "from the disk guard")
+    # The band /nix is in, while the guard still writes.
+    desktop.launcher_until(lambda shown: shown["footer"] == "filling")
     # Held open, the answer is asked again each second, so it says so as
     # the deadline passes, about twenty seconds on.
     desktop.launcher_until(
