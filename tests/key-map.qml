@@ -197,6 +197,17 @@ ShellRoot {
                 lead ? `${lead.name} ${lead.note}` : "nothing");
             expect("its chords searched first", String(map.all[0].key)
                 .startsWith("shortcut:neovim:"), map.all[0].key);
+            // A program's own layer, by its desktop entry: Neovim's, though
+            // its windows are the terminal's, a window's own by its app id,
+            // and the desktop's for one with none; Neovim's layer row says
+            // whose it is.
+            for (const entry of [["nvim", "neovim"], ["kitty", "terminal"],
+                ["swayimg", "swayimg"], ["google-chrome", "desktop"]])
+                expect(`${entry[0]}'s own layer`, map.ofProgram(entry[0]) === entry[1],
+                    map.ofProgram(entry[0]));
+            const neovimKeys = map.layerOf("nvim");
+            expect("nvim holds Neovim's keys", neovimKeys !== null && neovimKeys.layer === "neovim",
+                neovimKeys ? neovimKeys.layer : "nothing");
             over("kitty", "\u03C0 - core.nix");
             expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
                 === "Agents, Terminal, Desktop", names(map.everything()).join(", "));

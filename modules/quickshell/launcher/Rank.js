@@ -55,6 +55,16 @@ function once(rows) {
     return out;
 }
 
+// Rows but the layers of keys a program found beside them holds, named as
+// it is: Neovim the program holds Neovim's keys as Shortcuts a step in, so
+// a search lists one Neovim. A layer named otherwise (Terminal beside
+// kitty) stays, since nothing else there reads as it does.
+function keysHeld(rows) {
+    const held = new Set(rows.filter(row => row.ownLayer)
+        .map(row => `${row.ownLayer}/${plainly(row.name)}`));
+    return rows.filter(row => !row.layer || !held.has(`${row.layer}/${plainly(row.name)}`));
+}
+
 // What's typed as the latch keeps it: in lower case, its spaces single.
 function plainly(typed) {
     return String(typed).trim().toLowerCase().replace(/\s+/g, " ");
