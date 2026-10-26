@@ -1,0 +1,92 @@
+// Over the whole trace, every graphics buffer reclaim backed up, and every
+// one read back in before a draw could use it: whether it was shared through
+// dma-buf, as the windows a compositor shows from its clients are, and its
+// CPU caching. A write-combined buffer's pages have their caching set again
+// as they come back, which flushes every CPU's TLB. Read-backs are counted
+// by the thread that waited for them, holding the buffer's lock as it did,
+// with how long and how many pages. Together they say which buffers a
+// shrinker would have to spare for a draw never to wait on one.
+//
+// usage: bpftrace restores.bt
+
+BEGIN
+{
+  printf("graphics buffers backed up and read back; shared 1 is through dma-buf, ");
+  printf("caching 0 uncached, 1 write-combined, 2 cached\n");
+}
+
+// A buffer shared through dma-buf has one, exported or imported.
+kprobe:ttm_bo_shrink
+{
+  $bo = (struct ttm_buffer_object *)arg1;
+  $tt = $bo->ttm;
+  if ($tt != 0) {
+    @shrinking_shared[tid] = ($bo->base.dma_buf != 0 || $bo->base.import_attach != 0) ? 1 : 0;
+    @shrinking_caching[tid] = (uint64)$tt->caching;
+  }
+}
+
+kretprobe:ttm_bo_shrink
+/has_key(@shrinking_shared, tid)/
+{
+  // What it returns is the pages backed up, or an error.
+  if ((int64)retval > 0) {
+    @backed_up[@shrinking_shared[tid], @shrinking_caching[tid]] = count();
+    @backed_up_pages[@shrinking_shared[tid], @shrinking_caching[tid]] = sum((int64)retval);
+  }
+  delete(@shrinking_shared, tid);
+  delete(@shrinking_caching, tid);
+}
+
+// A buffer whose pages were swapped out or backed up is read back as it's
+// populated; one already in memory returns at once and isn't counted.
+kprobe:ttm_bo_populate
+{
+  $bo = (struct ttm_buffer_object *)arg0;
+  $tt = $bo->ttm;
+  // TTM_TT_FLAG_SWAPPED and TTM_TT_FLAG_BACKED_UP.
+  if ($tt != 0 && ($tt->page_flags & 0x21) != 0) {
+    @began[tid] = nsecs;
+    @shared[tid] = ($bo->base.dma_buf != 0 || $bo->base.import_attach != 0) ? 1 : 0;
+    @caching[tid] = (uint64)$tt->caching;
+    @pages[tid] = (uint64)$tt->num_pages;
+  }
+}
+
+kretprobe:ttm_bo_populate
+/has_key(@began, tid)/
+{
+  $us = (nsecs - @began[tid]) / 1000;
+  @read_back[comm, @shared[tid], @caching[tid]] = count();
+  @read_back_us[comm, @shared[tid], @caching[tid]] = sum($us);
+  @read_back_pages[comm, @shared[tid], @caching[tid]] = sum(@pages[tid]);
+  @read_back_longest_us[comm, @shared[tid], @caching[tid]] = max($us);
+  delete(@began, tid);
+  delete(@shared, tid);
+  delete(@caching, tid);
+  delete(@pages, tid);
+}
+
+END
+{
+  printf("backed up, by shared and caching: buffers, then pages\n");
+  print(@backed_up);
+  print(@backed_up_pages);
+  printf("read back, by thread, shared and caching: buffers, us, pages, then longest us\n");
+  print(@read_back);
+  print(@read_back_us);
+  print(@read_back_pages);
+  print(@read_back_longest_us);
+  clear(@backed_up);
+  clear(@backed_up_pages);
+  clear(@read_back);
+  clear(@read_back_us);
+  clear(@read_back_pages);
+  clear(@read_back_longest_us);
+  clear(@shrinking_shared);
+  clear(@shrinking_caching);
+  clear(@began);
+  clear(@shared);
+  clear(@caching);
+  clear(@pages);
+}
