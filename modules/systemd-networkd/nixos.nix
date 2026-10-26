@@ -19,6 +19,14 @@
   # answers LLMNR.
   services.resolved.settings.Resolve.LLMNR = "no";
 
+  # mDNS asks and answers on UDP 5353, and the firewall dropped both the
+  # answers to this machine's questions and other machines' questions, so a
+  # trusted network found nothing and nothing found it. The port is open on
+  # every link, but only a trusted network's file turns mDNS on, and resolved
+  # ignores an mDNS packet that arrives on a link with it off; on a
+  # stranger's network, nothing is there to answer.
+  networking.firewall.allowedUDPPorts = [ 5353 ];
+
   # networkd removes every routing rule it didn't make whenever it sets up a
   # link. It isn't the only program routing here: WARP, Tailscale and
   # wg-quick each send their traffic through a rule of their own, and would

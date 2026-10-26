@@ -299,6 +299,9 @@ let
     # Which server timesyncd asks first shows only on a network that names
     # one of its own.
     vm-clock-keeps-time = import ./tests/clock.nix { inherit self pkgs; };
+    # Whether mDNS gets through the firewall, and only on a trusted network,
+    # shows only with machines on a network asking each other.
+    vm-machines-find-each-other-at-home = import ./tests/mdns.nix { inherit self pkgs; };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
     # Whether the shell's surfaces come back after a screen goes shows only
