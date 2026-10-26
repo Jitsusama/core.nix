@@ -55,7 +55,7 @@ let
     program = "a glyph for a program: an application, where a notice came from";
     machine = "a glyph for the machine itself: power, security, hardware";
     person = "a glyph for a person: a message, a mention, a call";
-    voice = "a glyph for the shell speaking for itself: an empty list, a greeting";
+    voice = "a glyph for the desktop speaking for itself: an empty list, a greeting";
   };
 
   terminal = {

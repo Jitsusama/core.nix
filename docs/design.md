@@ -201,7 +201,7 @@ surface:
 | program | a program                      | aqua          | kitty's cat, a browser's notice |
 | machine | the machine itself             | rose          | the padlock, power, the volume  |
 | person  | a person                       | orchid        | a message from someone          |
-| voice   | the shell speaking for itself  | turquoise     | an empty list, nothing found    |
+| voice   | the desktop speaking for itself | turquoise    | an empty list, nothing found    |
 
 The accent is never a glyph's: it stays where the keys go, on a border and
 the caret. Glyph hues are held to the same contrast as text.
@@ -330,7 +330,7 @@ gap, so it never lines up with a window's border by chance and reads as its
 own thing. The margin's marks sit at the top centre instead, on the line
 the launcher is centred on.
 
-**The margin** is how the shell shows what's on that Joel would otherwise
+**The margin** is how the desktop shows what's on that Joel would otherwise
 forget, without covering a window or taking a pixel from one. It isn't a
 surface at all: each thing that's true is its glyph alone, set straight on
 the picture in the gap the windows already leave above them, lifted off it
@@ -365,7 +365,7 @@ card to go. What comes true by itself, a camera a program opened or the
 battery running low, arrives as one notice of its own, signed with its
 glyph and name and carrying what can be done about it, and again, urgent,
 when it comes to need Joel now; what his own keys turned on, and what was
-already true as the shell started, says nothing, since he knows. The
+already true as the desktop started, says nothing, since he knows. The
 desktop or its apps kept waiting on the same thing, memory, the disk, the
 processor or niri, for a minute shows quietly, as something left on, from
 lag-watch's windows; a moment's wait never does, since Joel feels it
@@ -380,7 +380,7 @@ on its screen of the row the keys are on wears the accent, as where the
 keys are always does, straight up the line the list and the marks share,
 so the eye joins the two. Nothing grows: anything past the gap would lie
 over a window. It
-stays while the overview is open, which draws nothing of the shell's own,
+stays while the overview is open, which draws nothing of the desktop's own,
 and it shows in a screenshot or a share: niri can only black out a layer
 it's asked to keep from a capture, which would put a black patch at the
 top of every one.
@@ -417,7 +417,7 @@ hold every surface to:
 
 A surface meets the first by never being made at the chord. The launcher's
 surface stays mapped, a clear pixel that takes no keys while closed, and a
-chord reaches it over the shell's own socket rather than a program started to
+chord reaches it over the desktop's own socket rather than a program started to
 carry it. On the laptop it was measured on, a bare surface built that way
 had the keys 17 to 26 ms after the chord, where the launcher making its
 surface at the chord took 122 to 401 ms and lost the first letters to the
@@ -456,7 +456,7 @@ it. Owners go by layer:
 
 - **The desktop's facts** (the time and date, battery and power, the network,
   Bluetooth, audio, brightness, do not disturb, caffeinate, notifications
-  waiting) belong to the shell alone. No terminal program, editor, prompt or
+  waiting) belong to the desktop alone. No terminal program, editor, prompt or
   app repeats them. The lock screen and the greeter show the time because
   they're never on screen with the rest.
 - **A window's facts** (where it is, the repository and branch, the file, what
@@ -509,7 +509,7 @@ glyph, goes where it would shrink, and the time never goes. The volume
 and the date go first since they're not what Joel looks there for, and
 each fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
 so a piece with a mark is in each. The overview draws nothing of the
-shell's own: it's for finding windows (2026-10-21, at Joel's word: "having
+desktop's own: it's for finding windows (2026-10-21, at Joel's word: "having
 any widgets on Super A can be abolished, it is fucking annoying relying on
 it for anything i care about outside of cool window navigation shit.").
 
@@ -528,7 +528,7 @@ Nothing may depend on remembering it. Everything is learnable on the spot and
 works the same way everywhere.
 
 - **Everything is found by typing.** The launcher is the desktop's command
-  palette: every action, mode, menu and setting the shell and the compositor
+  palette: every action, mode, menu and setting the desktop and the compositor
   offer is a result, found by what it does in plain words ("do not disturb",
   "rotate screen", "Bluetooth headphones"). Each result shows its key, so keys
   are learned by use rather than by study. Each program does the same inside
@@ -742,7 +742,7 @@ works the same way everywhere.
   elsewhere (Pasting.qml); a step in are Paste and Copy, for only copying.
   Over no window, Return only copies, and the foot says which it does.
 - **Copies stay in memory.** One program hears every copy for the session,
-  text and pictures, and the shell asks it for them, so none is written to
+  text and pictures, and the desktop asks it for them, so none is written to
   disk, a picture's file sitting in the runtime directory, and none is kept
   that a password manager marks secret. A copy's glyph says what it is:
   several lines, a link, an address, a path and a number each wear their
@@ -750,7 +750,7 @@ works the same way everywhere.
   row is named by its size, and the picture itself shows below the rows
   while it's selected, in its own shape with a part's corners.
 - **A notice gone is not lost.** Every notice of the session stays in the
-  shell's memory. One clicked, or withdrawn by its program because it was
+  desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
   program that sent it, its window when one is open. A notice on screen
@@ -760,7 +760,7 @@ works the same way everywhere.
   program can be kept to how far its notices reach (`notices.senders`):
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less
-  far, and none reaches further than its program is kept to. The shell
+  far, and none reaches further than its program is kept to. The desktop
   makes one sound, softly: when a pi session first wants Joel and its
   notice is said (`sounds.wants`), never while notices are held.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
@@ -795,8 +795,8 @@ key in the next. A chord says three things, in order: who hears it, what
 comes along, and what to do.
 
 - **Who hears it is the modifier.** Super is the desktop (the compositor and
-  the shell). Ctrl+Shift is the terminal. Inside the terminal each program has
-  its own: Space starts Neovim's keys, and pi, where everything typed is the
+  what it shows). Ctrl+Shift is the terminal. Inside the terminal each program
+  has its own: Space starts Neovim's keys, and pi, where everything typed is the
   message, keeps the plain Ctrl keys every text box has. Neovim and pi sit
   side by side, never heard at once, so one may use a chord the other does. A
   chord a lower layer needs is never taken by a higher one. Print and the
@@ -879,7 +879,7 @@ into one without being told, and a bind the table puts wrong names its own
 chord below it by what it does, flat. Inside a layer its own "what's here"
 shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
 
-Nothing the shell shows is reached only by pointing. Super+O opens Now,
+Nothing the desktop shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N takes the notices on screen by
 the launcher's keys, then gathers every notice into the launcher. Either
 way Return goes to who sent one, and the right arrow steps into its verbs:
@@ -1054,7 +1054,7 @@ the result beside the source before calling it done.
 
 - **End to end.** A switch changes everything on [the surfaces
   list][surfaces]: the boot splash and the disk unlock prompt, the console's
-  colours and font, the greeter, the compositor, the shell, the apps, the
+  colours and font, the greeter, the compositor, the desktop, the apps, the
   terminal, the editors and pi.
 - **Nothing names its own.** No surface names a colour or a font; it names a
   role or a face. A check holds that across every module, listing each
@@ -1127,7 +1127,7 @@ Whatever is added later goes through the same questions before it's
 considered done:
 
 - Does it take the theme, or at least follow the dark preference?
-- Do its notifications go through the shell, so do not disturb covers them?
+- Do its notifications go through the desktop, so do not disturb covers them?
 - Are its keys in the map without a clash, and is its palette in the map too?
 - Does it repeat a fact another surface owns, and can that be turned off?
 - Can it show a secret, and if so, is it blocked out of screen shares?
@@ -1467,7 +1467,7 @@ What each studio round settled, newest first, with the reason.
   so today's spend is in the launcher's foot, against what a usual day
   had spent by this hour, and reaches the margin only when a finding wants
   a look: a cap close or reached, a raise about to end, a burn. The daemon
-  works out every string, the shell draws them, and while the screen is
+  works out every string, the desktop draws them, and while the screen is
   shared it draws a second set with no amounts. The glyph is a dollar sign
   (md-currency-usd), plain where a console draws it. The chord is Super+U,
   for usage, since $ is a layer away on the ErgoDox. No sparkline:
@@ -1492,10 +1492,10 @@ What each studio round settled, newest first, with the reason.
   taken to point at something in it, so the launcher offers the newest to
   edit in GIMP, at home just below the window in front for two minutes
   after it's taken, and found by typing after that. Every screenshot lands
-  in one folder, niri's own and the region ones the shell takes with grim,
-  and niri tells the shell only of its own, so the folder is what's
+  in one folder, niri's own and the region ones the desktop takes with grim,
+  and niri tells the desktop only of its own, so the folder is what's
   watched; it's made at login, since niri makes it only with its first
-  screenshot. niri and the shell already say a screenshot was taken, so
+  screenshot. niri and the desktop already say a screenshot was taken, so
   GIMP's row adds no notice of its own. GIMP's and Inkscape's dialogs float
   by niri's own rule for windows with a parent.
 
@@ -1509,7 +1509,7 @@ What each studio round settled, newest first, with the reason.
 - **Who's in a call, and a call that rings** (2026-10-12). Tuple on Linux
   leaves unfinished the notices its Mac app gives: someone joining,
   everyone else gone, a ring. Its daemon still writes each to its log, so
-  the shell says them. Who joined and who left are notices that matter only
+  the desktop says them. Who joined and who left are notices that matter only
   as they happen, since the panel names who's there; the last one leaving
   offers to leave as well; a ring wants Joel in the margin and offers to
   bring forward Tuple's window, where it's answered, since the command
@@ -1517,7 +1517,7 @@ What each studio round settled, newest first, with the reason.
   from Tuple's contacts, asked once for anyone not yet known. Muting is now
   Tuple's own, which the others see, rather than the microphone's, which
   has its own mark, and Tuple's answer says how Joel stands even when the
-  shell had it wrong. Tuple's windows reach niri under one name with no
+  desktop had it wrong. Tuple's windows reach niri under one name with no
   title, and most are small, so all of them float at the size Tuple asks
   for. Its cursor over a share is a layer no rule reaches, and nothing of
   Tuple's is kept out of a screencast, which would draw the share black. A
@@ -1528,7 +1528,7 @@ What each studio round settled, newest first, with the reason.
   "Someone".
 
 - **A call, while it lasts** (2026-10-11). Tuple on Linux is a command and
-  a daemon with no window to look at, so the shell is where a call shows:
+  a daemon with no window to look at, so the desktop is where a call shows:
   a phone in the margin while Joel's in one, as recording and sharing are
   marked, and a panel that says how long and offers what a call needs. A
   call's link arrives pasted in a chat, so a copied one puts a row to join
@@ -1549,7 +1549,7 @@ What each studio round settled, newest first, with the reason.
   music is playing at all, from any player, so the margin carries a note
   while one plays and none while paused. Both come from MPRIS, so a
   browser's tab or mpv counts as Spotify does, and the media keys go
-  through the shell, so they act on the player it shows. Seen in every
+  through the desktop, so they act on the player it shows. Seen in every
   state with two players, the card had to follow the player a key acted
   on, since pausing one hands the music to the other; play resumes the
   last player paused, not the last started; two of one name are told apart
@@ -1569,7 +1569,7 @@ What each studio round settled, newest first, with the reason.
   Firefox's address bar do, keyed by what was typed. A check holds both its
   rankings and its speed, run in Qt's own engine.
 
-- **A painting that stands still** (2026-10-10). Of eight wallpapers shown
+- **A wallpaper that stands still** (2026-10-10). Of eight wallpapers shown
   on the panel, from none to tiled damask, Joel kept Omarchy's two Osaka
   Jade landscapes: the glowing city behind the desktop, being darker and
   calm behind windows, and the green woods and mountains on the lock
@@ -1577,7 +1577,7 @@ What each studio round settled, newest first, with the reason.
   still while the workspaces move over it, as niri's guide describes, since
   a picture sliding with each workspace is motion that means nothing.
   Dimming the picture, or fading it into the night behind text, hid the
-  painting Joel picked it for; text set on it is lifted by offset shadows
+  wallpaper Joel picked it for; text set on it is lifted by offset shadows
   instead, and the picture shows whole. The overview's status moved above
   the overview so the workspaces no longer cover it, and the lock screen's
   time and field sit low, under its sky.

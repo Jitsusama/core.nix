@@ -37,7 +37,7 @@ build brings. clippy reads every crate and single-file program with its
 pedantic group on top of its defaults, less three lints about a published
 library's API, as `lints` in `modules/clippy/clippy.nix` says; `clippy.toml` holds
 its settings, and the `-passes-clippy` checks hold the code to both, which
-a bare `cargo clippy` doesn't. qmllint reads the account's shell and the
+a bare `cargo clippy` doesn't. qmllint reads the account's desktop and the
 greeter (`quickshell-passes-qmllint`), and each offscreen check's own
 folder, its cases and stand-ins included, before running it
 (`tests/shell-folder-lint.sh`). A finding that's right as it is says so
@@ -85,9 +85,9 @@ Read from evaluated machines, without building them. They catch an option
 that changed meaning, a role that brings what it shouldn't, or a setting that
 quietly stopped holding.
 
-### The Shell's Logic
+### The Desktop's Logic
 
-Run in Qt's own JavaScript engine, the one the shell runs it in, over cases
+Run in Qt's own JavaScript engine, the one the desktop runs it in, over cases
 written beside each in `tests/`.
 
 ### Examples
@@ -106,15 +106,15 @@ The kernel checks build only its configuration: the patched source, run
 through Kconfig, which drops a setting whose dependencies aren't met. [The
 kernel guide][2] says what that catches.
 
-### The Shell on niri
+### The Desktop on niri
 
-The account's shell files and its real niri configuration, run on a real
+The account's desktop files and its real niri configuration, run on a real
 niri nested in a headless sway drawn in software, inside the build sandbox
 (`tests/nested-niri.sh`), in seconds rather than a machine's minutes. It
-proves what the shell does on niri that needs no system service: a surface
+proves what the desktop does on niri that needs no system service: a surface
 landing as niri's layer, what a bind's command does. It asserts through the
-shell's reports and `niri msg`, never pixels. `the-notices-land-on-niri` is
-the first. Since nothing types there, Joel is away as soon as the shell's
+desktop's reports and `niri msg`, never pixels. `the-notices-land-on-niri` is
+the first. Since nothing types there, Joel is away as soon as the desktop's
 idle time passes, which `the-notices-wait-while-joel-is-away` uses.
 
 Two things it can't do, so they stay in a machine. Nested, niri has one
@@ -152,7 +152,7 @@ folder it prints. A break is watched failing this way too, never by
 copying the tree and running the whole test.
 
 A VM test proves wiring: that the real parts connect, a unit starting with
-its config, a message reaching its receiver, the shell drawing on niri. One
+its config, a message reaching its receiver, the desktop drawing on niri. One
 path through each connection is enough; the many cases of a behaviour, such
 as a search's ranking or a guard's thresholds, go in the tiers below, where
 they run in milliseconds.
