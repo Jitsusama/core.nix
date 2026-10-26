@@ -2302,21 +2302,12 @@
     {
       "id": "shortcuts:swayimg:moving",
       "in": "shortcuts",
-      "name": "Moving",
-      "words": [
-        "next",
-        "previous",
-        "gallery"
-      ]
+      "name": "Moving"
     },
     {
       "id": "shortcuts:swayimg:picture",
       "in": "shortcuts",
-      "name": "The picture",
-      "words": [
-        "zoom",
-        "turn"
-      ]
+      "name": "The picture"
     },
     {
       "id": "on",
