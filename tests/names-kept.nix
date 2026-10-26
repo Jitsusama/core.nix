@@ -27,7 +27,7 @@
     palette-graphs-draw-in-braille = "Launcher (Y2YBTS): palette to launcher";
     palette-rows-keep-their-words-apart = "Launcher (Y2YBTS): palette to launcher";
     "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
-    "jitsusama.dellXps14.cameraModule" = "Repos (Y9XISP): camera module to camera board";
+    "jitsusama.dellXps14.cameraModule" = "Repos (Y9XISP): cameraBoard's alias, until machines set it";
     xdg-open-opens-each-kind-in-its-app = "Look and programs (QGB4ON): app to program";
   };
 }

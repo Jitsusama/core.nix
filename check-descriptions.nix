@@ -650,8 +650,8 @@
     neither half of the XPS 14's camera asks at probe for a firmware log only Intel's offline logger
     writes, and the capture side frees its firmware's memory when it unbinds
   '';
-  the-camera-takes-its-modules-tuning = ''
-    the XPS 14's camera reads Dell's tuning for the module a machine names, and Intel's otherwise
+  the-camera-takes-its-boards-tuning = ''
+    the XPS 14's camera reads Dell's tuning for the board a machine names, and Intel's otherwise
   '';
   the-click-strength-finds-the-intensity = ''
     the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes
