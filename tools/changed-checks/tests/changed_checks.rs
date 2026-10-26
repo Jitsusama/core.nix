@@ -167,6 +167,21 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
 }
 
 #[test]
+fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
+    let stand_in = StandIn::new("keeps");
+    // The working tree has no checks to give, so evaluating it would fail.
+    stand_in.checks("base", BASE);
+
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--keep-base"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout), "");
+    assert!(text(&ran.stderr).contains("kept x86_64-linux's checks at 0123456789ab"));
+    let kept = Path::new("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
+    assert!(stand_in.folder.join(kept).exists());
+}
+
+#[test]
 fn a_base_sharing_no_history_is_refused_as_asked_wrongly() {
     let stand_in = StandIn::new("unrelated");
 
