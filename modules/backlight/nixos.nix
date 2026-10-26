@@ -5,8 +5,15 @@
 # machine runs it for its other sensors, is told to leave them alone: it
 # would turn their buffers off, and where it can't hear one it reads it on a
 # timer.
-{ pkgs, ... }:
+# systemd-backlight's units save each level at shutdown, but the screen's
+# only while the lid is open (saves-while-open.sh), since a shut lid's panel
+# reads dark and the next boot would come up at it.
+{ config, pkgs, ... }:
 let
+  savesWhileOpen = pkgs.callPackage ./saves-while-open.nix {
+    save = "${config.systemd.package}/lib/systemd/systemd-backlight";
+  };
+
   # A light sensor with a buffer.
   sensor = ''SUBSYSTEM=="iio", TEST=="scan_elements/in_illuminance_en", TEST=="buffer/enable"'';
 
@@ -38,5 +45,10 @@ in
   services.udev.packages = [
     hear
     unclaimed
+  ];
+
+  systemd.services."systemd-backlight@".serviceConfig.ExecStop = [
+    ""
+    "${savesWhileOpen}/bin/saves-while-open %i"
   ];
 }
