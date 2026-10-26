@@ -1,0 +1,11 @@
+# pause-for-calls pauses Spotify while a call app records from a
+# microphone, and plays it again once the call ends (src/main.rs says how).
+[package]
+name = "pause-for-calls"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1.0"

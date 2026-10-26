@@ -7,7 +7,8 @@
 #
 # The viewfinder plays the camera with nothing buffered and nothing timed,
 # so it keeps up with Joel, and mirrored, as a mirror would show him; what's
-# saved is the way others see him. The camera is the machine's, from
+# saved is the way others see him. The camera is one plugged in while
+# there is one (camera.sh), and otherwise the machine's, from
 # jitsusama.camera.device (nixos.nix), or set here for one Home Manager runs
 # alone on.
 {

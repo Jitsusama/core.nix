@@ -506,6 +506,14 @@
     a palette's row and field keep their words apart and inside them, however long, ending what
     doesn't fit in an ellipsis
   '';
+  pause-for-calls-follows-the-calls = ''
+    pause-for-calls counts a call app's running recording as a call, leaving out PipeWire's filters,
+    dictation, the camera's videos and monitors, pauses Spotify two seconds into a call and plays it
+    five seconds after, and finds each Spotify on the bus
+  '';
+  pause-for-calls-passes-clippy = ''
+    clippy finds nothing in pause-for-calls or its tests
+  '';
   pebble-lights-follow-the-sound = ''
     pebble-lights finds the speakers' control and sound card, keeps their lighting on while sound
     plays and a while after unless the screen is locked, and lets the speakers' own button win
@@ -714,6 +722,10 @@
   '';
   the-camera-takes-its-boards-tuning = ''
     the XPS 14's camera reads Dell's tuning for the board a machine names, and Intel's otherwise
+  '';
+  the-camera-takes-the-one-plugged-in = ''
+    the camera program takes a camera on a removable USB port over the machine's own while it's
+    plugged in, never a built-in one on a fixed port, and the machine's own with none
   '';
   the-click-strength-finds-the-intensity = ''
     the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes
