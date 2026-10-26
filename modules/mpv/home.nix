@@ -16,15 +16,34 @@
 #   Quitting remembers where a file was, and opening it again goes back.
 #
 # What mpv draws over the picture is in the theme: its messages and
-# subtitles in the proportional face, and the controller's bar in the
-# deepest colour with the text's colour on it. The keys are mpv's own: Space
-# pauses, the arrows seek, f fills the screen and q quits. It reports what
+# subtitles in the proportional face, the controller's bar in the deepest
+# colour with the text's colour on it, and its console, right-click menu
+# and statistics on the deepest colour, a choice in the accent. The keys are
+# mpv's own: Space pauses, the arrows seek, f fills the screen, q quits and
+# ? lists every key, on the statistics' page of them. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it.
 # umpv, the package's second entry, which queues files into one window,
 # stays out of the launcher, where it would sit beside mpv as a second mpv.
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   inherit (config.jitsusama.theme) roles font;
+
+  # The theme's #RRGGBB as stats writes a colour, blue first.
+  bgr =
+    colour:
+    let
+      hex = lib.removePrefix "#" colour;
+    in
+    lib.concatMapStrings (at: builtins.substring at 2 hex) [
+      4
+      2
+      0
+    ];
 in
 {
   imports = [
@@ -57,6 +76,9 @@ in
       osd-color = roles.strong;
       osd-border-color = roles.shadow;
       osd-border-size = 2;
+      osd-back-color = roles.deepest;
+      osd-selected-color = roles.on_accent;
+      osd-selected-outline-color = roles.accent;
       sub-font = font.sans.family;
       sub-color = roles.strong;
       sub-border-color = roles.shadow;
@@ -76,6 +98,33 @@ in
       top_buttons_color = roles.text;
       held_element_color = roles.muted;
       time_pos_outline_color = roles.shadow;
+    };
+    # The console, where a command is typed and a list is chosen from, and
+    # the menu a right click opens: the choice in the accent, as the
+    # launcher's is.
+    scriptOpts.console = {
+      monospace_font = font.mono.family;
+      focused_color = roles.on_accent;
+      focused_back_color = roles.accent;
+      match_color = roles.accent;
+      menu_outline_color = roles.edge;
+    };
+    scriptOpts.context_menu = {
+      focused_color = roles.on_accent;
+      focused_back_color = roles.accent;
+      disabled_color = roles.muted;
+      menu_outline_color = roles.edge;
+    };
+    # What's playing and how, and the page of keys ? opens, in the sans
+    # face with figures in the monospaced one, its graphs in the accent.
+    scriptOpts.stats = {
+      font = font.sans.family;
+      font_mono = font.mono.family;
+      font_color = bgr roles.text;
+      border_color = bgr roles.shadow;
+      plot_color = bgr roles.accent;
+      plot_bg_color = bgr roles.deepest;
+      plot_bg_border_color = bgr roles.edge;
     };
   };
 }
