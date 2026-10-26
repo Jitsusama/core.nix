@@ -549,7 +549,7 @@ Provider {
     }
 
     function counted() {
-        const each = shown.length === 1 ? "display" : "displays";
+        const each = shown.length === 1 ? "screen" : "screens";
         return lit.length === shown.length ? `${shown.length} ${each}`
             : `${lit.length} of ${shown.length} on`;
     }

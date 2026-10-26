@@ -134,7 +134,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         ("Spent today", r"\$12\.50"),
         ("Councils", r"\$4\.00"),
         ("Test the shell", r"2nd in line"),
-        ("Works on", r"Tidy the tests"),
+        ("Working on", r"Tidy the tests"),
         ("Hears", r"#desk"),
     ]:
         machine.send_key("down")

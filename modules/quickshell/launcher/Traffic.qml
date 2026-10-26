@@ -219,12 +219,12 @@ Provider {
         });
     }
 
-    // How the shaper's search for the line's most is going, in Joel's
-    // words.
+    // How the shaper's search for the connection's most is going, in
+    // Joel's words.
     readonly property var finding: ({
         climbing: "as measured, still finding its most",
-        holding: "as measured, held while the line's busy",
-        cut: "as measured, cut while the line queued"
+        holding: "as measured, held while the connection's busy",
+        cut: "as measured, cut while the connection queued"
     })
 
     function told() {
@@ -263,12 +263,12 @@ Provider {
                 rows.push(holder({
                     name: named("trip"),
                     side: ms(typical),
-                    note: "while the line is quiet, the middle of "
+                    note: "while the connection is quiet, the middle of "
                         + `${shaped.trips.length} servers`
                 }, () => shaped.trips.map(trip => figure({
                     name: trip.server,
                     side: ms(trip.ms),
-                    note: "while the line is quiet"
+                    note: "while the connection is quiet"
                 }))));
         }
         rows.push(figure({
