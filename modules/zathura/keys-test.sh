@@ -11,18 +11,30 @@ zathura "$1" > said 2>&1 &
 zathura=$!
 trap 'kill $zathura 2>/dev/null || true' EXIT
 
-# Waits up to ten seconds for a command to succeed, saying what it waited
-# for when it never does.
-until_true() {
-  what=$1
+# Waits for a command to succeed, trying it that many times a tenth of a
+# second apart.
+waits() {
+  tries=$1
   shift
-  for _ in $(seq 100); do
+  for _ in $(seq "$tries"); do
     if "$@"; then return 0; fi
     sleep 0.1
   done
-  echo "never: $what" >&2
+  return 1
+}
+
+# Waits up to two minutes for a command to succeed, saying what it waited
+# for when it never does. A busy host can take many seconds to draw a page,
+# so the wait is a ceiling, and only one never met says something's wrong.
+never() {
+  echo "never: $1" >&2
   cat said >&2
   exit 1
+}
+until_true() {
+  what=$1
+  shift
+  waits 1200 "$@" || never "$what"
 }
 
 bus=""
@@ -42,17 +54,25 @@ page() {
 on() { [ "$(page)" = "$1" ]; }
 until_true "the first page" on 0
 
-# Right turns a page, End jumps to the last, Tab goes back to where the
-# jump came from and again returns, Left turns back.
+# zathura is on the bus before its window has the keyboard, and a key sent
+# before then goes nowhere. End jumps to the last page and, pressed again,
+# stays there, so it's pressed until it lands; every key after it does.
+ends=0
+until wtype -k End && waits 300 on 2; do
+  ends=$((ends + 1))
+  if [ "$ends" -ge 6 ]; then never "End to the last page"; fi
+done
+
+# Tab goes back to where the jump came from and again returns, Left turns
+# back a page and Right on again.
 press() {
   wtype -k "$1"
   until_true "$1 to page $2" on "$2"
 }
-press Right 1
-press End 2
-press Tab 1
+press Tab 0
 press Tab 2
 press Left 1
+press Right 2
 
 # ? asks the launcher for the keys, where it lists the viewer's first.
 wtype '?'
