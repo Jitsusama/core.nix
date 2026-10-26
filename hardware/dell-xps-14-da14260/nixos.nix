@@ -403,7 +403,17 @@ in
   # both of which the OLED ignores, so the brightness keys do nothing.
   # Written by hand, only VESA's luminance in nits dimmed it, so xe is held
   # to VESA's controls whatever the read says.
-  boot.kernelParams = [ "xe.enable_dpcd_backlight=2" ];
+  #
+  # After a monitor was unplugged and plugged back in, the panel flashed
+  # under PSR2, under PSR1, and under frame buffer compression, which xe
+  # takes up once self refresh is off. Each has the panel shown from a
+  # buffer other than the frame just drawn, so xe uses neither
+  # (docs/hardware.md, The Panel's Self Refresh).
+  boot.kernelParams = [
+    "xe.enable_dpcd_backlight=2"
+    "xe.enable_psr=0"
+    "xe.enable_fbc=0"
+  ];
 
   # The BE211's Wi-Fi 7 receive path drops links to the slowest rate, so it
   # runs as Wi-Fi 6, as Omarchy runs it. Remove this once a Wi-Fi 7 link holds
