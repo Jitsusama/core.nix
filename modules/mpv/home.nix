@@ -176,9 +176,7 @@ in
     # mpv's 0, louder beside 9's quieter, does nothing now that 9 plays the
     # ninth in the list; / and * stay mpv's quieter and louder.
     bindings =
-      lib.listToAttrs (
-        map (key: lib.nameValuePair key.chord key.run) (lib.filter (key: key ? run) keys)
-      )
+      lib.listToAttrs (map (key: lib.nameValuePair key.chord key.run) (lib.filter (key: key ? run) keys))
       // {
         "0" = "ignore";
       };
