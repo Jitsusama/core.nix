@@ -2,12 +2,15 @@
 # folder's; its opening comment says what each kind of check proves.
 {
   account,
+  clippyConfig,
+  clippyLints,
   holds,
   lib,
   macWorkstation,
   onLinux,
   passesClippy,
   pkgs,
+  rust-overlay,
   workstation,
   ...
 }:
@@ -43,4 +46,28 @@
   pi-packages-passes-clippy = passesClippy "pi-packages-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
+
+  # A Mac asks libproc what each process uses (src/inuse/macos.rs), which no
+  # Linux build compiles, so clippy reads the crate, its tests included, as
+  # macOS would compile it.
+  pi-packages-compiles-for-macos =
+    let
+      toolchain = (pkgs.extend rust-overlay.overlays.default).rust-bin.stable.latest.minimal.override {
+        targets = [ "aarch64-apple-darwin" ];
+        extensions = [ "clippy" ];
+      };
+    in
+    (pkgs.callPackage ./package.nix { }).overrideAttrs {
+      pname = "pi-packages-compiles-for-macos";
+      CLIPPY_CONF_DIR = clippyConfig;
+      buildPhase = ''
+        export PATH=${toolchain}/bin:$PATH
+        cargo clippy --target aarch64-apple-darwin --all-targets --offline -- \
+          ${lib.escapeShellArgs clippyLints}
+      '';
+      doCheck = false;
+      installPhase = ''
+        touch $out
+      '';
+    };
 }
