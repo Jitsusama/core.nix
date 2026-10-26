@@ -498,6 +498,9 @@
   rust-programs-pass-clippy = ''
     clippy finds nothing in the single-file programs or their tests
   '';
+  se-keys-builds-for-any-name = ''
+    the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
+  '';
   session-machines-have-a-bridge = ''
     libvirt's bridge helper lets session machines onto virbr0, and its default network starts at
     boot

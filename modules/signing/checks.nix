@@ -70,6 +70,22 @@ in
       );
 }
 // onLinux {
+  # se-keys, the Mac's key maker, builds, shellcheck and all, for a name with
+  # an apostrophe, which the agents' key's name always has. It's only a
+  # script, so it builds on Linux, where a Mac's whole system can't.
+  se-keys-builds-for-any-name =
+    let
+      mac = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.secure-enclave-signing
+            { jitsusama.identity.name = "Someone O'Neill"; }
+          ];
+        }
+      ]);
+    in
+    lib.findFirst (package: (package.name or "") == "se-keys") (throw "no se-keys") mac.home.packages;
+
   # The program picks whose key signs and takes back a signature that
   # doesn't verify, run against a stand-in ssh-keygen
   # (tests/signing-program.sh says each case).

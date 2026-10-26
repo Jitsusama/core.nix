@@ -43,9 +43,13 @@ let
     name = "se-keys";
     runtimeEnv = {
       inherit provider;
-      # One identity a line, its fields separated by tabs, as se-keys.sh
-      # reads them.
-      identities = lib.concatMapStringsSep "\n" (lib.concatStringsSep "\t") identities;
+      # A file of one identity a line, its fields separated by tabs, as
+      # se-keys.sh reads them. A file rather than the text itself, since a
+      # name with an apostrophe, as the agents' key has, is quoted in the
+      # script in a way shellcheck refuses.
+      identities = pkgs.writeText "se-keys-identities" (
+        lib.concatMapStringsSep "\n" (lib.concatStringsSep "\t") identities + "\n"
+      );
     };
     text = builtins.readFile ./se-keys.sh;
   };
