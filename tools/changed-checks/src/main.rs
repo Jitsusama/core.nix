@@ -17,9 +17,10 @@
 //! reads, such as `flake.lock`, touches them all.
 //!
 //! The checks are evaluated a few dozen at a time, in a nix eval each, a VM
-//! test counting four (`checks.rs` says why), rather than all in one, which
-//! held every check at once and reached 24 GB on a machine many sessions
-//! share; each evaluation's memory goes when it ends. A commit's derivations never change, so the base's are
+//! test counting four, two evaluations at once (`checks.rs` says why),
+//! rather than all in one, which held every check at once and reached 24 GB
+//! on a machine many sessions share; each evaluation's memory goes when it
+//! ends. A commit's derivations never change, so the base's are
 //! kept under `~/.cache/changed-checks`, and only the working tree is
 //! evaluated again. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
@@ -223,23 +224,20 @@ fn derivations(
     )?;
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
-    let mut found = Derivations::new();
-    for chunk in checks::chunks(&names) {
+    let chunks = checks::chunks(&names);
+    let evaluated = checks::each_at_once(&chunks, checks::AT_ONCE, |chunk| {
+        let selecting = checks::selecting(chunk)?;
         let began = Instant::now();
-        let evaluated = run(
-            "nix",
-            &[
-                "eval",
-                "--json",
-                &checks,
-                "--apply",
-                &checks::selecting(chunk)?,
-            ],
-        )?;
-        evaluation.chunk(chunk.len(), began.elapsed());
-        let chunk: Derivations = serde_json::from_str(&evaluated)
+        let evaluated = run("nix", &["eval", "--json", &checks, "--apply", &selecting])?;
+        let took = began.elapsed();
+        let derivations: Derivations = serde_json::from_str(&evaluated)
             .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
-        found.extend(chunk);
+        Ok::<_, String>((chunk.len(), took, derivations))
+    })?;
+    let mut found = Derivations::new();
+    for (checks, took, derivations) in evaluated {
+        evaluation.chunk(checks, took);
+        found.extend(derivations);
     }
     noted.evaluated(evaluation);
     Ok(found)

@@ -57,10 +57,13 @@ once a base is kept a comparison pays for one evaluation, the working
 tree's: 461 s on 2026-10-26, against 1,373 s and more for one that had to
 evaluate a base that had just merged. `changed-checks --keep-base`, run in a
 checkout of main as each merge lands, keeps that commit ahead of time, so a
-branch rebased onto it pays for its own tree alone. Each run adds a line to
-`~/.local/state/changed-checks/runs.jsonl` saying what each side's
-evaluation took, chunk by chunk, what it named, and what its build took, so
-these times are read from the runs rather than measured once.
+branch rebased onto it pays for its own tree alone. It evaluates two chunks
+of checks at once, since one kept under 2 of 16 cores busy: on 2026-10-26 a
+working tree took 324 s one chunk at a time, peaking at 5.8 GB, and one a
+few commits later took 157.5 s two at once, peaking at 10.8 GB. Each run
+adds a line to `~/.local/state/changed-checks/runs.jsonl` saying what each
+side's evaluation took, chunk by chunk, what it named, and what its build
+took, so these times are read from the runs rather than measured once.
 
 `--keep-going` lets every check finish when one fails, so the run names all
 the failures rather than the first. Determinate Nix needs it besides: when a
