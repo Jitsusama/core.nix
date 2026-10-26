@@ -102,7 +102,7 @@ impl Step for EnrolYubikey {
                     Ask::Act {
                         id: "plugged",
                         what: format!(
-                            "Plug in {}, and only {}.{port} Touch the key each time it blinks.",
+                            "Plug in {}, and only {}.{port} Don't touch it yet: once you've typed its PIN, it blinks twice, and each blink wants one touch.",
                             self.name, self.name
                         ),
                     },
@@ -158,23 +158,7 @@ impl Step for EnrolYubikey {
             }
         }
 
-        let enrolled = machine.run_given(
-            Program::Tool(Tool::SystemdCryptenroll),
-            &[
-                &format!("--unlock-key-file={INSTALL_KEY}"),
-                &format!("--fido2-device={device}"),
-                "--fido2-with-client-pin=yes",
-                "--fido2-with-user-presence=yes",
-                &volume,
-            ],
-            Given {
-                credentials: vec![("cryptenroll.fido2-pin", pin)],
-                ..Given::default()
-            },
-        )?;
-        if enrolled.status != 0 {
-            return Err(enrolled.refusal());
-        }
+        self.enrol(machine, &device, pin, &volume)?;
         let after = luks::observe(machine, &volume)?;
         let new: Vec<&str> = after
             .credentials()
@@ -212,6 +196,52 @@ impl Step for EnrolYubikey {
         machine
             .journal()
             .record(self.id, &format!("opened:{credential}"))
+    }
+}
+
+impl EnrolYubikey {
+    /// The key at `device` added to the disk, a touch it missed said as
+    /// what to do.
+    fn enrol(
+        &self,
+        machine: &mut dyn Machine,
+        device: &str,
+        pin: &Secret,
+        volume: &str,
+    ) -> Result<(), Fault> {
+        // Said while cryptenroll waits on the key, which makes the
+        // credential at one touch and asks it to answer at a second.
+        machine.meter().stage(
+            &format!(
+                "Touch {} each time it blinks, twice in all, as it's added to the disk",
+                self.name
+            ),
+            None,
+        );
+        let enrolled = machine.run_given(
+            Program::Tool(Tool::SystemdCryptenroll),
+            &[
+                &format!("--unlock-key-file={INSTALL_KEY}"),
+                &format!("--fido2-device={device}"),
+                "--fido2-with-client-pin=yes",
+                "--fido2-with-user-presence=yes",
+                volume,
+            ],
+            Given {
+                credentials: vec![("cryptenroll.fido2-pin", pin)],
+                ..Given::default()
+            },
+        )?;
+        if enrolled.status == 0 {
+            return Ok(());
+        }
+        let refusal = enrolled.refusal();
+        Err(
+            match fido2::touch_refusal(&refusal.to_string(), &self.name) {
+                Some(why) => Fault::Blocked { step: self.id, why },
+                None => refusal,
+            },
+        )
     }
 }
 
@@ -480,10 +510,10 @@ impl Step for KeepRecoveryKey {
                             id: "shown",
                             how: words::keeping(
                                 "the recovery key",
-                                &format!("{} disk recovery key", target.machine),
+                                &words::machines(&target.machine, "Recovery"),
                                 &format!(
-                                    "The recovery key opens {}'s disk when no YubiKey will",
-                                    target.machine
+                                    "The recovery key opens {machine}'s disk itself when no YubiKey or PIN will. It's a second entry beside the stick's passphrase and replaces nothing: the stick's passphrase opens only the stick's vault",
+                                    machine = target.machine
                                 ),
                             ),
                             shown: key.expose().into(),

@@ -174,54 +174,34 @@ fn the_passphrase_typed_with_a_key_plugged_in_opens_the_vault_without_the_key() 
 }
 
 #[test]
-fn what_isnt_the_passphrase_goes_to_the_key_plugged_in_and_says_both_were_tried() {
+fn what_isnt_the_passphrase_is_refused_with_a_key_plugged_in_and_the_key_left_alone() {
+    // A laptop with one port both fit can't have a key beside the stick,
+    // and one was pulled out to try a key; the vault takes the words only.
     let target = target("/dev/disk/by-id/virtio-root");
     let scratch = Scratch::new("install-vault-pin");
     let mut fake = shut_stick(&scratch, &target);
     plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
     let refused = OpenVault.run(&mut fake, &passphrase("123456"));
     assert!(
-        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with("that isn't the recovery passphrase, and ")),
+        matches!(&refused, Err(Fault::Unopened { what, why }) if what == "the stick's vault" && why == "what was typed isn't its passphrase, the seven words in 1Password named \"NixOS Install Phrase\""),
         "{refused:?}"
     );
 }
 
 #[test]
-fn a_laptops_virtual_key_is_never_counted_as_a_key_plugged_in() {
-    let target = target("/dev/disk/by-id/virtio-root");
-    let scratch = Scratch::new("install-vault-linux-id");
-    let mut fake = shut_stick(&scratch, &target);
-    plugged(
-        &mut fake,
-        &[("/dev/hidraw1", "canokey"), ("/dev/hidraw6", "linux-id")],
-    );
-    let refused = OpenVault.run(&mut fake, &passphrase("123456"));
-    assert!(
-        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with("that isn't")),
-        "the canokey alone is plugged in: {refused:?}"
-    );
-}
-
-#[test]
-fn the_vault_asks_on_one_screen_for_the_passphrase_by_its_name_on_the_phone_or_a_key() {
+fn the_vault_asks_only_for_the_passphrase_by_its_name_on_the_phone() {
     let target = target("/dev/disk/by-id/virtio-root");
     let scratch = Scratch::new("install-vault-one-screen");
     let mut fake = shut_stick(&scratch, &target);
     let Standing::Needed { asks } = OpenVault.observe(&mut fake).unwrap() else {
         panic!("the vault is shut")
     };
-    let [Ask::SecretOr { name, or, .. }] = asks.as_slice() else {
-        panic!("one field, saying both ways in: {asks:?}")
+    let [Ask::Secret { name, .. }] = asks.as_slice() else {
+        panic!("the passphrase alone: {asks:?}")
     };
     assert!(
-        name.contains("1Password on your phone named \"machine stick passphrase\""),
+        name.contains("1Password on your phone named \"NixOS Install Phrase\""),
         "{name}"
-    );
-    assert!(
-        or.starts_with(
-            "if a port is free beside the stick, plug in the Nano or the 5C there, type its PIN"
-        ),
-        "{or}"
     );
 }
 
@@ -473,7 +453,7 @@ fn a_key_step_says_the_stick_can_come_out_once_its_system_is_in_memory() {
     };
     assert_eq!(
         what,
-        "Plug in the Nano, and only the Nano. If no port is free, take the stick out first: the guide asks for it back when it needs it. Touch the key each time it blinks."
+        "Plug in the Nano, and only the Nano. If no port is free, take the stick out first: the guide asks for it back when it needs it. Don't touch it yet: once you've typed its PIN, it blinks twice, and each blink wants one touch."
     );
 }
 
@@ -590,6 +570,56 @@ fn a_key_plugged_in_beside_another_is_never_enrolled() {
         "{:#?}",
         fake.calls
     );
+}
+
+#[test]
+fn a_touch_the_key_missed_or_refused_is_said_plainly_with_what_to_do() {
+    // As a Nano did, touched ahead of its blinks: cryptenroll's own words
+    // name libfido2's error, which says nothing to a person.
+    for said in [
+        "Failed to ask token for assertion: FIDO_ERR_OPERATION_DENIED",
+        "Failed to ask token for assertion: FIDO_ERR_ACTION_TIMEOUT",
+    ] {
+        let target = target("/dev/disk/by-id/virtio-root");
+        let scratch = Scratch::new("install-touch-missed");
+        let mut fake = stick(&scratch, &target);
+        let mut header: serde_json::Value =
+            serde_json::from_str(fixture!("luks-dump-before-wipe.json")).unwrap();
+        header["tokens"]
+            .as_object_mut()
+            .unwrap()
+            .retain(|_, token| token["type"] != "systemd-fido2");
+        plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+        fake.prints(
+            Tool::Cryptsetup,
+            &[
+                "luksDump",
+                "--dump-json-metadata",
+                "/dev/disk/by-partlabel/system",
+            ],
+            &header.to_string(),
+        )
+        .refuses(
+            Tool::SystemdCryptenroll,
+            &[
+                "--unlock-key-file=/run/guide/install-key",
+                "--fido2-device=/dev/hidraw1",
+                "--fido2-with-client-pin=yes",
+                "--fido2-with-user-presence=yes",
+                "/dev/disk/by-partlabel/system",
+            ],
+            1,
+            said,
+        );
+        let mut answers = Answers::new();
+        answers.give("plugged", Answer::Done);
+        answers.give("pin", Answer::Secret(Secret::new("123456".into())));
+        let refused = EnrolYubikey::new("the Nano").run(&mut fake, &answers);
+        assert!(
+            matches!(&refused, Err(Fault::Blocked { why, .. }) if why == "the Nano didn't get its touch. Press Return to try again, and touch it each time it blinks: twice, a few seconds apart"),
+            "{said}: {refused:?}"
+        );
+    }
 }
 
 #[test]
@@ -1194,7 +1224,7 @@ fn the_copy_onto_the_disk_is_measured_against_the_paths_unpacked() {
     ];
     let mut fake = stick_carrying(&scratch, &target, carried);
     let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
-    fake.unpack(key.clone(), SYSTEM_CACHE, system::CACHE)
+    fake.unpack(key.clone(), SYSTEM_CACHE, system::CACHE, system::COPY_OFF)
         .unwrap();
     assert_eq!(system::unpacked_size(&mut fake, key).unwrap(), Some(3500));
 }
@@ -1212,7 +1242,7 @@ fn a_narinfo_without_its_size_measures_nothing() {
     ];
     let mut fake = stick_carrying(&scratch, &target, carried);
     let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
-    fake.unpack(key.clone(), SYSTEM_CACHE, system::CACHE)
+    fake.unpack(key.clone(), SYSTEM_CACHE, system::CACHE, system::COPY_OFF)
         .unwrap();
     assert_eq!(system::unpacked_size(&mut fake, key).unwrap(), None);
 }
@@ -1697,7 +1727,7 @@ fn the_recovery_key_is_shown_alone_for_the_phone_then_typed_back_from_it() {
         panic!("{asks:#?}");
     };
     assert_eq!((shown.as_str(), expected.as_str()), (held, held));
-    assert!(how.contains("\"machine disk recovery key\""), "{how}");
+    assert!(how.contains("\"Machine Recovery Phrase\""), "{how}");
     assert!(
         how.contains("Copy All") && how.contains("1Password"),
         "{how}"

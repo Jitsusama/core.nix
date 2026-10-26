@@ -50,6 +50,10 @@ pub fn unpacked_size(
 /// lanzaboote module's pkiBundle), under the install's root.
 const SBCTL: &str = "/mnt/var/lib/sbctl";
 pub const CACHE: &str = "/mnt/var/cache/guide";
+/// The install's two copies, packed off the stick then unpacked into the
+/// system, as the screen names them.
+pub const COPY_OFF: &str = "Copy 1 of 2, the system packed off the stick";
+pub const COPY_ON: &str = "Copy 2 of 2, the system unpacked onto the disk";
 const PROFILE: &str = "/mnt/nix/var/nix/profiles/system";
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
 /// What core's lanzaboote module links at a system's top to ready its
@@ -326,7 +330,12 @@ impl Step for SecureBootKeys {
                 step: self.id(),
                 why: "the vault isn't open".into(),
             })?;
-            machine.unpack(key, SBCTL_IN_VAULT, SBCTL)?;
+            machine.unpack(
+                key,
+                SBCTL_IN_VAULT,
+                SBCTL,
+                "Copying the Secure Boot keys off the stick",
+            )?;
             return Ok(());
         }
         machine
@@ -389,15 +398,14 @@ impl Step for InstallSystem {
             why: "the vault isn't open".into(),
         })?;
         // The cache goes onto the new disk, never into memory, since it's
-        // the whole system.
-        let cached = machine.unpack(key.clone(), SYSTEM_CACHE, CACHE)?;
+        // the whole system. Two copies, each with its own total, named so
+        // the total changing between them reads as the next copy.
+        let cached = machine.unpack(key.clone(), SYSTEM_CACHE, CACHE, COPY_OFF)?;
         // Nix maps the cache's files rather than reading them, so Linux
         // counts none of its reads; what it writes is the system's paths
         // unpacked, whose sizes the narinfos add up to.
         let unpacked = unpacked_size(machine, key)?.unwrap_or(cached);
-        machine
-            .meter()
-            .stage_by_writes("Copying it onto the disk", Some(unpacked));
+        machine.meter().stage_by_writes(COPY_ON, Some(unpacked));
         let from = format!("file://{CACHE}");
         let to = format!("local?root={ROOT}");
         // The cache carries no Nix signatures, since the vault already

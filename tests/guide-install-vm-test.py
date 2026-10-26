@@ -307,7 +307,7 @@ def vault_opened(booted: QemuMachine, values: dict[str, Any]) -> QemuMachine:
     on_screen(
         booted,
         "the stick's passphrase, the seven words in 1Password on your phone named "
-        '"machine stick passphrase"',
+        '"NixOS Install Phrase"',
     )
     enter(booted, values["passphrase"])
     return booted
@@ -374,7 +374,7 @@ def stick_back(fivec_enrolled: QemuMachine, rig: Rig, recovery_key: str) -> Qemu
     # next looks, up to two seconds after the stick is back.
     on_screen(
         machine,
-        r"Copying it off the stick: [0-9.]+ [KMG]B of ",
+        r"Copy 1 of 2, the system packed off the stick: [0-9.]+ [KMG]B of ",
         timeout=STEP,
         stopped="try again",
     )
@@ -421,7 +421,7 @@ def carried_on(stopped: QemuMachine, rig: Rig, values: dict[str, Any]) -> QemuMa
     plug_stick_back(machine, rig)
     on_screen(
         machine,
-        r"Copying it off the stick: [0-9.]+ [KMG]B of ",
+        r"Copy 1 of 2, the system packed off the stick: [0-9.]+ [KMG]B of ",
         timeout=STEP,
         stopped="try again",
     )

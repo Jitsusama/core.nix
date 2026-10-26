@@ -152,15 +152,10 @@ impl Payload {
             Some(start) => _ = write!(said, " Then start it from the stick: {start}"),
             None => said.push_str(" Then start it from the stick."),
         }
-        let opens = if target.recipients.is_empty() {
-            "the stick's passphrase, the seven words you saved on your phone"
-        } else {
-            "the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN"
-        };
-        // Writing to a String can't fail.
-        _ = write!(
-            said,
-            " The guide carries on there, and asks first for {opens}."
+        // In the order a person meets it, since a stick that started and
+        // asked nothing for minutes was taken for a fault.
+        said.push_str(
+            " The guide carries on there. First it copies itself into memory, which takes a few minutes and asks nothing. Then it asks you to type a word to check the keyboard, and then for the stick's passphrase, the seven words you saved on your phone.",
         );
         said
     }
@@ -641,14 +636,14 @@ impl Step for WriteStick {
             ),
             verb: "write it",
         }];
-        if let Some(payload) = &self.payload {
+        if self.payload.is_some() {
             let words = self.words()?.expose();
             asks.push(Ask::Show {
                 id: "shown",
                 how: words::keeping(
                     "the stick's passphrase",
-                    &format!("{} stick passphrase", payload.target.machine),
-                    "The stick's passphrase opens its vault when no YubiKey is plugged in",
+                    words::STICK_PHRASE,
+                    "The stick's passphrase opens its vault, on whichever machine it's started",
                 ),
                 shown: words.into(),
             });

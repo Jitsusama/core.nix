@@ -257,16 +257,16 @@ impl Step for MakeKeys {
         if !missing.iter().any(|key| key.pin) {
             return Ok(Standing::Needed { asks: vec![] });
         }
+        // Said whole, since a person asked whether a PIN meant a locked
+        // copy of each key and an open one: there's one, kept in the TPM.
+        let held = "Each is made inside this machine's TPM and never leaves it, so there's one copy of each, locked by this PIN, which it asks for once after each sign-in. The YubiKeys' PIN will do, to keep to one PIN";
         let name = if lost {
             format!(
-                "a PIN for {}'s new SSH keys, made again since the TPM was cleared and can't open the old ones; they ask for it once after each sign-in",
+                "a PIN for {}'s new SSH keys, made again since the TPM was cleared and can't open the old ones. {held}",
                 whose(&missing)
             )
         } else {
-            format!(
-                "a PIN for {}'s SSH keys, which they ask for once after each sign-in",
-                whose(&missing)
-            )
+            format!("a PIN for {}'s SSH keys. {held}", whose(&missing))
         };
         Ok(Standing::Needed {
             asks: vec![

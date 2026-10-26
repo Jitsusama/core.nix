@@ -217,7 +217,7 @@ fn the_bundle_is_written_privately_and_then_done() {
     };
     assert_eq!(shown.split(' ').count(), 7, "{shown}");
     assert_eq!(expected, shown);
-    assert!(how.contains("\"laptop rescue bundle passphrase\""), "{how}");
+    assert!(how.contains("\"Laptop Rescue Phrase\""), "{how}");
     let words = shown.clone();
 
     // Words that aren't these write nothing.

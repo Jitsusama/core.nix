@@ -1037,7 +1037,7 @@
     sharing one PIN so no boot costs either a try
   '';
   vm-guide-opens-the-vault = ''
-    a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase
+    a stick's vault sealed to a FIDO2 key stays shut to its PIN on the install's screen, and opens by the passphrase
   '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, mounts it whole, sets

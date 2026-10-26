@@ -34,7 +34,10 @@ driven on; the installed machine's steps come later.
   words alone on the screen, so the Camera's Live Text copies nothing
   else, then the words typed back without being shown. Typed words are
   read as the words they say, whatever their case or spacing, wherever
-  they're typed.
+  they're typed. Each has its name in 1Password from `words.rs`: the
+  stick's is `STICK_PHRASE`, the same for every machine, and a machine's
+  own are its name and a kind, as `machines` makes "Hedgehog Recovery
+  Phrase" from hedgehog.
 - **Journal.** What observing can't show, such as a recovery key proven by
   being typed back, goes in the journal: a line of JSON per fact, on the disk
   before the step goes on, readable only by its owner.
@@ -336,10 +339,12 @@ driven on; the installed machine's steps come later.
 - **Opening the vault.** The key's YubiKey copy goes through
   age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
   its own PATH to the plugin's store directory as it starts. Sealing needs
-  no key plugged in. On the stick one field takes either the stick's
-  passphrase, named as the host had the person save it on their phone, or
-  the plugged-in key's PIN; the plugin's own prompts never reach the
-  screen, since the PIN is handed to it.
+  no key plugged in. On the stick the install's vault takes only the
+  stick's passphrase, named as the host had the person save it on their
+  phone: a key works only beside the stick, and a laptop with one port
+  both fit has no room for it. A rescue bundle still opens with a key's
+  PIN; the plugin's own prompts never reach the screen, since the PIN is
+  handed to it.
 - **Passphrase before PIN.** Wherever one field takes a passphrase or a
   key's PIN (the vault, a rescue bundle, recovering the disk), what's
   typed is tried as the passphrase or recovery key first, which costs the
@@ -388,7 +393,7 @@ driven on; the installed machine's steps come later.
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
 | `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
-| `../../tests/guide-vault.nix` | a vault opened by a YubiKey's PIN, then by the passphrase |
+| `../../tests/guide-vault.nix` | a vault sealed to a YubiKey, shut to its PIN, opened by the passphrase |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
 | `../../tests/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |

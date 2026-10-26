@@ -225,7 +225,7 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     };
     assert_eq!(shown.split(' ').count(), 7, "{shown}");
     assert_eq!(expected, shown);
-    assert!(how.contains("\"laptop stick passphrase\""), "{how}");
+    assert!(how.contains("\"NixOS Install Phrase\""), "{how}");
     // Looked at again, it's the same words, or the phone would keep
     // words the vault isn't sealed to.
     assert!(matches!(
@@ -285,8 +285,10 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
         .find("hold the power button until laptop is off")
         .expect("switched off");
     assert!(clear < off && off < start, "{said}");
+    // What comes first there, in order, as a person meets it: a stick
+    // started with no word asked of them was taken for a fault.
     assert!(
-        said.ends_with("asks first for the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN."),
+        said.ends_with("The guide carries on there. First it copies itself into memory, which takes a few minutes and asks nothing. Then it asks you to type a word to check the keyboard, and then for the stick's passphrase, the seven words you saved on your phone."),
         "{said}"
     );
 
