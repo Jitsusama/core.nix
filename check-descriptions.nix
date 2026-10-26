@@ -821,6 +821,10 @@
     the launcher's catalogue tells a place from an action, offers what ends something rather than
     doing it, and lists no figure, copy or command's start
   '';
+  the-launcher-chooses-files = ''
+    a graphical machine's portal asks the launcher's chooser for a file to open or save, and
+    open-with's description says it answers it
+  '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
   '';

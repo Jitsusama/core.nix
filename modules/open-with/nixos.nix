@@ -12,6 +12,11 @@
 # dialog: open-with (package.nix) answers the portal's AppChooser, and
 # niri's portals take it for that alone, keeping GNOME's and GTK's for the
 # rest as niri's own module sets them.
+#
+# A program choosing a file to open or save asks the launcher too: open-with
+# answers the portal's FileChooser (src/files.rs), and while the shell has no
+# picker to ask, it hands the request to GTK's portal, whose dialog opens as
+# before.
 { lib, pkgs, ... }:
 {
   environment.systemPackages = [
@@ -25,6 +30,11 @@
 
   xdg.portal = {
     extraPortals = [ (pkgs.callPackage ./package.nix { }) ];
-    config.niri."org.freedesktop.impl.portal.AppChooser" = "launcher";
+    config.niri = {
+      "org.freedesktop.impl.portal.AppChooser" = "launcher";
+      # nixpkgs' niri module gives it to GTK's portal, which open-with
+      # asks in turn.
+      "org.freedesktop.impl.portal.FileChooser" = lib.mkForce "launcher";
+    };
   };
 }

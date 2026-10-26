@@ -16,6 +16,11 @@
 //! portal closes the request), or after ten minutes, since a shell that
 //! restarted has forgotten what it was asked; each but the first is
 //! withdrawn from the shell. The only argument is the qs command.
+//!
+//! It answers the portal's `FileChooser` the same way (files.rs), so a file
+//! is picked in the launcher too.
+
+mod files;
 
 use std::collections::HashMap;
 use std::env;
@@ -90,8 +95,9 @@ fn what(options: &HashMap<String, OwnedValue>) -> String {
 }
 
 /// The first line said on the socket, once someone connects to it and
-/// either ends the line or hangs up; None if the socket fails.
-async fn answer(listener: &UnixListener) -> Option<String> {
+/// either ends the line or hangs up, if no longer than `longest`; None if
+/// the socket fails.
+async fn answer(listener: &UnixListener, longest: usize) -> Option<String> {
     let (stream, _) = listener.accept().await.ok()?;
     let mut said = Vec::new();
     let mut buffer = [0; 1024];
@@ -101,8 +107,8 @@ async fn answer(listener: &UnixListener) -> Option<String> {
             Ok(0) => break,
             Ok(read) => {
                 said.extend_from_slice(&buffer[..read]);
-                // An app's id is short; a line this long is no answer.
-                if said.contains(&b'\n') || said.len() > 4096 {
+                // A line longer than any answer is no answer.
+                if said.contains(&b'\n') || said.len() > longest {
                     break;
                 }
             }
@@ -141,31 +147,105 @@ impl Request {
     }
 }
 
-struct Chooser {
+/// The shell, asked through qs, and the folder of sockets it answers on.
+struct Shell {
     qs: PathBuf,
     sockets: PathBuf,
     asked: AtomicU64,
-    /// The choices waiting, by the portal's request path.
-    pending: Mutex<HashMap<OwnedObjectPath, Arc<Pending>>>,
 }
 
-impl Chooser {
-    /// Calls the shell's open-with function with these words, saying
-    /// whether it took them.
-    async fn tell(&self, function: &'static str, words: Vec<String>) -> bool {
+impl Shell {
+    /// Calls one of the shell's functions with these words, saying whether
+    /// it took them. A shell that doesn't have the function refuses them.
+    async fn tell(&self, target: &'static str, function: &'static str, words: Vec<String>) -> bool {
         let qs = self.qs.clone();
         tokio::task::spawn_blocking(move || {
             Command::new(qs)
-                .args(["ipc", "call", "open-with", function])
+                .args(["ipc", "call", target, function])
                 .args(words)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .status()
                 .is_ok_and(|status| status.success())
         })
         .await
         .unwrap_or(false)
     }
+
+    /// Asks the shell's `target` on a socket of its own, with the socket's
+    /// place before these words, and waits until it says, the program asking
+    /// gives up or the time runs out; the last two are withdrawn from the
+    /// shell. The request at `handle` is served for its close meanwhile, and
+    /// the ask is kept in `waiting` while it waits, when given.
+    async fn ask(
+        &self,
+        target: &'static str,
+        handle: &OwnedObjectPath,
+        server: &ObjectServer,
+        offered: Vec<String>,
+        words: Vec<String>,
+        waiting: Option<&Mutex<HashMap<OwnedObjectPath, Arc<Pending>>>>,
+        longest: usize,
+    ) -> (Ended, Arc<Pending>) {
+        let asked = self.asked.fetch_add(1, Ordering::Relaxed);
+        let socket = self.sockets.join(format!("{asked}.sock"));
+        let place = socket.to_string_lossy().into_owned();
+        let (closing, closed) = oneshot::channel();
+        let pending = Arc::new(Pending {
+            place: place.clone(),
+            offered: Mutex::new(offered),
+            closing: Mutex::new(Some(closing)),
+        });
+        let _ = std::fs::remove_file(&socket);
+        let listener = match UnixListener::bind(&socket) {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!(
+                    "<3>open-with: can't listen on {}: {error}",
+                    socket.display()
+                );
+                return (Ended::Unasked, pending);
+            }
+        };
+        if let Err(error) = server
+            .at(handle.clone().into_inner(), Request(pending.clone()))
+            .await
+        {
+            eprintln!("<4>open-with: can't take the request's close: {error}");
+        }
+        if let Some(waiting) = waiting {
+            held(waiting).insert(handle.clone(), pending.clone());
+        }
+
+        let told = std::iter::once(place.clone()).chain(words).collect();
+        let ended = if self.tell(target, "ask", told).await {
+            tokio::select! {
+                said = answer(&listener, longest) => said.map_or(Ended::Unasked, Ended::Said),
+                _ = closed => Ended::Closed,
+                () = tokio::time::sleep(WAITING) => Ended::Late,
+            }
+        } else {
+            Ended::Unasked
+        };
+        if matches!(ended, Ended::Closed | Ended::Late) {
+            self.tell(target, "withdraw", vec![place]).await;
+        }
+
+        drop(listener);
+        let _ = std::fs::remove_file(&socket);
+        if let Some(waiting) = waiting {
+            held(waiting).remove(handle);
+        }
+        let _ = server.remove::<Request, _>(handle.clone().into_inner()).await;
+        (ended, pending)
+    }
+}
+
+struct Chooser {
+    shell: Arc<Shell>,
+    /// The choices waiting, by the portal's request path.
+    pending: Mutex<HashMap<OwnedObjectPath, Arc<Pending>>>,
 }
 
 #[interface(name = "org.freedesktop.impl.portal.AppChooser")]
@@ -182,58 +262,25 @@ impl Chooser {
     ) -> (u32, HashMap<String, OwnedValue>) {
         // The shell asks over its own window, whichever program asked.
         let _ = (app_id, parent_window);
-        let asked = self.asked.fetch_add(1, Ordering::Relaxed);
-        let socket = self.sockets.join(format!("{asked}.sock"));
-        let _ = std::fs::remove_file(&socket);
-        let listener = match UnixListener::bind(&socket) {
-            Ok(listener) => listener,
-            Err(error) => {
-                eprintln!(
-                    "<3>open-with: can't listen on {}: {error}",
-                    socket.display()
-                );
-                return (NEITHER, HashMap::new());
-            }
-        };
-        let place = socket.to_string_lossy().into_owned();
-        let (closing, closed) = oneshot::channel();
-        let pending = Arc::new(Pending {
-            place: place.clone(),
-            offered: Mutex::new(choices.clone()),
-            closing: Mutex::new(Some(closing)),
-        });
-        if let Err(error) = server
-            .at(handle.clone().into_inner(), Request(pending.clone()))
-            .await
-        {
-            eprintln!("<4>open-with: can't take the request's close: {error}");
-        }
-        held(&self.pending).insert(handle.clone(), pending.clone());
-
         let words = vec![
-            place.clone(),
             what(&options),
             text(&options, "content_type").unwrap_or_default(),
             text(&options, "last_choice").unwrap_or_default(),
             choices.join(";"),
         ];
-        let ended = if self.tell("ask", words).await {
-            tokio::select! {
-                said = answer(&listener) => said.map_or(Ended::Unasked, Ended::Said),
-                _ = closed => Ended::Closed,
-                () = tokio::time::sleep(WAITING) => Ended::Late,
-            }
-        } else {
-            Ended::Unasked
-        };
-        if matches!(ended, Ended::Closed | Ended::Late) {
-            self.tell("withdraw", vec![place]).await;
-        }
-
-        drop(listener);
-        let _ = std::fs::remove_file(&socket);
-        held(&self.pending).remove(&handle);
-        let _ = server.remove::<Request, _>(handle.into_inner()).await;
+        // An app's id is short; a line this long is no answer.
+        let (ended, pending) = self
+            .shell
+            .ask(
+                "open-with",
+                &handle,
+                server,
+                choices,
+                words,
+                Some(&self.pending),
+                4096,
+            )
+            .await;
 
         let offered = held(&pending.offered).clone();
         let (code, choice) = response(&ended, &offered);
@@ -257,7 +304,12 @@ impl Chooser {
             return;
         };
         held(&pending.offered).clone_from(&choices);
-        self.tell("update", vec![pending.place.clone(), choices.join(";")])
+        self.shell
+            .tell(
+                "open-with",
+                "update",
+                vec![pending.place.clone(), choices.join(";")],
+            )
             .await;
     }
 }
@@ -282,15 +334,19 @@ async fn main() -> ExitCode {
         eprintln!("<3>open-with: can't make {}: {error}", sockets.display());
         return ExitCode::FAILURE;
     }
-    let chooser = Chooser {
+    let shell = Arc::new(Shell {
         qs: PathBuf::from(qs),
         sockets,
         asked: AtomicU64::new(0),
+    });
+    let chooser = Chooser {
+        shell: shell.clone(),
         pending: Mutex::new(HashMap::new()),
     };
     let served = match connection::Builder::session()
         .and_then(|builder| builder.name(NAME))
         .and_then(|builder| builder.serve_at(PATH, chooser))
+        .and_then(|builder| builder.serve_at(PATH, files::Files::new(shell)))
     {
         Ok(builder) => builder.build().await,
         Err(error) => Err(error),
@@ -396,7 +452,7 @@ mod tests {
                 }
             })
         };
-        let heard = tokio::time::timeout(Duration::from_secs(5), answer(&listener))
+        let heard = tokio::time::timeout(Duration::from_secs(5), answer(&listener, 4096))
             .await
             .unwrap();
         let _ = done.send(());
