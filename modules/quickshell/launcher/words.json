@@ -2410,6 +2410,11 @@
       "name": "Loudness"
     },
     {
+      "id": "shortcuts:mpv:list",
+      "in": "shortcuts",
+      "name": "In the list"
+    },
+    {
       "id": "on",
       "name": "Now",
       "term": "Desktop/Now",
