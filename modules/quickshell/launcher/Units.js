@@ -1,14 +1,21 @@
 // Converting a measure from one unit to another, as the launcher answers it:
-// "5 km in mi", "100f to c", "1 gib as mb", "3 cups in ml". Each kind of
-// measure is a table of its units, each with how many of the kind's base it
-// is and the names it's typed as, so a new unit is one entry. Temperature is
-// the one kind that isn't a plain factor, so its scales carry an offset too.
-// Plain JavaScript, so tests/answers.qml runs it in Qt's own engine.
+// "5 km in mi", "100f to c", "1 gib as mb", "3 cups in ml", and a measure
+// alone in its kind's base unit, "25ms" in seconds. Each kind of measure is
+// a table of its units, each with how many of the kind's base it is and the
+// names it's typed as, so a new unit is one entry. Temperature is the one
+// kind that isn't a plain factor, so its scales carry an offset too. What
+// the table can't answer, a unit it doesn't hold or measures worked out
+// together ("5 ft + 3 in in cm", "1 GiB / (10 Mbit/s) in min"), is handed
+// to the shell's maths (the Maths module, libqalculate), with each name the
+// table knows put as the maths names that unit. Plain JavaScript, the maths
+// given to it, so tests/answers.qml runs it in Qt's own engine.
 .pragma library
 .import "Numbers.js" as Numbers
 
 // Each unit as { symbol, size, names }: how many of the base it is and the
-// names it's typed as; the symbol is typed as well, lowercased. Each kind's
+// names it's typed as; the symbol is typed as well, lowercased. `maths` is
+// the maths' name for it where its symbol means something else there, as
+// pt is a printer's point and qt a quectotonne. Each kind's
 // glyph is the name of the theme's mark for what it measures, which
 // Units.qml looks up, since a library can't reach the theme.
 const kinds = {
@@ -42,7 +49,7 @@ const kinds = {
             { symbol: "t", size: 1e3, names: ["tonne", "tonnes", "metric ton", "metric tons"] },
             { symbol: "oz", size: 0.028_349_523_125, names: ["ounce", "ounces"] },
             { symbol: "lb", size: 0.453_592_37, names: ["lbs", "pound", "pounds"] },
-            { symbol: "st", size: 6.350_293_18, names: ["stone", "stones"] }
+            { symbol: "st", size: 6.350_293_18, names: ["stone", "stones"], maths: "stone" }
         ]
     },
     // In litres; cups, pints, quarts and gallons are American.
@@ -55,14 +62,15 @@ const kinds = {
             { symbol: "dL", size: 1e-1, names: ["dl", "decilitre", "decilitres"] },
             { symbol: "L", size: 1, names: ["l", "litre", "litres", "liter", "liters"] },
             { symbol: "m\u00b3", size: 1e3, names: ["m3", "cubic metre", "cubic metres"] },
-            { symbol: "tsp", size: 0.004_928_921_593_75, names: ["teaspoon", "teaspoons"] },
+            { symbol: "tsp", size: 0.004_928_921_593_75, names: ["teaspoon", "teaspoons"],
+                maths: "tsp_US" },
             { symbol: "tbsp", size: 0.014_786_764_781_25,
-                names: ["tablespoon", "tablespoons"] },
+                names: ["tablespoon", "tablespoons"], maths: "tbsp_US" },
             { symbol: "fl oz", size: 0.029_573_529_562_5,
-                names: ["floz", "fluid ounce", "fluid ounces"] },
-            { symbol: "cup", size: 0.236_588_236_5, names: ["cups"] },
-            { symbol: "pt", size: 0.473_176_473, names: ["pint", "pints"] },
-            { symbol: "qt", size: 0.946_352_946, names: ["quart", "quarts"] },
+                names: ["floz", "fluid ounce", "fluid ounces"], maths: "fl_oz" },
+            { symbol: "cup", size: 0.236_588_236_5, names: ["cups"], maths: "cup_US" },
+            { symbol: "pt", size: 0.473_176_473, names: ["pint", "pints"], maths: "liq_pt" },
+            { symbol: "qt", size: 0.946_352_946, names: ["quart", "quarts"], maths: "liq_qt" },
             { symbol: "gal", size: 3.785_411_784, names: ["gallon", "gallons"] }
         ]
     },
@@ -75,7 +83,7 @@ const kinds = {
             { symbol: "ha", size: 1e4, names: ["hectare", "hectares"] },
             { symbol: "ft\u00b2", size: 0.092_903_04,
                 names: ["ft2", "sqft", "square foot", "square feet"] },
-            { symbol: "ac", size: 4046.856_422_4, names: ["acre", "acres"] },
+            { symbol: "ac", size: 4046.856_422_4, names: ["acre", "acres"], maths: "acre" },
             { symbol: "mi\u00b2", size: 2_589_988.110_336,
                 names: ["mi2", "square mile", "square miles"] }
         ]
@@ -89,7 +97,8 @@ const kinds = {
             { symbol: "km/h", size: 0.277_777_777_777_777_8,
                 names: ["kmh", "kph", "kilometres per hour"] },
             { symbol: "mph", size: 0.447_04, names: ["miles per hour"] },
-            { symbol: "kn", size: 0.514_444_444_444_444_5, names: ["kt", "knot", "knots"] }
+            { symbol: "kn", size: 0.514_444_444_444_444_5, names: ["kt", "knot", "knots"],
+                maths: "knot" }
         ]
     },
     // In bytes: a thousand to a kilobyte, 1,024 to a kibibyte and each power
@@ -127,7 +136,7 @@ const kinds = {
             { symbol: "min", size: 60, names: ["mins", "minute", "minutes"] },
             { symbol: "h", size: 3600, names: ["hr", "hrs", "hour", "hours"] },
             { symbol: "d", size: 86_400, names: ["day", "days"] },
-            { symbol: "wk", size: 604_800, names: ["week", "weeks"] },
+            { symbol: "wk", size: 604_800, names: ["week", "weeks"], maths: "week" },
             { symbol: "yr", size: 31_557_600, names: ["year", "years"] }
         ]
     },
@@ -160,7 +169,7 @@ const kinds = {
         units: [
             { symbol: "\u00b0", size: 1, names: ["deg", "degree", "degrees"] },
             { symbol: "rad", size: 57.295_779_513_082_32, names: ["radian", "radians"] },
-            { symbol: "grad", size: 0.9, names: ["gon", "gradian", "gradians"] },
+            { symbol: "grad", size: 0.9, names: ["gon", "gradian", "gradians"], maths: "gon" },
             { symbol: "turn", size: 360, names: ["turns", "rev", "revolution", "revolutions"] }
         ]
     },
@@ -241,36 +250,125 @@ function saying(figured, unit) {
 // An amount, its unit, a word for "into", and the unit wanted.
 const number = "-?(?:\\d[\\d,_]*(?:\\.\\d+)?|\\.\\d+)(?:e[+-]?\\d+)?";
 const asking = new RegExp(`^(${number})\\s*(.+?)\\s+(?:in|to|as|into)\\s+(.+)$`, "i");
+// An amount and its unit alone: "25ms".
+const alone = new RegExp(`^(${number})\\s*(\\S.*)$`, "i");
+// The names a measure alone isn't answered by: a letter, which a word
+// such as "4k" or "3d" ends in, and "st", which ends "1st".
+const SHORTEST_ALONE = 2;
+const NOT_ALONE = ["st"];
+// The scale a temperature alone is said in: Fahrenheit for Celsius, and
+// Celsius for the others.
+const WARMTH = { "\u00b0C": "\u00b0F", "\u00b0F": "\u00b0C", K: "\u00b0C" };
+// What a measure handed to the maths starts with: a number or a bracket.
+const MEASURE_START = /^[-+]?(?:\d|\.\d|\()/;
+// The unit asked for at the end, after the last word for "into", so the
+// inches in "3 in in cm" stay with the measure.
+const INTO_END = /^(.*\S)\s+(?:in|to|as|into)\s+(\S.*)$/i;
+// An operator between measures, after a sign the first might carry.
+const BETWEEN = /[+\-*/^\u00d7\u00f7]/;
+// A name in a measure, which the table may know.
+const WORD = /[a-z\u00b5\u00b0]+/gi;
 
-// The answer to what's typed, or null when it isn't a conversion.
-function answer(text, options) {
-    const asked = asking.exec(text.trim());
-    if (!asked) {
+// The answer to what's typed, or null when it isn't a conversion or a
+// measure. `maths` (the Maths module) answers what the table can't.
+function answer(text, options, maths) {
+    const typed = text.trim();
+    const asked = asking.exec(typed);
+    if (asked) {
+        const from = lookup(asked[2]);
+        const to = lookup(asked[3]);
+        // Both units known, the table's answer stands, even when it's none,
+        // since a kilometre is no weight and in kilometres is no change.
+        if (from && to) {
+            return from.kind === to.kind ? converted(asked[1], from, to.unit, options) : null;
+        }
+    }
+    return measureAlone(typed, options) ?? worked(typed, options, maths);
+}
+
+// A measure alone, in its kind's base unit, or a temperature in the scale
+// it's most often wanted in: "25ms" as 0.025 s, "5 km" as 5,000 m.
+function measureAlone(typed, options) {
+    const asked = alone.exec(typed);
+    const from = asked ? lookup(asked[2]) : null;
+    if (!from) {
         return null;
     }
-    const from = lookup(asked[2]);
-    const to = lookup(asked[3]);
-    if (!(from && to) || from.kind !== to.kind || from.unit === to.unit) {
+    const name = asked[2].trim().toLowerCase();
+    const sign = name === "'" || name === "\"";
+    if (!sign && (name.length < SHORTEST_ALONE || NOT_ALONE.includes(name))) {
+        return null;
+    }
+    const { units } = kinds[from.kind];
+    const to = from.kind === "temperature"
+        ? units.find(unit => unit.symbol === WARMTH[from.unit.symbol])
+        : units.find(unit => unit.size === 1);
+    return converted(asked[1], from, to, options);
+}
+
+// An amount of one unit in another of its kind, with the rate each way as
+// rows, or for a temperature the third scale; null when they're the same.
+function converted(written, from, to, options) {
+    if (from.unit === to) {
         return null;
     }
     const group = options ? options.group : undefined;
     const point = options ? options.point : undefined;
     const { kind } = from;
-    const amount = Number.parseFloat(asked[1].replace(GROUPING, ""));
+    const amount = Number.parseFloat(written.replace(GROUPING, ""));
     const convert = (quantity, a, b) => fromBase(kind, b, toBase(kind, a, quantity));
     const said = (quantity, unit) => saying(figures(quantity, group, point), unit);
-    const value = convert(amount, from.unit, to.unit);
+    const value = convert(amount, from.unit, to);
     const { glyph } = kinds[kind];
     // A temperature has no rate to give, so its rows are in the third
     // scale, each named first as a part is: "Kelvin 373.15 K".
     const rows = kind === "temperature"
-        ? kinds.temperature.units.filter(scale => scale !== from.unit && scale !== to.unit)
+        ? kinds.temperature.units.filter(scale => scale !== from.unit && scale !== to)
             .map(scale => {
                 const there = convert(amount, from.unit, scale);
                 return { text: scale.called, side: said(there, scale), copy: copied(there) };
             })
-        : rates(convert(1, from.unit, to.unit), from.unit, to.unit, said);
-    return { headline: said(value, to.unit), copy: copied(value), glyph, kind, rows };
+        : rates(convert(1, from.unit, to), from.unit, to, said);
+    return { headline: said(value, to), copy: copied(value), glyph, kind, rows };
+}
+
+// Each name in a measure the table knows, put as the maths names its unit.
+function forMaths(measure) {
+    return measure.replace(WORD, word => {
+        const known = lookup(word);
+        return known ? known.unit.maths ?? known.unit.symbol : word;
+    });
+}
+
+// What the maths makes of a measure the table can't answer: a unit it
+// doesn't hold, "5 parsecs in km", or measures worked out together, "5 ft
+// + 3 in in cm". Only one starting with a number, asking for a unit or
+// working something out, and coming to a measure in the unit asked for,
+// is answered, said in the field with no rows, since there's no one rate.
+function worked(typed, options, maths) {
+    if (!(maths && MEASURE_START.test(typed))) {
+        return null;
+    }
+    const into = INTO_END.exec(typed);
+    if (!(into || BETWEEN.test(typed.slice(1)))) {
+        return null;
+    }
+    const said = maths.calculate(into ? `${forMaths(into[1])} to ${forMaths(into[2])}`
+        : forMaths(typed));
+    if (!said.answered || !said.units || said.currency || said.unknown || said.time
+        || !said.unit || (into && !said.fits)) {
+        return null;
+    }
+    const group = options ? options.group : undefined;
+    const point = options ? options.point : undefined;
+    const gap = said.unit === "\u00b0" ? "" : " ";
+    return {
+        headline: `${figures(said.amount, group, point)}${gap}${said.unit}`,
+        copy: copied(said.amount),
+        glyph: "",
+        kind: "",
+        rows: []
+    };
 }
 
 // The rows saying what one of each unit is in the other, `each` being one

@@ -709,8 +709,8 @@
     is, by its position, ahead of the place set and then the time zone, and the footer says which
   '';
   the-launcher-answers-what-is-asked = ''
-    sums, addresses, subnets, characters, measures, zones, colours, the machine's figures and its
-    parts' heat answer
+    sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
+    figures and its parts' heat answer
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
@@ -765,6 +765,10 @@
   the-launcher-names-the-parts-it-builds = ''
     every part the calculator, the time, today, the waits, a hardware address, a network and a
     character show is named as the vocabulary names it
+  '';
+  the-launcher-sums-within-a-key = ''
+    the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
+    typical key under five milliseconds
   '';
   the-litra-follows-the-cameras = ''
     `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only
