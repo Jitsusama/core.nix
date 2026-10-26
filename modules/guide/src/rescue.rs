@@ -395,7 +395,7 @@ impl Bundle {
 }
 
 /// The names, as a person says them: "the Nano", "the Nano or the 5Ci".
-fn either(names: &[String]) -> String {
+pub fn either(names: &[String]) -> String {
     match names {
         [] => String::new(),
         [one] => one.clone(),
@@ -475,7 +475,7 @@ impl Step for SealKeys {
                     id: "shown",
                     how: crate::words::keeping(
                         "the bundle's passphrase",
-                        &format!("{} rescue bundle passphrase", self.target.machine),
+                        &crate::words::machines(&self.target.machine, "Rescue"),
                         &format!(
                             "The bundle's passphrase opens {}'s Secure Boot keys when no YubiKey will",
                             self.target.machine

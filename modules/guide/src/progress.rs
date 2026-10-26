@@ -335,11 +335,14 @@ fn told(done: u64, total: Option<u64>, pace: Option<Pace>) -> String {
         Some(pace) if pace.lately < 1.0 => {
             parts.push(format!("nothing more in the last {}", duration(PACE)));
         }
+        // A pace from under a hundredth of the work says nothing of the
+        // rest, as a copy's slow start said 72 hours for five minutes, and
+        // its speed read as a copy gone wrong, so both wait for that much.
+        Some(_) if total.is_some_and(|total| total > done && done < total / 100) => {
+            parts.push("just started: how fast and how long show once 1% is done".into());
+        }
         Some(Pace { steadily: rate, .. }) => {
             parts.push(format!("{} a second", bytes(whole(rate))));
-            // A pace from under a hundredth of the work says nothing of
-            // the rest, as a copy's slow start said 72 hours for five
-            // minutes, so how long is left waits for that much.
             let reckoned = |total: &u64| *total > done && done >= total / 100;
             let left = total.filter(reckoned).and_then(|total| {
                 Duration::try_from_secs_f64(approximately(total - done) / rate).ok()
@@ -443,12 +446,13 @@ mod tests {
     }
 
     #[test]
-    fn under_a_hundredth_done_it_says_no_time_left() {
+    fn under_a_hundredth_done_it_says_its_starting_rather_than_how_fast() {
         // A copy off a stick starts slowly while nix lists what it has to
-        // copy: 575 KB in 20 seconds of 7.8 GB said 72 hours left.
+        // copy: 575 KB in 20 seconds of 7.8 GB said 72 hours left, and
+        // "25 KB a second" read as a copy gone wrong.
         assert_eq!(
             told(575_000, Some(7_800_000_000), Some(Pace::even(30_000.0))),
-            "575 KB of 7.8 GB, 30 KB a second"
+            "575 KB of 7.8 GB, just started: how fast and how long show once 1% is done"
         );
         assert_eq!(
             told(

@@ -1,4 +1,4 @@
-"""A stick's vault sealed to a YubiKey, opened with its PIN, and without it by the passphrase.
+"""A stick's vault sealed to a YubiKey, shut to its PIN at the install, opened by passphrase.
 
 tests/guide-vault.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. Each test asks for the state it starts from as a
@@ -35,16 +35,18 @@ def screen(machine: QemuMachine) -> str:
 def on_screen(machine: QemuMachine, pattern: str, timeout: timedelta = SCREEN) -> None:
     """Wait until the guide's screen matches the pattern, saying what was running if it never does.
 
-    It fails at once if the guide stopped.
+    It fails at once if the guide stopped, unless the stop says the pattern.
     """
 
     def shown(_: bool) -> bool:
         """Say whether the screen matches the pattern, or fail if the guide stopped."""
         text = screen(machine)
+        if re.search("(?i)" + pattern, text) is not None:
+            return True
         if re.search(r"(?i)(try again)", text):
             message = "the guide stopped:\n" + text
             raise RuntimeError(message)
-        return re.search("(?i)" + pattern, text) is not None
+        return False
 
     with machine.nested(f"waiting for {pattern} on the guide's screen"):
         try:
@@ -125,15 +127,17 @@ def test_guide_seals_a_sticks_vault(stick: QemuMachine) -> None:
     stick.succeed("test -e /dev/disk/by-partlabel/vault")
 
 
-def test_key_and_its_pin_open_the_vault(stick: QemuMachine, values: dict[str, Any]) -> None:
-    """On the stick, the key and its PIN open the vault."""
+def test_a_key_and_its_pin_leave_the_install_vault_shut(
+    stick: QemuMachine, values: dict[str, Any]
+) -> None:
+    """On the stick, the install's vault takes its passphrase only."""
     stick.wait_until_succeeds("pgrep -u root -t tty1 bash")
     type_in(stick, "guide install")
     on_screen(stick, "Check the keyboard")
     type_in(stick, "keyboard")
-    on_screen(stick, "Or if a port is free beside the stick")
+    on_screen(stick, "the stick's passphrase")
     type_in(stick, values["pin"])
-    on_screen(stick, "vault is open")
+    on_screen(stick, "wouldn't open")
 
 
 def test_recovery_passphrase_opens_it(stick: QemuMachine, values: dict[str, Any]) -> None:

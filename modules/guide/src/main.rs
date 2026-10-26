@@ -815,10 +815,7 @@ fn install() -> Result<(), Fault> {
     // machine shuts down rather than restarting, so the stick comes out
     // of a machine that's off.
     let installed = format!("{} is installed", target.machine);
-    let next = format!(
-        "Press Return to shut down. Take the stick out, then turn {} on: its disk asks for a security token PIN, so type a YubiKey's PIN and touch the key when it blinks. The guide then finishes {} before you sign in.",
-        target.machine, target.machine
-    );
+    let next = first_start(&target.machine, &target.yubikeys);
     if !walk.card(&mut terminal, &installed, &next, "shut down")? {
         return Ok(());
     }
@@ -830,6 +827,15 @@ fn install() -> Result<(), Fault> {
         .ok()?;
     machine.run(Tool::Systemctl, &["poweroff"])?.ok()?;
     Ok(())
+}
+
+/// What the first start from the disk asks, in the order it asks it: on
+/// that start only a YubiKey opens the disk, since the TPM is sealed after.
+fn first_start(machine: &str, yubikeys: &[String]) -> String {
+    format!(
+        "Press Return to shut down. Take the stick out, plug in {}, then turn {machine} on. When its disk asks for a security token PIN, type that key's PIN, and touch the key when it blinks. The guide then finishes {machine} before you sign in, and from the next start the same PIN opens the disk with no key plugged in.",
+        guide::rescue::either(yubikeys)
+    )
 }
 
 fn tools() -> ExitCode {
@@ -1004,7 +1010,24 @@ fn disk_said(disk: &disks::Disk) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::Written;
+    use super::{Written, first_start};
+
+    #[test]
+    fn the_first_start_says_to_plug_in_a_key_and_that_after_it_the_pin_alone_will_do() {
+        // A card that said only "asks for a security token PIN" left which
+        // key, and when, for the person to guess.
+        let said = first_start("laptop", &["the Nano".into(), "the 5Ci".into()]);
+        let out = said.find("Take the stick out").unwrap();
+        let plug = said.find("plug in the Nano or the 5Ci").unwrap();
+        let on = said.find("then turn laptop on").unwrap();
+        assert!(out < plug && plug < on, "{said}");
+        assert!(
+            said.ends_with(
+                "from the next start the same PIN opens the disk with no key plugged in."
+            ),
+            "{said}"
+        );
+    }
 
     fn uses_kept(options: &[&str]) -> Option<bool> {
         Written::parse(options).map(|written| written.uses_kept())

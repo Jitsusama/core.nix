@@ -1,6 +1,6 @@
-# A stick's vault sealed to a YubiKey by age-plugin-fido2-hmac and opened
-# on the stick's console with that key's PIN and a touch, then, the key
-# taken out, with the recovery passphrase. The key is a canokey with a PIN,
+# A stick's vault sealed to a YubiKey by age-plugin-fido2-hmac, which the
+# install's screen on the stick's console leaves shut to that key's PIN,
+# then, the key taken out, opened with the recovery passphrase. The key is a canokey with a PIN,
 # its recipient made on the machine as a person makes one, with the
 # plugin's own questions answered; the stick is a small image the guide
 # writes into a file, looped so its vault is a partition as on a stick.

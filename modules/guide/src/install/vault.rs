@@ -2,7 +2,6 @@
 //! the vault open.
 
 use crate::install::{VAULT_KEY, vault_key};
-use crate::observe::fido2;
 use crate::vault::{self, VaultKey};
 use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step};
 
@@ -67,41 +66,26 @@ impl Step for CheckKeyboard {
     }
 }
 
-/// The vault opened by the recovery passphrase or by one of the machine's
-/// YubiKeys, plugged in and touched, with its PIN, its key held in memory
-/// for the steps after. One field takes either: what's typed is tried as
-/// the passphrase first, which costs the key nothing, so typing the
-/// passphrase with a key plugged in never spends one of its PIN's tries.
+/// The vault opened by the stick's passphrase, its key held in memory for
+/// the steps after. Only the passphrase, though a YubiKey the vault is
+/// sealed to could open it too: a key works only beside the stick, and on
+/// a laptop with one port both fit it can't be, so the stick was pulled
+/// out to try one. The seven words open it the same way on every machine.
 pub struct OpenVault;
-
-/// The names, as a person says them: "the Nano", "the Nano or the 5Ci".
-fn either(names: &[String]) -> String {
-    match names {
-        [] => String::new(),
-        [one] => one.clone(),
-        [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
-    }
-}
-
-/// The YubiKeys the vault says open it, the passphrase left out.
-fn keys(machine: &mut dyn Machine) -> Result<Vec<String>, Fault> {
-    let store = machine.vault()?;
-    if !store.has(vault::KEY)? {
-        return Ok(vec![]);
-    }
-    Ok(vault::manifest(store)?
-        .opened_by
-        .into_iter()
-        .filter(|name| name != "the recovery passphrase")
-        .collect())
-}
 
 /// The passphrase as the person knows it: where the host had them keep
 /// it, under the name it gave.
-fn passphrase(machine: &str) -> String {
+fn passphrase() -> String {
     format!(
-        "the stick's passphrase, the seven words in 1Password on your phone named \"{machine} stick passphrase\""
+        "the stick's passphrase, the seven words in 1Password on your phone named \"{}\". It's the only way into the stick's vault, the same on every machine",
+        crate::words::STICK_PHRASE
     )
+}
+
+/// Whether age refused the key's header for what it was given, as it does
+/// for a passphrase that isn't the one it was sealed with.
+fn not_the_passphrase(said: &str) -> bool {
+    said.contains("Decryption failed") || said.contains("No matching keys found")
 }
 
 fn sealed(machine: &mut dyn Machine, name: &str) -> Result<Vec<u8>, Fault> {
@@ -138,28 +122,14 @@ impl Step for OpenVault {
         if !machine.vault()?.has(vault::KEY_PASSPHRASE)? {
             return Ok(Standing::Blocked {
                 why: "this vault has no copy of its key a passphrase opens".into(),
-                remedy: "write the stick again from a machine that has its recovery passphrase"
-                    .into(),
+                remedy: "write the stick again from a machine that has its passphrase".into(),
             });
         }
-        let keys = keys(machine)?;
-        let name = passphrase(&vault::manifest(machine.vault()?)?.machine);
-        if keys.is_empty() {
-            return Ok(Standing::Needed {
-                asks: vec![Ask::Secret {
-                    id: "passphrase",
-                    name,
-                }],
-            });
-        }
+        let name = passphrase();
         Ok(Standing::Needed {
-            asks: vec![Ask::SecretOr {
+            asks: vec![Ask::Secret {
                 id: "passphrase",
                 name,
-                or: format!(
-                    "if a port is free beside the stick, plug in {} there, type its PIN and press Return, then touch the key when it blinks",
-                    either(&keys)
-                ),
             }],
         })
     }
@@ -183,27 +153,19 @@ impl Step for OpenVault {
             }
             opened => opened,
         };
-        let key = match by_passphrase {
-            Ok(key) => key,
-            Err(not_the_passphrase) => {
-                let plugged = if keys(machine)?.is_empty() {
-                    vec![]
-                } else {
-                    fido2::plugged(machine)?
-                };
-                match plugged.len() {
-                    0 => return Err(not_the_passphrase),
-                    1 => VaultKey::open_with_key(&sealed(machine, vault::KEY)?, typed)
-                        .map_err(|fault| fido2::neither(fault, "the recovery passphrase"))?,
-                    many => {
-                        return Err(Fault::Blocked {
-                            step: self.id(),
-                            why: format!("{many} keys are plugged in; leave only one"),
-                        });
-                    }
-                }
-            }
-        };
+        // age says only that what it was given didn't open the key's
+        // header, which names nothing a person typed; a vault damaged past
+        // that is said as age says it.
+        let key = by_passphrase.map_err(|fault| match fault {
+            Fault::Unopened { why, .. } if not_the_passphrase(&why) => Fault::Unopened {
+                what: "the stick's vault".into(),
+                why: format!(
+                    "what was typed isn't its passphrase, the seven words in 1Password named \"{}\"",
+                    crate::words::STICK_PHRASE
+                ),
+            },
+            other => other,
+        })?;
         machine.write(VAULT_KEY, key.to_secret().expose().as_bytes())?;
         // What it says to install is held too, so the steps that only read
         // it go on while the stick is out for a YubiKey's port, as is the

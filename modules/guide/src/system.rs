@@ -554,7 +554,7 @@ impl Machine for System {
 
     /// Streamed: each file goes from the vault to the disk a block at a
     /// time, never whole in memory.
-    fn unpack(&mut self, key: VaultKey, from: &str, into: &str) -> Result<u64, Fault> {
+    fn unpack(&mut self, key: VaultKey, from: &str, into: &str, stage: &str) -> Result<u64, Fault> {
         let meter = self.meter.clone();
         let mut vault = Vault::open(self.vault()?, key)?;
         let files: Vec<(String, u64)> = vault
@@ -563,10 +563,7 @@ impl Machine for System {
             .filter(|file| file.path.starts_with(from))
             .map(|file| (file.path.clone(), file.bytes))
             .collect();
-        meter.stage(
-            "Copying it off the stick",
-            Some(files.iter().map(|(_, bytes)| bytes).sum()),
-        );
+        meter.stage(stage, Some(files.iter().map(|(_, bytes)| bytes).sum()));
         let mut total = 0;
         for (path, bytes) in files {
             let to = Path::new(into).join(path[from.len()..].trim_start_matches('/'));

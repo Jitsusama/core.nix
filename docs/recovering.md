@@ -12,11 +12,16 @@ what's particular to it, such as anything an employer manages.
 None of these is needed day to day. Each is a way back when the everyday one
 is gone, so each lives somewhere other than the laptop, but for a YubiKey
 left plugged in, which is lost with it. The recovery key is the seven words
-the guide made, or systemd's own from an install by hand.
+the guide made, kept in 1Password under the machine's name and "Recovery
+Phrase", or systemd's own from an install by hand. The stick's passphrase is
+a second set of seven words, the stick's own rather than any machine's, kept
+as "NixOS Install Phrase": it opens only the stick's vault, and replaces
+nothing.
 
 | Piece               | Where it lives                 | What it's for                        |
 | ------------------- | ------------------------------ | ------------------------------------ |
 | Recovery key        | off the laptop                 | opens the disk when nothing else can |
+| Stick's passphrase  | off the laptop                 | opens the stick's vault, to install  |
 | Each YubiKey        | on Joel, one apart from it     | opens the disk; holds the SSH spare  |
 | The machine's stick | apart from the laptop          | recovers or installs the machine     |
 | Firmware password   | kept off the laptop            | keeps Secure Boot on                 |

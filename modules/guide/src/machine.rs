@@ -168,9 +168,11 @@ pub trait Machine {
     fn open_partition(&mut self, device: &str) -> Result<std::fs::File, Fault>;
 
     /// Unpacks every file the vault holds under `from` into the directory
-    /// `into`, each checked as it's extracted, and says how many bytes.
-    /// One call, since a cache is gigabytes and goes straight to the disk.
-    fn unpack(&mut self, key: VaultKey, from: &str, into: &str) -> Result<u64, Fault> {
+    /// `into`, each checked as it's extracted, and says how many bytes;
+    /// `stage` is what the screen calls it meanwhile. One call, since a
+    /// cache is gigabytes and goes straight to the disk.
+    fn unpack(&mut self, key: VaultKey, from: &str, into: &str, stage: &str) -> Result<u64, Fault> {
+        let _ = stage;
         let mut held = vec![];
         {
             let mut vault = Vault::open(self.vault()?, key)?;

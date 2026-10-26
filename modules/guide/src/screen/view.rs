@@ -902,7 +902,7 @@ mod tests {
             id: "shown",
             how: crate::words::keeping(
                 "the recovery key",
-                "hedgehog disk recovery key",
+                "Hedgehog Recovery Phrase",
                 "It opens the disk",
             ),
             shown: "abacus abdomen abdominal abide abiding ability ablaze".into(),

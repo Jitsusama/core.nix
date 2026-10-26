@@ -44,6 +44,21 @@ pub fn made() -> Result<Secret, Fault> {
     Ok(Secret::new(picked.join(" ")))
 }
 
+/// The stick's passphrase in 1Password: the stick's own, whichever
+/// machine it was written for, as its owner named it.
+pub const STICK_PHRASE: &str = "NixOS Install Phrase";
+
+/// A machine's own secret in 1Password, as its owner names them: "Hedgehog
+/// Recovery Phrase" for `kind` "Recovery" on the machine "hedgehog".
+pub fn machines(machine: &str, kind: &str) -> String {
+    let mut letters = machine.chars();
+    let named: String = letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect())
+        .unwrap_or_default();
+    format!("{named} {kind} Phrase")
+}
+
 /// How a person keeps a secret on their iPhone, in 1Password, under
 /// `name`, said the same way for every secret: the steps before the words
 /// are shown alone, for `Ask::Show`, and what they do once it's kept.
@@ -103,6 +118,12 @@ mod tests {
         let count = f64::from(u32::try_from(COUNT).unwrap());
         assert!(words.log2() * count > 90.0);
         assert_ne!(made.expose(), super::made().unwrap().expose());
+    }
+
+    #[test]
+    fn a_machines_secret_is_named_for_it_as_its_owner_names_them() {
+        assert_eq!(machines("hedgehog", "Recovery"), "Hedgehog Recovery Phrase");
+        assert_eq!(machines("laptop", "Rescue"), "Laptop Rescue Phrase");
     }
 
     #[test]

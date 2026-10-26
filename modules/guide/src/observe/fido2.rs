@@ -80,6 +80,20 @@ pub fn refusal(said: &str) -> Option<&'static str> {
     }
 }
 
+/// What a key that missed or refused its touch made a tool say, in plain
+/// words with what to do, as libfido2 names it (src/fido/err.h): a touch
+/// ahead of the blink is refused, and one not given in time runs out.
+pub fn touch_refusal(said: &str, key: &str) -> Option<String> {
+    ["FIDO_ERR_OPERATION_DENIED", "FIDO_ERR_ACTION_TIMEOUT"]
+        .iter()
+        .any(|error| said.contains(error))
+        .then(|| {
+            format!(
+                "{key} didn't get its touch. Press Return to try again, and touch it each time it blinks: twice, a few seconds apart"
+            )
+        })
+}
+
 /// libfido2 prints each as `path: vendor=0x%04x, product=0x%04x (%s %s)`
 /// (tools/token.c), maker then product.
 pub fn parse(text: &str) -> Result<Vec<Token>, Fault> {

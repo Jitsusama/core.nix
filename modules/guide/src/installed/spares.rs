@@ -188,7 +188,7 @@ impl Step for SpareKey {
                     Ask::Act {
                         id: "plugged",
                         what: format!(
-                            "Plug in {}, and only {}. Touch it if it blinks.",
+                            "Plug in {}, and only {}. Don't touch it yet: once you've typed its PIN, touch it each time it blinks.",
                             key.name, key.name
                         ),
                     },
@@ -214,6 +214,10 @@ impl Step for SpareKey {
         is_the_one(machine, step, &device, &key)?;
 
         machine.remove_tree(MAKING)?;
+        machine.meter().stage(
+            &format!("Touch {name} each time it blinks, as its spare SSH key is kept"),
+            None,
+        );
         let made = spare_from(machine, &device, pin, &spare, &name);
         let moved = made.and_then(|file| keep(machine, &file, &spare, &name));
         machine.remove_tree(MAKING)?;
