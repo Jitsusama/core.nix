@@ -194,6 +194,7 @@ onLinux {
           "awake"
           "wide"
           "mail"
+          "profile"
           "microphone"
           "capslock"
           "layer"

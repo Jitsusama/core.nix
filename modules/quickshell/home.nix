@@ -470,6 +470,7 @@ let
     network = ./pieces/Network.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
+    profile = ./pieces/Profile.qml;
     disk = ./pieces/Disk.qml;
     lag = ./pieces/Lag.qml;
     spend = ./pieces/Spend.qml;
@@ -1252,6 +1253,15 @@ in
         label = "awake";
         tier = "when";
         mark = "awake";
+      };
+      # A mode too, only while the profile isn't balanced, its mark drawn
+      # with the profile's own glyph.
+      profile = {
+        order = 61;
+        source = "profile";
+        label = "power";
+        tier = "when";
+        mark = "saver";
       };
       # What AI use cost today against usual, where spend-watch runs
       # (modules/spend-watch), and a glyph in the margin while something

@@ -76,7 +76,7 @@ Scope {
             piece: fact.piece,
             mark: fact.entry.mark,
             app: fact.piece.app,
-            glyph: Theme.glyph[fact.entry.mark],
+            glyph: Theme.glyph[fact.piece.markGlyph || fact.entry.mark],
             kind: fact.piece.kind,
             order: fact.entry.order,
             tone: Marks.tone(fact.piece)
