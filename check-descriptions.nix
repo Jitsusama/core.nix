@@ -267,6 +267,14 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  google-passes-clippy = ''
+    clippy finds nothing in google or its tests
+  '';
+  google-reads-the-calendar = ''
+    google reads the harness's Google account without writing its file, refreshes a stale token in
+    memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
+    can't be reached, and tells the shell each meeting's times, answer and the one link it's joined by
+  '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere

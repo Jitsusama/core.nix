@@ -61,6 +61,7 @@
     homeModules.dictation
     homeModules.fontconfig
     homeModules.gimp
+    homeModules.google
     homeModules.gtk
     homeModules.inkscape
     homeModules.inlyne
