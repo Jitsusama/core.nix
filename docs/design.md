@@ -646,8 +646,8 @@ works the same way everywhere.
   saying what it holds after its name, muted, by its members' own names
   (AI: "Agents, Tasks, Helpers, AI spend"), as many whole as fit, so
   scrolling down
-  reminds Joel what there is. Tab goes to the first of them, and the foot
-  says so ("⇥ browse"). Every other collection is its name away, and every
+  reminds Joel what there is. Tab does nothing at home, since an arrow
+  reaches every category. Every other collection is its name away, and every
   typed command is in **commands**.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, and so does Tab when the row holds more, so a

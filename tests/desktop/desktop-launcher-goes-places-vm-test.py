@@ -869,12 +869,16 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
     )
     assert "asked again by machine" not in said, f"the queue asked home again: {said}"
-    # Tab, with nothing typed, goes straight to them, and Return on one
-    # steps into it.
+    # Tab, with nothing typed, does nothing and says nothing, since the
+    # arrows reach every category; Return on one steps into it.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
+    first = desktop.showing()["selected"]
     machine.send_key("tab")
+    machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:computer")
+    # Had Tab moved to the first category, the arrow would be past it.
+    assert first["is"] == "collection:on", first
     for _step in range(3):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:tools")

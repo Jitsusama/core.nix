@@ -1,8 +1,8 @@
 // The launcher on Super+Space, the desktop's command palette: type what you
 // want, a window, an application, an action or what a key does, pick it
 // with the arrows, and Return runs it, or Shift+Return opens it below the
-// focused window. Tab takes the completion the command line offers, and at
-// home goes to the categories listed last, to browse what there is. Each
+// focused window. Tab takes the completion the command line offers, and does
+// nothing at home, where the arrows already reach every category. Each
 // action shows its chord, so keys are learned by use.
 //
 // It opens as fast as niri can hand it the keys. Super+Space says "toggle"
@@ -865,8 +865,6 @@ Scope {
             keys.push(["\u2192", choice.from ? "see all" : "more"]);
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", "back"]);
-        if (atHome && matches.some(row => !!row.category))
-            keys.push(["\u21e5", "browse"]);
         return keys;
     }
 
@@ -1100,14 +1098,6 @@ Scope {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
         });
-    }
-
-    // Where Tab at home goes: the first category, so browsing them takes
-    // one key.
-    function browse() {
-        const first = matches.findIndex(row => !!row.category);
-        if (first >= 0)
-            current = first;
     }
 
     // A collection as one row at home: Return or the right arrow opens all
@@ -2065,12 +2055,15 @@ Scope {
                         // being asked for leaves the question as it is.
                         onCompleted: {
                             trials.pressed("tabs");
-                            // At home, Tab goes to the categories, to
-                            // browse what there is.
+                            // At home there's nothing to complete: home
+                            // is the categories, a row each, and an arrow
+                            // reaches any of them (Joel, 2026-10-25: "i
+                            // don't like tab for browse, that seems
+                            // useless").
                             if (root.atHome)
-                                root.browse();
+                                return;
                             // A command puts its start in the field.
-                            else if (root.current !== -1 && root.selected?.start !== undefined)
+                            if (root.current !== -1 && root.selected?.start !== undefined)
                                 root.fill(root.selected.start);
                             // A question only started is finished first.
                             else if (root.question !== ""
