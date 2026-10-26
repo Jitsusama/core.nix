@@ -821,6 +821,7 @@ gather (
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix
     ./modules/btrfs/checks.nix
+    ./modules/camera/checks.nix
     ./modules/cargo/checks.nix
     ./modules/claude/checks.nix
     ./modules/clippy/checks.nix
