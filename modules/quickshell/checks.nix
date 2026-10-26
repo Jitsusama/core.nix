@@ -303,17 +303,27 @@ onLinux {
   # binds, Neovim's and pi's among them, in Qt's own engine, each group
   # named in the account's vocabulary; and steps through them in levels, as
   # tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
-  # over the same account's shortcuts, with niri stood in for.
+  # over the same account's shortcuts, with niri stood in for. The picture
+  # viewer is given a key of its own here, one no viewer would use, so its
+  # layer is there to lead over its window whatever keys it has yet.
   the-launcher-groups-every-shortcut =
     let
       qt = pkgs.qt6.qtdeclarative;
       home = account (bareNixos [
         self.nixosModules.graphical
         {
-          home-manager.users.someone.imports = [
-            self.homeModules.neovim
-            self.homeModules.pi
-          ];
+          home-manager.users.someone = {
+            imports = [
+              self.homeModules.neovim
+              self.homeModules.pi
+            ];
+            jitsusama.keys.swayimg = [
+              {
+                chord = "Ctrl+Alt+F12";
+                does = "Stand in for the viewer's own keys";
+              }
+            ];
+          };
         }
       ]);
       fields = map (b: {

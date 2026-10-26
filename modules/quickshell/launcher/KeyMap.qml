@@ -249,9 +249,13 @@ Provider {
         };
     }
 
-    // How well a level answers what's typed: by its name, or its words, or
-    // a hidden word typed whole or by its first four letters or more.
+    // How well a level answers what's typed: a hidden word typed whole
+    // names it exactly, as its whole name would, so "pi" is Agents before
+    // any name that only starts with it (Picture viewer); then by its name,
+    // or its words, or a hidden word by its first four letters or more.
     function called(row, words, plain) {
+        if (row.hidden.includes(plain))
+            return Fuzzy.match(Fuzzy.prepare(plain), words, false);
         const name = Fuzzy.match(row.prepared, words, false);
         if (name.score >= 0)
             return name;

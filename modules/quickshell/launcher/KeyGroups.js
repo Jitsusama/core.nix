@@ -38,6 +38,10 @@ const PI_TITLE = /^(\u03C0|pi)( |$)/u;
 // The program whose keys are each layer's, by its window's app id.
 const TERMINAL_APP = "kitty";
 
+// The layers of programs in windows of their own, by their windows' app
+// ids, each with its own keys over the desktop's.
+const WINDOW_APPS = new Map([["swayimg", "swayimg"]]);
+
 // A place a chord works in, said after another: "in a pull request" after
 // "in a GitHub issue" is "a pull request".
 const IN = /^in /;
@@ -479,11 +483,13 @@ function paths() {
 
 // The layers whose keys work in a window, its own first: a terminal's, or
 // Neovim's or pi's and then the terminal's when its title says it runs one,
-// and then the desktop's, which work over any window. A window of another
-// program, or none, has only the desktop's.
+// and then the desktop's, which work over any window. A window of a program
+// with a layer of its own has that first, and any other, or none, has only
+// the desktop's.
 function over(app, title) {
     if (app !== TERMINAL_APP) {
-        return ["desktop"];
+        const own = WINDOW_APPS.get(app);
+        return own === undefined ? ["desktop"] : [own, "desktop"];
     }
     if (PI_TITLE.test(title)) {
         return ["pi", "terminal", "desktop"];

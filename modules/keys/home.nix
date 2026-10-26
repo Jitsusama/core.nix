@@ -1,6 +1,7 @@
 # Every shortcut Joel has, gathered from each layer that takes keys: the
 # desktop first, then the terminal, then the programs inside it, Neovim and
-# pi, side by side. A layer above sees a key before the ones below, so a
+# pi, side by side, then the programs in windows of their own, such as the
+# picture viewer, beside the terminal. A layer above sees a key before the ones below, so a
 # chord two layers both claim never reaches the lower one; the machine
 # refuses to build with one, naming the chord and both layers. The programs
 # never hear a key at the same time, so a chord both claim is no clash. A
@@ -23,18 +24,30 @@ let
     terminal = "the terminal, inside a window";
     neovim = "Neovim, the editor in the terminal";
     pi = "pi, the coding agent in the terminal";
+    swayimg = "swayimg, the picture viewer, in a window of its own";
   };
   order = [
     "desktop"
     "terminal"
     "neovim"
     "pi"
+    "swayimg"
   ];
-  programs = [
-    "neovim"
-    "pi"
-  ];
-  beside = upper: lower: lib.elem upper programs && lib.elem lower programs;
+  # The layers inside another's window, which hears a key first.
+  inside = {
+    neovim = "terminal";
+    pi = "terminal";
+  };
+  # Two layers below the desktop sit side by side, and so never hear a key
+  # at the same time, unless one is inside the other's window: Neovim and pi
+  # in one terminal, the terminal and the picture viewer in windows of
+  # their own.
+  beside =
+    upper: lower:
+    upper != "desktop"
+    && lower != "desktop"
+    && inside.${lower} or "" != upper
+    && inside.${upper} or "" != lower;
 
   bind = lib.types.submodule (
     { config, ... }:
