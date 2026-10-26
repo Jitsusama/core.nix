@@ -212,20 +212,18 @@ Provider {
         const talk = (talks[address] ?? []).find(one => one.id === id);
         if (!talk)
             return [];
-        const said = Words.of("orchestrators:talk").said ?? {};
-        const row = (key, name, side, copy) => copyRow({
+        const row = (key, side, copy) => copyRow({
             key: `talk:${id}:${key}`,
-            name: name,
+            name: Words.name(`orchestrators:talk:${key}`),
             side: side,
             copy: copy,
             glyph: "",
             reads: talk.reply
         });
         return [
-            row("words", said.yours ?? "", talk.words, talk.words),
-            row("stage", said.went ?? "", stageSaid(talk),
-                talk.reply !== "" ? talk.reply : talk.why),
-            talk.came !== "" ? row("came", said.came ?? "", talk.came, talk.came) : null
+            row("yours", talk.words, talk.words),
+            row("went", stageSaid(talk), talk.reply !== "" ? talk.reply : talk.why),
+            talk.came !== "" ? row("came", talk.came, talk.came) : null
         ].filter(one => one !== null);
     }
 
