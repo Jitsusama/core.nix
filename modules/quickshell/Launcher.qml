@@ -488,7 +488,7 @@ Scope {
 
     function isSpot(part) {
         return !!part && (part.name ?? "") !== ""
-            && (part.verb === "copy" || !!part.targets || !!part.verbs || !!part.nested);
+            && (part.figure === true || !!part.targets || !!part.verbs || !!part.nested);
     }
 
     function spotOf(part, trail) {

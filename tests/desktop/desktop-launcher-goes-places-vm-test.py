@@ -876,21 +876,22 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     where = "Machine \u203a Screens \u203a "
 
     def spot(shown: Json) -> int:
-        """Give where the screen's Refresh is listed, saying where it lives, or -1."""
+        """Give where the screen's Rotation is listed, saying where it lives, or -1."""
         for at, thing in enumerate(shown["things"]):
-            if thing["reads"].startswith("Refresh ") and where in thing["reads"]:
+            if thing["reads"].startswith("Rotation ") and where in thing["reads"]:
                 return at
         return -1
 
-    # The screen's refresh rate is a step inside a screen, inside Screens,
-    # inside Machine; from the root it's found by its name, saying so.
-    desktop.answer("refresh")
+    # A screen's rotation is a step inside the screen, inside Screens,
+    # inside Machine; from the root it's found by its name, saying so,
+    # below the focused screen's answer.
+    desktop.answer("rotation")
     desktop.launcher_until(lambda shown: spot(shown) >= 0)
     for _ in range(spot(desktop.showing())):
         machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Refresh"
+            (shown["selected"] or {}).get("name") == "Rotation"
             and str((shown["selected"] or {}).get("side", "")).startswith(where)
         )
     )
@@ -901,7 +902,7 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
             shown["open"]
             and shown["path"][:2] == ["Machine", "Screens"]
             and len(shown["path"]) == len(["Machine", "Screens", "a screen"])
-            and (shown["selected"] or {}).get("name") == "Refresh"
+            and (shown["selected"] or {}).get("name") == "Rotation"
         )
     )
     screen = desktop.showing()["path"][-1]
