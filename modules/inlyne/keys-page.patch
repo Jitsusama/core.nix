@@ -1,0 +1,158 @@
+Open a keys page with a Keys action
+
+Nothing in the viewer said its keys. A configuration may now name a
+markdown page, keys-page, which the Keys action opens as the next page
+in the history, so HistoryPrevious comes back to the document. With no
+page named the action does nothing, and on the page itself it does
+nothing again.
+
+diff -ru b/src/keybindings/action.rs c/src/keybindings/action.rs
+--- a/src/keybindings/action.rs
++++ b/src/keybindings/action.rs
+@@ -6,6 +6,8 @@
+     Page(VertDirection),
+     Zoom(Zoom),
+     Copy,
++    /// Opens the keys page, if one is set, as the next page in the history.
++    Keys,
+     Quit,
+ }
+ 
+diff -ru b/src/keybindings/serialization.rs c/src/keybindings/serialization.rs
+--- a/src/keybindings/serialization.rs
++++ b/src/keybindings/serialization.rs
+@@ -27,6 +27,7 @@
+             ZoomOut,
+             ZoomReset,
+             Copy,
++            Keys,
+             Quit,
+         }
+ 
+@@ -43,6 +44,7 @@
+             FlatAction::ZoomOut => Action::Zoom(Zoom::Out),
+             FlatAction::ZoomReset => Action::Zoom(Zoom::Reset),
+             FlatAction::Copy => Action::Copy,
++            FlatAction::Keys => Action::Keys,
+             FlatAction::Quit => Action::Quit,
+         };
+ 
+diff -ru a/src/keybindings/tests.rs b/src/keybindings/tests.rs
+--- a/src/keybindings/tests.rs
++++ b/src/keybindings/tests.rs
+@@ -45,6 +45,21 @@
+     }
+ }
+ 
++#[test]
++fn keys() {
++    log::init();
++
++    let config = r#"
++[keybindings]
++base = [["Keys", { key = "/", mod = ["Shift"] }]]
++"#;
++
++    let Config { keybindings, .. } = Config::load_from_str(config).unwrap();
++    let mut key_combos = KeyCombos::new(keybindings).unwrap();
++    let question = ModifiedKey(VirtKey::Slash.into(), ModifiersState::SHIFT);
++    assert_eq!(key_combos.munch(question), Some(Action::Keys));
++}
++
+ // TODO(cosmic): Move this to reading from the `inlyne.default.toml` file after a bit of cleanup to
+ // make things less verbose
+ // TODO(cosmic): Consider switching the casing away from PascalCase? Maybe keep it inline with the
+diff -ru b/src/main.rs c/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -606,6 +606,31 @@
+                                 Action::Copy => clipboard
+                                     .set_contents(self.selection.text.trim().to_owned()),
+                                 Action::Quit => *control_flow = ControlFlow::Exit,
++                                Action::Keys => {
++                                    let Some(page) = self.opts.keys_page.clone() else {
++                                        return;
++                                    };
++                                    // Already on it: going back is the way out.
++                                    if page.canonicalize().ok().as_deref() == Some(self.opts.history.get_path()) {
++                                        return;
++                                    }
++                                    match read_to_string(&page) {
++                                        Ok(contents) => {
++                                            self.opts.history.make_next(page.clone());
++                                            self.update_file(&page, contents);
++                                            if let Some(parent) = page.parent() {
++                                                std::env::set_current_dir(parent).expect("Could not set current directory.");
++                                            }
++                                        }
++                                        Err(err) => {
++                                            tracing::warn!(
++                                                "Failed loading the keys page at {}\nError: {}",
++                                                page.display(),
++                                                err,
++                                            );
++                                        }
++                                    }
++                                }
+                                 Action::History(hist_dir) => {
+                                     let changed_path = match hist_dir {
+                                         HistDirection::Next => self.opts.history.next(),
+diff -ru b/src/opts/config.rs c/src/opts/config.rs
+--- a/src/opts/config.rs
++++ b/src/opts/config.rs
+@@ -113,6 +113,8 @@
+     pub dark_theme: Option<OptionalTheme>,
+     pub font_options: Option<FontOptions>,
+     pub keybindings: KeybindingsSection,
++    /// A markdown page saying the keys, which the `Keys` action opens.
++    pub keys_page: Option<PathBuf>,
+     pub debug: DebugSection,
+     pub window: Option<Window>,
+ }
+diff -ru b/src/opts/mod.rs c/src/opts/mod.rs
+--- a/src/opts/mod.rs
++++ b/src/opts/mod.rs
+@@ -4,7 +4,7 @@
+ mod tests;
+ 
+ use std::{
+-    path::Path,
++    path::{Path, PathBuf},
+     sync::atomic::{AtomicBool, Ordering},
+ };
+ 
+@@ -69,6 +69,7 @@
+     pub lines_to_scroll: f32,
+     pub font_opts: FontOptions,
+     pub keybindings: KeybindingsSection,
++    pub keys_page: Option<PathBuf>,
+     pub color_scheme: Option<ResolvedTheme>,
+     pub metrics: Option<MetricsExporter>,
+     pub position: Option<Position>,
+@@ -114,6 +115,7 @@
+             dark_theme,
+             font_options,
+             keybindings,
++            keys_page,
+             debug,
+             window,
+         } = config;
+@@ -174,6 +176,7 @@
+             lines_to_scroll,
+             font_opts,
+             keybindings,
++            keys_page,
+             color_scheme: resolved_theme,
+             metrics,
+             position,
+diff -ru b/src/opts/tests/parse.rs c/src/opts/tests/parse.rs
+--- a/src/opts/tests/parse.rs
++++ b/src/opts/tests/parse.rs
+@@ -39,6 +39,7 @@
+             font_opts: FontOptions::default(),
+             lines_to_scroll: LinesToScroll::default().0,
+             keybindings: Default::default(),
++            keys_page: None,
+             color_scheme: None,
+             metrics: Default::default(),
+             size: None,

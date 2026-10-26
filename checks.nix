@@ -848,6 +848,7 @@ gather (
     ./modules/gtk/checks.nix
     ./modules/guide/checks.nix
     ./modules/inkscape/checks.nix
+    ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
     ./modules/kernel/checks.nix
     ./modules/keys/checks.nix
