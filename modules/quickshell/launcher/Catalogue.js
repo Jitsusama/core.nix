@@ -68,15 +68,16 @@ function listed(row) {
     return verb !== "copy" && verb !== "close" && (!!row.run || !!row.given);
 }
 
-// Whether what a row holds is listed too, at `depth` below home.
-function descends(row, depth) {
+// Whether what a row holds is listed too, at `depth` below home, inside
+// `above`, the row holding it, or null at home.
+function descends(row, depth, above) {
     if (depth >= DEEPEST) {
         return false;
     }
     if (row.opens && LISTS.has(row.opens)) {
         return false;
     }
-    if (!row.opens && row.from && WHOLE.has(row.from.settings?.name)) {
+    if (above && WHOLE.has(above.opens)) {
         return false;
     }
     return !String(row.key ?? "").startsWith("shortcut-level:");

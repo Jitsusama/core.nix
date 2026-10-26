@@ -560,20 +560,20 @@ Scope {
     function catalogue() {
         const out = [];
         const seen = new Set();
-        const walk = (rows, things, ids, names, depth) => {
+        const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => Catalogue.listed(one))) {
                 const path = ids.concat([steadyId(row)]);
                 const id = path.join(catalogueStep);
                 if (!seen.has(id)) {
                     seen.add(id);
                     out.push(Catalogue.entry(row, id, names));
-                    if (Catalogue.descends(row, depth))
-                        walk(catalogueHolds(row, things), collects({ row: row }), path,
-                            names.concat([row.name]), depth + 1);
+                    if (Catalogue.descends(row, depth, above))
+                        walk(catalogueHolds(row, above === null || collects({ row: above })),
+                            row, path, names.concat([row.name]), depth + 1);
                 }
             }
         };
-        walk(home(), true, [], [], 0);
+        walk(home(), null, [], [], 0);
         return out;
     }
 

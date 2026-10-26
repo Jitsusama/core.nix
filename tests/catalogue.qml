@@ -62,16 +62,15 @@ QtObject {
         expect("an action is", Catalogue.listed({ name: "Brighter", verb: "brighter", run: does }),
             true);
         // How far down it goes.
-        expect("a list's things aren't", Catalogue.descends({ opens: "emoji" }, 1), false);
+        expect("a list's things aren't", Catalogue.descends({ opens: "emoji" }, 1, null), false);
         expect("shortcuts aren't", Catalogue.descends({ key: "shortcut-level:shortcuts:kitty" },
-            2), false);
-        expect("a place's are", Catalogue.descends({ opens: "windows" }, 1), true);
-        const programs = { settings: { name: "applications" } };
-        expect("Programs' things are", Catalogue.descends({ opens: "applications",
-            from: programs }, 1), true);
-        expect("a program's own aren't", Catalogue.descends({ name: "Firefox", from: programs },
-            2), false);
-        expect("nothing below the deepest", Catalogue.descends({ category: {} }, 4), false);
+            2, {}), false);
+        expect("a place's are", Catalogue.descends({ opens: "windows" }, 1, null), true);
+        const programs = { opens: "applications" };
+        expect("Programs' things are", Catalogue.descends(programs, 0, null), true);
+        expect("a program's own aren't", Catalogue.descends({ name: "Firefox", verbs: opens }, 1,
+            programs), false);
+        expect("nothing below the deepest", Catalogue.descends({ category: {} }, 4, {}), false);
         // What an entry says.
         expect("an entry", Catalogue.entry({ name: "Reboot", verb: "reboot", confirm: true,
             run: does, side: "" }, "category:computer\u203acategory:energy\u203asession:Reboot",
