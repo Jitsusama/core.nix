@@ -725,6 +725,10 @@
     the graphical account's desktop settings tell GTK and Chrome to draw letters unhinted, as macOS
     does
   '';
+  the-disk-loss-panic-tells-trouble-apart = ''
+    `disk-loss-panic` counts a warning or worse from the disk's path or a hung task as trouble and
+    nothing else, sees an unarchived kernel log in pstore, and finds a disk that's gone failing
+  '';
   the-disk-piece-reads-the-guards = ''
     the disk piece says the worst disk as the guards wrote it, and a guard gone quiet
   '';
@@ -1132,6 +1136,10 @@
   '';
   vm-disk-guard-keeps-the-disk = ''
     the guards answer each band, sparing what's in use
+  '';
+  vm-disk-loss-panic-panics-once-the-disk-is-gone = ''
+    a warning from the disk's path changes nothing while the disk answers, and once the disk has
+    dropped off its bus it panics the kernel, saying why first
   '';
   vm-first-finds-the-vms = ''
     vm-first reads a thread's nice and policy, knows a check with deadlines by its qemu, test

@@ -235,6 +235,7 @@
         device-check = ./modules/device-check/nixos.nix;
         dictation = ./modules/dictation/nixos.nix;
         disk-guard = ./modules/disk-guard/nixos.nix;
+        disk-loss-panic = ./modules/disk-loss-panic/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;
         firmware-settings = ./modules/firmware-settings/nixos.nix;

@@ -293,6 +293,11 @@ let
     # once it has.
     vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
     vm-disk-guard-keeps-the-disk = import ./tests/disk-guard.nix { inherit self pkgs; };
+    # Whether the kernel panics once a disk is gone, and only then, shows
+    # only with a disk to take away.
+    vm-disk-loss-panic-panics-once-the-disk-is-gone = import ./tests/disk-loss-panic.nix {
+      inherit self pkgs;
+    };
     # What an account's services make of the network coming late, changing
     # and networkd restarting shows only with both managers running.
     vm-network-revives-units = import ./tests/network-revive.nix { inherit self pkgs; };
@@ -831,6 +836,7 @@ gather (
     ./modules/device-check/checks.nix
     ./modules/dictation/checks.nix
     ./modules/disk-guard/checks.nix
+    ./modules/disk-loss-panic/checks.nix
     ./modules/disko/checks.nix
     ./modules/eero/checks.nix
     ./modules/ergodox/checks.nix
