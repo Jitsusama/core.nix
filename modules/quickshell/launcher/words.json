@@ -840,38 +840,8 @@
     },
     {
       "id": "light",
-      "name": "Light",
-      "answers": [
-        "brightness",
-        "light",
-        "room light"
-      ]
-    },
-    {
-      "id": "light:screen",
-      "in": "light",
-      "name": "Screen",
-      "states": {
-        "numbered": {
-          "name": "Screen {n}"
-        }
-      }
-    },
-    {
-      "id": "light:screen:level",
-      "in": "light:screen",
-      "name": "Screen to {n}%",
-      "verb": "set"
-    },
-    {
-      "id": "light:room",
-      "in": "light",
-      "name": "Room light"
-    },
-    {
-      "id": "light:desk",
-      "in": "light",
       "name": "Desk light",
+      "term": "Machine/desk light",
       "answers": [
         "desk light",
         "warmth"
@@ -879,12 +849,12 @@
     },
     {
       "id": "light:desk:brightness",
-      "in": "light:desk",
+      "in": "light",
       "name": "Brightness"
     },
     {
       "id": "light:desk:warmth",
-      "in": "light:desk",
+      "in": "light",
       "name": "Warmth"
     },
     {
@@ -925,7 +895,7 @@
     },
     {
       "id": "verb:turn",
-      "in": "light:desk",
+      "in": "light",
       "name": "Turn it off",
       "verb": "off",
       "states": {
@@ -2362,14 +2332,14 @@
       "name": "The picture"
     },
     {
-      "id": "shortcuts:inlyne:moving",
+      "id": "shortcuts:inlyne:scrolling",
       "in": "shortcuts",
-      "name": "Moving"
+      "name": "Scrolling"
     },
     {
-      "id": "shortcuts:inlyne:size",
+      "id": "shortcuts:inlyne:zoom",
       "in": "shortcuts",
-      "name": "Size"
+      "name": "Zoom"
     },
     {
       "id": "on",
@@ -2432,6 +2402,29 @@
       "glyph": "display",
       "ask": "which screen?",
       "empty": "No screens."
+    },
+    {
+      "id": "displays:brightness",
+      "in": "displays",
+      "name": "Brightness",
+      "term": "Desktop/brightness",
+      "answers": [
+        "brightness"
+      ]
+    },
+    {
+      "id": "displays:brightness:level",
+      "in": "displays:brightness",
+      "name": "Brightness to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "displays:room",
+      "in": "displays",
+      "name": "Room light",
+      "answers": [
+        "room light"
+      ]
     },
     {
       "id": "displays:scale",
@@ -3782,10 +3775,10 @@
     },
     {
       "id": "command:brightness",
-      "provider": "light",
+      "provider": "displays",
       "start": "brightness ",
       "form": "⟨percent⟩",
-      "says": "sets the screen's light",
+      "says": "sets the screen's brightness",
       "verb": "set"
     },
     {

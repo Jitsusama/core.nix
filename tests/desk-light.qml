@@ -3,7 +3,7 @@
 // over a stand-in litra that keeps a light's state and says each change on
 // its watch, as the real one does. The answer says how the light is lit;
 // "desk light 60", "desk light 4000 k", "desk light off" and "warmer" set
-// it through litra; its row holds its Brightness and Warmth, each a
+// it through litra; its answer holds its Brightness and Warmth, each a
 // setting whose choices step it or set a level; the bar is told of a change
 // of brightness or warmth, never of a camera lighting it or putting it out;
 // and with no light there is no answer. It exits 0 once every case holds,
@@ -104,8 +104,8 @@ ShellRoot {
         const told = light.answer("desk light");
         expect("how it's lit", told !== null && told.headline === "the desk light is 40%, 4000 K",
             told?.headline);
-        expect("its row", told.rows.length === 1 && told.rows[0].name === "Desk light"
-            && told.rows[0].side === "40%, 4000 K",
+        expect("its parts", told.rows.map(row => `${row.name} ${row.side}`).join(", ")
+            === "Brightness 40%, Warmth 4000 K, Turn it off ",
             JSON.stringify(told.rows.map(row => [row.name, row.side])));
         expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);
@@ -138,7 +138,7 @@ ShellRoot {
         expect("its button shows on the bar", root.warmed === 2, `${root.warmed}`);
         // Its parts: its brightness and its warmth, each a setting with
         // a bar, and putting it out.
-        const parts = light.answer("desk light").rows[0].verbs();
+        const parts = light.answer("desk light").rows;
         const partNames = parts.map(part => part.name).join(", ");
         expect("the parts", partNames === "Brightness, Warmth, Turn it off", partNames);
         expect("how each is set", parts[0].side === "60%" && parts[1].side === "4100 K"

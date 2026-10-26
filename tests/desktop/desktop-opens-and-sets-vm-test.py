@@ -912,16 +912,19 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         desktop.step_in()
         # Its settings lead, each saying how it's set, their choices a step
         # in, there by Return on the setting, or found from here by what's
-        # typed.
+        # typed. The backlight lights the one screen there is, so its
+        # Brightness comes first, and the Room light once the sensor's said.
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"][:6]
+                shown["rows"][:1] == ["Brightness"]
+                and [row for row in shown["rows"] if row != "Room light"][1:7]
                 == ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
             )
         )
         desktop.photograph("launcher-displays")
         percent = round(wanted * 100)
         if inside:
+            desktop.type_in("scale", selecting="Scale")
             desktop.step_in("ret")
             desktop.launcher_until(lambda shown: "Scale to 150%" in shown["rows"])
             desktop.type_in(str(percent))

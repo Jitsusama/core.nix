@@ -14,11 +14,26 @@
 // range, colour depth, colours and HDR, desk-facts writes to a file
 // (modules/desk-facts), and the right arrow lists after the settings,
 // named first as parts are (Colour depth "10 bit"), Return copying one.
+//
+// The screen the backlight lights leads with its Brightness: its share as
+// a bar, its levels a step in, which set it as the brightness keys do, so
+// the backlight daemon (modules/backlight), which follows the room, learns
+// it as Joel's pick; then the Room light its sensor hears. "brightness"
+// asks it, and "brightness 40" sets it on Return. A monitor follows the
+// panel's brightness by itself, so it has none of its own here. The
+// backlight is read from the kernel's files when asked, its folder listed
+// once by Qt, so nothing is spawned or watched; the room's light, which
+// the sensor takes a tenth of a second to say, is read in the background
+// and shown once it's come. While its answer shows, it's asked again once
+// a second, never more, so the screen following the room moves as it does.
 import qs
 import Quickshell
 import Quickshell.Io
+import Qt.labs.folderlistmodel
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Numbers.js" as Numbers
+import "Power.js" as Power
 
 Provider {
     id: provider
@@ -62,10 +77,182 @@ Provider {
         return output.name.startsWith("eDP");
     }
 
+    // Whether the backlight lights this screen: the built-in one does, and
+    // so does the only screen there is, as in a virtual machine's.
+    function backlit(output) {
+        return builtIn(output) || shown.length === 1;
+    }
+
+    function readOut(file) {
+        probe.path = file;
+        return read(probe).trim();
+    }
+
+    // The first backlight the kernel lists, as its steps and its share, or
+    // null with none.
+    function backlight() {
+        for (let i = 0; i < backlights.count; i++) {
+            const folder = `/sys/class/backlight/${backlights.get(i, "fileName")}`;
+            const now = Number(readOut(`${folder}/brightness`));
+            const most = Number(readOut(`${folder}/max_brightness`));
+            if (most > 0)
+                return { now: now, most: most, share: Math.round(now / most * 100) };
+        }
+        return null;
+    }
+
+    // The levels a step into Brightness offers, brightest first.
+    readonly property var levels: [100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
+
+    // Sets the screen to a share, as the brightness keys do; the first step
+    // stays lit, since none at all leaves the screen black.
+    function brighten(share) {
+        Niri.spawn(["brightnessctl", "--class=backlight", "set", `${Math.max(1, share)}%`]);
+    }
+
+    // A share as a bar. However bright, it wants nothing, so it never warns.
+    function level(now, most) {
+        return { shape: "bar", values: [most > 0 ? Math.max(0, Math.min(1, now / most)) : 0],
+            warn: false };
+    }
+
+    function lux(value) {
+        return `${Numbers.format(value, value >= 10 ? 0 : 1, settings.group, settings.point)} lx`;
+    }
+
+    // The backlit screen's Brightness and the Room light, or nothing for
+    // a screen the backlight doesn't light.
+    function lightRows(output) {
+        const light = backlit(output) ? backlight() : null;
+        if (light === null)
+            return [];
+        const rows = [Object.assign(setting(output, "brightness", `${light.share}%`, "brightness",
+            levels.map(each => choice(`brightness-${each}`,
+                Words.name("displays:brightness:level", "", { n: each }), "brightness",
+                light.share === each, () => provider.brighten(each)))), {
+            graph: level(light.now, light.most),
+            note: `${light.now} of ${light.most} steps; it follows the room, and the keys set it`
+        })];
+        if (askRoom() && room !== null)
+            rows.push(copyRow({
+                key: `displays:${output.name}:room`,
+                name: partName("room"),
+                side: lux(room),
+                copy: lux(room),
+                glyph: "",
+                hue: "machine",
+                graph: level(Power.roomLevel(room), 1),
+                note: "as the screen's sensor hears it, from dark to daylight"
+            }));
+        return rows;
+    }
+
+    // The room's light, as the first ambient light sensor the kernel lists
+    // hears it, in lux, or null until it's been read. The sensor's raw
+    // reading is slow to come, so it's read in the background at most once
+    // a second, and its scale and offset, which are quick, as it's asked.
+    property var room: null
+    property real roomAt: 0
+    property string roomSensor: ""
+    property bool roomPending: false
+    // Whether it's been read at all, or failed to be, since until then
+    // the answer waits for it.
+    property bool roomTried: false
+
+    function sensor() {
+        for (let i = 0; i < sensors.count; i++) {
+            const folder = `/sys/bus/iio/devices/${sensors.get(i, "fileName")}`;
+            if (readOut(`${folder}/name`) === "als"
+                && readOut(`${folder}/in_illuminance_scale`) !== "")
+                return folder;
+        }
+        return "";
+    }
+
+    function askRoom() {
+        const folder = sensor();
+        if (folder === "")
+            return false;
+        const now = Date.now();
+        if (now - roomAt >= 1000 && !roomPending) {
+            roomAt = now;
+            roomSensor = folder;
+            roomPending = true;
+            if (roomRead.path === `${folder}/in_illuminance_raw`)
+                roomRead.reload();
+            else
+                roomRead.path = `${folder}/in_illuminance_raw`;
+        }
+        return true;
+    }
+
+    function heardRoom(raw) {
+        roomPending = false;
+        roomTried = true;
+        room = Power.lux(raw, readOut(`${roomSensor}/in_illuminance_scale`),
+            readOut(`${roomSensor}/in_illuminance_offset`));
+        // The launcher asks again only while the answer is out at the top.
+        answered();
+    }
+
+    // Setting the screen to a share, Return doing it.
+    function setTo(share) {
+        const light = backlight();
+        if (light === null)
+            return null;
+        const kept = Math.max(1, share);
+        return {
+            headline: `set the screen to ${kept}%`,
+            verb: Words.command("command:brightness").verb,
+            run: () => provider.brighten(kept),
+            rows: [],
+            note: `now ${light.share}%`
+        };
+    }
+
+    // While a light's answer shows, it's asked again each second, so what
+    // follows the room moves as it does.
+    readonly property bool lightShown: launcher !== null && launcher.open
+        && (launcher.held ?? []).length === 0 && launcher.answer?.live === provider
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: provider.lightShown
+        onTriggered: provider.answered()
+    }
+
+    FolderListModel {
+        id: backlights
+        folder: "file:///sys/class/backlight"
+        showFiles: false
+        showDotAndDotDot: false
+    }
+
+    FolderListModel {
+        id: sensors
+        folder: "file:///sys/bus/iio/devices"
+        showFiles: false
+        showDotAndDotDot: false
+    }
+
+    FileView {
+        id: probe
+        blockLoading: true
+        printErrors: false
+    }
+
+    FileView {
+        id: roomRead
+        printErrors: false
+        onLoaded: provider.heardRoom(text())
+        onLoadFailed: provider.heardRoom("")
+    }
+
     // Its maker and model, leaving out a model that's only a number.
     function named(output) {
         if (builtIn(output))
-            return "Built-in display";
+            return "Built-in screen";
         const model = /^0x[0-9a-f]+$/i.test(output.model) ? "" : output.model;
         return `${output.make} ${model}`.trim() || output.name;
     }
@@ -206,14 +393,15 @@ Provider {
         return `${Math.round(scale * 100)}%`;
     }
 
-    // How it's set: Scale, Refresh, Resolution, Rotation.
+    // How it's set: Brightness and the Room light where the backlight
+    // lights it, then Scale, Refresh, Resolution, Rotation.
     function setUp(output) {
         const now = mode(output);
         const scale = output.logical.scale;
-        const rows = [setting(output, "scale", percent(scale), "scale", scales.map(each =>
-            choice(`scale-${each}`, `Scale to ${percent(each)}`, "scale",
+        const rows = lightRows(output).concat([setting(output, "scale", percent(scale), "scale",
+            scales.map(each => choice(`scale-${each}`, `Scale to ${percent(each)}`, "scale",
                 Math.abs(each - scale) < 0.01,
-                () => change(output, { Scale: { scale: { Specific: each } } }))))];
+                () => change(output, { Scale: { scale: { Specific: each } } }))))]);
         if (now !== null) {
             const rates = output.modes.filter(m => m.width === now.width && m.height === now.height);
             const refreshes = rates.length < 2 ? [] : rates.map(each =>
@@ -260,24 +448,40 @@ Provider {
     // rate": the focused one's, or each one's when several are on.
     readonly property var partsAsked: {
         const out = {};
-        for (const id of ["scale", "refresh", "resolution", "rotation", "depth", "colours", "hdr"])
+        for (const id of ["brightness", "room", "scale", "refresh", "resolution", "rotation",
+            "depth", "colours", "hdr"])
             for (const question of Words.answers(`displays:${id}`))
                 out[question] = id;
         return out;
     }
     questions: Object.keys(partsAsked)
 
+    // What sets the brightness: "brightness 40", or "brightness to 40%".
+    readonly property var brightnessTyped: /^brightness\s+(?:to\s+)?(\d{1,3})\s*%?$/
+
     function answer(typed) {
+        const set = brightnessTyped.exec(typed.trim().toLowerCase());
+        if (set)
+            return setTo(Math.min(100, Number(set[1])));
         const id = partsAsked[asks(typed)];
         if (id === undefined || lit.length === 0)
             return null;
         const partOf = output => verbs(output).find(row => row.name === partName(id)) ?? null;
-        const focused = lit.find(output => output.name === focusedOutput) ?? lit[0];
-        const part = partOf(focused);
-        if (part === null)
+        // The focused screen's, or the first that has it: only one has a
+        // Brightness.
+        const focused = lit.find(output => output.name === focusedOutput && partOf(output))
+            ?? lit.find(output => partOf(output) !== null);
+        if (focused === undefined)
             return null;
+        const part = partOf(focused);
         const others = lit.filter(output => output !== focused && partOf(output) !== null);
+        const light = id === "brightness" || id === "room";
         return {
+            // Until the room's first reading comes, a light's answer is still
+            // being asked, so Return waits for it; while it shows, it's
+            // asked again each second.
+            asking: light && !roomTried && sensor() !== "",
+            live: light ? provider : null,
             headline: part.side,
             copy: "",
             glyph: Theme.glyph.display,

@@ -1023,8 +1023,8 @@ in
         source = "today";
         zone = osConfig.time.timeZone or null;
       };
-      # How bright the screen, the desk light and the room are; the
-      # keyboard's lights are the keyboard's own.
+      # How the desk light is lit; the screen's brightness is the screen's
+      # own, and the keyboard's lights are the keyboard's.
       light = {
         order = 96;
         source = "light";

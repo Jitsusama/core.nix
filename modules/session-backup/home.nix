@@ -105,7 +105,13 @@ in
     home.packages = [ configured ];
 
     systemd.user.services.session-backup = {
-      Unit.Description = "Copies the account's settled pi session logs, sealed, to Drive";
+      Unit = {
+        Description = "Copies the account's settled pi session logs, sealed, to Drive";
+        # A run takes most of an hour, longer than a switch waits for a
+        # oneshot to start, so a switch leaves a run going; the next hour's
+        # starts on the new program.
+        X-RestartIfChanged = false;
+      };
       Service = {
         Type = "oneshot";
         ExecStart = "${lib.getExe package} run --config ${configFile}";

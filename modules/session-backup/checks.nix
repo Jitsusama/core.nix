@@ -40,13 +40,15 @@ onLinux {
         self.nixosModules.workstation
         { home-manager.users.someone.imports = [ self.homeModules.session-backup ]; }
       ]);
+      unit = named.systemd.user.services.session-backup.Unit;
       service = named.systemd.user.services.session-backup.Service;
       timer = named.systemd.user.timers.session-backup.Timer;
     in
     holds "session-backup-stays-in-the-background"
-      "session-backup runs outside background.slice, misses an hour slept through, or runs for an account that names no folder."
+      "session-backup runs outside background.slice, misses an hour slept through, is restarted by a switch, or runs for an account that names no folder."
       (
         service.Slice == "background.slice"
+        && unit.X-RestartIfChanged == false
         && timer.Persistent
         && !(unnamed.systemd.user.services ? session-backup)
       );
