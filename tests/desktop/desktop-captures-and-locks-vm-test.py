@@ -373,13 +373,16 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
     assert desktop.showing()["selected"]["side"] == "in use by chrome"
     desktop.step_in()
-    # Who has it first, then what it gives, from the loopback's own file in sysfs.
-    # The rate is the loopback's own, whatever the stand-in's writer asks.
+    # Return's own Open first, then who has it, then what it gives, from
+    # the loopback's own file in sysfs. The rate is the loopback's own,
+    # whatever the stand-in's writer asks.
     parts = [thing["reads"] for thing in desktop.showing()["things"]]
-    assert len(parts) == 2, parts  # noqa: PLR2004 # Who has it, and what it gives.
-    assert parts[0] == "In use \u00b7 chrome"
-    assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[1]), parts
+    assert len(parts) == 3, parts  # noqa: PLR2004 # Open, who has it, and what it gives.
+    assert parts[:2] == ["Open", "In use \u00b7 chrome"], parts
+    assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[2]), parts
     desktop.photograph("launcher-camera")
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In use")
     desktop.step_in()
     assert desktop.showing()["rows"] == ["chrome"]
     machine.send_key("left")

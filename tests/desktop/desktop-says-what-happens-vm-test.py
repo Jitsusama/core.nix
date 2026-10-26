@@ -560,11 +560,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     machine.send_key("meta_l-o")
     desktop.whats_on("Do Not Disturb")
     desktop.step_in()
-    if (desktop.showing()["selected"] or {}).get("name") != "Show what's held":
-        machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Show what's held"
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show what's held"])
+    desktop.type_in("show", selecting="Show what's held")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-held")

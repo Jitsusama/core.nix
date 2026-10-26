@@ -318,9 +318,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
             and (shown["selected"] or {}).get("name") == f"the keyboard's light is {kbd_said}"
         )
     )
+    # Return's own Copy leads the answer's step, then the levels.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    for _ in range(kbd_levels.index("Light to 2 of 2")):
+    desktop.launcher_until(lambda shown: shown["rows"][:4] == ["Copy", *kbd_levels])
+    for _ in range(kbd_levels.index("Light to 2 of 2") + 1):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")

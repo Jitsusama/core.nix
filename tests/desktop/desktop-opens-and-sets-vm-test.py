@@ -520,8 +520,10 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Level", "silent"))
     assert "Playing" not in desktop.showing()["rows"]
     desktop.photograph("launcher-sound-output-parts")
-    # Return on Volume steps into its choices, each level saying its
-    # decibels in the footer.
+    # Return on Volume, past Mute and the Level, steps into its choices,
+    # each level saying its decibels in the footer.
+    machine.send_key("down")
+    desktop.launcher_until(sound_selected("Level"))
     machine.send_key("down")
     desktop.launcher_until(sound_selected("Volume"))
     desktop.launcher_until(lambda shown: shown["footer"].endswith(" dB"))
