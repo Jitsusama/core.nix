@@ -100,45 +100,52 @@ swayimg.format_conf = {
   video = { label = colour.muted },
 }
 
--- A key as the desktop draws it, by its xkb name, and a letter as itself.
-local function face(name)
-  return nix.keys[name] or name
-end
-local arrows = face('Left') .. ' ' .. face('Right')
-local ends = 'Home End'
+-- Where each mode's keys work, in the words the list says it with.
+local place = { [swayimg.viewer] = nix.places.viewer, [swayimg.gallery] = nix.places.gallery }
 
--- Every key each mode answers that's worth knowing, as drawn and what it
--- does, which ? lists; and the few that move on, which a quiet line names
--- as a picture opens.
-local keys = {
-  [swayimg.viewer] = {
-    listed = {
-      { arrows, 'previous, next' },
-      { ends, 'first, last' },
-      { face('Return'), 'every picture' },
-      { '+ -', 'closer, further' },
-      { '[ ]', 'turn' },
-      { 'F', 'full screen' },
-      { 'E', 'edit' },
-      { 'Y', 'copy' },
-      { 'Delete', 'to the trash' },
-      { face('Escape'), 'close' },
-    },
-    hint = arrows .. '  pictures     ' .. face('Return') .. '  all     ?  keys',
-  },
-  [swayimg.gallery] = {
-    listed = {
-      { arrows .. ' ' .. face('Up') .. ' ' .. face('Down'), 'choose' },
-      { ends, 'first, last' },
-      { face('Return'), 'open' },
-      { '+ -', 'larger, smaller' },
-      { 'E', 'edit' },
-      { 'Y', 'copy' },
-      { 'Delete', 'to the trash' },
-      { face('Escape'), 'close' },
-    },
-    hint = face('Return') .. '  open     ?  keys',
-  },
+-- Whether a key works in a mode: everywhere, or there.
+local function works(key, mode)
+  return key.when == '' or key.when == nil or key.when == place[mode]
+end
+
+-- A key as the desktop draws it, by its chord.
+local function face(chord)
+  for _, key in ipairs(nix.keys) do
+    if key.chord == chord then
+      return key.face
+    end
+  end
+  return chord
+end
+
+-- Every key each mode answers that's worth knowing, one row for each thing
+-- it does, which ? lists.
+local function listed(mode)
+  local rows, row = {}, {}
+  for _, key in ipairs(nix.keys) do
+    if works(key, mode) then
+      if row[key.does] then
+        row[key.does][1] = row[key.does][1] .. ' ' .. key.face
+      else
+        row[key.does] = { key.face, key.does }
+        table.insert(rows, row[key.does])
+      end
+    end
+  end
+  return rows
+end
+
+-- The few keys that move on, which a quiet line names as a picture opens.
+local hint = {
+  [swayimg.viewer] = face('Left')
+    .. ' '
+    .. face('Right')
+    .. '  pictures     '
+    .. face('Return')
+    .. '  all     '
+    .. face('Shift+slash')
+    .. '  keys',
+  [swayimg.gallery] = face('Return') .. '  open     ' .. face('Shift+slash') .. '  keys',
 }
 
 -- Whether ? has the keys listed, which stays until it's pressed again.
@@ -147,11 +154,11 @@ local listing = false
 local function shown(mode)
   local bottom = {}
   if listing then
-    for _, row in ipairs(keys[mode].listed) do
+    for _, row in ipairs(listed(mode)) do
       table.insert(bottom, row[1] .. '\t' .. row[2])
     end
   elseif mode ~= swayimg.viewer or swayimg.imagelist.size > 1 then
-    bottom = { keys[mode].hint }
+    bottom = { hint[mode] }
   end
   mode.text =
     { topleft = { '{name}' }, topright = counted(), bottomleft = bottom, bottomright = {} }
@@ -169,15 +176,6 @@ end
 for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   mode.on_image_change(function()
     shown(mode)
-  end)
-end
-
--- The arrows go that way, to the previous and the next picture, as Page Up
--- and Page Down do too, and Home and End to the first and the last: the
--- arrows' own default only moves a picture larger than the window.
-for key, where in pairs({ Left = 'prev', Right = 'next', Home = 'first', End = 'last' }) do
-  swayimg.viewer.on_key(key, function()
-    swayimg.viewer.open(where)
   end)
 end
 
@@ -235,22 +233,42 @@ local function trash(mode)
   swayimg.text.status = 'Moved to the trash'
 end
 
-for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
-  mode.on_key('e', function()
-    edit(mode)
-  end)
-  mode.on_key('y', function()
-    copy(mode)
-  end)
-  mode.on_key('Delete', function()
-    trash(mode)
-  end)
-  -- q as well as Escape, as in mpv.
-  mode.on_key('q', function()
+-- What each key with an act does. The arrows go that way, to the previous
+-- and the next picture, as Page Up and Page Down do too, and Home and End
+-- to the first and the last: the arrows' own default only moves a picture
+-- larger than the window.
+local acts = {
+  prev = function()
+    swayimg.viewer.open('prev')
+  end,
+  next = function()
+    swayimg.viewer.open('next')
+  end,
+  first = function()
+    swayimg.viewer.open('first')
+  end,
+  last = function()
+    swayimg.viewer.open('last')
+  end,
+  edit = edit,
+  copy = copy,
+  trash = trash,
+  close = function()
     swayimg.exit(0)
-  end)
-  -- ? says what's here: swayimg hears it as the key it's shifted from.
-  mode.on_key('Shift-slash', function()
-    list(mode)
-  end)
+  end,
+  keys = list,
+}
+
+-- Each key with an act, bound where it works. swayimg spells a held key
+-- with a dash, Shift-slash, and hears ? as the key it's shifted from.
+for _, key in ipairs(nix.keys) do
+  if key.act then
+    for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
+      if works(key, mode) then
+        mode.on_key((key.chord:gsub('%+', '-')), function()
+          acts[key.act](mode)
+        end)
+      end
+    end
+  end
 end
