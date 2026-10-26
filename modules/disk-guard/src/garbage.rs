@@ -457,7 +457,7 @@ impl Listing {
     /// The garbage `there` says is still there, in the order it goes, in
     /// batches of at most `most` paths that close once they hold
     /// `BATCH_BYTES`: first what is older than `keep`, oldest first; then
-    /// the young, largest first, each after the garbage still referring to
+    /// the young, largest first, which is all of it when `keep` is none, each after the garbage still referring to
     /// it, since Nix refuses it before those. A batch is kept while healthy
     /// once the young garbage left fits in `budget` bytes. What's gone holds
     /// nothing back.
@@ -571,8 +571,11 @@ fn order(
     // A path shares its date with the referrer it took it from, and Nix
     // refuses a path while a referrer it wasn't given is still there, so
     // a tie goes in the order walked, referrers first.
+    // With no cache kept there is nothing old to date: all of it goes
+    // largest first, as the space it frees is what matters.
     let cutoff = now - keep;
-    let mut old: Vec<usize> = (0..dead.len()).filter(|&at| newest[at] <= cutoff).collect();
+    let young = |at: usize| keep <= 0.0 || newest[at] > cutoff;
+    let mut old: Vec<usize> = (0..dead.len()).filter(|&at| !young(at)).collect();
     old.sort_by(|&a, &b| {
         newest[a]
             .total_cmp(&newest[b])
@@ -584,7 +587,6 @@ fn order(
     // The largest goes first, with whatever garbage still refers to it,
     // referrers first, as it can't go before them: a disk
     // image goes with the small link a test run left to it.
-    let young = |at: usize| newest[at] > cutoff;
     let referred_by = refers.reversed();
     let mut left: u64 = (0..dead.len())
         .filter(|&at| young(at))
