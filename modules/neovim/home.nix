@@ -275,6 +275,7 @@ in
       pkgs.nixfmt # Official Nix formatter
       pkgs.lua-language-server # Lua LSP
       pkgs.stylua # Lua formatter for conform.nvim
+      pkgs.imagemagick # Pictures other than PNG, for Snacks' images
     ];
 
     # The bytecode cache first, so every module after it loads from it, then

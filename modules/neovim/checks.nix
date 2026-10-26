@@ -83,6 +83,24 @@ onLinux {
       touch $out
     '';
 
+  # A markdown file's pictures are found where it names them, relative to
+  # the file, so a terminal with kitty's graphics draws them under their
+  # lines, and a picture other than PNG can be turned into one.
+  neovim-finds-a-documents-pictures =
+    let
+      home = account workstation;
+      probe = ./probes/finds-a-documents-pictures.lua;
+    in
+    pkgs.runCommandLocal "neovim-finds-a-documents-pictures" { nativeBuildInputs = [ home.home.path ]; }
+      ''
+        ${neovimAt home}
+        mkdir plans attachments
+        cp ${pkgs.nixos-icons}/share/icons/hicolor/16x16/apps/nix-snowflake.png attachments/chart.png
+        printf '# A Plan\n\nThe chart:\n\n![the chart](../attachments/chart.png)\n' > plans/sheet.md
+        ${probed} 'as designed' ${atFirstScreen probe} plans/sheet.md
+        touch $out
+      '';
+
   # Space in any of Neovim's groups finds among what it holds: every group
   # keys.nix gives keys has its own Space, and one whose keys are things
   # to do lists exactly its keys that work here, each by what it does in
