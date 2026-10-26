@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from test_driver.machine import BaseMachine
 
 TRACE = "/run/niri-off-cpu/someone.txt"
+RESTORES = "/run/niri-off-cpu/someone-restores.txt"
 # The least time off the CPU the trace says, in microseconds.
 LEAST_US = 8000
 # Three seconds of 50 ms waits in epoll, each followed by a 50 ms sleep, give about thirty of
@@ -29,8 +30,8 @@ WOKEN_THROUGH = re.compile(r"^woken by waker \d+ through fd \d+ \[eventfd\]$", r
 
 
 @pytest.fixture(scope="module")
-def traced(machine: BaseMachine, values: dict[str, Any]) -> str:
-    """Give what three seconds' trace of the stand-in said, traced by its own account."""
+def asked(machine: BaseMachine, values: dict[str, Any]) -> str:
+    """Give what tracing the stand-in for three seconds, as its own account, said."""
     machine.wait_for_unit("multi-user.target")
     machine.succeed(
         f"systemd-run --uid=someone --unit=stand-in-niri {values['stand_in']} --session"
@@ -39,7 +40,22 @@ def traced(machine: BaseMachine, values: dict[str, Any]) -> str:
     status, said = machine.execute("runuser -u someone -- niri-off-cpu 3 2>&1")
     assert status == 0, said
     assert said.strip().endswith(TRACE), said
+    return said
+
+
+@pytest.fixture(scope="module")
+def traced(machine: BaseMachine, asked: str) -> str:
+    """Give what three seconds' trace of the stand-in said."""
+    assert asked
     return machine.succeed(f"runuser -u someone -- cat {TRACE}")
+
+
+def test_graphics_buffers_read_back_are_counted_beside_it(machine: BaseMachine, asked: str) -> None:
+    """The graphics buffers reclaim backed up and read back are counted beside the trace."""
+    assert asked.split()[-2:] == [RESTORES, TRACE], asked
+    counted = machine.succeed(f"runuser -u someone -- cat {RESTORES}")
+    assert "backed up, by shared and caching" in counted, counted
+    assert "read back, by thread, shared and caching" in counted, counted
 
 
 def test_each_sleep_is_said_with_its_kernel_stack(traced: str) -> None:

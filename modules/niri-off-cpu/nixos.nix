@@ -42,9 +42,23 @@ in
 {
   systemd.services."niri-off-cpu@" = {
     description = "Trace %i's niri off the CPU";
-    environment.OFF_CPU = "${./off-cpu.bt}";
+    environment = {
+      OFF_CPU = "${./off-cpu.bt}";
+      RESTORES = "${./restores.bt}";
+    };
     serviceConfig = {
       Type = "exec";
+      # The folder outlives each trace, so the last one's files are cleared
+      # first, or the wait below could find them and not wait.
+      ExecStartPre =
+        "${pkgs.coreutils}/bin/rm -f "
+        + toString (
+          map (file: "/run/niri-off-cpu/%i${file}") [
+            ".txt"
+            "-restores.txt"
+            "-restores.pid"
+          ]
+        );
       ExecStart = "${trace}/bin/niri-off-cpu-as-root %i";
       # Started once its probes are in place, so the asker's window is
       # traced whole; a trace that can't begin in a minute fails.
