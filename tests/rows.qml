@@ -78,6 +78,15 @@ ShellRoot {
                 hint: "what to do?"
                 aside: root.sentence
             }
+            // Three steps in with a long hint, which leaves a note no room:
+            // the note gives way rather than lying over the hint.
+            Prompt {
+                id: crowded
+                width: root.panel
+                chips: [{ text: "agents" }, { text: "orchestrators" }, { text: "Optimus" }]
+                hint: "say something to Optimus"
+                aside: "listening"
+            }
             // A short note in the room a long one took before it.
             Prompt {
                 id: steadied
@@ -162,6 +171,9 @@ ShellRoot {
             expect("a field's path keeps its steps whole beside a long note",
                 ["Machine", "Processor", "Cores"].every(step =>
                     texts.some(t => t.text === step && !t.truncated)), said(texts));
+            texts = drawn(crowded, []).sort((a, b) => a.from - b.from);
+            expect("a field's note gives way to its hint rather than lying over it",
+                texts.every((t, i) => i === 0 || texts[i - 1].to <= t.from), said(texts));
             const right = steadied.mapToItem(null, steadied.width - Theme.space.l, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
