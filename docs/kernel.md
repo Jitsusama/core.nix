@@ -218,9 +218,9 @@ in the first four, and the graphical role the last two:
 - **[`memory`][memory]:** swap to zstd-compressed RAM, kill a runaway process
   before the machine thrashes, and write to disk steadily rather than in
   stalls, so a linking build never freezes the desktop.
-- **[`nix-daemon`][nix-daemon]:** builds run as batch work in a slice of
-  their own, at a tenth of the weight of the user's programs, so they take
-  the CPU only when nothing interactive wants it, systemd-oomd stops one
+- **[`nix-daemon`][nix-daemon]:** builds run at the idle policy in a slice
+  of their own, at a tenth of the weight of the user's programs, so they
+  give a core up the moment anything else there wakes, systemd-oomd stops one
   that starves the machine of memory, and the daemon collects garbage before
   a build fills the disk.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his

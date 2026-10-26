@@ -1,9 +1,10 @@
 //! Puts the checks with deadlines that Nix runs, VM tests first among them,
 //! ahead of the builds they share the daemon with.
 //!
-//! Every build runs as `SCHED_BATCH`, so a VM test's qemu shares each CPU
-//! with whatever compilers run beside it, and a batch thread never
-//! preempts another as it wakes. Its guest's timers then fire late, and a
+//! Every build runs as `SCHED_IDLE`, so a VM test's qemu gives way to every
+//! program and every other piece of work on the machine, and at the batch
+//! policy builds had before, it shared each CPU with the compilers beside it
+//! and never preempted one as it woke. Its guest's timers then fire late, and a
 //! test's timeouts fail on a busy machine. A container's test and a nested
 //! compositor's keep time the same way, with no qemu. So once a second
 //! this looks for a process with a `--name`: by default qemu, NixOS's test
@@ -1120,9 +1121,10 @@ mod tests {
     }
 
     #[test]
-    fn a_batch_thread_or_a_nice_one_is_behind() {
+    fn an_idle_or_batch_thread_or_a_nice_one_is_behind() {
         let settings = defaults();
         assert!(behind(&Scheduling { nice: 0, policy: 3 }, &settings));
+        assert!(behind(&Scheduling { nice: 0, policy: 5 }, &settings));
         assert!(behind(&Scheduling { nice: 0, policy: 0 }, &settings));
         assert!(behind(
             &Scheduling {
