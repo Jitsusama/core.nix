@@ -672,7 +672,11 @@ works the same way everywhere.
   away what's typed, whole, and with nothing typed steps back out,
   putting back what was typed before with the same row selected;
   Backspace in an empty field does the same. Escape always closes. The
-  foot names what Return does and where the arrows go.
+  foot names what Return does and where the arrows go. A step in lists
+  what Return does first, where the row's own list left it out, so the
+  right arrow never hides the act Return would have done. Every row has
+  a Return act: it steps in, does a thing, or copies the value it shows,
+  and a check walks every row to hold it.
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
   xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
@@ -723,8 +727,8 @@ works the same way everywhere.
   words, "disk speed", "ram type" or "ping". A rate is the difference between two reads, read again
   once a second while it's shown and never for a key, and the footer says
   whether it's just now or since last asked. A part holding more steps in
-  on Return as on the right arrow; a figure copies nothing, and a model
-  does. The start of one of those words, three letters
+  on Return as on the right arrow; a figure copies what it shows as
+  Return comes, and one still being read copies nothing. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears

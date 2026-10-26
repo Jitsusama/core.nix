@@ -108,6 +108,9 @@ QtObject {
         expect("and does what Return does", opened, 1);
         expect("as an act of its own", [led[0].key, led[0].verb, led[0].hue],
             ["return:open", "open", "action"]);
+        // The list draws its chord and what's beside it, as a provider's.
+        expect("drawn as any row is", [led[0].chord.length, led[0].side, led[0].what],
+            [0, "", ""]);
         expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "switch", run: does,
             verbs: opens }, [{ name: "Switch", verb: "switch", run: does }])), "Switch");
         expect("not for a row that only steps in", names(Catalogue.leading({ name: "Space",

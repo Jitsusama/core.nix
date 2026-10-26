@@ -84,10 +84,23 @@ function leading(row, inside) {
     if (said === "" || inside.some(one => verbOf(one).toLowerCase() === said)) {
         return inside;
     }
+    // Every field a provider's row has (Provider.qml's `thing`), so the
+    // list draws it as it draws them; the launcher prepares its name.
     const own = {
         key: `return:${said}`,
         name: verb.charAt(0).toUpperCase() + verb.slice(1),
         verb,
+        what: "",
+        chord: [],
+        side: "",
+        count: "",
+        context: "",
+        note: "",
+        below: null,
+        verbs: null,
+        plain: false,
+        later: false,
+        now: false,
         glyph: row.glyph ?? "",
         hue: "action",
         stays: row.stays === true,

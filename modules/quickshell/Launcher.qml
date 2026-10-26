@@ -677,7 +677,7 @@ Scope {
         try {
             const making = things ? row.verbs : row.targets;
             const made = making ? making() ?? [] : [];
-            const own = things ? Catalogue.leading(row, made) : made;
+            const own = things ? led(row, made) : made;
             const places = things && row.from ? partsOf(row.from) : [];
             return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
@@ -1630,6 +1630,16 @@ Scope {
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
+    // What a row holds, led by Return's own act where it was left out
+    // (Catalogue.js), that act's name prepared to be found as a
+    // provider's rows are.
+    function led(row, made) {
+        const own = Catalogue.leading(row, made);
+        if (own !== made)
+            own[0].prepared = Fuzzy.prepare(own[0].name);
+        return own;
+    }
+
     function enter(row) {
         if (!row || row.gone)
             return false;
@@ -1645,7 +1655,7 @@ Scope {
         }
         const things = held.length === 0 || collecting;
         const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
-        const own = things && made ? Catalogue.leading(row, made) : made;
+        const own = things && made ? led(row, made) : made;
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;

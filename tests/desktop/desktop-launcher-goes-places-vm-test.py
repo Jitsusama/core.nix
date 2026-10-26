@@ -397,11 +397,15 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.answer("what is a fjord?")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
-    # A step in, talking it over with Lighthouse comes before asking in
-    # a session of its own.
+    # A step in leads with Return's own Copy, then talking it over with
+    # Lighthouse comes before asking in a session of its own.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:2] == ["Talk to Lighthouse", "Ask in a session"]
+        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a session"]
+    )
+    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
     machine.send_key("ret")
     # The question goes to its inbox with what was answered, and the
