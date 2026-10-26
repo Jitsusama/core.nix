@@ -236,12 +236,10 @@ impl EnrolYubikey {
             return Ok(());
         }
         let refusal = enrolled.refusal();
-        Err(
-            match fido2::touch_refusal(&refusal.to_string(), &self.name) {
-                Some(why) => Fault::Blocked { step: self.id, why },
-                None => refusal,
-            },
-        )
+        Err(match fido2::key_refusal(&refusal.to_string(), &self.name) {
+            Some(why) => Fault::Blocked { step: self.id, why },
+            None => refusal,
+        })
     }
 }
 

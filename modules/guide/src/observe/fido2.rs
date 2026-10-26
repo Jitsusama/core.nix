@@ -80,18 +80,32 @@ pub fn refusal(said: &str) -> Option<&'static str> {
     }
 }
 
-/// What a key that missed or refused its touch made a tool say, in plain
+/// What a key that refused its touch or its PIN made a tool say, in plain
 /// words with what to do, as libfido2 names it (src/fido/err.h): a touch
-/// ahead of the blink is refused, and one not given in time runs out.
-pub fn touch_refusal(said: &str, key: &str) -> Option<String> {
-    ["FIDO_ERR_OPERATION_DENIED", "FIDO_ERR_ACTION_TIMEOUT"]
-        .iter()
-        .any(|error| said.contains(error))
-        .then(|| {
-            format!(
-                "{key} didn't get its touch. Press Return to try again, and touch it each time it blinks: twice, a few seconds apart"
-            )
-        })
+/// ahead of the blink is refused, and one not given in time runs out; a
+/// key refuses PINs for a while after three wrong ones in a row (CTAP2's
+/// pinAuthBlocked), and for good after more, until it's reset.
+pub fn key_refusal(said: &str, key: &str) -> Option<String> {
+    let named = |error: &str| said.contains(error);
+    if named("FIDO_ERR_OPERATION_DENIED") || named("FIDO_ERR_ACTION_TIMEOUT") {
+        Some(format!(
+            "{key} didn't get its touch. Press Return to try again, and touch it each time it blinks: twice, a few seconds apart"
+        ))
+    } else if named("FIDO_ERR_PIN_INVALID") {
+        Some(format!(
+            "{key} didn't take that PIN. Press Return to type it again: a key takes only a few wrong PINs before it locks itself"
+        ))
+    } else if named("FIDO_ERR_PIN_AUTH_BLOCKED") {
+        Some(format!(
+            "{key} takes no more PINs after three wrong ones in a row until it's unplugged. Unplug it, plug it back in, then press Return to try again"
+        ))
+    } else if named("FIDO_ERR_PIN_BLOCKED") {
+        Some(format!(
+            "{key} has locked its PIN after too many wrong ones, and only a reset frees it, which wipes what it holds. Reset its FIDO2 part and set its PIN again on another computer, then plug it in here and press Return to try again"
+        ))
+    } else {
+        None
+    }
 }
 
 /// libfido2 prints each as `path: vendor=0x%04x, product=0x%04x (%s %s)`
