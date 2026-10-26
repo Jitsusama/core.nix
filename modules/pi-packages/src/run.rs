@@ -54,8 +54,8 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
     let lock_path = place.dir.join(".lock");
     let lock =
         File::create(&lock_path).map_err(|error| format!("{}: {error}", lock_path.display()))?;
-    match lock.try_lock() {
-        Ok(()) => {}
+    let _held = match lock.try_lock() {
+        Ok(()) => Held(lock),
         Err(TryLockError::WouldBlock) => {
             return Ok(Outcome {
                 done: Done::Busy,
@@ -64,7 +64,7 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
             });
         }
         Err(TryLockError::Error(error)) => return Err(format!("{}: {error}", lock_path.display())),
-    }
+    };
     let env = version::build_env(config);
     let (commit, unfetched) = version::fetch(config, package, &place, &env)?;
     let from = place.current_commit();
@@ -85,4 +85,19 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
         removed,
         unfetched,
     })
+}
+
+/// A package's lock, given back the moment the update is done with it.
+///
+/// Closing the file isn't enough: a child another thread forked keeps a
+/// copy of it until it runs its program, and the lock lasts while any copy
+/// is open, so the next update would find it still held. Unlocking frees
+/// it for every copy at once.
+struct Held(File);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        // Failing, the lock goes when the last copy closes, as it did before.
+        let _ = self.0.unlock();
+    }
 }
