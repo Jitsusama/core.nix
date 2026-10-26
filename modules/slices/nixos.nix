@@ -405,6 +405,21 @@ in
     # (modules/libvirt). A guest then waits only while what Joel uses takes
     # every core, and catches up after.
     systemd.slices.machine.sliceConfig.CPUWeight = 10;
+
+    # The machine's administrators, agents included since they work as
+    # Joel's account, may change how build.slice and machine.slice share the
+    # machine without a password (work-slices.rules), so a runtime A/B of
+    # their weight or cores waits for no one: on 25 October, two of them
+    # each waited for Joel to type a line. The account's own slices are its
+    # user manager's, which never asks. It grants little: the most a
+    # property there can do is slow or starve the system's builds and
+    # machines, never Joel's own programs. polkit can't tell a runtime
+    # change from a lasting one, so a change made without --runtime stays
+    # in /etc/systemd/system.control until it's reverted with
+    # `systemctl revert build.slice`; this configuration still sets the
+    # slices as they boot.
+    security.polkit.enable = true;
+    security.polkit.extraConfig = builtins.readFile ./work-slices.rules;
     systemd.user.slices.user.sliceConfig = {
       CPUWeight = "idle";
       IOWeight = 1;

@@ -1,0 +1,15 @@
+// The machine's administrators may set properties on the slices the
+// system's work runs in, build.slice and machine.slice, without a password,
+// and on nothing else: modules/slices/nixos.nix says why. polkit's own
+// engine reads this, in the JavaScript it knows.
+polkit.addRule(function (action, subject) {
+  if (
+    action.id === "org.freedesktop.systemd1.manage-units" &&
+    action.lookup("verb") === "set-property" &&
+    /^(build|machine)\.slice$/.test(action.lookup("unit")) &&
+    subject.isInGroup("wheel")
+  ) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

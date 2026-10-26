@@ -901,6 +901,10 @@
     an account in wheel switches to another system and back with no password; one outside wheel, and
     what isn't a NixOS system in the store, is refused
   '';
+  vm-admins-tune-the-work-slices = ''
+    an account in wheel sets build.slice's and machine.slice's weight and cores for the boot with no
+    password; one outside wheel can't, and no other unit is opened
+  '';
   vm-apps-come-first = ''
     with no disk named, the account's app and session slices, and the system's user.slice, hold a 1
     ms latency on the drive behind /home, through the kernel (jobs, background, machine and system
