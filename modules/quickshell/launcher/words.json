@@ -3399,6 +3399,39 @@
       "glyph": "notGoing"
     },
     {
+      "id": "mail:message",
+      "of": "program:google-mail",
+      "name": "Mail",
+      "glyph": "mail",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "Mail Without a Subject"
+        }
+      }
+    },
+    {
+      "id": "verb:mail:open",
+      "in": "mail:message",
+      "name": "Open in Mail",
+      "verb": "open",
+      "glyph": "mail"
+    },
+    {
+      "id": "verb:mail:read",
+      "in": "mail:message",
+      "name": "Mark as Read",
+      "verb": "read",
+      "glyph": "readMail"
+    },
+    {
+      "id": "verb:mail:archive",
+      "in": "mail:message",
+      "name": "Archive",
+      "verb": "archive",
+      "glyph": "archive"
+    },
+    {
       "id": "verb:switch",
       "in": "windows",
       "name": "Switch",

@@ -1046,6 +1046,11 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-reads-the-mail = ''
+    the shell reads the google program's whole state from its file, a line from before mail
+    included, and nothing from half a line; says when mail came in words; and writes the lines
+    that mark mail read or archive it
+  '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and how Joel answered it, and writes
@@ -1186,8 +1191,8 @@
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting by its name and answers its invitation, sets the volume, loses no letter typed after
-    its chord, and shows the shortcuts
+    a meeting by its name and answers its invitation, opens mail by its subject, marks it read and
+    archives it, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

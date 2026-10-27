@@ -1013,6 +1013,23 @@ in
     console = "n";
     means = "answering a meeting's invitation no";
   };
+  # Mail, closed as it comes, and the two ways out of the mail that wants
+  # Joel: ticked once it's read, and dropped into the archive.
+  mail = {
+    glyph = nerd "f01ee";
+    console = "@";
+    means = "mail in Joel's Google account, and the place holding it";
+  };
+  readMail = {
+    glyph = nerd "f0ab1";
+    console = "o";
+    means = "marking mail read";
+  };
+  archive = {
+    glyph = nerd "f1259";
+    console = "a";
+    means = "archiving mail, out of the inbox";
+  };
   clock = {
     glyph = nerd "f0150";
     console = "o";
