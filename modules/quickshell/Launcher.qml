@@ -276,6 +276,8 @@ Scope {
             name: said.headline,
             chip: asked,
             title: said.title ?? answerNames[asked] ?? root.capitalised(asked),
+            // Asked by a name it had, it says so, as a row found by one does.
+            once: oldWords[asked] ? [oldWords[asked]] : [],
             glyph: said.glyph ?? first.glyph,
             graph: said.graph,
             hue: said.hue ?? first.hue,

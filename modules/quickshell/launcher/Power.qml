@@ -90,7 +90,9 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: Words.started("power").concat(Object.keys(partsAsked))
+    // "charger" asks it whole, so the charger's old names do too.
+    questions: Words.started("power").concat(Object.keys(partsAsked),
+        Words.olds(Words.of("power:charger")))
 
     function answer(typed) {
         const question = asks(typed);
