@@ -1,5 +1,5 @@
 use disk_guard::clock::Awake;
-use disk_guard::plan::Class;
+use disk_guard::plan::{Class, Group, windows};
 use disk_guard::temp::{Entry, candidate, leftovers, survey};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
@@ -39,7 +39,7 @@ fn entry(name: &str) -> Entry {
 }
 
 fn kept(entries: Vec<Entry>, tmpdirs: &[PathBuf]) -> Vec<String> {
-    let chosen = leftovers(entries, 1000, tmpdirs);
+    let chosen = leftovers(entries, 1000, tmpdirs, 0.0);
     chosen
         .iter()
         .map(|e| e.path.file_name().unwrap().to_string_lossy().into_owned())
@@ -213,7 +213,7 @@ fn a_live_tmpdir_named_by_a_link_keeps_the_link() {
         ..entry("pi-QEST-A1B2C3")
     }];
 
-    assert_eq!(leftovers(entries, 1000, &[link]), Vec::<Entry>::new());
+    assert_eq!(leftovers(entries, 1000, &[link], 0.0), Vec::<Entry>::new());
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn a_live_processes_tmpdir_keeps_what_holds_it() {
 
 #[test]
 fn a_leftover_is_idle_for_the_awake_time_since_its_last_change() {
-    let made = candidate(&entry("build-a1b2c3"), &Awake::default(), 4_600.0);
+    let made = candidate(&entry("build-a1b2c3"), &Awake::default(), 4_600.0, 0.0);
     assert_eq!(made.class, Class::Temp);
     crate::assert_exactly(made.idle, 3_600.0);
     assert_eq!(made.size, 4096);
@@ -240,5 +240,56 @@ fn a_leftover_is_idle_for_the_awake_time_since_its_last_change() {
         newest: f64::INFINITY,
         ..entry("build-a1b2c3")
     };
-    crate::assert_exactly(candidate(&unread, &Awake::default(), 4_600.0).idle, 0.0);
+    crate::assert_exactly(
+        candidate(&unread, &Awake::default(), 4_600.0, 0.0).idle,
+        0.0,
+    );
+}
+
+#[test]
+fn a_leftover_from_before_this_boot_is_offered_whatever_its_name() {
+    // Nothing running now started before the boot, so whatever made an
+    // entry nothing has changed since then has ended, and a name it chose
+    // itself keeps nothing.
+    let boot = 2_000.0;
+    let since = |name: &str| Entry {
+        newest: 3_000.0,
+        ..entry(name)
+    };
+    let checkout = Entry {
+        checkout: true,
+        ..entry("clone-of-mine")
+    };
+    let entries = vec![
+        entry("c5a-tlc-fix"),
+        entry("node-compile-cache"),
+        since("judge-clip"),
+        entry(".X11-unix"),
+        entry("zellij-1000"),
+        entry("pi-quest-QEST-20261012-1ZP2M8"),
+        checkout,
+    ];
+    let offered: Vec<String> = leftovers(entries, 1000, &[], boot)
+        .iter()
+        .map(|e| e.path.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        offered,
+        ["c5a-tlc-fix", "node-compile-cache"],
+        "a named entry is offered once its maker can't be running"
+    );
+}
+
+#[test]
+fn a_leftover_from_before_this_boot_goes_at_once_in_any_band() {
+    let boot = 2_000.0;
+    let before = candidate(&entry("c5a-tlc-fix"), &Awake::default(), 4_600.0, boot);
+    assert!(before.spent, "its maker ended with the last boot");
+    assert_eq!(windows(&before), (Group::Waste, [Some(0.0); 4]));
+    let since = Entry {
+        newest: 3_000.0,
+        ..entry("build-a1b2c3")
+    };
+    let made = candidate(&since, &Awake::default(), 4_600.0, boot);
+    assert!(!made.spent, "one made since may be its maker's still");
 }

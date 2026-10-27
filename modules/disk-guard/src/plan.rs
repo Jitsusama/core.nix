@@ -179,6 +179,8 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             _ => (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE]),
         },
         _ if tree && candidate.spent => (Group::Waste, [AT_ONCE; 4]),
+        // A leftover from before this boot has no maker left to come back.
+        Class::Temp if candidate.spent => (Group::Waste, [AT_ONCE; 4]),
         // Even a healthy disk sheds a build or an install nobody has used
         // for a week or two of awake time: one wanted again costs a build,
         // and keeping every one ever made is how a disk fills.
