@@ -1230,7 +1230,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
 def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     desktop: Desktop,
 ) -> None:
-    """Return shows a meeting further off rather than joining it, and its acts still join it."""
+    """Return shows a meeting further off rather than joining it, guests too; its acts join it."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
@@ -1255,6 +1255,14 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
         )
     )
     machine.fail(f"test -s {opened}")
+    # Where it is and who holds it come before who else is asked, each by
+    # name with how they answered.
+    seen = desktop.showing()["rows"]
+    named = ["Room 4", "https://meet.google.com/abc-defg-hij", "Ada Lovelace", "Grace Hopper"]
+    assert [row for row in seen if row in named] == named, seen
+    assert seen[-2] == "What we did yesterday, what we do today.", seen
+    desktop.down_to("Grace Hopper")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "not going")
     # Back out, its acts lead with seeing it, Return's own, and then
     # joining, which goes into its call.
     machine.send_key("left")

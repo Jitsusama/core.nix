@@ -1216,8 +1216,8 @@
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting about to start by its name, says it in Now's Today, shows one further off, and
-    answers its invitation, opens
+    a meeting about to start by its name, says it in Now's Today, shows one further off with
+    who's asked and how each answered, and answers its invitation, opens
     mail by its subject, marks it read and archives it, sets the volume, loses no letter typed
     after its chord, and shows the shortcuts
   '';
