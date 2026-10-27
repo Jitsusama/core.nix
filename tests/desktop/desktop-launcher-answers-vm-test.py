@@ -685,6 +685,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
+    # Past the answer's own Copy, which leads, to Cores.
+    for _ in range(desktop.showing()["rows"].index("Cores")):
+        machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Core 0")
     machine.send_key("esc")
