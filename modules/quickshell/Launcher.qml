@@ -372,7 +372,7 @@ Scope {
                 return;
             steps[at] = Object.assign({}, was, {
                 row: row,
-                rows: Steady.kept(was.rows, row.verbs(), steadyId)
+                rows: Steady.kept(was.rows, led(row, row.verbs()), steadyId)
             });
             // The list it was stepped into from says it as it is now too,
             // for the way back out.
@@ -1628,8 +1628,6 @@ Scope {
         return !!step.row.from || !!step.row.nested;
     }
 
-    // Steps into a row: a thing's verbs, or a verb's targets. Says whether
-    // there was anywhere to go.
     // What a row holds, led by Return's own act where it was left out
     // (Catalogue.js), that act's name prepared to be found as a
     // provider's rows are.
@@ -1640,6 +1638,17 @@ Scope {
         return own;
     }
 
+    // What a step into a row lists of its own: a thing's verbs, led by
+    // Return's act, or a verb's targets; null where it holds none. Made the
+    // same way when a step is made again, so a refresh never finds the
+    // act it led with gone.
+    function stepRows(row, things) {
+        const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        return things && made ? led(row, made) : made;
+    }
+
+    // Steps into a row: a thing's verbs, or a verb's targets. Says whether
+    // there was anywhere to go.
     function enter(row) {
         if (!row || row.gone)
             return false;
@@ -1654,8 +1663,7 @@ Scope {
             return true;
         }
         const things = held.length === 0 || collecting;
-        const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
-        const own = things && made ? led(row, made) : made;
+        const own = stepRows(row, things);
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
@@ -1737,8 +1745,7 @@ Scope {
             const step = steps[at];
             const thing = rows.find(row => sameRow(row, step.row));
             const things = at === 0 || collects(steps[at - 1]);
-            const own = !thing ? null : things ? (thing.verbs ? thing.verbs() : null)
-                : thing.targets ? thing.targets() : null;
+            const own = !thing ? null : stepRows(thing, things);
             const parts = thing && things ? partsIn(thing) : [];
             const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
             if (!into)

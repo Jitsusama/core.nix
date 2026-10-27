@@ -591,8 +591,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(lambda shown: "Recording" in shown["rows"])
     desktop.launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
     # The right arrow on Recording, then on the program, and Return mutes
-    # what it records.
-    for _down in range(3):
+    # what it records. Return's own Mute leads, so Recording is counted to.
+    for _down in range(desktop.showing()["rows"].index("Recording")):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Recording"))
     desktop.step_in()

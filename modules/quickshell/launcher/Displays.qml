@@ -512,7 +512,6 @@ Provider {
             asking: light && !roomTried && sensor() !== "",
             live: light ? provider : null,
             headline: part.side,
-            copy: "",
             glyph: Theme.glyph.display,
             note: named(focused),
             rows: others.length === 0 ? (part.verbs ? part.verbs() : [])
