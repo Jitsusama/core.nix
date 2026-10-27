@@ -278,6 +278,27 @@ impl Direction {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
     }
 
+    /// Holds this direction under a new most the link carries, as when a
+    /// cable moves to a port of another speed, saying whether it moved. A
+    /// lower one brings down whatever was held above it; a higher one only
+    /// lets the rate climb there, as it learns the line.
+    pub fn bound(&mut self, max: u64) -> bool {
+        let max = max.max(self.bounds.min);
+        if max == self.bounds.max {
+            return false;
+        }
+        self.bounds.max = max;
+        for kept in [
+            &mut self.rate,
+            &mut self.held,
+            &mut self.peak,
+            &mut self.best,
+        ] {
+            *kept = (*kept).min(max);
+        }
+        true
+    }
+
     /// What the network's memory keeps of this direction: the best it held
     /// under load without delay, which a cut long past is forgotten back
     /// to, rather than the latest cut. A restart from the cut had no better
@@ -759,6 +780,20 @@ mod tests {
                 down,
             ),
         )
+    }
+
+    #[test]
+    fn a_link_slowed_brings_down_what_was_held_over_its_new_most() {
+        let mut c = controller(20_000, 900_000);
+        assert!(c.down.bound(93_000));
+        assert_eq!(
+            (c.down.rate, c.down.held, c.down.peak, c.down.best),
+            (93_000, 93_000, 93_000, 93_000)
+        );
+        assert!(!c.down.bound(93_000), "the same most moves nothing");
+        assert!(c.down.bound(930_000));
+        assert_eq!(c.down.bounds.max, 930_000);
+        assert_eq!(c.down.rate, 93_000, "a faster link is learned, not assumed");
     }
 
     fn pings(c: &mut Controller, rtt: f64, n: usize) {
