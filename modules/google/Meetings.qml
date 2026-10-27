@@ -34,7 +34,7 @@ Provider {
     // only while the account is ready and the meeting is on or starts
     // today, or else null, as on a machine without google, where this
     // provider isn't there at all.
-    readonly property var next: Calendar.account === "ready" && Calendar.today(Calendar.next)
+    readonly property var next: Google.account === "ready" && Calendar.today(Calendar.next)
         ? things.find(row => row.key === `calendar:meeting:${Calendar.next.id}`) ?? null
         : null
 
