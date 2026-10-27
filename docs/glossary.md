@@ -56,7 +56,7 @@ which are core.nix's own.
   view onto the others' rows, each kept in its own place, with one row of its
   own, Today. A filling disk shows in Now, with its forecast, while it fills.
 - **Agents uses Machine's queue**: a session's heavy work waits there, shown on
-  the session as what it's waiting on.
+  the session as what it's waiting on, and listed whole in Agents' Queue.
 - **Disk acts on Machine's jobs**: the disk guard freezes and thaws them.
 - **Security seals Disk and signs Agents' work**: the TPM unlocks the disk,
   and Joel's key and the agents' key sign commits.

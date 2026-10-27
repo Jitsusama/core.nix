@@ -1321,10 +1321,12 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
     # Power comes first, saying what it holds, and Memory is a row of its
-    # own, before Heat, as the processor is, and Disk after it.
+    # own, before Heat, as the processor is, and Disk after it. The queue
+    # is Agents', so Machine keeps only the machine's own.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
+            and "Queue" not in shown["rows"]
             and any(
                 str(thing["reads"]).startswith("Power \u00b7 Battery, Power profile")
                 for thing in shown["things"]
@@ -1520,7 +1522,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
     )
-    assert "asked again by machine" not in said, f"the queue asked home again: {said}"
+    assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
     # Tab, with nothing typed, does nothing and says nothing, since the
     # arrows reach every category; Return on one steps into it.
     desktop.as_account("qs ipc call launcher toggle")

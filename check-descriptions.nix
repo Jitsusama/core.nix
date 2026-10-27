@@ -875,6 +875,10 @@
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
   '';
+  the-launcher-finds-the-queue = ''
+    the launcher's queue names each job in words, running first, says its time against its last
+    run or what it waits for, its quest and memory, and goes to its session or copies its name
+  '';
   the-launcher-finds-the-runs = ''
     the launcher lists the day's fleets and councils, running first, with progress or cost and time,
     goes to their session, opens an answer whole, and hides amounts while sharing
