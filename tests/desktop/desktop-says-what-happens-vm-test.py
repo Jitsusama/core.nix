@@ -554,6 +554,12 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     desktop.photograph("margin-waiting")
     machine.send_key("meta_l-o")
     desktop.whats_on("Notices")
+    # Today is Now's own row, always last, saying the date; the VM has no
+    # forecast and no calendar, so it says nothing more.
+    today = desktop.showing()["things"][-1]
+    date = machine.succeed("date '+%A %-d %B'").strip()
+    assert today["is"] == "on:today", today
+    assert today["reads"].startswith(f"Today \u00b7 {date}"), today
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-from-margin")
