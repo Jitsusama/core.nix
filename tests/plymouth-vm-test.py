@@ -35,6 +35,13 @@ if TYPE_CHECKING:
 # login shell over 30 seconds, so a shorter wait fails before it can
 # look twice.
 READING = timedelta(seconds=300)
+# How long between keys typed at a login prompt. Keys the host sends faster
+# than a machine it's starving takes them can be lost, and login refuses
+# what arrives; ten times the driver's pace gives the machine ten times as
+# long to catch up.
+TYPING = timedelta(milliseconds=100)
+# How many times login has said it refused a password, this boot.
+REFUSALS = "journalctl -b -q -t login -o cat | grep -c 'FAILED LOGIN' || true"
 # The entry the boot starts, named as lanzaboote names generation 7's.
 CHOSEN = "nixos-generation-7-fixture"
 # The frame is two panels' widths and two heights of hairline, so a
@@ -290,21 +297,6 @@ def test_the_splash_names_the_generation_the_boot_loader_started(asking: Boot) -
     asking.photographed("generation")
 
 
-def test_a_splash_made_again_still_names_the_generation(asking: Boot) -> None:
-    """A splash made again still names the generation.
-
-    Escape shows the details, and Escape again makes a new splash. A splash hears what the
-    boot said before it was made only when Plymouth keeps it, as the first splash needs when
-    the graphics card comes after the generation is told.
-    """
-    before = asking.photographed("before-details")
-    asking.machine.send_key("esc")
-    asking.changed_from(before, "details")
-    asking.machine.send_key("esc")
-    asking.machine.wait_for_text("generation 7", timeout=READING)
-    asking.machine.wait_for_text("disk is locked", timeout=READING)
-
-
 def test_each_key_shows_as_a_dot(asking: Boot) -> None:
     """Each key shows as a dot."""
     before = asking.photographed("before-typing")
@@ -369,11 +361,7 @@ def test_a_console_greets_by_name_and_signs_in_told_its_kmscon(on_kmscon: Boot) 
     # activate there, and the account has no shell files: an empty
     # one stands in, so zsh asks nothing of a new user.
     machine.succeed(f"install -o {account} -m 600 /dev/null /home/{account}/.zshrc")
-    machine.wait_for_text("Hello", timeout=READING)
-    machine.send_chars(f"{account}\n")
-    machine.wait_for_text("Password", timeout=READING)
-    machine.send_chars(f"{boot.password}\n")
-    machine.wait_until_succeeds(f"pgrep -u {account} -x zsh", timeout=READING)
+    signs_in(boot)
     # The prompt draws stand-ins only on a console that calls itself
     # linux, whose font can't hold its marks; kmscon calls itself by
     # its own name, which the machine's terminfo describes.
@@ -386,13 +374,37 @@ def test_a_console_greets_by_name_and_signs_in_told_its_kmscon(on_kmscon: Boot) 
     # next, and the restarts below stop no more than they did before.
     machine.send_chars("exit\n")
     machine.wait_until_fails(f"pgrep -u {account} -x zsh", timeout=READING)
+    greeted_afresh(machine)
 
-    def greeted_afresh(_: bool) -> bool:
-        """Say whether the console greets again, with no password asked for."""
+
+def greeted_afresh(machine: QemuMachine) -> None:
+    """Wait for the console to greet again, with no password asked for."""
+
+    def greets(_: bool) -> bool:
+        """Say whether the console greets, with no password asked for."""
         shown = machine.get_screen_text()
         return "Hello" in shown and "Password" not in shown
 
-    retry(greeted_afresh, timeout=READING)
+    retry(greets, timeout=READING)
+
+
+def signs_in(boot: Boot) -> None:
+    """Sign in at kmscon's console, on a fresh one again if login refused what arrived."""
+    machine, account = boot.machine, boot.account
+    for _ in range(3):
+        refused = machine.succeed(REFUSALS).strip()
+        machine.wait_for_text("Hello", timeout=READING)
+        machine.send_chars(f"{account}\n", delay=TYPING)
+        machine.wait_for_text("Password", timeout=READING)
+        machine.send_chars(f"{boot.password}\n", delay=TYPING)
+        machine.wait_until_succeeds(
+            f'pgrep -u {account} -x zsh || [ "$({REFUSALS})" != {refused} ]', timeout=READING
+        )
+        if machine.execute(f"pgrep -u {account} -x zsh")[0] == 0:
+            return
+        machine.succeed("systemctl restart kmsconvt@tty3.service")
+        greeted_afresh(machine)
+    pytest.fail("login refused the console's password three times")
 
 
 def test_the_keys_the_greeting_gives_go_back_to_the_desktop(opened: Boot) -> None:
@@ -504,6 +516,32 @@ def test_a_security_key_waiting_for_a_touch_is_asked_for_until_it_is_touched(
         timeout=READING,
     )
     machine.succeed("systemd-run --wait --collect plymouth quit")
+
+
+def test_a_splash_shown_after_the_generation_is_told_still_names_it(opened: Boot) -> None:
+    """A splash shown after the generation is told still names it.
+
+    As when the boot's graphics card comes after the generation is told: Plymouth starts with
+    no splash, is told a generation, and only then shows its splash.
+    """
+    machine = opened.machine
+    opened.bare()
+    drop_in = "/run/systemd/system/plymouth-start.service.d"
+    machine.succeed(
+        f"mkdir -p {drop_in}",
+        f"printf '[Service]\\nExecStartPost=\\n' > {drop_in}/no-splash.conf",
+        "systemctl daemon-reload",
+        "systemctl restart plymouth-start.service",
+        f"{opened.plymouth} update --status=generation:8",
+        f"{opened.plymouth} show-splash",
+    )
+    machine.wait_for_text("generation 8", timeout=READING)
+    opened.photographed("told-before-shown")
+    machine.succeed(
+        f"rm {drop_in}/no-splash.conf",
+        "systemctl daemon-reload",
+        "systemd-run --wait --collect plymouth quit",
+    )
 
 
 def test_the_emergency_shell_wears_the_face_and_says_what_failed(opened: Boot) -> None:
