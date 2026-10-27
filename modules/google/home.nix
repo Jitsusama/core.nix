@@ -91,6 +91,13 @@ in
       order = 47;
       source = ./Meetings.qml;
     };
+    # Each wears a mark of its own in Programs rather than the program
+    # mark every window without a logo shares: Calendar the meeting's,
+    # which it holds, and Mail Gmail's own logo.
+    jitsusama.quickshell.launcher.providers.applications.glyphs = {
+      google-calendar = "f0ed7";
+      google-mail = "f02ab";
+    };
 
     systemd.user.paths.google = {
       Unit.Description = "Starts the Google account's watch once pi has signed in";

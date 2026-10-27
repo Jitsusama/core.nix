@@ -152,6 +152,10 @@ answered yes, maybe or no; mail can be read, marked unread and archived.
 | calendar | Joel's meetings in his Google account, and the place in Programs holding them | | Google Calendar |
 | meeting | an event on Joel's calendar with a call or with others | | |
 | invitation | a meeting someone asks Joel to, answered yes, maybe or no | | |
+| going | an invitation Joel answered yes | accepted | `yes` |
+| maybe | an invitation Joel answered maybe | tentative | |
+| not going | an invitation Joel answered no | declined | `no` |
+| not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | join | going into a meeting's call, or a call another sends | | |
 

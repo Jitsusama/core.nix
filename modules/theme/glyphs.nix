@@ -996,6 +996,23 @@ in
     console = "m";
     means = "a meeting on Joel's calendar, and the calendar holding them";
   };
+  # Answering an invitation, each a calendar marked as the answer is, so
+  # the three read as one choice.
+  going = {
+    glyph = nerd "f00ef";
+    console = "y";
+    means = "answering a meeting's invitation yes";
+  };
+  maybeGoing = {
+    glyph = nerd "f0692";
+    console = "?";
+    means = "answering a meeting's invitation maybe";
+  };
+  notGoing = {
+    glyph = nerd "f00f4";
+    console = "n";
+    means = "answering a meeting's invitation no";
+  };
   clock = {
     glyph = nerd "f0150";
     console = "o";

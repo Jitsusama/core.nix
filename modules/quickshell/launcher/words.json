@@ -3378,6 +3378,27 @@
       "glyph": "link"
     },
     {
+      "id": "verb:calendar:yes",
+      "in": "calendar:meeting",
+      "name": "Answer Yes",
+      "verb": "answer",
+      "glyph": "going"
+    },
+    {
+      "id": "verb:calendar:maybe",
+      "in": "calendar:meeting",
+      "name": "Answer Maybe",
+      "verb": "answer",
+      "glyph": "maybeGoing"
+    },
+    {
+      "id": "verb:calendar:no",
+      "in": "calendar:meeting",
+      "name": "Answer No",
+      "verb": "answer",
+      "glyph": "notGoing"
+    },
+    {
       "id": "verb:switch",
       "in": "windows",
       "name": "Switch",
