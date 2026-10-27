@@ -36,4 +36,51 @@ onLinux {
         if ! grep -q '38;2;${foreground}m' drawn; then cat -v drawn | head -c 2000; exit 1; fi
         touch $out
       '';
+
+  # Escape backs out of btop a step at a time: alone it ends btop, and with
+  # a process chosen by Down, one leaves btop running and a second ends it,
+  # where btop's own Escape opens its menu and never ends it. The keys go
+  # through tmux, as a terminal sends them.
+  btop-backs-out-on-escape =
+    let
+      home = account workstation;
+    in
+    pkgs.runCommandLocal "btop-backs-out-on-escape"
+      {
+        nativeBuildInputs = [
+          home.programs.btop.package
+          pkgs.tmux
+        ];
+      }
+      ''
+        export HOME=$PWD LANG=C.UTF-8 TMUX_TMPDIR=$PWD
+        # btop in a terminal of its own, given these keys a second apart;
+        # then whether it has ended, waiting up to ten seconds for a btop
+        # expected to end so a busy machine can't fail it.
+        after() {
+          expected=$1
+          shift
+          rm -f ended
+          tmux new-session -d -x 120 -y 40 "btop; touch $PWD/ended; sleep 60"
+          sleep 2
+          for key in "$@"; do
+            tmux send-keys "$key"
+            sleep 1
+          done
+          for _ in $(seq 100); do
+            [ -e ended ] || [ "$expected" = running ] || { sleep 0.1; continue; }
+            break
+          done
+          if [ -e ended ]; then got=ended; else got=running; fi
+          tmux kill-server
+          if [ "$got" != "$expected" ]; then
+            echo "after $*, btop is $got, not $expected"
+            exit 1
+          fi
+        }
+        after ended Escape
+        after running Down Escape
+        after ended Down Escape Escape
+        touch $out
+      '';
 }
