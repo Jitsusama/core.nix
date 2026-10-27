@@ -508,6 +508,7 @@ let
     agents = ./launcher/Agents.qml;
     orchestrators = ./launcher/Orchestrators.qml;
     quests = ./launcher/Quests.qml;
+    queue = ./launcher/Queue.qml;
     runs = ./launcher/Runs.qml;
     byhand = ./launcher/ByHand.qml;
   };
@@ -1115,6 +1116,13 @@ in
       quests = {
         order = 111;
         source = "quests";
+        weight = 0.9;
+      };
+      # The machine's queue: the heavy work running and waiting its turn,
+      # each job going to the session it's for.
+      jobs = {
+        order = 111;
+        source = "queue";
         weight = 0.9;
       };
       # pi's fleets and review rounds of the last day, and those running,

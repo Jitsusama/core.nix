@@ -60,8 +60,7 @@
         "machine",
         "machine:memory",
         "heat",
-        "machine:disk",
-        "jobs"
+        "machine:disk"
       ],
       "commands": [
         "command:volume"
@@ -111,6 +110,7 @@
       "parts": [
         "orchestrators",
         "quests",
+        "jobs",
         "runs",
         "spend"
       ],
@@ -220,17 +220,108 @@
       "id": "jobs",
       "name": "Queue",
       "term": "Machine/queue",
-      "provider": "machine",
-      "question": "queue",
-      "answers": [
-        "queue"
-      ]
+      "noun": "jobs",
+      "what": "job",
+      "glyph": "timed",
+      "ask": "which job?",
+      "empty": "Nothing queued.",
+      "said": {
+        "running": "{count} running",
+        "waiting": "{count} waiting",
+        "none": "nothing queued",
+        "silent": "the queue has stopped saying",
+        "ranOf": "{ran} of {last} min",
+        "over": "{over} min over",
+        "ranFor": "for {ran} min",
+        "memory": "waits for memory",
+        "vms": "waits for a VM",
+        "behind": "behind a VM test",
+        "inLine": "{place} in line",
+        "holds": "holds {gib} GiB",
+        "needs": "needs {gib} GiB",
+        "more": "and {more} more",
+        "first": "put first",
+        "quick": "quick",
+        "capped": "capped",
+        "vm-test": "VM test",
+        "vm-check": "VM check",
+        "build": "build",
+        "benchmark": "benchmark",
+        "spare": "{gib} GiB to spare",
+        "heldUp": "the processors {percent}% held up",
+        "wasted": "{minutes} min waited with room today"
+      }
     },
     {
-      "id": "verb:job:switch",
+      "id": "verb:job:go",
       "in": "jobs",
-      "name": "Switch",
-      "verb": "switch"
+      "name": "Go To",
+      "verb": "go"
+    },
+    {
+      "id": "jobs:vm-test",
+      "in": "jobs",
+      "name": "VM Test"
+    },
+    {
+      "id": "jobs:vm-check",
+      "in": "jobs",
+      "name": "VM Check"
+    },
+    {
+      "id": "jobs:build",
+      "in": "jobs",
+      "name": "Build"
+    },
+    {
+      "id": "jobs:benchmark",
+      "in": "jobs",
+      "name": "Benchmark"
+    },
+    {
+      "id": "jobs:checks",
+      "in": "jobs",
+      "name": "Checks"
+    },
+    {
+      "id": "jobs:quest",
+      "in": "jobs",
+      "name": "Quest"
+    },
+    {
+      "id": "jobs:session",
+      "in": "jobs",
+      "name": "Session"
+    },
+    {
+      "id": "jobs:command",
+      "in": "jobs",
+      "name": "Command"
+    },
+    {
+      "id": "jobs:class",
+      "in": "jobs",
+      "name": "Class"
+    },
+    {
+      "id": "jobs:needs",
+      "in": "jobs",
+      "name": "Needs"
+    },
+    {
+      "id": "jobs:held",
+      "in": "jobs",
+      "name": "Holds"
+    },
+    {
+      "id": "jobs:since",
+      "in": "jobs",
+      "name": "Since"
+    },
+    {
+      "id": "jobs:last",
+      "in": "jobs",
+      "name": "Last Run"
     },
     {
       "id": "machine",

@@ -562,9 +562,13 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
                 "kind": "build",
                 "state": "running",
                 "owner": {"session": "elsewhere", "pid": 1},
-                "what": "Build the desktop",
+                "what": "nix build .#lighthouse",
+                "name": "lighthouse",
+                "lastRanS": 1500,
+                "memoryGib": 4,
                 "since": queued_at,
-                "slice": "jobs.slice",
+                # A slice the machine has, so what it holds is read.
+                "slice": "/user.slice",
             },
             {
                 "id": "b",
@@ -572,7 +576,11 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
                 "kind": "vm-test",
                 "state": "waiting",
                 "owner": {"session": "elsewhere", "pid": 1},
-                "what": "Test the camera",
+                "what": "nix build .#checks.x86_64-linux.vm-zathura-opens-a-pdf",
+                "name": "vm-zathura-opens-a-pdf",
+                "memoryGib": 6,
+                "waitingOn": "memory",
+                "quick": True,
                 "since": queued_at,
                 "place": 1,
             },
@@ -583,25 +591,46 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
+    # The queue is Agents' now, found by its name, saying how many run and
+    # wait, and the room the machine has below.
+    # In Agents it says how many run and wait, after Quests.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("agents", selecting="Agents")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["agents"]
+            and any(
+                thing["reads"].startswith("Queue \u00b7 1 running, 1 waiting")
+                for thing in shown["things"]
+            )
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # Found from the top by name, which counts nothing as it's typed, the
+    # room below it says the same.
     desktop.answer("queue")
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
+            (shown["selected"] or {}).get("name") == "Queue"
             and shown["footer"] == "3 GiB to spare \u00b7 the processors 13% held up"
         )
     )
-    # At a glance its place in line or how long it's run, a minute
-    # turning over allowed for; since when below it. They're a step
-    # into the answer, the first selected there.
+    # Each job by what it is in words, never a check's name: how long it's
+    # run against the last time, a minute turning over allowed for, or what
+    # it waits for; below it, its kind, the memory it holds or needs, and
+    # how it's marked.
     desktop.step_in()
     for index, (name, side, footer) in enumerate(
         [
+            ("Lighthouse", r"[12] of 25 min", r"build \u00b7 holds [\d.]+ GiB"),
             (
-                "Build the desktop",
-                r"build \u00b7 (just begun|for 1 min)",
-                r"running since \d\d:\d\d",
+                "Zathura Opens a PDF",
+                "waits for memory",
+                "VM test \u00b7 needs 6 GiB \u00b7 quick",
             ),
-            ("Test the camera", r"VM test \u00b7 1st in line", r"waiting since \d\d:\d\d"),
         ]
     ):
         if index > 0:
@@ -614,6 +643,16 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
                 and re.fullmatch(footer, shown["footer"]) is not None  # noqa: B023
             )
         )
+    # With no session's window to go to, Return copies its name; a step in
+    # says what it runs and the rest the queue knows of it.
+    assert desktop.showing()["selected"]["verb"] == "copy", desktop.showing()["selected"]
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            {"Command", "Class", "Needs", "Since"} <= set(shown["rows"])
+            and "Holds" not in shown["rows"]
+        )
+    )
     desktop.photograph("launcher-queue")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))

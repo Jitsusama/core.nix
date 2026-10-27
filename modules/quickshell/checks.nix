@@ -1316,6 +1316,52 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's queue, Agents' place for the machine's heavy work, says
+  # what each job is from the queue pi's harness writes (tests/queue.qml),
+  # with the queue, pi's sessions, niri, Quests and a slice's memory stood
+  # in: names in words, times against the last run, what a waiting job
+  # waits for, and where Return goes.
+  the-launcher-finds-the-queue =
+    let
+      niri = singleton "Niri.qml" ''
+        property var acted: null
+        function act(request) { acted = request; }
+      '';
+      sessions = singleton "Sessions.qml" ''
+        property var running: [{ presence: { session: "s1" }, window: { id: 7 }, address: "QUEUE1" }]
+      '';
+      jobs = singleton "Jobs.qml" ''
+        property var said: null
+        readonly property var jobs: said?.jobs ?? []
+        readonly property var running: jobs.filter(job => job.state === "running")
+        readonly property var waiting: jobs.filter(job => job.state === "waiting")
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-queue" { } ''
+      mkdir -p launcher cgroups/work.scope
+      # 5.8 GiB, held by the running job's slice.
+      echo 6227702579 > cgroups/work.scope/memory.current
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Queue.qml} launcher/Queue.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/queue.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      cp ${jobs} Jobs.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export CGROUPS=$PWD/cgroups
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # Tuple's place in the launcher leads with what can be done about calls
   # now, as a stand-in for Tuple.qml says it, and its people follow Tuple's
   # contacts through the real

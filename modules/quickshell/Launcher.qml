@@ -1471,6 +1471,7 @@ Scope {
             name: collection.title ?? collection.noun,
             plain: true,
             count: counted ? source.counted() : "",
+            note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],

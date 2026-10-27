@@ -13,9 +13,6 @@
 //   system where no guard watches, then how fast the disk is Reading and
 //   Writing, how Busy it is, its Latency, Temperature, Health and Model.
 // - "uptime": how long the machine has been up.
-// - "queue" or "what's running": the heavy work the machine's queue runs and
-//   holds, each job a row going to its session's window, from what the
-//   harness writes (Jobs.qml).
 //
 // A part has its own words too, "disk speed" or "ram type", which answer
 // it alone. The words that ask each, and every part's name, are the
@@ -52,8 +49,7 @@ Provider {
         memory: "machine:memory",
         cpu: "machine:cpu",
         uptime: "machine:uptime",
-        disks: "machine:disk",
-        queue: "jobs"
+        disks: "machine:disk"
     })
     // A part asked for alone, by its own words, as the thing and the
     // part's name.
@@ -94,8 +90,6 @@ Provider {
             return uptime();
         case "disks":
             return disks();
-        case "queue":
-            return queue();
         default:
             return null;
         }
@@ -500,27 +494,6 @@ Provider {
         }
     }
 
-    // The queue is heard, not read on a clock, so while one of the
-    // machine's answers is shown it's asked again as the harness writes it:
-    // a job finishing while it's shown says so, and one asked before the
-    // file was first heard answers once it is. Asked again while nothing of
-    // the machine's shows, what Joel had typed was searched afresh each
-    // time the queue moved, for nothing. Only something typed can have
-    // asked before the file was heard, so at home it isn't asked at all.
-    property bool queueHeard: false
-
-    Connections {
-        target: Jobs
-
-        function onSaidChanged() {
-            const first = !provider.queueHeard;
-            provider.queueHeard = Jobs.said !== null;
-            if (provider.shown || (first && provider.launcher?.open
-                && provider.launcher.typed !== ""))
-                provider.answered();
-        }
-    }
-
     // The memory.
 
     function memoryRead() {
@@ -881,66 +854,6 @@ Provider {
         if (model !== "")
             rows.push(leaf({ name: named("disk:model"), side: model }));
         return rows;
-    }
-
-    // The jobs.
-
-    // How long a job has run, as a clock reads it: minutes, or hours and
-    // minutes.
-    function ran(at) {
-        const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 60000));
-        return minutes === 0 ? "just begun"
-            : minutes < 60 ? `for ${minutes} min`
-            : `for ${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
-    }
-
-    readonly property var kindNames: ({
-        "vm-test": "VM test",
-        "vm-check": "VM check",
-        "benchmark": "benchmark",
-        "build": "build"
-    })
-
-    // The queue: what runs and what waits, each going to the window of the
-    // session it's for, or copying what it is when none is open.
-    function queue() {
-        if (Jobs.said === null)
-            return null;
-        const windowed = job => Sessions.running.find(session => session.presence?.session === job.owner?.session) ?? null;
-        const rows = Jobs.jobs.map(job => {
-            const session = windowed(job);
-            const kind = kindNames[job.kind] ?? job.kind;
-            const waiting = job.state === "waiting";
-            // Its place in line or how long it's run at a glance, its glyph
-            // saying which; since when below, on asking.
-            const fields = {
-                name: job.what,
-                side: waiting ? `${kind} \u00b7 ${Numbers.ordinal(job.place)} in line`
-                    : `${kind} \u00b7 ${ran(job.since)}`,
-                note: `${waiting ? "waiting" : "running"} since ${Qt.formatDateTime(new Date(job.since), "HH:mm")}`,
-                glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"],
-                hue: job.state === "waiting" ? "muted" : "action",
-                plain: true
-            };
-            return session === null ? copyRow(fields) : thing(Object.assign(fields, {
-                verb: Words.verb("verb:job:switch"),
-                later: true,
-                run: () => Niri.act({ FocusWindow: { id: session.window.id } })
-            }));
-        });
-        const room = Jobs.said.machine ?? {};
-        const counted = [Jobs.running.length > 0 ? `${Jobs.running.length} running` : "",
-            Jobs.waiting.length > 0 ? `${Jobs.waiting.length} waiting` : ""].filter(part => part !== "").join(", ");
-        const wasted = Jobs.said.wasted?.today ?? 0;
-        return {
-            headline: counted === "" ? "nothing queued" : counted,
-            live: provider,
-            rows: rows,
-            note: Jobs.silent ? "the queue has stopped saying"
-                : [room.availableGib !== undefined ? `${room.availableGib} GiB to spare` : "",
-                    room.pressure?.cpu !== undefined ? `the processors ${Math.round(room.pressure.cpu)}% held up` : "",
-                    wasted > 0 ? `${wasted} min waited with room today` : ""].filter(part => part !== "").join(" \u00b7 ")
-        };
     }
 
     function uptime() {

@@ -191,6 +191,12 @@ Scope {
         return size === 0 ? "empty" : String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
 
+    // What a collection's row says below it while it's picked, as the
+    // queue says how much room the machine has: nothing, for most.
+    function noted() {
+        return "";
+    }
+
     // A collection was stepped into, so all of it has been seen.
     function opened() {
     }
