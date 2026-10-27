@@ -93,6 +93,9 @@ first in the queue and conclude.
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
 | peer | another session on the same machine, reached over the mesh | instance, swarm | |
 | mesh | how sessions on one machine message each other | | `mesh_send` |
+| node | mycelium's program on a machine, carrying its mesh to the machines it links with | | `mycelium node` |
+| link | two machines' nodes joined, carrying the mesh's messages and sessions between them | | `mycelium link`, `jitsusama.mycelium.links` |
+| realm | a set of machines whose nodes link, such as Joel's work or personal ones, with nothing crossing between realms | | `jitsusama.mycelium.realm` |
 | address | a peer's own group on the mesh, six letters | | |
 | group | a set of peers a mesh message goes to, such as an orchestration's | | `#quest/<id>` |
 | question | a mesh message asking peers for an answer | mesh question | `intent: question` |

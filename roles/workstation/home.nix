@@ -1,5 +1,5 @@
-# A machine Joel writes code on: Neovim and coding agents, and the ErgoDox
-# he plugs into each one.
+# A machine Joel writes code on: Neovim and coding agents, mycelium to carry
+# their mesh to his other machines, and the ErgoDox he plugs into each one.
 { homeModules }:
 {
   imports = [
@@ -8,6 +8,7 @@
     homeModules.claude
     homeModules.opencode
     homeModules.pi
+    homeModules.mycelium
     homeModules.ergodox
   ];
 }
