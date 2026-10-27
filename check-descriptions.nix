@@ -15,6 +15,10 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
+  a-notice-comes-forward = ''
+    once a notice is opened, its sender's window comes forward, the one used last, unless one of
+    its own is in front already or it has none open
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds

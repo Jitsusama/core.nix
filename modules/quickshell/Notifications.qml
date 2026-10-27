@@ -249,7 +249,7 @@ Scope {
         Notices.mark(notification.id, true);
         const offer = opens(notification);
         if (offer)
-            offer.invoke();
+            Notices.open(offer, notification.appName);
         else
             notification.dismiss();
     }
@@ -744,7 +744,7 @@ Scope {
                                 root.order = Stack.forward(root.shown, card.modelData.id);
                             } else if (card.opens) {
                                 Notices.mark(card.modelData.id, true);
-                                card.opens.invoke();
+                                Notices.open(card.opens, card.modelData.appName);
                             } else {
                                 card.modelData.dismiss();
                             }

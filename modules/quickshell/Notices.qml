@@ -26,6 +26,7 @@ pragma Singleton
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Forward.js" as Forward
 
 Singleton {
     id: root
@@ -141,6 +142,33 @@ Singleton {
             const others = Object.assign({}, resting);
             delete others[id];
             resting = others;
+        }
+    }
+
+    // Opens what a notice is about, by its sender's own action, and brings
+    // the sender forward when it doesn't come by itself. The shell hands
+    // it a token to raise its window with, but Slack and Chrome often ask
+    // niri for one of their own, which niri refuses, so the conversation
+    // would open behind what's in front (Forward.js). A second is given
+    // for it to come, and then its window is focused, if it has one.
+    function open(action, app) {
+        action.invoke();
+        const entry = DesktopEntries.heuristicLookup(app);
+        forwarding = [app.toLowerCase()].concat(entry ? [entry.id.toLowerCase()] : []);
+        forwarded.restart();
+    }
+
+    // The names the last opened notice's sender goes by, which its window
+    // is found by.
+    property var forwarding: []
+
+    Timer {
+        id: forwarded
+        interval: 1000
+        onTriggered: {
+            const id = Forward.toFocus(Niri.windows, Niri.focused, root.forwarding);
+            if (id !== null)
+                Niri.act({ FocusWindow: { id: id } });
         }
     }
 

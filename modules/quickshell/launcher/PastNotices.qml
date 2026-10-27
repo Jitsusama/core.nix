@@ -94,7 +94,7 @@ Provider {
                 Notices.mark(notice.id, true);
                 const opening = provider.opens(notice);
                 if (opening)
-                    opening.invoke();
+                    Notices.open(opening, notice.app);
                 else if (!from.window && !from.entry)
                     Quickshell.clipboardText = said;
                 else

@@ -1775,6 +1775,23 @@ onLinux {
       touch $out
     '';
 
+  # Once a notice is opened, its sender's window comes forward when it
+  # doesn't by itself, as tests/notice-comes-forward.qml holds Forward.js
+  # to niri's windows.
+  a-notice-comes-forward =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-notice-comes-forward" { } ''
+      cp ${../../tests/notice-comes-forward.qml} notice-comes-forward.qml
+      cp ${./Forward.js} Forward.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-comes-forward.qml
+      touch $out
+    '';
+
   # Every glyph in the margin stands the same height on the gap's middle
   # line, however tall its font draws it, and they line up from the corner
   # by how much each asks, in the colour that says so, as tests/marks.qml

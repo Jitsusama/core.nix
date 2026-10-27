@@ -237,6 +237,39 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
+def test_a_notice_opened_brings_its_sender_forward_when_it_stays_behind(
+    desktop: Desktop,
+) -> None:
+    """A notice opened brings its sender forward when it doesn't come by itself.
+
+    notify-send ignores the token it's handed, as Slack and Chrome often do, so its
+    window, a kitty going by the sender's name, only comes if the shell brings it.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.as_account("niri msg action spawn -- kitty --class stand-in-chat --title 'Chat'")
+    machine.wait_until_succeeds(
+        desktop.in_session('niri msg --json windows | grep -qF \'"title":"Chat"\''),
+        timeout=timedelta(seconds=30),
+    )
+    elsewhere = desktop.opened("Elsewhere")
+    with desktop.told("shows card Thread with Kim"):
+        desktop.as_account(
+            "notify-send --app-name=stand-in-chat --expire-time=60000 --action=default=Open"
+            " 'Thread with Kim' 'see it' > /tmp/answer 2>&1 < /dev/null &"
+        )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    machine.send_key("ret")
+    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
+    retry(
+        lambda _: desktop.window_titled("Chat")["is_focused"],
+        timeout=timedelta(seconds=10),
+    )
+    desktop.close(desktop.window_titled("Chat"))
+    desktop.close(elsewhere)
+
+
 def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop: Desktop,
 ) -> None:
