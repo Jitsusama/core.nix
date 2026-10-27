@@ -369,9 +369,9 @@ pub fn pressure(proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
 
 /// Where power comes from, by the supplies in `/sys/class/power_supply`.
 /// Supplies scoped to a device, such as a mouse's battery, say nothing
-/// about the machine. A battery's status can read Discharging while mains
-/// is online, so only the supplies' own online state counts. A machine with
-/// no supplies at all is a desktop, on mains.
+/// about the machine. A battery's status can read Discharging while the
+/// charger is online, so only the supplies' own online state counts. A
+/// machine with no supplies at all is a desktop, taken as on the charger.
 pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
     let read = |path: PathBuf| fs::read_to_string(path).map(|text| text.trim().to_owned());
     let (mut sources, mut online, mut charges) = (0, false, Vec::new());
@@ -395,7 +395,7 @@ pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
         .checked_div(charges.len())
         .and_then(|mean| u8::try_from(mean).ok());
     Ok(crate::moments::Power {
-        mains: online || (sources == 0 && battery.is_none()),
+        on_charger: online || (sources == 0 && battery.is_none()),
         battery,
     })
 }

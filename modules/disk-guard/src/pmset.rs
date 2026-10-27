@@ -12,7 +12,7 @@ pub fn low_power(text: &str) -> bool {
     })
 }
 
-/// The source it's drawing from, which is mains only as AC power, and the
+/// The source it's drawing from, which is the charger only as AC Power, and the
 /// average charge of the machine's own batteries. A UPS's charge isn't the
 /// machine's. Nothing when the output doesn't say where power comes from.
 pub fn power(text: &str) -> Option<Power> {
@@ -35,7 +35,7 @@ pub fn power(text: &str) -> Option<Power> {
         .and_then(|count| total.checked_div(count))
         .and_then(|mean| u8::try_from(mean).ok());
     Some(Power {
-        mains: source == "AC Power",
+        on_charger: source == "AC Power",
         battery,
     })
 }

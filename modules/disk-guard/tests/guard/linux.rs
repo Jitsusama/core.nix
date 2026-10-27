@@ -191,11 +191,11 @@ fn the_live_pressure_reads() {
     }
 }
 
-/// A laptop's supplies as one shows them: mains and a USB-C source for
+/// A laptop's supplies as one shows them: a charger and a USB-C source for
 /// the system, its battery, and a mouse's battery.
-fn supplies(root: &Path, mains: &str, usb: &str, capacity: &str) {
+fn supplies(root: &Path, charger: &str, usb: &str, capacity: &str) {
     text(root, "AC/type", "Mains\n");
-    text(root, "AC/online", mains);
+    text(root, "AC/online", charger);
     text(root, "ucsi-source-psy-USBC000:001/type", "USB\n");
     text(root, "ucsi-source-psy-USBC000:001/scope", "System\n");
     text(root, "ucsi-source-psy-USBC000:001/online", usb);
@@ -214,7 +214,7 @@ fn power_comes_from_any_system_supply_and_the_systems_battery() {
     assert_eq!(
         power(root.path()).unwrap(),
         Power {
-            mains: true,
+            on_charger: true,
             battery: Some(95)
         }
     );
@@ -222,7 +222,7 @@ fn power_comes_from_any_system_supply_and_the_systems_battery() {
     assert_eq!(
         power(root.path()).unwrap(),
         Power {
-            mains: true,
+            on_charger: true,
             battery: Some(40)
         }
     );
@@ -230,7 +230,7 @@ fn power_comes_from_any_system_supply_and_the_systems_battery() {
     assert_eq!(
         power(root.path()).unwrap(),
         Power {
-            mains: false,
+            on_charger: false,
             battery: Some(40)
         }
     );
@@ -242,7 +242,7 @@ fn a_machine_with_no_supplies_is_on_mains() {
     assert_eq!(
         power(root.path()).unwrap(),
         Power {
-            mains: true,
+            on_charger: true,
             battery: None
         }
     );

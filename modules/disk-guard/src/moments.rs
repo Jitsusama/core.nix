@@ -15,10 +15,10 @@ pub struct Pressure {
     pub cpu: Stall,
 }
 
-/// Where the machine's power comes from: mains, and the system battery's
-/// charge in percent when it has one.
+/// Where the machine's power comes from: whether it's on the charger, and
+/// the system battery's charge in percent when it has one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Power {
-    pub mains: bool,
+    pub on_charger: bool,
     pub battery: Option<u8>,
 }

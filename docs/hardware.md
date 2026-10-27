@@ -176,7 +176,7 @@ a hunk moved onto 7.2's context, which its header says.
 | `xe-small-fixes`                | fbdev, resume hotplug, UHBR DP audio, four GT fixes |
 | `sof-dsp-and-dma`               | the DSP's DMA, its period on a high-priority queue  |
 | `amp-feedback-channels`         | the amplifiers' feedback on the right channels      |
-| `hdmi-jack-after-resume`        | a jack plugged in during suspend is seen            |
+| `hdmi-jack-after-resume`        | a jack plugged in during sleep is seen              |
 | `sdca-hid-lifetime`             | the headset buttons' device leaves with its codec   |
 | `iwlwifi-core-107`              | Wi-Fi firmware 107 and per-country puncturing       |
 | `iwlmld-resume-fixes`           | Wi-Fi resumes cleanly after being powered off       |
@@ -486,7 +486,7 @@ ages fastest held near full, and faster warm: Battery University puts a cell
 kept a year at 25 °C at 96% of its capacity at 40% charge, against 80% at
 full. With the starting point that close, the laptop leaves the charger near
 80% however briefly it was plugged in; a start of 50 would leave one plugged
-in at 70% uncharged. On mains the laptop runs from the charger either way, so
+in at 70% uncharged. Plugged in, the laptop runs from the charger either way, so
 the limit costs no speed.
 
 `dell-laptop` offers these as `charge_types` and the charge thresholds, but
@@ -558,7 +558,7 @@ changes it:
   firmware allowed ran no faster: Dell's skin-temperature policy holds
   sustained power near 25 W either way. Firmware 1.11.0 allows 41 W, and the
   30 W limit holds as before.
-- **The performance profile on mains.** It sustains 22 to 28% more work than
+- **The performance profile on the charger.** It sustains 22 to 28% more work than
   balanced, which is why the charger follower asks for it.
 - **Wi-Fi power saving.** It stays on: off, the router's latency was the same
   within the noise.
@@ -575,7 +575,7 @@ changes it:
 
 power-profiles-daemon's performance profile asks Intel's driver for the
 energy preference `performance`. The module patches it to ask for
-`balance_performance`, as balanced already does on mains; the profiles still
+`balance_performance`, as balanced already does on the charger; the profiles still
 differ in the energy bias (0 against 6) and in the firmware's platform
 profile. Measured on a quiet laptop under the performance profile, with
 stress-ng's CPU stressor on sixteen threads for a minute:
@@ -617,7 +617,7 @@ and pstore kept both records:
   the modules' tag area whose counter pointer was garbage, so
   `__alloc_tagging_slab_free_hook()` faulted. It came 60 ms after the
   camera's ISYS bound the CVS bridge.
-- **At reboot, after a suspend.** `device_shutdown()` found that the device
+- **At reboot, after a sleep.** `device_shutdown()` found that the device
   before the one it was removing had been freed: the `kobj.entry` link at
   offset 8 of its 1 KiB slab object held an address in the modules' tag area
   instead. Offset 8 is where an entry in a slab's object vector keeps its
@@ -1094,7 +1094,7 @@ module loads it in the initrd, as the XPS 14's does with its GPU.
 
 The laptop sleeps only in s2idle, and it sleeps soundly: one night on the
 charger, `/sys/power/suspend_stats/last_hw_sleep` counted 12,327 s of
-hardware sleep in the 12,328 s between suspend entry and exit, so the SoC
+hardware sleep in the 12,328 s between going to sleep and waking, so the SoC
 sat in its deepest state throughout. The graphics and Wi-Fi came back within
 two seconds.
 
@@ -1105,7 +1105,7 @@ the power button and the Aggregator woke it. The CMOS clock says it can wake
 the machine only from S4. The ACPI time-and-alarm device reports
 capabilities 0x1F4, which set only its S4 and S5 wake bits, so the kernel
 offers no alarm on it, and reading its clock fails with an I/O error. A
-suspend test on this laptop needs someone to open the lid or press the
+sleep test on this laptop needs someone to open the lid or press the
 power button.
 
 ### What's Left
