@@ -992,6 +992,10 @@
     the prompt starts only git-engine and its mkfifo, then forks nothing across prompts in and out
     of a repository, reftable included
   '';
+  the-screen-keeps-its-level-while-the-lid-is-shut = ''
+    a shutdown with the lid shut keeps the screen's brightness saved while it was open, so the
+    next boot doesn't come up dark, and a keyboard's light is saved either way
+  '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
