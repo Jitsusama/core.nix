@@ -12,6 +12,15 @@
 # dialog: open-with (package.nix) answers the portal's AppChooser, and
 # niri's portals take it for that alone, keeping GNOME's and GTK's for the
 # rest as niri's own module sets them.
+#
+# A program choosing a file to open or save asks the launcher too: open-with
+# answers the portal's FileChooser (src/files.rs), and while the shell has no
+# picker to ask, it hands the request to GTK's portal, whose dialog opens as
+# before. Chromium's and Electron's dialogs and GTK 4's ask the portal on
+# their own; GTK 3's native chooser asks it only when GTK_USE_PORTAL says
+# to, and its own dialog never does, so a GTK 3 module
+# (dialogs-ask-the-portal.c) asks the native chooser in that dialog's place,
+# in every GTK 3 program, such as GIMP and Inkscape.
 { lib, pkgs, ... }:
 {
   environment.systemPackages = [
@@ -23,8 +32,20 @@
     settings.default = [ "kitty.desktop" ];
   };
 
+  environment.sessionVariables = {
+    GTK_USE_PORTAL = "1";
+    GTK3_MODULES = [
+      "${pkgs.callPackage ./dialogs-ask-the-portal.nix { }}/lib/libdialogs-ask-the-portal.so"
+    ];
+  };
+
   xdg.portal = {
     extraPortals = [ (pkgs.callPackage ./package.nix { }) ];
-    config.niri."org.freedesktop.impl.portal.AppChooser" = "launcher";
+    config.niri = {
+      "org.freedesktop.impl.portal.AppChooser" = "launcher";
+      # nixpkgs' niri module gives it to GTK's portal, which open-with
+      # asks in turn.
+      "org.freedesktop.impl.portal.FileChooser" = lib.mkForce "launcher";
+    };
   };
 }

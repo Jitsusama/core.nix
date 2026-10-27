@@ -245,6 +245,10 @@
   example-nixos = ''
     a NixOS workstation with a screen evaluates
   '';
+  files-are-chosen-with-or-without-the-picker = ''
+    open-with chooses a file in the shell when it answers, and in GTK's portal, given the call as
+    it was asked, when the shell has no picker
+  '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';
@@ -281,6 +285,10 @@
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere
+  '';
+  gtk-3-dialogs-ask-the-portal = ''
+    a GTK 3 program's own file dialog never shows, asks the portal instead, and answers with what
+    it chose, or as closed when it's cancelled
   '';
   gtk-speaks-in-the-theme = ''
     GTK's settings, the desktop's dconf and fontconfig's sans-serif all name the theme's sans face
@@ -827,6 +835,11 @@
   the-launcher-catalogues-what-it-does = ''
     the launcher's catalogue tells a place from an action, offers what ends something rather than
     doing it, and lists no figure, copy or command's start
+  '';
+  the-launcher-chooses-files = ''
+    a graphical machine's portal asks the launcher's chooser for a file to open or save, GTK 3
+    programs ask the portal, their own dialogs included, and open-with's description says it
+    answers it
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
