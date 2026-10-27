@@ -613,6 +613,10 @@
   pnpm-keeps-one-store = ''
     pnpm 10 and 12 find an account's one store from what its shells and user manager are given
   '';
+  programs-nobody-starts-stay-unlisted = ''
+    the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
+    reads them, while the programs stay installed
+  '';
   qemu-starts-after-its-sockets = ''
     the qemu VM tests run starts once the sockets it connects to are there, and fails naming one
     that never comes, ending what its script started
