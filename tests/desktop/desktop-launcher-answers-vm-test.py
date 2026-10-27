@@ -986,10 +986,10 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_tab
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_the_power_acts_are_found_by_their_names_and_an_old_name_finds_none(
+def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(
     desktop: Desktop,
 ) -> None:
-    """The power acts are found by their names, and an old name finds none."""
+    """The power acts are found by their names, and by the names they had."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     # Short names, each found by the start Joel types; Escape, never
@@ -1010,13 +1010,45 @@ def test_the_power_acts_are_found_by_their_names_and_an_old_name_finds_none(
         )
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # One word each: the old name finds what it named no more, so Sleep is
-    # learned once.
+    # A rename loses nothing: the old name still finds Sleep, never shown,
+    # and says once what it's called now.
     desktop.answer("suspend")
-    said = (desktop.showing()["selected"] or {}).get("name")
-    assert said != "Sleep", f"suspend still found Sleep: {said}"
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Sleep"
+            and shown["footer"] == "Once called Suspend."
+            and "Suspend" not in shown["rows"]
+        )
+    )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
+    """Every name a thing had still finds it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    words = json.loads(desktop.as_account("cat ~/.config/quickshell/launcher/words.json"))
+    kept = [
+        (old, str(entry["name"]))
+        for entry in [*words["things"], *words["categories"]]
+        for old in entry.get("once", [])
+    ]
+    # Every one the vocabulary keeps, so a rename that lost its row fails
+    # here rather than with Joel; the count proves the walk looked.
+    fewest = 20
+    assert len(kept) >= fewest, kept
+    lost = []
+    for old, name in kept:
+        desktop.answer(old.lower())
+        try:
+            desktop.launcher_until(lambda shown: name in shown["rows"])  # noqa: B023
+        except AssertionError:
+            lost.append(f"{old} -> {name}: {desktop.showing()['rows'][:5]}")
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    print(f"walked {len(kept)} old names")
+    assert lost == [], lost
 
 
 def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:

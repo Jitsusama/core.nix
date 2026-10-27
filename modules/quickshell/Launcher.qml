@@ -425,8 +425,8 @@ Scope {
     readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
         .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
-        .map(withSynonyms)
         .concat(collections.map(named), categories)
+        .map(withSynonyms)
     readonly property var collections: sources.filter(source => source.collection)
 
     // Each row by its key, and the rows that are parts of another (`of`
@@ -539,8 +539,10 @@ Scope {
             trail: trail.map(row => steadyId(row)),
             spot: steadyId(part),
             stays: true,
-            prepared: Fuzzy.prepare(part.name)
+            prepared: Fuzzy.prepare(part.name),
+            once: oldNames(part)
         };
+        spot.olds = spot.once.length > 0 ? Fuzzy.prepare(spot.once.join(" ")) : null;
         spot.run = () => root.goTo(spot);
         return spot;
     }
@@ -557,7 +559,9 @@ Scope {
         }
         const found = [];
         for (const spot of spots) {
-            const m = Fuzzy.match(spot.prepared, words, false);
+            // By its name, or else by a name it had.
+            const byName = Fuzzy.match(spot.prepared, words, false);
+            const m = byName.score < 0 && spot.olds ? Fuzzy.match(spot.olds, words, false) : byName;
             if (m.score >= 0)
                 found.push({ item: spot.prepared, score: m.score, grade: m.grade, row: spot });
         }
@@ -1364,12 +1368,35 @@ Scope {
         return out;
     }
 
-    // A row's own words, with those a machine adds for it
-    // (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's finds
-    // it. Made once for each row, and never twice for the same one.
+    // The names a row had before the glossary renamed it (words.json's
+    // `once`, or the row's own for one whose key isn't a word's, as a
+    // connection's): they still find it, and are never shown, so a rename
+    // never loses a row (Joel, 2026-10-26: "i didn't know its name had
+    // changed, i was used to calling it caffeinate").
+    function oldNames(row) {
+        const id = String(row.key ?? "").replace(/^(?:category|collection):/, "");
+        return row.once ?? row.category?.once ?? Words.of(id).once ?? [];
+    }
+
+    // "Once called Caffeinate." below a row found by a name it had and not
+    // by its own, so the new name is learned as it's used.
+    function onceCalled(row) {
+        const typed = Fuzzy.plainly(root.typed);
+        if (typed === "" || startsAWord(row.name ?? "", typed))
+            return "";
+        const old = oldNames(row).find(name => {
+            const plain = Fuzzy.plainly(name);
+            return plain.startsWith(typed) || typed.startsWith(plain);
+        });
+        return old ? `Once called ${old}.` : "";
+    }
+
+    // A row's own words, with the names it had and those a machine adds
+    // for it (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's
+    // finds it. Made once for each row, and never twice for the same one.
     function withSynonyms(row) {
-        const more = Providers.launcher.synonyms[row.key];
-        if (!more || row.synonymised)
+        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
+        if (more.length === 0 || row.synonymised)
             return row;
         row.keywords = Fuzzy.prepare([row.keywords ? row.keywords.text : ""].concat(more)
             .join(" ").trim());
@@ -2811,6 +2838,9 @@ Scope {
                                 return "";
                             if (choice.state)
                                 return choice.state();
+                            const once = root.onceCalled(choice);
+                            if (once !== "")
+                                return once;
                             if ((choice.note ?? "") !== "")
                                 return choice.note;
                             if (choice.plain && root.answer)

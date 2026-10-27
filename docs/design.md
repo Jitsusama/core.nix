@@ -570,9 +570,11 @@ works the same way everywhere.
   option `jitsusama.quickshell.launcher.words`): each thing's name as
   shown, the place it's in and the glyph it wears. A thing is named by
   its context's one term for it, the glossary's (`docs/glossary.md`), and
-  that term is what finds it: there are no synonyms and no hidden words,
-  and an old name finds nothing, so a renamed row is learned once (Joel,
-  2026-10-25: "i don't want 1,000 synonyms for similar ideas"). A word
+  that term is what finds it: there are no synonyms and no hidden words
+  (Joel, 2026-10-25: "i don't want 1,000 synonyms for similar ideas").
+  A rename never loses a row: the names it had (`once`, each one the
+  glossary replaces) still find it, never shown, and its note says "Once
+  called Caffeinate." so the new name is learned as it's used. A word
   may mean its own thing in another context, the crumbs saying which. A
   set is a plural noun ("Windows", "Quests"); an act is short, in
   sentence case, saying what it does ("Lock", "Keep awake", "Power
