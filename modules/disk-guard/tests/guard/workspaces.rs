@@ -197,6 +197,52 @@ fn the_trees_a_finished_quest_lists_are_over_with_it() {
     );
 }
 
+#[test]
+fn a_tree_whose_holders_have_all_ended_is_over_unless_a_live_quest_lists_it() {
+    // A tree's builds belong to whoever holds it. Once every process the
+    // broker's record names has ended, nobody does, unless a quest still
+    // going lists the tree as its own and will come back to it.
+    let root = tempfile::tempdir().unwrap();
+    let (records, quests) = (root.path().join("cut"), root.path().join("quests"));
+    fs::create_dir_all(&records).unwrap();
+    let record = |key: &str, path: &str, owners: &str| {
+        let body =
+            format!(r#"{{"identity":{{"key":"{key}"}},"path":"{path}","owners":[{owners}]}}"#);
+        fs::write(records.join(format!("{key}.json")), body).unwrap();
+    };
+    let owner = |pid: u32, started: u64| format!(r#"{{"pid":{pid},"startedAt":{started}}}"#);
+    record("held", "/t/held", &owner(100, 1_000_000));
+    record("ended", "/t/ended", &owner(200, 1_000_000));
+    record("worn", "/t/worn", &owner(300, 1_000_000));
+    record(
+        "shared",
+        "/t/shared",
+        &[owner(200, 1_000_000), owner(100, 1_000_000)].join(","),
+    );
+    record("nobody", "/t/nobody", "");
+    record("kept", "/t/kept", &owner(200, 1_000_000));
+    fs::write(records.join("torn.json"), "{\"path\":").unwrap();
+    quest(
+        &quests,
+        "QEST-20261002-DEF456",
+        "status: active\nupdated: 2026-10-03\ntrees:\n  - path: /t/kept\n",
+    );
+    // 100 still runs as started; 300 is a pid the kernel gave another
+    // process since, started a minute later; 200 is gone.
+    let running = |pid: u32, started: f64| match pid {
+        100 => (started - 1_000.4).abs() <= 2.0,
+        300 => (started - 1_060.0).abs() <= 2.0,
+        _ => false,
+    };
+    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, running);
+    over.sort();
+    assert_eq!(
+        over,
+        ["/t/ended", "/t/nobody", "/t/worn"].map(PathBuf::from),
+        "a tree is held while any owner runs as it started, or a live quest lists it"
+    );
+}
+
 /// A repository outside the workspace with a worktree linked into it, a
 /// clone of its own inside, and a repository whose worktree is also inside.
 pub(crate) fn linked_fixture(root: &Path) -> (PathBuf, PathBuf) {
