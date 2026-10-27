@@ -776,7 +776,10 @@ def test_the_copilot_key_starts_dictation(desktop: Desktop) -> None:
     # A press before niri has the key open would be lost, so the test waits
     # until niri holds its event node.
     node = machine.succeed("cat /run/copilot-key.device").strip()
-    machine.wait_until_succeeds(f"ls -l /proc/$(pgrep -x niri)/fd | grep -q ' {node}$'", timeout=30)
+    # More than one niri runs, so each one's open files are looked through.
+    machine.wait_until_succeeds(
+        f"for p in $(pgrep -x niri); do ls -l /proc/$p/fd; done | grep -q ' {node}$'", timeout=30
+    )
     since = desktop.mark()
     machine.succeed("echo press > /run/copilot-key")
     try:
