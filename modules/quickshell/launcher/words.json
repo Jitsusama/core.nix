@@ -2474,6 +2474,12 @@
       "empty": "Nothing's on or waiting."
     },
     {
+      "id": "on:today",
+      "in": "on",
+      "name": "Today",
+      "glyph": "date"
+    },
+    {
       "id": "on:waiting",
       "in": "on",
       "name": "Waiting on you",
