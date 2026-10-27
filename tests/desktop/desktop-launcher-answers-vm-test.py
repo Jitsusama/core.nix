@@ -135,6 +135,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.answer("charger")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.step_in()
+    # Return's own Copy leads, then the charger.
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy", "Charger"])
+    machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Charger"
@@ -450,7 +453,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # why not, its own sentence below.
     desktop.answer("disk")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's filling it"])
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:3] == ["Copy", "Space", "What's filling it"]
+    )
     desktop.type_in("filling", selecting="What's filling it")
     assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
     desktop.step_in()
@@ -474,7 +479,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Reading", "Writing"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # What the network carries now, in and out, from the kernel's
@@ -512,7 +517,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.step_in()
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
-        lambda shown: shown["rows"][:5] == ["In", "Out", "Connection", "Round trip", "Dropped"]
+        lambda shown: (
+            shown["rows"][:6] == ["Copy", "In", "Out", "Connection", "Round trip", "Dropped"]
+        )
     )
     assert (
         desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
@@ -526,7 +533,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "8.8.8.8", "1.1.1.1", "9.9.9.9"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A guard that stops writing is silent once its last heartbeat is

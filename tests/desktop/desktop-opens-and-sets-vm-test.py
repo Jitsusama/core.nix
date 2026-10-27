@@ -561,12 +561,12 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     machine.wait_until_fails(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
-    # The microphone holds its own: a live Level, its Gain, whether it's
-    # Muted, and who's Recording, which is nobody, though the Level's own
-    # stream is reading it while it shows.
+    # The microphone holds its own after Return's Mute: a live Level, its
+    # Gain, whether it's Muted, and who's Recording, which is nobody,
+    # though the Level's own stream is reading it while it shows.
     sound_device(desktop, "microphone", "stand-in microphone")
     desktop.launcher_until(
-        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Muted", "Recording"],
+        lambda shown: shown["rows"][:5] == ["Mute", "Level", "Gain", "Muted", "Recording"],
     )
     desktop.launcher_until(sound_reads("Level", "%"))
     desktop.launcher_until(sound_reads("Muted", "no"))
