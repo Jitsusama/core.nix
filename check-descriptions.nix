@@ -992,6 +992,10 @@
     the prompt starts only git-engine and its mkfifo, then forks nothing across prompts in and out
     of a repository, reftable included
   '';
+  the-screen-keeps-its-level-while-the-lid-is-shut = ''
+    a shutdown with the lid shut keeps the screen's brightness saved while it was open, so the
+    next boot doesn't come up dark, and a keyboard's light is saved either way
+  '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
@@ -1229,6 +1233,10 @@
     that key's PIN and signs the stick's boot program with the machine's db key; written again, the
     stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
     by its passphrase with the key still plugged in
+  '';
+  vm-hibernation-comes-back = ''
+    a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
+    comes back from the image through systemd's initrd as it was, and boots anew after
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame

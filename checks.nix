@@ -331,6 +331,9 @@ let
     # Whether systemd-oomd ends the work that filled swap before the kernel's
     # OOM killer picks a program shows only with swap filling for real.
     vm-full-swap-ends-what-filled-it = import ./tests/full-swap.nix { inherit self pkgs; };
+    # Whether a machine comes back from hibernating with no resume= shows only
+    # with systemd's initrd opening LUKS and reading the image it wrote.
+    vm-hibernation-comes-back = import ./tests/hibernate.nix { inherit self pkgs; };
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
     vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };

@@ -342,9 +342,15 @@ in
       # plymouth quits with the splash kept (plymouth-quit below), which
       # frees it while shown and left its frame timer to fire on the freed
       # splash: plymouthd crashed so in a starved VM's boot. The patch
-      # (frame-timer.patch) stops the timer as the splash is freed.
+      # (frame-timer.patch) stops the timer as the splash is freed. And a
+      # status sent before the splash is made, as the generation is when
+      # the graphics card comes late, reached nothing and was lost, so the
+      # second (statuses-kept.patch) keeps each for a splash made later.
       package = pkgs.plymouth.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./frame-timer.patch ];
+        patches = (old.patches or [ ]) ++ [
+          ./frame-timer.patch
+          ./statuses-kept.patch
+        ];
       });
       theme = "jitsusama";
       themePackages = [ art ];
