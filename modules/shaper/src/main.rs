@@ -202,8 +202,9 @@ fn network_of(uplink: &links::Uplink) -> String {
         .unwrap_or_else(|| format!("link {}", uplink.name))
 }
 
-/// The most a link can carry, in kbit/s: Ethernet says, Wi-Fi doesn't.
-fn ceiling(link: &str) -> u64 {
+/// The most a link can carry each way, in kbit/s: Ethernet says, Wi-Fi
+/// doesn't.
+fn ceiling(link: &str) -> links::Ceiling {
     links::ceiling(read_number(
         &Path::new("/sys/class/net").join(link).join("speed"),
     ))
@@ -232,11 +233,17 @@ fn start(
         .is_dir();
     let controller = Controller::new(
         Settings::for_link(wireless),
-        Direction::new(Bounds { min: FLOOR.up, max }, held.up),
+        Direction::new(
+            Bounds {
+                min: FLOOR.up,
+                max: max.up,
+            },
+            held.up,
+        ),
         Direction::new(
             Bounds {
                 min: FLOOR.down,
-                max,
+                max: max.down,
             },
             held.down,
         ),
@@ -538,6 +545,20 @@ fn look(
                 }
                 if !s.probes.running() {
                     s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send);
+                }
+                // A cable moved to another port can link at another speed
+                // without the link going away: a desk's went from 100 Mbit/s
+                // to gigabit, and its rates stayed held under the old wire.
+                let max = ceiling(&s.uplink.name);
+                let up = s.controller.up.bound(max.up);
+                if s.controller.down.bound(max.down) || up {
+                    eprintln!(
+                        "{}: the link's speed changed, so its rates are held under {} up and {} \
+                         down",
+                        s.uplink.name,
+                        mbit(max.up),
+                        mbit(max.down)
+                    );
                 }
                 // The router answers ARP a moment after the link comes up,
                 // so a link first named by itself learns its network later.

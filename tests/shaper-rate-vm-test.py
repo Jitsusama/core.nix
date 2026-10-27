@@ -92,9 +92,13 @@ class Rig:
     far: str
 
     def up(self) -> int:
-        """Give the rate the shaper sends at on eth1, in kbit/s."""
+        """Give the rate the shaper sends at on eth1, in kbit/s, or 0 before it says.
+
+        The status the shaper wrote before it began on eth1 doesn't name it yet,
+        which a wait read as soon as the shaper had started.
+        """
         status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
-        return int(next(link for link in status if link["name"] == "eth1")["up"])
+        return next((int(link["up"]) for link in status if link["name"] == "eth1"), 0)
 
     def backlog(self) -> int:
         """Give the bytes waiting in the line's queue at the router."""
