@@ -636,6 +636,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     # it waits for; below it, its kind, the memory it holds or needs, and
     # how it's marked.
     desktop.step_in()
+    # Past Return's own act, where the step leads with it.
+    desktop.launcher_until(lambda shown: "Lighthouse" in shown["rows"])
+    for _ in range(desktop.showing()["rows"].index("Lighthouse")):
+        machine.send_key("down")
     for index, (name, side, footer) in enumerate(
         [
             ("Lighthouse", r"[12] of 25 min", r"build \u00b7 holds [\d.]+ GiB"),
