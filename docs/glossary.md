@@ -256,7 +256,7 @@ can be connected, signed in to and forgotten; Wi-Fi's radio can be turned off.
 | Ethernet | the network through a cable | wired | |
 | tethering | reaching out through a phone's connection, over its cable | | |
 | sign-in page | the page a network shows before it lets the machine out, as a hotel's does | captive portal, network sign-in page | `wifid-sign-in` |
-| VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.tunnels` |
+| VPN | a private link to another network, carried through this one | tunnel | `jitsusama.shaper.vpns` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 

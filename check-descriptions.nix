@@ -1329,10 +1329,10 @@
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
     tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls, its
     UDP to Meet's media servers on 443 and Tuple's daemon video, even what it leaves to send as
-    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made again keeps its class; the client's
-    own network isn't slowed; inside a WireGuard tunnel the same classes reach the tunnel's own
-    CAKE; the queues follow the default route, a link unplugged and plugged back in is shaped
-    afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
+    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made
+    again keeps its class; the client's own network isn't slowed; inside a WireGuard VPN the same
+    classes reach the VPN's own CAKE; the queues follow the default route, a link unplugged and
+    plugged back in is shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in

@@ -5,7 +5,7 @@
 //! The queue that fills when this machine uploads isn't its own: it's the
 //! modem's or the router's, first come first served, where a call's packets
 //! wait behind a build's. So on every link with a default route, the shaper
-//! sends and receives a little slower than the line can take, through CAKE,
+//! sends and receives a little slower than the connection can take, through CAKE,
 //! and the queue forms here instead, short and sorted into CAKE's four
 //! tins. How fast "a little slower" is, it finds as it goes (src/rate.rs),
 //! and remembers for each network (src/memory.rs). Which tin a connection
@@ -13,7 +13,7 @@
 //! (the table in nixos.nix): the shaper keeps that table's sets of cgroups
 //! current (src/classes.rs), and its queues on each uplink (src/qdisc.rs).
 //!
-//! Usage: shaper run [--hosts 1.1.1.1,...] [--tunnels wg0,...] [--state DIR]
+//! Usage: shaper run [--hosts 1.1.1.1,...] [--vpns wg0,...] [--state DIR]
 //!                   [--runtime DIR] (`SHAPER_HOSTS` stands for --hosts)
 //!        shaper status
 //!        shaper stop
@@ -58,7 +58,7 @@ struct Options {
     state: PathBuf,
     runtime: PathBuf,
     cgroups: PathBuf,
-    tunnels: Vec<String>,
+    vpns: Vec<String>,
 }
 
 fn options(args: &[String]) -> Options {
@@ -71,7 +71,7 @@ fn options(args: &[String]) -> Options {
         state: "/var/lib/shaper".into(),
         runtime: "/run/shaper".into(),
         cgroups: "/sys/fs/cgroup".into(),
-        tunnels: Vec::new(),
+        vpns: Vec::new(),
     };
     // A network of its own, a test's among them, names its own distant hosts.
     if let Ok(hosts) = std::env::var("SHAPER_HOSTS") {
@@ -85,8 +85,8 @@ fn options(args: &[String]) -> Options {
             "--state" => o.state = value().into(),
             "--runtime" => o.runtime = value().into(),
             "--cgroups" => o.cgroups = value().into(),
-            "--tunnels" => {
-                o.tunnels = value()
+            "--vpns" => {
+                o.vpns = value()
                     .split(',')
                     .filter(|t| !t.is_empty())
                     .map(str::to_string)
@@ -153,7 +153,7 @@ struct Shaped {
     state: State,
     /// The link whose rate this one takes, when both reach the same router.
     follows: Option<String>,
-    /// Whether the journal has been told of the line's queue building now.
+    /// Whether the journal has been told of the connection's queue building now.
     told: bool,
     /// Whether a call's or a screen share's traffic crosses the link.
     real_time: qdisc::RealTime,
@@ -284,9 +284,9 @@ fn uplinks() -> Vec<links::Uplink> {
 }
 
 /// The links the shaper holds and what each reaches without the router.
-fn local(shaped: &BTreeMap<String, Shaped>, tunnels: &BTreeMap<String, u64>) -> classes::Local {
+fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, u64>) -> classes::Local {
     let mut local = classes::Local::default();
-    local.links.extend(tunnels.keys().cloned());
+    local.links.extend(vpns.keys().cloned());
     for name in shaped.keys() {
         local.links.push(name.clone());
         let json = sh(&words(&format!("ip -j addr show dev {name}"))).unwrap_or_default();
@@ -333,7 +333,7 @@ fn run(options: &Options) -> ExitCode {
     let mut last_fill: Option<Instant> = None;
     let mut filled = String::new();
     let mut reach = classes::Local::default();
-    let mut tunnels: BTreeMap<String, u64> = BTreeMap::new();
+    let mut vpns: BTreeMap<String, u64> = BTreeMap::new();
     let mut last_kept = Instant::now();
     loop {
         let now = Instant::now();
@@ -362,8 +362,8 @@ fn run(options: &Options) -> ExitCode {
                 .first()
                 .and_then(|p| shaped.get(p))
                 .map(|s| s.applied.0);
-            follow_tunnels(&mut tunnels, &options.tunnels, base);
-            reach = local(&shaped, &tunnels);
+            follow_vpns(&mut vpns, &options.vpns, base);
+            reach = local(&shaped, &vpns);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
         }
         // A slice or unit made a moment ago reaches its set at the next
@@ -451,16 +451,16 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
     down.learned = false;
 }
 
-/// What a tunnel may send, against the uplink it rides: a little under, so
-/// its own queue forms inside the tunnel, where its packets can still be
-/// told apart, before the uplink's CAKE sees them as one flow. A tunnel's
+/// What a VPN may send, against the connection it rides: a little under, so
+/// its own queue forms inside the VPN, where its packets can still be told
+/// apart, before the connection's CAKE sees them as one flow. A VPN's
 /// own header takes about 4% of a packet (MASQUE's or `WireGuard`'s on
 /// 1300 bytes).
-const TUNNEL_SHARE: f64 = 0.95;
+const VPN_SHARE: f64 = 0.95;
 
-/// Keeps a CAKE on each tunnel that's there, at its share of the primary
+/// Keeps a CAKE on each VPN that's there, at its share of the primary
 /// uplink's rate, and lets go of one that's gone or has no uplink to ride.
-fn follow_tunnels(applied: &mut BTreeMap<String, u64>, names: &[String], base: Option<u64>) {
+fn follow_vpns(applied: &mut BTreeMap<String, u64>, names: &[String], base: Option<u64>) {
     for name in names {
         let there = Path::new("/sys/class/net").join(name).exists();
         let Some(base) = base.filter(|_| there) else {
@@ -469,16 +469,16 @@ fn follow_tunnels(applied: &mut BTreeMap<String, u64>, names: &[String], base: O
             }
             continue;
         };
-        let kbit = whole(float(base) * TUNNEL_SHARE).max(FLOOR.up);
+        let kbit = whole(float(base) * VPN_SHARE).max(FLOOR.up);
         let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
         let moved = applied
             .get(name)
             .is_none_or(|a| a.abs_diff(kbit) * 100 > *a);
-        if !qdisc::tunnel_ours(&json) || moved {
-            match sh(&qdisc::tunnel(name, kbit)) {
+        if !qdisc::vpn_ours(&json) || moved {
+            match sh(&qdisc::vpn(name, kbit)) {
                 Ok(_) => {
                     if !applied.contains_key(name) {
-                        eprintln!("shaping tunnel {name} at {kbit} kbit/s");
+                        eprintln!("shaping VPN {name} at {kbit} kbit/s");
                     }
                     applied.insert(name.clone(), kbit);
                 }
@@ -490,7 +490,7 @@ fn follow_tunnels(applied: &mut BTreeMap<String, u64>, names: &[String], base: O
 
 /// Follows the uplinks: shapes a new one, lets a gone one go, and puts back
 /// queues somebody took away or a link that came back without. Returns the
-/// uplinks in the routes' order, the first being the one tunnels ride.
+/// uplinks in the routes' order, the first being the one VPNs ride.
 fn look(
     shaped: &mut BTreeMap<String, Shaped>,
     memory: &mut Memory,
@@ -573,9 +573,13 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
         let live = s.real_time.count(packets, t);
         if live != s.controller.live {
             if live {
-                eprintln!("{name}: real-time traffic flows, so the line's queue is kept here");
+                eprintln!(
+                    "{name}: real-time traffic flows, so the connection's queue is kept here"
+                );
             } else {
-                eprintln!("{name}: no real-time traffic now, so the line's whole rate is kept");
+                eprintln!(
+                    "{name}: no real-time traffic now, so the connection's whole rate is kept"
+                );
             }
             s.controller.live = live;
         }
@@ -591,10 +595,11 @@ fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
     apply(s);
 }
 
-/// Tells the journal of each cut, and of a queue on the line that builds
-/// while the shaper holds its rates, once a spell: a spike in a ping with
-/// neither in the journal was never the line's queue, and a spike with only
-/// the second was one this machine doesn't fill, or couldn't cut yet. It
+/// Tells the journal of each cut, and of a queue on the connection that
+/// builds while the shaper holds its rates, once a spell: a spike in a ping
+/// with neither in the journal was never the connection's queue, and a
+/// spike with only the second was one this machine doesn't fill, or
+/// couldn't cut yet. It
 /// tells of an old cut forgotten too, so a rate that jumps back is
 /// explained.
 fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
@@ -603,7 +608,7 @@ fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
     match s.state {
         State::Cut => {
             eprintln!(
-                "{name}: the line's queue reached {:.0} ms; up {} to {}, down {} to {}",
+                "{name}: the connection's queue reached {:.0} ms; up {} to {}, down {} to {}",
                 s.controller.cut_level(),
                 mbit(was.0),
                 mbit(up),
@@ -614,7 +619,8 @@ fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
         }
         State::Holding if s.controller.building() && !s.told => {
             eprintln!(
-                "{name}: the line's queue is building and the rates hold: up carries {:.0}% \
+                "{name}: the connection's queue is building and the rates hold: \
+                 up carries {:.0}% \
                  of {}, down {:.0}% of {}",
                 sent / float(up.max(1)) * 100.0,
                 mbit(up),
@@ -625,7 +631,8 @@ fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
         }
         State::Forgot => {
             eprintln!(
-                "{name}: no cut for {:.0} minutes, so the line's best is held again: up {}, down {}",
+                "{name}: no cut for {:.0} minutes, so the connection's best is held again: \
+                 up {}, down {}",
                 s.controller.settings.forget_s / 60.0,
                 mbit(s.controller.up.held),
                 mbit(s.controller.down.held)
@@ -732,13 +739,13 @@ fn status(runtime: &Path) -> ExitCode {
         if link.building && link.follows.is_none() {
             let _ = writeln!(
                 out,
-                "  the line's queue is building, so the shaper is slowing"
+                "  the connection's queue is building, so the shaper is slowing"
             );
         }
         if link.live {
             let _ = writeln!(
                 out,
-                "  real-time traffic flows, so the line's queue is kept here"
+                "  real-time traffic flows, so the connection's queue is kept here"
             );
         }
         if link.follows.is_none() {
@@ -794,7 +801,7 @@ fn stop() {
         if qdisc::ours(&json) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
             let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
-        } else if qdisc::tunnel_ours(&json) {
+        } else if qdisc::vpn_ours(&json) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
         }
     }

@@ -6,8 +6,9 @@
 # wait there behind a build's upload. With a 1 GB download running, pings
 # to 1.1.1.1 over Ethernet took 173 ms at the median and 288 ms at the 95th
 # percentile, against 17 ms quiet; with an upload, 197 ms through WARP. The
-# line carried about 11 Mbit/s up. So on every link with a default route the
-# shaper sends and receives a little slower than the line can take, through
+# connection carried about 11 Mbit/s up. So on every link with a default
+# route the shaper sends and receives a little slower than the connection
+# can take, through
 # CAKE, and the queue forms here instead, short and sorted. How fast that is
 # differs on every network, and on Wi-Fi from minute to minute, so the
 # shaper finds it from what pings to four distant resolvers do, cutting
@@ -22,15 +23,15 @@
 # and containers slices, the account's user.slice, Nix's builds, virtual
 # machines and whatever this machine forwards for them; best effort for the
 # rest, Spotify, Chrome, Slack, pi's own requests and what Joel waits on at
-# a terminal among them. Bulk gets
-# the whole line while nothing else wants it, and a sixteenth while
-# something does. What a link reaches without the router isn't slowed.
+# a terminal among them. Bulk gets the whole connection while nothing else
+# wants it, and a sixteenth while something does. What a link reaches
+# without the router isn't slowed.
 #
-# A tunnel such as a VPN's leaves by the uplink as one flow, whatever it
-# carries, so CAKE there can't tell a name lookup inside it from a build's
-# upload. A tunnel named in jitsusama.shaper.tunnels gets a CAKE of its
-# own, sorted by the same classes, at a little under the uplink's rate, so
-# its queue forms inside it.
+# A VPN leaves by the connection as one flow, whatever it carries, so CAKE
+# there can't tell a name lookup inside it from a build's upload. A VPN
+# named in jitsusama.shaper.vpns gets a CAKE of its own, sorted by the same
+# classes, at a little under the connection's rate, so its queue forms
+# inside it.
 #
 # Each time the shaper starts, the kernel warns "htb: cake qdisc 2: is
 # non-work-conserving?", once for the uplink and once for its IFB, and
@@ -47,18 +48,23 @@
 }:
 let
   shaper = pkgs.callPackage ./package.nix { };
-  tunnels = config.jitsusama.shaper.tunnels;
+  vpns = config.jitsusama.shaper.vpns;
 in
 {
-  imports = [ ../nftables/nixos.nix ];
+  imports = [
+    ../nftables/nixos.nix
+    # The glossary's word is VPN; the old name keeps working, with a warning,
+    # until the machines that set it move.
+    (lib.mkRenamedOptionModule [ "jitsusama" "shaper" "tunnels" ] [ "jitsusama" "shaper" "vpns" ])
+  ];
 
-  options.jitsusama.shaper.tunnels = lib.mkOption {
+  options.jitsusama.shaper.vpns = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [ ];
     example = [ "wg0" ];
     description = ''
-      The tunnels to shape inside, by their links' names: those that ride
-      an uplink as one flow and carry traffic this machine sends.
+      The VPNs to shape inside, by their links' names: those that ride the
+      connection as one flow and carry traffic this machine sends.
     '';
   };
 
@@ -104,7 +110,7 @@ in
     serviceConfig = {
       ExecStart =
         "${shaper}/bin/shaper run"
-        + lib.optionalString (tunnels != [ ]) " --tunnels ${lib.concatStringsSep "," tunnels}";
+        + lib.optionalString (vpns != [ ]) " --vpns ${lib.concatStringsSep "," vpns}";
       ExecStopPost = "${shaper}/bin/shaper stop";
       Restart = "always";
       RestartSec = 2;

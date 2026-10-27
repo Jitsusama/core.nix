@@ -1,4 +1,4 @@
-# Runs the shaper on a client whose line goes through a router to a server,
+# Runs the shaper on a client whose connection goes through a router to a server,
 # and reads from CAKE's own counts which tin each kind of traffic went to,
 # both ways: the account's jobs, the work Joel waits on at a terminal, the
 # system's builds, a guest it forwards for, an app's page and its call,
@@ -6,9 +6,9 @@
 # on the client's own network, goes by unslowed. When the default route
 # moves to the client's other link, the queues move with it; when that link is
 # unplugged and plugged back in, as a dock's adapter is, it's shaped afresh;
-# and when the shaper stops, it takes them all away. Inside a WireGuard tunnel to the
-# server, named as a machine names its VPN's, the same classes reach the
-# tunnel's own CAKE. The tests are shaper-vm-test.py, run through pytest.
+# and when the shaper stops, it takes them all away. Inside a WireGuard VPN
+# to the server, named as a machine names its VPN, the same classes reach
+# the VPN's own CAKE. The tests are shaper-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -33,7 +33,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     # The test's only distant host is the server.
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
-    jitsusama.shaper.tunnels = [ "wg0" ];
+    jitsusama.shaper.vpns = [ "wg0" ];
     users.users.alice = {
       isNormalUser = true;
       linger = true;
