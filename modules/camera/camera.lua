@@ -19,6 +19,7 @@ local options = {
   picture = '',
   video = '',
   -- The theme's, as home.nix gives them.
+  sans = 'sans-serif',
   mono = 'monospace',
   deepest = '',
   shadow = '',
@@ -41,9 +42,16 @@ local ready = false
 local flash = false
 local overlay = mp.create_osd_overlay('ass-events')
 
--- How many characters a UTF-8 string holds, since mpv's Lua counts bytes.
-local function length(text)
-  return select(2, text:gsub('[^\128-\191]', ''))
+-- The panel's words are drawn here first, unseen, to learn how wide they
+-- are, since the words' face is proportional.
+local measure = mp.create_osd_overlay('ass-events')
+measure.hidden, measure.compute_bounds = true, true
+
+local function wide(text, width, height)
+  measure.res_x, measure.res_y = width, height
+  measure.data = '{\\an7\\pos(0,0)}' .. text
+  local bounds = measure:update()
+  return bounds and bounds.x1 and bounds.x1 - bounds.x0 or 0
 end
 
 -- An ASS colour and alpha from the theme's #rrggbb and an opacity.
@@ -131,7 +139,6 @@ local function draw()
     return math.floor(px * scale + 0.5)
   end
   local size = unit(17.5)
-  local advance = size * 0.62
   local events = {}
 
   -- The shutter: the frame lit for a moment as it's taken.
@@ -148,44 +155,54 @@ local function draw()
   end
 
   -- On the left, what Return makes and, while recording, for how long;
-  -- on the right, the keys.
-  local left, said
+  -- on the right, the keys. Words, a key's name among them, are in the
+  -- interface's face; marks, the time and the spaces between in the
+  -- monospaced one, which has the marks, keeps the time's figures from
+  -- shifting as they count, and spaces the keys as evenly as before.
+  local font = string.format('{\\fs%d\\bord0\\shad0}', size)
+  local words = '\\fn' .. options.sans
+  local marks = '\\fn' .. options.mono
+  local left
   if not ready then
-    said = 'Waking the camera…'
-    left = string.format('{\\1c%s}%s', colour(options.muted), said)
+    left = string.format('{%s\\1c%s}Waking the camera…', words, colour(options.muted))
   else
     local mark = recording and options.video
       or (mode == 'picture' and options.picture or options.video)
+    local timing = recording and not recording.stopping
     local word = recording and (recording.stopping and 'Saving' or elapsed())
       or (mode == 'picture' and 'Picture' or 'Video')
-    said = mark .. '  ' .. word
     left = string.format(
-      '{\\1c%s}%s  {\\1c%s}%s',
+      '{%s\\1c%s}%s  {%s\\1c%s}%s',
+      marks,
       colour(recording and options.alert or options.action),
       mark,
+      timing and marks or words,
       colour(options.strong),
       word
     )
   end
-  local parts, plain = {}, {}
+  local parts = {}
   for _, hint in ipairs(ready and hints() or { { 'Esc', 'close' } }) do
     table.insert(
       parts,
       string.format(
-        '{\\1c%s}%s {\\1c%s}%s',
+        '{%s\\1c%s}%s{%s} {%s\\1c%s}%s',
+        hint[1]:match('^%a') and words or marks,
         colour(options.text),
         hint[1],
+        marks,
+        words,
         colour(options.muted),
         hint[2]
       )
     )
-    table.insert(plain, hint[1] .. ' ' .. hint[2])
   end
-  local right = table.concat(parts, '   ')
-  local left_length, right_length = length(said), length(table.concat(plain, '   '))
+  local right = table.concat(parts, '{' .. marks .. '}   ')
+  left, right = font .. left, font .. right
 
   local inner = unit(16)
-  local panel_width = math.floor(inner * 2 + (left_length + right_length) * advance + unit(24))
+  local panel_width =
+    math.floor(inner * 2 + wide(left, width, height) + wide(right, width, height) + unit(24))
   local panel_height = unit(40)
   local x0 = math.floor((width - panel_width) / 2)
   local y1 = height - unit(24)
@@ -218,9 +235,8 @@ local function draw()
       box(x0, y0, x1, y1, radius)
     )
   )
-  local font = string.format('\\fn%s\\fs%d\\bord0\\shad0', options.mono, size)
-  table.insert(events, string.format('{\\an4\\pos(%d,%d)%s}%s', x0 + inner, middle, font, left))
-  table.insert(events, string.format('{\\an6\\pos(%d,%d)%s}%s', x1 - inner, middle, font, right))
+  table.insert(events, string.format('{\\an4\\pos(%d,%d)}%s', x0 + inner, middle, left))
+  table.insert(events, string.format('{\\an6\\pos(%d,%d)}%s', x1 - inner, middle, right))
 
   overlay.res_x, overlay.res_y = width, height
   overlay.data = table.concat(events, '\n')
@@ -470,12 +486,25 @@ end
 mp.add_forced_key_binding('ENTER', 'camera-act', act)
 mp.add_forced_key_binding('KP_ENTER', 'camera-act-pad', act)
 mp.add_forced_key_binding('SPACE', 'camera-act-space', act)
-mp.add_forced_key_binding('TAB', 'camera-mode', function()
+-- Which Return makes, chosen while nothing records: Tab the other one, as
+-- Tab is the one used last everywhere, and the arrows that way, a picture
+-- on the left and a video on the right.
+local function choose(chosen)
   if recording then
     return
   end
-  mode = mode == 'picture' and 'video' or 'picture'
+  mode = chosen or (mode == 'picture' and 'video' or 'picture')
   draw()
+end
+
+mp.add_forced_key_binding('TAB', 'camera-mode', function()
+  choose()
+end)
+mp.add_forced_key_binding('LEFT', 'camera-picture', function()
+  choose('picture')
+end)
+mp.add_forced_key_binding('RIGHT', 'camera-video', function()
+  choose('video')
 end)
 mp.add_forced_key_binding('ESC', 'camera-close', close)
 mp.add_forced_key_binding('q', 'camera-quit', close)

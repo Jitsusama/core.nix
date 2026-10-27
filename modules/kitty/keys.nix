@@ -47,9 +47,11 @@ in
     action = "new_os_window_with_cwd";
   }
   {
+    # Tab is the one used last, as in every layer; kitty's negative tab
+    # numbers count back through the tabs used.
     chord = "ctrl+tab";
-    does = "Go to the next tab";
-    action = "next_tab";
+    does = "Go to the tab used last";
+    action = "goto_tab -1";
   }
   {
     chord = "ctrl+shift+tab";
