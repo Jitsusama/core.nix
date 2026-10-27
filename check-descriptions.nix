@@ -1444,6 +1444,10 @@
     zathura opens a page with the account's settings and stays open without a warning, and PDFs open
     in it
   '';
+  zathura-keys-go-where-they-say = ''
+    zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
+    and the question mark key asks the launcher for the keys
+  '';
   zsh-is-the-login-shell = ''
     an account on NixOS logs in to zsh, as one on a Mac does
   '';

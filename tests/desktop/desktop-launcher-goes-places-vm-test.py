@@ -1762,9 +1762,9 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.launcher_ready()
     # Its top is the layers, each with its count and as many of its first
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
-    # theirs, and the picture viewer's and the markdown reader's come after
-    # the terminal's.
-    layers = ["Desktop", "Terminal", "Picture viewer", "Markdown reader"]
+    # theirs, and the picture viewer's, the markdown reader's and the
+    # document viewer's come after the terminal's.
+    layers = ["Desktop", "Terminal", "Picture viewer", "Markdown reader", "Document viewer"]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
     desktop_row = desktop.showing()["things"][0]["reads"]
     assert re.fullmatch(r"Desktop \u00b7 \d+ \u00b7 Windows, Columns", desktop_row), desktop_row

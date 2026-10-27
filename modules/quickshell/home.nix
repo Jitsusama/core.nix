@@ -256,6 +256,7 @@ let
       "pi"
       "swayimg"
       "inlyne"
+      "zathura"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -430,6 +431,8 @@ let
     swayimg = nerd "f02e9";
     # The theme's document, as the reader shows documents.
     inlyne = nerd "f0219";
+    # The theme's book, as the viewer shows documents of pages.
+    zathura = nerd "f05da";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

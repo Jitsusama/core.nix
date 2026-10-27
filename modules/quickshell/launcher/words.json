@@ -1897,6 +1897,12 @@
       "glyph": "document"
     },
     {
+      "id": "shortcuts:zathura",
+      "in": "shortcuts",
+      "name": "Document viewer",
+      "glyph": "book"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2462,6 +2468,16 @@
       "id": "shortcuts:inlyne:zoom",
       "in": "shortcuts",
       "name": "Zoom"
+    },
+    {
+      "id": "shortcuts:zathura:turning",
+      "in": "shortcuts",
+      "name": "Turning pages"
+    },
+    {
+      "id": "shortcuts:zathura:fitting",
+      "in": "shortcuts",
+      "name": "Fitting the page"
     },
     {
       "id": "on",
