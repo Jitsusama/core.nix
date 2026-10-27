@@ -55,6 +55,11 @@
       url = "github:Jitsusama/neovim.pi";
       flake = false;
     };
+    # The node that carries the harness mesh between a realm's machines.
+    mycelium = {
+      url = "github:Jitsusama/mycelium";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     # The ErgoDox's firmware: ZSA's QMK, the firmware24 branch its layout was
     # made for, and the two of its submodules a board with an AVR chip builds
     # with, at the commits that branch records for them. The three move
@@ -85,6 +90,7 @@
       disko,
       wallpapers,
       neovim-pi,
+      mycelium,
       spicetify-nix,
       qmk,
       lufa,
@@ -162,6 +168,7 @@
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
+        mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;

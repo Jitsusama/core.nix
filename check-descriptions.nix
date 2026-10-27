@@ -396,6 +396,11 @@
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
   '';
+  mycelium-links-what-a-machine-names = ''
+    a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
+    as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
+    none only has the program, and one in no realm has no realm set
+  '';
   neovim-binds-every-key = ''
     Neovim binds every key keys.nix names and only those, each action provided, in its scope's
     buffer or plugin window, completion and the command line included

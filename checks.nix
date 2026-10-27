@@ -869,6 +869,7 @@ gather (
     ./modules/memory-modules/checks.nix
     ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
+    ./modules/mycelium/checks.nix
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix
     ./modules/nftables/checks.nix
