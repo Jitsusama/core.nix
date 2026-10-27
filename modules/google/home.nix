@@ -99,7 +99,14 @@ in
     };
 
     systemd.user.services.google = {
-      Unit.Description = "Keeps the Google account's meetings and mail for the shell";
+      Unit = {
+        Description = "Keeps the Google account's meetings and mail for the shell";
+        # Stopped before a switch reloads the units, google.path starts it
+        # again at once, from the old unit, since the credentials are still
+        # there, and the switch's start then finds it running; restarted
+        # after the reload, it comes back as the new one.
+        X-SwitchMethod = "restart";
+      };
       Service = {
         Slice = "background.slice";
         ExecStart = "${lib.getExe google} %t/google.sock ${lib.escapeShellArg credentials}";

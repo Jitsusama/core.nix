@@ -1,6 +1,9 @@
 # The checks of google, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
+  graphical,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -10,6 +13,13 @@
 }:
 # google serves the Linux desktop's shell, and builds only on Linux.
 onLinux {
+  # A switch restarts google after it reloads the units, so the program the
+  # shell reads is never the one from before the switch.
+  google-switches-to-the-new-one =
+    holds "google-switches-to-the-new-one"
+      "A switch stops google before reloading, so google.path starts the old one again."
+      (((account graphical).systemd.user.services.google.Unit.X-SwitchMethod or null) == "restart");
+
   # google's tests run as it builds: the harness's file is read for its
   # default or first account and never written, pi's fresh token is used
   # and a stale one refreshed in memory, a refused sign-in is signed out
