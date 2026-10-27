@@ -806,6 +806,45 @@ onLinux {
       touch $out
     '';
 
+  # Now's Today row: the date, the weather read as the launcher opens and
+  # the next meeting, whose Return is the meeting's own (tests/today.qml),
+  # with the margin's pieces, the agents' waiting list, the weather and the
+  # calendar stood in.
+  the-launcher-shows-today-in-now =
+    let
+      facts = singleton "Facts.qml" ''
+        property var all: []
+      '';
+      steward = singleton "Steward.qml" ''
+        property var items: []
+        property var foremost: null
+        function titled(each) { return each.title; }
+        function identity(each) { return each.title; }
+        function go(each) {}
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-shows-today-in-now" { } ''
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./Marks.js} Marks.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/WhatsOn.qml} launcher/WhatsOn.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/today.qml} shell.qml
+      cp ${facts} Facts.qml
+      cp ${steward} Steward.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's weather answers now, its parts and the rain by the hour
   # from one forecast, and the rain's own words answer the next rain
   # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
