@@ -48,7 +48,6 @@ Provider {
             return null;
         return {
             headline: part.side,
-            copy: "",
             graph: part.graph,
             glyph: whole.glyph,
             rows: part.verbs ? part.verbs() : [],
@@ -297,7 +296,6 @@ Provider {
                 }))));
         return {
             headline: `${bits(now.in)} in \u00b7 ${bits(now.out)} out`,
-            copy: "",
             graph: spark(series.moved),
             glyph: Theme.glyph.traffic,
             note: when,

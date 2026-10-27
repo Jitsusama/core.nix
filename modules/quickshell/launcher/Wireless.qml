@@ -470,7 +470,6 @@ Provider {
             return [];
         const lasted = Interfaces.lasted(read.connected);
         return [fact(`wifi:link:${card}:connected`, "connected", lasted, {
-            copy: "",
             note: `since ${Qt.formatDateTime(new Date(Date.now() - read.connected * 1000),
                 "HH:mm")}`
         })];
@@ -721,7 +720,6 @@ Provider {
             graph: level(point.signal),
             note: `${point.bars} of 4 bars`
         }), fact(key("estimate"), "estimate", `about ${point.estimate} Mb/s`, {
-            copy: "",
             note: "how fast a card would get on with it"
         }), fact(key("width"), "width", `${point.width} MHz`), fact(key("generation"),
             "generation", point.generation ? `Wi-Fi ${point.generation}` : "older", {
