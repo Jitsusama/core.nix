@@ -522,7 +522,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
         )
     )
     assert (
-        desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
+        desktop.showing()["things"][3]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
     )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
