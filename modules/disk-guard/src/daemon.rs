@@ -1647,7 +1647,7 @@ impl Guard {
             })
             .flat_map(|(quests, trees)| {
                 let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
-                    crate::workspaces::unheld_trees(records, quests, &running)
+                    crate::workspaces::unheld_trees(records, quests, running)
                 });
                 crate::workspaces::finished_trees(quests)
                     .into_iter()
