@@ -18,6 +18,7 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Waiting.js" as Waiting
 
 Singleton {
     id: root
@@ -53,9 +54,12 @@ Singleton {
     }
     readonly property int working: running.filter(session => session.presence && session.presence.busy).length
     // Those waiting on Joel, as each says while it does: { kind, since,
-    // said }, kind a question, an approval or blocked. The oldest first.
+    // said }, kind a question, an approval, blocked or an action, and only
+    // while it's truly his (Waiting.js): an action while its quest has
+    // something he can do now, and a question only from a session no
+    // other orchestrates. The oldest first.
     readonly property var wanting: running
-        .filter(session => session.presence && session.presence.wants)
+        .filter(session => asks(session))
         .sort((a, b) => String(a.presence.wants.since ?? "").localeCompare(String(b.presence.wants.since ?? "")))
     // The windows of those waiting on Joel, as one string, so a session's
     // other changes (working or not, its step) leave it the same and don't
@@ -132,6 +136,14 @@ Singleton {
     // say what they say. A summary is plain text, as the spec has it.
     function plain(text) {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Whether a session's want is truly on Joel, rather than one its
+    // presence mirrors from a file of things he can't do yet, or a
+    // question put to its orchestrator.
+    function asks(session) {
+        return session.presence !== null
+            && Waiting.asksJoel(session.presence, WaitingOnYou.standing);
     }
 
     // What a want is, in words after the session's name.

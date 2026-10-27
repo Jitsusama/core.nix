@@ -2003,13 +2003,15 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
             for thing in shown["things"]
         )
     )
-    # Inside, they're listed by name, and Return goes to where one is done.
+    # It counts only what Joel can do now: the queue's two say no when.
     desktop.type_in("waiting on you", selecting="Waiting on you")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
+    # Inside, what's for now leads, then what's for later, each in the
+    # agents' order, and Return goes to where one is done.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"] == ["Answer the ask", "Pick a bucket", "Try the new home"]
+        lambda shown: shown["rows"] == ["Answer the ask", "Try the new home", "Pick a bucket"]
     )
-    machine.send_key("down")
     machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Try the new home"
@@ -2026,6 +2028,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.type_in("waiting on you", selecting="Waiting on you")
     desktop.step_in()
     machine.send_key("down")
+    machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Pick a bucket")
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -2036,6 +2039,237 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # Put back as it was, for the tests after.
     desktop.as_account(f"rm {state}/mission/queue.json {state}/mission/waiting/QUEST1.json")
     for title in ["Waiting room", "Elsewhere"]:
+        window = desktop.window_titled(title)["id"]
+        desktop.as_account(f"niri msg action close-window --id {window}")
+
+
+# Where the agents keep what waits on Joel, and the quests whose READMEs
+# say whether each has ended.
+MISSION = "$HOME/.local/state/mission"
+QUESTS = "$HOME/.local/share/pi/agentic-harness.pi/quest-workflow/quests"
+
+
+def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
+    """Write a file the agents keep, whole, as they do."""
+    desktop.as_account(
+        f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}"
+    )
+
+
+def readme(desktop: Desktop, quest: str, status: str) -> None:
+    """Write a quest's README, saying its status."""
+    desktop.as_account(
+        f"mkdir -p {QUESTS}/{quest} && printf '%s\\n' '---' 'id: {quest}'"
+        f" 'status: {status}' '---' '# {quest}' > {QUESTS}/{quest}/README.md"
+    )
+
+
+def waiting_opened(desktop: Desktop) -> None:
+    """Open the launcher on Waiting on you's row."""
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("waiting on you", selecting="Waiting on you")
+
+
+def launcher_closed(desktop: Desktop) -> None:
+    """Close the launcher with Escape, and wait until it's gone."""
+    desktop.machine.send_key("esc")
+    desktop.machine.wait_until_fails(
+        desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+    )
+
+
+def waiting_inside(desktop: Desktop) -> tuple[str, list[str]]:
+    """Give Waiting on you's side and the rows inside it, as a fresh look sees them."""
+    waiting_opened(desktop)
+    side = cast("str", (desktop.showing()["selected"] or {}).get("side"))
+    desktop.step_in()
+    rows = cast("list[str]", desktop.showing()["rows"])
+    launcher_closed(desktop)
+    return side, rows
+
+
+def picked(desktop: Desktop, name: str) -> None:
+    """Wait until the row named is the one Return takes."""
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+
+
+def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
+    """Waiting on you drops an ended quest's and a copy, and keeps Joel's word."""
+    machine = desktop.machine
+    state = "$HOME/.local/state"
+    quests = QUESTS
+    readme(desktop, "QEST-20261026-LIVEQA", "active")
+    readme(desktop, "QEST-20261026-DONEQA", "concluded")
+    # The queue says one thing Joel can do now; a live quest says it again
+    # in other case, and the queue covers another of its by name.
+    kept(
+        desktop,
+        f"{state}/mission/queue.json",
+        {
+            "orchestrator": "TESTQA",
+            "items": [
+                {
+                    "id": "restart",
+                    "title": "Restart once",
+                    "when": "now",
+                    "covers": ["QEST-20261026-LIVEQA:sitting"],
+                }
+            ],
+        },
+    )
+    kept(
+        desktop,
+        f"{state}/mission/waiting/LIVEQA.json",
+        {
+            "quest": "QEST-20261026-LIVEQA",
+            "items": [
+                {"id": "again", "title": "restart  ONCE", "ready": True},
+                {"id": "sitting", "title": "A sitting", "ready": True},
+                {"id": "later", "title": "Look at the desk", "ready": False, "when": "tomorrow"},
+            ],
+        },
+    )
+    # A concluded quest's file stays where it was written, and says nothing.
+    kept(
+        desktop,
+        f"{state}/mission/waiting/DONEQA.json",
+        {
+            "quest": "QEST-20261026-DONEQA",
+            "items": [{"id": "over", "title": "Something over", "ready": True}],
+        },
+    )
+    # One ready, not said again in four days: nothing goes by its age.
+    said = (dt.datetime.now(dt.UTC) - dt.timedelta(days=4)).isoformat()
+    kept(
+        desktop,
+        f"{state}/mission/waiting/OLDQA.json",
+        {
+            "updated": said,
+            "items": [{"id": "old", "title": "Answer the old", "ready": True, "why": "it asked"}],
+        },
+    )
+
+    # Two for now: the queue's, which the quest's copy and the one covered
+    # leave alone, and the old one; then what's for later.
+    retry(
+        lambda _: (
+            waiting_inside(desktop) == ("2", ["Restart once", "Answer the old", "Look at the desk"])
+        ),
+        timeout=dt.timedelta(seconds=30),
+    )
+    # The right arrow steps into one: Return's act, Done and Not Now, then
+    # what there is to know of it.
+    waiting_opened(desktop)
+    desktop.step_in()
+    machine.send_key("down")
+    picked(desktop, "Answer the old")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][1:4] == ["Done", "Not Now", "Why"])
+    # Done keeps the launcher, and is kept where Joel's word is.
+    machine.send_key("down")
+    picked(desktop, "Done")
+    machine.send_key("ret")
+    retry(
+        lambda _: "OLDQA:old" in desktop.as_account(f"cat {state}/mission/settled.json || true"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    assert desktop.showing()["open"]
+    launcher_closed(desktop)
+    retry(
+        lambda _: waiting_inside(desktop) == ("1", ["Restart once", "Look at the desk"]),
+        timeout=dt.timedelta(seconds=30),
+    )
+    # Not Now puts one under Later, so nothing's for now.
+    waiting_opened(desktop)
+    desktop.step_in()
+    picked(desktop, "Restart once")
+    desktop.step_in()
+    machine.send_key("down")
+    machine.send_key("down")
+    picked(desktop, "Not Now")
+    machine.send_key("ret")
+    launcher_closed(desktop)
+    retry(
+        lambda _: waiting_inside(desktop) == ("2 later", ["Restart once", "Look at the desk"]),
+        timeout=dt.timedelta(seconds=30),
+    )
+    # A quest that ends takes its things with it, as its README says so.
+    readme(desktop, "QEST-20261026-LIVEQA", "retired")
+    retry(
+        lambda _: waiting_inside(desktop) == ("1 later", ["Restart once"]),
+        timeout=dt.timedelta(seconds=30),
+    )
+    # Joel's word stays across a restart of the shell.
+    desktop.as_account("systemctl --user restart quickshell")
+    machine.wait_until_succeeds(
+        desktop.in_session("qs ipc call launcher showing"), timeout=dt.timedelta(seconds=60)
+    )
+    retry(
+        lambda _: waiting_inside(desktop) == ("1 later", ["Restart once"]),
+        timeout=dt.timedelta(seconds=60),
+    )
+    desktop.as_account(
+        f"rm -r {state}/mission/queue.json {state}/mission/waiting/LIVEQA.json"
+        f" {state}/mission/waiting/DONEQA.json {state}/mission/waiting/OLDQA.json"
+        f" {state}/mission/settled.json"
+        f" {quests}/QEST-20261026-LIVEQA {quests}/QEST-20261026-DONEQA"
+    )
+
+
+def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
+    """A session's want counts only while its quest has something ready, or it's his."""
+    desktop.pi_session()
+    presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence/testqa.json"
+    waiting = "$HOME/.local/state/mission/waiting/TESTQA.json"
+
+    def wants(kind: str, orchestrated: str | None = None) -> None:
+        read = {
+            "session": "01a1face-test",
+            "addresses": ["TESTQA"],
+            "busy": False,
+            "owns": ["QEST-20261022-TESTQA"],
+            "title": PI_WINDOW,
+            "orchestratedBy": orchestrated,
+            "wants": {"kind": kind, "since": "2026-10-26T00:00:00Z", "said": "Do it"},
+            "owner": {"startedAt": int(time.time() * 1000)},
+        }
+        desktop.as_account(
+            f"printf %s {shlex.quote(json.dumps(read))} > {presence}.q"
+            f" && mv {presence}.q {presence}"
+        )
+
+    def marked() -> bool:
+        """Say whether the margin last held pi's mark, which says a session wants Joel."""
+        held = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
+        )
+        return "agent" in held.split()[2:]
+
+    # An action its quest's file holds only for later isn't Joel's yet.
+    desktop.as_account(
+        f"printf %s {shlex.quote(json.dumps({'items': [{'title': 'Later', 'ready': False}]}))}"
+        f" > {waiting}"
+    )
+    wants("action", "WCJQSG")
+    time.sleep(2)
+    assert not marked(), "an action held only for later marked Joel"
+    # It is once the file says he can do it now.
+    desktop.as_account(
+        f"printf %s {shlex.quote(json.dumps({'items': [{'title': 'Now', 'ready': True}]}))}"
+        f" > {waiting}.q && mv {waiting}.q {waiting}"
+    )
+    retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
+    # A question an orchestrated session asks is its orchestrator's; a yes
+    # it waits for is always his.
+    wants("question", "WCJQSG")
+    retry(lambda _: not marked(), timeout=dt.timedelta(seconds=20))
+    wants("approval", "WCJQSG")
+    retry(lambda _: marked(), timeout=dt.timedelta(seconds=20))
+    desktop.as_account(f"rm {waiting}")
+    desktop.pi_session()
+    for title in ["Elsewhere"]:
         window = desktop.window_titled(title)["id"]
         desktop.as_account(f"niri msg action close-window --id {window}")
 

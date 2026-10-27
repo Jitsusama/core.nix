@@ -2540,8 +2540,62 @@
       "glyph": "waitsOnJoel",
       "said": {
         "first": "{title}, {minutes} min",
-        "minutes": "{minutes} min"
+        "minutes": "{minutes} min",
+        "later": "{count} later"
       }
+    },
+    {
+      "id": "verb:on:waiting:go",
+      "in": "on",
+      "name": "Go to {where}",
+      "verb": "switch",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:on:waiting:copy",
+      "in": "on",
+      "name": "Copy What It Said",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:on:waiting:done",
+      "in": "on",
+      "name": "Done",
+      "verb": "done",
+      "glyph": "done"
+    },
+    {
+      "id": "verb:on:waiting:notNow",
+      "in": "on",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
+      "id": "on:waiting:why",
+      "in": "on",
+      "name": "Why"
+    },
+    {
+      "id": "on:waiting:when",
+      "in": "on",
+      "name": "When"
+    },
+    {
+      "id": "on:waiting:quest",
+      "in": "on",
+      "name": "Quest"
+    },
+    {
+      "id": "on:waiting:since",
+      "in": "on",
+      "name": "Since"
+    },
+    {
+      "id": "on:waiting:detail",
+      "in": "on",
+      "name": "Detail"
     },
     {
       "id": "clipboard",

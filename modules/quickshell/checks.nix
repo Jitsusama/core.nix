@@ -1810,6 +1810,23 @@ onLinux {
       touch $out
     '';
 
+  # Waiting on You holds only what truly waits on Joel, now or later, each
+  # once, and a session's want is his only while it's true, as
+  # tests/waiting-on-you.qml holds Waiting.js to the agents' own files.
+  waiting-on-you-is-true =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "waiting-on-you-is-true" { } ''
+      cp ${../../tests/waiting-on-you.qml} waiting-on-you.qml
+      cp ${./Waiting.js} Waiting.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml waiting-on-you.qml
+      touch $out
+    '';
+
   # Every mark the margin can show is the theme's drawing of it, standing the
   # grid's full height and centred across it as Qt draws it, so a row of
   # them is level and each has the same room either side (tests/drawings.qml).

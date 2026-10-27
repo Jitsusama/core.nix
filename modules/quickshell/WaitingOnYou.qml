@@ -7,16 +7,24 @@ pragma ComponentBehavior: Bound
 // the orchestrator's address and each item's title, why it waits, how many
 // minutes it takes, when, the title of the window it's done in (or none,
 // when it's done with the orchestrator itself), its quest, and whether Joel can
-// do it now. An item that can be done now is said once as a notice, the
-// moment it's heard, and remembered as said across restarts, so the
-// agents never have to wait on a turn to tell him. All of it is heard
-// rather than read on a clock. Both folders are made at login (this
-// module's home.nix), so the watch hears the first file.
+// do it now. Those files are written by many sessions as each thinks of it,
+// so Waiting.js decides what of them is true: what Joel can do now and what
+// waits until later, each once, nothing of a quest that's ended, as its
+// README says, and nothing he's said is done. His word on each, done or not
+// now, is kept in mission/settled.json, the shell's own beside the agents'
+// files, so it stays across restarts and an agent can read what he said;
+// the shell never writes the agents' files. An item that can be done now
+// is said once as a notice, the moment it's heard, and remembered as said
+// across restarts, so the agents never have to wait on a turn to tell him.
+// All of it is heard rather than read on a clock, and nothing goes by its
+// age. Both folders are made at login (this module's home.nix), so the
+// watch hears the first file.
 import qs
 import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "Waiting.js" as Waiting
 
 Singleton {
     id: root
@@ -25,6 +33,7 @@ Singleton {
     readonly property string state: Quickshell.env("XDG_STATE_HOME") || `${home}/.local/state`
     readonly property string queue: `${state}/mission/queue.json`
     readonly property string quests: `${state}/mission/waiting`
+    readonly property string settledAt: `${state}/mission/settled.json`
 
     // The orchestrator's file as written, or null when there's none that reads.
     property var said: null
@@ -34,29 +43,55 @@ Singleton {
     // in. The file said "steward" before the harness named it orchestrator
     // (RSCH-20261025-JQ4RZG), and either is read until every writer says
     // the new.
-    readonly property string orchestrator: [said?.orchestrator, said?.steward]
-        .find(address => typeof address === "string") ?? ""
+    readonly property string orchestrator: Waiting.orchestratorOf(said)
 
-    // A file's items, each with a title and the quest it's from: the
-    // item's own, else the file's, else the file's name.
-    function itemsOf(read, quest) {
-        const listed = Array.isArray(read) ? read : read?.items;
-        const from = typeof read?.quest === "string" ? read.quest : quest;
-        return (Array.isArray(listed) ? listed : [])
-            .filter(item => typeof item?.title === "string" && item.title !== "")
-            .map(item => Object.assign({}, item, {
-                quest: typeof item.quest === "string" ? item.quest : from,
-                ready: item.ready === true
-            }));
+    // Each quest's status and title as its README says, by its id: null
+    // once its README is found missing, and absent until it's read.
+    property var owners: ({})
+    // What Joel has said of each item: { done, notNow }, by identity.
+    property var settled: ({})
+
+    // What waits on Joel, as Waiting.js weighs it: `now`, what he can do
+    // now, and `later`, what he can't yet or has put off, each in the
+    // orchestrator's order and then each quest's by its file's name.
+    readonly property var weighed: Waiting.sorted(said, kept, owners, settled)
+    readonly property var now: weighed.now
+    readonly property var later: weighed.later
+    readonly property var items: now.concat(later)
+    // The first Joel can do now, or else the first.
+    readonly property var foremost: now[0] ?? later[0] ?? null
+    // Who has something Joel can do now, so a session's want to the same
+    // end is true (Sessions.qml).
+    readonly property var standing: Waiting.standing(now)
+
+    // The quest an item is from, by its README's title, else its id.
+    function questOf(item) {
+        return owners[item.quest]?.title || item.quest;
     }
 
-    // What waits on Joel: the orchestrator's first, in its order, then each
-    // quest's, by its file's name, so the first is the orchestrator's choice.
-    readonly property var items: Object.keys(kept).sort().reduce((all, path) => all.concat(
-        itemsOf(kept[path], path.replace(/^.*\//, "").replace(/\.json$/, ""))),
-        itemsOf(said, orchestrator))
-    // The first Joel can do now, or else the first.
-    readonly property var foremost: items.find(item => item.ready) ?? items[0] ?? null
+    // Joel's word on an item, "done" or "notNow", kept at once.
+    function settle(item, how) {
+        settled = Waiting.settle(settled, item, how, Date.now());
+        settledFile.setText(JSON.stringify(settled));
+    }
+
+    FileView {
+        id: settledFile
+        path: root.settledAt
+        printErrors: false
+        atomicWrites: true
+        // The orchestrator may clear what Joel said, so a change is read.
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const read = JSON.parse(settledFile.text());
+                root.settled = typeof read === "object" && read !== null ? read : {};
+            } catch (error) {
+                root.settled = {};
+            }
+        }
+    }
 
     // An item as one line: its title, and how long it takes when it says.
     function titled(item) {
@@ -71,7 +106,7 @@ Singleton {
 
     // Who an item is, across every file: its quest and its id.
     function identity(item) {
-        return `${item.quest}:${item.id ?? item.title}`;
+        return Waiting.identity(item);
     }
 
     // The orchestrator's own session, by its address or another it answers to.
@@ -103,10 +138,12 @@ Singleton {
     property var noticed: ({})
     property bool remembered: false
 
+    // Nothing is said until every quest the files name has been read, so an
+    // ended quest's item is never said in the moment before its README is.
     function notice() {
-        if (!remembered)
+        if (!remembered || named.split(" ").some(quest => quest !== "" && !(quest in owners)))
             return;
-        const fresh = items.filter(item => item.ready && !noticed[identity(item)]);
+        const fresh = now.filter(item => !noticed[identity(item)]);
         if (fresh.length === 0)
             return;
         const next = Object.assign({}, noticed);
@@ -117,7 +154,8 @@ Singleton {
         noticed = next;
         memory.setText(JSON.stringify(noticed));
     }
-    onItemsChanged: Qt.callLater(notice)
+    onNowChanged: Qt.callLater(notice)
+    onOwnersChanged: Qt.callLater(notice)
     onRememberedChanged: Qt.callLater(notice)
 
     // A notice offering to go where it's done, which notify-send prints
@@ -187,6 +225,37 @@ Singleton {
             onFileChanged: reload()
             onLoaded: root.heard(filePath, text())
         }
+    }
+
+    // The quests the files name, as one string, so a file heard again that
+    // names the same leaves their READMEs' watch as it was.
+    readonly property string named: Waiting.quests(said, kept).join(" ")
+    readonly property string readmes: `${Quickshell.env("XDG_DATA_HOME") || `${home}/.local/share`}/pi/agentic-harness.pi/quest-workflow/quests`
+
+    // Each named quest's README, watched, so one concluded or retired takes
+    // its items with it, and one whose folder goes does too. A status once
+    // read is kept as the watch is remade, so nothing ended stands again
+    // for the moment between.
+    Instantiator {
+        model: root.named === "" ? [] : root.named.split(" ")
+
+        FileView {
+            required property string modelData
+            path: `${root.readmes}/${modelData}/README.md`
+            watchChanges: true
+            printErrors: false
+            onFileChanged: reload()
+            onLoaded: root.owned(modelData, Waiting.readme(text()))
+            onLoadFailed: root.owned(modelData, null)
+        }
+    }
+
+    function owned(quest, readme) {
+        if (JSON.stringify(owners[quest]) === JSON.stringify(readme))
+            return;
+        const next = Object.assign({}, owners);
+        next[quest] = readme;
+        owners = next;
     }
 
     function forget(path) {

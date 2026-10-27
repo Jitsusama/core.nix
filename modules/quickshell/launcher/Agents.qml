@@ -25,9 +25,9 @@ Provider {
     // helpers and spend are its parts there.
     collection: Words.collection("agents")
 
-    // Those that want Joel first, then the one used last.
+    // Those that truly want Joel first, then the one used last.
     readonly property var all: Sessions.wanting
-        .concat(Sessions.running.filter(session => !(session.presence && session.presence.wants)))
+        .concat(Sessions.running.filter(session => !Sessions.wanting.includes(session)))
         .map(session => made(session))
     onAllChanged: changedTo(all)
 
@@ -41,8 +41,11 @@ Provider {
     function made(session) {
         const presence = session.presence;
         const queued = inLine(presence);
+        // A want that isn't truly Joel's (Sessions.asks) reads as what the
+        // session does meanwhile.
+        const asks = Sessions.asks(session);
         const doing = presence === null ? ""
-            : presence.wants ? Sessions.wanted(presence.wants)
+            : asks ? Sessions.wanted(presence.wants)
             : queued !== "" ? queued
             : presence.busy ? "working" : "waiting";
         const quest = presence && presence.owns
@@ -65,7 +68,7 @@ Provider {
             hue: "program",
             side: [session.address, doing, spent !== "" ? `${spent} today` : "", session.folder]
                 .filter(part => part !== "").join(" \u00b7 "),
-            note: presence && presence.wants && presence.wants.said ? presence.wants.said
+            note: asks && presence.wants.said ? presence.wants.said
                 : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
             run: () => Niri.act({ FocusWindow: { id: session.window.id } }),
