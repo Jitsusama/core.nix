@@ -1,9 +1,9 @@
 //! Frames: whether niri shows every frame it would show on an idle
 //! machine.
 //!
-//! A surface Joel can't see (one transparent pixel on the overlay layer,
-//! taking no input) asks for a new frame at every refresh, as an animation
-//! or a video would, and asks niri through `wp_presentation` when each one
+//! A surface Joel can't see (one pixel on the overlay layer, too faint to
+//! see and changed every frame, taking no input) asks for a new frame at
+//! every refresh, as an animation or a video would, and asks niri through `wp_presentation` when each one
 //! reached the screen. The display counts its refreshes, so a frame that
 //! lands two refreshes after the one before means one was missed. That is
 //! niri's own answer, read without privilege and without a debug build.
@@ -18,6 +18,7 @@
 //! niri missed, and `late` holds both.
 
 use std::os::fd::AsFd;
+use std::os::unix::fs::FileExt;
 use std::time::{Duration, Instant};
 
 use rustix::fs::{MemfdFlags, memfd_create};
@@ -195,20 +196,27 @@ pub fn watch(length: Duration) -> Result<Vec<Frame>, String> {
         ));
     }
 
-    // One transparent pixel, ARGB 0.
+    // Two pixels of black, a step apart in alpha and both too faint to see,
+    // taken in turn. niri draws only what's visible and presents only a
+    // frame with something new in it, so a fully transparent pixel, or the
+    // same one again, waits for something else on the screen to change,
+    // and the probe would time that rather than niri.
     let fd = memfd_create("load-proof-pixel", MemfdFlags::CLOEXEC)
         .map_err(|e| format!("memfd_create: {e}"))?;
     let file = std::fs::File::from(fd);
-    file.set_len(4).map_err(|e| e.to_string())?;
-    let pool = shm.create_pool(file.as_fd(), 4, &qh, ());
-    let buffer = pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ());
+    // ARGB8888 is little-endian: blue, green, red, then alpha.
+    file.write_all_at(&[0, 0, 0, 1, 0, 0, 0, 2], 0)
+        .map_err(|e| format!("the probe's pixels: {e}"))?;
+    let pool = shm.create_pool(file.as_fd(), 8, &qh, ());
+    let buffers =
+        [0, 4].map(|offset| pool.create_buffer(offset, 1, 1, 4, wl_shm::Format::Argb8888, &qh, ()));
 
     let end = Instant::now() + length;
     probe.due = true;
     while Instant::now() < end && !probe.closed {
         if probe.due {
             probe.due = false;
-            surface.attach(Some(&buffer), 0, 0);
+            surface.attach(Some(&buffers[probe.committed.len() % 2]), 0, 0);
             surface.damage_buffer(0, 0, 1, 1);
             presentation.feedback(&surface, &qh, ());
             surface.frame(&qh, ());
