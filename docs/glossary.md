@@ -8,8 +8,10 @@ called. A word that isn't here yet hasn't been settled, and a word under
 
 The words are kept in bounded contexts, one section each. Inside a context,
 each concept has one term, and the term is what's written, what's shown and
-what Joel types: there are no synonyms, so an old name finds nothing and a
-term is learned once. A word may mean its own thing in another context, and
+what Joel types: there are no synonyms, so a term is learned once. An old
+name still finds what it named, never shown, so a rename loses nothing
+(Joel, 2026-10-26: "i didn't know its name had changed, i was used to
+calling it caffeinate"). A word may mean its own thing in another context, and
 the launcher's place, with its crumbs, says which: Network › Address is the
 machine's, Agents › Sessions › Language › Address is a session's.
 
@@ -19,8 +21,9 @@ Each table has the same columns:
   In prose it's in lower case unless it's a name, such as Bluetooth or Keep
   Awake, which is written as its title everywhere.
 - **Means**: what it is, in a few plain words.
-- **Not**: names it replaces. They're never written, shown or found for
-  anything, in any context.
+- **Not**: names it replaces. They're never written or shown, in any
+  context; typed, one still finds the thing it named, whose row says
+  "Once called" it.
 - **In code**: how code spells it, where code has to spell it otherwise, such
   as a program's name for a module or NixOS's own option.
 

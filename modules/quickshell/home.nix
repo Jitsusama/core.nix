@@ -840,8 +840,9 @@ in
       };
       description = ''
         Other words that find a row, by the key it's learned by (the
-        launcher's picks file names them). They find it, never name it: a
-        row found by one shows the word in quotes after its name.
+        launcher's picks file names them). They find it, never name it, and
+        the row shows as it always does. A name the row once had belongs in
+        the vocabulary's `once` instead, which says so below it.
       '';
     };
     words = lib.mkOption {

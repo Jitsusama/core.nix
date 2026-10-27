@@ -154,6 +154,7 @@
     },
     {
       "id": "quests",
+      "once": ["Tasks"],
       "name": "Quests",
       "term": "Agents/quest",
       "noun": "quests",
@@ -189,6 +190,7 @@
     },
     {
       "id": "runs",
+      "once": ["Helpers"],
       "name": "Subagents",
       "term": "Agents/subagent",
       "noun": "subagents",
@@ -336,6 +338,7 @@
     },
     {
       "id": "machine:memory",
+      "once": ["RAM"],
       "name": "Memory",
       "term": "Machine/memory",
       "provider": "machine",
@@ -392,6 +395,7 @@
     },
     {
       "id": "machine:cpu",
+      "once": ["CPU"],
       "name": "Processor",
       "term": "Machine/processor",
       "glyph": "processor",
@@ -492,6 +496,7 @@
     },
     {
       "id": "machine:disk",
+      "once": ["Drive", "SSD", "Storage"],
       "name": "Disk",
       "term": "Disk/disk",
       "provider": "machine",
@@ -679,6 +684,7 @@
     },
     {
       "id": "power:charger",
+      "once": ["Mains"],
       "in": "power",
       "name": "Charger"
     },
@@ -1104,6 +1110,7 @@
     },
     {
       "id": "keyboards:lights",
+      "once": ["Backlight"],
       "in": "keyboards",
       "name": "Light",
       "answers": [
@@ -1175,11 +1182,13 @@
     },
     {
       "id": "networks:wired",
+      "once": ["Wired"],
       "in": "networks",
       "name": "Ethernet"
     },
     {
       "id": "networks:tunnel",
+      "once": ["Tunnel"],
       "in": "networks",
       "name": "VPN"
     },
@@ -1851,6 +1860,7 @@
     },
     {
       "id": "shortcuts",
+      "once": ["Bindings"],
       "name": "Shortcuts",
       "term": "Keyboards/shortcut",
       "noun": "shortcuts",
@@ -2481,6 +2491,7 @@
     },
     {
       "id": "on",
+      "once": ["What's on"],
       "name": "Now",
       "term": "Desktop/Now",
       "noun": "now",
@@ -2516,6 +2527,7 @@
     },
     {
       "id": "notices",
+      "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",
@@ -2524,6 +2536,7 @@
     },
     {
       "id": "wifi",
+      "once": ["Wireless", "WLAN"],
       "name": "Wi-Fi",
       "term": "Network/Wi-Fi",
       "noun": "networks",
@@ -2540,6 +2553,7 @@
     },
     {
       "id": "displays",
+      "once": ["Displays", "Monitors"],
       "name": "Screens",
       "term": "Desktop/screen",
       "noun": "screens",
@@ -2849,6 +2863,7 @@
     },
     {
       "id": "applications",
+      "once": ["Apps"],
       "name": "Programs",
       "term": "Programs/program",
       "noun": "programs",
@@ -2872,6 +2887,7 @@
     },
     {
       "id": "session:awake",
+      "once": ["Caffeinate"],
       "name": "Keep awake",
       "term": "Machine/Keep awake",
       "verb": "start",
@@ -2885,6 +2901,7 @@
     },
     {
       "id": "session:quiet",
+      "once": ["DND", "Quiet"],
       "name": "Do not disturb",
       "term": "Desktop/Do not disturb",
       "verb": "start",
@@ -2952,6 +2969,7 @@
     },
     {
       "id": "session:Suspend",
+      "once": ["Suspend"],
       "name": "Sleep",
       "term": "Machine/sleep",
       "verb": "sleep",
@@ -2959,6 +2977,7 @@
     },
     {
       "id": "session:Log Out",
+      "once": ["Sign out"],
       "name": "Log out",
       "term": "Machine/log out",
       "verb": "leave",
@@ -2967,6 +2986,7 @@
     },
     {
       "id": "session:Reboot",
+      "once": ["Restart"],
       "name": "Reboot",
       "term": "Machine/reboot",
       "verb": "reboot",
@@ -2975,6 +2995,7 @@
     },
     {
       "id": "session:Power Off",
+      "once": ["Shut down"],
       "name": "Power off",
       "term": "Machine/power off",
       "verb": "off",
