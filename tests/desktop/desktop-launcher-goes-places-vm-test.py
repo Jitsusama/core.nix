@@ -1161,10 +1161,37 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_a_meeting_is_found_by_its_name_says_when_it_is_and_return_joins_it(
+def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     desktop: Desktop,
 ) -> None:
-    """A meeting on the calendar is found by its name, says when it is, and Return joins it."""
+    """A meeting about to start is found by its name, says when it is, and Return joins it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Design Review starts five minutes from now, on Meet.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("design review")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Design Review"
+            and re.fullmatch(r"in [1-5] min", str(shown["selected"].get("side", "")))
+        )
+    )
+    # Return joins its call: the Meet link opens in a window of its own,
+    # and the launcher closes, since joining takes Joel out of it.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
+    desktop: Desktop,
+) -> None:
+    """Return shows a meeting further off rather than joining it, and its acts still join it."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
@@ -1178,8 +1205,28 @@ def test_a_meeting_is_found_by_its_name_says_when_it_is_and_return_joins_it(
             and re.fullmatch(r"in (29|30) min", str(shown["selected"].get("side", "")))
         )
     )
-    # Return joins its call: the Meet link opens in a window of its own,
-    # and the launcher closes, since joining takes Joel out of it.
+    # Return shows it, a step in named for it, its day and times first,
+    # and the launcher stays.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["path"] == ["Standup"]
+            and (shown["selected"] or {}).get("side") == "when"
+        )
+    )
+    machine.fail(f"test -s {opened}")
+    # Back out, its acts start with joining, which goes into its call.
+    machine.send_key("left")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
+        )
+    )
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Join the Meeting"
+    )
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/abc-defg-hij {opened}",
@@ -1201,7 +1248,7 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.step_in()
-    # Its acts: joining, its page and its link first, then the three answers.
+    # Its acts: joining and seeing it first, then the three answers.
     for _ in range(6):
         if (desktop.showing()["selected"] or {}).get("name") == "Answer Maybe":
             break

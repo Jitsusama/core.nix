@@ -1001,6 +1001,12 @@ in
     console = "m";
     means = "a meeting on Joel's calendar, and the calendar holding them";
   };
+  # A calendar page with lines on it, for what's written of a meeting.
+  meetingDetails = {
+    glyph = nerd "f00f5";
+    console = "i";
+    means = "seeing a meeting's details: when, its call, who's going";
+  };
   # Answering an invitation, each a calendar marked as the answer is, so
   # the three read as one choice.
   going = {
