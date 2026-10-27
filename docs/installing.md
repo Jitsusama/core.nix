@@ -279,9 +279,11 @@ At boot, systemd asks for each device's PIN on its own, the TPM first. Each
 prompt names which PIN it wants: "TPM2 PIN" takes the TPM's, asked once, and
 when the TPM won't release the key, "security token PIN" follows for the
 YubiKey's, then a touch when it blinks. A TPM refusing the boot costs no try.
-The disk module turns off systemd-cryptsetup's token plugins in the initrd,
-since their prompt, "LUKS2 token PIN", tries one PIN on every token: it would
-hand the TPM's PIN to a plugged-in YubiKey, and three such tries block it. A
+On a disk with a YubiKey enrolled, the disk module turns off
+systemd-cryptsetup's token plugins in the initrd, since their prompt, "LUKS2
+token PIN", tries one PIN on every token: it would hand the TPM's PIN to a
+plugged-in YubiKey, and three such tries block it. A disk with none keeps
+them, since without them systemd would never ask for its passphrase. A
 YubiKey's PIN typed where the TPM's is asked costs the TPM a try, which counts
 towards its lockout even on a boot its policy refuses. The recovery key is the
 seven words exactly as the guide showed them, lowercase and one space apart.

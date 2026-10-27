@@ -1067,6 +1067,8 @@ def test_after_the_restart_the_tpm_opens_the_disk(signed_in: QemuMachine, restar
     # only once the TPM has refused.
     assert prompts(restarted) == ["Please enter TPM2 PIN:"], prompts(restarted)
     assert "Asking FIDO2 token" not in restarted
+    # The YubiKeys are enrolled, so the initrd turned the token plugins off.
+    signed_in.succeed("grep -qx SYSTEMD_CRYPTSETUP_USE_TOKEN_MODULE=0 /run/cryptsetup-keyed/system")
 
 
 def console_session(machine: QemuMachine) -> str | None:

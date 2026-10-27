@@ -232,6 +232,9 @@ def test_runbook_binds_the_disk_to_the_tpm_and_a_pin(
 def test_disk_opens_with_the_tpm_and_the_pin_alone(sealed: QemuMachine) -> None:
     """The disk opens with the TPM and the PIN alone."""
     print(sealed.succeed("journalctl -b -o cat -u systemd-cryptsetup@system.service"))
+    # No YubiKey is enrolled, so the token plugins stayed, and with them
+    # the passphrase the boots before this one were opened with.
+    sealed.fail("test -e /run/cryptsetup-keyed/system")
 
 
 def test_no_nvpcr_is_set_up_and_a_login_measures_nothing(sealed: QemuMachine) -> None:
