@@ -1880,6 +1880,10 @@ Scope {
         const listed = Date.now();
         latch = "";
         foundHere = {};
+        // What the rows' time went on, for a first letter that's slow
+        // (Joel's own openings put 215 to 271 ms there): matching every
+        // choice, ordering what was found, or making the rows shown.
+        let costs = null;
         if (words.length === 0) {
             candidates = [];
             root.found = home();
@@ -1889,7 +1893,8 @@ Scope {
             // What the next letter narrows from: everything found, and a
             // collection held back only for being too short yet.
             const early = [];
-            for (const choice of narrowing ? candidates : choices) {
+            const looked = narrowing ? candidates : choices;
+            for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
                 // and kept for a word past the whole's name.
                 if (choice.of && partHidden(choice, words)) {
@@ -1929,6 +1934,7 @@ Scope {
                     });
             }
             candidates = found.map(f => f.choice).concat(early);
+            const matchedAll = Date.now();
             const learned = picks.weights(letters);
             const here = {};
             for (const f of found)
@@ -1944,19 +1950,25 @@ Scope {
                 picked: learned,
                 often: often
             });
-            root.found = ordered.map(f => Object.assign({
+            const orderedAll = Date.now();
+            const made = ordered.map(f => Object.assign({
                 byWord: f.byWord === true,
                 times: (learned[f.choice.key] ?? { times: 0 }).times,
                 grade: f.grade,
                 tier: f.tier,
                 kept: !!learned[f.choice.key]
-            }, f.choice)).concat(spotted(letters));
+            }, f.choice));
+            const madeAll = Date.now();
+            root.found = made.concat(spotted(letters));
+            costs = { matching: matchedAll - listed, ordering: orderedAll - matchedAll,
+                making: madeAll - orderedAll, spots: Date.now() - madeAll, looked: looked.length,
+                found: found.length };
         }
         const matched = Date.now();
         compose(true);
         list.positionViewAtBeginning();
         searchParts = { lists: listed - began, rows: matched - listed,
-            answers: Date.now() - matched, each: listsTook };
+            answers: Date.now() - matched, each: listsTook, within: costs };
     }
 
     // What the last search at the top level spent its time on, or null for
