@@ -119,7 +119,8 @@ Scope {
         if (text.length < 3)
             return null;
         for (const source of sources) {
-            const question = source.questions.find(asked => asked.startsWith(text));
+            const question = source.questions.find(asked => asked.startsWith(text)
+                && !oldWords[asked]);
             if (question === undefined)
                 continue;
             const said = started(source, question, fresh);
@@ -146,6 +147,17 @@ Scope {
     // What each word asking an answer names it, as the vocabulary does, so
     // a step into an answer is named as the thing it is ("cpu" is
     // Processor), not as what was typed.
+    // The names things had, as they're typed, each as it was written, so
+    // a name had asks only whole ("sto" asks nothing of the disk) and its
+    // answer says what it was once called.
+    readonly property var oldWords: {
+        const out = {};
+        for (const entry of Object.values(Words.things))
+            for (const old of entry.once ?? [])
+                out[old.toLowerCase()] = old;
+        return out;
+    }
+
     readonly property var answerNames: {
         const out = {};
         for (const id of Object.keys(Words.things)) {
@@ -391,6 +403,8 @@ Scope {
         stays: answer.stays ?? false,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
+        // Asked by a name it had, it says so, as a row found by one does.
+        once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
         run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
@@ -1374,7 +1388,7 @@ Scope {
     // never loses a row (Joel, 2026-10-26: "i didn't know its name had
     // changed, i was used to calling it caffeinate").
     function oldNames(row) {
-        const id = String(row.key ?? "").replace(/^(?:category|collection):/, "");
+        const id = String(row.key ?? "").replace(/^(?:category|collection|answer|place):/, "");
         return row.once ?? row.category?.once ?? Words.of(id).once ?? [];
     }
 

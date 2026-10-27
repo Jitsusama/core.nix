@@ -1035,20 +1035,39 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
         for old in entry.get("once", [])
     ]
     # Every one the vocabulary keeps, so a rename that lost its row fails
-    # here rather than with Joel; the count proves the walk looked.
-    fewest = 20
-    assert len(kept) >= fewest, kept
+    # here rather than with Joel: whatever it selects, a row, a spot or an
+    # answer, says what it was once called. One whose thing this machine
+    # hasn't got, as a VPN, finds nothing by its new name either, and is
+    # passed over; the count of those found proves the walk looked.
+    fewest = 15
     lost = []
+    absent = []
     for old, name in kept:
         desktop.answer(old.lower())
         try:
-            desktop.launcher_until(lambda shown: name in shown["rows"])  # noqa: B023
+            desktop.launcher_until(
+                lambda shown: shown["footer"] == f"Once called {old}.",  # noqa: B023
+                timeout=dt.timedelta(seconds=5),
+            )
         except AssertionError:
-            lost.append(f"{old} -> {name}: {desktop.showing()['rows'][:5]}")
+            shown = desktop.showing()
+            machine.send_key("esc")
+            machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+            desktop.answer(name.lower())
+            try:
+                desktop.launcher_until(
+                    lambda there: bool(there["rows"]) or there["kind"] == "answer",
+                    timeout=dt.timedelta(seconds=5),
+                )
+                found = [thing["is"] for thing in desktop.showing()["things"][:3]]
+                lost.append(f"{old} -> {name}: {shown['rows'][:5]} {shown['footer']!r}, {found}")
+            except AssertionError:
+                absent.append(name)
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    print(f"walked {len(kept)} old names")
+    print(f"walked {len(kept)} old names, {len(absent)} absent here: {absent}")
     assert lost == [], lost
+    assert len(kept) - len(absent) >= fewest, absent
 
 
 def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
