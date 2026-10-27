@@ -10,6 +10,7 @@
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ./sound/microphones.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";

@@ -1007,7 +1007,7 @@ with AMD: a Ryzen 5 Microsoft Surface Edition (six Zen 2 cores, Renoir) with
 Radeon graphics, Intel's AX200 Wi-Fi 6, a Nuvoton TPM 2.0, and Surface's own
 embedded controller, the Surface Aggregator Module, behind which sit the
 keyboard, the battery and the charger. The stock kernel drives all of what's
-below, so the module adds no patches.
+below but the thermal sensors and the fan, which one patch adds.
 
 | Part     | What the module does                                                      |
 | -------- | ------------------------------------------------------------------------- |
@@ -1018,6 +1018,8 @@ below, so the module adds no patches.
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
+| Sensors  | the Aggregator's thermal sensors and fan, through a kernel patch          |
+| Mics     | their gain held at their own level, so a call doesn't clip                |
 
 ### The Keyboard at the Disk Prompt
 
@@ -1123,13 +1125,35 @@ bind and show them under hwmon; the device check expects both. The
 platform profile still doesn't drive the fan's own profile, since no fan
 profile command has been tried on this controller.
 
+### The Microphones
+
+The built-in microphones are a digital pair on the Realtek ALC274 codec
+(pin 0x12, "Internal Mic"), which the HDA driver sets up as it is. The
+audio coprocessor's microphone driver isn't needed: forced to bind with
+`dmic_acpi_check=1`, it gave a capture device whose two channels matched
+exactly and sat at the lowest value nearly throughout.
+
+The codec's mics hear, but too loudly. WirePlumber starts an input nobody
+has set at full volume, and PipeWire's path for an internal mic turns the
+mic boost (0 to 30 dB) and the capture gain (-17.25 to 30 dB) up together,
+so full volume was 60 dB of gain. In a two-second listen at that gain,
+91% to 96% of samples sat at full scale. With both at 0 dB the room read
+an RMS of 489 and 86 of 32,768 on the two mics, and at the lowest gain
+about 6, so the level follows the gain and the mics aren't broken. The
+module's path ([`sound/paths/analog-input-internal-mic.conf`][23]) holds
+the boost at 0 dB and stops the capture gain at its 0 dB step, 23 of 63,
+so the desktop's full volume is the mics' own level. It's given through a
+profile set for the analog card alone; the headset jack and the outputs
+keep PipeWire's paths.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
 | Sleep      | the drain on battery overnight isn't measured yet                              |
-| Audio      | the speakers and microphones aren't checked yet                                |
+| Speakers   | the speakers aren't checked yet                                                |
+| Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
 | Firmware   | Microsoft ships firmware updates only for Windows                              |
 | Touch, pen | linux-surface lists the touchscreen and pen as unsupported on this model      |
@@ -1156,3 +1180,4 @@ profile command has been tried on this controller.
 [20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
 [22]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
+[23]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
