@@ -1,4 +1,5 @@
-//! Asking Google: the token endpoint, and the Calendar API as the account.
+//! Asking Google: the token endpoint, and the Calendar and Gmail APIs as
+//! the account.
 //!
 //! Both origins are given rather than fixed, so the tests can ask a stand-in
 //! on this machine instead (`tests/stand_in.rs`).
@@ -11,12 +12,13 @@ use ureq::Agent;
 
 use crate::account::Account;
 use crate::calendar::Answer;
+use crate::mail;
 
 /// Where Google answers.
 pub struct Origins {
     /// The OAuth token endpoint.
     pub token: String,
-    /// The Calendar API's root, before `/calendar/v3`.
+    /// The APIs' root, before `/calendar/v3` and `/gmail/v1`.
     pub api: String,
 }
 
@@ -41,14 +43,14 @@ pub enum Refused {
     Unreachable(String),
 }
 
-/// What a status says of an answer from the Calendar API, beyond 200.
+/// What a status says of an answer from one of Google's APIs, beyond 200.
 fn refused(status: u16, what: &str) -> Refused {
     // A 403 is as often a quota as a missing grant, so only a 401 says
     // the token is no good.
     if status == 401 {
         Refused::SignedOut
     } else {
-        Refused::Unreachable(format!("Google Calendar answered {status} to {what}"))
+        Refused::Unreachable(format!("Google answered {status} to {what}"))
     }
 }
 
@@ -114,6 +116,89 @@ impl Google {
                 .to_owned(),
             expires: Timestamp::now().as_millisecond() + lasts * 1000,
         })
+    }
+
+    /// Asks one of the APIs, at `path` below its root, for a JSON answer.
+    fn get(
+        &self,
+        token: &str,
+        path: &str,
+        query: &[(&str, &str)],
+        what: &str,
+    ) -> Result<Value, Refused> {
+        let mut request = self
+            .agent
+            .get(format!("{}{path}", self.origins.api))
+            .header("Authorization", &format!("Bearer {token}"));
+        for (name, value) in query {
+            request = request.query(*name, *value);
+        }
+        let mut answer = request.call().map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, what));
+        }
+        answer
+            .body_mut()
+            .read_json()
+            .map_err(|error| Refused::Unreachable(format!("Google's answer to {what}: {error}")))
+    }
+
+    /// The ids of the mail that wants Joel, newest first.
+    pub fn wanting(&self, token: &str) -> Result<Value, Refused> {
+        let shown = mail::SHOWN.to_string();
+        self.get(
+            token,
+            "/gmail/v1/users/me/messages",
+            &[("q", mail::WANTS), ("maxResults", &shown)],
+            "the mail",
+        )
+    }
+
+    /// One piece of mail: who sent it, its subject and when it came, and
+    /// nothing of what it says.
+    pub fn mail(&self, token: &str, id: &str) -> Result<Value, Refused> {
+        self.get(
+            token,
+            &format!("/gmail/v1/users/me/messages/{id}"),
+            &[
+                ("format", "metadata"),
+                ("metadataHeaders", "From"),
+                ("metadataHeaders", "Subject"),
+                ("fields", "id,threadId,internalDate,payload/headers"),
+            ],
+            "a piece of mail",
+        )
+    }
+
+    /// Takes the label `label` off the mail `id`, as Gmail's own buttons
+    /// do: UNREAD to mark it read, INBOX to archive it.
+    pub fn unlabel(&self, token: &str, id: &str, label: &str) -> Result<(), Refused> {
+        let written = self
+            .agent
+            .post(format!(
+                "{}/gmail/v1/users/me/messages/{id}/modify",
+                self.origins.api
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("fields", "id")
+            .send_json(serde_json::json!({ "removeLabelIds": [label] }))
+            .map_err(|error| unreachable(&error))?;
+        let status = written.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "marking mail"));
+        }
+        Ok(())
+    }
+
+    /// The inbox, for how many in it are unread.
+    pub fn inbox(&self, token: &str) -> Result<Value, Refused> {
+        self.get(
+            token,
+            "/gmail/v1/users/me/labels/INBOX",
+            &[("fields", "messagesUnread")],
+            "the inbox",
+        )
     }
 
     /// Every event on the primary calendar between two times, each

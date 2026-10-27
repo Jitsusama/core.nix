@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Keeps every Wi-Fi card awake while the machine runs on mains power, and
+# Keeps every Wi-Fi card awake while the machine runs on the charger, and
 # lets it doze between the access point's beacons on battery. udev runs this
 # whenever a card appears or a charger comes or goes, so each card is set as
 # it comes and changed only when the power does.
@@ -9,7 +9,7 @@
 # seconds while anything else downloads, which is a call breaking up. A
 # machine with no battery has nothing to save, so its cards stay awake too.
 battery=no
-mains=no
+charger=no
 for supply in /sys/class/power_supply/*; do
   [ -r "$supply/type" ] || continue
   case $(cat "$supply/type") in
@@ -20,13 +20,13 @@ for supply in /sys/class/power_supply/*; do
       ;;
     Mains | USB)
       if [ "$(cat "$supply/online" 2>/dev/null || echo 0)" = 1 ]; then
-        mains=yes
+        charger=yes
       fi
       ;;
   esac
 done
 
-if [ "$battery" = yes ] && [ "$mains" = no ]; then
+if [ "$battery" = yes ] && [ "$charger" = no ]; then
   wanted=on
 else
   wanted=off

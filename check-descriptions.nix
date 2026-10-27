@@ -245,6 +245,10 @@
   example-nixos = ''
     a NixOS workstation with a screen evaluates
   '';
+  files-are-chosen-with-or-without-the-picker = ''
+    open-with chooses a file in the shell when it answers, and in GTK's portal, given the call as
+    it was asked, when the shell has no picker
+  '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';
@@ -267,6 +271,10 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  google-opens-its-links = ''
+    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages open
+    in a window of their own, any other link in the browser, and what isn't a link nowhere
+  '';
   google-passes-clippy = ''
     clippy finds nothing in google or its tests
   '';
@@ -274,11 +282,17 @@
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
-    and answers an invitation the shell asks it to, changing only Joel's own answer
+    and answers an invitation the shell asks it to, changing only Joel's own answer, and tells it
+    the mail that wants Joel, newest first, each asked for once, marking it read or archiving it
+    when asked
   '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere
+  '';
+  gtk-3-dialogs-ask-the-portal = ''
+    a GTK 3 program's own file dialog never shows, asks the portal instead, and answers with what
+    it chose, or as closed when it's cancelled
   '';
   gtk-speaks-in-the-theme = ''
     GTK's settings, the desktop's dconf and fontconfig's sans-serif all name the theme's sans face
@@ -826,6 +840,11 @@
     the launcher's catalogue tells a place from an action, offers what ends something rather than
     doing it, and lists no figure, copy or command's start
   '';
+  the-launcher-chooses-files = ''
+    a graphical machine's portal asks the launcher's chooser for a file to open or save, GTK 3
+    programs ask the portal, their own dialogs included, and open-with's description says it
+    answers it
+  '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
   '';
@@ -1024,6 +1043,10 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-tells-the-next-meeting = ''
+    the shell names as next the meeting about to start or going on, never one over, all day or said
+    no to, says when it is in words, and when it's about to start
+  '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
   '';
@@ -1158,8 +1181,9 @@
     is
   '';
   vm-desktop-launcher-goes-places = ''
-    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, sets
-    the volume, loses no letter typed after its chord, and shows the shortcuts
+    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
+    a meeting by its name, sets the volume, loses no letter typed after its chord, and shows the
+    shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1254,8 +1278,8 @@
     libvirt's daemon stops at once, its udev thread starved
   '';
   vm-lid-stays-at-the-desk = ''
-    a shut lid suspends with no monitor, keeps running with one plugged in whose screen is off,
-    holding one lock through the card's changes, and suspends once it's unplugged
+    a shut lid sleeps with no monitor, keeps running with one plugged in whose screen is off,
+    holding one lock through the card's changes, and sleeps once it's unplugged
   '';
   vm-loopback-says-who-holds-it = ''
     a loopback camera's file names each program another account holds it with, not its relay's unit
@@ -1277,8 +1301,8 @@
   vm-niri-is-traced-by-its-own = ''
     an account in wheel traces its own niri off the CPU with no password, each sleep said with its
     kernel stack, monotonic time and waker, and a wait in epoll with the file that woke it, with
-    the graphics buffers reclaim backed up, read back and kept counted beside it; nobody else
-    starts it or reads it
+    the graphics buffers reclaim backed up, read back and kept counted beside it, with the most
+    kept at once; nobody else starts it or reads it
   '';
   vm-passkeys-come-from-the-tpm = ''
     passkeys and security keys are made in the TPM, each after a yes
@@ -1327,17 +1351,17 @@
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
     tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls, its
     UDP to Meet's media servers on 443 and Tuple's daemon video, even what it leaves to send as
-    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made again keeps its class; the client's
-    own network isn't slowed; inside a WireGuard tunnel the same classes reach the tunnel's own
-    CAKE; the queues follow the default route, a link unplugged and plugged back in is shaped
-    afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
+    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made
+    again keeps its class; the client's own network isn't slowed; inside a WireGuard VPN the same
+    classes reach the VPN's own CAKE; the queues follow the default route, a link unplugged and
+    plugged back in is shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in
   '';
   vm-wifi-joins = ''
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
-    others' routing rules, keeps the card awake on mains power
+    others' routing rules, keeps the card awake on the charger
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and

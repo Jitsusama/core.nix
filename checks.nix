@@ -419,7 +419,9 @@ let
 
   # Every jitsusama.* option a Linux machine can set, NixOS's and
   # home-manager's, read from the two Linux examples, which between them
-  # import every module Linux has.
+  # import every module Linux has. A hidden option is an old name kept for
+  # the machines still setting it, which nobody reads in the docs, so it
+  # isn't held to the glossary.
   optionNames =
     let
       machines =
@@ -438,7 +440,9 @@ let
       spelled =
         options:
         map (option: lib.showOption (lib.remove "<name>" option.loc)) (
-          lib.collect lib.isOption (options.jitsusama or { })
+          lib.filter (option: option.visible or true != false) (
+            lib.collect lib.isOption (options.jitsusama or { })
+          )
         );
       home = options: options.home-manager.users.type.getSubOptions [ ];
     in

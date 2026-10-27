@@ -179,7 +179,7 @@ pub fn decide(situation: &Situation) -> Decision {
 /// How long after boot or resume routine work waits, so opening the lid is
 /// never met with a walk.
 const SETTLING: f64 = 600.0;
-/// The battery charge routine work needs off mains, in percent.
+/// The battery charge routine work needs off the charger, in percent.
 const BATTERY_FLOOR: u8 = 50;
 /// The share of time tasks may stall on the disk or on memory, in
 /// percent over ten seconds, before work that can be skipped holds off.
@@ -187,7 +187,7 @@ const BATTERY_FLOOR: u8 = 50;
 /// them.
 const STALL_CEILING: f64 = 10.0;
 
-/// Whether the machine can spare routine work: on mains or a battery over
+/// Whether the machine can spare routine work: on the charger or a battery over
 /// half charged, not saving power, and awake for ten minutes. How busy it
 /// is doesn't count, since a workstation that's always busy would never be
 /// tidied; routine passes pace their deletes instead (`pace.rs`).
@@ -199,10 +199,10 @@ pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64) -> bool {
     powered(power, saver) && settled
 }
 
-/// Whether the power allows work that can wait: on mains or a battery
+/// Whether the power allows work that can wait: on the charger or a battery
 /// well charged, and not set to save it.
 pub fn powered(power: Power, saver: bool) -> bool {
-    let charged = power.mains || power.battery.is_some_and(|charge| charge > BATTERY_FLOOR);
+    let charged = power.on_charger || power.battery.is_some_and(|charge| charge > BATTERY_FLOOR);
     charged && !saver
 }
 

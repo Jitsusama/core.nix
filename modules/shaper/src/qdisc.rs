@@ -100,17 +100,17 @@ pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
     all
 }
 
-/// A tunnel's queue: CAKE alone at its root, under the same handle as an
-/// uplink's, so the priority nftables gives a packet names its tin there
-/// too. A tunnel reaches nothing local, so it needs no HTB.
-pub fn tunnel(dev: &str, kbit: u64) -> Vec<String> {
+/// A VPN's queue: CAKE alone at its root, under the same handle as a
+/// connection's, so the priority nftables gives a packet names its tin there
+/// too. A VPN reaches nothing local, so it needs no HTB.
+pub fn vpn(dev: &str, kbit: u64) -> Vec<String> {
     cmd(&format!(
         "tc qdisc replace dev {dev} root handle 2: cake bandwidth {kbit}kbit diffserv4 ack-filter"
     ))
 }
 
-/// Whether a tunnel's root is the shaper's CAKE.
-pub fn tunnel_ours(json: &str) -> bool {
+/// Whether a VPN's root is the shaper's CAKE.
+pub fn vpn_ours(json: &str) -> bool {
     let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
         return false;
     };
@@ -310,18 +310,16 @@ mod tests {
     }
 
     #[test]
-    fn a_tunnels_cake_sits_at_its_root_under_the_uplinks_handle() {
+    fn a_vpns_cake_sits_at_its_root_under_the_connections_handle() {
         assert_eq!(
-            tunnel("wg0", 9_000).join(" "),
+            vpn("wg0", 9_000).join(" "),
             "tc qdisc replace dev wg0 root handle 2: cake bandwidth 9000kbit diffserv4 ack-filter"
         );
-        assert!(tunnel_ours(
-            r#"[{"kind":"cake","handle":"2:","root":true}]"#
-        ));
-        assert!(!tunnel_ours(
+        assert!(vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#));
+        assert!(!vpn_ours(
             r#"[{"kind":"mq","handle":"0:","root":true},{"kind":"fq_codel","parent":":1"}]"#
         ));
-        assert!(!tunnel_ours(
+        assert!(!vpn_ours(
             r#"[{"kind":"cake","handle":"2:","parent":"1:2"}]"#
         ));
     }

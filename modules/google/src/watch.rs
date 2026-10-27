@@ -1,6 +1,7 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
-//! asks for the meetings and says how it all stands; an answer to an
-//! invitation is asked the same way, and changes what's held at once.
+//! asks for the meetings and the mail that wants Joel, and says how it all
+//! stands; an answer to an invitation, and mail marked read or archived,
+//! are asked the same way, and change what's held at once.
 
 use std::path::PathBuf;
 
@@ -9,6 +10,7 @@ use jiff::Zoned;
 use crate::account::{self, Missing};
 use crate::api::{Google, Refused};
 use crate::calendar::{self, Answer};
+use crate::mail::{self, Mail, Tidy};
 use crate::state::{Standing, State};
 use crate::token::Keeper;
 
@@ -33,16 +35,31 @@ impl Watch {
     }
 
     /// How the account stands at `now`, asking Google if it's signed in.
-    /// Unreachable, what was held is kept, with when it was heard.
+    /// Unreachable, what was held is kept, with when it was heard. The
+    /// mail is asked after the meetings, so Gmail failing alone keeps the
+    /// mail held and costs the meetings nothing.
     pub fn look(&mut self, now: &Zoned) -> &State {
         let (from, to) = calendar::window(now);
         match self.asking(now, |google, token| google.events(token, from, to)) {
             Ok(answer) => {
-                self.state = State {
-                    account: Standing::Ready,
-                    meetings: calendar::meetings(&answer, now.time_zone()),
-                    heard: Some(now.timestamp().as_millisecond()),
-                };
+                self.state.account = Standing::Ready;
+                self.state.meetings = calendar::meetings(&answer, now.time_zone());
+                self.state.heard = Some(now.timestamp().as_millisecond());
+            }
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return &self.state;
+            }
+        }
+        let held = std::mem::take(&mut self.state.mail);
+        match self.asking(now, |google, token| wanted(google, token, &held)) {
+            Ok((found, unread)) => {
+                self.state.mail = found;
+                self.state.unread = unread;
+            }
+            Err(Looked::Refused(Refused::Unreachable(why))) => {
+                eprintln!("<4>{why}");
+                self.state.mail = held;
             }
             Err(looked) => self.fell(looked, Standing::Unreachable),
         }
@@ -60,6 +77,24 @@ impl Watch {
                     if meeting.id == id {
                         meeting.answer = Some(with);
                     }
+                }
+            }
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Marks the mail `id` read or archives it, as `how` says, and lets it
+    /// go from what's held so the shell hears it at once: it wants Joel no
+    /// more either way. Held, it was unread in the inbox, so the inbox has
+    /// one fewer unread. Mail Google didn't take changes nothing held.
+    pub fn tidy(&mut self, id: &str, how: Tidy, now: &Zoned) -> &State {
+        match self.asking(now, |google, token| google.unlabel(token, id, how.label())) {
+            Ok(()) => {
+                let before = self.state.mail.len();
+                self.state.mail.retain(|mail| mail.id != id);
+                if self.state.mail.len() < before {
+                    self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
                 }
             }
             Err(looked) => self.fell(looked, self.state.account),
@@ -116,6 +151,32 @@ impl Watch {
             answer => Ok(answer?),
         }
     }
+}
+
+/// The mail that wants Joel, newest first, and how many in the inbox are
+/// unread. Mail already held isn't asked for again, since what Gmail
+/// lists of it never changes.
+fn wanted(
+    google: &Google,
+    token: &str,
+    held: &[Mail],
+) -> Result<(Vec<Mail>, Option<u64>), Refused> {
+    let mut found = Vec::new();
+    for id in mail::listed(&google.wanting(token)?) {
+        if let Some(kept) = held.iter().find(|kept| kept.id == id) {
+            found.push(kept.clone());
+            continue;
+        }
+        match google.mail(token, &id) {
+            Ok(answer) => found.extend(mail::read(&answer)),
+            // Gone between the list and the ask, as mail archived
+            // elsewhere is; the next look lists it again if it's not.
+            Err(Refused::Unreachable(_)) => {}
+            Err(refused) => return Err(refused),
+        }
+    }
+    found.sort_by_key(|mail| std::cmp::Reverse(mail.at));
+    Ok((found, mail::unread(&google.inbox(token)?)))
 }
 
 enum Looked {

@@ -8,7 +8,10 @@
 // shrinker would have to spare for a draw never to wait on one. Where the
 // Intel driver runs, the buffers its shrinker passed over as busy are
 // counted too, once each, by caching: those it keeps resident, which a
-// program leaking them would leave out of reclaim's reach.
+// program leaking them would leave out of reclaim's reach. Beside them is
+// the most it held at once, which is what reclaim couldn't reach: a
+// program that frees its buffers and makes new ones, as a browser does,
+// passes many more over in a trace than are ever resident together.
 //
 // usage: bpftrace restores.bt
 
@@ -19,9 +22,12 @@ config = {
 
 // A busy buffer is counted once, by a set big enough for every buffer a
 // trace's ten minutes meets: the default 4096 keys would fill, and every
-// buffer past them would be counted again on every pass. Only this map is
+// buffer past them would be counted again on every pass. The buffers held
+// now, with their pages and caching, need as many. Only these maps are
 // made bigger, since the others hold a key per thread or per kind.
 let @passed = hash(65536);
+let @held_pages = hash(65536);
+let @held_caching = hash(65536);
 
 BEGIN
 {
@@ -85,7 +91,8 @@ kretprobe:ttm_bo_populate
 // evicting or one it can't map, so this is everything it passed over: at
 // most what it keeps for its caching. A buffer is counted the first time
 // it's passed over, so the pages are what stayed resident at once, at
-// most.
+// most. A buffer passed over stays held until it's freed or backed up,
+// and the pages held, by caching, keep their peak.
 kprobe:xe_bo_shrink
 {
   $bo = (struct ttm_buffer_object *)arg1;
@@ -100,14 +107,42 @@ kprobe:xe_bo_shrink
 kretprobe:xe_bo_shrink
 /has_key(@passing, tid)/
 {
-  if ((int64)retval == -16 && !has_key(@passed, @passing[tid])) {
-    @passed[@passing[tid]] = 1;
+  $bo = @passing[tid];
+  if ((int64)retval == -16 && !has_key(@passed, $bo)) {
+    @passed[$bo] = 1;
     @kept[@passing_caching[tid]] = count();
     @kept_pages[@passing_caching[tid]] = sum(@passing_pages[tid]);
+  }
+  if ((int64)retval == -16 && !has_key(@held_pages, $bo)) {
+    $caching = @passing_caching[tid];
+    @held_pages[$bo] = @passing_pages[tid];
+    @held_caching[$bo] = $caching;
+    @held_now[$caching] += @passing_pages[tid];
+    if (@held_now[$caching] > @held_peak[$caching]) {
+      @held_peak[$caching] = @held_now[$caching];
+    }
+  }
+  // Backed up after all: its pages are reclaim's again.
+  if ((int64)retval > 0 && has_key(@held_pages, $bo)) {
+    @held_now[@held_caching[$bo]] -= @held_pages[$bo];
+    delete(@held_pages, $bo);
+    delete(@held_caching, $bo);
   }
   delete(@passing, tid);
   delete(@passing_caching, tid);
   delete(@passing_pages, tid);
+}
+
+// The Intel driver's last call on a buffer as it's freed. TTM's own
+// ttm_bo_release is inlined into ttm_bo_put here, so there's no probe on it.
+kprobe:xe_ttm_bo_destroy
+/has_key(@held_pages, (uint64)arg0)/
+{
+  $bo = (uint64)arg0;
+  @held_now[@held_caching[$bo]] -= @held_pages[$bo];
+  @released[@held_caching[$bo]] = count();
+  delete(@held_pages, $bo);
+  delete(@held_caching, $bo);
 }
 
 END
@@ -123,6 +158,14 @@ END
   printf("kept resident by the shrinker as busy, by caching: buffers, then pages\n");
   print(@kept);
   print(@kept_pages);
+  printf("held at once by the shrinker as busy, by caching: most pages, then buffers freed\n");
+  print(@held_peak);
+  print(@released);
+  clear(@held_peak);
+  clear(@held_now);
+  clear(@held_pages);
+  clear(@held_caching);
+  clear(@released);
   clear(@kept);
   clear(@kept_pages);
   clear(@passed);

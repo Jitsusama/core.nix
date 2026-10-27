@@ -1,7 +1,7 @@
 # open-with, built from this directory's crate with its tests run as it
-# builds, and the portal's chooser it serves: its description for the
-# portal, its D-Bus service and the account's unit that runs it, which asks
-# the shell through the given Quickshell's qs.
+# builds, and the portal's choosers it serves, of an app and of files: its
+# description for the portal, its D-Bus service and the account's unit that
+# runs it, which asks the shell through the given Quickshell's qs.
 {
   lib,
   rustPlatform,
@@ -29,7 +29,7 @@ rustPlatform.buildRustPackage (_finalAttrs: {
       install -D -m 644 /dev/stdin $out/share/xdg-desktop-portal/portals/launcher.portal <<EOF
       [portal]
       DBusName=${name}
-      Interfaces=org.freedesktop.impl.portal.AppChooser;
+      Interfaces=org.freedesktop.impl.portal.AppChooser;org.freedesktop.impl.portal.FileChooser;
       EOF
       install -D -m 644 /dev/stdin $out/share/dbus-1/services/${name}.service <<EOF
       [D-BUS Service]
@@ -39,7 +39,7 @@ rustPlatform.buildRustPackage (_finalAttrs: {
       EOF
       install -D -m 644 /dev/stdin $out/lib/systemd/user/open-with.service <<EOF
       [Unit]
-      Description=The launcher's chooser of an app to open something with
+      Description=The launcher's choosers of an app to open something with and of files
       PartOf=graphical-session.target
       After=graphical-session.target
 
@@ -51,7 +51,7 @@ rustPlatform.buildRustPackage (_finalAttrs: {
     '';
 
   meta = {
-    description = "The portal's chooser of an app to open something with, asked in the launcher";
+    description = "The portal's choosers of an app to open something with and of files, asked in the launcher";
     license = lib.licenses.mit;
     mainProgram = "open-with";
     platforms = lib.platforms.linux;

@@ -3345,6 +3345,39 @@
       "verb": "copy"
     },
     {
+      "id": "calendar:meeting",
+      "of": "program:google-calendar",
+      "name": "Meeting",
+      "glyph": "meeting",
+      "verb": "join",
+      "states": {
+        "untitled": {
+          "name": "A Meeting Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:calendar:join",
+      "in": "calendar:meeting",
+      "name": "Join the Meeting",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:calendar:open",
+      "in": "calendar:meeting",
+      "name": "Open in Calendar",
+      "verb": "open",
+      "glyph": "meeting"
+    },
+    {
+      "id": "verb:calendar:copy",
+      "in": "calendar:meeting",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
       "id": "verb:switch",
       "in": "windows",
       "name": "Switch",

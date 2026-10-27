@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CALM: Senses = Senses {
     power: Power {
-        mains: true,
+        on_charger: true,
         battery: None,
     },
     saver: false,

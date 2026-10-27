@@ -1,5 +1,5 @@
 # The Google account, for the desktop: one resident program that asks
-# Google's own API for the calendar and hands what it holds to the shell
+# Google's own API for the calendar and the mail that wants Joel, and hands what it holds to the shell
 # over a socket (src/main.rs says how).
 [package]
 name = "google"

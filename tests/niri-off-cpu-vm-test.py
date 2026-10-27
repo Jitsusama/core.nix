@@ -57,10 +57,12 @@ def test_graphics_buffers_read_back_are_counted_beside_it(machine: BaseMachine, 
     assert "backed up, by shared and caching" in counted, counted
     assert "read back, by thread, shared and caching" in counted, counted
     assert "kept resident by the shrinker as busy, by caching" in counted, counted
+    assert "held at once by the shrinker as busy, by caching" in counted, counted
     # The Intel driver is loaded, so none of its probes went missing, which bpftrace would have
     # warned of in the unit's journal.
     said = machine.succeed("journalctl --boot --unit 'niri-off-cpu@*'")
     assert "xe_bo_shrink" not in said, said
+    assert "xe_ttm_bo_destroy" not in said, said
 
 
 def test_each_sleep_is_said_with_its_kernel_stack(traced: str) -> None:

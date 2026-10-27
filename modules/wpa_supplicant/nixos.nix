@@ -9,7 +9,7 @@
 # own. This runs wpa_supplicant as its upstream unit does, started by D-Bus,
 # with nothing restarting it but a change to it.
 #
-# Each card stays awake on mains power and dozes on battery (power-save.sh).
+# Each card stays awake on the charger and dozes on battery (power-save.sh).
 {
   config,
   lib,
@@ -70,7 +70,7 @@ in
   # card once more as the boot reaches its services, and whenever a switch
   # brings a different script.
   systemd.services.wifi-power-save = {
-    description = "Keep Wi-Fi awake on mains power";
+    description = "Keep Wi-Fi awake on the charger";
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
