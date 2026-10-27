@@ -175,6 +175,7 @@ Provider {
                 name: Words.name(choice.id, "", { layer: choice.layer }),
                 glyph: Theme.glyph.layer,
                 hue: "action",
+                stays: true,
                 run: () => KeyboardLayout.lock(choice.index)
             })));
     }
@@ -214,6 +215,7 @@ Provider {
                 glyph: Theme.glyph.brightness,
                 hue: "action",
                 side: level === now ? "in use" : "",
+                stays: true,
                 run: () => Niri.spawn(["brightnessctl", `--device=${device}`, "set", String(set)])
             }));
         }
@@ -245,6 +247,7 @@ Provider {
             name: Words.name(id, state),
             glyph: Theme.glyph.brightness,
             hue: "action",
+            stays: true,
             run: run
         });
         return holderRow({

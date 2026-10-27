@@ -229,6 +229,7 @@ Provider {
         return {
             headline: `set the screen to ${kept}%`,
             verb: Words.command("command:brightness").verb,
+            stays: true,
             run: () => provider.brighten(kept),
             rows: [],
             note: `now ${light.share}%`
@@ -331,6 +332,7 @@ Provider {
     onAllChanged: changed()
 
     // A choice wears the theme's mark of the setting it's for, by name.
+    // Setting it keeps the launcher, the setting saying what it's at now.
     function choice(key, name, mark, inUse, run) {
         return thing({
             key: `verb:display-${key}`,
@@ -338,6 +340,7 @@ Provider {
             glyph: Theme.glyph[mark],
             hue: "action",
             side: inUse ? "in use" : "",
+            stays: true,
             run: run
         });
     }

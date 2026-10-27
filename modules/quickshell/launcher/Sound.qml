@@ -208,6 +208,7 @@ Provider {
             side: used ? said("in-use") : "",
             graph: loudness(node),
             note: note,
+            stays: true,
             run: used ? () => provider.mute(node) : () => provider.use(node),
             verbs: () => provider.verbs(node)
         });
@@ -319,6 +320,7 @@ Provider {
             glyph: glyph(kind(node)),
             hue: "action",
             note: switches(node) ? said("profile-switches") : "",
+            stays: true,
             run: () => provider.use(node)
         })];
         const parts = [levelPart(node), volumePart(node), mutePart(node), programsPart(node),
@@ -445,12 +447,15 @@ Provider {
     }
 
     // An act on a device, as the vocabulary says it, in the state it's in.
+    // Each changes how something sounds, so it keeps the launcher, its row
+    // saying what it changed to.
     function act(key, state, fields) {
         return thing(Object.assign({
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state, fields.fill),
-            hue: "action"
+            hue: "action",
+            stays: true
         }, fields));
     }
 
@@ -1049,6 +1054,7 @@ Provider {
             headline: said("set", { device: named(out), level: `${share}%` }),
             verb: Words.command("command:volume").verb,
             glyph: worn(out),
+            stays: true,
             run: () => {
                 out.audio.volume = share / 100;
                 out.audio.muted = false;

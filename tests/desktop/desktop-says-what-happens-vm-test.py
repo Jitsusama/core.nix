@@ -445,7 +445,10 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.type_in("keep awake")
     desktop.photograph("launcher-keep-awake")
-    machine.send_key("ret")
+    # Keeping it awake changes something, so Return would stay; Ctrl+Return
+    # does it and closes.
+    machine.send_key("ctrl-ret")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(
         f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
@@ -467,6 +470,9 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.type_in("let it sleep")
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
@@ -600,7 +606,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("do not disturb")
-    machine.send_key("ret")
+    machine.send_key("ctrl-ret")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.wait_for_surface("margin")
     # The shell decides as the notice arrives, so once it says it held
     # one, there's no card to come.

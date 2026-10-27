@@ -676,7 +676,14 @@ works the same way everywhere.
   what Return does first, where the row's own list left it out, so the
   right arrow never hides the act Return would have done. Every row has
   a Return act: it steps in, does a thing, or copies the value it shows,
-  and a check walks every row to hold it.
+  and a check walks every row to hold it. Return closes the launcher only
+  when its act takes Joel out of it: to a window, a program or a file, a
+  call, or something copied to paste. An act that changes something (the
+  volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
+  Disturb, Keep Awake, the power profile, the desk light, a keyboard's
+  light or layer, a program's playing) keeps it open, and its row says
+  the new state at once; Ctrl+Return does it and closes, and the foot
+  says so on those rows.
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
   xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
@@ -788,7 +795,8 @@ works the same way everywhere.
   notice is said (`sounds.wants`), never while notices are held.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
   and the launcher stays, its footer saying how far the join has got, until
-  the network takes it or says why not. A locked network met for the first
+  the network takes it or says why not; joined, a password asked for is put
+  away and the network's row says it's joined. A locked network met for the first
   time, or one whose password changed, asks for the password in the field,
   the padlock beside the dots. The radio looks for networks only while the
   launcher is open.

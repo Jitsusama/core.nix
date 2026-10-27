@@ -73,8 +73,9 @@ Item {
         : asideText.x - Theme.space.xl
             - (capitals ? Theme.space.s + capitalsGlyph.implicitWidth : 0)
 
-    // Return, or Shift+Return, which asks for it below the focused window.
-    signal accepted(bool below)
+    // Return, or Shift+Return, which asks for it below the focused window,
+    // or Ctrl+Return, which does it and closes whatever it is.
+    signal accepted(bool below, bool closing)
     // Tab, which takes the ghost.
     signal completed
     signal cancelled
@@ -244,8 +245,10 @@ Item {
         // A fifth of the size between dots, so each reads as one character.
         // Points are 4/3 of a pixel at 96 dots an inch.
         font.letterSpacing: prompt.secret ? Theme.mono.large * 4 / 3 * 0.2 : 0
-        Keys.onReturnPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0)
-        Keys.onEnterPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0)
+        Keys.onReturnPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
+            (event.modifiers & Qt.ControlModifier) !== 0)
+        Keys.onEnterPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
+            (event.modifiers & Qt.ControlModifier) !== 0)
         Keys.onTabPressed: prompt.completed()
         Keys.onEscapePressed: prompt.cancelled()
         Keys.onPressed: event => {

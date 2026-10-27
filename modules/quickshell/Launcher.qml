@@ -1223,11 +1223,23 @@ Scope {
     // step, and Tab at home. The left arrow is said only where it goes
     // back: that it takes away what's typed is what any field does, and
     // saying so took room from how things stand as soon as Joel typed.
+    // Whether Return does something and keeps the launcher, as a setting
+    // does, rather than going somewhere inside it, as a spot, a row with
+    // more inside or a collection's match does.
+    function keepsOpen(choice) {
+        return !!choice.stays && !!choice.run && !choice.spot && !choice.from
+            && verbOf(choice) !== "more";
+    }
+
     function keysFor(choice) {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
         const keys = [["\u21b5", verbOf(choice)]];
+        // One that keeps the launcher can be done and closed at once, the
+        // font having no Ctrl key's mark, so it's spelled as chords are.
+        if (keepsOpen(choice))
+            keys.push(["Ctrl+\u21b5", "and close"]);
         if (held.length === 0 && choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
         if ((held.length === 0 || collecting) && choice.verbs)
@@ -1251,12 +1263,12 @@ Scope {
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
     // under the selection. They open as wide as most rows need, Return's
-    // place as wide as "connect" and the keys as wide as a program's at
-    // the top, so the first letter typed doesn't move them: grown only as
+    // place as wide as "connect" and the keys as wide as a setting's with
+    // more behind it, so the first letter typed doesn't move them: grown only as
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["\u21e7\u21b5", "below"],
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "and close"],
         ["\u2192", "see all"]]
     property string footVerbWidest: footVerbRoom
     property real footKeysWidest: 0
@@ -1715,6 +1727,16 @@ Scope {
     function refreshed(source) {
         if (!open || asking)
             return;
+        // Out at the top, a row the search found from it is said again in
+        // place, so a setting Return changed shows how it stands now
+        // (Joel, 2026-10-26: an act that changes something stays open and
+        // shows the new state on its row at once).
+        if (held.length === 0) {
+            if (typed.trim() !== ""
+                && matches.some(row => source.things.some(own => own.key === row.key)))
+                reshow(0);
+            return;
+        }
         const from = held.findIndex(step => step.row.from === source);
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
         // A thing of its own stepped into from the top, as a program is, is
@@ -1989,7 +2011,9 @@ Scope {
             // What the next letter narrows from: everything found, and a
             // collection held back only for being too short yet.
             const early = [];
-            const looked = narrowing ? candidates : choices;
+            // Said again in place, what was found is each row as it is now.
+            const looked = !narrowing ? choices : !steadying ? candidates
+                : candidates.filter(choice => keyed[choice.key]).map(choice => keyed[choice.key]);
             for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
                 // and kept for a word past the whole's name.
@@ -2141,7 +2165,21 @@ Scope {
         return out;
     }
 
-    function run(choice, below) {
+    // Acting on a thing says it was what was meant by what was typed; in a
+    // collection or a category, the one picked from it was. Learned before
+    // the launcher closes, while what's typed and held is still there.
+    function learn(choice) {
+        trials.picked(choice, typed, held.length);
+        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
+        const picking = !!first.row.from || !!first.row.category;
+        const meant = picking ? choice : first.row;
+        // One that can't be taken back is latched only once its first word's
+        // been typed (Rank.js's leastOf), so a slip of two letters never
+        // powers off.
+        picks.picked(picking ? typed : first.typed, meant.key, knowing());
+    }
+
+    function run(choice, below, closing) {
         if (!choice) {
             open = false;
             return;
@@ -2177,10 +2215,16 @@ Scope {
         // One with nothing to do of its own, only more inside, steps in.
         if (!choice.run && enter(choice))
             return;
-        // One whose outcome takes a while keeps the launcher, which says how
-        // it's going.
+        // One that changes something, or whose outcome takes a while, keeps
+        // the launcher, its row saying how it stands now; Ctrl+Return does
+        // it and closes anyway.
         if (choice.stays) {
+            const acting = keepsOpen(choice);
+            if (acting)
+                learn(choice);
             choice.run();
+            if (closing && acting)
+                open = false;
             return;
         }
         // One that opens a collection steps into it, the launcher kept open.
@@ -2193,17 +2237,8 @@ Scope {
         // The clipboard takes text only from a program holding the keys.
         if (choice.now)
             choice.run();
-        trials.picked(choice, typed, held.length);
+        learn(choice);
         open = false;
-        // Acting on a thing says it was what was meant by what was typed;
-        // in a collection or a category, the one picked from it was.
-        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
-        const picking = !!first.row.from || !!first.row.category;
-        const meant = picking ? choice : first.row;
-        // One that can't be taken back is latched only once its first word's
-        // been typed (Rank.js's leastOf), so a slip of two letters never
-        // powers off.
-        picks.picked(picking ? typed : first.typed, meant.key, knowing());
         if (choice.now)
             return;
         if (below && choice.below)
@@ -2364,6 +2399,8 @@ Scope {
                 side: row.side ?? "",
                 // The whole words drawn below the rows for it, if any.
                 reads: row.reads ?? "",
+                // The keys the foot says for it, each a mark and its word.
+                told: root.keysFor(row).map(key => key.join(" ")),
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },
@@ -2614,12 +2651,12 @@ Scope {
                             if (!root.asking)
                                 root.keyTimed(text, began);
                         }
-                        onAccepted: below => {
+                        onAccepted: (below, closing) => {
                             trials.pressed("returns");
                             if (root.asking)
                                 root.give();
                             else
-                                root.run(root.selected, below);
+                                root.run(root.selected, below, closing);
                         }
                         // Tab on an answer puts the answer in place of the
                         // question, so a sum can be carried on; one still

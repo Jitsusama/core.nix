@@ -291,6 +291,7 @@ Provider {
             glyph: Theme.glyph.charge,
             hue: "action",
             side: Number(stop) === each ? "in use" : "",
+            stays: true,
             run: () => provider.setLimit(path, begun, Number(stop), each)
         })));
     }

@@ -51,7 +51,7 @@ Provider {
             glyph: glyph,
             hue: "action",
             side: inUse ? "in use" : "",
-            now: true,
+            stays: true,
             run: run
         });
     }
@@ -71,7 +71,7 @@ Provider {
             name: Words.name(key, state),
             glyph: Theme.glyph.lamp,
             hue: "action",
-            now: true,
+            stays: true,
             run: run
         });
     }
@@ -157,6 +157,7 @@ Provider {
         };
         return Object.assign(done, {
             verb: Words.command("command:desk").verb,
+            stays: true,
             rows: shown.rows,
             note: `now ${deskLit()}`
         });
@@ -172,6 +173,7 @@ Provider {
             headline: `make the desk light ${way}, ${kept} K`,
             verb: Words.command("command:desk").verb,
             run: () => DeskLight.warm(kept),
+            stays: true,
             rows: shown.rows,
             note: `now ${deskLit()}`
         };
@@ -182,5 +184,15 @@ Provider {
     function level(now, most) {
         return { shape: "bar", values: [most > 0 ? Math.max(0, Math.min(1, now / most)) : 0],
             warn: false };
+    }
+
+    // Its acts keep the launcher, so what they changed is said at once,
+    // wherever its rows are shown.
+    Connections {
+        target: DeskLight
+
+        function onLightChanged() {
+            provider.answered();
+        }
     }
 }

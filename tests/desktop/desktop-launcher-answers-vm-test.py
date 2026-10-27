@@ -282,6 +282,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
         timeout=dt.timedelta(seconds=10),
     )
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The room's light, as the stand-in sensor hears it, is asked by its
     # word.
@@ -306,6 +308,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
         timeout=dt.timedelta(seconds=10),
     )
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # "keyboard light" asks it alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
@@ -329,6 +333,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The power actions answer to their names, and only those; Escape,
     # never Return, since Return would do them.
@@ -746,6 +752,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light off")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=dt.timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     desktop.answer("keyboards")
     desktop.step_in()
