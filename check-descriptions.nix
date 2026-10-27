@@ -286,6 +286,9 @@
     the mail that wants Joel, newest first, each asked for once, marking it read or archiving it
     when asked
   '';
+  google-switches-to-the-new-one = ''
+    a switch restarts google after reloading its units
+  '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere
