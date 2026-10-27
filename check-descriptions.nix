@@ -271,6 +271,10 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  google-opens-its-links = ''
+    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages open
+    in a window of their own, any other link in the browser, and what isn't a link nowhere
+  '';
   google-passes-clippy = ''
     clippy finds nothing in google or its tests
   '';
@@ -1039,6 +1043,10 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-tells-the-next-meeting = ''
+    the shell names as next the meeting about to start or going on, never one over, all day or said
+    no to, says when it is in words, and when it's about to start
+  '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
   '';
@@ -1173,8 +1181,9 @@
     is
   '';
   vm-desktop-launcher-goes-places = ''
-    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, sets
-    the volume, loses no letter typed after its chord, and shows the shortcuts
+    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
+    a meeting by its name, sets the volume, loses no letter typed after its chord, and shows the
+    shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

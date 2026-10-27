@@ -11,7 +11,8 @@
 # people coming and going in it are said and Joel can leave from the last
 # one's notice, a ringing call wants him and one not answered is kept as
 # missed, a copied call's link can be joined until something else is
-# copied, the clipboard takes and gives text, a picture opens floating in
+# copied, a meeting on the calendar is found by its name and Return joins
+# its call, the clipboard takes and gives text, a picture opens floating in
 # swayimg and a key takes it to GIMP, a document opens in zathura beside
 # the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # photographs show their colours, to the test and to a person looking, and
@@ -87,6 +88,18 @@ let
   standInAsk = pkgs.writers.writePython3 "stand-in-ask" {
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-ask.py);
+
+  # Stands in for the google program, which would ask Google, on its socket
+  # (desktop/stand-in-google.py).
+  standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-google.py);
+
+  # Google's own pages' window, as jitsusama.google.window opens one: what
+  # it was asked to open, written down, since the VM has no browser.
+  googleWindow = pkgs.writeShellScript "google-window" ''
+    echo "$1" > "$XDG_RUNTIME_DIR/google-opened"
+  '';
 
   # Asks the portal to open a file, always asking what with, and writes down
   # its answer (desktop/ask-portal.py).
@@ -459,6 +472,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.quickshell.notices.away = 3600;
         # Dictation's own service would load Whisper in the VM.
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
+        # The google program would ask Google, as an account nobody signed
+        # in to in the VM; the test starts the stand-in when it wants it.
+        systemd.user.services.google.Service.ExecStart = lib.mkForce "${standInGoogle} %t/google.sock";
+        jitsusama.google.window = [
+          "${googleWindow}"
+          "%u"
+        ];
         # The Ask row's model would need the network and an account.
         jitsusama.quickshell.launcher.providers.ask = {
           enable = lib.mkForce true;
