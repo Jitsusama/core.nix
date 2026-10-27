@@ -1197,6 +1197,12 @@
     CPU and disk, which follows the file as it changes, and one naming none or an unlisted quest
     stays; two quests' work on one CPU shares it four to one by weight, and one alone takes it all
   '';
+  vm-bluetooth-types-at-the-disk-prompt = ''
+    a keyboard paired in the running system is sealed to the TPM under the disk's policy, with its
+    link key nowhere in the ESP; after a restart it types the passphrase at the disk prompt and the
+    disk opens, the laptop's address unchanged; with nothing sealed the pairings are skipped, and a
+    seal that won't open leaves the prompt asking for the passphrase
+  '';
   vm-boot-asks-in-the-theme = ''
     the splash asks for the disk, names a slow job, and lasts a restart to its end; a sign-in
     console greets the account, draws the theme's face, padded, signs in to a shell told it's
