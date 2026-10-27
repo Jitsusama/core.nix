@@ -1219,9 +1219,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     # Back out, its acts start with joining, which goes into its call.
     machine.send_key("left")
     desktop.launcher_until(
-        lambda shown: (
-            shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
-        )
+        lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
     )
     desktop.step_in()
     desktop.launcher_until(

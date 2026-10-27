@@ -5,9 +5,9 @@ line of JSON, left in google.json beside the socket, which the shell reads, and 
 that connects. The account is ready, with two meetings on Meet from when the stand-in starts:
 Design Review five minutes on, about to start, and Standup half an hour on. An answer a shell
 writes is written down in google-asked beside the socket, for the test to read, and taken as
-Google would take it, so the file and every shell say the meeting answered. Two pieces of mail want Joel, Lunch on Friday and Quarterly Numbers,
-with three unread in the inbox; one marked read or archived is written down too, and taken out of
-the mail that wants him, as Gmail would.
+Google would take it, so the file and every shell say the meeting answered. Two pieces of mail
+want Joel, Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read
+or archived is written down too, and taken out of the mail that wants him, as Gmail would.
 """
 
 import json
@@ -101,7 +101,7 @@ class Account:
             self.shells.append(shell)
 
     def ask(self, line: str) -> None:
-        """Write down what a shell asked, and answer the meeting it names."""
+        """Write down what a shell asked, and answer the meeting or tidy the mail it names."""
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
