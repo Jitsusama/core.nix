@@ -39,7 +39,7 @@ onLinux {
 
   # Which meeting is next, when it is in words and whether it's about to
   # start are Calendar.js's, run in Qt's own engine over meetings like the
-  # program's (tests/calendar.qml), as is reading the socket's lines.
+  # program's (tests/calendar.qml).
   the-shell-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -51,6 +51,25 @@ onLinux {
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml calendar.qml
+      touch $out
+    '';
+
+  # Reading the program's file is Google.js's, and when mail came and the
+  # lines marking it read or archiving it Mail.js's, run in Qt's own engine
+  # (tests/mail.qml).
+  the-shell-reads-the-mail =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-shell-reads-the-mail" { } ''
+      cp ${../../tests/mail.qml} mail.qml
+      cp ${./Google.js} Google.js
+      cp ${./Mail.js} Mail.js
+      cp ${./Calendar.js} Calendar.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml mail.qml
       touch $out
     '';
 

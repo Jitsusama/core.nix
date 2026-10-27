@@ -106,16 +106,6 @@ QtObject {
                 Calendar.aboutToStart(standup, time), meant);
         check("nothing is about to start", Calendar.aboutToStart(null, now), false);
 
-        // What the socket says.
-        check("a state line", Calendar.heard(
-            '{"account":"ready","meetings":[],"heard":1793042446024}'),
-            { account: "ready", meetings: [], heard: 1793042446024 });
-        check("a state with nothing heard yet", Calendar.heard(
-            '{"account":"none","meetings":[],"heard":null}'),
-            { account: "none", meetings: [], heard: null });
-        check("half a line", Calendar.heard('{"account":"rea'), null);
-        check("a line that isn't the state", Calendar.heard('{"hello":1}'), null);
-
         // How he answered, and his answer: [answer, said, invited]
         const answers = [
             ["yes", "going", true],

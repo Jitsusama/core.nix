@@ -1,9 +1,10 @@
 // What the shell works out from the meetings the google program keeps
 // (src/state.rs): which meeting is next, when it is in words, whether it's
 // about to start, how Joel answered it, and the line that answers it
-// (src/ask.rs). Calendar.qml holds the meetings and asks these, and
-// the checks run them in Qt's own engine (tests/calendar.qml). Times are
-// milliseconds since 1970, as the program gives them.
+// (src/ask.rs). Calendar.qml asks these of the meetings Google.qml
+// holds, Mail.js asks the day and the time, and the checks run them in
+// Qt's own engine (tests/calendar.qml). Times are milliseconds since 1970,
+// as the program gives them.
 .pragma library
 
 // In milliseconds.
@@ -22,21 +23,6 @@ const SOON = 3_600_000;
 const DIGITS = 2;
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-// What the program said, as one line of its socket, or null when the line
-// isn't its state, so a half line or a stray one changes nothing.
-function heard(line) {
-    let said;
-    try {
-        said = JSON.parse(line);
-    } catch (_error) {
-        return null;
-    }
-    if (!said || typeof said.account !== "string" || !Array.isArray(said.meetings)) {
-        return null;
-    }
-    return { account: said.account, meetings: said.meetings, heard: said.heard ?? null };
-}
 
 // The meetings that could be next: not over, not all day, and not ones
 // Joel said no to.

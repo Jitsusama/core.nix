@@ -1,43 +1,34 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 // Joel's meetings, as the shell knows them, for the launcher's Today row
-// and its Calendar program: what the google program keeps of his Google
-// account (src/state.rs), read from the file it leaves beside its socket,
-// google.json, which it replaces whole whenever the state changes. Until
-// the program runs, as on a machine nobody signed in to Google on, there's
-// no file, so the account is "none", there are no meetings and nothing
-// shows; nothing is tried again and again, since the file is watched.
+// and its Calendar program: those the google program keeps of his Google
+// account, as Google.qml reads them. With no account there are none, and
+// nothing shows.
 //
 // `next` is the meeting he's about to go to, or the one going on, the same
 // one for the Today row and Now's wants (Calendar.js says which), and
 // `join` goes into a meeting's call through google-opens (opens.sh), which
 // joins a Tuple link through Tuple and opens Google's own in a window of
-// their own. `answer` answers an invitation on the program's socket
-// (ask.rs), connecting only to ask, and the program says the meeting
-// answered, in the file, as soon as Google takes it.
+// their own. `answer` answers an invitation through the program (ask.rs),
+// which says the meeting answered as soon as Google takes it.
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Calendar.js" as Said
 
 Singleton {
     id: root
 
-    readonly property string told: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.json`
-    readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/google.sock`
-
-    // "none", "signedOut", "unreachable" or "ready", as the program says.
-    property string account: "none"
     // Each { id, title, start, end, allDay, answer, link, kind, page },
     // in milliseconds since 1970, from today's start to a week on.
-    property var meetings: []
-    // When Google last answered, or null.
-    property var heard: null
+    readonly property var meetings: Google.meetings
 
     // The clock the next meeting is reckoned by, a minute at a time, as a
-    // meeting only ever comes or goes on one.
+    // meeting only ever comes or goes on one, and at once when the
+    // meetings change, so one heard after a while away isn't reckoned by
+    // the minute before.
     property real now: Date.now()
+    onMeetingsChanged: now = Date.now()
 
     Timer {
         interval: 60 * 1000 - Date.now() % (60 * 1000)
@@ -84,14 +75,9 @@ Singleton {
     // Answers the invitation yes, maybe or no, through the program, which
     // is running whenever there's a meeting to answer.
     function answer(meeting, said) {
-        if (!meeting)
-            return;
-        asks = asks.concat([Said.answer(meeting, said)]);
-        asking.connected = true;
+        if (meeting)
+            Google.ask(Said.answer(meeting, said));
     }
-
-    // What's to be asked of the program, said once the socket connects.
-    property var asks: []
 
     // Whether the next meeting is about to start, for Now's wants.
     readonly property bool starting: Said.aboutToStart(next, now)
@@ -106,54 +92,5 @@ Singleton {
     function open(meeting) {
         if (meeting && meeting.page)
             Niri.spawn(["google-opens", meeting.page]);
-    }
-
-    function hear(line) {
-        const said = Said.heard(line);
-        if (!said)
-            return;
-        account = said.account;
-        meetings = said.meetings;
-        heard = said.heard;
-        now = Date.now();
-    }
-
-    // The program gone, as it is once it stops, is no account: what it held
-    // may not be Joel's to see any more.
-    function forget() {
-        account = "none";
-        meetings = [];
-        heard = null;
-    }
-
-    // Connected only to ask: what's waiting is written, and the connection
-    // let go, since what the program says back comes in the file. One that
-    // won't connect lets what's waiting go, as the program isn't there to
-    // take it.
-    Socket {
-        id: asking
-        path: root.socket
-        onConnectionStateChanged: {
-            if (!connected)
-                return;
-            for (const ask of root.asks)
-                write(ask);
-            flush();
-            root.asks = [];
-            Qt.callLater(() => asking.connected = false);
-        }
-        onError: {
-            root.asks = [];
-            connected = false;
-        }
-    }
-
-    FileView {
-        path: root.told
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: root.hear(text())
-        onLoadFailed: root.forget()
     }
 }
