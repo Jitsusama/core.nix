@@ -1420,9 +1420,9 @@ onLinux {
       # Three windows of the same title, one of kitty 500's and two of 600's.
       niri = singleton "Niri.qml" ''
         property var windows: ({
-          "10": { id: 10, pid: 500, title: "\u03c0 - Optimus" },
-          "20": { id: 20, pid: 600, title: "\u03c0 - Optimus" },
-          "21": { id: 21, pid: 600, title: "\u03c0 - Optimus" }
+          "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse" },
+          "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse" },
+          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse" }
         })
         property int revision: 0
         property var current: null
