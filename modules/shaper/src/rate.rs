@@ -123,6 +123,9 @@ pub struct Settings {
     /// Seconds a busy direction held at its floor may meet a queue that
     /// never drains before its best comes down a cut's share.
     pub floored_s: f64,
+    /// Seconds between the spells of a line's queue past which a direction
+    /// carrying well under its floor in them is no longer counted as thin.
+    pub thin_gap_s: f64,
     /// The share of the best rate a direction has held that no cut goes
     /// under; none lets a cut follow the line down to its floor.
     pub least_of_best: f64,
@@ -171,6 +174,9 @@ impl Default for Settings {
             // The air's late pings came a second of every three, so a
             // queue standing for six seconds running is the line's own.
             floored_s: 6.0,
+            // At a hotel, five in six of the gaps between a thin line's
+            // spells were under ten seconds.
+            thin_gap_s: 10.0,
             // A cable's line does fall, to half on a busy evening, and a
             // cut that follows it keeps its queue short.
             least_of_best: 0.0,
@@ -189,7 +195,10 @@ impl Settings {
     /// never goes more than a twentieth under the best the line has
     /// carried, as a cable's ceiling sits. At a fifth, live under the
     /// agents' load, 104 of 115 cuts in 13 minutes ended at that floor,
-    /// holding an upload of 10.5 Mbit/s at 8.
+    /// holding an upload of 10.5 Mbit/s at 8. A line far under the best,
+    /// as a hotel's or a tether's is beside the one at home, is followed
+    /// under the floor all the same, once its queue has built for some
+    /// seconds while a direction carries the same under half its rate.
     ///
     /// While a call or a screen share runs, though, Joel wants it to work
     /// well above all, and a floor over the line leaves its packets behind
@@ -252,7 +261,18 @@ pub struct Direction {
     /// Since when it has been busy at its floor with the line's queue
     /// standing, without a quiet window between.
     floored_since: Option<f64>,
+    /// The seconds it has carried well under a floor with the line's queue
+    /// building, the most and least it carried then, and when it last did.
+    thin_for: f64,
+    thin_most: f64,
+    thin_least: f64,
+    thin_last: Option<f64>,
 }
+
+/// The share of the most a thin direction has carried that it must still
+/// carry for the line to be the same: a full line carries about the same
+/// from step to step, as the hotel's did, at 21% to 23% of its rate.
+const STEADY: f64 = 0.75;
 
 impl Direction {
     pub fn new(bounds: Bounds, held: u64) -> Self {
@@ -271,6 +291,10 @@ impl Direction {
             on_trial: None,
             confirmed: None,
             floored_since: None,
+            thin_for: 0.0,
+            thin_most: 0.0,
+            thin_least: f64::INFINITY,
+            thin_last: None,
         }
     }
 
@@ -417,6 +441,83 @@ impl Direction {
             self.learned = true;
             self.floored_since = Some(now);
         }
+    }
+
+    /// A step of the line's queue building while this direction carries
+    /// well under its rate, and a cut from what it carried would go under
+    /// its floor: the floor, a share of the best the network ever carried,
+    /// is over the line. Busy against so high a rate it never is, so the
+    /// floor's own rule above never comes of it. At a hotel on 27 October
+    /// the floor held a download at 47.5 Mbit/s while the line carried
+    /// about 10, and its queue built in the router, where nothing is
+    /// sorted, so every session's requests waited behind Nix's fetches.
+    /// The queue came and went there, built for about a second at a time
+    /// with about two and a half between, and the download carried the
+    /// same tenth of a megabit in every spell.
+    ///
+    /// A queue built for `floored_s` in all, its spells each within
+    /// `thin_gap_s` of the last, is the line's own, not the air's, and
+    /// while it builds the line carries no more than came through. So the
+    /// held rate comes down to a cut under the most that did, and the rate
+    /// under that by as much as the queue is deep, as a cut's does. The
+    /// best comes down so the floor sits at that rate: a floor at the held
+    /// rate let the next cut put the rate back there, and a queue of
+    /// seconds took most of a minute to drain. The cut counts as one, and
+    /// is on trial as any is: once the line is quiet a busy direction
+    /// climbs straight back, and the cut stands only if the queue comes
+    /// back on the way, so one for pings the air made late costs a climb.
+    /// Only a direction carrying under half its rate counts, and only
+    /// while it carries about the same from step to step, as a full line
+    /// does: on Wi-Fi the air makes pings late a second of every three
+    /// while a direction carries more than that, or carries what comes
+    /// and goes, and the floor is there so that no cut comes of it. A
+    /// spell held back here says the line isn't thin; one carrying under
+    /// the least it may be held to says nothing of the line. Gives whether
+    /// it cut.
+    fn thin(&mut self, s: &Settings, now: f64, carried: f64, held_here: bool, drain: f64) -> bool {
+        if s.least_of_best <= 0.0 || carried < float(self.bounds.min) {
+            return false;
+        }
+        let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+        let thin =
+            !held_here && carried < float(self.rate) * s.loaded && whole(carried * s.cut) < least;
+        let gone = self.thin_last.is_some_and(|at| now - at > s.thin_gap_s);
+        let steady = carried >= self.thin_most * STEADY && carried * STEADY <= self.thin_least;
+        if !thin || gone || !steady {
+            self.thin_for = 0.0;
+            self.thin_most = 0.0;
+            self.thin_least = f64::INFINITY;
+            self.thin_last = None;
+        }
+        if !thin {
+            return false;
+        }
+        // Steps one after another add their time; a gap between spells
+        // adds none.
+        if let Some(at) = self.thin_last.filter(|at| now - at <= s.after_cut_s) {
+            self.thin_for += now - at;
+        }
+        self.thin_last = Some(now);
+        self.thin_most = self.thin_most.max(carried);
+        self.thin_least = self.thin_least.min(carried);
+        if self.thin_for < s.floored_s {
+            return false;
+        }
+        self.cut_to(whole(self.thin_most * s.cut).max(self.bounds.min));
+        self.set(float(self.held) * drain);
+        self.best = whole(float(self.rate) / s.least_of_best).min(self.best);
+        self.peak = self.peak.min(self.best).max(self.held);
+        self.learned = true;
+        self.forgot = false;
+        self.proving = None;
+        self.cut_at = Some(now);
+        self.busy_since = None;
+        self.floored_since = None;
+        self.thin_for = 0.0;
+        self.thin_most = 0.0;
+        self.thin_least = f64::INFINITY;
+        self.thin_last = None;
+        true
     }
 }
 
@@ -645,11 +746,13 @@ impl Controller {
                     cuts[i] = true;
                 }
             }
+            let held_here = [false, shares[1] > s.held_here];
             for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
                 .enumerate()
             {
                 dir.pinned(&s, now, carried, filling[i]);
+                cuts[i] |= dir.thin(&s, now, carried, held_here[i], drain);
             }
             if cuts[0] || cuts[1] {
                 self.cut_in_spell[0] |= cuts[0];
@@ -1115,6 +1218,91 @@ mod tests {
         }
         assert!(lowest >= 9_500, "{lowest}");
         assert!(c.up.best >= 10_000, "{}", c.up.best);
+    }
+
+    #[test]
+    fn a_wi_fi_download_on_a_line_far_under_its_floor_is_followed_down() {
+        // A hotel's Wi-Fi on 27 October: a best of 50 Mbit/s remembered,
+        // so the floor held the download at 47.5 while the line carried
+        // about 10 with its queue standing. Carrying a fifth of its rate,
+        // the download was never busy at its floor, so no rule brought the
+        // floor down, and the queue stayed in the hotel's router, ahead of
+        // every request.
+        let mut c = wi_fi(10_000);
+        c.down.held = 47_500;
+        c.down.rate = 47_500;
+        pings(&mut c, 20.0, 6);
+        let mut line = Download {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        // Its ISP's buffer, ten seconds of this line, fills within three.
+        // Followed down six seconds after, it's drained within half a
+        // minute.
+        line.run(&mut c, 10_000.0, 30.0, 500.0);
+        assert!(c.down.held < 10_000, "{}", c.down.held);
+        assert!(c.down.best < 50_000, "{}", c.down.best);
+        let queue = |line: &Download| line.queue_kbit / 10_000.0 * 1000.0;
+        assert!(queue(&line) < 50.0, "{} ms", queue(&line));
+        // Then it holds just under the line, its queue short, cut at most
+        // a tenth under where it sat when a queue stands at the floor.
+        let (mut lowest, mut worst) = (u64::MAX, 0.0_f64);
+        for _ in 0..60 {
+            line.run(&mut c, 10_000.0, 1.0, 500.0);
+            worst = worst.max(queue(&line));
+            lowest = lowest.min(c.down.rate);
+        }
+        assert!(worst < 50.0, "{worst} ms");
+        assert!(lowest >= 8_500, "{lowest}");
+    }
+
+    #[test]
+    fn a_wi_fi_download_on_a_thin_line_is_followed_down_through_short_spells() {
+        // As the hotel's was: a line of about 10 Mbit/s whose queue built
+        // for about a second at a time while the rate was over it, the
+        // download carrying the line in every spell.
+        let mut c = wi_fi(10_000);
+        c.down.held = 47_500;
+        c.down.rate = 47_500;
+        pings(&mut c, 20.0, 6);
+        let line = 10_000.0;
+        let (mut at, mut lowest, mut highest) = (0.0, u64::MAX, 0);
+        while at < 150.0 {
+            let over = float(c.down.rate) > line;
+            let late = if over && at % 3.5 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            let received = float(c.down.rate).min(line);
+            c.step(at, 300.0, received);
+            if at >= 90.0 {
+                lowest = lowest.min(c.down.rate);
+                highest = highest.max(c.down.rate);
+            }
+        }
+        // Followed within the first minute and a half, and its trial back
+        // up found the line: the last minute holds at it, probing a little
+        // past it and cut back to a floor a twentieth under.
+        assert!(highest <= 10_500, "{highest}");
+        assert!(lowest >= 9_000, "{lowest}");
+    }
+
+    #[test]
+    fn a_wi_fi_download_that_comes_and_goes_keeps_its_floor_through_late_pings() {
+        // The floor's reason, with little asked: pings late for the air's
+        // sake a second of every three, while requests come and go.
+        let mut c = wi_fi(10_000);
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut lowest) = (0.0_f64, u64::MAX);
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            let asked = 6_000.0 + 5_000.0 * (at * 0.9).sin();
+            c.step(at, 500.0, asked);
+            lowest = lowest.min(c.down.rate);
+        }
+        assert!(lowest >= 47_500, "{lowest}");
+        assert!(c.down.best >= 50_000, "{}", c.down.best);
     }
 
     #[test]
