@@ -36,6 +36,19 @@ pub(crate) fn read_only(path: &Path, on: bool) {
     assert_eq!(set, 0, "{}", std::io::Error::last_os_error());
 }
 
+/// `FICLONE`, `_IOW(0x94, 9, int)`: makes a file share all another's
+/// extents, as `cp --reflink` does.
+const FICLONE: libc::c_ulong = 0x4004_9409;
+
+/// Makes `to` a clone of `from`, sharing its blocks rather than copying.
+pub(crate) fn clone_file(from: &Path, to: &Path) {
+    let source = fs::File::open(from).unwrap();
+    let target = fs::File::create(to).unwrap();
+    // SAFETY: the kernel reads one descriptor, passed by value.
+    let cloned = unsafe { libc::ioctl(target.as_raw_fd(), FICLONE as _, source.as_raw_fd()) };
+    assert_eq!(cloned, 0, "{}", std::io::Error::last_os_error());
+}
+
 /// Makes the subvolume `name` in `dir`, which any account owning `dir` may.
 pub(crate) fn subvolume(dir: &Path, name: &str) {
     let file = fs::File::open(dir).unwrap();

@@ -58,7 +58,12 @@ or launchd, and [`home.nix`][2] the account's.
   running, is left for the next group; a batch predicting under a gigabyte
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
-  under pressure, five at urgent and one at critical.
+  under pressure, five at urgent and one at critical. A survey counts the
+  blocks its candidates share once, for the first it measures, as trees
+  cloned with their builds inside share them: what it predicts is what
+  deleting them all frees, unless something it didn't measure shares them
+  too. Counted per build, five builds sharing one copy predicted 194 GiB
+  and freed 56.
 - **Pacing.** A busy machine never stops a pass; deleting slowly is how it
   spares the machine. Btrfs frees what's unlinked only when it commits, and
   saves wait behind a commit carrying a big delete, which no I/O priority

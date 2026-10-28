@@ -3,7 +3,7 @@
 //! what lies there.
 
 use crate::activity::{self, Process, Use};
-use crate::anchor::Dir;
+use crate::anchor::{Counted, Dir};
 use crate::band::Band;
 use crate::clock::Awake;
 use crate::config::{CacheProtocol, Config, Source};
@@ -15,6 +15,7 @@ use crate::units::Span;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
 };
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -114,6 +115,10 @@ pub struct World<'a> {
     /// The trees found and kept for their use without being offered, as
     /// the survey goes, so a plan or explanation can say why.
     pub kept: Vec<(PathBuf, Use)>,
+    /// What the survey's sizes have counted, so blocks several candidates
+    /// share, as trees cloned with their builds inside do, count once:
+    /// deleting them all frees those once.
+    pub counted: RefCell<Counted>,
 }
 
 /// How deep and how widely a workspace's writes are read.
@@ -225,7 +230,7 @@ fn offer_cache(
             let Some(parent) = path.parent() else {
                 return;
             };
-            let candidate = caches::whole(path, rank, from, size(path));
+            let candidate = caches::whole(path, rank, from, size(path, world));
             offers.push(Offer {
                 candidate,
                 action: Action::Entry {
@@ -242,7 +247,7 @@ fn offer_scratch(path: &Path, healthy: Option<Span>, world: &World, offers: &mut
     let Some(device) = device(path) else { return };
     let healthy = healthy.map(|span| span.0.as_secs_f64());
     for entry in scratch::entries(path) {
-        let size = size(&entry.path);
+        let size = size(&entry.path, world);
         let candidate = scratch::candidate(&entry, healthy, size, world.awake, world.now);
         offers.push(Offer {
             candidate,
@@ -267,8 +272,12 @@ fn offer_snapshots(
     };
     for snapshot in snapshots::entries(path, &pattern) {
         if snapshots::orphaned(&snapshot, world.processes, &[command], world.boot) {
-            let candidate =
-                snapshots::candidate(&snapshot, size(&snapshot.path), world.awake, world.now);
+            let candidate = snapshots::candidate(
+                &snapshot,
+                size(&snapshot.path, world),
+                world.awake,
+                world.now,
+            );
             offers.push(Offer {
                 candidate,
                 action: Action::Entry {
@@ -288,7 +297,7 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
         .filter(workspaces::over)
     {
         let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);
-        let size = size(&workspace.path);
+        let size = size(&workspace.path, world);
         if let Some(candidate) =
             workspaces::candidate(&workspace, written, size, world.awake, world.now)
         {
@@ -363,7 +372,7 @@ fn offer_nix_builds(path: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
     for build in nix_builds::find(path) {
         if nix_builds::orphaned(&build, world.processes, world.boot) {
-            let size = size(&build.snapshot.path);
+            let size = size(&build.snapshot.path, world);
             let candidate = nix_builds::candidate(&build, size, world.awake, world.now);
             offers.push(Offer {
                 candidate,
@@ -465,10 +474,10 @@ fn trees_under(
         let frees = match kind {
             Kind::Target => crate::reclaim::KEEP
                 .iter()
-                .fold(size(&tree.path), |left, kept| {
+                .fold(size(&tree.path, world), |left, kept| {
                     left.saturating_sub(whole(&tree.path.join(kept)))
                 }),
-            Kind::Install => size(&tree.path),
+            Kind::Install => size(&tree.path, world),
         };
         if kind == Kind::Target && frees == 0 {
             continue;
@@ -505,7 +514,7 @@ fn trees_under(
                         .awake
                         .since(variant.last_used.min(world.now), world.now)
                         .max(0.0),
-                    size: size(&variant.path),
+                    size: size(&variant.path, world),
                     occupied: false,
                     spent: false,
                     checkout: checkout.map(Path::to_owned),
@@ -582,11 +591,18 @@ fn resolved(root: &Path) -> PathBuf {
     fs::canonicalize(root).unwrap_or_else(|_| root.to_owned())
 }
 
+/// What an entry holds, less what the survey has counted already.
+fn size(path: &Path, world: &World) -> u64 {
+    measured(path, &mut world.counted.borrow_mut())
+}
+
 /// What an entry holds: a directory's allocated size beneath it, a file's
-/// own, nothing when it can't be read.
-fn size(path: &Path) -> u64 {
+/// own, nothing when it can't be read, less what's in `counted`.
+fn measured(path: &Path, counted: &mut Counted) -> u64 {
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.is_dir() => Dir::open(path).and_then(|dir| dir.size()).unwrap_or(0),
+        Ok(meta) if meta.is_dir() => Dir::open(path)
+            .and_then(|dir| dir.size_counted(counted))
+            .unwrap_or(0),
         Ok(meta) => meta.blocks() * 512,
         Err(_) => 0,
     }
@@ -594,10 +610,12 @@ fn size(path: &Path) -> u64 {
 
 /// What an entry takes beneath the directory holding it: itself too, as a
 /// directory's own blocks count among its parent's, where a filesystem
-/// gives a directory any.
+/// gives a directory any. It's measured alone, as what a reclaim keeps
+/// holds all it holds, whatever else shares it.
 fn whole(path: &Path) -> u64 {
+    let mut counted = Counted::default();
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + size(path),
-        _ => size(path),
+        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + measured(path, &mut counted),
+        _ => measured(path, &mut counted),
     }
 }
