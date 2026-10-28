@@ -64,6 +64,16 @@ Scope {
 
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
+    // The one whose words were just copied, whose footer says so in its
+    // time's place a moment, since the copy gives the keys back and
+    // leaves nothing else to show it happened; -1 for none.
+    property int copied: -1
+
+    Timer {
+        id: copiedFor
+        interval: 2000
+        onTriggered: root.copied = -1
+    }
 
     // Where the notices sit: a step inside the window nearest the top
     // right corner of all those wholly on screen, the rightmost and then
@@ -241,6 +251,8 @@ Scope {
             chord: [],
             run: done(() => {
                 Quickshell.clipboardText = root.said(notification);
+                root.copied = notification.id;
+                copiedFor.restart();
             })
         }, {
             glyph: Theme.glyph.dismiss,
@@ -1050,8 +1062,20 @@ Scope {
                                 readonly property real now: clock.date.getTime()
                                 // How many wait behind it, before when it came.
                                 readonly property int more: root.shown.length - 1
+                                // Its words just copied, said as the
+                                // launcher says a copy as it closes: done,
+                                // in the colour of what went well.
+                                readonly property bool copied: root.copied === card.modelData.id
                                 text: (more > 0 ? `${more} more \u00b7 ` : "")
-                                    + root.since(root.arrived[card.modelData.id] ?? now, now)
+                                    + (copied
+                                        ? `<font color="${Theme.success}">${Theme.glyph.done}`
+                                            + " copied</font>"
+                                        : root.since(root.arrived[card.modelData.id] ?? now, now))
+                                textFormat: Text.StyledText
+                                // Said for the desktop test, which sees it
+                                // say so.
+                                onCopiedChanged: if (copied)
+                                    Report.say(`copied card ${card.modelData.summary}`)
                                 visible: !card.keys
                                 color: Theme.muted
                                 font.family: Theme.mono.family

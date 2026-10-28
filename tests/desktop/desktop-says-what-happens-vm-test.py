@@ -208,6 +208,27 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     desktop.as_account(kept + ' | grep -q \'"summary":"Lunch"[^}]*"read":false\'')
 
 
+def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
+    """Copying what a notice said from its card says so, and the clipboard holds it."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    with desktop.told("shows card Build log"):
+        desktop.as_account("notify-send --expire-time=60000 'Build log' 'all green'")
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    # It offers nothing and opens nothing, so copying leads its verbs.
+    with desktop.told("notice verb Copy what it said"):
+        machine.send_key("right")
+    with desktop.told("copied card Build log"):
+        machine.send_key("ret")
+    desktop.photograph("notice-copied")
+    assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
+
+
 def test_a_click_on_a_notices_action_does_it_and_anywhere_else_puts_it_away(
     desktop: Desktop,
 ) -> None:
