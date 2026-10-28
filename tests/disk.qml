@@ -76,13 +76,21 @@ ShellRoot {
             && piece.holding("/home/joel/trees/lamp").path === "/"
             && piece.holding("/boot/efi").path === "/boot" && piece.holding("/bootstrap").path === "/"
     }, {
-        what: "a disk under pressure",
+        what: "a disk filling slowly",
+        // Nearly full in three days, or never: only the margin says so.
+        account: status([disk("/", "pressure", 120.5, 3 * 24 * 3600)]),
+        machine: status([disk("/", "pressure", 120.5)]),
+        holds: piece => !piece.active && piece.role === "text" && !piece.wants
+            && piece.value === "120.5 GiB free on /, filling"
+            && piece.context === "nearly full in 3 days"
+    }, {
+        what: "a disk nearly full within a day",
         account: status([disk("/", "pressure", 120.5, 5400)],
             { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
-        holds: piece => !piece.active && piece.role === "text" && !piece.wants && !piece.now
+        holds: piece => piece.active && piece.role === "warning" && !piece.wants && !piece.now
             && piece.value === "120.5 GiB free on /, filling"
-            && piece.context === "the next band in 1:30; nothing more is safe to take"
+            && piece.context === "nearly full in 1:30; nothing more is safe to take"
     }, {
         what: "a critical disk",
         account: status([disk("/", "critical", 8.25)],
