@@ -49,4 +49,52 @@ onLinux {
       diff theirs ours
       touch $out
     '';
+
+  # GIMP reads shortcutsrc only as its window starts, so its window starts,
+  # headless, and quits once it has: it must say it read the account's file,
+  # and nothing in it may be an action GIMP lacks, a key it can't parse or a
+  # key another action already holds. It doesn't press ?, since no key
+  # reaches a headless GIMP.
+  gimp-takes-its-shortcuts =
+    let
+      home = account graphical;
+      gimp = lib.findFirst (package: lib.getName package == "gimp") null home.home.packages;
+      folder = "${home.xdg.configHome}/GIMP/3.2";
+      file = home.home.file."${folder}/shortcutsrc";
+    in
+    pkgs.runCommandLocal "gimp-takes-its-shortcuts"
+      {
+        nativeBuildInputs = [
+          gimp
+          pkgs.cage
+          pkgs.dbus
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
+        mkdir -m 700 run
+        mkdir -p GIMP/3.2
+        cp ${file.source} GIMP/3.2/shortcutsrc
+        [ "${toString file.force}" = 1 ] || {
+          echo "shortcutsrc isn't forced, so GIMP's own copy would stop the switch."
+          exit 1
+        }
+        export GDK_BACKEND=wayland GSETTINGS_BACKEND=memory
+        export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+        export XDG_DATA_DIRS=${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
+          cage -- gimp --verbose --no-splash --no-fonts --no-data --quit > said 2>&1 || true
+        if ! grep -q "Parsing '$PWD/GIMP/3.2/shortcutsrc'" said; then
+          cat said
+          echo "GIMP never read the account's shortcutsrc."
+          exit 1
+        fi
+        if grep -E 'shortcutsrc|invalid accelerator|duplicate accelerator|not existing action|unknown symbol' said \
+          | grep -v "^Parsing '"; then
+          echo "GIMP refused part of its shortcutsrc."
+          exit 1
+        fi
+        touch $out
+      '';
 }

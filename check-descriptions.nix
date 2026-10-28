@@ -274,6 +274,9 @@
   gimp-accepts-its-configuration = ''
     GIMP reads its preferences, the theme's palette and colours
   '';
+  gimp-takes-its-shortcuts = ''
+    GIMP's window reads the declared shortcuts and refuses none of them
+  '';
   git-engine-agrees-with-gitstatusd = ''
     git-engine answers as gitstatusd does across a prompt's repository states, counting all and
     stopping at one, under git's monitor too, and as git does where gitstatusd can't read
