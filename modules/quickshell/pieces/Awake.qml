@@ -15,14 +15,17 @@ Piece {
         name: "Let it sleep",
         // One word for Return, as the launcher's Let it sleep says it.
         verb: "stop",
+        stays: true,
         run: () => Caffeinate.release()
     }].concat(Caffeinate.lid ? [{
         glyph: Theme.glyph.lidOpen,
         name: "Only while the lid is open",
+        stays: true,
         run: () => Caffeinate.open()
     }] : Caffeinate.plugged ? [{
         glyph: Theme.glyph.awake,
         name: "With the lid shut too",
+        stays: true,
         run: () => Caffeinate.keep()
     }] : [])
 }

@@ -176,7 +176,11 @@ Scope {
     // which Return does too, what it offers, copying what it said,
     // letting it go, letting them
     // all go, and the rest of the notices; each with the key that does it
-    // straight away, where there is one.
+    // straight away, where there is one. Letting one go changes the stack
+    // rather than taking Joel anywhere, so it stays: the keys stay with
+    // the stack, which shows the next. The rest take him out, so they give
+    // the keys back (Joel, 2026-10-26: Return closes only when the act
+    // takes him out of where he is).
     readonly property var verbs: {
         const notification = front;
         if (!notification)
@@ -213,16 +217,20 @@ Scope {
             // Keys drawn as the desktop draws them (home.nix, keyFaces),
             // Backspace by its name, since it has no glyph of its own.
             chord: [{ text: "Backspace" }],
+            stays: true,
             run: () => notification.dismiss()
         }, {
             glyph: Theme.glyph.dismiss,
             name: "Let them all go",
             chord: [{ text: "\u21e7" }, { text: "Backspace" }],
+            stays: true,
             run: () => root.putAway()
         }, {
             glyph: Theme.glyph.notifications,
             name: "All the notices",
-            chord: [{ text: "Tab" }],
+            // The chord that opens them, pressed again while the stack
+            // holds the keys; Tab only completes (Joel, 2026-10-26).
+            chord: root.reaching,
             run: () => root.history()
         }]);
     }
@@ -245,8 +253,11 @@ Scope {
     }
 
     // The front one done with: the verb chosen, or what it's about, or let
-    // go when it's about nothing to open.
-    function run() {
+    // go when it's about nothing to open. What takes Joel out gives the
+    // keys back, so what he types next reaches the window that came
+    // forward; what only changes the stack keeps them, unless he says to
+    // be done (Ctrl+Return).
+    function run(done) {
         const notification = front;
         if (!notification)
             return;
@@ -255,14 +266,20 @@ Scope {
             stepped = false;
             if (verb)
                 verb.run();
+            if (done || !(verb?.stays ?? false))
+                holding = false;
             return;
         }
         Notices.mark(notification.id, true);
         const offer = opens(notification);
-        if (offer)
+        if (offer) {
             Notices.open(offer, notification.appName);
-        else
+            holding = false;
+        } else {
             notification.dismiss();
+            if (done)
+                holding = false;
+        }
     }
 
     // Turns the stack, so the next comes to the front, or the one before.
@@ -276,14 +293,15 @@ Scope {
     // does the front one, the right arrow steps into its verbs, where Up
     // and Down choose one and the left arrow or Escape steps back, and
     // otherwise Up and Down move through the stack. Delete or Backspace
-    // lets it go and with Shift all of them, Tab hands on to the history,
-    // and Escape gives the keys back.
+    // lets it go and with Shift all of them, the chord that opened the
+    // stack hands on to the history (niri's, to `take` below), and Escape
+    // gives the keys back. Tab does nothing, being only for completing.
     function pressed(event) {
         const all = (event.modifiers & Qt.ShiftModifier) !== 0;
         switch (event.key) {
         case Qt.Key_Return:
         case Qt.Key_Enter:
-            run();
+            run((event.modifiers & Qt.ControlModifier) !== 0);
             break;
         case Qt.Key_Right:
             if (!stepped && verbs.length > 0) {
@@ -313,9 +331,6 @@ Scope {
                 putAway();
             else if (front)
                 front.dismiss();
-            break;
-        case Qt.Key_Tab:
-            history();
             break;
         case Qt.Key_Escape:
             if (stepped)
@@ -360,11 +375,11 @@ Scope {
             launcher.into("notices");
     }
 
-    // The chord that opens the notices, as the launcher draws chords.
-    readonly property string reach: {
-        const opener = Shortcuts.actions.find(action => action.opens === "notices");
-        return opener ? opener.chord.map(key => key.text).join(" + ") : "";
-    }
+    // The chord that opens the notices, key by key and as the launcher
+    // draws chords.
+    readonly property var reaching: Shortcuts.actions
+        .find(action => action.opens === "notices")?.chord ?? []
+    readonly property string reach: reaching.map(key => key.text).join(" + ")
 
     function since(then, now) {
         const minutes = Math.floor((now - then) / 60000);

@@ -321,6 +321,9 @@ Provider {
             glyph: action.glyph,
             hue: "action",
             chord: action.chord ?? [],
+            // One that changes how things stand, such as Let it sleep,
+            // keeps the launcher, which shows it changed (Piece.qml).
+            stays: action.stays ?? false,
             run: () => action.run(provider.shell)
         }));
         return member({
@@ -336,6 +339,7 @@ Provider {
             glyph: Theme.glyph[fact.entry.mark],
             hue: Marks.tone(piece),
             plain: actions.length === 0,
+            stays: actions.length > 0 && actions[0].stays,
             // Return's act leads the right arrow, then the rest, so every
             // act is there.
             verbs: actions.length > 1 ? () => actions : null,

@@ -16,6 +16,7 @@ Piece {
         glyph: Theme.glyph.layerOff,
         name: "Let it go",
         verb: "release",
+        stays: true,
         run: () => Niri.spawn(["ergodox", "layer", "0"])
     }] : []
 }

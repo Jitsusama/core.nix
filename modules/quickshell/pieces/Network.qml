@@ -46,6 +46,7 @@ Piece {
     }] : []).concat(card === null ? [] : [{
         glyph: Theme.glyph.retry,
         name: "Check it again",
+        stays: true,
         run: () => Wifi.check()
     }])
 }

@@ -90,10 +90,12 @@ Piece {
         glyph: Theme.glyph.resume,
         name: "Let it go on",
         verb: "resume",
+        stays: true,
         run: () => Niri.spawn(["disk-guard", "thaw"])
     }] : []).concat(silent ? [{
         glyph: Theme.glyph.resume,
         name: "Start the guard",
+        stays: true,
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])
 

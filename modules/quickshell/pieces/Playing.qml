@@ -26,16 +26,19 @@ Piece {
         glyph: Theme.glyph.pause,
         name: "Pause",
         chord: chord("toggle"),
+        stays: true,
         run: () => Music.toggle()
     }].concat(Music.player.canGoNext ? [{
         glyph: Theme.glyph.next,
         name: "Next track",
         chord: chord("next"),
+        stays: true,
         run: () => Music.next()
     }] : [], Music.player.canGoPrevious ? [{
         glyph: Theme.glyph.previous,
         name: "Previous track",
         chord: chord("previous"),
+        stays: true,
         run: () => Music.previous()
     }] : [], Music.revealable ? [{
         glyph: Music.mark,
@@ -44,6 +47,7 @@ Piece {
     }] : [], Music.others.map(other => ({
         glyph: Theme.glyph.pause,
         name: `Pause ${Music.name(other)} too`,
+        stays: true,
         run: () => other.pause()
     })))
 }

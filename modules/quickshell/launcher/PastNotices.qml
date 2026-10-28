@@ -147,12 +147,16 @@ Provider {
             name: notice.read ? "Mark it unread" : "Mark it read",
             glyph: notice.read ? Theme.glyph.unread : Theme.glyph.read,
             hue: "action",
+            // It changes the notice rather than taking Joel anywhere, so
+            // the launcher stays and shows it changed.
+            stays: true,
             run: () => Notices.mark(notice.id, !notice.read)
         })], live ? [thing({
             key: "verb:notice:dismiss",
             name: "Let it go",
             glyph: Theme.glyph.dismiss,
             hue: "action",
+            stays: true,
             run: () => {
                 const still = Notices.live[notice.id] ?? null;
                 if (still)

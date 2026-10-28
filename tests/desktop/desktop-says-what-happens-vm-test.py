@@ -49,6 +49,28 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 BESIDE_THE_MIDDLE = 2
 
 
+def stays_showing_it_gone(desktop: Desktop, name: str) -> None:
+    """Wait for the launcher to stay open showing a row gone, then close it.
+
+    An act that changes how things stand, rather than taking Joel
+    anywhere, keeps the launcher, and the row it ended stays in its place
+    marked gone, so nothing under it moves.
+    """
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and any(
+                thing["gone"] and thing["reads"].split(" \u00b7 ")[0] == name
+                for thing in shown["things"]
+            )
+        )
+    )
+    desktop.machine.send_key("esc")
+    desktop.machine.wait_until_fails(
+        desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10)
+    )
+
+
 def test_niris_settings_failing_to_load_is_said_until_they_load_again(desktop: Desktop) -> None:
     """Niri's settings failing to load is said until they load again."""
     machine = desktop.machine
@@ -139,16 +161,18 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     log = desktop.shell_said("polish() loop")
     assert "polish() loop" not in log, "a notice's layout never settles"
     # Super+N takes the stack, which waits while it holds the keys.
-    # The newer notice waits behind the older; Down brings it to the
-    # front, the right arrow steps into its verbs, what it offers
-    # first, as a launcher row's are, Down chooses the next and Left
-    # steps back, and Return does the one chosen, with a token to
-    # come forward.
+    # Tab does nothing, being only for completing. The newer notice
+    # waits behind the older; letting the older go keeps the keys and
+    # brings the newer to the front, the right arrow steps into its
+    # verbs, what it offers first, as a launcher row's are, Down
+    # chooses the next and Left steps back, and Return does the one
+    # chosen, with a token to come forward, and gives the keys back.
     desktop.listen()
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
-    machine.send_key("down")
+    machine.send_key("tab")
+    machine.send_key("backspace")
     with desktop.told("notice verb Play it"):
         machine.send_key("right")
     with desktop.told("notice verb Copy what it said"):
@@ -158,17 +182,15 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
         machine.send_key("left")
     with desktop.told("notice verb Play it"):
         machine.send_key("right")
-    machine.send_key("ret")
+    with desktop.told("lets notices go"):
+        machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
     desktop.tokened()
-    # Shift+Backspace lets the rest go, which gives the keys back.
-    with desktop.told("lets notices go"):
-        machine.send_key("shift-backspace")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=10)
     )
     # The history is kept on disk, the one acted on read and the one
-    # that only arrived still unread.
+    # only let go still unread.
     kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(
         desktop.in_session(kept + ' | grep -q \'"summary":"Recording saved"[^}]*"read":true\''),
@@ -565,6 +587,8 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # Letting it sleep stays in the launcher, which shows it done.
+    stays_showing_it_gone(desktop, "Keep Awake")
 
 
 def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
@@ -601,6 +625,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     desktop.as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
+    # Ending it stays in the launcher, which shows it done.
+    stays_showing_it_gone(desktop, "Do Not Disturb")
 
 
 def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop: Desktop) -> None:
@@ -696,6 +722,8 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # Unmuting stays in the launcher, which shows it done.
+    stays_showing_it_gone(desktop, "Microphone")
     # Unmuting shows the meter a moment, which the next pictures
     # would hold for as long as the host takes to reach them.
     machine.wait_until_fails(

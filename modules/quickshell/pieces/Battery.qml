@@ -52,6 +52,7 @@ Piece {
     actions: PowerProfiles.profile === PowerProfile.PowerSaver ? [] : [{
         glyph: Theme.glyph.saver,
         name: "Save power",
+        stays: true,
         run: () => PowerProfiles.profile = PowerProfile.PowerSaver
     }]
 
