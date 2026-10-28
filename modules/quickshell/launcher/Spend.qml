@@ -101,6 +101,7 @@ Provider {
             doing.push(thing({
                 key: `spend:${given.key}:expect`,
                 name: Words.name("spend:expect"),
+                verb: Words.verb("spend:expect"),
                 glyph: Theme.glyph.fine,
                 hue: "action",
                 run: () => Niri.spawn(given.expect)

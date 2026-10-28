@@ -150,6 +150,9 @@ ShellRoot {
         expect("a setting holds its choices", trust.verb === "more" && trust.glyph !== ""
             && said(trust.verbs()) === "Let It Reconnect by Itself=in use,"
                 + "Only Connect It When Asked=", said(trust.verbs()));
+        // Each its own word for the foot, which its name's first wouldn't say.
+        expect("a choice says what it does", trust.verbs().map(row => row.verb).join(",")
+            === "reconnect,ask", trust.verbs().map(row => row.verb).join(","));
         trust.verbs()[1].run();
         expect("a choice sets it", !headphones.trusted, "it's still trusted");
         headphones.trusted = true;

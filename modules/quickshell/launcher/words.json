@@ -216,7 +216,8 @@
     {
       "id": "spend:expect",
       "in": "spend",
-      "name": "It's Expected"
+      "name": "It's Expected",
+      "verb": "expect"
     },
     {
       "id": "jobs",
@@ -3266,7 +3267,7 @@
       "once": ["Sign out"],
       "name": "Log Out",
       "term": "Machine/log out",
-      "verb": "leave",
+      "verb": "log out",
       "glyph": "logout",
       "sure": "Log Out Now"
     },
@@ -3651,22 +3652,26 @@
     {
       "id": "verb:bluetooth-trust",
       "in": "bluetooth",
-      "name": "Let It Reconnect by Itself"
+      "name": "Let It Reconnect by Itself",
+      "verb": "reconnect"
     },
     {
       "id": "verb:bluetooth-untrust",
       "in": "bluetooth",
-      "name": "Only Connect It When Asked"
+      "name": "Only Connect It When Asked",
+      "verb": "ask"
     },
     {
       "id": "verb:bluetooth-wake",
       "in": "bluetooth",
-      "name": "Let It Wake the Machine"
+      "name": "Let It Wake the Machine",
+      "verb": "wake"
     },
     {
       "id": "verb:bluetooth-no-wake",
       "in": "bluetooth",
-      "name": "Keep It From Waking the Machine"
+      "name": "Keep It From Waking the Machine",
+      "verb": "refuse"
     },
     {
       "id": "verb:bluetooth-radio-on",
@@ -3681,17 +3686,20 @@
     {
       "id": "verb:bluetooth-visible",
       "in": "bluetooth",
-      "name": "Let Others Find It"
+      "name": "Let Others Find It",
+      "verb": "show"
     },
     {
       "id": "verb:bluetooth-hidden",
       "in": "bluetooth",
-      "name": "Keep It Hidden"
+      "name": "Keep It Hidden",
+      "verb": "hide"
     },
     {
       "id": "verb:bluetooth-pairable",
       "in": "bluetooth",
-      "name": "Let Others Pair with It"
+      "name": "Let Others Pair with It",
+      "verb": "allow"
     },
     {
       "id": "verb:bluetooth-unpairable",
