@@ -154,7 +154,10 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
         homed = {"in", "of", "by"} & entry.keys()
         if entry["id"] not in placed and not homed:
             out.append(f"{entry['id']} has no place: no category holds it, nor anything else.")
-        if entry.get("by") and entry["by"] not in placed:
+        # What gives it may be held, or live inside a place, as The Call
+        # lives in Calls.
+        giver = things.get(entry.get("by", ""), {})
+        if entry.get("by") and entry["by"] not in placed and "in" not in giver:
             out.append(f"{entry['id']} is given by {entry['by']}, which has no place.")
         asked = {plainly(word) for word in entry.get("answers", [])}
         out.extend(

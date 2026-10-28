@@ -903,6 +903,20 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     # while before the guest comes.
     with desktop.told("drawn margin"):
         desktop.tuple_said("call connected", ago=10)
+    # The call is one place, Calls, leading with what can be done in it;
+    # Desktop lists no second row for it.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("desktop ")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and "Calls" in shown["rows"],
+    )
+    assert "The Call" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    desktop.type_in("calls", selecting="Calls")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Leave the Call" in shown["rows"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     with desktop.told("shows card Someone joined the call"):
         desktop.tuple_said("peer joined call: a guest")
     desktop.photograph("notice-joined")
