@@ -273,7 +273,7 @@ class Screens:
         self.wait_for_held_on("launcher", {screen}, timeout=dt.timedelta(seconds=10))
 
     def launcher_works_on(self, screen: str) -> None:
-        """Open the launcher on a screen, find Keep Awake and run it, then open it and close it."""
+        """Open the launcher on a screen, run Keep Awake and close it, then open it and close it."""
         was = self.awake()
         typed, row = ("let it sleep", "Let it sleep") if was else ("keep awake", "Keep awake")
         self.super_space_on(screen)
@@ -282,7 +282,9 @@ class Screens:
             lambda shown: shown["typed"] == typed and (shown["selected"] or {}).get("name") == row,
             f"found {row!r} on {screen}",
         )
-        self.machine.send_key("ret")
+        # Keep Awake is a setting, which Return does and stays to show;
+        # Ctrl+Return does it and closes.
+        self.machine.send_key("ctrl-ret")
         self.launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")
         deadline = time.monotonic() + 30
         while self.awake() == was:
