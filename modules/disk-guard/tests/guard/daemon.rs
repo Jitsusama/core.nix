@@ -894,6 +894,107 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
     assert!(later.exists());
 }
 
+/// A user config watching cargo builds under `trees`, each tree cut by a
+/// broker whose records are in `cut`, and a healthy disk.
+fn owned_trees(home: &Home) -> Config {
+    Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
+             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{
+               "src": {{ "kind": "cargo", "roots": ["{0}/trees"] }},
+               "workspaces": {{ "kind": "workspaces", "path": "{0}/workspaces",
+                                "quests": "{0}/quests", "trees": "{0}/cut" }} }} }}"#,
+        home.root.display()
+    ))
+    .unwrap()
+}
+
+/// A tree with a cargo build in it, held by process `pid`, which runs: the
+/// build's one file.
+fn held_tree(home: &Home, pid: u32) -> PathBuf {
+    let tree = home.root.join("trees/app");
+    fs::create_dir_all(tree.join("src")).unwrap();
+    fs::write(tree.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+    let target = tree.join("target");
+    fs::create_dir_all(target.join("debug")).unwrap();
+    fs::write(
+        target.join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n# created by cargo\n",
+    )
+    .unwrap();
+    fs::write(target.join("debug/app"), "x".repeat(8192)).unwrap();
+    fs::create_dir_all(home.root.join("workspaces")).unwrap();
+    fs::create_dir_all(home.root.join("quests")).unwrap();
+    fs::create_dir_all(home.root.join("cut")).unwrap();
+    let start = 9_000;
+    let boot = disk_guard::sys::boot(Path::new("/proc/stat")).unwrap();
+    let started = (boot.wall + disk_guard::units::float(start) / boot.ticks) * 1000.0;
+    fs::write(
+        home.root.join("cut/app.json"),
+        format!(
+            r#"{{"path":"{}","owners":[{{"pid":{pid},"startedAt":{started}}}]}}"#,
+            tree.display()
+        ),
+    )
+    .unwrap();
+    let proc = home.root.join("proc");
+    let me = unsafe { libc::geteuid() };
+    let at = |file: &str| format!("{pid}/{file}");
+    crate::procs::text(&proc, &at("stat"), &crate::procs::stat(pid, "pi", 0, start));
+    crate::procs::text(
+        &proc,
+        &at("status"),
+        &format!("Name:\tpi\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+    );
+    crate::procs::text(&proc, &at("cmdline"), "pi\0");
+    crate::procs::text(&proc, &at("maps"), "");
+    crate::procs::link(&proc, &at("cwd"), home.root.to_str().unwrap());
+    crate::procs::link(&proc, &at("exe"), "/bin/pi");
+    fs::create_dir_all(proc.join(at("fd"))).unwrap();
+    target.join("debug/app")
+}
+
+#[test]
+fn a_trees_build_goes_within_a_minute_of_its_last_holder_ending() {
+    // Upkeep comes every six hours, but what an owner leaves is spent the
+    // moment it ends: waiting for routine upkeep kept 190 GiB of builds
+    // whose sessions had ended for hours on 27 October.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    let mut guard = home.guard(owned_trees(&home));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(built.exists(), "a held tree's build stays through upkeep");
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    guard.step(&tick_at(3630.0), &CALM).unwrap();
+    assert!(built.exists(), "owners are looked at once a minute");
+    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    assert!(!built.exists(), "the build goes once its holder has ended");
+}
+
+#[test]
+fn a_new_boot_makes_upkeep_due_and_a_restart_does_not() {
+    // A boot ends every program, so what they left in temp is spent; a
+    // guard merely restarting in the same boot ends nothing.
+    let home = Home::new();
+    let expired = home.trashed("old.txt", "2020-01-01T00:00:00");
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!expired.exists(), "the first guard's upkeep");
+    let later = home.trashed("later.txt", "2020-01-01T00:00:00");
+    let mut again = home.guard(home.config("0%", "0%"));
+    again.step(&tick(), &CALM).unwrap();
+    assert!(later.exists(), "the same boot and guard owe no upkeep");
+    let rebooted = Tick {
+        boot: "another".into(),
+        wall: wall() + 7200.0,
+        ..tick()
+    };
+    let mut booted = home.guard(home.config("0%", "0%"));
+    booted.step(&rebooted, &CALM).unwrap();
+    assert!(!later.exists(), "a new boot makes upkeep due");
+}
+
 #[test]
 fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
     let home = Home::new();

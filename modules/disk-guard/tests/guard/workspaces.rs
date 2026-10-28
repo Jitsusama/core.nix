@@ -243,6 +243,48 @@ fn a_tree_whose_holders_have_all_ended_is_over_unless_a_live_quest_lists_it() {
     );
 }
 
+#[test]
+fn a_parked_quests_tree_is_over_once_its_holders_have_ended() {
+    // A quest put on the bench or left for someday isn't being worked on,
+    // so its trees' builds are a cache nobody is using: they go once its
+    // sessions end, and come back with a build when it's picked up.
+    let root = tempfile::tempdir().unwrap();
+    let (records, quests) = (root.path().join("cut"), root.path().join("quests"));
+    fs::create_dir_all(&records).unwrap();
+    let record = |key: &str, owner: u32| {
+        let body =
+            format!(r#"{{"path":"/t/{key}","owners":[{{"pid":{owner},"startedAt":1000000}}]}}"#);
+        fs::write(records.join(format!("{key}.json")), body).unwrap();
+    };
+    for (key, owner) in [
+        ("bench", 200),
+        ("someday", 200),
+        ("held", 100),
+        ("queued", 200),
+    ] {
+        record(key, owner);
+    }
+    let listing = |id: &str, priority: &str, tree: &str| {
+        quest(
+            &quests,
+            id,
+            &format!("status: active\npriority: {priority}\ntrees:\n  - path: /t/{tree}\n"),
+        );
+    };
+    listing("QEST-20261002-AAA111", "bench", "bench");
+    listing("QEST-20261002-BBB222", "someday", "someday");
+    listing("QEST-20261002-CCC333", "bench", "held");
+    listing("QEST-20261002-DDD444", "queued", "queued");
+    let running = |pid: u32, started: f64| pid == 100 && (started - 1_000.0).abs() <= 2.0;
+    let mut over = disk_guard::workspaces::unheld_trees(&records, &quests, running);
+    over.sort();
+    assert_eq!(
+        over,
+        ["/t/bench", "/t/someday"].map(PathBuf::from),
+        "a parked quest keeps a tree only while a holder runs; a queued one keeps it"
+    );
+}
+
 /// A repository outside the workspace with a worktree linked into it, a
 /// clone of its own inside, and a repository whose worktree is also inside.
 pub(crate) fn linked_fixture(root: &Path) -> (PathBuf, PathBuf) {

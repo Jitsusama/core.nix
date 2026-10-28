@@ -24,7 +24,7 @@ pub struct Workspace {
 static QUEST_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^QEST-\d{8}-[0-9A-Z]{6}$").unwrap());
 static FIELD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^(status|updated):[ \t]*(\S+)[ \t]*$").unwrap());
+    LazyLock::new(|| Regex::new(r"(?m)^(status|updated|priority):[ \t]*(\S+)[ \t]*$").unwrap());
 static DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").unwrap());
 
 /// The end of a `YYYY-MM-DD` day in local time. A README has no
@@ -71,10 +71,10 @@ pub fn find(root: &Path, quests: &Path) -> Vec<Workspace> {
         };
         let (mut status, mut updated) = (None, None);
         for field in FIELD.captures_iter(frontmatter) {
-            let slot = if &field[1] == "status" {
-                &mut status
-            } else {
-                &mut updated
+            let slot = match &field[1] {
+                "status" => &mut status,
+                "updated" => &mut updated,
+                _ => continue,
             };
             *slot = Some(field[2].to_owned());
         }
@@ -235,8 +235,10 @@ struct Record {
 }
 
 /// The trees a tree broker's records in `records` name that nobody holds:
-/// every process a record names has ended, and no quest still going lists
-/// the tree as its own. Their builds were their holders', and go with them.
+/// every process a record names has ended, and no quest at work lists the
+/// tree as its own. Their builds were their holders', and go with them. A
+/// quest parked on the bench or for someday isn't at work, so keeps none:
+/// its builds are a cache nobody uses until it's picked up again.
 /// `running` says whether a pid still runs as the process that started at
 /// a wall second, so a pid the kernel has given another since holds
 /// nothing. A record that can't be read names no tree, so keeps its own.
@@ -250,7 +252,7 @@ pub fn unheld_trees(
     };
     let going: Vec<PathBuf> = quest_frontmatters(quests)
         .iter()
-        .filter(|(_, _, over)| !over)
+        .filter(|(_, frontmatter, over)| !over && !parked(frontmatter))
         .flat_map(|(_, frontmatter, _)| listed(frontmatter))
         .collect();
     let mut found = Vec::new();
@@ -270,6 +272,13 @@ pub fn unheld_trees(
         }
     }
     found
+}
+
+/// Whether a quest's frontmatter parks it, on the bench or for someday.
+fn parked(frontmatter: &str) -> bool {
+    FIELD
+        .captures_iter(frontmatter)
+        .any(|field| &field[1] == "priority" && matches!(&field[2], "bench" | "someday"))
 }
 
 /// Each concluded or retired quest, by its id, with its README's
