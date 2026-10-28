@@ -17,7 +17,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   nodes.machine =
     { config, lib, ... }:
     {
-      imports = [ self.nixosModules.memory ];
+      imports = [
+        self.nixosModules.hibernate
+        self.nixosModules.memory
+      ];
       virtualisation = {
         useEFIBoot = true;
         memorySize = 1024;

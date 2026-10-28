@@ -254,6 +254,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         guide = ./modules/guide/nixos.nix;
+        hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
