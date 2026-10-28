@@ -101,7 +101,7 @@ let
       }
       {
         chord = "t";
-        does = "Write text";
+        does = "Write on the picture";
       }
       {
         chord = "p";
@@ -113,7 +113,7 @@ let
       }
       {
         chord = "Shift+b";
-        does = "Fill an area";
+        does = "Fill an area of colour";
       }
       {
         chord = "o";
@@ -135,15 +135,15 @@ let
       }
       {
         chord = "Plus";
-        does = "Zoom in";
+        does = "The picture larger";
       }
       {
         chord = "Minus";
-        does = "Zoom out";
+        does = "The picture smaller";
       }
       {
         chord = "Tab";
-        does = "Show or hide the panels";
+        does = "Show or hide the docks";
       }
       {
         chord = "F11";
@@ -185,15 +185,15 @@ let
       }
       {
         chord = "?";
-        does = "Search for a command";
+        does = "Search GIMP's commands";
       }
       {
         chord = "Ctrl+z";
-        does = "Undo";
+        does = "Undo the last change";
       }
       {
         chord = "Ctrl+y";
-        does = "Redo";
+        does = "Redo the change undone";
       }
       {
         chord = "Ctrl+s";

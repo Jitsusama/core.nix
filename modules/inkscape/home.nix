@@ -129,7 +129,7 @@ let
       }
       {
         chord = "u";
-        does = "Fill an area";
+        does = "Fill a closed shape";
       }
       {
         chord = "z";
@@ -163,11 +163,11 @@ let
       }
       {
         chord = "Plus";
-        does = "Zoom in";
+        does = "The drawing larger";
       }
       {
         chord = "Minus";
-        does = "Zoom out";
+        does = "The drawing smaller";
       }
       {
         chord = "`";
@@ -253,11 +253,11 @@ let
     ++ [
       {
         chord = "?";
-        does = "Search for a command";
+        does = "Search Inkscape's commands";
       }
       {
         chord = "Escape";
-        does = "Select nothing";
+        does = "Let go of the selection";
       }
       {
         chord = "Ctrl+f";
