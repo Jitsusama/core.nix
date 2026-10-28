@@ -460,6 +460,19 @@ def test_the_lock_lets_go_without_its_password_when_released(desktop: Desktop) -
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
 
+def test_logind_saying_to_unlock_lets_the_lock_go(desktop: Desktop) -> None:
+    """Logind saying to unlock lets the lock go.
+
+    As after a resume from hibernation, where the disk's prompt has already asked for the
+    password, so the lock doesn't ask again.
+    """
+    desktop.as_account("lock-screen")
+    desktop.as_account(f"grep -qx locked {LOCKED}")
+    with desktop.told("released lock"):
+        desktop.machine.succeed("loginctl unlock-sessions")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
 def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop) -> None:
     """Polkit's prompt lets the account start a system service."""
     machine = desktop.machine

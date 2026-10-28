@@ -1048,6 +1048,13 @@
     a shutdown with the lid shut keeps the screen's brightness saved while it was open, so the
     next boot doesn't come up dark, and a keyboard's light is saved either way
   '';
+  the-screens-come-back-after-sleep = ''
+    once the machine wakes, swayidle turns back on the screens it turned off before sleep
+  '';
+  the-screens-go-off-before-sleep = ''
+    before every sleep swayidle locks the screen and then turns the screens off, even when the
+    lock is late, which still fails
+  '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
