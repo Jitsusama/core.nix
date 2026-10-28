@@ -162,10 +162,13 @@ impl Google {
             token,
             &format!("/gmail/v1/users/me/messages/{id}"),
             &[
-                ("format", "metadata"),
-                ("metadataHeaders", "From"),
-                ("metadataHeaders", "Subject"),
-                ("fields", "id,threadId,internalDate,payload/headers"),
+                ("format", "full"),
+                (
+                    "fields",
+                    "id,threadId,internalDate,payload(headers,mimeType,filename,body/data,\
+                     parts(mimeType,filename,body/data,parts(mimeType,filename,body/data,\
+                     parts(mimeType,filename,body/data))))",
+                ),
             ],
             "a piece of mail",
         )

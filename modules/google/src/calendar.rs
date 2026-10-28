@@ -324,10 +324,15 @@ pub fn plain(html: &str) -> String {
         kept.push_str(line);
         gap = false;
     }
-    if kept.chars().count() <= ABOUT_MOST {
-        return kept;
+    clipped(kept, ABOUT_MOST)
+}
+
+/// Text at most `most` characters long, cut at the last word before.
+pub fn clipped(text: String, most: usize) -> String {
+    if text.chars().count() <= most {
+        return text;
     }
-    let cut: String = kept.chars().take(ABOUT_MOST).collect();
+    let cut: String = text.chars().take(most).collect();
     match cut.rfind(char::is_whitespace) {
         Some(space) => cut[..space].trim_end().to_owned(),
         None => cut,
