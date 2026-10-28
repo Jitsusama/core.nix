@@ -298,6 +298,33 @@ fn batches(all: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> Vec<B
 }
 
 #[test]
+fn a_dead_output_goes_no_later_than_the_dead_derivation_that_built_it() {
+    // Nix keeps a derivation while an output it built is there, since it
+    // keeps derivations, so a batch with the one and not the other was
+    // refused every time: on 28 October, 443 derivations in one batch had
+    // all 237 of their outputs in others, and nothing cleared for an hour.
+    let described = r#"{
+        "/nix/store/aaa-check.drv": {"narSize": 4096, "registrationTime": 5,
+            "references": ["/nix/store/bbb-source"], "deriver": null},
+        "/nix/store/zzz-check": {"narSize": 1, "registrationTime": 5,
+            "references": [], "deriver": "/nix/store/aaa-check.drv"},
+        "/nix/store/bbb-source": {"narSize": 2, "registrationTime": 5,
+            "references": []}
+    }"#;
+    let dead = parse(described).unwrap();
+    let made = batches(&dead, NOW, 0.0, u64::MAX, 1);
+    let order: Vec<&str> = made.iter().map(|batch| batch.paths[0].as_str()).collect();
+    assert_eq!(
+        order,
+        [
+            "/nix/store/zzz-check",
+            "/nix/store/aaa-check.drv",
+            "/nix/store/bbb-source"
+        ]
+    );
+}
+
+#[test]
 fn a_listing_holds_each_path_s_references_among_the_dead_by_place() {
     // Only a dead reference can hold a path back, and a place costs far
     // less than a name: a store's listing holds 80,000 paths.

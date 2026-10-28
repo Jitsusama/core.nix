@@ -108,7 +108,9 @@ or launchd, and [`home.nix`][2] the account's.
   process holds, as a temporary root or a file it has open, and every dead
   path it reaches, is left for a later pass: Nix refuses a whole delete for
   one live path, deleting none, and each refusal costs it a whole look for
-  roots. Temporary roots are read again just before each delete, since an
+  roots. A built output goes no later than the dead derivation that built
+  it, since Nix keeps a derivation while its output is there. Temporary
+  roots are read again just before each delete, since an
   evaluation begun after the batch was made holds what it writes for
   minutes. Once a batch is refused anyway, the store is listed again and
   none of the old listing's batches goes to Nix meanwhile, not even the
