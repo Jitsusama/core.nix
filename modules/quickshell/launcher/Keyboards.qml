@@ -85,7 +85,7 @@ Provider {
     function told() {
         const found = Keyboards.keyboards(read(devices));
         const caps = Lights.caps;
-        const rows = found.map(device => holderRow({
+        const rows = found.map(device => thingRow({
             key: `keyboards:${device.phys || device.name}`,
             name: named(device),
             side: Keyboards.joined(device),
@@ -297,7 +297,7 @@ Provider {
         return {
             headline: `${lit.length} keyboards' lights`,
             glyph: Theme.glyph.brightness,
-            rows: lit.map(each => holderRow({
+            rows: lit.map(each => thingRow({
                 key: `keyboards:${each.device.phys || each.device.name}:lit`,
                 name: named(each.device),
                 side: each.rows[0].side,

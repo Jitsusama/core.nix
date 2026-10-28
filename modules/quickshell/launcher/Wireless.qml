@@ -383,8 +383,8 @@ Provider {
         }, fields ?? {}));
     }
 
-    // A part holding more, which steps in on Return as on the right arrow,
-    // wearing Wi-Fi's glyph dimmed. What it holds is made as it's opened,
+    // A part holding more, which copies its value on Return and steps in
+    // by the right arrow, wearing Wi-Fi's glyph dimmed. What it holds is made as it's opened,
     // from what wifid and iw say then, so it follows them while shown.
     function holds(key, id, side, fields, inside) {
         return holderRow(Object.assign({
@@ -701,7 +701,7 @@ Provider {
     function pointRow(point, detail) {
         const fastest = fastestOf(point, detail);
         const mark = point.joined ? " \u00b7 joined" : fastest ? " \u00b7 fastest" : "";
-        return holderRow({
+        return thingRow({
             key: `wifi:point:${point.bssid}`,
             name: named("point", { band: ghz[point.band], channel: point.channel }),
             side: `${point.signal} dBm \u00b7 ~${point.estimate} Mb/s${mark}`,

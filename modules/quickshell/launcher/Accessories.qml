@@ -163,7 +163,7 @@ Provider {
     // The machine's own adapter, last, so Return on the first row still
     // connects the likeliest device: a thing holding how it's set and what
     // it is.
-    readonly property var adapterRow: adapter === null ? null : holderRow({
+    readonly property var adapterRow: adapter === null ? null : thingRow({
         key: "bluetooth:adapter",
         name: Words.name("bluetooth:adapter"),
         side: on ? "on" : "off",
@@ -577,7 +577,7 @@ Provider {
             headline: `${told.length} connected`,
             glyph: glyph,
             note: "",
-            rows: told.map(each => holderRow({
+            rows: told.map(each => thingRow({
                 key: `link:bluetooth:${each.device.address}`,
                 name: each.device.name,
                 side: said(each),

@@ -169,17 +169,13 @@ ShellRoot {
             rain.graph.shape === "spark" && rain.graph.values.length === 12
                 && rain.graph.values[0] === 0.1 && rain.graph.values[3] === 0.9,
             JSON.stringify(rain.graph));
-        // Return steps in rather than copy a table, as the right arrow
-        // does: the launcher, stood in for, is asked to enter the rain, and
-        // what it lists there, at the top or a step down, is the hours.
-        let entered = null;
-        weather.launcher = { enter: row => { entered = row; } };
-        rain.run();
-        weather.launcher = null;
-        expect("rain steps in", rain.verb === "more" && entered === rain, rain.verb);
-        const hours = entered.verbs();
-        expect("a step down, the same hours", names(entered.targets()) === names(hours),
-            names(entered.targets()));
+        // Return copies when it next rains, as asked alone, and the right
+        // arrow steps into the hours, the same at the top or a step down
+        // (Joel, 2026-10-26: a row showing a value copies it, everywhere).
+        expect("rain copies", rain.verb === "copy" && rain.figure === true, rain.verb);
+        const hours = rain.verbs();
+        expect("a step down, the same hours", names(rain.targets()) === names(hours),
+            names(rain.targets()));
         expect("the next twelve hours, from this one",
             hours.length === 12 && hours[0].name === "13:00" && hours[11].name === "00:00",
             names(hours));

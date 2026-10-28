@@ -132,8 +132,8 @@ Provider {
 
     // How rows are drawn. A figure says something and Return closes; a leaf
     // worth having, such as a model, copies what it says; a part holding
-    // more (Provider's holderRow) steps in on Return as on the right arrow,
-    // wearing its thing's glyph.
+    // more (Provider's holderRow) copies its value too, the right arrow
+    // stepping into what it holds, and wears its thing's glyph.
     function figure(fields) {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }

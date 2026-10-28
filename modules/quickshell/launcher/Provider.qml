@@ -283,14 +283,33 @@ Scope {
         return row;
     }
 
-    // A figure holding more, as a CPU's Cores or a display's Scale: it says
-    // a value, wears its glyph dimmed (Choice.qml's "more"), and steps in
-    // on Return as on the right arrow to what `inside` gives, made then.
+    // A figure holding more, as a CPU's Cores or the weather's Rain: it says
+    // a value, wears its glyph dimmed (Choice.qml's "more"), copies the
+    // value on Return as any figure does, and the right arrow steps into
+    // what `inside` gives, made then (Joel, 2026-10-26: a row showing a
+    // value copies it, everywhere, and the right arrow goes into what it
+    // holds). A setting, as a display's Scale (`offers`), or one with no
+    // value yet steps in on Return as well, choosing being a setting's act.
     // The launcher asks a row for its verbs at the top and for its targets
     // a step in (enter), so it gives the same rows as both, or a part such
-    // as a display's Scale, a step inside the display, would open nothing.
+    // as Rain, a step inside the weather, would open nothing.
     function holderRow(fields, inside) {
         const row = copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields));
+        if (!row.offers && row.verb === "copy")
+            return Object.assign(row, { verbs: inside, targets: inside });
+        return entering(row, inside);
+    }
+
+    // A thing holding more, as a Bluetooth device or a camera, whose side
+    // says how it stands rather than a figure: Return steps in, as the
+    // right arrow does, to what `inside` gives.
+    function thingRow(fields, inside) {
+        return entering(copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields)),
+            inside);
+    }
+
+    // A row made to step in on Return to what `inside` gives.
+    function entering(row, inside) {
         return Object.assign(row, {
             verb: "more",
             stays: true,

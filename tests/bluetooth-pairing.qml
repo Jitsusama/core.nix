@@ -269,7 +269,8 @@ ShellRoot {
                 root.expect("facts after verbs", rows[0].key === "verb:bluetooth-disconnect",
                     `the first row is ${rows[0].key}`);
                 const input = rows.find(row => row.key === `bluetooth:${mouse.address}:input`);
-                root.expect("how it's carried holds the rest", input && input.verb === "more"
+                root.expect("how it's carried holds the rest", input && input.verb === "copy"
+                    && !!input.targets
                     && root.said([input]) === "Input=LE, HID over GATT", root.said(rows));
                 const told = input.verbs();
                 root.expect("facts named first, in order", root.said(told) === "Buttons=5",

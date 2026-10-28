@@ -692,7 +692,11 @@ works the same way everywhere.
   what Return does first, where the row's own list left it out, so the
   right arrow never hides the act Return would have done. Every row has
   a Return act: it steps in, does a thing, or copies the value it shows,
-  and a check walks every row to hold it. Return closes the launcher only
+  and a check walks every row to hold it. A row showing a value copies it
+  on Return wherever it shows, at the top or inside, even one holding
+  more, which the right arrow steps into: "rain" asked alone and Rain
+  inside the weather work the same. A thing (a device, a network, a
+  program) and a setting step in on Return, as the right arrow does. Return closes the launcher only
   when its act takes Joel out of it: to a window, a program or a file, a
   call, or something copied to paste. An act that changes something (the
   volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
@@ -751,9 +755,9 @@ works the same way everywhere.
   and Charge Limit). A part answers alone by its own
   words, "disk speed", "ram type" or "ping". A rate is the difference between two reads, read again
   once a second while it's shown and never for a key, and the footer says
-  whether it's just now or since last asked. A part holding more steps in
-  on Return as on the right arrow; a figure copies what it shows as
-  Return comes, and one still being read copies nothing. The start of one of those words, three letters
+  whether it's just now or since last asked. A figure copies what it
+  shows as Return comes, one holding more as well, its parts a step in by
+  the right arrow, and one still being read copies nothing. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears

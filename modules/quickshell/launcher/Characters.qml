@@ -50,10 +50,13 @@ Provider {
     function made(row, within) {
         if (row.parts) {
             const key = `${within}:${row.code}`;
+            // Return copies the character itself, not the number it's
+            // told by.
             return holderRow({
                 key: key,
                 name: row.name,
                 side: row.side,
+                copy: row.name,
                 note: row.note,
                 // A character is told by its numbers, so it wears the mark
                 // a number does.

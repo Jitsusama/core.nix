@@ -270,17 +270,19 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
             shown["held"][-1:] == ["Battery"] and (shown["selected"] or {}).get("name") == "Lately"
         )
 
-    desktop.step_in("ret")
+    desktop.step_in()
     desktop.launcher_until(in_battery)
     desktop.photograph("launcher-heat-part")
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
     )
-    desktop.step_in()
-    desktop.launcher_until(in_battery)
-    machine.send_key("esc")
+    # A figure copies what it shows on Return, even one holding more
+    # (Joel, 2026-10-26: a row showing a value copies it, everywhere).
+    machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    pasted = desktop.as_account("wl-paste --no-newline")
+    assert re.search("^-?\\d+ \\u00b0C$", pasted), pasted
     # The date in full, as the machine's clock has it; the day may
     # turn while it's asked, so either will do.
     before = machine.succeed("date '+%A %-d %B %Y'").strip()

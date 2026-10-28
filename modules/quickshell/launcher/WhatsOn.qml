@@ -153,7 +153,7 @@ Provider {
                 rows.push(meeting);
             return rows;
         };
-        const row = holderRow({
+        const row = thingRow({
             key: "on:today",
             name: Words.name("on:today"),
             side: date,
