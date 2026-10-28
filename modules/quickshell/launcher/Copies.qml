@@ -12,8 +12,9 @@
 // the keys again, its paste keys are pressed for it (Pasting.qml, which
 // Super+E's emoji paste through too). With no window there,
 // Return only copies, as the right arrow's Copy always does. Forget the
-// Clipboard, found by its words while there's something to forget, has the
-// helper forget every copy, and what the clipboard holds with them.
+// Clipboard, the clipboard's last row while there's something to forget
+// and found by its words from anywhere, has the helper forget every copy,
+// and what the clipboard holds with them.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -221,18 +222,31 @@ Provider {
                 found.push({ item: row.prepared, score: m.score, grade: m.grade, row: row });
         }
         matchedIn(all, typed, found.map(f => f.row));
+        const asked = all.length > 0 ? Fuzzy.match(forget.prepared, words, false)
+            : { score: -1 };
         // Newest first among equals, not shortest, since a copy is wanted
         // by when it was made.
         let finest = 3;
         for (const f of found)
             finest = Math.min(finest, f.grade);
-        const kept = found.filter(f => f.grade === finest)
-            .sort((a, b) => b.score - a.score || b.row.at - a.row.at);
-        return { rows: aged(kept.map(f => f.row)), grade: finest };
+        if (asked.score >= 0)
+            finest = Math.min(finest, asked.grade);
+        const kept = aged(found.filter(f => f.grade === finest)
+            .sort((a, b) => b.score - a.score || b.row.at - a.row.at).map(f => f.row));
+        const forgets = asked.score >= 0 && asked.grade === finest;
+        return { rows: forgets ? kept.concat([forget]) : kept, grade: finest };
     }
 
+    // The clipboard holds its own Forget, after every copy, so stepping in
+    // lands on the newest copy, never on forgetting them all, as Wi-Fi
+    // holds its off (collection-order.md).
     function everything() {
-        return aged(all.slice());
+        return all.length > 0 ? aged(all.slice()).concat([forget]) : [];
+    }
+
+    // How many copies it keeps, its Forget not among them.
+    function counted() {
+        return all.length === 0 ? "empty" : String(all.length);
     }
 
     // A fresh connection each time, since one refused or dropped doesn't
