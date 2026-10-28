@@ -110,9 +110,11 @@ or launchd, and [`home.nix`][2] the account's.
   one live path, deleting none, and each refusal costs it a whole look for
   roots. Temporary roots are read again just before each delete, since an
   evaluation begun after the batch was made holds what it writes for
-  minutes. It expires generations,
-  never the current, running or booted one, the newest five, or one with a
-  boot entry. It links the store's identical
+  minutes. Once a batch is refused anyway, the store is listed again and
+  none of the old listing's batches is offered meanwhile, since builds root
+  again what a listing called dead, within minutes of it. It expires
+  generations, never the current, running or booted one, the
+  newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing
   stalls on the disk or memory, since it can wait without cost, stopping
   when the moment ends. An account's guard on the same filesystem asks it to
