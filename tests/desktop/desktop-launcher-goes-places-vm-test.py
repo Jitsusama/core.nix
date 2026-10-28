@@ -1466,6 +1466,33 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
 
 
 @pytest.mark.usefixtures("google")
+def test_the_mail_that_wants_joel_is_counted_in_now_and_return_shows_it(
+    desktop: Desktop,
+) -> None:
+    """The mail that wants Joel is counted in Now, and Return shows it in the Mail program."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    now_rows(desktop)
+    desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
+    desktop.down_to("Mail")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["selected"]["side"] == "2 to read" and shown["selected"]["verb"] == "show"
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == ["Mail"]
+            and "Lunch on Friday" in shown["rows"]
+            and "Quarterly Numbers" in shown["rows"]
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> None:
     """A meeting Joel holds is cancelled from its acts, a step saying who's told asking first."""
     machine = desktop.machine

@@ -1092,6 +1092,12 @@ in
     glyph = nerd "f01ee";
     console = "@";
     means = "mail in Joel's Google account, and the place holding it";
+    # A closed envelope, a dot at its corner saying some of it waits.
+    drawn = drawing [
+      "M0 3H7.5V4.5H1.5V10.5H10.5V5.5H12V12H0Z"
+      "M1.5 4.5H3.3L6 6.3L8.7 4.5H10.5L6 7.8Z"
+      "M10 0A2 2 0 0 1 10 4A2 2 0 0 1 10 0Z"
+    ];
   };
   readMail = {
     glyph = nerd "f0ab1";

@@ -193,6 +193,7 @@ onLinux {
           "lag"
           "awake"
           "wide"
+          "mail"
           "microphone"
           "capslock"
           "layer"
