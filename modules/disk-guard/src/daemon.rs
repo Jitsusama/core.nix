@@ -22,7 +22,7 @@ use crate::plan::{Candidate, Class};
 use crate::pool::pool;
 use crate::replaced::Uses;
 use crate::socket::{Reply, Request, Responder};
-use crate::state::{self, Memory};
+use crate::state::{self, Memory, Owners};
 use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::{Size, float, whole};
 use crate::writers::{self, Frozen, Writers};
@@ -188,6 +188,12 @@ const LISTING_RETRY_PRESSED: f64 = 300.0;
 const ROOT_LEFT_GAP: f64 = 30.0;
 const HELD_ENDED_GAP: f64 = 120.0;
 
+/// How often the guard looks for an owner that has ended: a tree's last
+/// holder, a quest finished or parked, a boot, or a guard with new rules.
+/// Reading every quest's README and a few processes takes milliseconds, and
+/// a minute keeps what an owner leaves from outliving it by much more.
+const OWNERS_EVERY: f64 = 60.0;
+
 /// What holds the store, as cheaply read as it changes: the processes with
 /// temporary roots, by their files' names, and each of Nix's roots that
 /// still leads somewhere, by its link.
@@ -294,6 +300,8 @@ pub struct Guard {
     /// What held the store at the last look: the processes with temporary
     /// roots, and the results Nix's roots link to that are still there.
     holding: Option<Holding>,
+    /// When owners were last looked at, in monotonic seconds.
+    owners_at: Option<f64>,
     /// Whether a root left since the listing began, or a process holding
     /// paths ended, either of which makes garbage the listing lacks.
     root_left: bool,
@@ -592,6 +600,7 @@ impl Guard {
             system_heard: false,
             relist: false,
             holding: None,
+            owners_at: None,
             root_left: false,
             held_ended: false,
             collect: false,
@@ -903,6 +912,7 @@ impl Guard {
         self.mark(tick);
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
+        self.watch_owners(tick);
         let spare_moment = spare(senses.power, senses.saver, &self.memory.awake, tick.wall);
         let mut due = Vec::new();
         for (&device, watched) in &mut self.watched {
@@ -1169,6 +1179,49 @@ impl Guard {
             }
         }
         self.holding = Some(now);
+    }
+
+    /// Makes upkeep due at once when an owner has ended since the last look:
+    /// a tree's last holder or the quest it was kept for, a boot, which
+    /// ends every program and so everything they left in temp, or a guard
+    /// with new rules, which may judge more spent. What an owner leaves is
+    /// spent the moment it ends, so waiting six hours for routine upkeep
+    /// only keeps bytes nobody will read.
+    fn watch_owners(&mut self, tick: &Tick) {
+        if self
+            .owners_at
+            .is_some_and(|at| tick.monotonic - at < OWNERS_EVERY)
+        {
+            return;
+        }
+        self.owners_at = Some(tick.monotonic);
+        let Ok(boot) = crate::sys::boot(Path::new("/proc/stat")) else {
+            return;
+        };
+        let processes = &self.processes;
+        let running = |pid: u32, started: f64| {
+            crate::sys::started(processes, pid).is_some_and(|ticks| {
+                let since = boot.wall + crate::units::float(ticks) / boot.ticks;
+                (since - started).abs() <= 2.0
+            })
+        };
+        let seen = Owners {
+            boot: tick.boot.clone(),
+            guard: std::env::current_exe().ok(),
+            spent: spent_trees(&self.config, running)
+                .into_iter()
+                .filter(|tree| tree.exists())
+                .collect(),
+        };
+        let ended = self.memory.owners.as_ref().is_none_or(|before| {
+            before.boot != seen.boot
+                || before.guard != seen.guard
+                || seen.spent.iter().any(|tree| !before.spent.contains(tree))
+        });
+        if ended {
+            self.memory.upkept = None;
+        }
+        self.memory.owners = Some(seen);
     }
 
     /// Has the listing's garbage go in a pass of its own, once something
@@ -1637,23 +1690,7 @@ impl Guard {
                 process.pid == pid && (!process.readable || (since - started).abs() <= 2.0)
             })
         };
-        let quests_over: Vec<PathBuf> = self
-            .config
-            .sources
-            .values()
-            .filter_map(|source| match source {
-                Source::Workspaces { quests, trees, .. } => Some((quests, trees)),
-                _ => None,
-            })
-            .flat_map(|(quests, trees)| {
-                let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
-                    crate::workspaces::unheld_trees(records, quests, running)
-                });
-                crate::workspaces::finished_trees(quests)
-                    .into_iter()
-                    .chain(unheld)
-            })
-            .collect();
+        let quests_over = spent_trees(&self.config, running);
         let mut finished = |dir: &Path| {
             if quests_over.iter().any(|tree| dir.starts_with(tree)) {
                 return true;
@@ -2097,6 +2134,28 @@ fn paths(source: &Source) -> Vec<&Path> {
 
 /// Whether a user daemon spoke for the filesystem within the minute, so it
 /// drives that filesystem's passes.
+/// The trees whose builds are spent: every tree a finished quest lists, and
+/// every tree whose broker record names no holder still `running`, unless a
+/// quest at work lists it.
+fn spent_trees(config: &Config, running: impl Fn(u32, f64) -> bool + Copy) -> Vec<PathBuf> {
+    config
+        .sources
+        .values()
+        .filter_map(|source| match source {
+            Source::Workspaces { quests, trees, .. } => Some((quests, trees)),
+            _ => None,
+        })
+        .flat_map(|(quests, trees)| {
+            let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
+                crate::workspaces::unheld_trees(records, quests, running)
+            });
+            crate::workspaces::finished_trees(quests)
+                .into_iter()
+                .chain(unheld)
+        })
+        .collect()
+}
+
 fn spoken_for(hearing: Option<&Hearing>, device: u64) -> bool {
     hearing.is_some_and(|hearing| {
         let spoken = hearing

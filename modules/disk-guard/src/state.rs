@@ -8,7 +8,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 /// The version this guard writes.
 pub const VERSION: u32 = 1;
@@ -42,6 +43,10 @@ pub struct Memory {
     /// again while they live.
     #[serde(default)]
     pub spared: Vec<(u32, u64)>,
+    /// The owners the last look found ended, so one ending since makes
+    /// upkeep due, even across a restart.
+    #[serde(default)]
+    pub owners: Option<Owners>,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -59,9 +64,19 @@ impl Default for Memory {
             deduped: None,
             frozen: Vec::new(),
             spared: Vec::new(),
+            owners: None,
             rest: serde_json::Map::new(),
         }
     }
+}
+
+/// What has ended, as the guard last saw it: the boot it ran in, the guard
+/// it was, and the trees whose builds were spent.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Owners {
+    pub boot: String,
+    pub guard: Option<PathBuf>,
+    pub spent: BTreeSet<PathBuf>,
 }
 
 fn version() -> u32 {

@@ -23,7 +23,10 @@ or launchd, and [`home.nix`][2] the account's.
   healthy, routine upkeep takes what's due every six hours: on the charger or a
   battery over half, ten minutes after boot or resume, however busy the
   machine, since a workstation that's always busy would otherwise never
-  be tidied.
+  be tidied. It comes at once, too, when an owner ends: the guard looks
+  each minute, and a tree newly spent, a new boot or a guard with new
+  rules makes upkeep due, so what an owner leaves never waits hours for
+  the routine.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -32,7 +35,8 @@ or launchd, and [`home.nix`][2] the account's.
   rests: a concluded or retired quest's scratch ten minutes after its last
   write, and the builds in every tree its README lists, at once, whatever
   the band. So do the builds in a tree the tree broker's records say no
-  running process holds, unless a quest still going lists it, and a temp
+  running process holds, unless a quest at work lists it (a quest parked
+  on the bench or for someday isn't: its builds are a cache), and a temp
   entry nothing has changed since the last boot, whatever its name, since
   whatever made it ended with that boot.
   `src/plan.rs` holds the table.
