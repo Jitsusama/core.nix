@@ -1,9 +1,11 @@
 //! Which filesystem a path is on, as its free space is shared, which is
 //! how the daemons tell their filesystems apart. Walks stop at a change of
 //! device, so they never cross into a mount; the walk that finds targets
-//! goes on into a Btrfs subvolume, which `within` tells from a mount.
+//! goes on into a Btrfs subvolume, which `within` tells from a mount, and
+//! `beneath` lets the guard open what it found there.
 
 use std::io;
+use std::os::fd::OwnedFd;
 use std::path::Path;
 
 /// On Linux a Btrfs pool counts once, whatever subvolumes it holds.
@@ -25,6 +27,20 @@ pub fn within(parent: &Path, path: &Path) -> bool {
 /// is mounted as one.
 #[cfg(not(target_os = "linux"))]
 pub fn within(_parent: &Path, _path: &Path) -> bool {
+    false
+}
+
+/// Whether `child`, opened beneath `parent` with a device number of its
+/// own, may be gone on into as `within` says of paths, so a target the
+/// walk found in a subvolume can be opened to reclaim it.
+#[cfg(target_os = "linux")]
+pub fn beneath(parent: &OwnedFd, child: &OwnedFd) -> bool {
+    crate::linux::subvolume_beneath(parent, child)
+}
+
+/// Anywhere else a change of device is a mount.
+#[cfg(not(target_os = "linux"))]
+pub fn beneath(_parent: &OwnedFd, _child: &OwnedFd) -> bool {
     false
 }
 

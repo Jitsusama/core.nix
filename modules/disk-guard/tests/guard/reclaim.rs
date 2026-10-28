@@ -186,6 +186,31 @@ fn a_build_starting_as_the_target_moved_gets_it_back() {
     assert_eq!(names(&path), ["CACHEDIR.TAG", "criterion", "debug"]);
 }
 
+/// The work broker clones each tree as a Btrfs subvolume, a device of its
+/// own, and a guard that wouldn't open one failed every build in them,
+/// 198 GiB of them on one machine, "opening it: another filesystem".
+#[test]
+fn a_target_in_a_cloned_subvolume_is_emptied() {
+    let root = tempfile::tempdir().unwrap();
+    if !crate::pool::on_btrfs(root.path()) {
+        eprintln!("skipped: {} isn't on Btrfs", root.path().display());
+        return;
+    }
+    crate::pool::subvolume(root.path(), "tree");
+    let path = built(&root.path().join("tree"));
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = target(
+        &anchor,
+        root.path(),
+        &candidate(&path, false),
+        None,
+        &mut Script::default(),
+        &mut || {},
+    );
+    assert_eq!(outcome, Outcome::Reclaimed);
+    assert_eq!(names(&path), ["criterion"]);
+}
+
 #[test]
 fn a_target_reached_through_a_symlink_fails_untouched() {
     let root = tempfile::tempdir().unwrap();

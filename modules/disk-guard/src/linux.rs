@@ -647,6 +647,33 @@ pub fn subvolume_within(parent: &Path, path: &Path) -> bool {
         && rustix::fs::access(path, rustix::fs::Access::WRITE_OK).is_ok()
 }
 
+/// Whether `child`, a directory opened beneath `parent` with a device
+/// number of its own, is a writable Btrfs subvolume reached through the
+/// same mount: what `subvolume_within` asks of two paths, asked of open
+/// directories, so nothing can be swapped in between. One mount is one
+/// filesystem, so the pool needn't be asked. A kernel that doesn't say
+/// which mount a directory is on lets nothing through.
+pub fn subvolume_beneath(parent: &std::os::fd::OwnedFd, child: &std::os::fd::OwnedFd) -> bool {
+    let btrfs = |fd| rustix::fs::fstatfs(fd).is_ok_and(|stats| is_btrfs(&stats));
+    let mount = |fd| {
+        let wanted = rustix::fs::StatxFlags::MNT_ID;
+        rustix::fs::statx(fd, "", rustix::fs::AtFlags::EMPTY_PATH, wanted)
+            .ok()
+            .filter(|stat| stat.stx_mask & wanted.bits() != 0)
+            .map(|stat| stat.stx_mnt_id)
+    };
+    let writable = rustix::fs::accessat(
+        child,
+        ".",
+        rustix::fs::Access::WRITE_OK,
+        rustix::fs::AtFlags::empty(),
+    );
+    btrfs(parent)
+        && btrfs(child)
+        && mount(parent).is_some_and(|id| mount(child) == Some(id))
+        && writable.is_ok()
+}
+
 /// Whether a filesystem's statistics say it's Btrfs. The kernel's type is
 /// signed, so its bits are read as the unsigned magic number they are.
 fn is_btrfs(stats: &rustix::fs::StatFs) -> bool {
