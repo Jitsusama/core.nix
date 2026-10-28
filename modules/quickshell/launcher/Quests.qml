@@ -160,7 +160,7 @@ Provider {
                 .filter(part => part !== "").join(" \u00b7 ")),
             quest.updated ? fact("updated", day(quest.updated)) : null,
             parent ? fact("parent", parent.title || parent.id, parent.id) : null,
-            fact("folder", homely, "where an agent starts", quest.folder)
+            fact("folder", homely, "where a session starts", quest.folder)
         ].filter(row => row !== null));
     }
 

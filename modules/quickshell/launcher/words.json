@@ -1472,7 +1472,7 @@
       "id": "verb:ask:talk",
       "in": "ask",
       "name": "Talk to {name}",
-      "verb": "say",
+      "verb": "talk",
       "glyph": "reply"
     },
     {
@@ -4091,7 +4091,7 @@
         "busy": "busy",
         "paused": "paused",
         "off": "not running",
-        "sent": "said to {name}"
+        "sent": "talked to {name}"
       }
     },
     {
@@ -4126,9 +4126,9 @@
       "id": "verb:orchestrator:talk",
       "in": "orchestrators",
       "name": "Talk",
-      "verb": "say",
+      "verb": "talk",
       "glyph": "reply",
-      "ask": "say something"
+      "ask": "what to talk about?"
     },
     {
       "id": "verb:orchestrator:open",
@@ -4175,7 +4175,7 @@
     {
       "id": "verb:quest:open",
       "in": "quests",
-      "name": "Start an Agent",
+      "name": "Start a Session",
       "verb": "start",
       "glyph": "agent"
     },

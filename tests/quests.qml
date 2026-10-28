@@ -114,7 +114,7 @@ ShellRoot {
             const facts = prompt.verbs();
             // Each fact named first, as every part is, then what it says.
             expect("stepping in", names(facts)
-                === "Start an Agent, ID, Status, Last Touched, Part Of, Folder", names(facts));
+                === "Start a Session, ID, Status, Last Touched, Part Of, Folder", names(facts));
             const sides = facts.slice(1).map(row => row.side).join(", ");
             expect("what each says", sides
                 === `QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
