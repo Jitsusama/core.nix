@@ -1,7 +1,11 @@
 // The lock screen: the time and a password field on every screen, checked by
 // PAM through the quickshell service the system defines. Lock it with
 // `qs ipc call lock lock`, as swayidle does when Joel steps away or the lid
-// closes, and ask with `qs ipc call lock isLocked`. If Quickshell dies while
+// closes, and ask with `qs ipc call lock isLocked`. `qs ipc call lock release`
+// lets it go without the password, as swayidle does when logind says to
+// unlock: after a resume from hibernation, the disk's own prompt has already
+// asked for it. Anything running as Joel could do as much through loginctl,
+// so this opens nothing new. If Quickshell dies while
 // locked, niri keeps the screens locked, and the shell started again takes
 // the lock back, so the password still has somewhere to go: a switch
 // restarts the shell, and can come while Joel is away. The field is the
@@ -47,6 +51,20 @@ Scope {
 
     function lock() {
         sessionLock.locked = true;
+    }
+
+    // A password half typed, or a question PAM is waiting on, goes with it,
+    // so the next lock starts with an empty field.
+    function release() {
+        if (!sessionLock.locked)
+            return;
+        if (pam.active)
+            pam.abort();
+        password = "";
+        question = "";
+        said = "";
+        failed = false;
+        sessionLock.locked = false;
     }
 
     function enter(text) {
@@ -111,6 +129,10 @@ Scope {
 
         function lock(): void {
             root.lock();
+        }
+
+        function release(): void {
+            root.release();
         }
 
         function isLocked(): bool {

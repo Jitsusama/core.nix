@@ -432,6 +432,30 @@ def test_lock_screen_returns_once_the_lock_is_drawn(desktop: Desktop) -> None:
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
 
+def test_the_lock_lets_go_without_its_password_when_released(desktop: Desktop) -> None:
+    """The lock lets go without its password when released, and starts empty the next time.
+
+    swayidle releases it when logind says to unlock, as after a resume from hibernation, where
+    the disk's prompt has already asked for the password.
+    """
+    desktop.as_account("lock-screen")
+    desktop.as_account(f"grep -qx locked {LOCKED}")
+    # Half a password, left in the field.
+    desktop.machine.send_chars("half-a-pass")
+    with desktop.told("released lock"):
+        desktop.as_account("qs ipc call lock release")
+    desktop.as_account("qs ipc call lock isLocked | grep -qx false")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+    # Released again while unlocked, nothing happens.
+    desktop.as_account("qs ipc call lock release")
+    desktop.as_account("qs ipc call lock isLocked | grep -qx false")
+    # The next lock takes the password alone, so nothing was left behind.
+    desktop.as_account("lock-screen")
+    with desktop.told("released lock"):
+        desktop.machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
 def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop) -> None:
     """Polkit's prompt lets the account start a system service."""
     machine = desktop.machine
