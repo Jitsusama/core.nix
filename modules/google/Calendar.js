@@ -64,6 +64,19 @@ function heralded(meeting, now) {
     return aboutToStart(meeting, now) && meeting.start - now <= HERALDS;
 }
 
+// Whether another notice already told Joel of `meeting`, such as
+// Calendar's own page in Chrome: one named for it, come within ten minutes
+// of its start, so the shell doesn't say it twice. The shell's own says
+// when beside the name ("Standup in 1 min"), so it's never one of them.
+function toldElsewhere(meeting, notices) {
+    if (!meeting) {
+        return false;
+    }
+    const title = meeting.title.trim().toLowerCase();
+    return title !== "" && notices.some(notice => notice.at >= meeting.start - TAKES_OVER
+        && notice.summary.trim().toLowerCase() === title);
+}
+
 // Whether Return joins a meeting's call rather than showing the meeting:
 // it has a call, isn't over or all day, and is on or starts within ten
 // minutes. Any further off, he's more likely looking at it, answering it

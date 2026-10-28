@@ -57,6 +57,12 @@ Singleton {
         return Said.joinable(meeting, now);
     }
 
+    // Whether another notice already told Joel of it, such as Calendar's
+    // own page in Chrome, so the shell doesn't say it twice.
+    function toldElsewhere(meeting, notices) {
+        return Said.toldElsewhere(meeting, notices);
+    }
+
     // Whether it's on or starts today.
     function today(meeting) {
         return Said.today(meeting, now);

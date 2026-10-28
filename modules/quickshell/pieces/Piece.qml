@@ -58,6 +58,10 @@ Item {
     // Whether it comes true by itself, not by Joel's keys, and so is said
     // as a notice of its app's when it does (Arrivals.qml).
     property bool arrives: false
+    // Whether that notice goes, read, once it's no longer true, as one of
+    // a meeting about to start does once it has started: news only while
+    // it lasts.
+    property bool withdraws: false
     // Whether another piece's mark stands for it, so the margin leaves its
     // own out while What's on still lists it: quiet turned on by a share is
     // the share's, whose words say notices are held.
