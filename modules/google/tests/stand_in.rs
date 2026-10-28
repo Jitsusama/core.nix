@@ -495,6 +495,78 @@ fn an_answer_google_refuses_changes_nothing_held() {
     assert_eq!(state, before);
 }
 
+fn cancelled(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("DELETE") {
+        return (204, String::new());
+    }
+    google(path, body)
+}
+
+#[test]
+fn a_meeting_joel_holds_is_cancelled_telling_every_guest_and_let_go_at_once() {
+    let stand_in = StandIn::new(cancelled);
+    let path = credentials("cancel", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    assert!(watch.look(&now()).meetings[0].holds);
+    let state = watch.cancel("e1", &now()).clone();
+    assert!(state.meetings.is_empty());
+    let heard = stand_in.heard();
+    let written = heard.last().unwrap();
+    assert!(
+        written
+            .line
+            .starts_with("DELETE /calendar/v3/calendars/primary/events/e1?sendUpdates=all "),
+        "{}",
+        written.line
+    );
+    assert_eq!(written.authorization, "Bearer pis");
+}
+
+#[test]
+fn a_meeting_joel_is_only_asked_to_is_never_cancelled() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("GET /calendar") {
+            return (
+                200,
+                r#"{"items": [{"id": "e1", "summary": "Standup",
+                    "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-26T16:15:00-04:00"},
+                    "organizer": {"email": "ada@example.com"}}]}"#
+                    .into(),
+            );
+        }
+        cancelled(path, body)
+    });
+    let path = credentials("not-his", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(watch.cancel("e1", &now()), &before);
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .all(|heard| !heard.line.starts_with("DELETE"))
+    );
+}
+
+#[test]
+fn a_cancel_google_refuses_changes_nothing_held() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("DELETE") {
+            (403, "{}".into())
+        } else {
+            google(path, body)
+        }
+    });
+    let path = credentials(
+        "uncancelled",
+        now().timestamp().as_millisecond() + 3_600_000,
+    );
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(watch.cancel("e1", &now()), &before);
+}
+
 #[test]
 fn no_file_is_no_account_and_google_is_never_asked() {
     let stand_in = StandIn::new(google);

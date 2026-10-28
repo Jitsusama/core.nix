@@ -162,6 +162,7 @@ answered yes, maybe or no; mail can be read, marked unread and archived.
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | join | going into a meeting's call, or a call another sends | | |
 | see | looking at a meeting's details in the launcher: when, its call, who's going | | |
+| cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 
 ## Desktop
 

@@ -8,7 +8,9 @@
 // launcher, so a meeting he only wants to look at is never joined. The
 // right arrow lists Join the Meeting when it has a call, See It, then,
 // for an invitation, Answer Yes, Answer Maybe and Answer No, which keep
-// the launcher, its foot saying the answer once Google has it. Seeing it
+// the launcher, its foot saying the answer once Google has it, and for
+// one Joel holds, Cancel the Meeting, which asks once, since Google mails
+// everyone asked. Seeing it
 // says its day and times, where, his answer, its call, who holds it, who
 // else is asked and how each answered, and what it's about, each copied
 // by Return, and opens it in Calendar. Each row says when the meeting is at the right and its times
@@ -77,7 +79,35 @@ Provider {
         if (Calendar.invited(meeting))
             for (const said of ["yes", "maybe", "no"])
                 rows.push(answering(meeting, said));
+        if (meeting.holds)
+            rows.push(cancelling(meeting));
         return rows;
+    }
+
+    // Cancel asks once, as Quit does (Applications.qml): Return steps in
+    // to a row saying who's told, and a second Return cancels it and
+    // leaves the launcher open on what's left.
+    function cancelling(meeting) {
+        const key = "verb:calendar:cancel";
+        const asked = (meeting.guests ?? []).length;
+        const told = asked === 0 ? "telling nobody else"
+            : asked === 1 ? "telling 1 guest" : `telling ${asked} guests`;
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            targets: () => [thing({
+                key: `${key}:sure`,
+                name: `${Words.of(key).sure}, ${told}`,
+                verb: Words.verb(key),
+                glyph: Words.glyph(key),
+                hue: "alert",
+                stays: true,
+                run: () => Calendar.cancel(meeting)
+            })]
+        });
     }
 
     // See It: the meeting's details a step in, made as it's stepped into,

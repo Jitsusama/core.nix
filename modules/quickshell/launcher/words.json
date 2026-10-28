@@ -3697,6 +3697,14 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:cancel",
+      "in": "calendar:meeting",
+      "name": "Cancel the Meeting",
+      "verb": "cancel",
+      "glyph": "cancelMeeting",
+      "sure": "Cancel it now"
+    },
+    {
       "id": "verb:calendar:yes",
       "in": "calendar:meeting",
       "name": "Answer Yes",

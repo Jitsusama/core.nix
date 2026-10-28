@@ -3,10 +3,11 @@
 It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the whole state as one
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
 that connects. The account is ready, with two meetings on Meet from when the stand-in starts:
-Design Review five minutes on, about to start, Joel's own, and Standup half an hour on, Ada's in
-Room 4, with Grace not going. An answer a shell
-writes is written down in google-asked beside the socket, for the test to read, and taken as
-Google would take it, so the file and every shell say the meeting answered. Two pieces of mail
+Design Review five minutes on, about to start, Joel's own; Standup half an hour on, Ada's in
+Room 4, with Grace not going; and Planning two hours on, Joel's own with Grace asked. An answer
+a shell writes is written down in google-asked beside the socket, for the test to read, and taken
+as Google would take it, so the file and every shell say the meeting answered; a meeting Joel
+holds that's cancelled is written down and let go, as Google would. Two pieces of mail
 want Joel, Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read
 or archived is written down too, and taken out of the mail that wants him, as Gmail would.
 """
@@ -23,6 +24,7 @@ MINUTE = 60_000
 # How far ahead each meeting starts, and how long one lasts.
 SOON = 5 * MINUTE
 AHEAD = 30 * MINUTE
+LATER = 120 * MINUTE
 LASTS = 30 * MINUTE
 
 
@@ -69,6 +71,13 @@ class Account:
                 holds=False,
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
                 guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "no"}],
+            ),
+            meeting(
+                "planning",
+                "Planning",
+                now + LATER,
+                "klm-nopq-rst",
+                guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "yes"}],
             ),
         ]
         self.mail = [
@@ -118,16 +127,20 @@ class Account:
             self.shells.append(shell)
 
     def ask(self, line: str) -> None:
-        """Write down what a shell asked, and answer the meeting or tidy the mail it names."""
+        """Write down what a shell asked, and take it: a meeting answered or cancelled, or mail."""
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
         answer = said.get("answer", {})
         tidied = (said.get("read") or said.get("archive") or {}).get("id")
+        cancelled = said.get("cancel", {}).get("id")
         with self.lock:
             for one in self.meetings:
                 if answer.get("id") == one["id"]:
                     one["answer"] = answer["with"]
+            self.meetings = [
+                one for one in self.meetings if not (one["id"] == cancelled and one["holds"])
+            ]
             held = [mail for mail in self.mail if mail["id"] != tidied]
             if len(held) < len(self.mail):
                 self.mail = held

@@ -99,6 +99,13 @@ Singleton {
             Google.ask(Said.answer(meeting, said));
     }
 
+    // Cancels a meeting Joel holds, through the program, which cancels
+    // only one it holds as his, and Google tells every guest.
+    function cancel(meeting) {
+        if (meeting && meeting.holds)
+            Google.ask(Said.cancel(meeting));
+    }
+
     // Whether the next meeting is about to start, for Now's wants.
     readonly property bool starting: Said.aboutToStart(next, now)
 

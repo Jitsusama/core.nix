@@ -84,6 +84,28 @@ impl Watch {
         &self.state
     }
 
+    /// Cancels the meeting `id` and lets it go from what's held, so the
+    /// shell hears it at once. Only a meeting held as Joel's is cancelled:
+    /// deleting one he's only asked to would take it off his calendar alone
+    /// and tell nobody, which isn't cancelling it. One Google didn't take
+    /// changes nothing held.
+    pub fn cancel(&mut self, id: &str, now: &Zoned) -> &State {
+        let his = self
+            .state
+            .meetings
+            .iter()
+            .any(|meeting| meeting.id == id && meeting.holds);
+        if !his {
+            eprintln!("<4>a meeting asked to be cancelled isn't one Joel holds");
+            return &self.state;
+        }
+        match self.asking(now, |google, token| google.cancel(token, id)) {
+            Ok(()) => self.state.meetings.retain(|meeting| meeting.id != id),
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
     /// Marks the mail `id` read or archives it, as `how` says, and lets it
     /// go from what's held so the shell hears it at once: it wants Joel no
     /// more either way. Held, it was unread in the inbox, so the inbox has

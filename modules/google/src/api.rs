@@ -294,4 +294,24 @@ impl Google {
         }
         Ok(())
     }
+
+    /// Cancels the meeting `id`, one occurrence of a repeating one, and
+    /// Google mails every guest that it's cancelled, as when Joel deletes
+    /// one he holds in Google Calendar. One already gone is cancelled.
+    pub fn cancel(&self, token: &str, id: &str) -> Result<(), Refused> {
+        let written = self
+            .agent
+            .delete(format!(
+                "{}/calendar/v3/calendars/primary/events/{id}",
+                self.origins.api
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("sendUpdates", "all")
+            .call()
+            .map_err(|error| unreachable(&error))?;
+        match written.status().as_u16() {
+            200 | 204 | 410 => Ok(()),
+            status => Err(refused(status, "cancelling a meeting")),
+        }
+    }
 }

@@ -298,9 +298,9 @@
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
-    and answers an invitation the shell asks it to, changing only Joel's own answer, and tells it
-    the mail that wants Joel, newest first, each asked for once, marking it read or archiving it
-    when asked
+    and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
+    meeting only when Joel holds it, telling every guest, and tells it the mail that wants Joel,
+    newest first, each asked for once, marking it read or archiving it when asked
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1097,8 +1097,8 @@
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start, whether Return joins it or shows it,
-    whether it's today's and how Joel answered it, writes the line that answers it, and knows which
-    Meet call a window is and whose meeting it is
+    whether it's today's and how Joel answered it, writes the lines that answer and cancel it, and
+    knows which Meet call a window is and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1236,9 +1236,9 @@
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
     a meeting about to start by its name, says it in Now's Today, shows one further off with
-    who's asked and how each answered, answers its invitation, and lists its Meet call in Now
-    while it's open, opens mail by its subject, marks it read and archives it, sets the volume,
-    loses no letter typed after its chord, and shows the shortcuts
+    who's asked and how each answered, answers its invitation, cancels one Joel holds once he's
+    sure, and lists its Meet call in Now while it's open, opens mail by its subject, marks it read
+    and archives it, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
