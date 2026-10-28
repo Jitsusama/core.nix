@@ -2,8 +2,10 @@
 # named colours, which gimp.css, a stylesheet GIMP reads after its theme and
 # never writes, redefines from jitsusama.theme's roles. The theme's pigments
 # are a palette beside the ones GIMP ships. Both go in GIMP's settings
-# folder; GIMP owns everything else there, such as gimprc, sessionrc and
-# shortcutsrc, which it rewrites and a link would break.
+# folder, with shortcutsrc, the keys that differ from GIMP's, which the
+# system gimprc keeps GIMP from saving over. GIMP owns everything else
+# there, such as gimprc and sessionrc, which it rewrites and a link would
+# break.
 #
 # GIMP comes with G'MIC's filters and Resynthesizer's healing, and starts
 # with GIMP3_SYSCONFDIR pointing at its own system folder with gimprc
@@ -135,6 +137,12 @@ in
   systemd.user.tmpfiles.rules = [ "d ${screenshots} - - - -" ];
 
   home.file."${folder}/gimp.css".text = stylesheet;
+  # GIMP made one as it first closed, holding only its own keys written out
+  # as comments, so the declared one takes its place.
+  home.file."${folder}/shortcutsrc" = {
+    force = true;
+    source = ./shortcutsrc;
+  };
   home.file."${folder}/palettes/${config.jitsusama.theme.title}.gpl".text =
     import ../theme/palette-file.nix { inherit lib; }
       config.jitsusama.theme;

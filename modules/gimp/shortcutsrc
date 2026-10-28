@@ -1,0 +1,11 @@
+# GIMP's shortcuts where they differ from its own, which it reads from the
+# account's settings folder as it starts. home.nix links it there, and the
+# system gimprc's (save-accels no) keeps GIMP from writing over it on exit.
+# An action named here takes exactly the keys given, its own included.
+
+(file-version 1)
+
+# ? says what's here, as it does across the desktop: GIMP's search for a
+# command, which lists each one with its key. / and the keypad's / still open
+# it, as they do in GIMP as it ships.
+(action "dialogs-action-search" "slash" "KP_Divide" "question")
