@@ -1225,10 +1225,11 @@ Scope {
     // saying so took room from how things stand as soon as Joel typed.
     // Whether Return does something and keeps the launcher, as a setting
     // does, rather than going somewhere inside it, as a spot, a row with
-    // more inside or a collection's match does.
+    // more inside, one holding rows (its verbs and targets both, as a
+    // meeting's See It) or a collection's match does.
     function keepsOpen(choice) {
         return !!choice.stays && !!choice.run && !choice.spot && !choice.from
-            && verbOf(choice) !== "more";
+            && verbOf(choice) !== "more" && !(choice.verbs && choice.targets);
     }
 
     function keysFor(choice) {
