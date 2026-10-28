@@ -1,5 +1,5 @@
-// Which meeting is next, when it is in words, whether it's about to start
-// and whether Return joins it, its day in full, how Joel answered it and
+// Which meeting is next, when it is in words, whether it's about to start,
+// said as a notice and joined by Return, its day in full, how Joel answered it and
 // the line answering it, and which Meet call a window is and whose, from
 // meetings like the google program's, run in Qt's own JavaScript engine,
 // the one the shell runs it in. The
@@ -107,6 +107,16 @@ QtObject {
             check(`about to start at ${new Date(time).toTimeString()}`,
                 Calendar.aboutToStart(standup, time), meant);
         check("nothing is about to start", Calendar.aboutToStart(null, now), false);
+
+        // Said as a notice from a minute before, while it's about to start.
+        const heralded = [
+            [at(26, 15, 28), false], [at(26, 15, 29) - 1, false], [at(26, 15, 29), true],
+            [at(26, 15, 35), true], [at(26, 15, 35) + 1, false]
+        ];
+        for (const [time, meant] of heralded)
+            check(`said as a notice at ${new Date(time).toTimeString()}`,
+                Calendar.heralded(standup, time), meant);
+        check("nothing is said as a notice", Calendar.heralded(null, now), false);
 
         // Whether Return joins it: [what, the meeting, joins]
         const joins = [

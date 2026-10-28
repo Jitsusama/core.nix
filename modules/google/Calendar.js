@@ -1,6 +1,6 @@
 // What the shell works out from the meetings the google program keeps
 // (src/state.rs): which meeting is next, when it is in words, whether it's
-// about to start, whether Return joins it, how Joel answered it, the
+// about to start and said as a notice, whether Return joins it, how Joel answered it, the
 // lines that answer and cancel it (src/ask.rs), and which Meet call a
 // window is. Calendar.qml asks these of the meetings Google.qml holds,
 // Mail.js asks the day and the time, and the checks run them in Qt's own
@@ -18,6 +18,9 @@ const TAKES_OVER = 600_000;
 // Now's wants say it (15J7N3's piece): two minutes before, five after.
 const BEFORE = 120_000;
 const AFTER = 300_000;
+// How long before its start a meeting about to start is said as a
+// notice, once: a minute.
+const HERALDS = 60_000;
 // Up to how far ahead "in 12 min" is said rather than the time: an hour.
 const SOON = 3_600_000;
 // How wide a clock's hours and minutes are written.
@@ -53,6 +56,12 @@ function next(meetings, now) {
 // until five after.
 function aboutToStart(meeting, now) {
     return Boolean(meeting) && now >= meeting.start - BEFORE && now <= meeting.start + AFTER;
+}
+
+// Whether a meeting about to start is said as a notice by now: from a
+// minute before its start until it's no longer about to start.
+function heralded(meeting, now) {
+    return aboutToStart(meeting, now) && meeting.start - now <= HERALDS;
 }
 
 // Whether Return joins a meeting's call rather than showing the meeting:

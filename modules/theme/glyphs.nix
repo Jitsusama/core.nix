@@ -1025,6 +1025,14 @@ in
     glyph = nerd "f0ed7";
     console = "m";
     means = "a meeting on Joel's calendar, and the calendar holding them";
+    # A calendar page on its two rings, its day marked.
+    drawn = drawing [
+      "M2.5 0H4V2H2.5Z"
+      "M8 0H9.5V2H8Z"
+      "M0 2H12V12H0Z"
+      "M1.5 5H10.5V10.5H1.5Z"
+      "M3 6.5H6V9H3Z"
+    ];
   };
   # A calendar page with lines on it, for what's written of a meeting.
   meetingDetails = {

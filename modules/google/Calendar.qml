@@ -108,6 +108,13 @@ Singleton {
 
     // Whether the next meeting is about to start, for Now's wants.
     readonly property bool starting: Said.aboutToStart(next, now)
+    // The next meeting while it wants Joel (Starting.qml): about to start,
+    // and its call not yet open in a window of its own, when it's on air
+    // instead (Call.qml). A call joined through Tuple isn't seen here.
+    readonly property var wanting: starting
+        && !calls.some(call => call.meeting !== null && call.meeting.id === next.id) ? next : null
+    // Whether it's said as a notice by now, a minute before it starts.
+    readonly property bool heralded: wanting !== null && Said.heralded(wanting, now)
 
     function join(meeting) {
         if (!meeting || !meeting.link)

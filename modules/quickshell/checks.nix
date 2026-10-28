@@ -186,6 +186,7 @@ onLinux {
           "spend"
           "pi"
           "notices"
+          "meeting"
           "quiet"
           "disk"
           "lag"
