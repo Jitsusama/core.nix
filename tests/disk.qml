@@ -122,7 +122,7 @@ ShellRoot {
         holds: piece => piece.active && piece.role === "alert" && piece.wants
             && piece.value === "froze dd"
             && piece.hint === "dd was frozen for filling /"
-            && piece.actions[0].name === "Let it go on"
+            && piece.actions[0].name === "Thaw It" && piece.actions[0].verb === "thaw"
     }, {
         // After one that isn't silent, so only this one's heartbeat can
         // make it so: a second short of silence, and nothing after it, so
@@ -137,7 +137,7 @@ ShellRoot {
         machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
             && piece.value === "not watching"
-            && piece.actions.some(action => action.name === "Start the guard")
+            && piece.actions.some(action => action.name === "Start the Guard")
     }]
 
     property int at: 0
