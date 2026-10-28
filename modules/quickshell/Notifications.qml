@@ -138,8 +138,23 @@ Scope {
     // narrower each, and how far.
     readonly property int behind: 3
     readonly property int peek: Theme.space.s
-    // The front card's height, which the cards behind it take.
+    // Whether the stack glides as it moves and its edges as they follow a
+    // new front card, rather than jumping: the one line to turn them off.
+    readonly property bool glides: true
+    // The front card's height, and the one the cards behind it take, which
+    // follows it in a glide, so the edges peeking out beneath don't jump
+    // as a card of another size comes to the front. The front card itself
+    // is its own height at once, since its words are drawn whole.
     property real frontHeight: 0
+    property real edgeHeight: frontHeight
+    Behavior on edgeHeight {
+        enabled: root.glides
+        NumberAnimation {
+            duration: Theme.motion.short
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.motion.curve
+        }
+    }
     // Said while the stack holds the keys, so the desktop test sees the
     // card hold still as the keys move into, through and out of its acts.
     // It's said once its bindings settle, since one step changes several
@@ -564,6 +579,7 @@ Scope {
             onYChanged: window.gather()
 
             Behavior on y {
+                enabled: root.glides
                 NumberAnimation {
                     duration: Theme.motion.short
                     easing.type: Easing.BezierSpline
@@ -715,13 +731,14 @@ Scope {
             // The notices, one stack: the front one whole, and behind it
             // the next few as edges, each a step lower and a step narrower,
             // at the front one's height with nothing drawn in them, so its
-            // cloudy surface shows only their frames beneath.
+            // cloudy surface shows only their frames beneath. It reaches the
+            // lower of the front card and the last edge as they glide.
             Item {
                 id: pile
 
                 width: stack.width
-                height: root.shown.length === 0 ? 0
-                    : root.frontHeight + Math.min(root.shown.length - 1, root.behind) * root.peek
+                height: root.shown.length === 0 ? 0 : Math.max(root.frontHeight,
+                    root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
                 visible: root.shown.length > 0
 
                 // Keys reach it while the stack holds them, which niri
@@ -752,7 +769,7 @@ Scope {
                     x: Math.max(rank, 0) * Theme.space.s
                     y: Math.max(rank, 0) * root.peek
                     width: stack.width - 2 * x
-                    height: front ? implicitHeight : root.frontHeight
+                    height: front ? implicitHeight : root.edgeHeight
                     urgent: modelData.urgency === NotificationUrgency.Critical
                     keys: front && root.holding
 
