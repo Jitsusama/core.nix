@@ -174,6 +174,7 @@
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
+        onepassword = ./modules/onepassword/home.nix;
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;

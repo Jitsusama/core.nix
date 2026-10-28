@@ -1931,6 +1931,12 @@
       "glyph": "chat"
     },
     {
+      "id": "shortcuts:onepassword",
+      "in": "shortcuts",
+      "name": "1Password",
+      "glyph": "password"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2551,6 +2557,16 @@
       "id": "shortcuts:slack:messages",
       "in": "shortcuts",
       "name": "Messages"
+    },
+    {
+      "id": "shortcuts:onepassword:finding",
+      "in": "shortcuts",
+      "name": "Finding items"
+    },
+    {
+      "id": "shortcuts:onepassword:item",
+      "in": "shortcuts",
+      "name": "The chosen item"
     },
     {
       "id": "on",
