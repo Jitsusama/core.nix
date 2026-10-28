@@ -5,7 +5,8 @@
 // while it's picked. They're listed in Now's groups, what wants Joel first,
 // then what reaches other people, what's playing and the modes left on, and
 // by name within each (Now.js), so what can need him leads and one keeps
-// its place while its group stands; Today is always last. What each asks
+// its place while its group stands; the time, the date, the weather and
+// the next meeting are always last, Now's own rows. What each asks
 // of Joel shows in its glyph's colour too. Return does a piece's first
 // action, and the
 // right arrow steps into the rest.
@@ -45,8 +46,8 @@ Provider {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active);
         // By group, what wants Joel first, and by name within each, so a
-        // row keeps its place while its group stands (Now.js); Today, its
-        // own row, always last.
+        // row keeps its place while its group stands (Now.js); this
+        // moment's rows, its own, always last.
         const rows = lit.map(fact => ({
             group: fact.piece.group,
             name: fact.piece.title,
@@ -54,18 +55,20 @@ Provider {
         }));
         if (waiting !== null)
             rows.push({ group: "wants", name: waiting.name, row: waiting });
-        return Now.ordered(rows).map(each => each.row).concat([today]);
+        return Now.ordered(rows).map(each => each.row).concat(moment);
     }
     onAllChanged: changed()
 
-    // Today, Now's one row of its own, its kind "today" and always its
-    // last, after what's on: the date at the right, and below it the
-    // weather here and the next meeting today.
-    // Return joins the meeting, or steps into it where it can't be joined
-    // yet, as its own row does (the calendar provider's `next`); with no
-    // meeting it steps in, to the date, the weather and the meeting, each
-    // the row its own place gives. A machine without the calendar, or a
-    // day with no meeting left, has no meeting half, and says nothing of
+    // This moment, Now's own rows, always its last, after what's on: the
+    // Time, the Date, the Weather here and the next meeting today, each
+    // a row of Now itself rather than inside a Today to step into (Joel,
+    // 2026-10-28: "what is the difference between top level now and
+    // today? it feels incongruent ... i want time in now also"). The time
+    // and the date copy what they say; the weather steps into its
+    // forecast; the meeting is the calendar provider's own row (`next`),
+    // whose Return joins it, or steps into it where it can't be joined
+    // yet. A machine without the calendar, or a day with no meeting left,
+    // has no meeting row, and one that can't say the weather has none of
     // it.
     readonly property var calendar: source("calendar")
     readonly property var weatherSource: source("weather")
@@ -107,70 +110,40 @@ Provider {
         }
     }
 
-    // The day, which changes only at midnight, when it's read again.
-    property date day: new Date()
-
-    Timer {
-        interval: provider.untilMidnight(provider.day)
-        running: true
-        onTriggered: provider.day = new Date()
+    // The time to the minute, which the Time row says, read as the clock
+    // turns, never polled.
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
     }
 
-    function untilMidnight(from) {
-        const next = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
-        // A second past it, so the day read is surely the new one.
-        return next.getTime() - from.getTime() + 1000;
-    }
-
-    // What the note says of the meeting: its name and when, "Standup in
-    // 12 min".
-    function meetingSaid(row) {
-        return `${row.name} ${row.side}`;
-    }
-
-    readonly property var today: {
-        const date = Qt.formatDate(day, "dddd d MMMM");
-        const said = [weather?.headline ?? "", meeting ? meetingSaid(meeting) : ""]
-            .filter(part => part !== "");
-        const inside = () => {
-            const rows = [copyRow({
-                key: "on:today:date",
-                name: Words.name("today"),
-                side: Qt.formatDate(day, "dddd d MMMM yyyy"),
-                glyph: Theme.glyph.date
-            })];
-            if (weather)
-                rows.push(holderRow({
-                    key: "on:today:weather",
-                    name: Words.name("weather"),
-                    side: weather.headline,
-                    note: weather.note ?? "",
-                    hue: "voice",
-                    // The sky's own glyph, as the weather's Now row wears it.
-                    glyph: weather.rows[0].glyph
-                }, () => weather.rows));
-            if (meeting)
-                rows.push(meeting);
-            return rows;
-        };
-        const row = thingRow({
-            key: "on:today",
-            name: Words.name("on:today"),
-            side: date,
-            note: said.join(" \u00b7 "),
+    readonly property var moment: {
+        const rows = [copyRow({
+            key: "on:time",
+            name: Words.name("time"),
+            side: Qt.formatDateTime(clock.date, "HH:mm"),
+            hue: "voice",
+            glyph: Theme.glyph.clock
+        }), copyRow({
+            key: "on:date",
+            name: Words.name("today"),
+            side: Qt.formatDate(clock.date, "dddd d MMMM yyyy"),
             hue: "voice",
             glyph: Theme.glyph.date
-        }, inside);
-        // With a meeting, Return is the meeting's own: joining it, or
-        // stepping into it where it can't be joined yet.
+        })];
+        if (weather)
+            rows.push(holderRow({
+                key: "on:weather",
+                name: Words.name("weather"),
+                side: weather.headline,
+                note: weather.note ?? "",
+                hue: "voice",
+                // The sky's own glyph, as the weather's Now row wears it.
+                glyph: weather.rows[0].glyph
+            }, () => weather.rows));
         if (meeting)
-            Object.assign(row, {
-                verb: meeting.verb,
-                stays: meeting.stays ?? false,
-                later: meeting.later ?? false,
-                run: () => meeting.run()
-            });
-        return row;
+            rows.push(meeting);
+        return rows;
     }
 
     function waitingSaid(id, fill) {
@@ -366,8 +339,10 @@ Provider {
         return all.slice();
     }
 
-    // Today is always there, so what's counted is what's on beside it.
+    // This moment's rows are always there, so what's counted is what's on
+    // beside them.
     function counted() {
-        return all.length === 1 ? "nothing" : String(all.length - 1);
+        const on = all.length - moment.length;
+        return on === 0 ? "nothing" : String(on);
     }
 }

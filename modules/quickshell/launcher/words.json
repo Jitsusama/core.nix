@@ -23,9 +23,6 @@
         "session:recording",
         "people",
         "emoji",
-        "today",
-        "time",
-        "weather",
         "session:quiet"
       ],
       "commands": [
@@ -1021,6 +1018,7 @@
     },
     {
       "id": "today",
+      "in": "on",
       "name": "Date",
       "answers": [
         "date",
@@ -1408,6 +1406,7 @@
     },
     {
       "id": "weather",
+      "in": "on",
       "name": "Weather",
       "answers": [
         "weather"
@@ -1475,6 +1474,7 @@
     },
     {
       "id": "time",
+      "in": "on",
       "name": "Time",
       "answers": [
         "time"
@@ -2650,12 +2650,6 @@
       "glyph": "now",
       "ask": "which?",
       "empty": "Nothing's on or waiting."
-    },
-    {
-      "id": "on:today",
-      "in": "on",
-      "name": "Today",
-      "glyph": "date"
     },
     {
       "id": "on:waiting",

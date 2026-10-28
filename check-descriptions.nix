@@ -972,9 +972,10 @@
     tests/launcher-shown.py lists, each printed with its word, and the check refuses a stand-in
     vocabulary breaking each of its rules
   '';
-  the-launcher-shows-today-in-now = ''
-    Now's last row is Today: the date, the weather read as the launcher opens and kept while it's
-    asked again, and the next meeting, whose Return is the meeting's own, or a step in without one
+  the-launcher-shows-the-moment-in-now = ''
+    Now's last rows are its own: the time, the date, the weather read as the launcher opens and
+    kept while it's asked again, and the next meeting, whose Return is the meeting's own, with no
+    Today row to step into, and Now counts nothing while only they are there
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a

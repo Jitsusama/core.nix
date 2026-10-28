@@ -56,8 +56,9 @@ never places: Security, which the others lean on, and the Library and Checks,
 which are core.nix's own.
 
 - **Desktop shows every context.** Each launcher place belongs to one; Now is a
-  view onto the others' rows, each kept in its own place, with one row of its
-  own, Today. A filling disk shows in Now, with its forecast, while it fills.
+  view onto the others' rows, each kept in its own place, with rows of its
+  own last: the time, the date, the weather and the next meeting. A filling
+  disk shows in Now, with its forecast, while it fills.
 - **Agents uses Machine's queue**: a session's heavy work waits there, shown on
   the session as what it's waiting on, and listed whole in Agents' Queue.
 - **Disk acts on Machine's jobs**: the disk guard freezes and thaws them.
@@ -206,7 +207,6 @@ or a copy, can be opened, copied or forgotten.
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
-| Today | Now's row for the date, the weather and the next meeting, whose Return joins the meeting when it's about to start, and otherwise shows it | | |
 | here | where the weather is when no town is typed: where the laptop is, else the town set, else the time zone's city | | the `whereabouts` program; the weather provider's `place` |
 
 ## Machine

@@ -655,7 +655,8 @@ works the same way everywhere.
   since what slowed the desktop is one of them, and a disk filling
   fast shows in Now. Now lists what wants Joel, then what reaches other
   people, what's playing and the modes left on, by name within each, and
-  Today last. Each says what it holds after its name,
+  last its own rows: the time, the date, the weather and the next
+  meeting, with no Today to step into. Each says what it holds after its name,
   muted, by its members' own names in the place's own order (Desktop:
   "This Window, Windows, Screens, Light"), as many whole as fit, so a glance
   reminds Joel what there is. Inside a place, things come by importance
