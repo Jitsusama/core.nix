@@ -30,7 +30,9 @@ pub struct Dead {
     pub registered: f64,
     /// Its size unpacked, in bytes.
     pub size: u64,
-    /// The store paths it refers to, dead or alive.
+    /// The store paths it can't go after, dead or alive: those it refers
+    /// to, and the derivation that built it, which Nix keeps derivations
+    /// for while their outputs are there.
     pub references: Vec<String>,
 }
 
@@ -217,13 +219,19 @@ pub fn parse(json: &str) -> Result<Vec<Dead>, String> {
             let registered = info["registrationTime"]
                 .as_f64()
                 .ok_or_else(|| refused("registrationTime"))?;
-            let references = info["references"]
+            let mut references = info["references"]
                 .as_array()
                 .ok_or_else(|| refused("references"))?
                 .iter()
                 .map(|reference| reference.as_str().map(str::to_owned))
                 .collect::<Option<Vec<_>>>()
                 .ok_or_else(|| refused("readable references"))?;
+            // Nix refuses to delete a derivation while an output it built
+            // is there and not in the same call, so the output goes first,
+            // as though it referred to the derivation.
+            if let Some(deriver) = info["deriver"].as_str() {
+                references.push(deriver.to_owned());
+            }
             Ok(Dead {
                 path,
                 registered,
