@@ -108,7 +108,12 @@ ShellRoot {
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
+    // Each case has its own 30 s, from when the test starts waiting for it,
+    // so a machine slowed by other work fails no case that came in time.
+    onWaitingChanged: deadline.restart()
+
     Timer {
+        id: deadline
         running: true
         interval: 30000
         onTriggered: root.fail(`never came: ${root.waiting}`)
