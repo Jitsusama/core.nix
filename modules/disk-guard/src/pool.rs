@@ -44,6 +44,19 @@ pub fn beneath(_parent: &OwnedFd, _child: &OwnedFd) -> bool {
     false
 }
 
+/// A file's extents shared with other files, as where each lies on the
+/// disk and its length: on Linux, as `FIEMAP` maps them.
+#[cfg(target_os = "linux")]
+pub fn shared_extents(file: &OwnedFd) -> Vec<(u64, u64)> {
+    crate::linux::shared_extents(file)
+}
+
+/// Anywhere else a file's blocks are its own: APFS clones aren't mapped.
+#[cfg(not(target_os = "linux"))]
+pub fn shared_extents(_file: &OwnedFd) -> Vec<(u64, u64)> {
+    Vec::new()
+}
+
 /// The APFS container a volume is in, by what it's mounted from: volume
 /// `s<n>` of `/dev/disk<container>`, or a snapshot of one, as the sealed
 /// system volume is. Its volumes share the container's free space, as a

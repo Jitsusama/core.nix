@@ -1,4 +1,4 @@
-use disk_guard::anchor::Dir;
+use disk_guard::anchor::{Counted, Dir};
 use std::fs;
 use std::io;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -135,6 +135,54 @@ fn size_counts_what_is_allocated_beneath() {
         .size()
         .unwrap();
     assert!((3 * MIB..3 * MIB + 256 * 1024).contains(&size), "{size}");
+}
+
+/// A tree cloned with its builds inside shares their blocks, and they're
+/// freed only once every tree holding them goes: measured together, what
+/// they share counts once, for the first measured. A clone within one
+/// directory counts once too.
+#[test]
+fn blocks_shared_between_directories_count_once_when_measured_together() {
+    let root = sandbox();
+    if !crate::pool::on_btrfs(root.path()) {
+        eprintln!("skipped: {} isn't on Btrfs", root.path().display());
+        return;
+    }
+    for dir in ["a", "b"] {
+        fs::create_dir(root.path().join(dir)).unwrap();
+    }
+    noise(&root.path().join("a/lib"), 4 * MIB);
+    crate::pool::clone_file(&root.path().join("a/lib"), &root.path().join("a/lib-again"));
+    crate::pool::clone_file(&root.path().join("a/lib"), &root.path().join("b/lib"));
+    noise(&root.path().join("b/own"), 2 * MIB);
+    // An extent lies somewhere on the disk once its writes are flushed.
+    for file in ["a/lib", "a/lib-again", "b/lib", "b/own"] {
+        fs::File::open(root.path().join(file))
+            .unwrap()
+            .sync_all()
+            .unwrap();
+    }
+    let dir = |name: &str| Dir::open(&root.path().join(name)).unwrap();
+    let near = |size: u64, want: u64| (want..want + 256 * 1024).contains(&size);
+    let alone = (dir("a").size().unwrap(), dir("b").size().unwrap());
+    assert!(
+        near(alone.0, 4 * MIB),
+        "a clone in one directory counts once: {alone:?}"
+    );
+    assert!(
+        near(alone.1, 6 * MIB),
+        "alone, each holds all it shares: {alone:?}"
+    );
+    let mut counted = Counted::default();
+    let together = (
+        dir("a").size_counted(&mut counted).unwrap(),
+        dir("b").size_counted(&mut counted).unwrap(),
+    );
+    assert!(near(together.0, 4 * MIB), "{together:?}");
+    assert!(
+        near(together.1, 2 * MIB),
+        "b's clone was counted with a: {together:?}"
+    );
 }
 
 /// What a directory holds, by name, sorted, with trash shown as one name.
