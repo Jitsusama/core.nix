@@ -1145,6 +1145,24 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
             and (shown["selected"] or {}).get("name") == screen
         )
     )
+    # And on out the way it came, each step with the row it went through
+    # selected, to the search it was found by (Joel, 2026-10-26: every way
+    # in climbs back out the same way).
+    machine.send_key("left")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Desktop"] and (shown["selected"] or {}).get("name") == "Screens"
+        )
+    )
+    machine.send_key("left")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == []
+            and shown["typed"] == "rotation"
+            and (shown["selected"] or {}).get("name") == "Rotation"
+            and str((shown["selected"] or {}).get("side", "")).startswith(where)
+        )
+    )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # An answer's part is found the same way: the stand-in battery's
