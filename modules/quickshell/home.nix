@@ -89,6 +89,7 @@ let
     "Words.qml"
     "Pasting.qml"
     "Notices.qml"
+    "Forward.js"
     "Sessions.qml"
     "Steward.qml"
     "SpendWatch.qml"
