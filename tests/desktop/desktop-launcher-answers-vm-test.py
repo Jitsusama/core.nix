@@ -409,6 +409,16 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         machine.wait_until_fails(
             desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
         )
+    # Asked to be sure, the foot says Log Out's verb whole, its first
+    # word alone saying nothing.
+    desktop.answer("log out")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Log Out")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: "\u21b5 log out" in (shown["selected"] or {}).get("told", [])
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A key's action, by the other words its bind lists.
     desktop.answer("fullscreen")
     desktop.launcher_until(

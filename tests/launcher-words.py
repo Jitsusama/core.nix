@@ -252,8 +252,11 @@ STRAY_UNITS = [
     (re.compile(r"(\d|\}) a second\b"), "a rate is written in Hz"),
 ]
 
-# A verb of two words is a turn, which says the way it goes.
+# A verb of two words is a turn, which says the way it goes, or one whose
+# second word is part of it ("log out"), as the launcher's foot keeps it
+# whole (Launcher.qml's `phrasal`).
 TURN = "turn"
+PHRASAL = {"in", "out"}
 
 
 def shown(entry: Entry) -> list[tuple[str, str]]:
@@ -290,7 +293,8 @@ def unsaid(vocabulary: Entry) -> list[str]:
     for entry in vocabulary["things"]:
         for state in [entry, *entry.get("states", {}).values()]:
             verb = state.get("verb", "").split()
-            if len(verb) > 1 and verb[0] != TURN:
+            whole = len(verb) > 1 and verb[1] in PHRASAL and not verb[2:]
+            if len(verb) > 1 and verb[0] != TURN and not whole:
                 out.append(f"{entry['id']}'s verb {' '.join(verb)!r} is more than a word.")
     return out
 

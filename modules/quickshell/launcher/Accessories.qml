@@ -294,6 +294,9 @@ Provider {
         return thing({
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`),
+            // Its own word for the foot where it has one, since a choice's
+            // name can start with a word that says nothing ("Only").
+            verb: Words.verb(`verb:${id}`) ?? "",
             glyph: mark,
             hue: "action",
             side: inUse ? "in use" : "",

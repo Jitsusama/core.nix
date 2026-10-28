@@ -1435,11 +1435,16 @@ Scope {
     onAskingChanged: noteKeys()
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
-    // it" was too many): a turn by the way it goes ("off"), anything else
-    // by its first word.
+    // it" was too many): a turn by the way it goes ("off"), a verb that's
+    // one with the way it goes whole ("log out", whose first word alone
+    // says nothing), anything else by its first word.
+    readonly property var phrasal: ["in", "out"]
+
     function oneWord(verb) {
         const said = verb.split(" ");
-        return said[0] === "turn" && said.length > 1 ? said[said.length - 1] : said[0];
+        if (said[0] === "turn" && said.length > 1)
+            return said[said.length - 1];
+        return said.length === 2 && phrasal.includes(said[1]) ? verb : said[0];
     }
 
     // A chord as words, for the foot: its keys joined by +, those pressed
