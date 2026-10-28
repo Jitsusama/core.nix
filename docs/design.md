@@ -652,7 +652,9 @@ works the same way everywhere.
   Programs, Desktop, Machine, Network and Keyboard, always in that order,
   seven rows in a card of eight, so home's shape never changes. Disk is a
   place in Machine, beside Processor, Memory and Heat, and a disk filling
-  fast shows in Now. Each says what it holds after its name,
+  fast shows in Now. Now lists what wants Joel, then what reaches other
+  people, what's playing and the modes left on, by name within each, and
+  Today last. Each says what it holds after its name,
   muted, by its members' own names in the place's own order (Desktop:
   "This Window, Windows, Screens, Light"), as many whole as fit, so a glance
   reminds Joel what there is. Inside a place, things come by importance

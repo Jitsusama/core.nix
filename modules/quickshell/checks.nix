@@ -846,6 +846,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/WhatsOn.qml} launcher/WhatsOn.qml
+      cp ${./launcher/Now.js} launcher/Now.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/today.qml} shell.qml
@@ -1859,6 +1860,22 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-comes-forward.qml
+      touch $out
+    '';
+
+  # Now lists what's on by its groups, what wants Joel first, then by name
+  # within each, as tests/now-groups.qml holds launcher/Now.js to it.
+  now-lists-by-group =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "now-lists-by-group" { } ''
+      cp ${../../tests/now-groups.qml} now-groups.qml
+      cp ${./launcher/Now.js} Now.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml now-groups.qml
       touch $out
     '';
 

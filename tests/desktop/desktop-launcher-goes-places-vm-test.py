@@ -1380,6 +1380,43 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 
 
 @pytest.mark.usefixtures("google")
+def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_today_last(
+    desktop: Desktop,
+) -> None:
+    """Now lists what waits on Joel, then a call, a song and a mode left on, and Today last."""
+    queue = "$HOME/.local/state/mission/queue.json"
+    kept(
+        desktop,
+        queue,
+        {"orchestrator": "TESTQA", "items": [{"id": "look", "title": "Look", "when": "now"}]},
+    )
+    # Standup's call, in the window Chrome would open it in, as above.
+    call = "chrome-meet.google.com__abc-defg-hij-Default"
+    desktop.as_account(f"niri msg action spawn -- kitty --class {call} --title Meet")
+    desktop.as_account("systemctl --user start caffeinate.service")
+    desktop.as_account(
+        "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
+        f" {shlex.quote(desktop.values['track'])}"
+    )
+    # Each by what it is, in the order Now lists its groups, Today last.
+    groups = ["on:waitingOnYou", "on:call", "on:playing", "session:awake", "on:today"]
+
+    def listed() -> list[str]:
+        """Open Now, and give which of those it lists, in its order."""
+        shown = now_rows(desktop)
+        launcher_closed(desktop)
+        return [thing["is"] for thing in shown["things"] if thing["is"] in groups]
+
+    try:
+        # Opened afresh each time, since rows that come while Now is
+        # open go at its end until it's made again (Steady.js).
+        retry(lambda _: listed() == groups, timeout=dt.timedelta(seconds=60))
+    finally:
+        desktop.as_account(f"systemctl --user stop player caffeinate.service; rm -f {queue}")
+        desktop.close(desktop.window_titled("Meet"))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
     desktop: Desktop,
 ) -> None:

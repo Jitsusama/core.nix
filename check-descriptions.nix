@@ -539,6 +539,10 @@
   nothing-spells-a-mark = ''
     no module but the theme's spells a mark's code point instead of naming it
   '';
+  now-lists-by-group = ''
+    Now lists what wants Joel first, then what reaches other people, what's playing and the modes
+    left on, by name within each, and a group it doesn't know last
+  '';
   one-niri = ''
     the screens go off through the machine's patched niri, not a second one
   '';
