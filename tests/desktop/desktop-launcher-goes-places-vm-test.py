@@ -1021,7 +1021,9 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     selected = desktop.showing()["selected"]
     assert selected["side"] == "Notes for Tuesday", selected
     # Return steps in, to what can be done to it, all but going to it,
-    # since it's the one he's in.
+    # since it's the one he's in. It steps in as the right arrow does, so
+    # the foot says the two as one, by the one word for stepping in.
+    assert selected["told"] == ["\u21b5 \u2192 more"], selected
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
@@ -1048,7 +1050,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.type_in("size", selecting="Size")
     # Its sizes are a step in by the right arrow too, and the foot says so.
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u2192 more" in told, told
+    assert "\u21b5 \u2192 more" in told, told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
     machine.send_key("ret")
