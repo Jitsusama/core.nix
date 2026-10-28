@@ -143,7 +143,8 @@ Provider {
     // jack, and a headset's microphone is named as its (Sounds.js called).
     function named(node) {
         const own = nicknamed(node);
-        const called = Sounds.called(node.name);
+        const shared = inputs.includes(node) && outputs.some(output => nicknamed(output) === own);
+        const called = Sounds.called(node.name, shared);
         return called === "" ? own : Words.name(`sound:called:${called}`, "", { device: own });
     }
 

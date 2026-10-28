@@ -178,14 +178,16 @@ function plugged(facts) {
 
 // The vocabulary's word for what a device is called, by its node's name:
 // the machine's own by their port, a headset's microphone as its, or ""
-// for one whose own name says what it is.
-function called(name) {
+// for one whose own name says what it is. A microphone that shares its
+// name with an output, as a USB microphone with a headphone socket does,
+// is its device's microphone too, so the two rows never read the same.
+function called(name, shared) {
     const text = String(name ?? "");
     const found = BUILT_IN.find((each) => each[0].test(text));
     if (found) {
         return found[1];
     }
-    return HEADSET_INPUT.test(text) ? "its-microphone" : "";
+    return HEADSET_INPUT.test(text) || shared === true ? "its-microphone" : "";
 }
 
 // Whether a device is a jack with nothing plugged into it, as the
