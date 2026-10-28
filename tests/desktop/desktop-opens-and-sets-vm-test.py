@@ -892,7 +892,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         lambda shown: (
             shown["held"] == ["now"]
             and any(
-                thing["reads"].startswith("Power Profile \u00b7 Power saver")
+                thing["reads"].startswith("Power Profile \u00b7 Power Saver")
                 for thing in shown["things"]
             )
         )
@@ -1170,7 +1170,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
     )
-    # It changed something, so the launcher stays, its row now Wi-Fi on.
+    # It changed something, so the launcher stays, its row now Wi-Fi On.
     desktop.launcher_until(
         lambda shown: shown["open"] and (shown["selected"] or {}).get("name") == "Wi-Fi On"
     )
