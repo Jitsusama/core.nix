@@ -1262,19 +1262,37 @@ Scope {
         return held.length === 0 || collecting ? !!choice.verbs : !!choice.targets;
     }
 
+    // Whether Return steps into a row where the right arrow would, as `run`
+    // decides: a place or a holder, a verb wanting a target, one that can't
+    // be taken back, or one with nothing to do of its own. Such a row says
+    // both keys as one, with the right arrow's word, so stepping in has one
+    // word wherever it's done (Joel, 2026-10-26), where it was open, choose,
+    // go, see or the act asked about, and never says it twice.
+    function stepsIn(choice) {
+        if (choice.start !== undefined || choice.given || !holdsMore(choice))
+            return false;
+        if (choice.category || choice.group || !choice.run)
+            return true;
+        if (held.length > 0 && choice.targets && choice.verb === "more")
+            return true;
+        return !!choice.confirm && (held.length === 0 || collecting);
+    }
+
     function keysFor(choice) {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        const keys = [["\u21b5", verbOf(choice)]];
+        const more = choice.from ? "see all" : "more";
+        const stepping = stepsIn(choice);
+        const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
         // One that keeps the launcher can be done and closed at once, the
         // font having no Ctrl key's mark, so it's spelled as chords are.
         if (keepsOpen(choice))
             keys.push(["Ctrl+\u21b5", "and close"]);
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
-        if (holdsMore(choice))
-            keys.push(["\u2192", choice.from ? "see all" : "more"]);
+        if (!stepping && holdsMore(choice))
+            keys.push(["\u2192", more]);
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", "back"]);
         return keys;
@@ -1319,10 +1337,12 @@ Scope {
             + measure.advanceWidth(`${key[0]} ${key[1]}`), returnPlace(told[0]));
     }
 
-    // How wide Return's place is beside what it says now.
+    // How wide Return's place is beside what it says now, the room kept
+    // measured from its first mark alone, so a Return said with the right
+    // arrow beside it doesn't widen it and move the keys.
     function returnPlace(key) {
         return Math.max(measure.advanceWidth(`${key[0]} ${key[1]}`),
-            measure.advanceWidth(`${key[0]} ${footVerbWidest}`));
+            measure.advanceWidth(`${key[0].split(" ")[0]} ${footVerbWidest}`));
     }
 
     function noteKeys() {

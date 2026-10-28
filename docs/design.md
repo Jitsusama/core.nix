@@ -682,7 +682,9 @@ works the same way everywhere.
   only the launcher: the window behind never hears it. The foot names
   every key that works on the selection: what Return does, Shift+Return
   where a row opens below, and the right arrow wherever there's something
-  inside, a step in as well as at the top. A step in lists
+  inside, a step in as well as at the top. Where Return steps in just as
+  the right arrow does, the two are said as one, ↵ → more, so stepping in
+  has one word wherever it's done, and no key is said twice. A step in lists
   what Return does first, where the row's own list left it out, so the
   right arrow never hides the act Return would have done. Every row has
   a Return act: it steps in, does a thing, or copies the value it shows,
