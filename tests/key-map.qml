@@ -117,7 +117,7 @@ ShellRoot {
                 names(work.slice(0, 3)).join(", "));
             const tabs = map.search("tabs").rows.filter(one => one.name === "Tabs");
             expect("a group from the top says what holds it",
-                tabs.map(one => one.side).join(", ") === "Terminal, Files",
+                tabs.map(one => one.side).join(", ") === "Terminal, Files, Browser",
                 tabs.map(one => one.side).join(", "));
             expect("a chord at the top, flat", map.search("open a terminal").rows[0].name
                 === "Open a terminal", map.search("open a terminal").rows[0].name);
