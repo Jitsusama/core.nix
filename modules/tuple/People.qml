@@ -196,15 +196,25 @@ Provider {
     // is found there on its own (Calls.qml).
     // Everyone is searched, thousands of them, so each name and email's
     // letters are tested first, which passes most over without a call,
-    // and only those left are made ready to match, once.
+    // and only those left are made ready to match, once. A letter more
+    // searches only those the letters before it found, since each word
+    // matches where a word starts and so does all it starts with: walking
+    // everyone each key was the launcher's dearest list, 8 ms a key and
+    // 553 ms at worst (launcher-trials.json, 2026-10-25 to 27). Only who
+    // matched is kept; how each stands, and so their order, is read anew.
+    readonly property var lately: ({ typed: null, among: null, found: [] })
+
     function gather(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const rows = known;
         const missed = { score: -1, grade: 3 };
         const found = [];
+        const matched = [];
         let grade = 3;
-        for (const row of everyone) {
+        const narrowing = lately.among === everyone && lately.typed !== null
+            && String(typed).toLowerCase().startsWith(lately.typed);
+        for (const row of narrowing ? lately.found : everyone) {
             const person = row.person;
             const byName = (person.named & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : missed;
@@ -213,9 +223,13 @@ Provider {
             const best = byName.score >= byEmail.score ? byName : byEmail;
             if (best.score < 0)
                 continue;
+            matched.push(row);
             grade = Math.min(grade, best.grade);
             found.push({ score: best.score, grade: best.grade, row: rows[row.key] ?? row, at: found.length });
         }
+        lately.typed = String(typed).toLowerCase();
+        lately.among = everyone;
+        lately.found = matched;
         // Those Tuple knows first, then the best match, and among equals
         // the order Tuple lists them in.
         const kept = found.filter(f => f.grade === grade)

@@ -220,6 +220,23 @@ ShellRoot {
                 names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, Dee Ellery, Eli Fenwick, "
                     + "gus@example.com, Zo\u00eb \"Zed\" Quill", names(all));
 
+            // A letter more searches only those the letters before found:
+            // what they found is hidden here, so a search that walked
+            // everyone again would still find Ada.
+            people.gather("ad");
+            expect("what the letters found is kept", names(people.lately.found) === "Ada Brook",
+                names(people.lately.found));
+            people.lately.found = [];
+            expect("a letter more searches only those", people.gather("ada").rows.length === 0,
+                names(people.gather("ada").rows));
+            expect("other letters search everyone", names(people.gather("ben").rows) === "Ben Carrow",
+                names(people.gather("ben").rows));
+            expect("a word more is a letter more",
+                names(people.gather("ben c").rows) === "Ben Carrow", names(people.gather("ben c").rows));
+            expect("a letter taken away searches everyone",
+                names(people.gather("be").rows) === "Ben Carrow", names(people.gather("be").rows));
+            people.gather("ad");
+
             open[0].run();
             expect("calling one who's available",
                 Niri.spawned.join(" ") === "tuple call start ada@example.com", Niri.spawned.join(" "));
@@ -288,6 +305,11 @@ ShellRoot {
                     && sides(open) === "in a call, in a call, away, offline", `${names(open)}: ${sides(open)}`);
             expect("is joined", open[0].verb === "join", open[0].verb);
             expect("everyone heard once", people.everyone === root.first, "everyone was made again");
+            // Found by a letter more, from what the letters before found
+            // when Ada was available, she says how she stands now.
+            const ada = people.gather("ada").rows;
+            expect("a letter more says how they stand now",
+                names(ada) === "Ada Brook" && ada[0].side === "in a call", `${names(ada)} ${ada[0]?.side}`);
             expect("the count", people.counted() === "0 available", people.counted());
             present.running = true;
         } catch (error) {
