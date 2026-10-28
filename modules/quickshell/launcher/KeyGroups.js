@@ -40,7 +40,7 @@ const TERMINAL_APP = "kitty";
 
 // The layers of programs in windows of their own, by their windows' app
 // ids, each with its own keys over the desktop's.
-const WINDOW_APPS = new Map([["swayimg", "swayimg"], ["inlyne", "inlyne"], ["org.pwmt.zathura", "zathura"], ["mpv", "mpv"], ["google-chrome", "chrome"], ["slack", "slack"], ["com.onepassword.OnePassword", "onepassword"], ["gimp", "gimp"], ["org.inkscape.Inkscape", "inkscape"]]);
+const WINDOW_APPS = new Map([["swayimg", "swayimg"], ["inlyne", "inlyne"], ["org.pwmt.zathura", "zathura"], ["mpv", "mpv"], ["google-chrome", "chrome"], ["slack", "slack"], ["com.onepassword.OnePassword", "onepassword"], ["gimp", "gimp"], ["org.inkscape.Inkscape", "inkscape"], ["spotify", "spotify"]]);
 // A window Chrome opens for one site, as a program of its own: "chrome-", the site, its profile.
 const CHROME_SITE = /^chrome-.+-[^-]+$/;
 

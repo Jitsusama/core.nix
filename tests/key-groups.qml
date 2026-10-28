@@ -373,8 +373,8 @@ QtObject {
         // first: kitty's the terminal's, Neovim's or pi's before it when its
         // title says one runs there, as Neovim's titlestring and pi's own
         // title do; Chrome's, and a window it opens for one site, the
-        // browser's; Slack's, 1Password's, GIMP's and Inkscape's their own;
-        // and anything else only the desktop's.
+        // browser's; Slack's, 1Password's, GIMP's, Inkscape's and Spotify's
+        // their own; and anything else only the desktop's.
         const programs = [
             ["kitty", "\u{1F4DD} notes.md", ["neovim", "terminal", "desktop"]],
             ["kitty", "nvim notes.md", ["neovim", "terminal", "desktop"]],
@@ -393,6 +393,7 @@ QtObject {
             ["com.onepassword.OnePassword", "1Password", ["onepassword", "desktop"]],
             ["gimp", "GNU Image Manipulation Program", ["gimp", "desktop"]],
             ["org.inkscape.Inkscape", "drawing.svg - Inkscape", ["inkscape", "desktop"]],
+            ["spotify", "Spotify Premium", ["spotify", "desktop"]],
             ["swayimg", "holiday.jpg", ["swayimg", "desktop"]],
             ["", "", ["desktop"]]
         ];

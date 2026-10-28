@@ -265,6 +265,7 @@ let
       "onepassword"
       "gimp"
       "inkscape"
+      "spotify"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -453,6 +454,8 @@ let
     gimp = nerd "f00e3";
     # The theme's vector, as Inkscape draws in shapes and paths.
     inkscape = nerd "f0ae7";
+    # The theme's music playing, as Spotify plays it.
+    spotify = nerd "f075a";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

@@ -6,6 +6,8 @@
 # it after it's installed, and Spotify keeps its own prefs file, which holds
 # the account it signs in with.
 #
+# The launcher lists Spotify's own keys over its window, as Music.
+#
 # The shell shows each new track itself (Music.qml). Spotify's own notice
 # for one is off unless it's turned on in Spotify's settings, and Spotify
 # keeps that choice in prefs, a file it rewrites from memory as it quits, so
@@ -49,6 +51,122 @@ let
     misc = roles.rule;
   };
 
+  grouped = group: map (key: key // { inherit group; });
+
+  # Spotify's own keys, which it takes no settings for, from its list for
+  # Windows and Linux (support.spotify.com's keyboard shortcuts).
+  keys =
+    grouped "going" [
+      {
+        chord = "Alt+Shift+h";
+        does = "Home";
+      }
+      {
+        chord = "Alt+Shift+0";
+        does = "Your library";
+      }
+      {
+        chord = "Alt+Shift+1";
+        does = "Your playlists";
+      }
+      {
+        chord = "Alt+Shift+2";
+        does = "Your podcasts";
+      }
+      {
+        chord = "Alt+Shift+3";
+        does = "Your artists";
+      }
+      {
+        chord = "Alt+Shift+4";
+        does = "Your albums";
+      }
+      {
+        chord = "Alt+Shift+5";
+        does = "Your audiobooks";
+      }
+      {
+        chord = "Alt+Shift+s";
+        does = "Your liked songs";
+      }
+      {
+        chord = "Alt+Shift+m";
+        does = "Made for you";
+      }
+      {
+        chord = "Alt+Shift+n";
+        does = "New releases";
+      }
+      {
+        chord = "Alt+Shift+c";
+        does = "The charts";
+      }
+      {
+        chord = "Alt+Shift+j";
+        does = "What's playing now";
+      }
+      {
+        chord = "Alt+Shift+q";
+        does = "The queue";
+      }
+    ]
+    ++ grouped "playing" [
+      {
+        chord = "Space";
+        does = "Play or pause the music";
+      }
+      {
+        chord = "Ctrl+s";
+        does = "Shuffle on or off";
+      }
+      {
+        chord = "Ctrl+r";
+        does = "Repeat on or off";
+      }
+      {
+        chord = "m";
+        does = "Mute or unmute the music";
+      }
+      {
+        chord = "Alt+Shift+b";
+        does = "Like the song, or not";
+      }
+    ]
+    ++ [
+      {
+        chord = "Ctrl+k";
+        does = "Find anything in Spotify";
+      }
+      {
+        chord = "Ctrl+l";
+        does = "The search page";
+      }
+      {
+        chord = "Ctrl+f";
+        does = "Filter the list";
+      }
+      {
+        chord = "Alt+j";
+        does = "The row's menu";
+      }
+      {
+        chord = "Alt+Shift+r";
+        does = "Show or hide what's playing beside";
+      }
+      {
+        chord = "Alt+Shift+l";
+        does = "Show or hide the library beside";
+      }
+      {
+        chord = "Ctrl+,";
+        does = "Spotify's settings";
+      }
+      {
+        chord = "Ctrl+/";
+        does = "Spotify's own list of keys";
+      }
+    ];
+
   # Spotify names its faces once each, on :root, and this comes after.
   faces = ''
     :root {
@@ -61,6 +179,7 @@ let
 in
 {
   imports = [
+    ../keys/home.nix
     ../theme/home.nix
     spicetify-nix.homeManagerModules.spicetify
   ];
@@ -73,6 +192,10 @@ in
       additionalCss = faces;
     };
   };
+
+  # Spotify's keys, for the launcher to list over its window, whose app id
+  # is spotify.
+  jitsusama.keys.spotify = keys;
 
   programs.spotify-player = {
     enable = true;
