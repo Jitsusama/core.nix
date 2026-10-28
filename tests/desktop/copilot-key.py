@@ -18,6 +18,10 @@ FIFO = "/run/copilot-key"
 DEVICE = "/run/copilot-key.device"
 # What the key sends, in the order it presses them.
 CHORD = [e.KEY_LEFTMETA, e.KEY_LEFTSHIFT, e.KEY_F23]
+# What the device says it has: the chord, and every key from Esc to S, which is what udev looks
+# for to call a device a keyboard (ID_INPUT_KEYBOARD). With the chord alone it's only a device
+# with keys, as a laptop's Copilot key on its own keyboard never is.
+KEYS = sorted({*range(e.KEY_ESC, e.KEY_S + 1), *CHORD})
 # How long F23 is held, in seconds, as the laptop's key holds it.
 HELD = 0.1
 
@@ -40,7 +44,7 @@ def press(device: UInput) -> None:
 
 def main() -> None:
     """Make the key, say where it is, and press it each time it's told, for as long as it runs."""
-    device = UInput({e.EV_KEY: CHORD}, name="stand-in Copilot key")
+    device = UInput({e.EV_KEY: KEYS}, name="stand-in Copilot key")
     Path(DEVICE).write_text(f"{device.device.path}\n")
     os.mkfifo(FIFO)
     while True:

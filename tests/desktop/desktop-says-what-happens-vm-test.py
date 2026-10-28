@@ -777,9 +777,13 @@ def test_the_copilot_key_starts_dictation(desktop: Desktop) -> None:
     # until niri holds its event node.
     node = machine.succeed("cat /run/copilot-key.device").strip()
     # More than one niri runs, so each one's open files are looked through.
-    machine.wait_until_succeeds(
-        f"for p in $(pgrep -x niri); do ls -l /proc/$p/fd; done | grep -q ' {node}$'", timeout=30
-    )
+    held = f"for p in $(pgrep -x niri); do ls -l /proc/$p/fd; done | grep -q ' {node}$'"
+    try:
+        machine.wait_until_succeeds(held, timeout=30)
+    except AssertionError:
+        # What udev made of the key says why niri passed it by.
+        seen = machine.execute(f"udevadm info {node}", check_return=False)[1]
+        pytest.fail(f"niri never opened the Copilot key; udev says:\n{seen}")
     since = desktop.mark()
     machine.succeed("echo press > /run/copilot-key")
     try:
