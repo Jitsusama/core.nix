@@ -237,6 +237,9 @@ def tunnel(line: Line) -> Line:
     line.client.wait_until_succeeds("ping -c1 -W1 10.9.0.2", timeout=COMING_UP)
     line.client.wait_until_succeeds("tc -j qdisc show dev wg0 | grep -q cake", timeout=SHAPING)
     line.client.wait_until_succeeds(
+        f"tc -j qdisc show dev {line.ifb('wg0')} | grep -q cake", timeout=SHAPING
+    )
+    line.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q wg0", timeout=SHAPING
     )
     return line
@@ -448,10 +451,14 @@ def test_local(line: Line) -> None:
 
 
 def test_tunnel(tunnel: Line) -> None:
-    """Inside a tunnel, the same classes reach its own queue."""
+    """Inside a tunnel, the same classes reach its own queues, both ways."""
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
     tunnel.lands("best effort", "app.slice", inner, dev="wg0")
+    inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
+    back = tunnel.ifb("wg0")
+    tunnel.lands("bulk", "jobs.slice", inner_down, dev=back)
+    tunnel.lands("best effort", "app.slice", inner_down, dev=back)
 
 
 def test_route_moves(on_eth2: Line) -> None:
@@ -496,8 +503,11 @@ def test_stopping(on_eth2: Line) -> None:
     """Stopping it leaves the links as they were."""
     client = on_eth2.client
     eth2_ifb = on_eth2.ifb("eth2")
+    wg0_ifb = on_eth2.ifb("wg0")
     client.succeed("systemctl stop shaper.service")
     assert not on_eth2.shaped("eth2")
     client.succeed(f"! ip link show {eth2_ifb}")
     client.succeed("! tc -j qdisc show dev eth2 | grep -q ingress")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q cake")
+    client.succeed("! tc -j qdisc show dev wg0 | grep -q ingress")
+    client.succeed(f"! ip link show {wg0_ifb}")
