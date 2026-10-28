@@ -362,6 +362,7 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
             path: home.root.clone(),
             every: None,
             from: Some(Band::Pressure),
+            watch: Vec::new(),
             timeout: Span(std::time::Duration::from_secs(10)),
         },
     );
@@ -389,6 +390,55 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
         .unwrap();
     assert_eq!(ran["path"], format!("{}#gc", home.root.display()));
     assert_eq!(ran["outcome"], "reclaimed");
+}
+
+#[test]
+fn a_producer_runs_again_once_what_it_watches_changes() {
+    // A tool's cache that gains a version every few minutes keeps every old
+    // one until its producer runs: run every six hours, a cache of zone
+    // builds held 24 versions of each tool and 17.7 GiB of the store on 28
+    // October, where its own rule keeps four.
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let marker = home.root.join("ran");
+    let stamp = home.root.join("stamp");
+    fs::write(&stamp, "").unwrap();
+    touch(&stamp, 1_000_000_000);
+    let mut config = home.config("0%", "0%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!("echo ran >> {}", marker.display()),
+            ],
+            path: home.root.clone(),
+            every: Some(Span(std::time::Duration::from_hours(6))),
+            from: None,
+            watch: vec![stamp.clone()],
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let runs = || fs::read_to_string(&marker).map_or(0, |text| text.lines().count());
+    let start = wall().floor();
+    let at = |seconds: f64| Tick {
+        wall: start + seconds,
+        monotonic: 3600.0 + seconds,
+        ..tick()
+    };
+    let mut guard = home.guard(config);
+    guard.step(&at(0.0), &CALM).unwrap();
+    assert_eq!(runs(), 1, "the first upkeep runs it");
+    guard.step(&at(61.0), &CALM).unwrap();
+    assert_eq!(runs(), 1, "nothing it watches has changed");
+    #[expect(clippy::cast_possible_truncation, reason = "a wall clock in seconds")]
+    touch(&stamp, start as i64 + 100);
+    guard.step(&at(122.0), &CALM).unwrap();
+    assert_eq!(runs(), 2, "what it watches changed since it ran");
+    guard.step(&at(183.0), &CALM).unwrap();
+    assert_eq!(runs(), 2, "once for each change");
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
@@ -463,6 +513,7 @@ fn producer_policy(pressure: &str, urgent: f64) -> String {
             path: home.root.clone(),
             every: Some(Span(std::time::Duration::from_secs(60))),
             from: Some(Band::Urgent),
+            watch: Vec::new(),
             timeout: Span(std::time::Duration::from_secs(10)),
         },
     );

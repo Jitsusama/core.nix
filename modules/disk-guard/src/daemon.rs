@@ -1190,8 +1190,9 @@ impl Guard {
 
     /// Makes upkeep due at once when an owner has ended since the last look:
     /// a tree's last holder or the quest it was kept for, a boot, which
-    /// ends every program and so everything they left in temp, or a guard
-    /// with new rules, which may judge more spent. What an owner leaves is
+    /// ends every program and so everything they left in temp, a guard
+    /// with new rules, which may judge more spent, or a producer's watched
+    /// file changing, as a cache gaining a version ends an old one's use. What an owner leaves is
     /// spent the moment it ends, so waiting six hours for routine upkeep
     /// only keeps bytes nobody will read.
     fn watch_owners(&mut self, tick: &Tick) {
@@ -1220,11 +1221,22 @@ impl Guard {
                 .filter(|tree| tree.exists())
                 .collect(),
         };
-        let ended = self.memory.owners.as_ref().is_none_or(|before| {
-            before.boot != seen.boot
-                || before.guard != seen.guard
-                || seen.spent.iter().any(|tree| !before.spent.contains(tree))
-        });
+        let watched = self
+            .config
+            .sources
+            .iter()
+            .any(|(name, source)| match source {
+                Source::Producer { watch, .. } => {
+                    crate::survey::changed_since(watch, self.memory.ran.get(name).copied())
+                }
+                _ => false,
+            });
+        let ended = watched
+            || self.memory.owners.as_ref().is_none_or(|before| {
+                before.boot != seen.boot
+                    || before.guard != seen.guard
+                    || seen.spent.iter().any(|tree| !before.spent.contains(tree))
+            });
         if ended {
             self.memory.upkept = None;
         }
