@@ -262,6 +262,7 @@ let
       "mpv"
       "chrome"
       "slack"
+      "onepassword"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -444,6 +445,8 @@ let
     chrome = nerd "f059f";
     # The theme's chat, as Slack is where people talk.
     slack = nerd "f0b79";
+    # The theme's password, as 1Password keeps them.
+    onepassword = nerd "f0306";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

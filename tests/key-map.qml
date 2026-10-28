@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack",
+                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack",
+                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -240,6 +240,9 @@ ShellRoot {
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("slack", "general (Channel) - Slack");
             expect("over Slack, its own", map.leading()?.name === "Slack"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("com.onepassword.OnePassword", "1Password");
+            expect("over 1Password, its own", map.leading()?.name === "Passwords"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("virt-manager", "");
             expect("over another program, the desktop's", map.leading() === null
