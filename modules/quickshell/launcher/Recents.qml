@@ -5,6 +5,8 @@
 // entry, `watch` the file the program writes as it goes, and `list` the
 // command that prints its paths, one a line. At most nine are kept, so 1
 // to 9 pick one.
+pragma ComponentBehavior: Bound
+
 import Quickshell
 import Quickshell.Io
 import QtQuick

@@ -949,6 +949,11 @@ in
   };
 
   config = {
+    # kitty's Recent watches zoxide's database from inside its folder, which
+    # zoxide makes only at the first cd, so the folder is there from the
+    # start and the first cd counts.
+    systemd.user.tmpfiles.rules = lib.optional config.programs.zoxide.enable "d ${config.xdg.dataHome}/zoxide 0700 - - -";
+
     # A thing found by name ranks a little ahead of an action matching as
     # well, and an action ahead of ending the session.
     jitsusama.quickshell.launcher.providers = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
