@@ -56,7 +56,7 @@ end)
 look('a notice', notice)
 if notice then
   local first = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(notice), 0, 1, false)[1]
-  local mark = require('theme').glyphs.note
+  local mark = require('theme').marks.note
   if first:sub(1, #mark) ~= mark then
     say('a notice reads "' .. first .. '", not its mark and then its words')
   end

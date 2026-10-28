@@ -1,5 +1,5 @@
 local status = require('status')
-local g = require('theme').glyphs
+local g = require('theme').marks
 local wrong = {}
 local function plain(pieces)
   local text = {}

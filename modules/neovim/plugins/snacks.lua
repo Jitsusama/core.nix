@@ -54,11 +54,11 @@ by
     padding = false,
     gap = 1,
     icons = {
-      error = require('theme').glyphs.failed,
-      warn = require('theme').glyphs.caution,
-      info = require('theme').glyphs.note,
-      debug = require('theme').glyphs.suggestion,
-      trace = require('theme').glyphs.suggestion,
+      error = require('theme').marks.failed,
+      warn = require('theme').marks.caution,
+      info = require('theme').marks.note,
+      debug = require('theme').marks.suggestion,
+      trace = require('theme').marks.suggestion,
     },
     style = function(buf, notif, ctx)
       ctx.opts.border = 'solid'
@@ -116,7 +116,7 @@ by
   image = {
     enabled = true,
     math = { enabled = false },
-    icons = { image = require('theme').glyphs.picture .. ' ' },
+    icons = { image = require('theme').marks.picture .. ' ' },
   },
 })
 

@@ -6,7 +6,7 @@ if not ok then
   return
 end
 
-local glyphs = require('theme').glyphs
+local marks = require('theme').marks
 
 -- The finder is a float like any other, set apart by its shade with a step
 -- of it round the list and the preview, and nothing dimmed behind it. What
@@ -29,16 +29,16 @@ fzf.setup({
   -- What's typed after the prompt's own mark, the count on the right, and
   -- the chosen row shown by its shade alone.
   fzf_opts = {
-    ['--prompt'] = glyphs.prompt .. ' ',
+    ['--prompt'] = marks.prompt .. ' ',
     ['--pointer'] = ' ',
-    ['--marker'] = glyphs.done,
+    ['--marker'] = marks.done,
   },
   defaults = {
     -- A file by its name, then its folder; its mark in the text's colour
     -- rather than one of its own.
     formatter = 'path.filename_first',
     color_icons = false,
-    prompt = glyphs.prompt .. ' ',
+    prompt = marks.prompt .. ' ',
   },
   files = {
     cwd_prompt = false,
@@ -55,7 +55,7 @@ fzf.setup({
 fzf.register_ui_select(function(ui_opts)
   local asked = ui_opts.prompt and vim.trim((ui_opts.prompt:gsub(':%s*$', ''))) or ''
   return {
-    prompt = glyphs.prompt .. ' ',
+    prompt = marks.prompt .. ' ',
     winopts = { title = asked ~= '' and asked or nil },
     fzf_opts = { ['--delimiter'] = '[.] ', ['--with-nth'] = '2..' },
   }

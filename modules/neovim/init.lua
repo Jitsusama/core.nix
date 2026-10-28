@@ -116,15 +116,15 @@ require('status').setup()
 -- How problems look, set as vim.diagnostic first loads, since nothing
 -- needs it until something reports one. The sign column marks a problem as
 -- the status line counts it, with the theme's marks.
-local glyphs = require('theme').glyphs
+local marks = require('theme').marks
 local signs
 require('later').when('vim.diagnostic', function(diagnostic)
   signs = {
     text = {
-      [diagnostic.severity.ERROR] = glyphs.failed,
-      [diagnostic.severity.WARN] = glyphs.caution,
-      [diagnostic.severity.INFO] = glyphs.note,
-      [diagnostic.severity.HINT] = glyphs.suggestion,
+      [diagnostic.severity.ERROR] = marks.failed,
+      [diagnostic.severity.WARN] = marks.caution,
+      [diagnostic.severity.INFO] = marks.note,
+      [diagnostic.severity.HINT] = marks.suggestion,
     },
   }
   diagnostic.config({

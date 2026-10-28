@@ -879,7 +879,7 @@ in
       ;
     inherit (cfg.type) mono sans;
     name = cfg.title;
-    glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
+    marks = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
   };
 
   # Joel's aesthetic, for every agent on the machine, so one designing
