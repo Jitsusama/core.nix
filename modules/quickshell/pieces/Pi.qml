@@ -29,10 +29,12 @@ Piece {
     hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
         : `and ${wanting.length - 1} more`
-    // Each one's window, the oldest want first, as many as fit.
-    actions: wanting.slice(0, 3).map(session => ({
+    // Each one's window, the oldest want first: every one in What's On,
+    // and as many as fit on its notice (Arrivals.qml).
+    readonly property var every: wanting.map(session => ({
         glyph: Theme.glyph.windows,
         name: `Go to ${session.title}`,
         run: () => Sessions.goTo(session)
     }))
+    actions: every.slice(0, 3)
 }

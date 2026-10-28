@@ -104,13 +104,13 @@ Provider {
     }
 
     // What can be done to a notice: what its program offers while it's
-    // open, then copying what it said, then letting it go. Quickshell
+    // open, then going to the program, copying what it said, and letting
+    // it go. Quickshell
     // destroys a notification's actions when it closes or its program
     // replaces it, so each is found again by its identifier when it's run;
     // one whose notice has gone by then goes to its program instead.
     function verbs(notice, said) {
         const live = Notices.live[notice.id] ?? null;
-        // The default is Return's on the notice itself, not one of these.
         const offered = live ? live.actions.filter(action => action.identifier !== "default")
             .map(action => ({
             identifier: action.identifier,
@@ -132,7 +132,7 @@ Provider {
                     provider.go(notice.app);
             }
         })) : [];
-        return offered.concat([thing({
+        return offered.concat(provider.program(notice), [thing({
             key: "verb:notice:copy",
             name: "Copy what it said",
             glyph: Theme.glyph.copy,
@@ -159,6 +159,24 @@ Provider {
                     still.dismiss();
             }
         })] : []);
+    }
+
+    // Going to its program while a window of it is open, whatever the
+    // notice offers. The launcher puts Return's own act first
+    // (Catalogue.js), and once the notice's actions are gone that act is
+    // this switch. Opening a program that isn't open would be named Open,
+    // which the launcher would take for opening the notice.
+    function program(notice) {
+        const from = source(notice.app);
+        return !from.window ? [] : [thing({
+            key: "verb:notice:goTo",
+            name: `Go to ${from.entry ? from.entry.name : notice.app}`,
+            verb: "switch",
+            glyph: Theme.glyph.windows,
+            hue: "action",
+            later: true,
+            run: () => provider.go(notice.app)
+        })];
     }
 
     // Made again only when the history changes, each with its age as of

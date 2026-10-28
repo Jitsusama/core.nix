@@ -171,9 +171,10 @@ Scope {
     }
     onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
 
-    // What can be done with the front one besides what Return does, the
-    // same as its past self in the launcher (launcher/PastNotices.qml):
-    // what it offers, copying what it said, letting it go, letting them
+    // What can be done with the front one, the same as its past self in
+    // the launcher (launcher/PastNotices.qml): opening what it's about,
+    // which Return does too, what it offers, copying what it said,
+    // letting it go, letting them
     // all go, and the rest of the notices; each with the key that does it
     // straight away, where there is one.
     readonly property var verbs: {
@@ -184,12 +185,22 @@ Scope {
             Notices.mark(notification.id, true);
             run();
         };
-        return offers(notification).map(offer => ({
+        const opening = opens(notification);
+        const open = opening === null ? [] : [{
+            glyph: Theme.glyph.offer,
+            name: "Open",
+            chord: [{ text: "\u21b5" }],
+            run: () => {
+                Notices.mark(notification.id, true);
+                Notices.open(opening, notification.appName);
+            }
+        }];
+        return open.concat(offers(notification).map(offer => ({
             glyph: /reply/i.test(offer.text) ? Theme.glyph.reply : Theme.glyph.offer,
             name: offer.text,
             chord: [],
             run: done(() => offer.invoke())
-        })).concat([{
+        }))).concat([{
             glyph: Theme.glyph.copy,
             name: "Copy what it said",
             chord: [],
