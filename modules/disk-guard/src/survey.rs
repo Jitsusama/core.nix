@@ -167,10 +167,15 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 path,
                 every,
                 from,
+                watch,
                 timeout,
             } => {
                 let Some(device) = device(path) else { continue };
-                let idle = since_ran(world, name);
+                let idle = if changed_since(watch, world.ran.get(name).copied()) {
+                    f64::INFINITY
+                } else {
+                    since_ran(world, name)
+                };
                 offers.push(Offer {
                     candidate: Candidate {
                         path: named(path, name),
@@ -568,6 +573,20 @@ pub(crate) fn named(path: &Path, source: &str) -> PathBuf {
     named.push("#");
     named.push(source);
     PathBuf::from(named)
+}
+
+/// Whether any of the files a producer watches changed after `ran`, the
+/// wall second it last ran; never, when it hasn't run, since it's due
+/// anyway. A file that can't be read hasn't changed.
+pub fn changed_since(watch: &[PathBuf], ran: Option<f64>) -> bool {
+    let Some(ran) = ran else { return false };
+    watch.iter().any(|path| {
+        fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+            .is_some_and(|at| at.as_secs_f64() > ran)
+    })
 }
 
 /// The awake time since a source's command last ran, or forever.

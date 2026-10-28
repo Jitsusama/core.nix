@@ -213,6 +213,12 @@ pub enum Source {
         every: Option<Span>,
         #[serde(default)]
         from: Option<Band>,
+        /// Files whose change since it last ran makes it due in the next
+        /// upkeep, looked at once a minute: what its own rule would let go
+        /// is spent once what it watches says something new arrived, not
+        /// when a schedule comes round.
+        #[serde(default)]
+        watch: Vec<PathBuf>,
         timeout: Span,
     },
     /// A command that says whether a checkout's work is finished, for
@@ -339,11 +345,17 @@ impl Source {
                 command,
                 every,
                 from,
+                watch,
                 ..
             } => {
                 check_command(command)?;
                 if every.is_none() && from.is_none() {
                     return Err("it says neither when to run (every) nor from which band".into());
+                }
+                if let Some(path) = watch.iter().find(|path| !plain_absolute(path)) {
+                    return Err(format!(
+                        "it watches {path:?}, which is not an absolute path"
+                    ));
                 }
             }
             _ => {}
