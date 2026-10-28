@@ -629,8 +629,9 @@ def test_one_of_two_screens_goes_and_the_margin_and_bar_stay(one_gone: Apart) ->
 def test_the_screen_comes_back_and_the_margin_is_on_both_again(one_back: Apart) -> None:
     """The screen comes back, and the margin is on both again."""
     one_back.screens.wait_for_held_on("margin", one_back.screens.both)
-    # Still listening through it all, so the second press ends it.
-    assert one_back.screens.listening(), "dictation stopped listening as the screens changed"
+    # Still listening through it all, so the second press ends it. The shell remakes the bar as
+    # the screens are put back, gone for under a second, so one look can land in that gap.
+    one_back.screens.wait_for_surfaces("dictation")
     one_back.screens.quiet()
 
 
