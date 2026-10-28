@@ -1937,6 +1937,18 @@
       "glyph": "password"
     },
     {
+      "id": "shortcuts:gimp",
+      "in": "shortcuts",
+      "name": "Picture editor",
+      "glyph": "brush"
+    },
+    {
+      "id": "shortcuts:inkscape",
+      "in": "shortcuts",
+      "name": "Drawing editor",
+      "glyph": "vector"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2567,6 +2579,46 @@
       "id": "shortcuts:onepassword:item",
       "in": "shortcuts",
       "name": "The chosen item"
+    },
+    {
+      "id": "shortcuts:gimp:tools",
+      "in": "shortcuts",
+      "name": "Tools"
+    },
+    {
+      "id": "shortcuts:gimp:view",
+      "in": "shortcuts",
+      "name": "Seeing the picture"
+    },
+    {
+      "id": "shortcuts:gimp:selection",
+      "in": "shortcuts",
+      "name": "Selecting"
+    },
+    {
+      "id": "shortcuts:gimp:layers",
+      "in": "shortcuts",
+      "name": "Layers"
+    },
+    {
+      "id": "shortcuts:inkscape:tools",
+      "in": "shortcuts",
+      "name": "Tools"
+    },
+    {
+      "id": "shortcuts:inkscape:view",
+      "in": "shortcuts",
+      "name": "Seeing the drawing"
+    },
+    {
+      "id": "shortcuts:inkscape:objects",
+      "in": "shortcuts",
+      "name": "Objects"
+    },
+    {
+      "id": "shortcuts:inkscape:panels",
+      "in": "shortcuts",
+      "name": "Panels"
     },
     {
       "id": "on",
@@ -4217,6 +4269,14 @@
         "shortcuts:chrome:numbers"
       ],
       "why": "The terminal, Neovim and the browser all go to a tab by its number, and each group says what holds it beside it."
+    },
+    {
+      "word": "tools",
+      "things": [
+        "shortcuts:gimp:tools",
+        "shortcuts:inkscape:tools"
+      ],
+      "why": "GIMP and Inkscape both choose a tool by a letter, and each group says which program's it is beside it."
     },
     {
       "word": "focus",

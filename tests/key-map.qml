@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords",
+                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords",
+                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -240,6 +240,12 @@ ShellRoot {
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("slack", "general (Channel) - Slack");
             expect("over Slack, its own", map.leading()?.name === "Slack"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("gimp", "[Untitled]-1.0 (RGB color 8-bit gamma integer, GIMP built-in sRGB, 1 layer) 1920x1080 - GIMP");
+            expect("over GIMP, its own", map.leading()?.name === "Picture editor"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("org.inkscape.Inkscape", "drawing.svg - Inkscape");
+            expect("over Inkscape, its own", map.leading()?.name === "Drawing editor"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("com.onepassword.OnePassword", "1Password");
             expect("over 1Password, its own", map.leading()?.name === "Passwords"

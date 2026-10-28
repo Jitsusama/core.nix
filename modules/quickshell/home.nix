@@ -263,6 +263,8 @@ let
       "chrome"
       "slack"
       "onepassword"
+      "gimp"
+      "inkscape"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -447,6 +449,10 @@ let
     slack = nerd "f0b79";
     # The theme's password, as 1Password keeps them.
     onepassword = nerd "f0306";
+    # The theme's brush, as GIMP paints on pictures.
+    gimp = nerd "f00e3";
+    # The theme's vector, as Inkscape draws in shapes and paths.
+    inkscape = nerd "f0ae7";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

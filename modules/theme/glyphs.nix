@@ -989,6 +989,16 @@ in
     console = "c";
     means = "people talking in writing, and where they do";
   };
+  brush = {
+    glyph = nerd "f00e3";
+    console = "p";
+    means = "painting on a picture, and what edits one";
+  };
+  vector = {
+    glyph = nerd "f0ae7";
+    console = "d";
+    means = "drawing in shapes and paths, and what draws so";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";
