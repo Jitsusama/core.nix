@@ -327,6 +327,14 @@
     tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI
     programs byte for byte as sbsign does, and finds every program it runs
   '';
+  hibernate-unlock-lets-go-only-after-the-disk-asked = ''
+    hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
+    firmware start for a resume through the disk prompt and a wake for none, and counts a disk as
+    asking only when every token asks for something typed
+  '';
+  hibernate-unlock-passes-clippy = ''
+    clippy finds nothing in hibernate-unlock or its tests
+  '';
   icon-marks-past-the-basic-plane = ''
     an icon mark past U+FFFF reaches the shell whole
   '';
@@ -1311,7 +1319,8 @@
   '';
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
-    comes back from an lz4 image through systemd's initrd as it was, and boots anew after
+    comes back from an lz4 image through systemd's initrd as it was, once the TPM and a PIN typed
+    at its prompt open the disk, lets the lock go for that one prompt, and boots anew after
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
