@@ -28,6 +28,8 @@ Piece {
         glyph: Words.glyph(balanced),
         name: Words.of(balanced).name,
         verb: Words.verb(balanced),
+        // A setting, so the launcher stays to show it (the closing rule).
+        stays: true,
         run: () => PowerProfiles.profile = PowerProfile.Balanced
     }]
 }
