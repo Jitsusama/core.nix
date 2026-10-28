@@ -21,7 +21,6 @@
         "clipboard",
         "capture",
         "session:recording",
-        "tuple",
         "people",
         "emoji",
         "today",
@@ -3126,6 +3125,7 @@
     },
     {
       "id": "tuple",
+      "in": "people",
       "name": "The Call"
     },
     {
