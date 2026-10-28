@@ -2293,6 +2293,9 @@ Scope {
         if (choice.now)
             choice.run();
         learn(choice);
+        // Said as the foot's other words are, beside the key they follow.
+        if (verbOf(choice) === "copy")
+            leaveSaying("copied");
         open = false;
         if (choice.now)
             return;
@@ -2311,6 +2314,30 @@ Scope {
         onTriggered: {
             root.pending.run();
             root.pending = null;
+        }
+    }
+
+    // A copy closes with nothing else to show it worked, so the card
+    // stays drawn a moment past closing, its foot saying "copied" where
+    // Return's key was, then leaves as anything leaving does (Joel,
+    // 2026-10-26: "copied" as it closes). The keys go back to the window
+    // at once, so nothing waits on it.
+    property string parting: ""
+    property bool fading: false
+    function leaveSaying(word) {
+        parting = word;
+        fading = false;
+        partingLater.restart();
+        Report.say(`parted ${word}`);
+    }
+
+    // Long enough to read one word, short of where it would linger.
+    Timer {
+        id: partingLater
+        interval: 600
+        onTriggered: {
+            root.fading = true;
+            root.parting = "";
         }
     }
 
@@ -2526,6 +2553,9 @@ Scope {
     onOpenChanged: {
         if (open) {
             trials.opened();
+            partingLater.stop();
+            fading = false;
+            parting = "";
             pointer = Qt.point(-1, -1);
             footReset();
             footStage = 0;
@@ -2658,7 +2688,18 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            opacity: root.open ? 1 : 0
+            opacity: root.open || root.parting !== "" ? 1 : 0
+
+            // Only a parting word's card leaves on the curve; anything
+            // else closes on the next frame, as it opens.
+            Behavior on opacity {
+                enabled: root.fading
+                NumberAnimation {
+                    duration: Theme.motion.short
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.motion.curve
+                }
+            }
 
             Column {
                 width: parent.width
@@ -2986,7 +3027,11 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
-                        readonly property var told: root.keysFor(choice)
+                        // A parting word stands where Return was, its
+                        // mark in the success colour.
+                        readonly property var told: root.parting !== ""
+                            ? [[Theme.glyph.done, root.parting, Theme.success]]
+                            : root.keysFor(choice)
                         // As the foot says them: Return last, at the right
                         // end, the rest before it. Return first, in a place
                         // kept for the widest set, left holes after the keys

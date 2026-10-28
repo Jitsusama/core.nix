@@ -686,7 +686,9 @@ works the same way everywhere.
   Disturb, Keep Awake, the power profile, the desk light, a keyboard's
   light or layer, a program's playing) keeps it open, and its row says
   the new state at once; Ctrl+Return does it and closes, and the foot
-  says so on those rows.
+  says so on those rows. A copy closes saying so: the keys go back to the
+  window at once, and the card stays a moment with "copied" where
+  Return's key was, its done mark in the success colour, then leaves.
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
   xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
