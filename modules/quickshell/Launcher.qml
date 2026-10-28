@@ -244,13 +244,8 @@ Scope {
         const below = Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
             gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
-        // it's shown in (reshow). A row still there keeps its place as it
-        // reads now, though what it says no longer matches what's typed: a
-        // Play that Return made a Pause shows Pause, rather than going.
-        const now = rows.concat(below);
-        const renamed = !steadying ? [] : matches.filter(row => !row.gone && onOffer(row.key)
-            && !now.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        matches = steadying ? Steady.kept(matches, now.concat(renamed), steadyId) : now;
+        // it's shown in (reshow).
+        matches = steadying ? steadied(rows.concat(below)) : rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
@@ -1641,6 +1636,16 @@ Scope {
         return held.length > 0 ? offered.find(row => row.key === key && !row.gone) : keyed[key];
     }
 
+    // The rows shown, said again as they are now (Steady.js), each in its
+    // place. One still on offer keeps it as it reads now, though what it
+    // says no longer matches what's typed: a Play that Return made a Pause
+    // shows Pause, rather than going.
+    function steadied(found) {
+        const renamed = matches.filter(row => !row.gone && onOffer(row.key)
+            && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
+        return Steady.kept(matches, found.concat(renamed), steadyId);
+    }
+
     // Whether the step held last is a collection, whose members are things
     // with verbs of their own, as at the top; or a row that says its verbs
     // are things too (nested), as a report's rows are, so stepping goes on
@@ -1987,7 +1992,7 @@ Scope {
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = Steady.kept(matches, found, steadyId);
+                matches = steadied(found);
                 return;
             }
             matches = found;
