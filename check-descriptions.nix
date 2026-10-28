@@ -1394,6 +1394,13 @@
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
     others' routing rules, keeps the card awake on the charger
   '';
+  waiting-on-you-is-true = ''
+    over the agents' own files, Waiting on You holds now only what Joel can do now, puts what he
+    can't yet or has put off under Later, keeps gone what he marked done, shows an item the
+    orchestrator's queue covers once, keeps nothing of an ended quest and drops nothing by its
+    age, and counts a session's want as his only while its quest has something ready or the
+    question is his
+  '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
     bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the

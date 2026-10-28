@@ -67,7 +67,7 @@ Singleton {
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
         // never missed, since the margin's mark says it while it holds.
         "pi": { glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true },
-        // Something an agent has ready for Joel to do (Steward.qml).
+        // Something an agent has ready for Joel to do (WaitingOnYou.qml).
         "waiting": { glyph: Theme.glyph.waitsOnJoel.codePointAt(0), hue: "program" },
         "recorder": { glyph: Theme.glyph.recording.codePointAt(0), hue: "machine", answers: true },
         // What arrives by itself (Arrivals.qml), in its margin mark, which

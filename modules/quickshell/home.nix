@@ -91,7 +91,8 @@ let
     "Notices.qml"
     "Forward.js"
     "Sessions.qml"
-    "Steward.qml"
+    "WaitingOnYou.qml"
+    "Waiting.js"
     "SpendWatch.qml"
     "Jobs.qml"
     "Caffeinate.qml"
@@ -1626,7 +1627,7 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders Steward.qml watches for what waits on Joel.
+    # folders WaitingOnYou.qml watches for what waits on Joel.
     systemd.user.tmpfiles.rules = [
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"

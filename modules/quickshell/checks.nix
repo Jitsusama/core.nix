@@ -815,11 +815,16 @@ onLinux {
       facts = singleton "Facts.qml" ''
         property var all: []
       '';
-      steward = singleton "Steward.qml" ''
+      waiting = singleton "WaitingOnYou.qml" ''
         property var items: []
+        property var now: []
+        property var later: []
         property var foremost: null
         function titled(each) { return each.title; }
         function identity(each) { return each.title; }
+        function questOf(each) { return ""; }
+        function windowOf(each) { return null; }
+        function settle(each, how) {}
         function go(each) {}
       '';
     in
@@ -836,7 +841,7 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/today.qml} shell.qml
       cp ${facts} Facts.qml
-      cp ${steward} Steward.qml
+      cp ${waiting} WaitingOnYou.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
@@ -1807,6 +1812,23 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml marks.qml
+      touch $out
+    '';
+
+  # Waiting on You holds only what truly waits on Joel, now or later, each
+  # once, and a session's want is his only while it's true, as
+  # tests/waiting-on-you.qml holds Waiting.js to the agents' own files.
+  waiting-on-you-is-true =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "waiting-on-you-is-true" { } ''
+      cp ${../../tests/waiting-on-you.qml} waiting-on-you.qml
+      cp ${./Waiting.js} Waiting.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml waiting-on-you.qml
       touch $out
     '';
 

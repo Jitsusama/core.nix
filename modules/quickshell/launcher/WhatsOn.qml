@@ -11,6 +11,7 @@
 // a glyph and its row come and go together, and it adds no row to a search.
 // It's home's first row, Now, saying what's in it by name.
 import qs
+import Quickshell
 import QtQuick
 import "../Marks.js" as Marks
 
@@ -176,41 +177,130 @@ Provider {
         return words;
     }
 
-    // One thing waiting on Joel, as the agents keep them (Steward.qml):
-    // its title, how long it takes, and why it waits; Return goes to the
-    // window it's done in. One he can do now says so by its glyph's
-    // colour, never by its place.
-    function item(each) {
-        return thing({
-            key: `on:waiting:${Steward.identity(each)}`,
-            verb: Words.verb("on:waiting"),
-            name: each.title,
-            glyph: Theme.glyph.waitsOnJoel,
-            hue: each.ready ? "strong" : "muted",
-            side: typeof each.minutes === "number"
-                ? waitingSaid("minutes", { minutes: each.minutes }) : "",
-            note: typeof each.why === "string" ? each.why : "",
-            run: () => Steward.go(each)
-        });
+    // How long since an item was last said, for one gone stale: in hours,
+    // and in days past one.
+    function since(at) {
+        const when = new Date(at);
+        const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
     }
 
-    // What the agents have waiting on Joel, one row however many: its note
-    // names the first he can do now, else the first in the agents' own
-    // order, which Return goes to, and the right arrow lists them all, by
-    // name. With nothing waiting, no row.
-    readonly property string first: Steward.foremost ? Steward.titled(Steward.foremost) : ""
-    readonly property var waiting: Steward.items.length === 0 ? null : member({
+    // Where an item is done, by name: the session its window is, else the
+    // window's own title; "" when none is open.
+    function whereOf(each) {
+        const window = WaitingOnYou.windowOf(each);
+        if (window === null)
+            return "";
+        const session = Sessions.running.find(one => one.window.id === window.id);
+        return session ? session.title : window.title ?? "";
+    }
+
+    // An act on an item, named in the vocabulary.
+    function act(each, id, fields) {
+        return thing(Object.assign({
+            key: `verb:on:waiting:${id}:${WaitingOnYou.identity(each)}`,
+            verb: Words.verb(`verb:on:waiting:${id}`),
+            name: Words.name(`verb:on:waiting:${id}`),
+            glyph: Words.glyph(`verb:on:waiting:${id}`),
+            hue: "action"
+        }, fields));
+    }
+
+    // What there is to know of an item, each a part named first, saying its
+    // value and copying it: why it waits, when, whose quest, since when it's
+    // been said, and the detail its owner gave.
+    function facts(each) {
+        const fact = (id, value) => typeof value !== "string" || value === "" ? null
+            : copyRow({
+                key: `fact:on:waiting:${id}:${WaitingOnYou.identity(each)}`,
+                name: Words.name(`on:waiting:${id}`),
+                side: value,
+                copy: value,
+                glyph: Theme.glyph.waitsOnJoel
+            });
+        return [
+            fact("why", each.why),
+            fact("when", each.when),
+            fact("quest", WaitingOnYou.questOf(each)),
+            fact("since", Number.isNaN(each.since) ? "" : since(each.since)),
+            fact("detail", each.detail)
+        ].filter(row => row !== null);
+    }
+
+    // One thing waiting on Joel, as the agents keep them (WaitingOnYou.qml):
+    // its title, how long it takes, and why it waits. Return goes to the
+    // window it's done in, or, with none open, copies it, so it's never a
+    // key that does nothing. One he can do now is strong and says its
+    // minutes; one for later is muted and says when, in its owner's words.
+    // The right arrow steps into it: Return's act first, then Done and Not
+    // Now, which stay open as the item leaves its place, then what there is
+    // to know of it.
+    function item(each) {
+        const now = each.ready && !each.putOff;
+        const where = whereOf(each);
+        const does = where !== ""
+            ? act(each, "go", {
+                name: Words.name("verb:on:waiting:go").replace("{where}", where),
+                later: true,
+                run: () => WaitingOnYou.go(each)
+            })
+            // The clipboard takes text only while the launcher holds the
+            // keys, so a copy is made before it closes.
+            : act(each, "copy", {
+                now: true,
+                run: () => {
+                    Quickshell.clipboardText = WaitingOnYou.titled(each);
+                }
+            });
+        const inside = () => [does,
+            act(each, "done", { stays: true, run: () => WaitingOnYou.settle(each, "done") }),
+            act(each, "notNow", { stays: true, run: () => WaitingOnYou.settle(each, "notNow") })
+        ].concat(provider.facts(each));
+        const row = member({
+            key: `on:waiting:${WaitingOnYou.identity(each)}`,
+            verb: does.verb,
+            now: does.now ?? false,
+            later: does.later ?? false,
+            name: each.title,
+            glyph: Theme.glyph.waitsOnJoel,
+            hue: now ? "strong" : "muted",
+            side: !now && typeof each.when === "string" ? each.when
+                : typeof each.minutes === "number"
+                ? waitingSaid("minutes", { minutes: each.minutes }) : "",
+            note: typeof each.why === "string" ? each.why : "",
+            verbs: inside,
+            run: () => does.run()
+        });
+        return row;
+    }
+
+    // What the agents have waiting on Joel, one row however many: it counts
+    // and colours only what he can do now, its note names the first of
+    // those, else the first for later, which Return goes to, and the right
+    // arrow lists what's for now and then what's for later, each in the
+    // agents' own order. With only later things, the row is muted and
+    // says how many; with nothing waiting, no row.
+    readonly property string first: WaitingOnYou.foremost
+        ? WaitingOnYou.titled(WaitingOnYou.foremost) : ""
+    readonly property var lead: WaitingOnYou.foremost === null ? null
+        : provider.item(WaitingOnYou.foremost)
+    readonly property var waiting: lead === null ? null : member({
         key: "on:waiting",
-        verb: Words.verb("on:waiting"),
+        verb: lead.verb,
+        now: lead.now,
+        later: lead.later,
         name: Words.name("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
-        hue: Steward.items.some(each => each.ready) ? "strong" : "muted",
-        side: String(Steward.items.length),
+        hue: WaitingOnYou.now.length > 0 ? "strong" : "muted",
+        side: WaitingOnYou.now.length > 0 ? String(WaitingOnYou.now.length)
+            : waitingSaid("later", { count: WaitingOnYou.later.length }),
         note: first,
-        verbs: () => Steward.items.map(each => provider.item(each))
-            .sort((a, b) => a.name.localeCompare(b.name, undefined,
-                { numeric: true, sensitivity: "base" })),
-        run: () => Steward.go(Steward.foremost)
+        // Its rows are things with verbs of their own, so the right arrow
+        // steps into one and Return still does its act; a row giving
+        // targets would step in on Return instead.
+        nested: true,
+        verbs: () => WaitingOnYou.items.map(each => provider.item(each)),
+        run: () => provider.lead.run()
     })
     // What home's Now leads with: the first thing waiting, after its row's
     // own name, or nothing.
