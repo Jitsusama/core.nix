@@ -17,8 +17,14 @@ let
   passphrase = "install-passphrase";
   port = 45550;
 
-  # btvirt is built only with BlueZ's tests, which nixpkgs leaves out.
+  # btvirt is built only with BlueZ's tests, which nixpkgs leaves out. Its
+  # server reads every client into one buffer and loses the start of a
+  # header a read ends in, so two machines on serial ports, which pass a
+  # few bytes at a time, each got replies to the other's commands; the
+  # patch gives each client its own buffer, with a header's start kept at
+  # its front.
   btvirt = pkgs.bluez.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./btvirt-keeps-each-clients-bytes.patch ];
     configureFlags = old.configureFlags ++ [ "--enable-testing" ];
     doCheck = false;
     postInstall = old.postInstall + ''
@@ -32,6 +38,23 @@ let
     "-device isa-serial,chardev=bluetooth,index=1"
   ];
   attach = bluez: "${bluez}/bin/btattach --bredr /dev/ttyS1 --protocol h4";
+
+  # The laptop's controller, attached once in the initrd and kept to the
+  # end, as systemd keeps a root storage daemon (its
+  # docs/ROOT_STORAGE_DAEMONS.md): never stopped, nor killed at the switch
+  # to the running system, whose unit of the same name takes it over. A
+  # laptop's own controller stays up across that switch; one attached again
+  # there takes the replies to the commands of the one before and loses
+  # step.
+  attachedToTheEnd = bluez: {
+    unitConfig = {
+      DefaultDependencies = false;
+      IgnoreOnIsolate = true;
+      RefuseManualStop = true;
+      SurviveFinalKillSignal = true;
+    };
+    serviceConfig.ExecStart = attach bluez;
+  };
 
   standIn = pkgs.writeShellApplication {
     name = "bluetooth-keyboard-stand-in";
@@ -60,21 +83,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # The driver names each machine by its host name.
       networking.hostName = lib.mkForce "laptop";
 
-      # The controller on the serial port, at the prompt and once the
-      # system runs, which a laptop's own controller needs neither of.
+      # The controller on the serial port, which a laptop's own controller
+      # doesn't need.
       boot.initrd.kernelModules = [ "hci_uart" ];
       boot.initrd.systemd.storePaths = [ "${bluez}/bin/btattach" ];
-      boot.initrd.systemd.services.btattach = {
+      boot.initrd.systemd.services.btattach = attachedToTheEnd bluez // {
         wantedBy = [ "sysinit.target" ];
         before = [ "bluetooth.service" ];
         after = [ "systemd-udevd.service" ];
-        unitConfig.DefaultDependencies = false;
-        serviceConfig.ExecStart = attach bluez;
       };
-      systemd.services.btattach = {
-        wantedBy = [ "multi-user.target" ];
+      systemd.services.btattach = attachedToTheEnd bluez // {
         before = [ "bluetooth.service" ];
-        serviceConfig.ExecStart = attach bluez;
       };
     };
 

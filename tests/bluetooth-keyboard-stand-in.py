@@ -157,7 +157,10 @@ async def held(channel: socket.socket) -> None:
     # The loop keeps only a weak reference to a task, so they're kept here.
     answering: set[asyncio.Task[None]] = set()
     while True:
-        connection, (address, _) = await loop.sock_accept(channel)
+        # An L2CAP peer's address starts with its own; after it Python
+        # gives the PSM and, in the Python here, more besides.
+        connection, peer = await loop.sock_accept(channel)
+        address = peer[0]
         print(f"{address} opened channel {channel.getsockname()[1]}", flush=True)
         task = loop.create_task(answered(connection))
         answering.add(task)
