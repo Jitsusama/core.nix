@@ -58,7 +58,7 @@
         builtins.unsafeDiscardStringContext
           home.xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text
       );
-      inherit (home.jitsusama.theme) glyphs;
+      inherit (home.jitsusama.theme) marks;
       engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
     in
     holds "pi-tells-where-as-the-prompt-does"
@@ -68,14 +68,14 @@
         && where.engine == builtins.unsafeDiscardStringContext engine
         &&
           where.marks == {
-            branch = glyphs.branch.glyph;
-            unsaved = glyphs.on.glyph;
-            unpushed = glyphs.unpushed.glyph;
-            more = glyphs.more.glyph;
-            complete = glyphs.complete.glyph;
-            active = glyphs.active.glyph;
-            pending = glyphs.pending.glyph;
-            thinking = glyphs.thinking.glyph;
+            branch = marks.branch.glyph;
+            unsaved = marks.on.glyph;
+            unpushed = marks.unpushed.glyph;
+            more = marks.more.glyph;
+            complete = marks.complete.glyph;
+            active = marks.active.glyph;
+            pending = marks.pending.glyph;
+            thinking = marks.thinking.glyph;
           }
       );
 

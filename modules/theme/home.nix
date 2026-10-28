@@ -289,7 +289,7 @@ let
 
   # The marks every surface draws from, looked up by meaning, each with a
   # stand-in a console font can draw (glyphs.nix).
-  glyphs = import ./glyphs.nix { inherit lib; };
+  marks = import ./glyphs.nix { inherit lib; };
 
   keyFace = lib.types.submodule {
     options = {
@@ -601,9 +601,9 @@ in
       };
     };
 
-    glyphs = lib.mkOption {
+    marks = lib.mkOption {
       type = lib.types.attrsOf glyph;
-      default = lib.recursiveUpdate glyphs (theme.glyphs or { });
+      default = lib.recursiveUpdate marks (theme.marks or { });
       defaultText = lib.literalMD "pi's marks, with any the theme file changes";
       description = ''
         The marks every surface draws, by what they mean, each with a stand-in
@@ -614,7 +614,7 @@ in
 
     keys = lib.mkOption {
       type = lib.types.attrsOf keyFace;
-      default = import ./keys.nix { mark = name: cfg.glyphs.${name}.glyph; };
+      default = import ./keys.nix { mark = name: cfg.marks.${name}.glyph; };
       defaultText = lib.literalMD "the faces in keys.nix, wearing the theme's marks";
       description = ''
         How a key is drawn wherever a surface names one, by its xkb name: its
@@ -879,7 +879,7 @@ in
       ;
     inherit (cfg.type) mono sans;
     name = cfg.title;
-    glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.glyphs;
+    glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
   };
 
   # Joel's aesthetic, for every agent on the machine, so one designing

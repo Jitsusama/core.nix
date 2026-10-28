@@ -22,7 +22,7 @@
 let
   inherit (config.jitsusama.theme)
     appearance
-    glyphs
+    marks
     roles
     syntax
     ;
@@ -301,7 +301,7 @@ in
       engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
       inherit (config.jitsusama.prompt) roots;
       marks = lib.mapAttrs (_: mark: mark.glyph) {
-        inherit (glyphs)
+        inherit (marks)
           branch
           unpushed
           more
@@ -310,7 +310,7 @@ in
           pending
           thinking
           ;
-        unsaved = glyphs.on;
+        unsaved = marks.on;
       };
     };
 

@@ -228,7 +228,7 @@ let
   # together as it's told the number. The face is monospaced, so a digit
   # sits a digit's width from the one before, as one line would have it.
   digits = map toString (lib.range 0 9);
-  lockGlyph = theme.glyphs.secret.glyph;
+  lockGlyph = theme.marks.secret.glyph;
 
   script = pkgs.replaceVars ./theme.script {
     inherit pad reach;
