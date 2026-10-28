@@ -161,6 +161,8 @@ QtObject {
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
         check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
             '{"answer":{"id":"abc_1","with":"no"}}\n');
+        check("the line cancelling one", Calendar.cancel(meeting("abc_1", now, now)),
+            '{"cancel":{"id":"abc_1"}}\n');
 
         // Which Meet call a window is, by its app id: [what, the app id, its code]
         const windows = [

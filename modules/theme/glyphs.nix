@@ -1022,6 +1022,12 @@ in
     console = "i";
     means = "seeing a meeting's details: when, its call, who's going";
   };
+  # A calendar page with a minus, for a meeting taken off everyone's.
+  cancelMeeting = {
+    glyph = nerd "f0d5c";
+    console = "x";
+    means = "cancelling a meeting Joel holds, for everyone asked";
+  };
   # Answering an invitation, each a calendar marked as the answer is, so
   # the three read as one choice.
   going = {

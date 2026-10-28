@@ -1,10 +1,11 @@
 // What the shell works out from the meetings the google program keeps
 // (src/state.rs): which meeting is next, when it is in words, whether it's
 // about to start, whether Return joins it, how Joel answered it, the
-// line that answers it (src/ask.rs), and which Meet call a window is. Calendar.qml asks these of the
-// meetings Google.qml holds, Mail.js asks the day and the time, and the
-// checks run them in Qt's own engine (tests/calendar.qml). Times are
-// milliseconds since 1970, as the program gives them.
+// lines that answer and cancel it (src/ask.rs), and which Meet call a
+// window is. Calendar.qml asks these of the meetings Google.qml holds,
+// Mail.js asks the day and the time, and the checks run them in Qt's own
+// engine (tests/calendar.qml). Times are milliseconds since 1970, as the
+// program gives them.
 .pragma library
 
 // In milliseconds.
@@ -169,4 +170,9 @@ function calledBy(meetings, code) {
     return meetings.find(meeting => code !== ""
         && MEET_LINK.exec(meeting.link ?? "")?.[1] === code)
         ?? null;
+}
+
+// The line that asks the program to cancel a meeting Joel holds.
+function cancel(meeting) {
+    return `${JSON.stringify({ cancel: { id: meeting.id } })}\n`;
 }

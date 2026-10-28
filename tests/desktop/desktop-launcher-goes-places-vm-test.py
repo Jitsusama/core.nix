@@ -1295,14 +1295,7 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.step_in()
     # Its acts: seeing it, Return's own, and joining first, then the three
     # answers.
-    for _ in range(6):
-        if (desktop.showing()["selected"] or {}).get("name") == "Answer Maybe":
-            break
-        before = (desktop.showing()["selected"] or {}).get("name")
-        machine.send_key("down")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
-        )
+    desktop.down_to("Answer Maybe")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Answer Maybe" and shown["footer"] == "going"
@@ -1368,6 +1361,45 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
         timeout=dt.timedelta(seconds=10),
     )
     assert "In a call" not in now_rows(desktop)["rows"], desktop.showing()
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> None:
+    """A meeting Joel holds is cancelled from its acts, a step saying who's told asking first."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    # The stand-in's Planning, two hours on, is Joel's own, with Grace asked.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("planning")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Planning")
+    desktop.step_in()
+    desktop.down_to("Cancel the Meeting")
+    # Return asks first, saying Google tells the one guest, and cancels nothing yet.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Cancel it now, telling 1 guest"
+    )
+    machine.fail(f"test -s {asked}")
+    machine.send_key("ret")
+    line = json.dumps({"cancel": {"id": "planning"}}, separators=(",", ":"))
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
+    # The launcher stays, and Google lets the meeting go, so it's found no more.
+    assert desktop.showing()["open"]
+    machine.wait_until_fails(
+        'grep -qF \'"id": "planning"\' /run/user/1000/google.json',
+        timeout=dt.timedelta(seconds=10),
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    desktop.answer("planning")
+    assert not any(
+        thing["is"] == "calendar:meeting:planning" for thing in desktop.showing()["things"]
+    ), desktop.showing()
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
