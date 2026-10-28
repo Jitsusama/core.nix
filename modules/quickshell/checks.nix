@@ -815,11 +815,16 @@ onLinux {
       facts = singleton "Facts.qml" ''
         property var all: []
       '';
-      steward = singleton "Steward.qml" ''
+      waiting = singleton "WaitingOnYou.qml" ''
         property var items: []
+        property var now: []
+        property var later: []
         property var foremost: null
         function titled(each) { return each.title; }
         function identity(each) { return each.title; }
+        function questOf(each) { return ""; }
+        function windowOf(each) { return null; }
+        function settle(each, how) {}
         function go(each) {}
       '';
     in
@@ -836,7 +841,7 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/today.qml} shell.qml
       cp ${facts} Facts.qml
-      cp ${steward} Steward.qml
+      cp ${waiting} WaitingOnYou.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}

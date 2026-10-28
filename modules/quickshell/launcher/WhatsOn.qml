@@ -268,12 +268,7 @@ Provider {
                 : typeof each.minutes === "number"
                 ? waitingSaid("minutes", { minutes: each.minutes }) : "",
             note: typeof each.why === "string" ? each.why : "",
-            nested: true,
-            // Inside Waiting on You, a row's rows open by its targets, so
-            // it gives both, as a part holding more does (Provider.qml's
-            // holderRow).
             verbs: inside,
-            targets: inside,
             run: () => does.run()
         });
         return row;
@@ -300,6 +295,10 @@ Provider {
         side: WaitingOnYou.now.length > 0 ? String(WaitingOnYou.now.length)
             : waitingSaid("later", { count: WaitingOnYou.later.length }),
         note: first,
+        // Its rows are things with verbs of their own, so the right arrow
+        // steps into one and Return still does its act; a row giving
+        // targets would step in on Return instead.
+        nested: true,
         verbs: () => WaitingOnYou.items.map(each => provider.item(each)),
         run: () => provider.lead.run()
     })
