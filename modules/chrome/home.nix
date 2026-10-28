@@ -11,30 +11,33 @@ let
   grouped = group: map (key: key // { inherit group; });
 
   # A window for one site has no tabs, so these work in the browser's own.
-  tabs = map (key: key // { when = "in the browser"; }) (
-    [
-      {
-        chord = "Ctrl+t";
-        does = "A new tab";
-      }
-      {
-        chord = "Ctrl+w";
-        does = "Close the tab";
-      }
-      {
-        chord = "Ctrl+Shift+t";
-        does = "Open the tab closed last";
-      }
-      {
-        chord = "Ctrl+Tab";
-        does = "The next tab";
-      }
-      {
-        chord = "Ctrl+Shift+Tab";
-        does = "The tab before";
-      }
-    ]
-    ++ map (number: {
+  inBrowser = map (key: key // { when = "in the browser"; });
+
+  tabs = inBrowser [
+    {
+      chord = "Ctrl+t";
+      does = "A new tab";
+    }
+    {
+      chord = "Ctrl+w";
+      does = "Close the tab";
+    }
+    {
+      chord = "Ctrl+Shift+t";
+      does = "Open the tab closed last";
+    }
+    {
+      chord = "Ctrl+Tab";
+      does = "The next tab";
+    }
+    {
+      chord = "Ctrl+Shift+Tab";
+      does = "The tab before";
+    }
+  ];
+
+  numbers = inBrowser (
+    map (number: {
       chord = "Ctrl+${toString number}";
       does = "Tab number ${toString number}";
     }) (lib.range 1 8)
@@ -48,6 +51,7 @@ let
 
   keys =
     grouped "tabs" tabs
+    ++ grouped "numbers" numbers
     ++ grouped "pages" [
       {
         chord = "Alt+Left";
