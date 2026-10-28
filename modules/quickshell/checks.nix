@@ -836,6 +836,10 @@ onLinux {
         function settle(each, how) {}
         function go(each) {}
       '';
+      # Where an item is done names its session, which needs none here.
+      sessions = singleton "Sessions.qml" ''
+        property var running: []
+      '';
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
       mkdir launcher
@@ -852,6 +856,7 @@ onLinux {
       cp ${../../tests/now-moment.qml} shell.qml
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
+      cp ${sessions} Sessions.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
