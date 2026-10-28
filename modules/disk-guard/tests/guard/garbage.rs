@@ -212,13 +212,13 @@ fn what_an_evaluation_begun_since_the_batch_holds_is_never_offered_to_nix() {
     }
     let roots = dir.path().join("roots");
     fs::create_dir(&roots).unwrap();
-    let mut named = String::new();
+    let mut rooted = String::new();
     for name in held {
         fs::write(path(&format!("{name}.alive")), "").unwrap();
-        named.push_str(&path(name));
-        named.push('\0');
+        rooted.push_str(&path(name));
+        rooted.push('\0');
     }
-    fs::write(roots.join("4242"), named).unwrap();
+    fs::write(roots.join("4242"), rooted).unwrap();
     let batch: Vec<String> = names.iter().map(|name| path(name)).collect();
     delete(&nix, &roots, &batch, false).unwrap();
     let left: Vec<&str> = names
