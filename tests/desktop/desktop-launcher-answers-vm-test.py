@@ -181,6 +181,15 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         machine.send_key("esc")
     # Half a word asks its question too: "batt" is the battery, and
     # Tab finishes the word, its key after the completion in the field.
+    # A copy kept from before saying "battery", a later word, never takes
+    # the answer's place, as the battery's own copied answer did when it
+    # said "on battery".
+    desktop.as_account("echo -n 'kept from the battery' | wl-copy > /dev/null 2>&1")
+    desktop.answer("kept")
+    desktop.launcher_until(
+        lambda shown: any(thing["is"] == "copy:kept from the battery" for thing in shown["things"])
+    )
+    machine.send_key("esc")
     desktop.answer("batt")
     desktop.launcher_until(
         lambda shown: (
