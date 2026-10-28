@@ -22,7 +22,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font;
+  inherit (config.jitsusama.theme) colours font;
   inherit (config.jitsusama.camera) device;
   nerd = import ../theme/nerd.nix { inherit lib; };
 
@@ -31,7 +31,7 @@ let
     lib.mapAttrsToList (name: value: "camera-${name}=${value}") {
       sans = font.sans.family;
       mono = font.mono.family;
-      inherit (roles)
+      inherit (colours)
         deepest
         shadow
         edge

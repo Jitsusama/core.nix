@@ -1,5 +1,5 @@
 # btop in the theme's colours, slot for slot as Omarchy's template gives them,
-# with the theme's roles for its frame, the terminal's colours for its
+# with the theme's colours for its frame, the terminal's colours for its
 # meters, and the theme's shades for its graphs:
 # https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/themed/btop.theme.tpl
 #
@@ -29,7 +29,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles terminal shades;
+  inherit (config.jitsusama.theme) colours terminal shades;
   shade = builtins.elemAt shades;
 
   grouped = group: map (key: key // { inherit group; });
@@ -145,21 +145,21 @@ let
     ];
 
   slots = {
-    main_bg = roles.background;
-    main_fg = roles.text;
-    title = roles.strong;
-    hi_fg = roles.accent;
-    selected_bg = roles.selection;
-    selected_fg = roles.strong;
-    inactive_fg = roles.muted;
+    main_bg = colours.background;
+    main_fg = colours.text;
+    title = colours.strong;
+    hi_fg = colours.accent;
+    selected_bg = colours.selection;
+    selected_fg = colours.strong;
+    inactive_fg = colours.muted;
     graph_text = shade 6;
-    meter_bg = roles.selection;
+    meter_bg = colours.selection;
     proc_misc = shade 6;
-    cpu_box = roles.rule;
-    mem_box = roles.rule;
-    net_box = roles.rule;
-    proc_box = roles.rule;
-    div_line = roles.rule;
+    cpu_box = colours.rule;
+    mem_box = colours.rule;
+    net_box = colours.rule;
+    proc_box = colours.rule;
+    div_line = colours.rule;
     temp_start = terminal.green;
     temp_mid = terminal.yellow;
     temp_end = terminal.red;

@@ -22,7 +22,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     font
     shape
     space
@@ -549,7 +549,7 @@ let
   # deepest background, which it shades to grey. A badge is the warning
   # colour, since Slack writes its number dark on that and light on the
   # alert colour, too faint to read (2.96:1).
-  slackTheme = lib.concatMapStringsSep "," (role: roles.${role}) [
+  slackTheme = lib.concatMapStringsSep "," (role: colours.${role}) [
     "accent"
     "selection"
     "success"
@@ -1481,7 +1481,7 @@ in
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {
-                      inherit roles;
+                      roles = colours;
                       inherit (config.jitsusama.theme) palette;
                     }
                   ) providers
@@ -1567,7 +1567,7 @@ in
 
           Singleton {
           ${lib.concatLines (
-            lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") roles
+            lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") colours
           )}
               readonly property var mono: ${face font.mono.family type.mono}
               readonly property var sans: ${face font.sans.family type.sans}

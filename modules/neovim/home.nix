@@ -180,12 +180,12 @@ in
     lib.generators.toLua { } (map bound keys)
   }\n";
 
-  # The theme's roles, for the colour scheme and the plugins that draw on the
+  # The theme's colours, for the colour scheme and the plugins that draw on the
   # terminal's own background (require('theme').background), with the
-  # terminal's colours, code's roles, the shades and the marks beside them.
+  # terminal's sixteen, code's, the shades and the marks beside them.
   xdg.configFile."nvim/lua/theme.lua".text = "return ${
     lib.generators.toLua { } (
-      config.jitsusama.theme.roles
+      config.jitsusama.theme.colours
       // {
         inherit (config.jitsusama.theme)
           terminal
@@ -198,7 +198,7 @@ in
     )
   }\n";
 
-  # The theme as Neovim's colour scheme, every colour one of its roles.
+  # The theme as Neovim's colour scheme, every colour one the theme names.
   xdg.configFile."nvim/colors/jitsusama.lua".source = ./colors/jitsusama.lua;
   # The names English doesn't know, checked beside it (init.lua's
   # spelllang), built once here rather than each time Neovim starts.

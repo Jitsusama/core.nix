@@ -3,7 +3,7 @@
 # commas and nulls between them muted.
 { config, lib, ... }:
 let
-  inherit (config.jitsusama.theme) roles terminal;
+  inherit (config.jitsusama.theme) colours terminal;
   # jq takes a colour as the escape's own numbers.
   sgr = import ../theme/sgr.nix { inherit lib; } "38";
 in
@@ -13,14 +13,14 @@ in
   programs.jq = {
     enable = true;
     colors = {
-      null = sgr roles.muted;
+      null = sgr colours.muted;
       false = sgr terminal.bright_red;
       true = sgr terminal.bright_red;
       numbers = sgr terminal.bright_red;
       strings = sgr terminal.green;
-      arrays = sgr roles.muted;
-      objects = sgr roles.muted;
-      objectKeys = sgr roles.text;
+      arrays = sgr colours.muted;
+      objects = sgr colours.muted;
+      objectKeys = sgr colours.text;
     };
   };
 }

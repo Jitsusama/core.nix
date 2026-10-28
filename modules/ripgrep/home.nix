@@ -3,7 +3,7 @@
 # chosen row, in the selection colour rather than the alert's red.
 { config, lib, ... }:
 let
-  inherit (config.jitsusama.theme) roles;
+  inherit (config.jitsusama.theme) colours;
   # ripgrep takes a colour as three hex bytes, 0xrr,0xgg,0xbb.
   bytes =
     colour:
@@ -20,12 +20,12 @@ in
     enable = true;
     arguments = [
       "--max-columns-preview"
-      "--colors=path:fg:${bytes roles.strong}"
+      "--colors=path:fg:${bytes colours.strong}"
       "--colors=path:style:bold"
-      "--colors=line:fg:${bytes roles.muted}"
-      "--colors=column:fg:${bytes roles.muted}"
-      "--colors=match:fg:${bytes roles.strong}"
-      "--colors=match:bg:${bytes roles.selection}"
+      "--colors=line:fg:${bytes colours.muted}"
+      "--colors=column:fg:${bytes colours.muted}"
+      "--colors=match:fg:${bytes colours.strong}"
+      "--colors=match:bg:${bytes colours.selection}"
       "--colors=match:style:nobold"
     ];
   };

@@ -1,6 +1,6 @@
 # Spotify in the theme, and in the terminal. Spotify's own client comes
 # through Spicetify, which rewrites the colours the client draws in to
-# ones it takes from a scheme, here jitsusama.theme's roles, and adds a
+# ones it takes from a scheme, here jitsusama.theme's colours, and adds a
 # stylesheet, here setting the theme's faces where Spotify sets its own. The
 # client is built that way rather than patched in place, so nothing touches
 # it after it's installed, and Spotify keeps its own prefs file, which holds
@@ -25,30 +25,30 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font;
+  inherit (config.jitsusama.theme) colours font;
   spices = spicetify-nix.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 
   # What each colour Spicetify names is for, in Spotify's own client.
   scheme = {
-    inherit (roles) text;
-    subtext = roles.muted;
-    main = roles.background;
-    main-elevated = roles.raised;
-    highlight = roles.raised;
-    highlight-elevated = roles.selection;
-    sidebar = roles.sunken;
-    player = roles.sunken;
-    card = roles.raised;
-    inherit (roles) shadow;
+    inherit (colours) text;
+    subtext = colours.muted;
+    main = colours.background;
+    main-elevated = colours.raised;
+    highlight = colours.raised;
+    highlight-elevated = colours.selection;
+    sidebar = colours.sunken;
+    player = colours.sunken;
+    card = colours.raised;
+    inherit (colours) shadow;
     # Drawn faint behind a hovered row, so it's the text's colour.
-    selected-row = roles.text;
-    button = roles.accent;
-    button-active = roles.strong;
-    button-disabled = roles.rule;
-    tab-active = roles.selection;
-    notification = roles.raised;
-    notification-error = roles.alert;
-    misc = roles.rule;
+    selected-row = colours.text;
+    button = colours.accent;
+    button-active = colours.strong;
+    button-disabled = colours.rule;
+    tab-active = colours.selection;
+    notification = colours.raised;
+    notification-error = colours.alert;
+    misc = colours.rule;
   };
 
   grouped = group: map (key: key // { inherit group; });

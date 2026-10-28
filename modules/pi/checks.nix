@@ -42,9 +42,9 @@
       colours = lib.attrValues theme.colors ++ lib.attrValues theme.export;
     in
     holds "pi-wears-the-theme" "pi's theme isn't the machine's, or names a colour pi can't read." (
-      theme.colors.text == home.jitsusama.theme.roles.text
+      theme.colors.text == home.jitsusama.theme.colours.text
       && theme.colors.syntaxString == home.jitsusama.theme.syntax.string.colour
-      && theme.colors.thinkingMax == home.jitsusama.theme.roles.alert
+      && theme.colors.thinkingMax == home.jitsusama.theme.colours.alert
       && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
     );
 

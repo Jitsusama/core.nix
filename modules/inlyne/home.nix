@@ -22,7 +22,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles terminal font;
+  inherit (config.jitsusama.theme) colours terminal font;
 
   # The theme's #RRGGBB as the number inlyne reads.
   number = colour: lib.fromHexString (lib.removePrefix "#" colour);
@@ -188,23 +188,23 @@ let
   settings = {
     theme = "Dark";
     dark-theme = {
-      text-color = number roles.text;
-      heading-color = number roles.strong;
-      background-color = number roles.background;
+      text-color = number colours.text;
+      heading-color = number colours.strong;
+      background-color = number colours.background;
       code-color = number terminal.magenta;
-      quote-block-color = number roles.sunken;
-      link-color = number roles.accent;
-      select-color = number roles.selection;
-      checkbox-color = number roles.accent;
+      quote-block-color = number colours.sunken;
+      link-color = number colours.accent;
+      select-color = number colours.selection;
+      checkbox-color = number colours.accent;
       code-highlighter.path = "${
         import ../theme/tmtheme.nix {
           inherit
             lib
             pkgs
-            roles
+            colours
             terminal
             ;
-        } roles.sunken
+        } colours.sunken
       }/Jitsusama.tmTheme";
     };
     font-options = {

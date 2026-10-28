@@ -31,7 +31,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     terminal
     font
     title
@@ -62,7 +62,7 @@ let
     /* Inkscape's own colours, from jitsusama.theme. */
     ${lib.concatStrings (lib.imap1 highlight highlights)}
     #InkSpinScale box.active {
-      box-shadow: 0 0 0 1px ${roles.accent};
+      box-shadow: 0 0 0 1px ${colours.accent};
     }
 
     .mono-font {
@@ -81,8 +81,8 @@ let
         "@desk@"
       ]
       [
-        roles.edge
-        roles.sunken
+        colours.edge
+        colours.sunken
       ]
       (builtins.readFile ./default.svg);
 

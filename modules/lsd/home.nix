@@ -3,7 +3,7 @@
 # has to say about them stand out.
 { config, ... }:
 let
-  inherit (config.jitsusama.theme) roles;
+  inherit (config.jitsusama.theme) colours;
 in
 {
   imports = [ ../theme/home.nix ];
@@ -23,49 +23,49 @@ in
       date = "+%Y-%m-%dT%H:%M:%S";
     };
     colors = {
-      user = roles.text;
-      group = roles.muted;
+      user = colours.text;
+      group = colours.muted;
       permission = {
-        read = roles.muted;
-        write = roles.muted;
-        exec = roles.text;
-        exec-sticky = roles.text;
-        no-access = roles.rule;
-        octal = roles.muted;
-        acl = roles.muted;
-        context = roles.muted;
+        read = colours.muted;
+        write = colours.muted;
+        exec = colours.text;
+        exec-sticky = colours.text;
+        no-access = colours.rule;
+        octal = colours.muted;
+        acl = colours.muted;
+        context = colours.muted;
       };
       date = {
-        hour-old = roles.strong;
-        day-old = roles.text;
-        older = roles.muted;
+        hour-old = colours.strong;
+        day-old = colours.text;
+        older = colours.muted;
       };
       size = {
-        none = roles.muted;
-        small = roles.muted;
-        medium = roles.text;
-        large = roles.strong;
+        none = colours.muted;
+        small = colours.muted;
+        medium = colours.text;
+        large = colours.strong;
       };
       inode = {
-        valid = roles.muted;
-        invalid = roles.alert;
+        valid = colours.muted;
+        invalid = colours.alert;
       };
       links = {
-        valid = roles.muted;
-        invalid = roles.alert;
+        valid = colours.muted;
+        invalid = colours.alert;
       };
-      tree-edge = roles.rule;
+      tree-edge = colours.rule;
       git-status = {
-        default = roles.muted;
-        unmodified = roles.muted;
-        ignored = roles.rule;
-        new-in-index = roles.success;
-        new-in-workdir = roles.success;
-        typechange = roles.warning;
-        deleted = roles.alert;
-        renamed = roles.warning;
-        modified = roles.warning;
-        conflicted = roles.alert;
+        default = colours.muted;
+        unmodified = colours.muted;
+        ignored = colours.rule;
+        new-in-index = colours.success;
+        new-in-workdir = colours.success;
+        typechange = colours.warning;
+        deleted = colours.alert;
+        renamed = colours.warning;
+        modified = colours.warning;
+        conflicted = colours.alert;
       };
     };
   };

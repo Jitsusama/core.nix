@@ -1,6 +1,6 @@
 # GIMP in the theme. GIMP's own theme draws every widget from a handful of
 # named colours, which gimp.css, a stylesheet GIMP reads after its theme and
-# never writes, redefines from jitsusama.theme's roles. The theme's pigments
+# never writes, redefines from jitsusama.theme's colours. The theme's pigments
 # are a palette beside the ones GIMP ships. Both go in GIMP's settings
 # folder, with shortcutsrc, the keys that differ from GIMP's, which the
 # system gimprc keeps GIMP from saving over. GIMP owns everything else
@@ -27,7 +27,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font appearance;
+  inherit (config.jitsusama.theme) colours font appearance;
 
   # GIMP keeps its settings in a folder for each release series.
   series = "3.2";
@@ -39,30 +39,30 @@ let
 
   # The colours GIMP's theme names, in themes/Default/gimp-dark.css and
   # gimp-light.css, and what each means here.
-  colours = {
-    fg-color = roles.text;
-    bg-color = roles.background;
-    border-color = roles.edge;
-    dimmed-fg-color = roles.muted;
-    disabled-fg-color = roles.rule;
-    disabled-button-color = roles.raised;
-    hover-color = roles.raised;
-    widget-bg-color = roles.sunken;
-    selected-color = roles.selection;
-    extreme-bg-color = roles.deepest;
-    extreme-selected-color = roles.raised;
-    strong-border-color = roles.edge;
-    stronger-border-color = roles.rule;
-    edge-border-color = roles.edge;
-    scrollbar-slider-color = roles.muted;
-    scrollbar-trough-color = roles.sunken;
+  named = {
+    fg-color = colours.text;
+    bg-color = colours.background;
+    border-color = colours.edge;
+    dimmed-fg-color = colours.muted;
+    disabled-fg-color = colours.rule;
+    disabled-button-color = colours.raised;
+    hover-color = colours.raised;
+    widget-bg-color = colours.sunken;
+    selected-color = colours.selection;
+    extreme-bg-color = colours.deepest;
+    extreme-selected-color = colours.raised;
+    strong-border-color = colours.edge;
+    stronger-border-color = colours.rule;
+    edge-border-color = colours.edge;
+    scrollbar-slider-color = colours.muted;
+    scrollbar-trough-color = colours.sunken;
   };
 
   stylesheet = ''
-    /* GIMP's colours, from jitsusama.theme's roles. */
-    ${lib.concatLines (lib.mapAttrsToList (name: colour: "@define-color ${name} ${colour};") colours)}
+    /* GIMP's colours, from jitsusama.theme's colours. */
+    ${lib.concatLines (lib.mapAttrsToList (name: colour: "@define-color ${name} ${colour};") named)}
     /* The rulers' marks, drawn faint over the canvas's edge. */
-    @define-color ruler-color alpha(${roles.rule}, 0.3);
+    @define-color ruler-color alpha(${colours.rule}, 0.3);
   '';
 
   grouped = group: map (key: key // { inherit group; });

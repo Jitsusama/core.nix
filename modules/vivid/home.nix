@@ -10,57 +10,57 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles;
+  inherit (config.jitsusama.theme) colours;
   # vivid wants a style for every kind of file it knows, and a colour as
   # hex without its #.
   drawn = colour: { foreground = lib.removePrefix "#" colour; };
-  plain = drawn roles.text;
+  plain = drawn colours.text;
   theme = {
     colors = { };
     core = {
       normal_text = { };
       regular_file = { };
       reset_to_normal = { };
-      directory = drawn roles.strong // {
+      directory = drawn colours.strong // {
         font-style = "bold";
       };
-      symlink = drawn roles.voice;
+      symlink = drawn colours.voice;
       multi_hard_link = { };
-      fifo = drawn roles.machine;
-      socket = drawn roles.machine;
-      door = drawn roles.machine;
-      block_device = drawn roles.machine;
-      character_device = drawn roles.machine;
-      broken_symlink = drawn roles.alert;
-      missing_symlink_target = drawn roles.alert;
-      setuid = drawn roles.warning;
-      setgid = drawn roles.warning;
-      file_with_capability = drawn roles.warning;
-      sticky_other_writable = drawn roles.warning;
-      other_writable = drawn roles.warning;
+      fifo = drawn colours.machine;
+      socket = drawn colours.machine;
+      door = drawn colours.machine;
+      block_device = drawn colours.machine;
+      character_device = drawn colours.machine;
+      broken_symlink = drawn colours.alert;
+      missing_symlink_target = drawn colours.alert;
+      setuid = drawn colours.warning;
+      setgid = drawn colours.warning;
+      file_with_capability = drawn colours.warning;
+      sticky_other_writable = drawn colours.warning;
+      other_writable = drawn colours.warning;
       sticky = { };
-      executable_file = drawn roles.program;
+      executable_file = drawn colours.program;
     };
     text = plain // {
-      special = drawn roles.strong;
-      todo = drawn roles.strong;
-      licenses = drawn roles.muted;
+      special = drawn colours.strong;
+      todo = drawn colours.strong;
+      licenses = drawn colours.muted;
     };
     markup = plain;
     programming = plain;
-    media = drawn roles.person;
+    media = drawn colours.person;
     office = plain;
-    archives = drawn roles.machine;
-    executable = drawn roles.program;
-    unimportant = drawn roles.muted;
+    archives = drawn colours.machine;
+    executable = drawn colours.program;
+    unimportant = drawn colours.muted;
   };
   file = pkgs.writeText "theme.yml" (builtins.toJSON theme);
-  colours = pkgs.runCommand "ls-colors.zsh" { nativeBuildInputs = [ pkgs.vivid ]; } ''
+  lsColours = pkgs.runCommand "ls-colors.zsh" { nativeBuildInputs = [ pkgs.vivid ]; } ''
     echo "export LS_COLORS='$(vivid generate ${file})'" > $out
   '';
 in
 {
   imports = [ ../theme/home.nix ];
 
-  programs.zsh.initContent = lib.mkOrder 520 "source ${colours}";
+  programs.zsh.initContent = lib.mkOrder 520 "source ${lsColours}";
 }

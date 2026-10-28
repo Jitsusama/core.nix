@@ -1,7 +1,7 @@
 # One of the theme's colours as its three channels, for a program that reads
 # rgb() and not #RRGGBB: broot's skin.
 #
-#   rgb roles.selection  →  rgb(50, 71, 59)
+#   rgb colours.selection  →  rgb(50, 71, 59)
 { lib }:
 colour:
 let

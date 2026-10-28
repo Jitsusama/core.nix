@@ -9,7 +9,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles;
+  inherit (config.jitsusama.theme) colours;
   sgr = import ../theme/sgr.nix { inherit lib; };
   # home-manager makes the history's folder with a dirname and a mkdir at
   # every start; zsh can name the folder itself, and it's there after the
@@ -41,7 +41,7 @@ in
       # Before completion, so its styles are set when it starts, and before
       # fzf's keys, which take Ctrl+R over.
       (lib.mkOrder 560 ''
-        typeset -g _zsh_selected='${sgr "48" roles.selection};${sgr "38" roles.strong}'
+        typeset -g _zsh_selected='${sgr "48" colours.selection};${sgr "38" colours.strong}'
         ${builtins.readFile ./init.zsh}
       '')
       (builtins.readFile ./terminal.zsh)

@@ -17,7 +17,7 @@ onLinux {
   inlyne-reads-in-the-theme =
     let
       home = account graphical;
-      inherit (home.jitsusama.theme) roles;
+      inherit (home.jitsusama.theme) colours;
       opens = graphical.config.xdg.mime.defaultApplications."text/markdown" or "";
       inlyne = lib.findFirst (package: lib.getName package == "inlyne") null home.home.packages;
       fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
@@ -88,9 +88,9 @@ onLinux {
         }
         fail() { echo "$1"; exit 1; }
         for page in page.png keys.png; do
-          [ "$(at $page 2,2)" = "${srgb roles.background}" ] \
+          [ "$(at $page 2,2)" = "${srgb colours.background}" ] \
             || fail "inlyne's $page is $(at $page 2,2), not the theme's background"
-          [ "$(many $page '${srgb roles.strong}')" -gt 100 ] \
+          [ "$(many $page '${srgb colours.strong}')" -gt 100 ] \
             || fail "inlyne's heading in $page isn't drawn in the theme's strong text"
           # inlyne's own dark text and background, which the theme replaces.
           for own in 'srgb(157,172,187)' 'srgb(26,29,34)'; do
