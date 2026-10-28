@@ -42,6 +42,23 @@ onLinux {
       touch $out
     '';
 
+  # Escape backs out a step in Spotify: the extension goes back a page only
+  # once nothing is drawn over it, no row is chosen and no field is typed in
+  # (tests/spotify-backs-out-on-escape.mjs, against stand-ins for Spotify's
+  # page), and the client the account gets carries it and loads it.
+  spotify-backs-out-on-escape =
+    let
+      home = account graphical;
+      client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
+    in
+    pkgs.runCommandLocal "spotify-backs-out-on-escape" { } ''
+      ${lib.getExe pkgs.nodejs} --no-warnings ${../../tests/spotify-backs-out-on-escape.mjs} \
+        ${./backs-out.js}
+      cmp ${./backs-out.js} ${client}/extensions/backs-out.js
+      grep -q -F "extensions/backs-out.js" ${client}/index.html
+      touch $out
+    '';
+
   # spotify-player reads its settings before anything else and stops at a
   # value it can't use; it ignores a setting it doesn't know.
   spotify-player-accepts-its-configuration =
