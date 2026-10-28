@@ -332,6 +332,18 @@ impl<'a> Reclaim<'a> {
         self
     }
 
+    /// Deletes a batch of Nix's garbage, unless one this pass was refused
+    /// for garbage come alive, which its listing's others would meet too.
+    fn collect(&mut self, nix: PathBuf, roots: PathBuf, paths: Vec<String>) -> Outcome {
+        if self.stale {
+            return Outcome::Kept("its listing was found stale this pass".to_owned());
+        }
+        let gentle = self.gentle;
+        let outcome = ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)));
+        self.stale = matches!(&outcome, Outcome::Failed(why) if garbage::stale(why));
+        outcome
+    }
+
     /// What went wrong after a reclaim that freed its space anyway.
     pub fn notes(&self) -> &[String] {
         &self.notes
@@ -428,15 +440,8 @@ impl Reclaimer for Reclaim<'_> {
             Action::Collect {
                 nix, roots, paths, ..
             } => {
-                if self.stale {
-                    return Outcome::Kept("its listing was found stale this pass".to_owned());
-                }
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
-                let gentle = self.gentle;
-                let outcome =
-                    ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)));
-                self.stale = matches!(&outcome, Outcome::Failed(why) if garbage::stale(why));
-                outcome
+                self.collect(nix, roots, paths)
             }
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
