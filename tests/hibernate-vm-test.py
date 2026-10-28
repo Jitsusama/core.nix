@@ -47,6 +47,12 @@ def test_nothing_says_where_to_resume_from(swapping: QemuMachine) -> None:
     assert "resume=" not in swapping.succeed("cat /proc/cmdline")
 
 
+def test_the_image_is_written_with_lz4(swapping: QemuMachine) -> None:
+    """The image is compressed with lz4, which reads back faster than the kernel's lzo."""
+    compressor = swapping.succeed("cat /sys/module/hibernate/parameters/compressor")
+    assert compressor.strip() == "lz4", f"the image would be compressed with {compressor}"
+
+
 def test_a_hibernated_machine_comes_back_as_it_was(swapping: QemuMachine) -> None:
     """What was only in memory is there again once the machine starts from its image."""
     swapping.succeed(

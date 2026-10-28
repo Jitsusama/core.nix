@@ -1290,7 +1290,7 @@
   '';
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
-    comes back from the image through systemd's initrd as it was, and boots anew after
+    comes back from an lz4 image through systemd's initrd as it was, and boots anew after
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
