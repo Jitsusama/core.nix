@@ -260,6 +260,7 @@ let
       "inlyne"
       "zathura"
       "mpv"
+      "chrome"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -438,6 +439,8 @@ let
     zathura = nerd "f05da";
     # The theme's film, as the player plays films.
     mpv = nerd "f0381";
+    # The theme's web, as the browser goes about it.
+    chrome = nerd "f059f";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

@@ -335,8 +335,8 @@ onLinux {
 
   # Shortcuts groups every layer's chords by what each acts on, as
   # tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
-  # binds, Neovim's and pi's among them, in Qt's own engine, each group
-  # named in the account's vocabulary; and steps through them in levels, as
+  # binds, Neovim's, pi's and Chrome's among them, in Qt's own engine, each
+  # group named in the account's vocabulary; and steps through them in levels, as
   # tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
   # over the same account's shortcuts, with niri stood in for. The picture
   # viewer is given a key of its own here, one no viewer would use, so its
@@ -349,6 +349,7 @@ onLinux {
         {
           home-manager.users.someone = {
             imports = [
+              self.homeModules.chrome
               self.homeModules.neovim
               self.homeModules.pi
             ];

@@ -1919,6 +1919,12 @@
       "glyph": "film"
     },
     {
+      "id": "shortcuts:chrome",
+      "in": "shortcuts",
+      "name": "Browser",
+      "glyph": "web"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2514,6 +2520,21 @@
       "id": "shortcuts:mpv:list",
       "in": "shortcuts",
       "name": "In the list"
+    },
+    {
+      "id": "shortcuts:chrome:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:chrome:numbers",
+      "in": "shortcuts",
+      "name": "Tab numbers"
+    },
+    {
+      "id": "shortcuts:chrome:pages",
+      "in": "shortcuts",
+      "name": "On the page"
     },
     {
       "id": "on",
@@ -4151,17 +4172,19 @@
       "word": "tabs",
       "things": [
         "shortcuts:terminal:tabs",
-        "shortcuts:neovim:files:tabs"
+        "shortcuts:neovim:files:tabs",
+        "shortcuts:chrome:tabs"
       ],
-      "why": "The terminal and Neovim both have tabs, and each group says what holds it beside it."
+      "why": "The terminal, Neovim and the browser all have tabs, and each group says what holds it beside it."
     },
     {
       "word": "tab numbers",
       "things": [
         "shortcuts:terminal:numbers",
-        "shortcuts:neovim:files:numbers"
+        "shortcuts:neovim:files:numbers",
+        "shortcuts:chrome:numbers"
       ],
-      "why": "The terminal and Neovim both go to a tab by its number, and each group says what holds it beside it."
+      "why": "The terminal, Neovim and the browser all go to a tab by its number, and each group says what holds it beside it."
     },
     {
       "word": "focus",
