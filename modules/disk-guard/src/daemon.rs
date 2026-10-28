@@ -1489,6 +1489,7 @@ impl Guard {
                 action: Action::Collect {
                     root: store.clone(),
                     nix: self.config.nix.bin.clone(),
+                    roots: self.config.nix.temp_roots.clone(),
                     paths: batch.paths,
                 },
                 device,

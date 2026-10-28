@@ -108,7 +108,9 @@ or launchd, and [`home.nix`][2] the account's.
   process holds, as a temporary root or a file it has open, and every dead
   path it reaches, is left for a later pass: Nix refuses a whole delete for
   one live path, deleting none, and each refusal costs it a whole look for
-  roots. It expires generations,
+  roots. Temporary roots are read again just before each delete, since an
+  evaluation begun after the batch was made holds what it writes for
+  minutes. It expires generations,
   never the current, running or booted one, the newest five, or one with a
   boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing
