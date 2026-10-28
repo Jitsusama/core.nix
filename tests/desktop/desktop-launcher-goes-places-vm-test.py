@@ -1383,11 +1383,15 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
     desktop: Desktop,
 ) -> None:
-    """A meeting about to start wants Joel in Now, is said a minute before, and Return joins it."""
+    """A meeting about to start wants Joel, is said a minute before, and Return joins it.
+
+    Its notice goes by itself, read, once its call is open.
+    """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
+    call = "chrome-meet.google.com__pqr-stuv-wxy-Default"
     # The stand-in's Design Review a minute and a half on, so it wants Joel
     # at once, and is said as a notice once the shell's minute passes the
     # one before it starts.
@@ -1409,11 +1413,22 @@ def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
             timeout=dt.timedelta(seconds=30),
         )
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-        desktop.as_account("qs ipc call notices putAway")
+        # The call opens in a window of its own, as Chrome would open the
+        # link, which kitty stands in for by taking its app id; the meeting
+        # no longer wants Joel, so its notice goes, read, untouched.
+        desktop.as_account(f"niri msg action spawn -- kitty --class {call} --title Meet")
         machine.wait_until_fails(
             desktop.in_session("niri msg layers | grep -q notifications"),
             timeout=dt.timedelta(seconds=30),
         )
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+                ' | grep -q \'"summary":"Design Review in [^"]*"[^}]*"read":true\''
+            ),
+            timeout=dt.timedelta(seconds=10),
+        )
+        desktop.close(desktop.window_titled("Meet"))
     finally:
         desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_SOON")
 

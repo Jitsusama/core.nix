@@ -4,8 +4,10 @@
 // (Call.qml). It's named for the meeting and says when it starts, and its
 // first action joins its call, or opens it in Calendar when it has none.
 // It's said once as a notice of Calendar's (Arrivals.qml), a minute before
-// it starts, which is when it `arrives`; notices held while Joel asked for
-// quiet hold it too.
+// it starts, which is when it `arrives`, unless another notice told him of
+// it already; notices held while Joel asked for quiet hold it too. Its
+// notice goes, read, once it no longer wants him: its call open, or five
+// minutes after its start.
 import qs
 import QtQuick
 
@@ -19,7 +21,8 @@ Piece {
     active: meeting !== null
     kind: "wants"
     wants: true
-    arrives: Calendar.heralded
+    arrives: Calendar.heralded && !Calendar.toldElsewhere(meeting, Notices.history)
+    withdraws: true
     app: "Calendar"
     hue: "person"
     title: named

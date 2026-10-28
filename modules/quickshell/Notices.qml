@@ -73,6 +73,8 @@ Singleton {
         // What arrives by itself (Arrivals.qml), in its margin mark, which
         // says it while it holds, so it's never missed either.
         "camera": { glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true },
+        // A meeting about to start (Starting.qml), with others in it.
+        "calendar": { glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true },
         "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true }
     })
 

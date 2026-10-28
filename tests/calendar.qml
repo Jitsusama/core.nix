@@ -1,5 +1,5 @@
 // Which meeting is next, when it is in words, whether it's about to start,
-// said as a notice and joined by Return, its day in full, how Joel answered it and
+// said as a notice or told already by another, and joined by Return, its day in full, how Joel answered it and
 // the line answering it, and which Meet call a window is and whose, from
 // meetings like the google program's, run in Qt's own JavaScript engine,
 // the one the shell runs it in. The
@@ -117,6 +117,23 @@ QtObject {
             check(`said as a notice at ${new Date(time).toTimeString()}`,
                 Calendar.heralded(standup, time), meant);
         check("nothing is said as a notice", Calendar.heralded(null, now), false);
+
+        // Told already by another notice: [what, the notices, told]
+        const notice = (summary, time) => ({ summary: summary, at: time });
+        const told = [
+            ["by one named for it", [notice("Standup", at(26, 15, 29))], true],
+            ["by one named for it, spaced", [notice(" standup ", at(26, 15, 25))], true],
+            ["by one ten minutes before", [notice("standup", at(26, 15, 20))], true],
+            ["not by one from yesterday's", [notice("standup", at(25, 15, 29))], false],
+            ["not by the shell's own", [notice("standup in 1 min", at(26, 15, 29))], false],
+            ["not by another's", [notice("Lunch", at(26, 15, 29))], false],
+            ["not by none", [], false]
+        ];
+        for (const [what, notices, meant] of told)
+            check(`told ${what}`, Calendar.toldElsewhere(standup, notices), meant);
+        check("an untitled one isn't told", Calendar.toldElsewhere(
+            meeting("", at(26, 15, 30), at(26, 15, 45)), [notice("", at(26, 15, 29))]), false);
+        check("nothing isn't told", Calendar.toldElsewhere(null, []), false);
 
         // Whether Return joins it: [what, the meeting, joins]
         const joins = [
