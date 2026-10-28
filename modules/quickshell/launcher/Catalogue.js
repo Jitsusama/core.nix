@@ -13,10 +13,11 @@ const DEEPEST = 4;
 
 // Collections whose things are a list of items, each listed whole only as
 // a place: what was copied, the emoji, the notices past, the shortcuts,
-// and what comes and goes in Agents, AI spend's findings and the subagents'
-// runs. A model asked to paste or find one opens the place instead.
-const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters", "spend",
-    "runs"]);
+// and what comes and goes in Agents, the queue's jobs, AI spend's findings and
+// the subagents' runs. A model asked to paste or find one opens the place
+// instead.
+const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters", "jobs",
+    "spend", "runs"]);
 
 // Collections whose things are listed, each one opened by its own run, but
 // not what each holds: every program's Quit and New window, every window's

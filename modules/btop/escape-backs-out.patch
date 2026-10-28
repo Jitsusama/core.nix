@@ -1,0 +1,47 @@
+--- a/src/btop_input.cpp
++++ b/src/btop_input.cpp
+@@ -224,7 +224,12 @@
+ 				if (key == "q") {
+ 					clean_quit(0);
+ 				}
+-				else if (is_in(key, "escape", "m")) {
++				//? Escape backs out a step: out of a process's details, off the
++				//? process chosen, then out of btop; m alone opens the menu.
++				else if (key == "escape" and not (Proc::shown and (Config::getI("proc_selected") > 0 or Config::getB("show_detailed")))) {
++					clean_quit(0);
++				}
++				else if (key == "m") {
+ 					Menu::show(Menu::Menus::Main);
+ 					return;
+ 				}
+@@ -458,7 +463,17 @@
+ 					else
+ 						keep_going = true;
+ 				}
+-				else if (is_in(key, "enter", "info_enter")) {
++				else if (key == "escape" and Config::getI("proc_selected") > 0) {
++					Config::set("proc_selected", 0);
++					if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
++						Config::flip("follow_process");
++						Config::set("followed_pid", 0);
++						Config::set("proc_followed", 0);
++					}
++					redraw = true;
++				}
++				//? With no process chosen, Escape closes the details as Enter does.
++				else if (is_in(key, "enter", "info_enter", "escape")) {
+ 					if (Config::getI("proc_selected") == 0 and not Config::getB("show_detailed")) {
+ 						return;
+ 					}
+--- a/src/btop_menu.cpp
++++ b/src/btop_menu.cpp
+@@ -171,7 +171,8 @@
+ 	const vector<array<string, 2>> help_text = {
+ 		{"Mouse 1", "Clicks buttons and selects in process list."},
+ 		{"Mouse scroll", "Scrolls any scrollable list/text under cursor."},
+-		{"Esc, m", "Toggles main menu."},
++		{"m", "Toggles main menu."},
++		{"Esc", "Backs out a step, then quits."},
+ 		{"p", "Cycle view presets forwards."},
+ 		{"shift + p", "Cycle view presets backwards."},
+ 		{"1", "Toggle CPU box."},

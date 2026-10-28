@@ -167,7 +167,7 @@ Provider {
             key: "fact:person:email",
             name: person.email,
             side: "their email",
-            glyph: String.fromCodePoint(0xf01ee)
+            glyph: Theme.glyph.email
         })] : []);
     }
 

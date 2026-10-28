@@ -12,8 +12,10 @@
 # It's background work, a small request a minute over the line, so it runs
 # in background.slice, behind everything Joel uses.
 #
-# The shell hears it through Calendar.qml, which the launcher's Today row
-# and the Calendar program's meetings (Meetings.qml) read. Calendar and
+# The shell hears it through Google.qml. Calendar.qml holds the meetings,
+# which the launcher's Today row and the Calendar program's meetings
+# (Meetings.qml) read, and Mail.qml the mail that wants Joel, which the
+# Mail program's mail (Messages.qml) reads. Calendar and
 # Mail are programs of their own, each its Google web app in a window of
 # its own, opened as jitsusama.google.window says, since which browser
 # makes one is the machine's to choose. A meeting's call is joined through
@@ -82,14 +84,30 @@ in
     };
 
     xdg.configFile = {
+      "quickshell/Google.qml".source = ./Google.qml;
+      "quickshell/Google.js".source = ./Google.js;
       "quickshell/Calendar.qml".source = ./Calendar.qml;
       "quickshell/Calendar.js".source = ./Calendar.js;
+      "quickshell/Mail.qml".source = ./Mail.qml;
+      "quickshell/Mail.js".source = ./Mail.js;
     };
 
     # The meetings, as parts of the Calendar program.
     jitsusama.quickshell.launcher.providers.calendar = {
       order = 47;
       source = ./Meetings.qml;
+    };
+    # The mail that wants Joel, as parts of the Mail program.
+    jitsusama.quickshell.launcher.providers.mail = {
+      order = 48;
+      source = ./Messages.qml;
+    };
+    # Each wears a mark of its own in Programs rather than the program
+    # mark every window without a logo shares: Calendar the meeting's,
+    # which it holds, and Mail Gmail's own logo.
+    jitsusama.quickshell.launcher.providers.applications.glyphs = {
+      google-calendar = "f0ed7";
+      google-mail = "f02ab";
     };
 
     systemd.user.paths.google = {
@@ -99,7 +117,14 @@ in
     };
 
     systemd.user.services.google = {
-      Unit.Description = "Keeps the Google account's meetings and mail for the shell";
+      Unit = {
+        Description = "Keeps the Google account's meetings and mail for the shell";
+        # Stopped before a switch reloads the units, google.path starts it
+        # again at once, from the old unit, since the credentials are still
+        # there, and the switch's start then finds it running; restarted
+        # after the reload, it comes back as the new one.
+        X-SwitchMethod = "restart";
+      };
       Service = {
         Slice = "background.slice";
         ExecStart = "${lib.getExe google} %t/google.sock ${lib.escapeShellArg credentials}";

@@ -277,8 +277,11 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     desktop.photograph("camera")
     camera.saved("ret")
     camera.gone()
-    # Escape while recording saves the video, then closes.
+    # Escape while recording saves the video, then closes. The arrows choose that way, so Right
+    # after Left is still a video.
     camera.viewfinder("video from the camera")
+    machine.send_key("left")
+    machine.send_key("right")
     machine.send_key("ret")
     retry(lambda last: camera.recording(2, last), timeout=WAKING)
     camera.saved("esc")
@@ -286,6 +289,13 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
 
     streams = camera.probe("stream=codec_name", f"{camera.videos}/*.mp4")
     assert streams.split() == ["h264", "aac"] * 2
+
+    # Left is a picture, even in a viewfinder opened for a video.
+    camera.viewfinder("video from the camera")
+    machine.send_key("left")
+    with desktop.told("shows card Picture copied", timeout=WAKING):
+        machine.send_key("ret")
+    camera.gone()
 
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.

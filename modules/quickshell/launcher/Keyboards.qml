@@ -220,6 +220,8 @@ Provider {
         const rows = [holderRow({
             key: key("lights"),
             name: part("lights"),
+            // Keyed by its keyboard, it carries the names its kind had.
+            once: Words.of("keyboards:lights").once ?? [],
             side: Keyboards.lit(now, most),
             graph: bar(now, most),
             glyph: Theme.glyph.brightness,
@@ -248,6 +250,7 @@ Provider {
         return holderRow({
             key: key("lights"),
             name: part("lights"),
+            once: Words.of("keyboards:lights").once ?? [],
             glyph: Theme.glyph.brightness,
             offers: true,
             note: "the board can't say how lit they are"

@@ -149,7 +149,7 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 pattern,
                 command,
             } => offer_snapshots(path, pattern, command, world, &mut offers),
-            Source::Workspaces { path, quests } => {
+            Source::Workspaces { path, quests, .. } => {
                 offer_workspaces(path, quests, world, &mut offers);
             }
             Source::Temp { path } => offer_temp(path, world, &mut offers),

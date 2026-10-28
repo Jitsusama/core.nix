@@ -60,8 +60,7 @@
         "machine",
         "machine:memory",
         "heat",
-        "machine:disk",
-        "jobs"
+        "machine:disk"
       ],
       "commands": [
         "command:volume"
@@ -111,6 +110,7 @@
       "parts": [
         "orchestrators",
         "quests",
+        "jobs",
         "runs",
         "spend"
       ],
@@ -154,6 +154,7 @@
     },
     {
       "id": "quests",
+      "once": ["Tasks"],
       "name": "Quests",
       "term": "Agents/quest",
       "noun": "quests",
@@ -189,6 +190,7 @@
     },
     {
       "id": "runs",
+      "once": ["Helpers"],
       "name": "Subagents",
       "term": "Agents/subagent",
       "noun": "subagents",
@@ -220,17 +222,108 @@
       "id": "jobs",
       "name": "Queue",
       "term": "Machine/queue",
-      "provider": "machine",
-      "question": "queue",
-      "answers": [
-        "queue"
-      ]
+      "noun": "jobs",
+      "what": "job",
+      "glyph": "timed",
+      "ask": "which job?",
+      "empty": "Nothing queued.",
+      "said": {
+        "running": "{count} running",
+        "waiting": "{count} waiting",
+        "none": "nothing queued",
+        "silent": "the queue has stopped saying",
+        "ranOf": "{ran} of {last} min",
+        "over": "{over} min over",
+        "ranFor": "for {ran} min",
+        "memory": "waits for memory",
+        "vms": "waits for a VM",
+        "behind": "behind a VM test",
+        "inLine": "{place} in line",
+        "holds": "holds {gib} GiB",
+        "needs": "needs {gib} GiB",
+        "more": "and {more} more",
+        "first": "put first",
+        "quick": "quick",
+        "capped": "capped",
+        "vm-test": "VM test",
+        "vm-check": "VM check",
+        "build": "build",
+        "benchmark": "benchmark",
+        "spare": "{gib} GiB to spare",
+        "heldUp": "the processors {percent}% held up",
+        "wasted": "{minutes} min waited with room today"
+      }
     },
     {
-      "id": "verb:job:switch",
+      "id": "verb:job:go",
       "in": "jobs",
-      "name": "Switch",
-      "verb": "switch"
+      "name": "Go To",
+      "verb": "go"
+    },
+    {
+      "id": "jobs:vm-test",
+      "in": "jobs",
+      "name": "VM Test"
+    },
+    {
+      "id": "jobs:vm-check",
+      "in": "jobs",
+      "name": "VM Check"
+    },
+    {
+      "id": "jobs:build",
+      "in": "jobs",
+      "name": "Build"
+    },
+    {
+      "id": "jobs:benchmark",
+      "in": "jobs",
+      "name": "Benchmark"
+    },
+    {
+      "id": "jobs:checks",
+      "in": "jobs",
+      "name": "Checks"
+    },
+    {
+      "id": "jobs:quest",
+      "in": "jobs",
+      "name": "Quest"
+    },
+    {
+      "id": "jobs:session",
+      "in": "jobs",
+      "name": "Session"
+    },
+    {
+      "id": "jobs:command",
+      "in": "jobs",
+      "name": "Command"
+    },
+    {
+      "id": "jobs:class",
+      "in": "jobs",
+      "name": "Class"
+    },
+    {
+      "id": "jobs:needs",
+      "in": "jobs",
+      "name": "Needs"
+    },
+    {
+      "id": "jobs:held",
+      "in": "jobs",
+      "name": "Holds"
+    },
+    {
+      "id": "jobs:since",
+      "in": "jobs",
+      "name": "Since"
+    },
+    {
+      "id": "jobs:last",
+      "in": "jobs",
+      "name": "Last Run"
     },
     {
       "id": "machine",
@@ -245,6 +338,7 @@
     },
     {
       "id": "machine:memory",
+      "once": ["RAM"],
       "name": "Memory",
       "term": "Machine/memory",
       "provider": "machine",
@@ -301,6 +395,7 @@
     },
     {
       "id": "machine:cpu",
+      "once": ["CPU"],
       "name": "Processor",
       "term": "Machine/processor",
       "glyph": "processor",
@@ -401,6 +496,7 @@
     },
     {
       "id": "machine:disk",
+      "once": ["Drive", "SSD", "Storage"],
       "name": "Disk",
       "term": "Disk/disk",
       "provider": "machine",
@@ -588,6 +684,7 @@
     },
     {
       "id": "power:charger",
+      "once": ["Mains"],
       "in": "power",
       "name": "Charger"
     },
@@ -1013,6 +1110,7 @@
     },
     {
       "id": "keyboards:lights",
+      "once": ["Backlight"],
       "in": "keyboards",
       "name": "Light",
       "answers": [
@@ -1084,11 +1182,13 @@
     },
     {
       "id": "networks:wired",
+      "once": ["Wired"],
       "in": "networks",
       "name": "Ethernet"
     },
     {
       "id": "networks:tunnel",
+      "once": ["Tunnel"],
       "in": "networks",
       "name": "VPN"
     },
@@ -1760,6 +1860,7 @@
     },
     {
       "id": "shortcuts",
+      "once": ["Bindings"],
       "name": "Shortcuts",
       "term": "Keyboards/shortcut",
       "noun": "shortcuts",
@@ -1804,6 +1905,12 @@
       "in": "shortcuts",
       "name": "Markdown reader",
       "glyph": "document"
+    },
+    {
+      "id": "shortcuts:zathura",
+      "in": "shortcuts",
+      "name": "Document viewer",
+      "glyph": "book"
     },
     {
       "id": "shortcuts:desktop:windows",
@@ -2373,7 +2480,18 @@
       "name": "Zoom"
     },
     {
+      "id": "shortcuts:zathura:turning",
+      "in": "shortcuts",
+      "name": "Turning pages"
+    },
+    {
+      "id": "shortcuts:zathura:fitting",
+      "in": "shortcuts",
+      "name": "Fitting the page"
+    },
+    {
       "id": "on",
+      "once": ["What's on"],
       "name": "Now",
       "term": "Desktop/Now",
       "noun": "now",
@@ -2381,6 +2499,12 @@
       "glyph": "now",
       "ask": "which?",
       "empty": "Nothing's on or waiting."
+    },
+    {
+      "id": "on:today",
+      "in": "on",
+      "name": "Today",
+      "glyph": "date"
     },
     {
       "id": "on:waiting",
@@ -2403,6 +2527,7 @@
     },
     {
       "id": "notices",
+      "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",
@@ -2411,6 +2536,7 @@
     },
     {
       "id": "wifi",
+      "once": ["Wireless", "WLAN"],
       "name": "Wi-Fi",
       "term": "Network/Wi-Fi",
       "noun": "networks",
@@ -2427,6 +2553,7 @@
     },
     {
       "id": "displays",
+      "once": ["Displays", "Monitors"],
       "name": "Screens",
       "term": "Desktop/screen",
       "noun": "screens",
@@ -2736,6 +2863,7 @@
     },
     {
       "id": "applications",
+      "once": ["Apps"],
       "name": "Programs",
       "term": "Programs/program",
       "noun": "programs",
@@ -2759,6 +2887,7 @@
     },
     {
       "id": "session:awake",
+      "once": ["Caffeinate"],
       "name": "Keep awake",
       "term": "Machine/Keep awake",
       "verb": "start",
@@ -2772,6 +2901,7 @@
     },
     {
       "id": "session:quiet",
+      "once": ["DND", "Quiet"],
       "name": "Do not disturb",
       "term": "Desktop/Do not disturb",
       "verb": "start",
@@ -2839,6 +2969,7 @@
     },
     {
       "id": "session:Suspend",
+      "once": ["Suspend"],
       "name": "Sleep",
       "term": "Machine/sleep",
       "verb": "sleep",
@@ -2846,6 +2977,7 @@
     },
     {
       "id": "session:Log Out",
+      "once": ["Sign out"],
       "name": "Log out",
       "term": "Machine/log out",
       "verb": "leave",
@@ -2854,6 +2986,7 @@
     },
     {
       "id": "session:Reboot",
+      "once": ["Restart"],
       "name": "Reboot",
       "term": "Machine/reboot",
       "verb": "reboot",
@@ -2862,6 +2995,7 @@
     },
     {
       "id": "session:Power Off",
+      "once": ["Shut down"],
       "name": "Power off",
       "term": "Machine/power off",
       "verb": "off",
@@ -3376,6 +3510,60 @@
       "name": "Copy the Link",
       "verb": "copy",
       "glyph": "link"
+    },
+    {
+      "id": "verb:calendar:yes",
+      "in": "calendar:meeting",
+      "name": "Answer Yes",
+      "verb": "answer",
+      "glyph": "going"
+    },
+    {
+      "id": "verb:calendar:maybe",
+      "in": "calendar:meeting",
+      "name": "Answer Maybe",
+      "verb": "answer",
+      "glyph": "maybeGoing"
+    },
+    {
+      "id": "verb:calendar:no",
+      "in": "calendar:meeting",
+      "name": "Answer No",
+      "verb": "answer",
+      "glyph": "notGoing"
+    },
+    {
+      "id": "mail:message",
+      "of": "program:google-mail",
+      "name": "Mail",
+      "glyph": "mail",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "Mail Without a Subject"
+        }
+      }
+    },
+    {
+      "id": "verb:mail:open",
+      "in": "mail:message",
+      "name": "Open in Mail",
+      "verb": "open",
+      "glyph": "mail"
+    },
+    {
+      "id": "verb:mail:read",
+      "in": "mail:message",
+      "name": "Mark as Read",
+      "verb": "read",
+      "glyph": "readMail"
+    },
+    {
+      "id": "verb:mail:archive",
+      "in": "mail:message",
+      "name": "Archive",
+      "verb": "archive",
+      "glyph": "archive"
     },
     {
       "id": "verb:switch",

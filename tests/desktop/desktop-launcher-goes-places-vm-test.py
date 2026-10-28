@@ -1188,6 +1188,125 @@ def test_a_meeting_is_found_by_its_name_says_when_it_is_and_return_joins_it(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
+    desktop: Desktop,
+) -> None:
+    """An invitation is answered from a meeting's acts, its foot says the answer, and it stays."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    # The stand-in's Standup, answered yes, which it hears answered again.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Its acts: joining, its page and its link first, then the three answers.
+    for _ in range(6):
+        if (desktop.showing()["selected"] or {}).get("name") == "Answer Maybe":
+            break
+        before = (desktop.showing()["selected"] or {}).get("name")
+        machine.send_key("down")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
+        )
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Answer Maybe" and shown["footer"] == "going"
+        )
+    )
+    machine.send_key("ret")
+    line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
+    # The launcher stays where it was, its foot saying the answer Google took.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and (shown["selected"] or {}).get("name") == "Answer Maybe"
+            and shown["footer"] == "maybe"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
+    desktop: Desktop,
+) -> None:
+    """Mail that wants Joel is found by its subject, says when it came, and Return opens it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Lunch on Friday came two minutes before it started.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("lunch on friday")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Lunch on Friday"
+            and re.fullmatch(r"\d\d:\d\d|yesterday", str(shown["selected"].get("side", "")))
+        )
+    )
+    # Return opens it in Mail, in a window of its own, and the launcher
+    # closes, since reading it takes Joel out of it.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://mail.google.com/mail/u/0/#inbox/lunch' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) -> None:
+    """Find mail by its subject, do one of its acts, and see it said, the launcher kept."""
+    machine = desktop.machine
+    desktop.answer(subject.lower())
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == subject)
+    desktop.step_in()
+    # Its acts: opening it, then marking it read and archiving it.
+    for _ in range(3):
+        if (desktop.showing()["selected"] or {}).get("name") == act:
+            break
+        before = (desktop.showing()["selected"] or {}).get("name")
+        machine.send_key("down")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") != before  # noqa: B023
+        )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == act)
+    machine.send_key("ret")
+    # The launcher stays where it was, its foot saying what became of it
+    # once the program no longer holds it as wanting Joel.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and (shown["selected"] or {}).get("name") == act
+            and shown["footer"] == became
+        )
+    )
+
+
+def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
+    desktop: Desktop,
+) -> None:
+    """Mail is marked read or archived from its acts, its foot says so, and the launcher stays."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    desktop.as_account("systemctl --user start google.service")
+    for subject, act, became, line in [
+        ("Lunch on Friday", "Mark as Read", "read", {"read": {"id": "lunch"}}),
+        ("Quarterly Numbers", "Archive", "archived", {"archive": {"id": "numbers"}}),
+    ]:
+        tidy_from_its_acts(desktop, subject, act, became)
+        said = json.dumps(line, separators=(",", ":"))
+        machine.succeed(f"grep -qxF {shlex.quote(said)} {asked}")
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop: Desktop,
 ) -> None:
@@ -1202,10 +1321,12 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
     # Power comes first, saying what it holds, and Memory is a row of its
-    # own, before Heat, as the processor is, and Disk after it.
+    # own, before Heat, as the processor is, and Disk after it. The queue
+    # is Agents', so Machine keeps only the machine's own.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
+            and "Queue" not in shown["rows"]
             and any(
                 str(thing["reads"]).startswith("Power \u00b7 Battery, Power profile")
                 for thing in shown["things"]
@@ -1401,7 +1522,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     said = desktop.as_account(
         f"journalctl --user --unit=quickshell --no-pager --output=cat --after-cursor='{since}'"
     )
-    assert "asked again by machine" not in said, f"the queue asked home again: {said}"
+    assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
     # Tab, with nothing typed, does nothing and says nothing, since the
     # arrows reach every category; Return on one steps into it.
     desktop.as_account("qs ipc call launcher toggle")
@@ -1641,9 +1762,9 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.launcher_ready()
     # Its top is the layers, each with its count and as many of its first
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
-    # theirs, and the picture viewer's and the markdown reader's come after
-    # the terminal's.
-    layers = ["Desktop", "Terminal", "Picture viewer", "Markdown reader"]
+    # theirs, and the picture viewer's, the markdown reader's and the
+    # document viewer's come after the terminal's.
+    layers = ["Desktop", "Terminal", "Picture viewer", "Markdown reader", "Document viewer"]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
     desktop_row = desktop.showing()["things"][0]["reads"]
     assert re.fullmatch(r"Desktop \u00b7 \d+ \u00b7 Windows, Columns", desktop_row), desktop_row

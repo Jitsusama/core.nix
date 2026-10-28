@@ -20,12 +20,19 @@
 # deepest colour with the text's colour on it. The keys are mpv's own: Space
 # pauses, the arrows seek, f fills the screen and q quits. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it.
+# umpv, the package's second entry, which queues files into one window,
+# stays out of the launcher, where it would sit beside mpv as a second mpv.
 { config, pkgs, ... }:
 let
   inherit (config.jitsusama.theme) roles font;
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    ../unlisted/home.nix
+  ];
+
+  jitsusama.unlisted = [ "umpv" ];
 
   programs.mpv = {
     enable = true;

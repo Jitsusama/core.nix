@@ -27,9 +27,9 @@ Provider {
     // in, which is why the collection adds no row to a search.
     things: waiting === null ? [] : [waiting]
 
-    // The kinds of piece it lists: what wants Joel, what's on air, and
-    // what was left on.
-    readonly property var groups: ["wants", "onAir", "leftOn"]
+    // The kinds of piece it lists: what wants Joel, what's on air, what
+    // was left on, and Today, its own row, always last.
+    readonly property var groups: ["wants", "onAir", "leftOn", "today"]
     // What the thing is where the launcher has a row of its own for it, by
     // its mark, so one found in both is listed once (Rank.identity).
     readonly property var same: ({
@@ -50,9 +50,124 @@ Provider {
         if (waiting !== null)
             rows.push(waiting);
         return rows.sort((a, b) => a.name.localeCompare(b.name, undefined,
-            { numeric: true, sensitivity: "base" }));
+            { numeric: true, sensitivity: "base" })).concat([today]);
     }
     onAllChanged: changed()
+
+    // Today, Now's one row of its own, its kind "today" and always its
+    // last, after what's on: the date at the right, and below it the
+    // weather here and the next meeting today.
+    // Return joins the meeting, or steps into it where it can't be joined
+    // yet, as its own row does (the calendar provider's `next`); with no
+    // meeting it steps in, to the date, the weather and the meeting, each
+    // the row its own place gives. A machine without the calendar, or a
+    // day with no meeting left, has no meeting half, and says nothing of
+    // it.
+    readonly property var calendar: source("calendar")
+    readonly property var weatherSource: source("weather")
+    readonly property var meeting: calendar?.next ?? null
+
+    function source(name) {
+        return (provider.launcher?.sources ?? []).find(one => one.settings.name === name) ?? null;
+    }
+
+    // The weather here, as its answer says it, kept from one asking to the
+    // next: read when the launcher opens, so it's there before Joel steps
+    // into Now, and again whenever the weather hears from Open-Meteo. Its
+    // answer asks again only once what it holds is a quarter of an hour
+    // old, so opening often asks nothing.
+    property var weather: null
+
+    function reweather() {
+        const said = weatherSource?.answer(Words.answers("weather")[0]) ?? null;
+        // Still asking, failed, or not knowing where here is, it keeps what
+        // it last knew rather than blinking out.
+        if (said && (said.rows ?? []).length > 0)
+            weather = said;
+    }
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                provider.reweather();
+        }
+    }
+
+    Connections {
+        target: provider.weatherSource
+
+        function onAnswered() {
+            provider.reweather();
+        }
+    }
+
+    // The day, which changes only at midnight, when it's read again.
+    property date day: new Date()
+
+    Timer {
+        interval: provider.untilMidnight(provider.day)
+        running: true
+        onTriggered: provider.day = new Date()
+    }
+
+    function untilMidnight(from) {
+        const next = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);
+        // A second past it, so the day read is surely the new one.
+        return next.getTime() - from.getTime() + 1000;
+    }
+
+    // What the note says of the meeting: its name and when, "Standup in
+    // 12 min".
+    function meetingSaid(row) {
+        return `${row.name} ${row.side}`;
+    }
+
+    readonly property var today: {
+        const date = Qt.formatDate(day, "dddd d MMMM");
+        const said = [weather?.headline ?? "", meeting ? meetingSaid(meeting) : ""]
+            .filter(part => part !== "");
+        const inside = () => {
+            const rows = [copyRow({
+                key: "on:today:date",
+                name: Words.name("today"),
+                side: Qt.formatDate(day, "dddd d MMMM yyyy"),
+                glyph: Theme.glyph.date
+            })];
+            if (weather)
+                rows.push(holderRow({
+                    key: "on:today:weather",
+                    name: Words.name("weather"),
+                    side: weather.headline,
+                    note: weather.note ?? "",
+                    hue: "voice",
+                    // The sky's own glyph, as the weather's Now row wears it.
+                    glyph: weather.rows[0].glyph
+                }, () => weather.rows));
+            if (meeting)
+                rows.push(meeting);
+            return rows;
+        };
+        const row = holderRow({
+            key: "on:today",
+            name: Words.name("on:today"),
+            side: date,
+            note: said.join(" \u00b7 "),
+            hue: "voice",
+            glyph: Theme.glyph.date
+        }, inside);
+        // With a meeting, Return is the meeting's own: joining it, or
+        // stepping into it where it can't be joined yet.
+        if (meeting)
+            Object.assign(row, {
+                verb: meeting.verb,
+                stays: meeting.stays ?? false,
+                later: meeting.later ?? false,
+                run: () => meeting.run()
+            });
+        return row;
+    }
 
     function waitingSaid(id, fill) {
         let words = (Words.of("on:waiting").said ?? {})[id] ?? id;
@@ -141,7 +256,8 @@ Provider {
         return all.slice();
     }
 
+    // Today is always there, so what's counted is what's on beside it.
     function counted() {
-        return all.length === 0 ? "nothing" : String(all.length);
+        return all.length === 1 ? "nothing" : String(all.length - 1);
     }
 }

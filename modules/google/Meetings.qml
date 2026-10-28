@@ -5,9 +5,11 @@
 // anywhere. Return joins a meeting's call, which takes Joel out of the
 // launcher, or opens its page in Google Calendar when it has none; the
 // right arrow lists Join the Meeting, Open in Calendar and Copy the Link,
-// each there only when it can be done. Each row says when the meeting is
-// at the right and its times below; its names and words are the
-// vocabulary's (calendar:*, Words.qml).
+// each there only when it can be done, then, for an invitation, Answer
+// Yes, Answer Maybe and Answer No, which keep the launcher, its foot
+// saying the answer once Google has it. Each row says when the meeting is
+// at the right and its times below, with his answer to an invitation;
+// its names and words are the vocabulary's (calendar:*, Words.qml).
 import qs
 import QtQuick
 
@@ -34,7 +36,7 @@ Provider {
             glyph: Words.glyph("calendar:meeting"),
             hue: "program",
             side: Calendar.when(meeting),
-            note: Calendar.span(meeting),
+            note: Calendar.about(meeting),
             later: true,
             run: () => joins ? Calendar.join(meeting) : Calendar.open(meeting),
             verbs: () => provider.verbs(meeting)
@@ -71,6 +73,25 @@ Provider {
                 glyph: Words.glyph("verb:calendar:copy"),
                 figure: false
             }));
+        if (Calendar.invited(meeting))
+            for (const said of ["yes", "maybe", "no"])
+                rows.push(answering(meeting, said));
         return rows;
+    }
+
+    // An answer keeps the launcher, since he's choosing among his
+    // meetings, and the foot says the answer the program last gave.
+    function answering(meeting, said) {
+        const key = `verb:calendar:${said}`;
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            stays: true,
+            state: () => Calendar.answered(Calendar.meeting(meeting.id)),
+            run: () => Calendar.answer(meeting, said)
+        });
     }
 }

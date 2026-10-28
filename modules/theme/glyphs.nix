@@ -969,6 +969,11 @@ in
     console = "d";
     means = "a document, read as a page";
   };
+  book = {
+    glyph = nerd "f05da";
+    console = "b";
+    means = "a document of pages, turned one by one";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";
@@ -995,6 +1000,40 @@ in
     glyph = nerd "f0ed7";
     console = "m";
     means = "a meeting on Joel's calendar, and the calendar holding them";
+  };
+  # Answering an invitation, each a calendar marked as the answer is, so
+  # the three read as one choice.
+  going = {
+    glyph = nerd "f00ef";
+    console = "y";
+    means = "answering a meeting's invitation yes";
+  };
+  maybeGoing = {
+    glyph = nerd "f0692";
+    console = "?";
+    means = "answering a meeting's invitation maybe";
+  };
+  notGoing = {
+    glyph = nerd "f00f4";
+    console = "n";
+    means = "answering a meeting's invitation no";
+  };
+  # Mail, closed as it comes, and the two ways out of the mail that wants
+  # Joel: ticked once it's read, and dropped into the archive.
+  mail = {
+    glyph = nerd "f01ee";
+    console = "@";
+    means = "mail in Joel's Google account, and the place holding it";
+  };
+  readMail = {
+    glyph = nerd "f0ab1";
+    console = "o";
+    means = "marking mail read";
+  };
+  archive = {
+    glyph = nerd "f1259";
+    console = "a";
+    means = "archiving mail, out of the inbox";
   };
   clock = {
     glyph = nerd "f0150";
