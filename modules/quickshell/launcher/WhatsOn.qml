@@ -232,38 +232,38 @@ Provider {
 
     // One thing waiting on Joel, as the agents keep them (WaitingOnYou.qml):
     // its title, how long it takes, and why it waits. Return goes to the
-    // window it's done in, or, with none open, copies it, so it's never a
+    // window it's done in, or, with none open, steps in, so it's never a
     // key that does nothing. One he can do now is strong and says its
     // minutes; one for later is muted and says when, in its owner's words.
-    // The right arrow steps into it: Return's act first, then Done and Not
-    // Now, which stay open as the item leaves its place, then what there is
-    // to know of it.
+    // The right arrow steps into it: going to its window, then Done and Not
+    // Now, which stay open as the item leaves its place, then copying it,
+    // never first (Joel, 2026-10-28: "having the separate copy option at the
+    // top is very confusing"), then what there is to know of it.
     function item(each) {
         const now = each.ready && !each.putOff;
         const where = whereOf(each);
-        const does = where !== ""
-            ? act(each, "go", {
-                name: Words.name("verb:on:waiting:go").replace("{where}", where),
-                later: true,
-                run: () => WaitingOnYou.go(each)
-            })
+        const does = where === "" ? null : act(each, "go", {
+            name: Words.name("verb:on:waiting:go").replace("{where}", where),
+            later: true,
+            run: () => WaitingOnYou.go(each)
+        });
+        const inside = () => [does,
+            act(each, "done", { stays: true, run: () => WaitingOnYou.settle(each, "done") }),
+            act(each, "notNow", { stays: true, run: () => WaitingOnYou.settle(each, "notNow") }),
             // The clipboard takes text only while the launcher holds the
             // keys, so a copy is made before it closes.
-            : act(each, "copy", {
+            act(each, "copy", {
                 now: true,
                 run: () => {
                     Quickshell.clipboardText = WaitingOnYou.titled(each);
                 }
-            });
-        const inside = () => [does,
-            act(each, "done", { stays: true, run: () => WaitingOnYou.settle(each, "done") }),
-            act(each, "notNow", { stays: true, run: () => WaitingOnYou.settle(each, "notNow") })
-        ].concat(provider.facts(each));
+            })
+        ].filter(row => row !== null).concat(provider.facts(each));
         const row = member({
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
-            verb: does.verb,
-            now: does.now ?? false,
-            later: does.later ?? false,
+            verb: does?.verb ?? "more",
+            stays: does === null,
+            later: does?.later ?? false,
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,
             hue: now ? "strong" : "muted",
@@ -272,7 +272,11 @@ Provider {
                 ? waitingSaid("minutes", { minutes: each.minutes }) : "",
             note: typeof each.why === "string" ? each.why : "",
             verbs: inside,
-            run: () => does.run()
+            // With nowhere to go, Return steps in, as the right arrow does:
+            // its verbs and targets both make it a row holding rows, which
+            // Return's own act never leads (Catalogue.js's leading).
+            targets: does === null ? inside : null,
+            run: () => does === null ? provider.launcher?.enter(row) : does.run()
         });
         return row;
     }
@@ -292,7 +296,7 @@ Provider {
         // (pieces/Waiting.qml), so the two are never taken for one.
         key: "on:waitingOnYou",
         verb: lead.verb,
-        now: lead.now,
+        stays: lead.stays ?? false,
         later: lead.later,
         name: Words.name("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
@@ -305,7 +309,10 @@ Provider {
         // targets would step in on Return instead.
         nested: true,
         verbs: () => WaitingOnYou.items.map(each => provider.item(each)),
-        run: () => provider.lead.run()
+        // Where the first has nowhere to go, Return steps into this row's
+        // list, as the right arrow does, rather than into the first alone.
+        run: () => provider.lead.verb === "more" ? provider.launcher?.enter(provider.waiting)
+            : provider.lead.run()
     })
     // What home's Now leads with: the first thing waiting, after its row's
     // own name, or nothing.
