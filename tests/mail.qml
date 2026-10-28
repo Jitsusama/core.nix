@@ -84,6 +84,25 @@ QtObject {
         check("archived, once it's gone", Mail.tidied("archive"), "archived");
         check("nothing for what isn't asked", Mail.tidied("delete"), "");
 
+        // Which windows are Mail's, as Chrome names them.
+        const listed = [
+            { id: 1, app_id: "chrome-mail.google.com__-Default" },
+            { id: 2, app_id: "chrome-mail.google.com__mail_u_0_-Default" },
+            { id: 3, app_id: "chrome-meet.google.com__abc-defg-hij-Default" },
+            { id: 4, app_id: "kitty" },
+            { id: 5, app_id: null }
+        ];
+        check("Mail's page and mail opened from the shell are Mail's", Mail.windows(listed),
+            [1, 2]);
+        check("no window is Mail's with none open", Mail.windows([]), []);
+
+        // Which close once mail opened while Mail was open shows.
+        check("none before the new one shows", Mail.superseded([1], [1]), []);
+        check("the one open before, once the new one shows", Mail.superseded([1], [1, 6]), [1]);
+        check("every one open before", Mail.superseded([1, 2], [1, 2, 6]), [1, 2]);
+        check("not one Joel closed meanwhile", Mail.superseded([1, 2], [2, 6]), [2]);
+        check("none with none open before", Mail.superseded([], [6]), []);
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);

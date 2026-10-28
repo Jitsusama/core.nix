@@ -1,8 +1,8 @@
 // What the shell says of the mail that wants Joel, as the google program
-// keeps it (src/mail.rs): when each came, and the lines that mark one read
-// or archive it (src/ask.rs). Mail.qml asks these, and the checks run them
-// in Qt's own engine (tests/mail.qml). Times are milliseconds since 1970,
-// as the program gives them.
+// keeps it (src/mail.rs): when each came, the lines that mark one read
+// or archive it (src/ask.rs), and which windows are Mail's. Mail.qml asks
+// these, and the checks run them in Qt's own engine (tests/mail.qml).
+// Times are milliseconds since 1970, as the program gives them.
 .pragma library
 .import "Calendar.js" as Calendar
 
@@ -43,4 +43,24 @@ const TIDIED = { read: "read", archive: "archived" };
 
 function tidied(how) {
     return TIDIED[how] ?? "";
+}
+
+// Chrome names a Google web app's window from the link it opened:
+// "chrome-mail.google.com_", then its path, each slash an underscore, so
+// Mail's own page and each piece of mail opened from the shell are both
+// Mail's. Mail in a browser tab is the browser's, and no window is.
+const MAIL_WINDOW = /^chrome-mail\.google\.com_/;
+
+// The ids of the windows, as niri lists them, that are Mail's.
+function windows(all) {
+    return all.filter(window => MAIL_WINDOW.test(window.app_id ?? "")).map(window => window.id);
+}
+
+// Chrome opens each link in a window of its own and can't be told to take
+// an open one to it, so mail opened while Mail is open shows in a new one,
+// and those open before close once it's there, leaving one. Given the Mail
+// windows open before and those open now: the ones to close, still open,
+// once a new one is among them; none until then.
+function superseded(before, now) {
+    return now.some(id => !before.includes(id)) ? before.filter(id => now.includes(id)) : [];
 }

@@ -1684,6 +1684,49 @@ def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
+def test_mail_opened_while_mail_is_open_leaves_one_mail_window(desktop: Desktop) -> None:
+    """Mail opened while Mail is open shows in a window beside it, and the old one closes."""
+    machine = desktop.machine
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # Mail's own window, and the one Chrome opens a piece of mail in, each
+    # named from its link, which kitty stands in for by taking its app id.
+    inbox = "chrome-mail.google.com__-Default"
+    message = "chrome-mail.google.com__mail_u_0_-Default"
+    listed = 'niri msg --json windows | grep -qF \'"app_id":"{}"\''
+    focused = 'niri msg --json focused-window | grep -qF \'"app_id":"{}"\''
+    desktop.as_account(f"niri msg action spawn -- kitty --class {inbox} --title Gmail")
+    machine.wait_until_succeeds(desktop.in_session(listed.format(inbox)), timeout=STARTING)
+    # Another window takes the keys, so Mail's coming forward is seen.
+    other = desktop.opened("Beside Mail")
+    try:
+        desktop.answer("lunch on friday")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Lunch on Friday"
+        )
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            f"grep -qxF 'https://mail.google.com/mail/u/0/#inbox/lunch' {opened}",
+            timeout=dt.timedelta(seconds=30),
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session(focused.format(inbox)), timeout=dt.timedelta(seconds=10)
+        )
+        # Its window opens, as Chrome's would, and Mail's old one goes,
+        # leaving one Mail window, at the mail.
+        desktop.as_account(f"niri msg action spawn -- kitty --class {message} --title Lunch")
+        machine.wait_until_fails(
+            desktop.in_session(listed.format(inbox)), timeout=dt.timedelta(seconds=10)
+        )
+        machine.succeed(desktop.in_session(listed.format(message)))
+    finally:
+        desktop.close(other)
+        for window in desktop.windows():
+            if window["app_id"] in {inbox, message}:
+                desktop.close(window)
+
+
 def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) -> None:
     """Find mail by its subject, do one of its acts, and see it said, the launcher kept."""
     machine = desktop.machine
