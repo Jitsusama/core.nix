@@ -9,7 +9,10 @@
 // since the glyph says it while it holds. What was true as the shell
 // started, or after a restart, isn't news. One that `withdraws` takes its
 // notice back, read, once it's no longer true, so a meeting's notice
-// doesn't outlast the meeting starting.
+// doesn't outlast the meeting starting. One that tells something new
+// while it's true (`telling`), as a meeting does at each of its reminders
+// and as it starts, is said again, its earlier notice taken back first, so
+// one of its cards is up at a time.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
@@ -25,8 +28,8 @@ Scope {
     // files and services are read in the first moments, which is no
     // arrival.
     property bool settled: false
-    // What was true at the last change, by mark, with ":now" for what
-    // needed him now.
+    // What was true at the last change, by mark, with what each was
+    // telling and ":now" for what needed him now.
     property var before: []
     // What's come true and is yet to be said.
     property var due: []
@@ -34,14 +37,19 @@ Scope {
     readonly property var arriving: Facts.all
         .filter(fact => fact.piece && fact.piece.arrives && fact.piece.present
             && fact.piece.active)
-    readonly property var standing: arriving
-        .map(fact => fact.entry.mark + (fact.piece.now ? ":now" : ""))
+    readonly property var standing: arriving.map(fact => root.key(fact))
+
+    // How a piece that's true stands: its mark, what it's telling when
+    // it tells anything, and whether it needs him now.
+    function key(fact) {
+        return fact.entry.mark + (fact.piece.telling === "" ? "" : `:${fact.piece.telling}`)
+            + (fact.piece.now ? ":now" : "");
+    }
 
     onStandingChanged: {
         if (settled) {
             for (const fact of arriving) {
-                const key = fact.entry.mark + (fact.piece.now ? ":now" : "");
-                if (!before.includes(key))
+                if (!before.includes(root.key(fact)))
                     due.push(fact);
             }
         }
@@ -77,8 +85,23 @@ Scope {
         const facts = due;
         due = [];
         for (const fact of facts) {
-            if (fact.piece.active)
-                say(fact.piece, fact.entry.mark);
+            if (!fact.piece.active)
+                continue;
+            if (fact.piece.telling !== "")
+                takeBack(fact.entry.mark);
+            say(fact.piece, fact.entry.mark);
+        }
+    }
+
+    // Takes back, read, the notice a mark's piece said last, before it's
+    // said anew, found by the mark it carries.
+    function takeBack(mark) {
+        for (const id in Notices.live) {
+            const notice = Notices.live[id];
+            if (notice.hints["x-arrival"] === mark) {
+                Notices.mark(notice.id, true);
+                notice.dismiss();
+            }
         }
     }
 

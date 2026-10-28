@@ -97,43 +97,72 @@ QtObject {
         check("a whole day's span", Calendar.span(meeting("a", at(26, 0, 0), at(27, 0, 0),
             { allDay: true })), "all day");
 
-        // About to start, from two minutes before to five after.
-        const standup = meeting("standup", at(26, 15, 30), at(26, 15, 45));
-        const about = [
-            [at(26, 15, 27), false], [at(26, 15, 28), true], [at(26, 15, 30), true],
-            [at(26, 15, 35), true], [at(26, 15, 35) + 1, false]
+        // Wanting Joel from an hour before, or its first reminder when
+        // sooner, to five minutes after: [what, the meetings, at, wanted]
+        const standup = meeting("standup", at(26, 15, 30), at(26, 15, 45),
+            { reminders: [10, 1] });
+        const review = meeting("review", at(26, 16, 30), at(26, 17, 0));
+        const early = meeting("early", at(27, 9, 0), at(27, 9, 30), { reminders: [1440] });
+        const ids = found => found === null ? null : found.id;
+        const wants = [
+            ["none over an hour off", [review], at(26, 15, 29), null],
+            ["one an hour off", [review], at(26, 15, 30), "review"],
+            ["the first of two", [review, standup], at(26, 15, 30), "standup"],
+            ["one five minutes on", [standup], at(26, 15, 35), "standup"],
+            ["not one past five minutes on", [standup], at(26, 15, 35) + 1, null],
+            ["the next while one goes on", [standup, review], at(26, 15, 40), "review"],
+            ["one a day off, at its reminder", [early], at(26, 9, 0), "early"],
+            ["not one a day off before it", [early], at(26, 9, 0) - 1, null],
+            ["not one said no to", [meeting("no", at(26, 15, 30), at(26, 16, 0),
+                { answer: "no" })], now, null],
+            ["not a whole day", [meeting("all", at(26, 0, 0), at(27, 0, 0),
+                { allDay: true })], now, null]
         ];
-        for (const [time, meant] of about)
-            check(`about to start at ${new Date(time).toTimeString()}`,
-                Calendar.aboutToStart(standup, time), meant);
-        check("nothing is about to start", Calendar.aboutToStart(null, now), false);
+        for (const [what, meetings, time, meant] of wants)
+            check(`wanting ${what}`, ids(Calendar.wanting(meetings, time)), meant);
 
-        // Said as a notice from a minute before, while it's about to start.
-        const heralded = [
-            [at(26, 15, 28), false], [at(26, 15, 29) - 1, false], [at(26, 15, 29), true],
-            [at(26, 15, 35), true], [at(26, 15, 35) + 1, false]
+        // In the margin from ten minutes before.
+        check("not marked eleven minutes off", Calendar.marked(standup, at(26, 15, 19)), false);
+        check("marked ten minutes off", Calendar.marked(standup, at(26, 15, 20)), true);
+        check("marked once on", Calendar.marked(standup, at(26, 15, 32)), true);
+        check("nothing is marked", Calendar.marked(null, now), false);
+
+        // What its notice tells: [at, told]
+        const tells = [
+            [at(26, 15, 19), ""], [at(26, 15, 20), "10 min"], [at(26, 15, 28), "10 min"],
+            [at(26, 15, 29), "1 min"], [at(26, 15, 30), "start"], [at(26, 15, 34), "start"]
         ];
-        for (const [time, meant] of heralded)
-            check(`said as a notice at ${new Date(time).toTimeString()}`,
-                Calendar.heralded(standup, time), meant);
-        check("nothing is said as a notice", Calendar.heralded(null, now), false);
+        for (const [time, meant] of tells)
+            check(`telling at ${new Date(time).toTimeString()}`,
+                Calendar.telling(standup, time), meant);
+        check("one with no reminders tells only its start", [
+            Calendar.telling(review, at(26, 16, 29)), Calendar.telling(review, at(26, 16, 30))
+        ], ["", "start"]);
+        check("nothing tells", Calendar.telling(null, now), "");
 
-        // Told already by another notice: [what, the notices, told]
+        // Told already by another notice since its reminder, at 15:29's:
+        // [what, the notices, told]
         const notice = (summary, time) => ({ summary: summary, at: time });
+        const reminded = at(26, 15, 29);
         const told = [
             ["by one named for it", [notice("Standup", at(26, 15, 29))], true],
-            ["by one named for it, spaced", [notice(" standup ", at(26, 15, 25))], true],
-            ["by one ten minutes before", [notice("standup", at(26, 15, 20))], true],
+            ["by one named for it, spaced", [notice(" standup ", at(26, 15, 29))], true],
+            ["not by one at the reminder before", [notice("standup", at(26, 15, 20))], false],
             ["not by one from yesterday's", [notice("standup", at(25, 15, 29))], false],
             ["not by the shell's own", [notice("standup in 1 min", at(26, 15, 29))], false],
             ["not by another's", [notice("Lunch", at(26, 15, 29))], false],
             ["not by none", [], false]
         ];
         for (const [what, notices, meant] of told)
-            check(`told ${what}`, Calendar.toldElsewhere(standup, notices), meant);
+            check(`told ${what}`, Calendar.toldElsewhere(standup, notices, reminded), meant);
+        check("told at its start by one since", Calendar.toldElsewhere(standup,
+            [notice("standup", at(26, 15, 30))], at(26, 15, 31)), true);
+        check("not told before its first reminder", Calendar.toldElsewhere(standup,
+            [notice("standup", at(26, 15, 19))], at(26, 15, 19)), false);
         check("an untitled one isn't told", Calendar.toldElsewhere(
-            meeting("", at(26, 15, 30), at(26, 15, 45)), [notice("", at(26, 15, 29))]), false);
-        check("nothing isn't told", Calendar.toldElsewhere(null, []), false);
+            meeting("", at(26, 15, 30), at(26, 15, 45)), [notice("", at(26, 15, 30))],
+            at(26, 15, 30)), false);
+        check("nothing isn't told", Calendar.toldElsewhere(null, [], now), false);
 
         // Whether Return joins it: [what, the meeting, joins]
         const joins = [

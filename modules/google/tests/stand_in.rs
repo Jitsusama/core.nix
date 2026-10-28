@@ -363,6 +363,35 @@ fn every_page_of_meetings_is_joined() {
 }
 
 #[test]
+fn the_calendars_reminders_hold_for_meetings_on_every_page() {
+    // Google says the calendar's reminders on each page; only the first's
+    // are kept, and every meeting that keeps them is reminded by them.
+    let stand_in = StandIn::new(|path, _| {
+        if path.contains("pageToken=two") {
+            (200, EVENTS.replace("e1", "e2"))
+        } else {
+            (
+                200,
+                EVENTS.replace(
+                    r#""items""#,
+                    r#""nextPageToken": "two",
+                        "defaultReminders": [{"method": "popup", "minutes": 10}], "items""#,
+                ),
+            )
+        }
+    });
+    let path = credentials("reminders", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let reminders: Vec<_> = watch
+        .look(&now())
+        .meetings
+        .iter()
+        .map(|m| m.reminders.clone())
+        .collect();
+    assert_eq!(reminders, vec![vec![10], vec![10]]);
+}
+
+#[test]
 fn an_unreachable_google_keeps_what_was_heard() {
     let stand_in = StandIn::new(google);
     let path = credentials("unreachable", 0);

@@ -1904,6 +1904,42 @@ onLinux {
       touch $out
     '';
 
+  # What comes true by itself is said once as a notice, and again only as
+  # it tells something new, its earlier notice taken back first, as
+  # tests/arrivals.qml holds Arrivals.qml to with the facts and the notices
+  # stood in, and notify-send writing down what it's asked to say.
+  an-arrival-is-said-once-each-time =
+    let
+      facts = singleton "Facts.qml" "property var all: []";
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        property var history: []
+        property var marked: []
+        function mark(id, read) { marked = marked.concat([id]); }
+      '';
+      options = singleton "Options.qml" "property bool reports: false";
+      report = singleton "Report.qml" "function say(text) {}";
+      notifySend = pkgs.writeShellScriptBin "notify-send" ''
+        printf '%s\n' "$*" >> "$XDG_RUNTIME_DIR/said"
+      '';
+    in
+    pkgs.runCommandLocal "an-arrival-is-said-once-each-time" { } ''
+      cp ${./Arrivals.qml} Arrivals.qml
+      cp ${facts} Facts.qml
+      cp ${notices} Notices.qml
+      cp ${options} Options.qml
+      cp ${report} Report.qml
+      cp ${../../tests/arrivals.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} PATH=${notifySend}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      # Made before the shell starts, so its watch has a file to follow.
+      touch $XDG_RUNTIME_DIR/said
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # Now lists what's on by its groups, what wants Joel first, then by name
   # within each, as tests/now-groups.qml holds launcher/Now.js to it.
   now-lists-by-group =

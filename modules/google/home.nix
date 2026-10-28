@@ -21,10 +21,10 @@
 # makes one is the machine's to choose. A meeting's call is joined through
 # google-opens (opens.sh), which opens a Meet link the same way, and a
 # call open in a window of its own is on air while it is (Call.qml). A
-# meeting about to start wants Joel, and is said as a notice a minute
-# before it starts (Starting.qml); the account signed out wants him to
-# sign in again (SignedOut.qml); and the mail that wants him is counted
-# there too (NewMail.qml).
+# meeting coming within the hour wants Joel, and is said as a notice at
+# each of its reminders and as it starts (Starting.qml); the account
+# signed out wants him to sign in again (SignedOut.qml); and the mail that
+# wants him is counted there too (NewMail.qml).
 { quickshell }:
 {
   config,
@@ -107,8 +107,8 @@ in
       mark = "signIn";
     };
 
-    # A meeting about to start, which wants Joel, wearing the calendar's
-    # own mark; among what wants him, after the notices.
+    # A meeting coming, which wants Joel, wearing the calendar's own mark;
+    # among what wants him, after the notices.
     jitsusama.quickshell.overview.pieces.meeting = {
       order = 56;
       source = ./Starting.qml;

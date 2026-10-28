@@ -1,7 +1,8 @@
 // What the shell works out from the meetings the google program keeps
-// (src/state.rs): which meeting is next, when it is in words, whether it's
-// about to start and said as a notice, whether Return joins it, how Joel answered it, the
-// lines that answer and cancel it (src/ask.rs), and which Meet call a
+// (src/state.rs): which meeting is next, when it is in words, which one
+// wants Joel and what its notice tells, whether Return joins it, how Joel
+// answered it, the lines that answer and cancel it (src/ask.rs), and which
+// Meet call a
 // window is. Calendar.qml asks these of the meetings Google.qml holds,
 // Mail.js asks the day and the time, and the checks run them in Qt's own
 // engine (tests/calendar.qml). Times are milliseconds since 1970, as the
@@ -14,15 +15,13 @@ const DAY = 86_400_000;
 
 // How soon a meeting coming takes over from the one going on: ten minutes.
 const TAKES_OVER = 600_000;
-// How long before and after its start a meeting is about to start, as
-// Now's wants say it (15J7N3's piece): two minutes before, five after.
-const BEFORE = 120_000;
-const AFTER = 300_000;
-// How long before its start a meeting about to start is said as a
-// notice, once: a minute.
-const HERALDS = 60_000;
-// Up to how far ahead "in 12 min" is said rather than the time: an hour.
+// Up to how far ahead "in 12 min" is said rather than the time, and how
+// far ahead a meeting wants Joel in Now, counting down, unless one of
+// its reminders comes sooner: an hour.
 const SOON = 3_600_000;
+// How long after its start a meeting still wants him, to join it: five
+// minutes.
+const AFTER = 300_000;
 // How wide a clock's hours and minutes are written.
 const DIGITS = 2;
 
@@ -52,28 +51,63 @@ function next(meetings, now) {
     return current;
 }
 
-// Whether `meeting` is about to start: from two minutes before its start
-// until five after.
-function aboutToStart(meeting, now) {
-    return Boolean(meeting) && now >= meeting.start - BEFORE && now <= meeting.start + AFTER;
+// How long before its start a meeting wants Joel: an hour, or from its
+// first reminder when that's sooner, so a reminder a day ahead is said.
+function ahead(meeting) {
+    return Math.max(SOON, (meeting.reminders?.[0] ?? 0) * MINUTE);
 }
 
-// Whether a meeting about to start is said as a notice by now: from a
-// minute before its start until it's no longer about to start.
-function heralded(meeting, now) {
-    return aboutToStart(meeting, now) && meeting.start - now <= HERALDS;
+// The meeting that wants Joel, or null: of those that could be next, the
+// first to start that's within its time ahead, or started at most five
+// minutes ago. The Today row names what's on (`next`); this names what's
+// coming, so a meeting going on doesn't hide the next one's count.
+function wanting(meetings, now) {
+    return coming(meetings, now)
+        .filter(meeting => now >= meeting.start - ahead(meeting)
+            && now <= meeting.start + AFTER)
+        .sort((a, b) => a.start - b.start || a.end - b.end)[0] ?? null;
 }
 
-// Whether another notice already told Joel of `meeting`, such as
-// Calendar's own page in Chrome: one named for it, come within ten minutes
-// of its start, so the shell doesn't say it twice. The shell's own says
-// when beside the name ("Standup in 1 min"), so it's never one of them.
-function toldElsewhere(meeting, notices) {
+// Whether a meeting that wants Joel is in the margin: from ten minutes
+// before its start. Further off, Now alone lists it.
+function marked(meeting, now) {
+    return Boolean(meeting) && meeting.start - now <= TAKES_OVER;
+}
+
+// What its notice tells by now, which says it again each time it changes:
+// its last reminder come, by its minutes ("10 min"), "start" once it
+// starts, and nothing before its first reminder.
+function telling(meeting, now) {
     if (!meeting) {
+        return "";
+    }
+    if (now >= meeting.start) {
+        return "start";
+    }
+    const come = (meeting.reminders ?? [])
+        .filter(minutes => now >= meeting.start - minutes * MINUTE);
+    return come.length > 0 ? `${Math.min(...come)} min` : "";
+}
+
+// When what its notice tells by now came: its start, or its last reminder.
+function told(meeting, now) {
+    const said = telling(meeting, now);
+    return said === "start" ? meeting.start
+        : meeting.start - Number.parseInt(said, 10) * MINUTE;
+}
+
+// Whether another notice already told Joel what the shell's would, such
+// as Calendar's own page in Chrome at the same reminder: one named for it,
+// come since that reminder, or its start, so the shell doesn't say it
+// twice. The shell's own says when beside the name ("Standup in 10 min"),
+// so it's never one of them.
+function toldElsewhere(meeting, notices, now) {
+    if (!meeting || telling(meeting, now) === "") {
         return false;
     }
     const title = meeting.title.trim().toLowerCase();
-    return title !== "" && notices.some(notice => notice.at >= meeting.start - TAKES_OVER
+    const since = told(meeting, now);
+    return title !== "" && notices.some(notice => notice.at >= since
         && notice.summary.trim().toLowerCase() === title);
 }
 

@@ -65,6 +65,11 @@ Item {
     // a meeting about to start does once it has started: news only while
     // it lasts.
     property bool withdraws: false
+    // What its notice tells, for one said more than once while it's true:
+    // each time this changes, it's said again and its earlier notice, which
+    // it `withdraws`, is taken back, as a meeting is at each of its
+    // reminders and as it starts. Empty, it's said once.
+    property string telling: ""
     // Whether another piece's mark stands for it, so the margin leaves its
     // own out while What's on still lists it: quiet turned on by a share is
     // the share's, whose words say notices are held.

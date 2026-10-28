@@ -57,10 +57,11 @@ Singleton {
         return Said.joinable(meeting, now);
     }
 
-    // Whether another notice already told Joel of it, such as Calendar's
-    // own page in Chrome, so the shell doesn't say it twice.
+    // Whether another notice already told Joel what the shell's would by
+    // now, such as Calendar's own page in Chrome at the same reminder, so
+    // the shell doesn't say it twice.
     function toldElsewhere(meeting, notices) {
-        return Said.toldElsewhere(meeting, notices);
+        return Said.toldElsewhere(meeting, notices, now);
     }
 
     // Whether it's on or starts today.
@@ -112,15 +113,16 @@ Singleton {
             Google.ask(Said.cancel(meeting));
     }
 
-    // Whether the next meeting is about to start, for Now's wants.
-    readonly property bool starting: Said.aboutToStart(next, now)
-    // The next meeting while it wants Joel (Starting.qml): about to start,
-    // and its call not yet open in a window of its own, when it's on air
+    // The meeting that wants Joel (Starting.qml): the first coming within
+    // the hour, or from its first reminder, until five minutes after its
+    // start, whose call isn't open in a window of its own, when it's on air
     // instead (Call.qml). A call joined through Tuple isn't seen here.
-    readonly property var wanting: starting
-        && !calls.some(call => call.meeting !== null && call.meeting.id === next.id) ? next : null
-    // Whether it's said as a notice by now, a minute before it starts.
-    readonly property bool heralded: wanting !== null && Said.heralded(wanting, now)
+    readonly property var wanting: Said.wanting(meetings.filter(meeting => !calls.some(
+        call => call.meeting !== null && call.meeting.id === meeting.id)), now)
+    // Whether its mark is in the margin, from ten minutes before it starts.
+    readonly property bool marked: Said.marked(wanting, now)
+    // What its notice tells by now: its last reminder come, or its start.
+    readonly property string telling: Said.telling(wanting, now)
 
     function join(meeting) {
         if (!meeting || !meeting.link)

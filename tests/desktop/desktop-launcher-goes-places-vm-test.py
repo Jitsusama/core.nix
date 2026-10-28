@@ -1507,32 +1507,58 @@ def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
 
 
 @pytest.mark.usefixtures("google")
-def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
+def test_a_meeting_coming_wants_joel_and_is_said_at_its_reminder_and_as_it_starts(
     desktop: Desktop,
 ) -> None:
-    """A meeting about to start wants Joel, is said a minute before, and Return joins it.
+    """A meeting within the hour is in Now, and is said at its reminder and as it starts.
 
-    Its notice goes by itself, read, once its call is open.
+    Twenty minutes off it's in Now alone, counting down, unsaid; a minute off it's said, and
+    again as it starts, the first notice taken back, and Return joins it. Its notice goes by
+    itself, read, once its call is open.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     call = "chrome-meet.google.com__pqr-stuv-wxy-Default"
-    # The stand-in's Design Review a minute and a half on, so it wants Joel
-    # at once, and is said as a notice once the shell's minute passes the
-    # one before it starts.
-    desktop.as_account("systemctl --user set-environment GOOGLE_STAND_IN_SOON=90000")
+    notices = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     try:
+        # The stand-in's Design Review twenty minutes on: Now counts it
+        # down, and the margin leaves its mark out until ten minutes off.
+        desktop.as_account("systemctl --user set-environment GOOGLE_STAND_IN_SOON=1200000")
+        desktop.as_account("systemctl --user restart google.service")
+        now_rows(desktop)
+        desktop.launcher_until(lambda shown: "Design Review" in shown["rows"])
+        desktop.down_to("Design Review")
+        desktop.launcher_until(
+            lambda shown: re.fullmatch(r"in (19|20) min", shown["selected"]["side"]) is not None
+        )
+        margin = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            " | grep '^holds margin' | tail -n 1"
+        )
+        assert "meeting" not in margin.split(), margin
+        machine.fail(desktop.in_session("niri msg layers | grep -q notifications"))
+        desktop.as_account("qs ipc call launcher toggle")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # A minute and a half on: said at its reminder, a minute before,
+        # once the shell's minute passes it, and again as it starts.
+        desktop.as_account("systemctl --user set-environment GOOGLE_STAND_IN_SOON=90000")
         with desktop.told("arrives Design Review", timeout=dt.timedelta(seconds=120)):
             desktop.as_account("systemctl --user restart google.service")
+        with desktop.told("arrives Design Review", timeout=dt.timedelta(seconds=120)):
+            pass
+        # The reminder's notice was taken back, read, as the start's came.
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                f'{notices} | grep -q \'"summary":"Design Review in 1 min"[^}}]*"read":true\''
+            ),
+            timeout=dt.timedelta(seconds=10),
+        )
         now_rows(desktop)
         desktop.down_to("Design Review")
         desktop.launcher_until(
-            lambda shown: (
-                re.fullmatch(r"in [12] min", shown["selected"]["side"]) is not None
-                and shown["selected"]["verb"] == "join"
-            )
+            lambda shown: shown["selected"]["side"] == "now" and shown["selected"]["verb"] == "join"
         )
         machine.send_key("ret")
         machine.wait_until_succeeds(
@@ -1550,8 +1576,7 @@ def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
         )
         machine.wait_until_succeeds(
             desktop.in_session(
-                "cat ~/.local/state/quickshell/by-shell/*/notices.json"
-                ' | grep -q \'"summary":"Design Review in [^"]*"[^}]*"read":true\''
+                f'{notices} | grep -q \'"summary":"Design Review now"[^}}]*"read":true\''
             ),
             timeout=dt.timedelta(seconds=10),
         )

@@ -51,6 +51,11 @@
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
   '';
+  an-arrival-is-said-once-each-time = ''
+    what comes true by itself is said once, and nothing of what stood as the shell started; a
+    piece that tells something new is said again, its own earlier notice taken back first and no
+    other's; and one that goes takes back whichever of its notices is up
+  '';
   an-ipc-reply-arrives-whole = ''
     a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
     function that isn't there ends qs with a failure
@@ -1271,8 +1276,9 @@
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting about to start by its name, says it in Now's Today and as a want with its notice a
-    minute before, shows one further off with who's asked and how each answered, answers its
+    a meeting about to start by its name, says it in Now's Today, counts one within the hour down
+    as a want, marked from ten minutes off and said at its reminder and as it starts, shows one
+    further off with who's asked and how each answered, answers its
     invitation, cancels one Joel holds once he's sure, and lists its Meet call in Now while it's
     open, says Google signed out in Now with Return signing in again in pi, counts the mail that
     wants Joel in Now with Return showing it, opens mail by its subject, keeping one Mail window,
