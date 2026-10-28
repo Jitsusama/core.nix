@@ -30,7 +30,7 @@ from desktop_session import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -1165,6 +1165,19 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.fixture
+def google(desktop: Desktop) -> Iterator[None]:
+    """Start the stand-in Google afresh for one test, and stop it after.
+
+    Its meetings are timed from when it starts, so one left running would come to start during
+    a later test, wanting Joel in Now and said as a notice.
+    """
+    desktop.as_account("systemctl --user restart google.service")
+    yield
+    desktop.as_account("systemctl --user stop google.service")
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     desktop: Desktop,
 ) -> None:
@@ -1174,7 +1187,6 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     # The stand-in's Design Review starts five minutes from now, on Meet.
-    desktop.as_account("systemctl --user start google.service")
     desktop.answer("design review")
     desktop.launcher_until(
         lambda shown: (
@@ -1192,6 +1204,7 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
 def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     """Now's Today row says today's next meeting and takes its verb, joining one about to start."""
     machine = desktop.machine
@@ -1199,7 +1212,6 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     # The next meeting is the stand-in's Design Review, five minutes on.
-    desktop.as_account("systemctl --user start google.service")
     desktop.answer("now")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
@@ -1227,6 +1239,7 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
 def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     desktop: Desktop,
 ) -> None:
@@ -1236,7 +1249,6 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     # The stand-in's Standup starts half an hour from now, on Meet.
-    desktop.as_account("systemctl --user start google.service")
     desktop.answer("standup")
     desktop.launcher_until(
         lambda shown: (
@@ -1280,6 +1292,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
 def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop: Desktop,
 ) -> None:
@@ -1289,7 +1302,6 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
     # The stand-in's Standup, answered yes, which it hears answered again.
-    desktop.as_account("systemctl --user start google.service")
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.step_in()
@@ -1327,11 +1339,11 @@ def now_rows(desktop: Desktop) -> Json:
     return desktop.showing()
 
 
+@pytest.mark.usefixtures("google")
 def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -> None:
     """A Meet call in a window of its own is in Now named for its meeting, and goes from it."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    desktop.as_account("systemctl --user start google.service")
     # Standup's call, in the window Chrome would open its link in as an
     # app of its own, which kitty stands in for by taking its app id.
     call = "chrome-meet.google.com__abc-defg-hij-Default"
@@ -1365,6 +1377,46 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
+def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
+    desktop: Desktop,
+) -> None:
+    """A meeting about to start wants Joel in Now, is said a minute before, and Return joins it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Design Review a minute and a half on, so it wants Joel
+    # at once, and is said as a notice once the shell's minute passes the
+    # one before it starts.
+    desktop.as_account("systemctl --user set-environment GOOGLE_STAND_IN_SOON=90000")
+    try:
+        with desktop.told("arrives Design Review", timeout=dt.timedelta(seconds=120)):
+            desktop.as_account("systemctl --user restart google.service")
+        now_rows(desktop)
+        desktop.down_to("Design Review")
+        desktop.launcher_until(
+            lambda shown: (
+                re.fullmatch(r"in [12] min", shown["selected"]["side"]) is not None
+                and shown["selected"]["verb"] == "join"
+            )
+        )
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
+            timeout=dt.timedelta(seconds=30),
+        )
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        desktop.as_account("qs ipc call notices putAway")
+        machine.wait_until_fails(
+            desktop.in_session("niri msg layers | grep -q notifications"),
+            timeout=dt.timedelta(seconds=30),
+        )
+    finally:
+        desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_SOON")
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> None:
     """A meeting Joel holds is cancelled from its acts, a step saying who's told asking first."""
     machine = desktop.machine
@@ -1372,7 +1424,6 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
     # The stand-in's Planning, two hours on, is Joel's own, with Grace asked.
-    desktop.as_account("systemctl --user start google.service")
     desktop.answer("planning")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Planning")
     desktop.step_in()
@@ -1404,6 +1455,7 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:
@@ -1413,7 +1465,6 @@ def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     opened = "/run/user/1000/google-opened"
     machine.succeed(f"rm -f {opened}")
     # The stand-in's Lunch on Friday came two minutes before it started.
-    desktop.as_account("systemctl --user start google.service")
     desktop.answer("lunch on friday")
     desktop.launcher_until(
         lambda shown: (
@@ -1459,6 +1510,7 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
     )
 
 
+@pytest.mark.usefixtures("google")
 def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     desktop: Desktop,
 ) -> None:
@@ -1467,7 +1519,6 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
-    desktop.as_account("systemctl --user start google.service")
     for subject, act, became, line in [
         ("Lunch on Friday", "Mark as Read", "read", {"read": {"id": "lunch"}}),
         ("Quarterly Numbers", "Archive", "archived", {"archive": {"id": "numbers"}}),

@@ -20,7 +20,9 @@
 # its own, opened as jitsusama.google.window says, since which browser
 # makes one is the machine's to choose. A meeting's call is joined through
 # google-opens (opens.sh), which opens a Meet link the same way, and a
-# call open in a window of its own is on air while it is (Call.qml).
+# call open in a window of its own is on air while it is (Call.qml). A
+# meeting about to start wants Joel, and is said as a notice a minute
+# before it starts (Starting.qml).
 { quickshell }:
 {
   config,
@@ -91,6 +93,16 @@ in
       "quickshell/Calendar.js".source = ./Calendar.js;
       "quickshell/Mail.qml".source = ./Mail.qml;
       "quickshell/Mail.js".source = ./Mail.js;
+    };
+
+    # A meeting about to start, which wants Joel, wearing the calendar's
+    # own mark; among what wants him, after the notices.
+    jitsusama.quickshell.overview.pieces.meeting = {
+      order = 55;
+      source = ./Starting.qml;
+      label = "meeting";
+      tier = "when";
+      mark = "meeting";
     };
 
     # A Meet call, wearing the call mark Tuple's does, since it's a call
