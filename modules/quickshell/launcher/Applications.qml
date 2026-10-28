@@ -489,7 +489,8 @@ Provider {
     // them, each a folder or a file by its name, beside the folder it's in.
     // Return opens it through the program as its settings say: `open`
     // while a window of it is open, through the process behind the window
-    // used last ({pid}), and `start` while none is.
+    // used last ({pid}), and `start` while none is. A program drawn in
+    // another's windows, as Neovim is in kitty's, names that one as `via`.
     function recent(entry) {
         const source = (settings.recents ?? []).find(each => each.app === entry.id);
         const paths = source ? provider.recents.of(entry.id) : [];
@@ -522,7 +523,7 @@ Provider {
             hue: "program",
             side: folder,
             run: () => {
-                const window = (provider.running[entry.id] ?? [])[0] ?? null;
+                const window = (provider.running[source.via ?? entry.id] ?? [])[0] ?? null;
                 const command = window ? source.open : source.start;
                 Niri.spawn(command.map(part => part.replace("{path}", path)
                     .replace("{pid}", String(window?.pid ?? ""))));

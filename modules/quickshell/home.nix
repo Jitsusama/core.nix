@@ -582,6 +582,15 @@ let
   # say which programs use the processors and the memory: the page size,
   # then the machine's counters and each process's, in one spawn rather
   # than a read for each of hundreds of files on the shell's thread.
+  # A list of paths, one a line, with those since gone left out; nothing
+  # when the list isn't written yet.
+  stillThere = pkgs.writeShellScript "still-there" ''
+    [ -e "$1" ] || exit 0
+    while IFS= read -r path; do
+      if [ -e "$path" ]; then printf '%s\n' "$path"; fi
+    done < "$1"
+  '';
+
   processList = pkgs.writeShellScript "process-list" ''
     ${lib.getExe' pkgs.getconf "getconf"} PAGESIZE
     exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat /proc/[0-9]*/stat 2>/dev/null
@@ -988,6 +997,34 @@ in
           start = [
             "kitty"
             "--directory"
+            "{path}"
+          ];
+        }
+        # Neovim's files, newest first, from the list it writes as each
+        # opens (modules/neovim/init.lua), leaving out any since gone.
+        # Return opens one in Neovim in a kitty window, through the kitty
+        # used last, since Neovim is drawn in kitty's windows.
+        ++ lib.optional config.programs.neovim.enable {
+          app = "nvim";
+          via = "kitty";
+          watch = "${config.xdg.stateHome}/nvim/recent";
+          list = [
+            stillThere
+            "${config.xdg.stateHome}/nvim/recent"
+          ];
+          open = [
+            "kitty"
+            "@"
+            "--to"
+            "unix:@kitty-{pid}"
+            "launch"
+            "--type=os-window"
+            "nvim"
+            "{path}"
+          ];
+          start = [
+            "kitty"
+            "nvim"
             "{path}"
           ];
         };
@@ -1694,12 +1731,13 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders WaitingOnYou.qml watches for what waits on Joel, and the one
-    # kitty's Recent reads zoxide's database in (launcher/Recents.qml
-    # watches a list from inside its folder), which zoxide makes only at
-    # its first cd, so that cd counts.
+    # folders WaitingOnYou.qml watches for what waits on Joel, and those
+    # Recent's lists are in (launcher/Recents.qml watches a list from
+    # inside its folder), which zoxide and Neovim make only as they first
+    # write, so the first folder or file counts.
     systemd.user.tmpfiles.rules = [
       "d ${config.xdg.dataHome}/zoxide 0700 - - -"
+      "d ${config.xdg.stateHome}/nvim 0700 - - -"
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"

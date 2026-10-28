@@ -176,6 +176,42 @@ vim.api.nvim_create_autocmd('BufReadPost', {
   end,
 })
 
+-- The files opened lately, newest first, one a line, for the launcher's
+-- Recent inside Neovim, written as each opens rather than when Neovim
+-- quits, as its shada is, so the launcher has it at once. It's written
+-- whole beside the list and moved over it, so it's never read half done.
+local recent = vim.fn.stdpath('state') .. '/recent'
+local kept = 50
+vim.api.nvim_create_autocmd('BufReadPost', {
+  group = augroup('recent_files'),
+  callback = function(event)
+    if vim.bo[event.buf].buftype ~= '' then
+      return
+    end
+    local path = vim.api.nvim_buf_get_name(event.buf)
+    if path == '' or vim.fn.filereadable(path) == 0 then
+      return
+    end
+    local files = { path }
+    local was = io.open(recent, 'r')
+    if was then
+      for line in was:lines() do
+        if line ~= path and #files < kept then
+          table.insert(files, line)
+        end
+      end
+      was:close()
+    end
+    local writing = recent .. '.new'
+    local now = io.open(writing, 'w')
+    if now then
+      now:write(table.concat(files, '\n') .. '\n')
+      now:close()
+      os.rename(writing, recent)
+    end
+  end,
+})
+
 -- Check if file changed outside of Neovim
 vim.api.nvim_create_autocmd({ 'FocusGained', 'TermClose', 'TermLeave' }, {
   group = augroup('checktime'),
