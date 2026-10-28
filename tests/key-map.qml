@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Processes, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor, Music",
+                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -132,8 +132,8 @@ ShellRoot {
                 names(there.slice(0, 3)).join(", "));
             const workspaces = row(inside.everything(), "Workspaces");
             expect("a big group holds groups, then what none takes",
-                names(workspaces.verbs()).join(", ") === "Focus, The column, The window, "
-                + "Above and below, Move the workspace up, Move the workspace down, "
+                names(workspaces.verbs()).join(", ") === "Focus, The Column, The Window, "
+                + "Above and Below, Move the workspace up, Move the workspace down, "
                 + "Show every workspace, Stop showing every workspace",
                 names(workspaces.verbs()).join(", "));
             const going = row(workspaces.verbs(), "Focus");
@@ -147,7 +147,7 @@ ShellRoot {
             const code = row(neovim.verbs(), "Code");
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
                 && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
-                === "Definitions and calls, Hints and fixes", names(code.verbs()).join(", "));
+                === "Definitions and Calls, Hints and Fixes", names(code.verbs()).join(", "));
             // Windows, Columns, Workspaces and Screens each have Focus, so
             // each found from above says what holds it.
             const holders = rows => rows.filter(one => one.name === "Focus")
@@ -171,11 +171,11 @@ ShellRoot {
                 own ? own.side : "not found");
             const github = row(neovim.verbs(), "GitHub");
             expect("a group holding groups", names(github.verbs()).slice(0, 4).join(", ")
-                === "Issues, People and labels, Comments, Reactions",
+                === "Issues, People and Labels, Comments, Reactions",
                 names(github.verbs()).join(", "));
             const pulls = row(neovim.verbs(), "Changes");
             expect("changes, by what they hold", names(pulls.verbs()).slice(0, 4)
-                .join(", ") === "Finding changes, The change, Merging, Checks",
+                .join(", ") === "Finding Changes, The Change, Merging, Checks",
                 names(pulls.verbs()).join(", "));
             const held = top[1].verbs();
             const loose = held.findIndex(one => !one.verbs);
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Processes, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor, Music",
+                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -222,13 +222,13 @@ ShellRoot {
             // would leave it leading. A program in a window of its own with
             // keys of its own leads with them, then the desktop's.
             over("swayimg", "holiday.jpg");
-            expect("over the picture viewer, its own", map.leading()?.name === "Picture viewer"
+            expect("over the picture viewer, its own", map.leading()?.name === "Picture Viewer"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("inlyne", "README.md");
-            expect("over the markdown reader, its own", map.leading()?.name === "Markdown reader"
+            expect("over the markdown reader, its own", map.leading()?.name === "Markdown Reader"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("org.pwmt.zathura", "paper.pdf");
-            expect("over the document viewer, its own", map.leading()?.name === "Document viewer"
+            expect("over the document viewer, its own", map.leading()?.name === "Document Viewer"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("mpv", "holiday.mkv - mpv");
             expect("over the player, its own", map.leading()?.name === "Player"
@@ -245,10 +245,10 @@ ShellRoot {
             expect("over Slack, its own", map.leading()?.name === "Slack"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("gimp", "[Untitled]-1.0 (RGB color 8-bit gamma integer, GIMP built-in sRGB, 1 layer) 1920x1080 - GIMP");
-            expect("over GIMP, its own", map.leading()?.name === "Picture editor"
+            expect("over GIMP, its own", map.leading()?.name === "Picture Editor"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("org.inkscape.Inkscape", "drawing.svg - Inkscape");
-            expect("over Inkscape, its own", map.leading()?.name === "Drawing editor"
+            expect("over Inkscape, its own", map.leading()?.name === "Drawing Editor"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("spotify", "Spotify Premium");
             expect("over Spotify, its own", map.leading()?.name === "Music"

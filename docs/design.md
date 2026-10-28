@@ -716,12 +716,12 @@ works the same way everywhere.
   in the last ten seconds. The machine's own things answer the same way,
   each with its parts a step in: "cpu" (its Cores, one reading each in
   order, which are Maxed, the Clock, the Temperature as "temperature"
-  says it, the programs Using it, the Load, the Kinds of core and the
-  Model), "memory" (Used, Pressure, Swap, Cached, Using it and the Type
+  says it, the programs Using It, the Load, the Kinds of core and the
+  Model), "memory" (Used, Pressure, Swap, Cached, Using It and the Type
   read at boot), "disk" (the Space the disk guard says, Speed, Busy,
   Latency, Temperature, Health as UDisks has it, and the Model), "speed"
   (what the cards carry In and Out now, the Connection as the shaper last
-  measured it and how full it is, the Round trip while it's quiet, each
+  measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
   too) and "uptime". The queue is Agents', beside the sessions whose
   heavy work it holds, and "queue" finds it: each job named in words,
@@ -729,17 +729,17 @@ works the same way everywhere.
   memory below. The devices hold as much: "heat"
   (each part against its critical point, the processor's Cores, the fans
   against what they're rated for, and how often it Throttled), Bluetooth
-  (each device's Battery, Signal and Link quality, Codec and Connection,
+  (each device's Battery, Signal and Link Quality, Codec and Connection,
   and the Adapter), Sound (each speaker's or microphone's Level, its Volume
   or Gain, whether it's Muted, what's Playing through it, its Port where
   it has several, its Tuning and its card; an unplugged port isn't listed),
   each camera
-  ("built-in camera": In use, its lights, Streaming, Sensor and Modes),
+  ("built-in camera": In Use, its lights, Streaming, Sensor and Modes),
   "keyboards" (each one's locks, Repeat and Lights, which are its own and
   not Light's, and the ErgoDox's Layer as a setting), "ip" (each
   connection's Address, Gateway and DNS, and a joined network's Signal,
-  Speed, Protection and Access points) and "battery" (its Charger, Health
-  and Charge limit). A part answers alone by its own
+  Speed, Protection and Access Points) and "battery" (its Charger, Health
+  and Charge Limit). A part answers alone by its own
   words, "disk speed", "ram type" or "ping". A rate is the difference between two reads, read again
   once a second while it's shown and never for a key, and the footer says
   whether it's just now or since last asked. A part holding more steps in

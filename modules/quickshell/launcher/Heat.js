@@ -52,8 +52,8 @@ const FAN_SPAN = 500;
 
 const CORE = /^Core (\d+)$/;
 const WHOLE = /^(Composite|Package|Tctl|Tdie)/;
-// A first word with no capital but its first, which a sentence lowers.
-const PLAIN_WORD = /^[A-Z][a-z]*(\s|$)/;
+// A word with no capital but its first, which a sentence lowers.
+const PLAIN_WORD = /^[A-Z][a-z]*$/;
 const SPACES = /\s+/;
 
 function labelled(label) {
@@ -79,11 +79,14 @@ function fanId(label) {
     return label.toLowerCase().trim().split(SPACES).join("-");
 }
 
-// A part's name as a sentence says it after "the": "Processor" is
-// "processor", while a name whose first word has more capitals, as
-// "Wi-Fi card", keeps them.
+// A part's name, a title, as a sentence says it after "the": "Air Inside"
+// is "air inside", while a word with more capitals, as "Wi-Fi" in
+// "Wi-Fi Card", keeps them.
 function phrase(name) {
-    return PLAIN_WORD.test(name) ? name.charAt(0).toLowerCase() + name.slice(1) : name;
+    return name
+        .split(" ")
+        .map(word => (PLAIN_WORD.test(word) ? word.toLowerCase() : word))
+        .join(" ");
 }
 
 function given(value) {

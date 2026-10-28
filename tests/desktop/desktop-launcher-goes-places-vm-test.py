@@ -131,10 +131,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
         ("Quest", r"QEST-20261022-TESTQA"),
         ("Address", r"TESTQA"),
         ("Started", r"\d\d:\d\d"),
-        ("Spent today", r"\$12\.50"),
+        ("Spent Today", r"\$12\.50"),
         ("Councils", r"\$4\.00"),
         ("Test the shell", r"2nd in line"),
-        ("Working on", r"Tidy the tests"),
+        ("Working On", r"Tidy the tests"),
         ("Hears", r"#desk"),
     ]:
         machine.send_key("down")
@@ -381,7 +381,7 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:2] == ["You said", "How it went"]
+            shown["rows"][:2] == ["You Said", "How It Went"]
             and "Watching" in str((shown["selected"] or {}).get("reads", ""))
         )
     )
@@ -401,7 +401,7 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     # Lighthouse comes before asking in a session of its own.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a session"]
+        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a Session"]
     )
     machine.send_key("down")
     desktop.launcher_until(
@@ -1013,7 +1013,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # Named This window, the window's title beside it.
-    desktop.type_in("this window", selecting="This window")
+    desktop.type_in("this window", selecting="This Window")
     selected = desktop.showing()["selected"]
     assert selected["side"] == "Notes for Tuesday", selected
     # Return steps in, to what can be done to it, all but going to it,
@@ -1022,10 +1022,10 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
     assert "Switch" not in rows, rows
-    assert "Bring here" not in rows, rows
+    assert "Bring Here" not in rows, rows
     # Full width makes its column the screen's width, as niri says.
     before = desktop.window_titled("Notes for Tuesday")
-    desktop.type_in("full", selecting="Full width")
+    desktop.type_in("full", selecting="Full Width")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
 
@@ -1039,11 +1039,11 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     wide = desktop.window_titled("Notes for Tuesday")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("this window", selecting="This window")
+    desktop.type_in("this window", selecting="This Window")
     desktop.step_in("ret")
     desktop.type_in("size", selecting="Size")
     desktop.step_in("ret")
-    desktop.type_in("half", selecting="Half the screen")
+    desktop.type_in("half", selecting="Half the Screen")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
 
@@ -1633,7 +1633,7 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
     for subject, act, became, line in [
-        ("Lunch on Friday", "Mark as Read", "read", {"read": {"id": "lunch"}}),
+        ("Lunch on Friday", "Mark As Read", "read", {"read": {"id": "lunch"}}),
         ("Quarterly Numbers", "Archive", "archived", {"archive": {"id": "numbers"}}),
     ]:
         tidy_from_its_acts(desktop, subject, act, became)
@@ -1650,8 +1650,8 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     power = [
-        "Battery", "Power profile", "Keep awake", "Sleep", "Lock", "Log out", "Reboot",
-        "Power off",
+        "Battery", "Power Profile", "Keep Awake", "Sleep", "Lock", "Log Out", "Reboot",
+        "Power Off",
     ]  # fmt: skip
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
@@ -1664,7 +1664,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
             (shown["selected"] or {}).get("name") == "Power"
             and "Queue" not in shown["rows"]
             and any(
-                str(thing["reads"]).startswith("Power \u00b7 Battery, Power profile")
+                str(thing["reads"]).startswith("Power \u00b7 Battery, Power Profile")
                 for thing in shown["things"]
             )
             and "Memory" in shown["rows"]
@@ -1697,7 +1697,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     desktop.answer("power off")
     desktop.launcher_until(
-        lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Power off"
+        lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Power Off"
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -1770,14 +1770,14 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A harmless one is done at once, and once it ends something, offered.
-    awake = one(entries, "Keep awake", "Machine \u203a Power")
+    awake = one(entries, "Keep Awake", "Machine \u203a Power")
     assert not awake["disruptive"]
     assert ran(awake) == {"done": True, "said": "Machine \u203a Power \u203a Keep awake"}
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
-    sleep = one(listed(), "Let it sleep", "Machine \u203a Power")
+    sleep = one(listed(), "Let It Sleep", "Machine \u203a Power")
     assert sleep["id"] == awake["id"], "its id changed with its state"
     assert ran(sleep)["offered"]
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let it sleep")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Let It Sleep")
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=dt.timedelta(seconds=10))
     if machine.execute(closed)[0] == 0:
@@ -1844,7 +1844,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # Each says what it holds after its name, in its own order, from the
     # vocabulary; Now says what's on, or that nothing is.
     reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert reads["category:desktop"].startswith("Desktop \u00b7 This window, Windows, Screens, "), (
+    assert reads["category:desktop"].startswith("Desktop \u00b7 This Window, Windows, Screens, "), (
         f"desktop reads {reads['category:desktop']!r}"
     )
     assert reads["category:computer"].startswith("Machine \u00b7 Power, Bluetooth, "), (
@@ -1894,7 +1894,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
         lambda shown: (
             shown["held"] == ["desktop"]
             # This window is there only while one is focused.
-            and [row for row in shown["rows"] if row != "This window"][:2] == ["Windows", "Screens"]
+            and [row for row in shown["rows"] if row != "This Window"][:2] == ["Windows", "Screens"]
         )
     )
     machine.send_key("esc")
@@ -2054,7 +2054,7 @@ def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Deskt
     for figure in ("processor", "memory"):
         desktop.answer(figure)
         desktop.step_in()
-        desktop.launcher_until(lambda shown: "Using it" in shown["rows"])
+        desktop.launcher_until(lambda shown: "Using It" in shown["rows"])
         machine.send_key("esc")
         desktop.launcher_until(lambda shown: not shown["open"])
 
@@ -2113,13 +2113,13 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Desktop",
         "Terminal",
         "Processes",
-        "Picture viewer",
-        "Markdown reader",
-        "Document viewer",
+        "Picture Viewer",
+        "Markdown Reader",
+        "Document Viewer",
         "Player",
         "Passwords",
-        "Picture editor",
-        "Drawing editor",
+        "Picture Editor",
+        "Drawing Editor",
         "Music",
     ]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
@@ -2138,7 +2138,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     assert "Go to workspace 3" in desktop.showing()["rows"]
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
-    inner = ["Focus", "The column", "The window", "Above and below"]
+    inner = ["Focus", "The Column", "The Window", "Above and Below"]
     assert desktop.showing()["rows"][: len(inner)] == inner
     assert "Show every workspace" in desktop.showing()["rows"]
     # The field says where that is as one path, in the rows' own case.
@@ -2205,7 +2205,7 @@ def test_super_shift_over_a_terminal_opens_on_the_terminals_shortcuts(desktop: D
     # already showing, the path saying whose keys they are.
     desktop.launcher_until(lambda shown: shown["held"] == ["shortcuts", "terminal"])
     assert desktop.showing()["path"] == ["Shortcuts", "Terminal"]
-    assert desktop.showing()["rows"][:2] == ["Tabs", "Tab numbers"]
+    assert desktop.showing()["rows"][:2] == ["Tabs", "Tab Numbers"]
     desktop.photograph("launcher-shortcuts-over-kitty")
     # The right arrow steps into a group, and the left back out to the
     # layers, the terminal's first and selected, saying it's the window's,
@@ -2282,7 +2282,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
         )
     )
     # It counts only what Joel can do now: the queue's two say no when.
-    desktop.type_in("waiting on you", selecting="Waiting on you")
+    desktop.type_in("waiting on you", selecting="Waiting on You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
     # Inside, what's for now leads, then what's for later, each in the
     # agents' order, and Return goes to where one is done.
@@ -2303,7 +2303,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # One naming no window is done with the orchestrator, in its window.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("waiting on you", selecting="Waiting on you")
+    desktop.type_in("waiting on you", selecting="Waiting on You")
     desktop.step_in()
     machine.send_key("down")
     machine.send_key("down")
@@ -2346,7 +2346,7 @@ def waiting_opened(desktop: Desktop) -> None:
     """Open the launcher on Waiting on you's row."""
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("waiting on you", selecting="Waiting on you")
+    desktop.type_in("waiting on you", selecting="Waiting on You")
 
 
 def launcher_closed(desktop: Desktop) -> None:

@@ -118,8 +118,8 @@ ShellRoot {
             heard.map(row => row.key).join(","));
         const parts = heard.slice(2);
         expect("a classic link's parts", said(parts) === ["Battery=15%", "Signal=in range",
-            "Link quality=90%", "Channels=61 of 79 clear",
-            "Connection=Classic, central, encrypted", "Reconnects by itself=yes",
+            "Link Quality=90%", "Channels=61 of 79 clear",
+            "Connection=Classic, central, encrypted", "Reconnects by Itself=yes",
             `Address=${at}`].join(","), said(parts));
         const figures = parts.slice(0, 5);
         expect("figures wear no glyph, and copy what they show", figures.every(row =>
@@ -148,8 +148,8 @@ ShellRoot {
 
         const trust = parts[5];
         expect("a setting holds its choices", trust.verb === "more" && trust.glyph !== ""
-            && said(trust.verbs()) === "Let it reconnect by itself=in use,"
-                + "Only connect it when asked=", said(trust.verbs()));
+            && said(trust.verbs()) === "Let It Reconnect by Itself=in use,"
+                + "Only Connect It When Asked=", said(trust.verbs()));
         trust.verbs()[1].run();
         expect("a choice sets it", !headphones.trusted, "it's still trusted");
         headphones.trusted = true;
@@ -192,7 +192,7 @@ ShellRoot {
     // The adapter's parts: its settings, its traffic, and what it is.
     function adapterHolds() {
         const parts = bluetooth.adapterParts(radio);
-        expect("the adapter's parts", said(parts) === ["Radio=on", "Visible to others=no",
+        expect("the adapter's parts", said(parts) === ["Radio=on", "Visible to Others=no",
             "Pairable=yes", "Traffic=12 kb/s", "Name=studio", "Address=02:00:00:00:00:01",
             "Version=Bluetooth 6.0", "Model=Intel"].join(","), said(parts));
         expect("visible for a while", parts[1].note === "for 3 min once made visible",
@@ -204,7 +204,7 @@ ShellRoot {
             && row.glyph === ""), "a figure of the adapter doesn't copy");
         const choices = parts[0].verbs();
         expect("the radio's choices", said(choices)
-            === "Turn the radio on=in use,Turn the radio off=", said(choices));
+            === "Turn the Radio On=in use,Turn the Radio Off=", said(choices));
         parts[1].verbs()[0].run();
         expect("made visible", radio.discoverable, "it's still hidden");
         choices[1].run();

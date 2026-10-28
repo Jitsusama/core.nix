@@ -384,12 +384,12 @@ Provider {
     // another is on, then what its EDID says.
     function verbs(output) {
         if (output.logical === null)
-            return [choice("on", "Turn it on", "display", false, () => change(output, "On"))]
+            return [choice("on", "Turn It On", "display", false, () => change(output, "On"))]
                 .concat(factRows(output));
         const rows = setUp(output);
         // The last display on stays on, or nothing would show the launcher.
         if (lit.length > 1)
-            rows.push(choice("off", "Turn it off", "displayOff", false,
+            rows.push(choice("off", "Turn It Off", "displayOff", false,
                 () => change(output, "Off")));
         return rows.concat(factRows(output));
     }

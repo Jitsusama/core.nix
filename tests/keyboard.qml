@@ -96,13 +96,13 @@ ShellRoot {
             expect("a letter with its hold", ctrl.name === "A" && ctrl.side === "Coal, held Ctrl",
                 `${ctrl.name}, ${ctrl.side}`);
 
-            expect("an action by what it does", first("flash").name === "Flash the keyboard",
+            expect("an action by what it does", first("flash").name === "Flash the Keyboard",
                 first("flash").name);
             // Only what's done to the board itself is listed; locking a
             // layer and its light are the board's Layer's and Light's.
             const names = keyboard.everything().map(row => row.name);
-            expect("the board's own acts listed", names[0] === "Show the keyboard's layout"
-                && names[1] === "Flash the keyboard" && !names.includes("Light")
+            expect("the board's own acts listed", names[0] === "Show the Keyboard's Layout"
+                && names[1] === "Flash the Keyboard" && !names.includes("Light")
                 && !names.some(name => /^Lock .* on$|^Let .* go$|keyboard's light/.test(name)),
                 names.filter(name => /^Lock |^Let |light/.test(name)).join(", "));
             const numbActs = keyboard.search("numb").rows.map(row => row.name);
@@ -112,12 +112,12 @@ ShellRoot {
                 numbActs.concat(punkActs).join(", "));
             const lit = ["turn off keyboard", "turn on keyboard", "brighten keyboard",
                 "dim keyboard"].map(typed => first(typed).name);
-            expect("each light's choice found", lit.join(", ") === "Turn off the "
-                + "keyboard's light, Turn on the keyboard's light, Brighten the "
-                + "keyboard's light, Dim the keyboard's light", lit.join(", "));
+            expect("each light's choice found", lit.join(", ") === "Turn Off the "
+                + "Keyboard's Light, Turn On the Keyboard's Light, Brighten the "
+                + "Keyboard's Light, Dim the Keyboard's Light", lit.join(", "));
             const brighter = first("brighten keyboard");
             expect("a choice found by its words",
-                brighter.name === "Brighten the keyboard's light"
+                brighter.name === "Brighten the Keyboard's Light"
                 && brighter.verb === "brighten", `${brighter.name}, ${brighter.verb}`);
             // One word each: an old word for the light finds nothing, the
             // glossary's own old one among them.

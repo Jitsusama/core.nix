@@ -12,8 +12,8 @@ Piece {
     context: Caffeinate.lid ? "until the power goes" : "the lid still sleeps it"
     actions: [{
         glyph: Theme.glyph.suspend,
-        name: "Let it sleep",
-        // One word for Return, as the launcher's Let it sleep says it.
+        name: "Let It Sleep",
+        // One word for Return, as the launcher's Let It Sleep says it.
         verb: "stop",
         stays: true,
         run: () => Caffeinate.release()

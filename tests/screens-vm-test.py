@@ -275,7 +275,7 @@ class Screens:
     def launcher_works_on(self, screen: str) -> None:
         """Open the launcher on a screen, run Keep Awake and close it, then open it and close it."""
         was = self.awake()
-        typed, row = ("let it sleep", "Let it sleep") if was else ("keep awake", "Keep awake")
+        typed, row = ("let it sleep", "Let It Sleep") if was else ("keep awake", "Keep Awake")
         self.super_space_on(screen)
         self.machine.send_chars(typed)
         self.launcher_until(
