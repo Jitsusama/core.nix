@@ -23,7 +23,8 @@
 # call open in a window of its own is on air while it is (Call.qml). A
 # meeting about to start wants Joel, and is said as a notice a minute
 # before it starts (Starting.qml); the account signed out wants him to
-# sign in again (SignedOut.qml).
+# sign in again (SignedOut.qml); and the mail that wants him is counted
+# there too (NewMail.qml).
 { quickshell }:
 {
   config,
@@ -114,6 +115,16 @@ in
       label = "meeting";
       tier = "when";
       mark = "meeting";
+    };
+
+    # The mail that wants Joel, wearing the mail mark; after what wants
+    # him sooner, since it keeps.
+    jitsusama.quickshell.overview.pieces.mail = {
+      order = 61;
+      source = ./NewMail.qml;
+      label = "mail";
+      tier = "when";
+      mark = "mail";
     };
 
     # A Meet call, wearing the call mark Tuple's does, since it's a call

@@ -1258,9 +1258,9 @@
     a meeting about to start by its name, says it in Now's Today and as a want with its notice a
     minute before, shows one further off with who's asked and how each answered, answers its
     invitation, cancels one Joel holds once he's sure, and lists its Meet call in Now while it's
-    open, says Google signed out in Now with Return signing in again in pi, opens mail by its
-    subject, marks it read and archives it, sets the volume, loses no letter typed after its
-    chord, and shows the shortcuts
+    open, says Google signed out in Now with Return signing in again in pi, counts the mail that
+    wants Joel in Now with Return showing it, opens mail by its subject, marks it read and
+    archives it, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
