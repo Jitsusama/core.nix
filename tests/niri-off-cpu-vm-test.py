@@ -90,8 +90,11 @@ def test_a_wait_in_epoll_says_who_woke_it_and_through_which_file(traced: str) ->
 def test_a_sleep_says_the_timer_that_woke_it(traced: str) -> None:
     """A sleep says the timer that woke it."""
     sleeps = spells(traced, "nanosleep")
-    assert sleeps, traced
-    assert all("hrtimer_wakeup" in sleep.split("woken")[1] for sleep in sleeps), traced
+    # A waking can go unseen, as the trace ends or inside another probe, so only the sleeps
+    # whose waker was seen are held to it, as with the waits in epoll.
+    woken = [sleep for sleep in sleeps if "woken unseen" not in sleep]
+    assert len(woken) >= LEAST_SLEEPS, traced
+    assert all("hrtimer_wakeup" in sleep.split("woken")[1] for sleep in woken), traced
 
 
 def test_times_are_on_the_machines_monotonic_clock(machine: BaseMachine, traced: str) -> None:

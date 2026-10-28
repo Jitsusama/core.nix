@@ -119,7 +119,8 @@ Scope {
         if (text.length < 3)
             return null;
         for (const source of sources) {
-            const question = source.questions.find(asked => asked.startsWith(text));
+            const question = source.questions.find(asked => asked.startsWith(text)
+                && !oldWords[asked]);
             if (question === undefined)
                 continue;
             const said = started(source, question, fresh);
@@ -146,6 +147,17 @@ Scope {
     // What each word asking an answer names it, as the vocabulary does, so
     // a step into an answer is named as the thing it is ("cpu" is
     // Processor), not as what was typed.
+    // The names things had, as they're typed, each as it was written, so
+    // a name had asks only whole ("sto" asks nothing of the disk) and its
+    // answer says what it was once called.
+    readonly property var oldWords: {
+        const out = {};
+        for (const entry of Object.values(Words.things))
+            for (const old of entry.once ?? [])
+                out[old.toLowerCase()] = old;
+        return out;
+    }
+
     readonly property var answerNames: {
         const out = {};
         for (const id of Object.keys(Words.things)) {
@@ -264,6 +276,8 @@ Scope {
             name: said.headline,
             chip: asked,
             title: said.title ?? answerNames[asked] ?? root.capitalised(asked),
+            // Asked by a name it had, it says so, as a row found by one does.
+            once: oldWords[asked] ? [oldWords[asked]] : [],
             glyph: said.glyph ?? first.glyph,
             graph: said.graph,
             hue: said.hue ?? first.hue,
@@ -391,6 +405,8 @@ Scope {
         stays: answer.stays ?? false,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
+        // Asked by a name it had, it says so, as a row found by one does.
+        once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
         run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
@@ -425,8 +441,8 @@ Scope {
     readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
         .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
-        .map(withSynonyms)
         .concat(collections.map(named), categories)
+        .map(withSynonyms)
     readonly property var collections: sources.filter(source => source.collection)
 
     // Each row by its key, and the rows that are parts of another (`of`
@@ -539,8 +555,10 @@ Scope {
             trail: trail.map(row => steadyId(row)),
             spot: steadyId(part),
             stays: true,
-            prepared: Fuzzy.prepare(part.name)
+            prepared: Fuzzy.prepare(part.name),
+            once: oldNames(part)
         };
+        spot.olds = spot.once.length > 0 ? Fuzzy.prepare(spot.once.join(" ")) : null;
         spot.run = () => root.goTo(spot);
         return spot;
     }
@@ -557,7 +575,9 @@ Scope {
         }
         const found = [];
         for (const spot of spots) {
-            const m = Fuzzy.match(spot.prepared, words, false);
+            // By its name, or else by a name it had.
+            const byName = Fuzzy.match(spot.prepared, words, false);
+            const m = byName.score < 0 && spot.olds ? Fuzzy.match(spot.olds, words, false) : byName;
             if (m.score >= 0)
                 found.push({ item: spot.prepared, score: m.score, grade: m.grade, row: spot });
         }
@@ -1364,12 +1384,35 @@ Scope {
         return out;
     }
 
-    // A row's own words, with those a machine adds for it
-    // (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's finds
-    // it. Made once for each row, and never twice for the same one.
+    // The names a row had before the glossary renamed it (words.json's
+    // `once`, or the row's own for one whose key isn't a word's, as a
+    // connection's): they still find it, and are never shown, so a rename
+    // never loses a row (Joel, 2026-10-26: "i didn't know its name had
+    // changed, i was used to calling it caffeinate").
+    function oldNames(row) {
+        const id = String(row.key ?? "").replace(/^(?:category|collection|answer|place):/, "");
+        return row.once ?? row.category?.once ?? Words.of(id).once ?? [];
+    }
+
+    // "Once called Caffeinate." below a row found by a name it had and not
+    // by its own, so the new name is learned as it's used.
+    function onceCalled(row) {
+        const typed = Fuzzy.plainly(root.typed);
+        if (typed === "" || startsAWord(row.name ?? "", typed))
+            return "";
+        const old = oldNames(row).find(name => {
+            const plain = Fuzzy.plainly(name);
+            return plain.startsWith(typed) || typed.startsWith(plain);
+        });
+        return old ? `Once called ${old}.` : "";
+    }
+
+    // A row's own words, with the names it had and those a machine adds
+    // for it (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's
+    // finds it. Made once for each row, and never twice for the same one.
     function withSynonyms(row) {
-        const more = Providers.launcher.synonyms[row.key];
-        if (!more || row.synonymised)
+        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
+        if (more.length === 0 || row.synonymised)
             return row;
         row.keywords = Fuzzy.prepare([row.keywords ? row.keywords.text : ""].concat(more)
             .join(" ").trim());
@@ -1471,6 +1514,7 @@ Scope {
             name: collection.title ?? collection.noun,
             plain: true,
             count: counted ? source.counted() : "",
+            note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
@@ -1880,6 +1924,10 @@ Scope {
         const listed = Date.now();
         latch = "";
         foundHere = {};
+        // What the rows' time went on, for a first letter that's slow
+        // (Joel's own openings put 215 to 271 ms there): matching every
+        // choice, ordering what was found, or making the rows shown.
+        let costs = null;
         if (words.length === 0) {
             candidates = [];
             root.found = home();
@@ -1889,7 +1937,8 @@ Scope {
             // What the next letter narrows from: everything found, and a
             // collection held back only for being too short yet.
             const early = [];
-            for (const choice of narrowing ? candidates : choices) {
+            const looked = narrowing ? candidates : choices;
+            for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
                 // and kept for a word past the whole's name.
                 if (choice.of && partHidden(choice, words)) {
@@ -1929,6 +1978,7 @@ Scope {
                     });
             }
             candidates = found.map(f => f.choice).concat(early);
+            const matchedAll = Date.now();
             const learned = picks.weights(letters);
             const here = {};
             for (const f of found)
@@ -1944,19 +1994,25 @@ Scope {
                 picked: learned,
                 often: often
             });
-            root.found = ordered.map(f => Object.assign({
+            const orderedAll = Date.now();
+            const made = ordered.map(f => Object.assign({
                 byWord: f.byWord === true,
                 times: (learned[f.choice.key] ?? { times: 0 }).times,
                 grade: f.grade,
                 tier: f.tier,
                 kept: !!learned[f.choice.key]
-            }, f.choice)).concat(spotted(letters));
+            }, f.choice));
+            const madeAll = Date.now();
+            root.found = made.concat(spotted(letters));
+            costs = { matching: matchedAll - listed, ordering: orderedAll - matchedAll,
+                making: madeAll - orderedAll, spots: Date.now() - madeAll, looked: looked.length,
+                found: found.length };
         }
         const matched = Date.now();
         compose(true);
         list.positionViewAtBeginning();
         searchParts = { lists: listed - began, rows: matched - listed,
-            answers: Date.now() - matched, each: listsTook };
+            answers: Date.now() - matched, each: listsTook, within: costs };
     }
 
     // What the last search at the top level spent its time on, or null for
@@ -2798,6 +2854,9 @@ Scope {
                                 return "";
                             if (choice.state)
                                 return choice.state();
+                            const once = root.onceCalled(choice);
+                            if (once !== "")
+                                return once;
                             if ((choice.note ?? "") !== "")
                                 return choice.note;
                             if (choice.plain && root.answer)

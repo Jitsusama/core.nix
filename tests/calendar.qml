@@ -1,5 +1,5 @@
-// Which meeting is next, when it is in words and whether it's about to
-// start, from meetings like the google program's, run in Qt's own
+// Which meeting is next, when it is in words, whether it's about to start,
+// how Joel answered it and the line answering it, from meetings like the google program's, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-shell-tells-the-next-meeting` check copies Calendar.js beside this
 // file and runs `qml -platform offscreen calendar.qml`. Times are made on
@@ -106,15 +106,26 @@ QtObject {
                 Calendar.aboutToStart(standup, time), meant);
         check("nothing is about to start", Calendar.aboutToStart(null, now), false);
 
-        // What the socket says.
-        check("a state line", Calendar.heard(
-            '{"account":"ready","meetings":[],"heard":1793042446024}'),
-            { account: "ready", meetings: [], heard: 1793042446024 });
-        check("a state with nothing heard yet", Calendar.heard(
-            '{"account":"none","meetings":[],"heard":null}'),
-            { account: "none", meetings: [], heard: null });
-        check("half a line", Calendar.heard('{"account":"rea'), null);
-        check("a line that isn't the state", Calendar.heard('{"hello":1}'), null);
+        // How he answered, and his answer: [answer, said, invited]
+        const answers = [
+            ["yes", "going", true],
+            ["maybe", "maybe", true],
+            ["no", "not going", true],
+            ["waiting", "not answered", true],
+            [null, "", false]
+        ];
+        for (const [answer, said, invited] of answers) {
+            const one = meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: answer });
+            check(`answered ${answer}`, Calendar.answered(one), said);
+            check(`${answer} is an invitation`, Calendar.invited(one), invited);
+        }
+        check("an answer beside the times", Calendar.about(
+            meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: "maybe" })),
+            "14:00 to 14:30, maybe");
+        check("a meeting he holds says its times alone", Calendar.about(
+            meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
+        check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
+            '{"answer":{"id":"abc_1","with":"no"}}\n');
 
         for (const failure of failures)
             console.warn(failure);

@@ -88,6 +88,10 @@
   booted-generation-stays-installed = ''
     a switch never removes the generation the machine booted
   '';
+  btop-backs-out-on-escape = ''
+    btop's Escape backs out a step, off a process chosen and then out of btop, rather than opening its
+    menu
+  '';
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
   '';
@@ -285,6 +289,9 @@
     and answers an invitation the shell asks it to, changing only Joel's own answer, and tells it
     the mail that wants Joel, newest first, each asked for once, marking it read or archiving it
     when asked
+  '';
+  google-switches-to-the-new-one = ''
+    a switch restarts google after reloading its units
   '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
@@ -610,6 +617,10 @@
   pnpm-keeps-one-store = ''
     pnpm 10 and 12 find an account's one store from what its shells and user manager are given
   '';
+  programs-nobody-starts-stay-unlisted = ''
+    the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
+    reads them, while the programs stay installed
+  '';
   qemu-starts-after-its-sockets = ''
     the qemu VM tests run starts once the sockets it connects to are there, and fails naming one
     that never comes, ending what its script started
@@ -864,6 +875,10 @@
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
   '';
+  the-launcher-finds-the-queue = ''
+    the launcher's queue names each job in words, running first, says its time against its last
+    run or what it waits for, its quest and memory, and goes to its session or copies its name
+  '';
   the-launcher-finds-the-runs = ''
     the launcher lists the day's fleets and councils, running first, with progress or cost and time,
     goes to their session, opens an answer whole, and hides amounts while sharing
@@ -915,6 +930,10 @@
     docs/glossary.md replaces, but the other senses and the renames still waiting that
     tests/launcher-shown.py lists, each printed with its word, and the check refuses a stand-in
     vocabulary breaking each of its rules
+  '';
+  the-launcher-shows-today-in-now = ''
+    Now's last row is Today: the date, the weather read as the launcher opens and kept while it's
+    asked again, and the next meeting, whose Return is the meeting's own, or a step in without one
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
@@ -1043,9 +1062,15 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-reads-the-mail = ''
+    the shell reads the google program's whole state from its file, a line from before mail
+    included, and nothing from half a line; says when mail came in words; and writes the lines
+    that mark mail read or archive it
+  '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
-    no to, says when it is in words, and when it's about to start
+    no to, says when it is in words, when it's about to start and how Joel answered it, and writes
+    the line that answers it
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1182,8 +1207,8 @@
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting by its name, sets the volume, loses no letter typed after its chord, and shows the
-    shortcuts
+    a meeting by its name and answers its invitation, opens mail by its subject, marks it read and
+    archives it, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1418,6 +1443,10 @@
   zathura-accepts-its-configuration = ''
     zathura opens a page with the account's settings and stays open without a warning, and PDFs open
     in it
+  '';
+  zathura-keys-go-where-they-say = ''
+    zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
+    and the question mark key asks the launcher for the keys
   '';
   zsh-is-the-login-shell = ''
     an account on NixOS logs in to zsh, as one on a Mac does

@@ -31,7 +31,9 @@ or launchd, and [`home.nix`][2] the account's.
   after a week. What belongs to something that has ended goes once it
   rests: a concluded or retired quest's scratch ten minutes after its last
   write, and the builds in every tree its README lists, at once, whatever
-  the band. `src/plan.rs` holds the table.
+  the band. So do the builds in a tree the tree broker's records say no
+  running process holds, unless a quest still going lists it.
+  `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables

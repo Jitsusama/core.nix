@@ -1,0 +1,18 @@
+--- a/zathura/shortcuts.c
++++ b/zathura/shortcuts.c
+@@ -817,6 +817,15 @@
+       zathura_jumplist_backward(zathura);
+     }
+     break;
++  case TOGGLE:
++    /* A jump leaves where it came from just before where it went, so from
++     * the newest place this goes back, and from there forward again. */
++    if (zathura_jumplist_has_next(zathura)) {
++      zathura_jumplist_forward(zathura);
++    } else {
++      zathura_jumplist_backward(zathura);
++    }
++    break;
+   }
+   jump = zathura_jumplist_current(zathura);
+ 

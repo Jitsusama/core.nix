@@ -57,7 +57,8 @@ def spoken(entry: Entry) -> list[tuple[str, str]]:
         said.extend((WORD, word) for word in state.get("hidden", []))
     # A collection's noun finds it as its words do (Launcher.qml's named).
     nouns = [entry["noun"]] if "noun" in entry else []
-    said.extend((WORD, word) for word in [*entry.get("words", []), *nouns])
+    # The names it had find it as its other words do (Launcher.qml's oldNames).
+    said.extend((WORD, word) for word in [*entry.get("words", []), *nouns, *entry.get("once", [])])
     said.extend((ANSWER, word) for word in entry.get("answers", []))
     return [(strength, plainly(word)) for strength, word in said]
 

@@ -1,6 +1,9 @@
 # The checks of google, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
+  graphical,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -10,6 +13,13 @@
 }:
 # google serves the Linux desktop's shell, and builds only on Linux.
 onLinux {
+  # A switch restarts google after it reloads the units, so the program the
+  # shell reads is never the one from before the switch.
+  google-switches-to-the-new-one =
+    holds "google-switches-to-the-new-one"
+      "A switch stops google before reloading, so google.path starts the old one again."
+      (((account graphical).systemd.user.services.google.Unit.X-SwitchMethod or null) == "restart");
+
   # google's tests run as it builds: the harness's file is read for its
   # default or first account and never written, pi's fresh token is used
   # and a stale one refreshed in memory, a refused sign-in is signed out
@@ -29,7 +39,7 @@ onLinux {
 
   # Which meeting is next, when it is in words and whether it's about to
   # start are Calendar.js's, run in Qt's own engine over meetings like the
-  # program's (tests/calendar.qml), as is reading the socket's lines.
+  # program's (tests/calendar.qml).
   the-shell-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -41,6 +51,25 @@ onLinux {
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml calendar.qml
+      touch $out
+    '';
+
+  # Reading the program's file is Google.js's, and when mail came and the
+  # lines marking it read or archiving it Mail.js's, run in Qt's own engine
+  # (tests/mail.qml).
+  the-shell-reads-the-mail =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-shell-reads-the-mail" { } ''
+      cp ${../../tests/mail.qml} mail.qml
+      cp ${./Google.js} Google.js
+      cp ${./Mail.js} Mail.js
+      cp ${./Calendar.js} Calendar.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml mail.qml
       touch $out
     '';
 

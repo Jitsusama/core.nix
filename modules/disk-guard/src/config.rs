@@ -181,8 +181,16 @@ pub enum Source {
         pattern: String,
         command: String,
     },
-    /// Quest workspaces, judged by their quest's README.
-    Workspaces { path: PathBuf, quests: PathBuf },
+    /// Quest workspaces, judged by their quest's README. `trees`, when
+    /// given, is a tree broker's records, one JSON file per tree naming
+    /// its `path` and the `owners` holding it: a tree none of them still
+    /// holds, and no quest going lists, has its builds spent.
+    Workspaces {
+        path: PathBuf,
+        quests: PathBuf,
+        #[serde(default)]
+        trees: Option<PathBuf>,
+    },
     /// A temporary directory's per-run leftovers: the one named, or the
     /// account's own, which on a Mac is a folder of its own under
     /// /var/folders rather than /tmp.
@@ -280,7 +288,15 @@ impl Source {
             Source::Cargo { roots, .. } | Source::Installs { roots, .. } => {
                 roots.iter().map(PathBuf::as_path).collect()
             }
-            Source::Workspaces { path, quests } => vec![path, quests],
+            Source::Workspaces {
+                path,
+                quests,
+                trees,
+            } => [path, quests]
+                .into_iter()
+                .chain(trees)
+                .map(PathBuf::as_path)
+                .collect(),
             Source::Cache { path, .. }
             | Source::Scratch { path, .. }
             | Source::Snapshots { path, .. }

@@ -256,6 +256,7 @@ let
       "pi"
       "swayimg"
       "inlyne"
+      "zathura"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -430,6 +431,8 @@ let
     swayimg = nerd "f02e9";
     # The theme's document, as the reader shows documents.
     inlyne = nerd "f0219";
+    # The theme's book, as the viewer shows documents of pages.
+    zathura = nerd "f05da";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };
@@ -508,6 +511,7 @@ let
     agents = ./launcher/Agents.qml;
     orchestrators = ./launcher/Orchestrators.qml;
     quests = ./launcher/Quests.qml;
+    queue = ./launcher/Queue.qml;
     runs = ./launcher/Runs.qml;
     byhand = ./launcher/ByHand.qml;
   };
@@ -836,8 +840,9 @@ in
       };
       description = ''
         Other words that find a row, by the key it's learned by (the
-        launcher's picks file names them). They find it, never name it: a
-        row found by one shows the word in quotes after its name.
+        launcher's picks file names them). They find it, never name it, and
+        the row shows as it always does. A name the row once had belongs in
+        the vocabulary's `once` instead, which says so below it.
       '';
     };
     words = lib.mkOption {
@@ -1115,6 +1120,13 @@ in
       quests = {
         order = 111;
         source = "quests";
+        weight = 0.9;
+      };
+      # The machine's queue: the heavy work running and waiting its turn,
+      # each job going to the session it's for.
+      jobs = {
+        order = 111;
+        source = "queue";
         weight = 0.9;
       };
       # pi's fleets and review rounds of the last day, and those running,

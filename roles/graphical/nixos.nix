@@ -13,7 +13,8 @@
 # with: swayimg, which opens pictures and drawings, zathura, which opens
 # documents, inlyne, which opens markdown files as pages, GIMP, Inkscape, mpv, which opens video, the camera, Spotify
 # and Tuple. When a program asks what to open something with, the launcher
-# asks rather than GNOME's dialog. A chord, tapped or held, types what Joel
+# asks rather than GNOME's dialog, and the programs nobody starts from it
+# stay out of it. A chord, tapped or held, types what Joel
 # says where he's typing. The compositor and sound get the CPU and memory
 # before anything Joel starts, and calls, music and what he waits on get the
 # network before the work he started, and a write a program makes behind an
@@ -52,6 +53,7 @@
     nixosModules.slices
     nixosModules.swayimg
     nixosModules.tcp
+    nixosModules.unlisted
     nixosModules.usb-camera-holders
     nixosModules.zathura
   ];

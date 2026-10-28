@@ -8,8 +8,10 @@ called. A word that isn't here yet hasn't been settled, and a word under
 
 The words are kept in bounded contexts, one section each. Inside a context,
 each concept has one term, and the term is what's written, what's shown and
-what Joel types: there are no synonyms, so an old name finds nothing and a
-term is learned once. A word may mean its own thing in another context, and
+what Joel types: there are no synonyms, so a term is learned once. An old
+name still finds what it named, never shown, so a rename loses nothing
+(Joel, 2026-10-26: "i didn't know its name had changed, i was used to
+calling it caffeinate"). A word may mean its own thing in another context, and
 the launcher's place, with its crumbs, says which: Network › Address is the
 machine's, Agents › Sessions › Language › Address is a session's.
 
@@ -19,8 +21,9 @@ Each table has the same columns:
   In prose it's in lower case unless it's a name, such as Bluetooth or Keep
   Awake, which is written as its title everywhere.
 - **Means**: what it is, in a few plain words.
-- **Not**: names it replaces. They're never written, shown or found for
-  anything, in any context.
+- **Not**: names it replaces. They're never written or shown, in any
+  context; typed, one still finds the thing it named, whose row says
+  "Once called" it.
 - **In code**: how code spells it, where code has to spell it otherwise, such
   as a program's name for a module or NixOS's own option.
 
@@ -56,7 +59,7 @@ which are core.nix's own.
   view onto the others' rows, each kept in its own place, with one row of its
   own, Today. A filling disk shows in Now, with its forecast, while it fills.
 - **Agents uses Machine's queue**: a session's heavy work waits there, shown on
-  the session as what it's waiting on.
+  the session as what it's waiting on, and listed whole in Agents' Queue.
 - **Disk acts on Machine's jobs**: the disk guard freezes and thaws them.
 - **Security seals Disk and signs Agents' work**: the TPM unlocks the disk,
   and Joel's key and the agents' key sign commits.
@@ -152,6 +155,10 @@ answered yes, maybe or no; mail can be read, marked unread and archived.
 | calendar | Joel's meetings in his Google account, and the place in Programs holding them | | Google Calendar |
 | meeting | an event on Joel's calendar with a call or with others | | |
 | invitation | a meeting someone asks Joel to, answered yes, maybe or no | | |
+| going | an invitation Joel answered yes | accepted | `yes` |
+| maybe | an invitation Joel answered maybe | tentative | |
+| not going | an invitation Joel answered no | declined | `no` |
+| not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | join | going into a meeting's call, or a call another sends | | |
 

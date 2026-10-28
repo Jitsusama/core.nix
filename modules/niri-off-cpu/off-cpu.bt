@@ -111,8 +111,11 @@ tracepoint:sched:sched_switch
       @state == 1 ? "asleep" : (@state == 2 ? "blocked" : "preempted"),
       @holder == "" ? "nobody" : @holder,
       @stack);
+    // Something woke it, but the waking went unseen: the kernel skips a
+    // program that fires inside another on the same processor, and as the
+    // trace ends the waking's probe can go before this one.
     if (@woken == 0) {
-      printf("woken by nobody\n\n");
+      printf("woken unseen\n\n");
     } else if (@woken_through) {
       printf("woken by %s %d through fd %d %s%s\n",
         @waker, @waker_tid, @woken_fd, @woken_file, @waker_stack);

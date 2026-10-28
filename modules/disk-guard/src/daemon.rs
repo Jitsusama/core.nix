@@ -1627,16 +1627,32 @@ impl Guard {
             .clone();
         let (predicates, answers) = (&self.predicates, &mut self.answers);
         // A tree a finished quest cut is finished with it, whatever its
-        // branch says: its builds were the quest's.
+        // branch says: its builds were the quest's. So is one nobody holds
+        // any more, its builds having been its holders'. A pid holds its
+        // tree only while it runs as the process that started then; one
+        // that can't be read can't be ruled out, so holds it.
+        let running = |pid: u32, started: f64| {
+            processes.iter().any(|process| {
+                let since = boot.wall + crate::units::float(process.start_ticks) / boot.ticks;
+                process.pid == pid && (!process.readable || (since - started).abs() <= 2.0)
+            })
+        };
         let quests_over: Vec<PathBuf> = self
             .config
             .sources
             .values()
             .filter_map(|source| match source {
-                Source::Workspaces { quests, .. } => Some(quests),
+                Source::Workspaces { quests, trees, .. } => Some((quests, trees)),
                 _ => None,
             })
-            .flat_map(|quests| crate::workspaces::finished_trees(quests))
+            .flat_map(|(quests, trees)| {
+                let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
+                    crate::workspaces::unheld_trees(records, quests, running)
+                });
+                crate::workspaces::finished_trees(quests)
+                    .into_iter()
+                    .chain(unheld)
+            })
             .collect();
         let mut finished = |dir: &Path| {
             if quests_over.iter().any(|tree| dir.starts_with(tree)) {

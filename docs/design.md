@@ -570,9 +570,11 @@ works the same way everywhere.
   option `jitsusama.quickshell.launcher.words`): each thing's name as
   shown, the place it's in and the glyph it wears. A thing is named by
   its context's one term for it, the glossary's (`docs/glossary.md`), and
-  that term is what finds it: there are no synonyms and no hidden words,
-  and an old name finds nothing, so a renamed row is learned once (Joel,
-  2026-10-25: "i don't want 1,000 synonyms for similar ideas"). A word
+  that term is what finds it: there are no synonyms and no hidden words
+  (Joel, 2026-10-25: "i don't want 1,000 synonyms for similar ideas").
+  A rename never loses a row: the names it had (`once`, each one the
+  glossary replaces) still find it, never shown, and its note says "Once
+  called Caffeinate." so the new name is learned as it's used. A word
   may mean its own thing in another context, the crumbs saying which. A
   set is a plural noun ("Windows", "Quests"); an act is short, in
   sentence case, saying what it does ("Lock", "Keep awake", "Power
@@ -701,7 +703,10 @@ works the same way everywhere.
   (what the cards carry In and Out now, the Connection as the shaper last
   measured it and how full it is, the Round trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
-  too), "uptime" and "queue". The devices hold as much: "heat"
+  too) and "uptime". The queue is Agents', beside the sessions whose
+  heavy work it holds, and "queue" finds it: each job named in words,
+  its time against its last run or what it waits for, and its quest and
+  memory below. The devices hold as much: "heat"
   (each part against its critical point, the processor's Cores, the fans
   against what they're rated for, and how often it Throttled), Bluetooth
   (each device's Battery, Signal and Link quality, Codec and Connection,
@@ -820,18 +825,18 @@ comes along, and what to do.
   Ctrl reaches across to another screen.
 - **What to do is the same word in every layer:**
 
-  | Key          | Means                                    | Desktop        | Terminal        | Neovim, after Space |
-  | ------------ | ---------------------------------------- | -------------- | --------------- | ------------------- |
-  | arrows       | that way                                 | windows        |                 | splits              |
-  | Tab          | the one used last, the others by typing  | windows        | the next tab    | the file used last  |
-  | Page Up Down | the level above                          | workspaces     | tabs            |                     |
-  | 1 to 9       | that one, by number                      | workspaces     | tabs            | tabs                |
-  | Return       | open a new one                           | a terminal     |                 | a terminal          |
-  | T            | tabs                                     | column as tabs | a new tab       | tabs                |
-  | W            | close the one in focus                   | the window     | the tab         | the split           |
-  | Space        | find anything here                       | the launcher   | the scrollback  | anything            |
-  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's  | Neovim's            |
-  | Escape       | back out                                 | everywhere     | everywhere      | everywhere          |
+  | Key          | Means                                    | Desktop        | Terminal          | Neovim, after Space |
+  | ------------ | ---------------------------------------- | -------------- | ----------------- | ------------------- |
+  | arrows       | that way                                 | windows        |                   | splits              |
+  | Tab          | the one used last, the others by typing  | windows        | the tab used last | the file used last  |
+  | Page Up Down | the level above                          | workspaces     | tabs              |                     |
+  | 1 to 9       | that one, by number                      | workspaces     | tabs              | tabs                |
+  | Return       | open a new one                           | a terminal     |                   | a terminal          |
+  | T            | tabs                                     | column as tabs | a new tab         | tabs                |
+  | W            | close the one in focus                   | the window     | the tab           | the split           |
+  | Space        | find anything here                       | the launcher   | the scrollback    | anything            |
+  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's    | Neovim's            |
+  | Escape       | back out                                 | everywhere     | everywhere        | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
