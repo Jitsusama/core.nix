@@ -422,7 +422,6 @@ Provider {
             return null;
         return {
             headline: part.side,
-            copy: "",
             graph: part.graph,
             glyph: whole.glyph,
             rows: part.verbs ? part.verbs() : [],

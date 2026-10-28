@@ -165,7 +165,7 @@ Provider {
     // stepped into is made again as its player and streams change
     // (`playingNow`). Return copies nothing.
     function figure(key, name, side, graph) {
-        const row = copyRow({ key: key, name: name(), copy: "" });
+        const row = copyRow({ key: key, name: name(), side: side(), copy: "" });
         Object.defineProperties(row, {
             name: { enumerable: true, get: name },
             side: { enumerable: true, get: side }

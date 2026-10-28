@@ -305,7 +305,6 @@ Provider {
         return {
             headline: found.length === 1 ? found[0].part.side
                 : found.map(each => each.part.side).join(", "),
-            copy: "",
             glyph: Theme.glyph.camera,
             note: found.length === 1 ? called(found[0].name) : found[0].part.note,
             rows: found.length === 1 ? [] : found.map(each => shownAs({

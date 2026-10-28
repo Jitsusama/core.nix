@@ -298,7 +298,10 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("reads") == "Quarry take\nz.mp4"
     )
+    # Return's own act, copying what it said, leads; what it offers follows.
     desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy what it said", "Play it"])
+    machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
     machine.send_key("ret")
     assert desktop.answered() == "play", "a notice whose time was up lost what it offered"
@@ -557,11 +560,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     machine.send_key("meta_l-o")
     desktop.whats_on("Do Not Disturb")
     desktop.step_in()
-    if (desktop.showing()["selected"] or {}).get("name") != "Show what's held":
-        machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Show what's held"
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show what's held"])
+    desktop.type_in("show", selecting="Show what's held")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-held")
@@ -785,9 +785,11 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.photograph("notice-alone")
     # Leaving runs tuple call leave, which starts the stopped daemon,
     # whose new log ends the call. Super+N again opens the history on the
-    # newest notice's offers.
+    # newest notice's offers, Return's own Open first.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the call"])
+    machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))

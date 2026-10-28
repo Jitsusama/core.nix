@@ -96,7 +96,7 @@ Provider {
     }
 
     // One part as an answer: its figure as the headline, its own parts a
-    // step in, and Return copying it only where its row would.
+    // step in, and Return copying what it shows, as every value does.
     function alone(kind, name) {
         const whole = told(kind);
         const part = whole ? whole.rows.find(row => row.name === name) : null;
@@ -104,7 +104,7 @@ Provider {
             return null;
         return {
             headline: part.side,
-            copy: part.copied ?? "",
+            copy: part.copied ?? part.side ?? "",
             graph: part.graph,
             glyph: whole.glyph,
             hue: "machine",

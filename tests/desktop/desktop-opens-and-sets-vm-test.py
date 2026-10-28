@@ -508,11 +508,11 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
 ) -> None:
     """The launcher's Sound opens an output's and a microphone's parts."""
     machine = desktop.machine
-    # The speakers, in use, hold their Level, Volume, whether they're
-    # Muted, and Channels, named first; the null sink has no card, so
-    # nothing more.
+    # The speakers, in use, hold Return's own Mute, then their Level,
+    # Volume, whether they're Muted, and Channels, named first; the null
+    # sink has no card, so nothing more.
     sound_device(desktop, "speakers", "speakers")
-    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Level", "Volume", "Muted"])
+    desktop.launcher_until(lambda shown: shown["rows"][:4] == ["Mute", "Level", "Volume", "Muted"])
     desktop.launcher_until(lambda shown: "Channels" in shown["rows"])
     desktop.launcher_until(sound_reads("Channels", "stereo"))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -520,8 +520,10 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Level", "silent"))
     assert "Playing" not in desktop.showing()["rows"]
     desktop.photograph("launcher-sound-output-parts")
-    # Return on Volume steps into its choices, each level saying its
-    # decibels in the footer.
+    # Return on Volume, past Mute and the Level, steps into its choices,
+    # each level saying its decibels in the footer.
+    machine.send_key("down")
+    desktop.launcher_until(sound_selected("Level"))
     machine.send_key("down")
     desktop.launcher_until(sound_selected("Volume"))
     desktop.launcher_until(lambda shown: shown["footer"].endswith(" dB"))
@@ -539,7 +541,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Volume", "50%"))
     # The right arrow on Muted holds Mute and Unmute, Unmute in use, and
     # Return on Mute mutes the speakers; then Unmute, its Return, unmutes.
-    for _down in range(2):
+    # Muted is the fourth row, after Return's own Mute, Level and Volume.
+    for _down in range(3):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Muted"))
     desktop.step_in()
@@ -558,12 +561,12 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     machine.wait_until_fails(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
-    # The microphone holds its own: a live Level, its Gain, whether it's
-    # Muted, and who's Recording, which is nobody, though the Level's own
-    # stream is reading it while it shows.
+    # The microphone holds its own after Return's Mute: a live Level, its
+    # Gain, whether it's Muted, and who's Recording, which is nobody,
+    # though the Level's own stream is reading it while it shows.
     sound_device(desktop, "microphone", "stand-in microphone")
     desktop.launcher_until(
-        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Muted", "Recording"],
+        lambda shown: shown["rows"][:5] == ["Mute", "Level", "Gain", "Muted", "Recording"],
     )
     desktop.launcher_until(sound_reads("Level", "%"))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -588,8 +591,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(lambda shown: "Recording" in shown["rows"])
     desktop.launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
     # The right arrow on Recording, then on the program, and Return mutes
-    # what it records.
-    for _down in range(3):
+    # what it records. Return's own Mute leads, so Recording is counted to.
+    for _down in range(desktop.showing()["rows"].index("Recording")):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Recording"))
     desktop.step_in()
@@ -913,11 +916,12 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         # Its settings lead, each saying how it's set, their choices a step
         # in, there by Return on the setting, or found from here by what's
         # typed. The backlight lights the one screen there is, so its
-        # Brightness comes first, and the Room light once the sensor's said.
+        # Brightness comes first after Return's own Focus, and the Room
+        # light once the sensor's said.
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"][:1] == ["Brightness"]
-                and [row for row in shown["rows"] if row != "Room light"][1:7]
+                shown["rows"][:2] == ["Focus", "Brightness"]
+                and [row for row in shown["rows"] if row != "Room light"][2:8]
                 == ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
             )
         )
@@ -998,12 +1002,12 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         f'{described} | grep -qF \'"reach":"signIn"\'', timeout=timedelta(seconds=60)
     )
-    # Its own first act is to sign in to it, beside Disconnect it.
+    # Return's act, Disconnect it, comes first, then signing in to it.
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to it", "Disconnect it"])
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Disconnect it", "Sign in to it"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")

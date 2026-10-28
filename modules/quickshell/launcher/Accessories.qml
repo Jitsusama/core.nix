@@ -571,7 +571,6 @@ Provider {
             };
         return {
             headline: `${told.length} connected`,
-            copy: "",
             glyph: glyph,
             note: "",
             rows: told.map(each => holderRow({

@@ -188,7 +188,8 @@ ShellRoot {
         expect("an hour's bar",
             hours[3].graph.shape === "bar" && hours[3].graph.values.length === 1
                 && hours[3].graph.values[0] === 0.9, JSON.stringify(hours[3].graph));
-        expect("an hour is a figure, copying nothing", hours[2].verb === "close", hours[2].verb);
+        expect("an hour is a figure, copying what it shows", hours[2].verb === "copy",
+            hours[2].verb);
 
         // The rain asked for itself, by its one word.
         for (const typed of ["rain", "Rain", "rain?"]) {

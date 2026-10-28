@@ -19,6 +19,15 @@ const DEEPEST = 4;
 const LISTS = new Set(["clipboard", "emoji", "notices", "shortcuts", "characters", "jobs",
     "spend", "runs"]);
 
+// Of those, the ones long enough that a walk over every row leaves them
+// out: their rows are each made one way, and proven offscreen.
+const LONG = new Set(["clipboard", "emoji", "characters"]);
+
+// Whether a collection is one of the long lists.
+function long(source) {
+    return LONG.has(source);
+}
+
 // Collections whose things are listed, each one opened by its own run, but
 // not what each holds: every program's Quit and New window, every window's
 // Size, Float and workspaces, and every quest's own, would bury the rest a
@@ -59,6 +68,76 @@ function kindOf(row) {
     return holds && !row.run && !row.given ? "place" : "action";
 }
 
+// What a row's name says without what it's done to, "Turn it off" as
+// "turn off".
+const DONE_TO = / (?:it|them)\b/;
+
+// Whether a row inside does this act: its verb is it, or its name is it
+// or starts with it ("Disconnect it", "Copy what it said"). Every figure
+// copies its own value, which isn't copying the row it's in, so a copy is
+// known by its name alone.
+function saysAct(one, said) {
+    if (said !== "copy" && verbOf(one).toLowerCase() === said) {
+        return true;
+    }
+    const name = String(one.name ?? "").toLowerCase().replace(DONE_TO, "");
+    return name === said || name.startsWith(`${said} `);
+}
+
+// What a step into a row holds, as the right arrow and the catalogue
+// both show it: everything it can be told, Return's own act first, even
+// where its provider left it out, so the right arrow always does more
+// than Return and never less (Joel's concept map: Return is the default
+// act and the right arrow does more; agreed with 15J7N3 for every row).
+// A row that only steps in, asks first or asks for words has no act of
+// its own to add, nor does one holding nothing. One giving both its verbs
+// and its targets holds rows, as a holder, a talk or a meeting's See It
+// does, so its Return is the step itself. One already inside, by its
+// verb or its name, is moved first rather than said twice.
+function leading(row, inside) {
+    const holds = !!row.verbs && !!row.targets;
+    if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given || holds) {
+        return inside;
+    }
+    const verb = verbOf(row);
+    const said = verb.toLowerCase();
+    if (said === "") {
+        return inside;
+    }
+    const already = inside.findIndex(one => saysAct(one, said));
+    if (already === 0) {
+        return inside;
+    }
+    if (already > 0) {
+        return [inside[already]].concat(inside.slice(0, already), inside.slice(already + 1));
+    }
+    // Every field a provider's row has (Provider.qml's `thing`), so the
+    // list draws it as it draws them; the launcher prepares its name.
+    const own = {
+        key: `return:${said}`,
+        name: verb.charAt(0).toUpperCase() + verb.slice(1),
+        verb,
+        what: "",
+        chord: [],
+        side: "",
+        count: "",
+        context: "",
+        note: "",
+        below: null,
+        verbs: null,
+        plain: false,
+        later: false,
+        now: false,
+        glyph: row.glyph ?? "",
+        hue: "action",
+        stays: row.stays === true,
+        // Asked through the row, so a run that depends on how the row
+        // stands now, a program's switch or start, is read when it's done.
+        run: () => row.run()
+    };
+    return [own].concat(inside);
+}
+
 // Whether the catalogue lists it: a row with a name that does something
 // or holds more, never a figure, a copy of what's shown, a command's
 // start to finish in the field, or a thing that's gone.
@@ -78,6 +157,23 @@ function listed(row) {
     }
     const verb = verbOf(row);
     return verb !== "copy" && verb !== "close" && (!!row.run || !!row.given);
+}
+
+// Whether Return does something on a row (Joel, 2026-10-26: every row
+// has a Return act; a row that holds more steps in, a row that only shows
+// a value copies it, and a row that can do neither doesn't belong in the
+// launcher). One still being read, whose value is an ellipsis, isn't held
+// against it, since it copies once it's read.
+function acts(row) {
+    if (!row || row.gone || row.side === "\u2026") {
+        return true;
+    }
+    const steps = !!row.verbs || !!row.targets || !!row.nested || !!row.category
+        || !!row.opens || !!row.from;
+    if (steps || !!row.given || row.start !== undefined) {
+        return true;
+    }
+    return !!row.run && !(row.figure === true && verbOf(row) === "close");
 }
 
 // Whether what a row holds is listed too, at `depth` below home, inside

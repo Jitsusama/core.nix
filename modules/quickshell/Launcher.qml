@@ -372,7 +372,7 @@ Scope {
                 return;
             steps[at] = Object.assign({}, was, {
                 row: row,
-                rows: Steady.kept(was.rows, row.verbs(), steadyId)
+                rows: Steady.kept(was.rows, led(row, row.verbs()), steadyId)
             });
             // The list it was stepped into from says it as it is now too,
             // for the way back out.
@@ -481,9 +481,10 @@ Scope {
     // details from a root view that would put me in the hierarchy"). Only
     // what a thing reads or holds is a spot; what it does, such as
     // Disconnect, is said once for each thing and would be found many
-    // times over. Made once an opening, by the first search of three
-    // letters or more, of the collections whose things are devices, few
-    // and read whole, so a search after it never reads them again.
+    // times over. Made a moment after each closing (spotsLater), and by
+    // the first search of three letters or more when none were made yet,
+    // of the collections whose things are devices, few and read whole, so
+    // a search never reads them again.
     readonly property var spotCollections: ["sound", "bluetooth", "displays", "wifi",
         "keyboard", "cameras"]
     readonly property int spotsFewest: 3
@@ -634,6 +635,38 @@ Scope {
         return out;
     }
 
+    // Every row Return does nothing on, and how many rows there were,
+    // from home down as stepping in
+    // shows them, each with where it sits, for the check that fails any
+    // (Joel, 2026-10-26: every row has a Return act). It walks deeper
+    // than the catalogue and into each program, window and quest, but not
+    // into the long lists, the clipboard's or the emoji, whose rows are
+    // all made one way and are proven offscreen.
+    readonly property int actlessDeepest: 6
+
+    function actless() {
+        const out = [];
+        const seen = new Set();
+        const walk = (rows, above, ids, names, depth) => {
+            for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
+                const path = ids.concat([steadyId(row)]);
+                const id = path.join(catalogueStep);
+                if (!seen.has(id)) {
+                    seen.add(id);
+                    if (!Catalogue.acts(row))
+                        out.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    if (depth < actlessDeepest && !(row.opens && Catalogue.long(row.opens)))
+                        walk(catalogueHolds(row, above === null || collects({ row: above })),
+                            row, path, names.concat([row.name]), depth + 1);
+                }
+            }
+        };
+        walk(home(), null, [], [], 0);
+        // How many it walked too, so a check that finds none knows it
+        // looked.
+        return { walked: seen.size, rows: out };
+    }
+
     // What a row holds as `enter` shows it stepped into: from home or a
     // collection (`things`), what can be done to it, then its parts, a
     // collection's own among them, as a step into it lists them (Agents'
@@ -643,7 +676,8 @@ Scope {
     function catalogueHolds(row, things) {
         try {
             const making = things ? row.verbs : row.targets;
-            const own = making ? making() ?? [] : [];
+            const made = making ? making() ?? [] : [];
+            const own = things ? led(row, made) : made;
             const places = things && row.from ? partsOf(row.from) : [];
             return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
@@ -1594,6 +1628,25 @@ Scope {
         return !!step.row.from || !!step.row.nested;
     }
 
+    // What a row holds, led by Return's own act where it was left out
+    // (Catalogue.js), that act's name prepared to be found as a
+    // provider's rows are.
+    function led(row, made) {
+        const own = Catalogue.leading(row, made);
+        if (own !== made && String(own[0].key).startsWith("return:"))
+            own[0].prepared = Fuzzy.prepare(own[0].name);
+        return own;
+    }
+
+    // What a step into a row lists of its own: a thing's verbs, led by
+    // Return's act, or a verb's targets; null where it holds none. Made the
+    // same way when a step is made again, so a refresh never finds the
+    // act it led with gone.
+    function stepRows(row, things) {
+        const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        return things && made ? led(row, made) : made;
+    }
+
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
     function enter(row) {
@@ -1610,7 +1663,7 @@ Scope {
             return true;
         }
         const things = held.length === 0 || collecting;
-        const own = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        const own = stepRows(row, things);
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
@@ -1692,8 +1745,7 @@ Scope {
             const step = steps[at];
             const thing = rows.find(row => sameRow(row, step.row));
             const things = at === 0 || collects(steps[at - 1]);
-            const own = !thing ? null : things ? (thing.verbs ? thing.verbs() : null)
-                : thing.targets ? thing.targets() : null;
+            const own = !thing ? null : stepRows(thing, things);
             const parts = thing && things ? partsIn(thing) : [];
             const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
             if (!into)
@@ -2234,6 +2286,11 @@ Scope {
         function laidOut(): string {
             return root.laidOut();
         }
+
+        // Every row Return does nothing on, as JSON, for the check.
+        function actless(): string {
+            return JSON.stringify(root.actless());
+        }
     }
 
     // Every word drawn in an item, the item itself and all inside it, each
@@ -2384,10 +2441,7 @@ Scope {
             held = [];
             prompt.forget();
             often = picks.counts();
-            // What's inside things is read again for each opening, the
-            // first time a search needs it.
-            spotsMade = false;
-            spots = [];
+            spotsLater.stop();
             restart("");
             // Always the same height, eight rows and home's gap, kept until
             // it closes, so the card is the same shape however much home
@@ -2400,6 +2454,25 @@ Scope {
         } else {
             screenHere = focusedScreen;
             trials.closed();
+            spotsLater.restart();
+        }
+    }
+
+    // What's inside things is read again a moment after the launcher
+    // closes, from what it just showed, so the next opening has it
+    // ready. Read on the third letter instead, as it was, it held that
+    // key 115 to 250 ms once every opening (launcher-trials.json,
+    // 2026-10-26: "wha" 252 ms, "cpu" 248, "key" 211). The first opening
+    // after the shell starts still reads it on its third letter.
+    Timer {
+        id: spotsLater
+
+        interval: 500
+        onTriggered: {
+            if (!root.open) {
+                root.spots = root.spotsFrom();
+                root.spotsMade = true;
+            }
         }
     }
 

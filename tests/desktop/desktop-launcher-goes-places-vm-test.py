@@ -397,11 +397,15 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.answer("what is a fjord?")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
-    # A step in, talking it over with Lighthouse comes before asking in
-    # a session of its own.
+    # A step in leads with Return's own Copy, then talking it over with
+    # Lighthouse comes before asking in a session of its own.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:2] == ["Talk to Lighthouse", "Ask in a session"]
+        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a session"]
+    )
+    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
     machine.send_key("ret")
     # The question goes to its inbox with what was answered, and the
@@ -1251,15 +1255,15 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
         )
     )
     machine.fail(f"test -s {opened}")
-    # Back out, its acts start with joining, which goes into its call.
+    # Back out, its acts lead with seeing it, Return's own, and then
+    # joining, which goes into its call.
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
     )
     desktop.step_in()
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Join the Meeting"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "See It")
+    desktop.down_to("Join the Meeting")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/abc-defg-hij {opened}",
@@ -1281,7 +1285,8 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.step_in()
-    # Its acts: joining and seeing it first, then the three answers.
+    # Its acts: seeing it, Return's own, and joining first, then the three
+    # answers.
     for _ in range(6):
         if (desktop.showing()["selected"] or {}).get("name") == "Answer Maybe":
             break
@@ -1529,6 +1534,21 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # One not there says so.
     assert "error" in ran({"id": "nothing:here"})
+
+
+def test_every_row_has_a_return_act(desktop: Desktop) -> None:
+    """Every row the launcher shows does something on Return."""
+    # Joel, 2026-10-26: a row that holds more steps in, a row that only
+    # shows a value copies it, and a row that can do neither doesn't
+    # belong in the launcher. The launcher walks every row from home down.
+    said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+    actless = cast("list[Json]", said["rows"])
+    print(f"walked {said['walked']} rows")
+    # Home, its places, what each holds and deeper, which in the VM is a
+    # few hundred rows: a walk that stopped at home would find nothing wrong.
+    fewest = 100
+    assert said["walked"] > fewest, said["walked"]
+    assert actless == [], "\n".join(f"{row['in']} \u203a {row['words']}" for row in actless)
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
@@ -2218,23 +2238,19 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
 def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
     """A session's want counts only while its quest has something ready, or it's his."""
     desktop.pi_session()
-    presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence/testqa.json"
     waiting = "$HOME/.local/state/mission/waiting/TESTQA.json"
 
     def wants(kind: str, orchestrated: str | None = None) -> None:
-        read = {
-            "session": "01a1face-test",
-            "addresses": ["TESTQA"],
-            "busy": False,
-            "owns": ["QEST-20261022-TESTQA"],
-            "title": PI_WINDOW,
-            "orchestratedBy": orchestrated,
-            "wants": {"kind": kind, "since": "2026-10-26T00:00:00Z", "said": "Do it"},
-            "owner": {"startedAt": int(time.time() * 1000)},
-        }
-        desktop.as_account(
-            f"printf %s {shlex.quote(json.dumps(read))} > {presence}.q"
-            f" && mv {presence}.q {presence}"
+        """Say the session wants Joel, its record still naming its process and window."""
+        desktop.presence_says(
+            {
+                "session": "01a1face-test",
+                "addresses": ["TESTQA"],
+                "busy": False,
+                "owns": ["QEST-20261022-TESTQA"],
+                "orchestratedBy": orchestrated,
+                "wants": {"kind": kind, "since": "2026-10-26T00:00:00Z", "said": "Do it"},
+            }
         )
 
     def marked() -> bool:
