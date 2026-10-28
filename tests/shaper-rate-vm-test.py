@@ -53,10 +53,13 @@ UNSHAPED = 300
 ANSWERS = 20
 # CAKE's diffserv4 tins, in the order its counts list them.
 TINS = ["bulk", "best effort", "video", "voice"]
-# What an app's upload sends while the jobs' uploads go on, and the most of
+# What an app's uploads send while the jobs' uploads go on, and the most of
 # that the jobs may send meanwhile: CAKE leaves bulk a sixteenth while
-# anything else wants the line, where five flows shared evenly would leave
-# the jobs four times the app's.
+# anything else wants the line, where six flows shared evenly would leave
+# the jobs twice the app's. The app sends two, since one alone, short of
+# CPU in a VM on a host at a load of 40, left gaps in its queue that bulk
+# rightly filled, to over a fifth of the line.
+APP_FLOWS = 2
 APP_SENDS = 2_000_000
 JOBS_SHARE = 4
 # The most a link that carries no uploads sends between two looks a second
@@ -207,7 +210,8 @@ def test_app_upload(loaded: Rig) -> None:
     started = loaded.sent()["best effort"]
     loaded.client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=app-upload"
-        f" {BIN}/bash -c 'while true; do {BIN}/cat /dev/zero > /dev/tcp/{loaded.far}/5201; done'"
+        f" {BIN}/bash -c 'for i in $({BIN}/seq {APP_FLOWS}); do (while true; do"
+        f" {BIN}/cat /dev/zero > /dev/tcp/{loaded.far}/5201; done) & done; wait'"
     )
     retry(lambda _last_try: loaded.sent()["best effort"] - started >= APP_STARTS, timeout=SENDING)
     before = loaded.sent()
