@@ -891,9 +891,11 @@ in
       default = {
         program = "program";
         window = "window";
-        agent = "agent";
-        task = "task";
-        helper = "helper";
+        # Agents' own rows are its sessions (docs/glossary.md).
+        agent = "session";
+        quest = "quest";
+        subagent = "subagent";
+        orchestrator = "orchestrator";
         copy = "copy";
         notice = "notice";
         emoji = "emoji";
