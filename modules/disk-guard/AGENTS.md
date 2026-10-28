@@ -111,8 +111,9 @@ or launchd, and [`home.nix`][2] the account's.
   roots. Temporary roots are read again just before each delete, since an
   evaluation begun after the batch was made holds what it writes for
   minutes. Once a batch is refused anyway, the store is listed again and
-  none of the old listing's batches is offered meanwhile, since builds root
-  again what a listing called dead, within minutes of it. It expires
+  none of the old listing's batches goes to Nix meanwhile, not even the
+  rest of that pass's, since builds root again what a listing called
+  dead, within minutes of it. It expires
   generations, never the current, running or booted one, the
   newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing

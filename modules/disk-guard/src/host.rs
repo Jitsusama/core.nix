@@ -279,6 +279,11 @@ pub struct Reclaim<'a> {
     scan: &'a mut Scan,
     notes: Vec<String>,
     gentle: bool,
+    /// Whether a delete this pass met garbage come alive since the listing.
+    /// Builds root again what a listing called dead, hundreds of paths a
+    /// batch here, so its other batches would meet the same, each refused
+    /// whole for a look for roots, and are kept for a fresh listing.
+    stale: bool,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
 }
@@ -298,6 +303,7 @@ impl<'a> Reclaim<'a> {
             scan,
             notes: Vec::new(),
             gentle: false,
+            stale: false,
             band: Band::Healthy,
             pacer: None,
         }
@@ -324,6 +330,18 @@ impl<'a> Reclaim<'a> {
     pub fn gently(mut self) -> Self {
         self.gentle = true;
         self
+    }
+
+    /// Deletes a batch of Nix's garbage, unless one this pass was refused
+    /// for garbage come alive, which its listing's others would meet too.
+    fn collect(&mut self, nix: PathBuf, roots: PathBuf, paths: Vec<String>) -> Outcome {
+        if self.stale {
+            return Outcome::Kept("its listing was found stale this pass".to_owned());
+        }
+        let gentle = self.gentle;
+        let outcome = ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)));
+        self.stale = matches!(&outcome, Outcome::Failed(why) if garbage::stale(why));
+        outcome
     }
 
     /// What went wrong after a reclaim that freed its space anyway.
@@ -423,8 +441,7 @@ impl Reclaimer for Reclaim<'_> {
                 nix, roots, paths, ..
             } => {
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
-                let gentle = self.gentle;
-                ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)))
+                self.collect(nix, roots, paths)
             }
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {

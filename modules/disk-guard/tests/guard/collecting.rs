@@ -445,6 +445,36 @@ fn a_listing_found_stale_offers_no_more_batches_until_the_next_is_heard() {
     assert!(free.exists(), "refused with the batch");
 }
 
+#[test]
+fn a_pass_offers_nix_no_batch_after_one_is_found_stale() {
+    // Builds root again what a listing called dead, so on 28 October a
+    // pass that met it in one batch went on to meet it in every other,
+    // 37 deletes a minute each refused whole.
+    let store = Store::new();
+    // Largest first, so the four largest fill the first batch of 8 GiB.
+    for n in 0..8u64 {
+        let path = store.dead(&format!("held-{n}"), 10.0 * DAY, (2 << 30) + n);
+        fs::write(path.join("held"), "").unwrap();
+    }
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| {
+        store.log().iter().any(|line| line.starts_with("delete"))
+    });
+    for _ in 0..10 {
+        guard.step(&tick(), &CALM).unwrap();
+    }
+    let log = store.log();
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    let later = |line: &&String| (0..4).any(|n| line.contains(&format!("/held-{n}")));
+    assert!(
+        !log.iter()
+            .filter(|line| line.starts_with("delete"))
+            .any(|line| later(&line)),
+        "{log:?}"
+    );
+}
+
 /// The deletes that began a batch, naming all five of its paths: each try
 /// after a refusal leaves the refused path out.
 fn batches_begun(store: &Store) -> usize {
