@@ -103,14 +103,14 @@ Provider {
         });
     }
 
-    // What can be done to a notice: what its program offers while it's
-    // open, then copying what it said, then letting it go. Quickshell
+    // What can be done to a notice: what Return does first, then what its
+    // program offers while it's open, then copying what it said, then
+    // letting it go. Quickshell
     // destroys a notification's actions when it closes or its program
     // replaces it, so each is found again by its identifier when it's run;
     // one whose notice has gone by then goes to its program instead.
     function verbs(notice, said) {
         const live = Notices.live[notice.id] ?? null;
-        // The default is Return's on the notice itself, not one of these.
         const offered = live ? live.actions.filter(action => action.identifier !== "default")
             .map(action => ({
             identifier: action.identifier,
@@ -132,7 +132,7 @@ Provider {
                     provider.go(notice.app);
             }
         })) : [];
-        return offered.concat([thing({
+        return provider.leading(notice).concat(offered, [thing({
             key: "verb:notice:copy",
             name: "Copy what it said",
             glyph: Theme.glyph.copy,
@@ -159,6 +159,48 @@ Provider {
                     still.dismiss();
             }
         })] : []);
+    }
+
+    // Return's own acts, so the right arrow holds them too: opening what
+    // it's about while its sender still can, and going to its program,
+    // or opening it when no window of it is open.
+    function leading(notice) {
+        const from = source(notice.app);
+        const named = from.entry ? from.entry.name : notice.app;
+        const open = opens(notice) === null ? [] : [thing({
+            key: "verb:notice:open",
+            name: "Open",
+            verb: "open",
+            glyph: Theme.glyph.offer,
+            hue: "action",
+            now: true,
+            run: () => {
+                Notices.mark(notice.id, true);
+                const opening = provider.opens(notice);
+                if (opening)
+                    Notices.open(opening, notice.app);
+                else
+                    provider.go(notice.app);
+            }
+        })];
+        const program = from.window ? [thing({
+            key: "verb:notice:goTo",
+            name: `Go to ${named}`,
+            verb: "switch",
+            glyph: Theme.glyph.windows,
+            hue: "action",
+            later: true,
+            run: () => provider.go(notice.app)
+        })] : from.entry ? [thing({
+            key: "verb:notice:goTo",
+            name: `Open ${named}`,
+            verb: "open",
+            glyph: Theme.glyph.program,
+            hue: "action",
+            later: true,
+            run: () => provider.go(notice.app)
+        })] : [];
+        return open.concat(program);
     }
 
     // Made again only when the history changes, each with its age as of

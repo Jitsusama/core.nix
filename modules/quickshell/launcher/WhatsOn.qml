@@ -313,7 +313,9 @@ Provider {
 
     function made(fact) {
         const piece = fact.piece;
-        const actions = piece.actions.map(action => thing({
+        // Every act a piece has, where it keeps more than its notice can
+        // offer (pieces/Pi.qml's every).
+        const actions = (piece.every ?? piece.actions).map(action => thing({
             key: `verb:on:${fact.entry.mark}:${action.name}`,
             name: action.name,
             glyph: action.glyph,
@@ -334,7 +336,9 @@ Provider {
             glyph: Theme.glyph[fact.entry.mark],
             hue: Marks.tone(piece),
             plain: actions.length === 0,
-            verbs: actions.length > 1 ? () => actions.slice(1) : null,
+            // Return's act leads the right arrow, then the rest, so every
+            // act is there.
+            verbs: actions.length > 1 ? () => actions : null,
             run: () => {
                 if (actions.length > 0)
                     actions[0].run();

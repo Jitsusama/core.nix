@@ -237,6 +237,38 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
+def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_launcher(
+    desktop: Desktop,
+) -> None:
+    """A notice's right arrow holds what Return does first, on its card and in the launcher."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.listen()
+    with desktop.told("shows card Thread with Ana"):
+        desktop.as_account(
+            "notify-send --expire-time=60000 --action=default=Open --action=play='Play it'"
+            " 'Thread with Ana' 'see it' > /tmp/answer 2>&1 < /dev/null &"
+        )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    with desktop.told("notice verb Open"):
+        machine.send_key("right")
+    with desktop.told("notice verb Play it"):
+        machine.send_key("down")
+    with desktop.told("notice back"):
+        machine.send_key("left")
+    # Super+N again hands on to the history, where its row holds the same.
+    machine.send_key("meta_l-n")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
+    )
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
+    machine.send_key("ret")
+    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
+
+
 def test_a_notice_opened_brings_its_sender_forward_when_it_stays_behind(
     desktop: Desktop,
 ) -> None:
