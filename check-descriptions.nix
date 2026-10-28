@@ -1491,7 +1491,7 @@
     a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after
     idle, and asks for ECN with its fallback
   '';
-  xdg-open-opens-each-kind-in-its-app = ''
+  xdg-open-opens-each-kind-in-its-program = ''
     xdg-open opens markdown in the editor declared for text, in the terminal named for it, and a
     picture in its viewer
   '';

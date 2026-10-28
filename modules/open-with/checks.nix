@@ -107,14 +107,14 @@ onLinux {
         && lib.hasInfix "org.freedesktop.impl.portal.FileChooser;" described
       );
 
-  # xdg-open opens a kind by the kinds it's a case of, in its declared app,
-  # and a program that runs in a terminal in the terminal named for it:
-  # markdown in the editor declared for text, in the terminal, and a
-  # picture in its viewer. The apps and the terminal are stand-ins that
+  # xdg-open opens a kind by the kinds it's a case of, in its declared
+  # program, and a program that runs in a terminal in the terminal named for
+  # it: markdown in the editor declared for text, in the terminal, and a
+  # picture in its viewer. The programs and the terminal are stand-ins that
   # say what they were given; gio and xdg-terminal-exec are the real ones
   # (tests/xdg-open-opens-each-kind.sh).
-  xdg-open-opens-each-kind-in-its-app =
-    pkgs.runCommandLocal "xdg-open-opens-each-kind-in-its-app"
+  xdg-open-opens-each-kind-in-its-program =
+    pkgs.runCommandLocal "xdg-open-opens-each-kind-in-its-program"
       {
         nativeBuildInputs = [
           (pkgs.callPackage ./xdg-open.nix { })
