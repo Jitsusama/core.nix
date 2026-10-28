@@ -207,6 +207,24 @@ onLinux {
         touch $out
       '';
 
+  # Neovim lists the files it opens for the launcher's Recent inside it,
+  # as each opens: the newest first, each once, and nothing that isn't a
+  # file on disk, such as its help.
+  neovim-lists-the-files-it-opens =
+    let
+      home = account workstation;
+      listed = "io.stdout:write(table.concat(vim.fn.readfile(vim.fn.stdpath('state') .. '/recent'), ' '))";
+    in
+    pkgs.runCommandLocal "neovim-lists-the-files-it-opens" { nativeBuildInputs = [ home.home.path ]; }
+      ''
+        ${neovimAt home}
+        echo one > one.txt
+        echo two > two.txt
+        ${probed} "$PWD/one.txt $PWD/two.txt" one.txt -c 'edit two.txt' -c 'help' -c 'edit one.txt' \
+          -c "lua ${listed}" -c 'qa!'
+        touch $out
+      '';
+
   # The account's Neovim binds every key in the map, and only those: each
   # action a key names is one a file registered, or one a plugin that
   # waits provides, each key is bound as it says, a scope's in a buffer it

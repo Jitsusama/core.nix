@@ -1160,7 +1160,7 @@ onLinux {
       niri = singleton "Niri.qml" ''
         property int revision: 0
         property var windows: ({
-          "11": { id: 11, app_id: "tester", title: "Logbook - Tester", workspace_id: 1,
+          "11": { id: 11, app_id: "tester", pid: 7, title: "Logbook - Tester", workspace_id: 1,
             focus_timestamp: { secs: 200, nanos: 0 } },
           "12": { id: 12, app_id: "tester", title: "Draft - Tester", workspace_id: 2,
             focus_timestamp: { secs: 100, nanos: 0 } }

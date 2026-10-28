@@ -16,7 +16,8 @@
 // keeps what it had open lately holds Recent, each path by its name beside
 // its folder, opened by its start command while none of its windows is
 // open and through the process behind its last window while one is, and
-// read again as its file changes, nine at most. Typing on
+// read again as its file changes, nine at most. One drawn in another's
+// windows opens through the process behind that one's. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -88,6 +89,13 @@ ShellRoot {
                 list: [Quickshell.env("RECENT_LIST")],
                 open: ["quiet", "@", "--to", "unix:@quiet-{pid}", "launch", "{path}"],
                 start: ["quiet", "--directory", "{path}"]
+            }, {
+                app: "radio",
+                via: "tester",
+                watch: root.recentFile,
+                list: [Quickshell.env("RECENT_LIST")],
+                open: ["tester", "--into", "{pid}", "{path}"],
+                start: ["radio", "{path}"]
             }]
         })
         // Desktop entries and what quiet had open are read in the
@@ -117,7 +125,7 @@ ShellRoot {
     function ready() {
         if (root.waiting === "the programs"
                 && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined)
-                && applications.recents.of("quiet").length === 2)
+                && ["quiet", "radio"].every(id => applications.recents.of(id).length === 2))
             Qt.callLater(root.cases);
     }
 
@@ -282,9 +290,13 @@ ShellRoot {
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
-                "New Window, New Window Below, Media, Sound");
-            same("Media holds only what the player can do", names(radio[2].targets()), "Play");
-            const recording = radio[3];
+                "New Window, New Window Below, Recent, Media, Sound");
+            radio[2].targets()[0].run();
+            same("one drawn in another's windows opens through that one's",
+                JSON.stringify(Niri.spawned),
+                JSON.stringify(["tester", "--into", "7", `${root.home}/src/core.nix`]));
+            same("Media holds only what the player can do", names(radio[3].targets()), "Play");
+            const recording = radio[4];
             same("Sound says it records, with nothing to draw",
                 `${recording.side} ${recording.graph}`, "recording undefined");
             const [microphone] = recording.targets();

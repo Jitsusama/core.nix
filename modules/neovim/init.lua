@@ -202,6 +202,7 @@ vim.api.nvim_create_autocmd('BufReadPost', {
       end
       was:close()
     end
+    vim.fn.mkdir(vim.fn.fnamemodify(recent, ':h'), 'p')
     local writing = recent .. '.new'
     local now = io.open(writing, 'w')
     if now then
