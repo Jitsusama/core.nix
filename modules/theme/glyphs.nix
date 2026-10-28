@@ -979,6 +979,11 @@ in
     console = "v";
     means = "a video, and what plays one";
   };
+  web = {
+    glyph = nerd "f059f";
+    console = "w";
+    means = "the web, and what browses it";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";

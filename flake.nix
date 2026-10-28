@@ -136,6 +136,7 @@
         btop = ./modules/btop/home.nix;
         camera = ./modules/camera/home.nix;
         cargo = ./modules/cargo/home.nix;
+        chrome = ./modules/chrome/home.nix;
         claude = ./modules/claude/home.nix;
         curl = ./modules/curl/home.nix;
         delta = ./modules/delta/home.nix;

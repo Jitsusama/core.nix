@@ -1919,6 +1919,12 @@
       "glyph": "film"
     },
     {
+      "id": "shortcuts:chrome",
+      "in": "shortcuts",
+      "name": "Browser",
+      "glyph": "web"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2514,6 +2520,16 @@
       "id": "shortcuts:mpv:list",
       "in": "shortcuts",
       "name": "In the list"
+    },
+    {
+      "id": "shortcuts:chrome:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:chrome:pages",
+      "in": "shortcuts",
+      "name": "On the page"
     },
     {
       "id": "on",

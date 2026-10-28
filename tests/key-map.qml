@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player",
+                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player",
+                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -202,7 +202,7 @@ ShellRoot {
             // and the desktop's for one with none; Neovim's layer row says
             // whose it is.
             for (const entry of [["nvim", "neovim"], ["kitty", "terminal"],
-                ["swayimg", "swayimg"], ["google-chrome", "desktop"]])
+                ["swayimg", "swayimg"], ["google-chrome", "chrome"], ["virt-manager", "desktop"]])
                 expect(`${entry[0]}'s own layer`, map.ofProgram(entry[0]) === entry[1],
                     map.ofProgram(entry[0]));
             const neovimKeys = map.layerOf("nvim");
@@ -229,7 +229,15 @@ ShellRoot {
             over("mpv", "holiday.mkv - mpv");
             expect("over the player, its own", map.leading()?.name === "Player"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
-            over("google-chrome", "");
+            // Chrome's own window and one it opens for a site are the browser's.
+            over("google-chrome", "New Tab - Google Chrome");
+            expect("over the browser, its own", map.leading()?.name === "Browser"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("kitty", "~");
+            over("chrome-calendar.google.com__calendar_r-Default", "Calendar");
+            expect("over a site's window, the browser's", map.leading()?.name === "Browser"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("virt-manager", "");
             expect("over another program, the desktop's", map.leading() === null
                 && names(map.everything())[0] === "Desktop", names(map.everything()).join(", "));
             over("kitty", "~");

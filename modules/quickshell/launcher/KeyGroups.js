@@ -40,7 +40,9 @@ const TERMINAL_APP = "kitty";
 
 // The layers of programs in windows of their own, by their windows' app
 // ids, each with its own keys over the desktop's.
-const WINDOW_APPS = new Map([["swayimg", "swayimg"], ["inlyne", "inlyne"], ["org.pwmt.zathura", "zathura"], ["mpv", "mpv"]]);
+const WINDOW_APPS = new Map([["swayimg", "swayimg"], ["inlyne", "inlyne"], ["org.pwmt.zathura", "zathura"], ["mpv", "mpv"], ["google-chrome", "chrome"]]);
+// A window Chrome opens for one site, as a program of its own: "chrome-", the site, its profile.
+const CHROME_SITE = /^chrome-.+-[^-]+$/;
 
 // A place a chord works in, said after another: "in a pull request" after
 // "in a GitHub issue" is "a pull request".
@@ -488,7 +490,7 @@ function paths() {
 // the desktop's.
 function over(app, title) {
     if (app !== TERMINAL_APP) {
-        const own = WINDOW_APPS.get(app);
+        const own = WINDOW_APPS.get(app) ?? (CHROME_SITE.test(app) ? "chrome" : undefined);
         return own === undefined ? ["desktop"] : [own, "desktop"];
     }
     if (PI_TITLE.test(title)) {
