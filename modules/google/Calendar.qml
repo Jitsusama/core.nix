@@ -11,7 +11,9 @@ pragma ComponentBehavior: Bound
 // `join` goes into a meeting's call through google-opens (opens.sh), which
 // joins a Tuple link through Tuple and opens Google's own in a window of
 // their own. `answer` answers an invitation through the program (ask.rs),
-// which says the meeting answered as soon as Google takes it.
+// which says the meeting answered as soon as Google takes it. `calls` are
+// the Meet calls open in windows of their own, each with its meeting,
+// which Call.qml says while one is.
 import qs
 import Quickshell
 import QtQuick
@@ -104,6 +106,17 @@ Singleton {
         if (!meeting || !meeting.link)
             return;
         Niri.spawn(["google-opens", meeting.link]);
+    }
+
+    // Each Meet call open in a window of its own, as { window, code,
+    // meeting }, its meeting null when the call isn't on his calendar.
+    // niri's revision says when a window opens, closes or is retitled.
+    readonly property var calls: {
+        Niri.revision;
+        return Object.values(Niri.windows)
+            .map(window => ({ window: window, code: Said.meetCall(window.app_id) }))
+            .filter(call => call.code !== "")
+            .map(call => Object.assign(call, { meeting: Said.calledBy(meetings, call.code) }));
     }
 
     // The meeting's own page in Google Calendar.

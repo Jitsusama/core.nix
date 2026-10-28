@@ -1,7 +1,8 @@
 // Which meeting is next, when it is in words, whether it's about to start
 // and whether Return joins it, its day in full, how Joel answered it and
-// the line answering it, from meetings like the google program's, run in Qt's own
-// JavaScript engine, the one the shell runs it in. The
+// the line answering it, and which Meet call a window is and whose, from
+// meetings like the google program's, run in Qt's own JavaScript engine,
+// the one the shell runs it in. The
 // `the-shell-tells-the-next-meeting` check copies Calendar.js beside this
 // file and runs `qml -platform offscreen calendar.qml`. Times are made on
 // the local clock, so the cases hold in whatever zone the check runs in.
@@ -160,6 +161,35 @@ QtObject {
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
         check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
             '{"answer":{"id":"abc_1","with":"no"}}\n');
+
+        // Which Meet call a window is, by its app id: [what, the app id, its code]
+        const windows = [
+            ["a call in Chrome's app window", "chrome-meet.google.com__abc-defg-hij-Default",
+                "abc-defg-hij"],
+            ["one in another profile", "chrome-meet.google.com__klm-nopq-rst-Profile_1",
+                "klm-nopq-rst"],
+            ["Meet's front page", "chrome-meet.google.com__-Default", ""],
+            ["Meet's page of what's next", "chrome-meet.google.com__landing-Default", ""],
+            ["Calendar's app window", "chrome-calendar.google.com__-Default", ""],
+            ["the browser", "google-chrome", ""],
+            ["a window with no app id", null, ""]
+        ];
+        for (const [what, appId, code] of windows)
+            check(what, Calendar.meetCall(appId), code);
+        const onMeet = meeting("on meet", now, now + 30 * minute);
+        const pasted = meeting("pasted", now, now + 30 * minute, {
+            link: "https://meet.google.com/abc-defg-hijk"
+        });
+        const another = meeting("another", now, now + 30 * minute, {
+            link: "https://meet.google.com/klm-nopq-rst?authuser=1"
+        });
+        check("a call's meeting", (Calendar.calledBy([pasted, onMeet], "abc-defg-hij") ?? {}).id,
+            "on meet");
+        check("a call's meeting by a link that says more",
+            (Calendar.calledBy([onMeet, another], "klm-nopq-rst") ?? {}).id, "another");
+        check("a call on no meeting", Calendar.calledBy([onMeet], "xyz-abcd-efg"), null);
+        check("no call on a meeting with no link",
+            Calendar.calledBy([meeting("room", now, now, { link: null })], ""), null);
 
         for (const failure of failures)
             console.warn(failure);

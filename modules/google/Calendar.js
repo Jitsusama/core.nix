@@ -1,7 +1,7 @@
 // What the shell works out from the meetings the google program keeps
 // (src/state.rs): which meeting is next, when it is in words, whether it's
-// about to start, whether Return joins it, how Joel answered it, and the
-// line that answers it (src/ask.rs). Calendar.qml asks these of the
+// about to start, whether Return joins it, how Joel answered it, the
+// line that answers it (src/ask.rs), and which Meet call a window is. Calendar.qml asks these of the
 // meetings Google.qml holds, Mail.js asks the day and the time, and the
 // checks run them in Qt's own engine (tests/calendar.qml). Times are
 // milliseconds since 1970, as the program gives them.
@@ -147,4 +147,26 @@ function invited(meeting) {
 // The line that asks the program to answer a meeting yes, maybe or no.
 function answer(meeting, said) {
     return `${JSON.stringify({ answer: { id: meeting.id, with: said } })}\n`;
+}
+
+// A Meet call's code, as abc-defg-hij, from the app id Chrome gives the
+// window it opens a call's link in as an app of its own: its host and
+// path, the path's slash an underscore, then its profile, as
+// chrome-meet.google.com__abc-defg-hij-Default. Any other window, Meet's
+// own front page and a call in a browser tab among them, is no call: "".
+const MEET_WINDOW = /^chrome-meet\.google\.com__([a-z]{3}-[a-z]{4}-[a-z]{3})-/;
+// The code a Meet link joins by, before any ?authuser= that follows it.
+const MEET_LINK = /^https:\/\/meet\.google\.com\/([a-z-]+)/;
+
+function meetCall(appId) {
+    const found = MEET_WINDOW.exec(appId ?? "");
+    return found ? found[1] : "";
+}
+
+// The meeting whose call has that code, or null for one nobody asked
+// Joel to, such as a link someone pasted.
+function calledBy(meetings, code) {
+    return meetings.find(meeting => code !== ""
+        && MEET_LINK.exec(meeting.link ?? "")?.[1] === code)
+        ?? null;
 }

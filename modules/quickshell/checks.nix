@@ -195,6 +195,7 @@ onLinux {
           "capslock"
           "layer"
           "call"
+          "meet"
           "sharing"
           "camera"
           "recording"
