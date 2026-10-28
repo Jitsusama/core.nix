@@ -1198,10 +1198,13 @@ Scope {
     }
 
     // The right arrow: into the selected row, or, for a match that lands
-    // inside what it found on Return, there as well.
+    // inside what it found on Return, there as well, and for a row whose
+    // Return goes elsewhere in the launcher, there too.
     function inward(row) {
         if (row && row.lands)
             row.run();
+        else if (leadsElsewhere(row))
+            run(row, false, false);
         else
             enter(row);
     }
@@ -1280,6 +1283,16 @@ Scope {
             : !!choice.targets;
     }
 
+    // Whether a row with nothing inside it goes somewhere else in the
+    // launcher on Return: a spot to where it is, a command into the field
+    // to be finished, one that opens a collection into it. The right arrow
+    // goes there as well (Joel, 2026-10-26: where Return goes somewhere in
+    // the launcher, the right arrow does the same).
+    function leadsElsewhere(choice) {
+        return !!choice && !choice.gone && !holdsMore(choice)
+            && (choice.trail !== undefined || choice.start !== undefined || !!choice.opens);
+    }
+
     // Whether Return steps into a row where the right arrow would, as `run`
     // decides: a place or a holder, a verb wanting a target, one that can't
     // be taken back, or one with nothing to do of its own. Such a row says
@@ -1287,6 +1300,8 @@ Scope {
     // word wherever it's done (Joel, 2026-10-26), where it was open, choose,
     // go, see or the act asked about, and never says it twice.
     function stepsIn(choice) {
+        if (leadsElsewhere(choice))
+            return true;
         if (choice.start !== undefined || choice.given || !holdsMore(choice))
             return false;
         if (choice.category || choice.group || choice.lands || !choice.run)
@@ -1300,7 +1315,9 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        const more = choice.from && !choice.lands ? "see all" : "more";
+        // Going elsewhere says where Return takes it, as one word for both.
+        const more = leadsElsewhere(choice) ? verbOf(choice)
+            : choice.from && !choice.lands ? "see all" : "more";
         const stepping = stepsIn(choice);
         const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
         // One that keeps the launcher can be done and closed at once, the

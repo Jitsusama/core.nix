@@ -1142,6 +1142,16 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def at_rotation(shown: Json) -> bool:
+    """Say whether the launcher holds a screen, inside Desktop's Screens, its Rotation selected."""
+    return bool(
+        shown["open"]
+        and shown["path"][:2] == ["Desktop", "Screens"]
+        and len(shown["path"]) == len(["Desktop", "Screens", "a screen"])
+        and (shown["selected"] or {}).get("name") == "Rotation"
+    )
+
+
 def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     desktop: Desktop,
 ) -> None:
@@ -1157,29 +1167,35 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
                 return at
         return -1
 
+    def find_rotation() -> None:
+        """Open the launcher on the screen's Rotation, found from the root."""
+        desktop.answer("rotation")
+        desktop.launcher_until(lambda shown: spot(shown) >= 0)
+        for _ in range(spot(desktop.showing())):
+            machine.send_key("down")
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Rotation"
+                and str((shown["selected"] or {}).get("side", "")).startswith(where)
+            )
+        )
+
     # A screen's rotation is a step inside the screen, inside Screens,
     # inside Desktop; from the root it's found by its name, saying so,
-    # below the focused screen's answer.
-    desktop.answer("rotation")
-    desktop.launcher_until(lambda shown: spot(shown) >= 0)
-    for _ in range(spot(desktop.showing())):
-        machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Rotation"
-            and str((shown["selected"] or {}).get("side", "")).startswith(where)
-        )
-    )
+    # below the focused screen's answer. The right arrow goes there as
+    # Return does, the foot saying the two as one (Joel, 2026-10-26: where
+    # Return goes somewhere in the launcher, the right arrow does the same).
+    find_rotation()
+    told = desktop.showing()["selected"]["told"]
+    assert "\u21b5 \u2192 go" in told, told
+    machine.send_key("right")
+    desktop.launcher_until(at_rotation)
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Return goes there: the crumbs say each step, and the spot is selected.
+    find_rotation()
     machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["open"]
-            and shown["path"][:2] == ["Desktop", "Screens"]
-            and len(shown["path"]) == len(["Desktop", "Screens", "a screen"])
-            and (shown["selected"] or {}).get("name") == "Rotation"
-        )
-    )
+    desktop.launcher_until(at_rotation)
     screen = desktop.showing()["path"][-1]
     # The left arrow goes back up, onto the screen it was inside.
     machine.send_key("left")
