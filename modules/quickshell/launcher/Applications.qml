@@ -18,8 +18,8 @@
 // pressed, and again as its player or its streams change while it's open,
 // never as letters are typed, and nothing is read from a file.
 //
-// Programs is a collection too, home's row for them: every program by
-// name, as every list is. It adds no row of its own to a search, where
+// Programs is a collection too, home's row for them: every program, those
+// open first, each by name. It adds no row of its own to a search, where
 // each program is found by itself.
 import Quickshell
 import qs
@@ -33,9 +33,13 @@ Provider {
 
     collection: Words.collection("applications", { searched: false })
 
+    // Open programs first, then the rest, each A to Z, so a program moves
+    // only as it opens or closes, which Joel did himself
+    // (collection-order.md).
     function everything() {
-        return things.slice().sort((a, b) => a.name.localeCompare(b.name, undefined,
-            { numeric: true, sensitivity: "base" }));
+        const shut = row => (running[row.key.slice("program:".length)] ?? []).length === 0;
+        return things.slice().sort((a, b) => Number(shut(a)) - Number(shut(b))
+            || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
     }
 
     // Inside Programs, by its name or what it is, the best grade first.
