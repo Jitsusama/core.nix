@@ -1188,6 +1188,27 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_todays_meeting_is_joined_from_now(desktop: Desktop) -> None:
+    """Now's Today row takes the next meeting's Return, so it joins one about to start."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The next meeting is the stand-in's Design Review, five minutes on.
+    desktop.as_account("systemctl --user start google.service")
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    desktop.type_in("today", selecting="Today")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "on:today")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     desktop: Desktop,
 ) -> None:
