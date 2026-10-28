@@ -1419,6 +1419,38 @@ def test_a_meeting_about_to_start_wants_joel_and_is_said_a_minute_before(
 
 
 @pytest.mark.usefixtures("google")
+def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> None:
+    """Google signed out wants Joel in Now, unsaid as a notice, and Return signs in in pi."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    desktop.as_account(f"rm -f {opened}")
+    desktop.as_account("systemctl --user set-environment GOOGLE_STAND_IN_ACCOUNT=signedOut")
+    try:
+        desktop.as_account("systemctl --user restart google.service")
+        now_rows(desktop)
+        desktop.launcher_until(lambda shown: "Google" in shown["rows"])
+        assert "Design Review" not in desktop.showing()["rows"], desktop.showing()
+        desktop.down_to("Google")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "signed out" and shown["selected"]["verb"] == "sign"
+            )
+        )
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -qx /google-auth {opened}"),
+            timeout=dt.timedelta(seconds=30),
+        )
+        desktop.as_account(f'grep -qx "$HOME " {opened}')
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        machine.fail(desktop.in_session("niri msg layers | grep -q notifications"))
+        desktop.as_account(f"rm -f {opened}")
+    finally:
+        desktop.as_account("systemctl --user unset-environment GOOGLE_STAND_IN_ACCOUNT")
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> None:
     """A meeting Joel holds is cancelled from its acts, a step saying who's told asking first."""
     machine = desktop.machine

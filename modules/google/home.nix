@@ -22,7 +22,8 @@
 # google-opens (opens.sh), which opens a Meet link the same way, and a
 # call open in a window of its own is on air while it is (Call.qml). A
 # meeting about to start wants Joel, and is said as a notice a minute
-# before it starts (Starting.qml).
+# before it starts (Starting.qml); the account signed out wants him to
+# sign in again (SignedOut.qml).
 { quickshell }:
 {
   config,
@@ -95,10 +96,20 @@ in
       "quickshell/Mail.js".source = ./Mail.js;
     };
 
+    # The account signed out, which wants Joel to sign in again, wearing
+    # the signing-in mark; first among what of Google's wants him.
+    jitsusama.quickshell.overview.pieces.google = {
+      order = 55;
+      source = ./SignedOut.qml;
+      label = "google";
+      tier = "when";
+      mark = "signIn";
+    };
+
     # A meeting about to start, which wants Joel, wearing the calendar's
     # own mark; among what wants him, after the notices.
     jitsusama.quickshell.overview.pieces.meeting = {
-      order = 55;
+      order = 56;
       source = ./Starting.qml;
       label = "meeting";
       tier = "when";
