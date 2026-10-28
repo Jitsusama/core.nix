@@ -814,6 +814,12 @@ in
     glyph = nerd "f0342";
     console = ">";
     means = "signing in: to a network's page, or to an account";
+    # An arrow going in at a door.
+    drawn = drawing [
+      "M6 0H12V12H6V10.5H10.5V1.5H6Z"
+      "M0 5.25H4V6.75H0Z"
+      "M4 2.5L7.5 6L4 9.5Z"
+    ];
   };
   # A network card, not the cable, since an address is a card's whether it
   # joins through the air or by wire.

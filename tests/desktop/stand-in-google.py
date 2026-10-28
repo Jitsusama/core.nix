@@ -2,15 +2,15 @@
 
 It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the whole state as one
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
-that connects. The account is ready, with three meetings on Meet from when the stand-in starts:
-Design Review five minutes on, about to start, Joel's own, or nearer as a test asks; Standup
-half an hour on, Ada's in Room 4, with Grace not going; and Planning two hours on, Joel's own
-with Grace asked. An answer
-a shell writes is written down in google-asked beside the socket, for the test to read, and taken
-as Google would take it, so the file and every shell say the meeting answered; a meeting Joel
-holds that's cancelled is written down and let go, as Google would. Two pieces of mail
-want Joel, Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read
-or archived is written down too, and taken out of the mail that wants him, as Gmail would.
+that connects. The account is ready, unless a test signs it out, with three meetings on Meet
+from when the stand-in starts: Design Review five minutes on, about to start, Joel's own, or
+nearer as a test asks; Standup half an hour on, Ada's in Room 4, with Grace not going; and
+Planning two hours on, Joel's own with Grace asked. An answer a shell writes is written down in
+google-asked beside the socket, for the test to read, and taken as Google would take it, so the
+file and every shell say the meeting answered; a meeting Joel holds that's cancelled is written
+down and let go, as Google would. Two pieces of mail want Joel, Lunch on Friday and Quarterly
+Numbers, with three unread in the inbox; one marked read or archived is written down too, and
+taken out of the mail that wants him, as Gmail would.
 """
 
 import json
@@ -27,6 +27,9 @@ MINUTE = 60_000
 # Design Review nearer, in milliseconds, through the user manager's
 # environment, to see it come to want Joel.
 SOON = int(os.environ.get("GOOGLE_STAND_IN_SOON", str(5 * MINUTE)))
+# Whether the account is ready, or signed out as a test asks, when it holds
+# nothing, as the program says it (state.rs).
+SIGNED_OUT = os.environ.get("GOOGLE_STAND_IN_ACCOUNT") == "signedOut"
 AHEAD = 30 * MINUTE
 LATER = 120 * MINUTE
 LASTS = 30 * MINUTE
@@ -106,6 +109,15 @@ class Account:
 
     def line(self) -> bytes:
         """Give the state the program would say."""
+        if SIGNED_OUT:
+            gone: dict[str, object] = {
+                "account": "signedOut",
+                "meetings": [],
+                "mail": [],
+                "unread": None,
+                "heard": None,
+            }
+            return f"{json.dumps(gone)}\n".encode()
         said = {
             "account": "ready",
             "meetings": self.meetings,
