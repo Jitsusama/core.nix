@@ -588,8 +588,13 @@ Scope {
 
     // Goes to a spot: from the root into each step of its trail, found again
     // by what it is, then onto the spot itself. A step gone since, such as a
-    // headset turned off, stops it where it got to.
+    // headset turned off, stops it where it got to. Each step's row is
+    // selected before it's stepped into, and the first step keeps what was
+    // typed and selected before it, so the left arrow climbs back out
+    // through every step and onto the search it came from, as any way in
+    // does (Joel, 2026-10-26: every way in climbs back out the same way).
     function goTo(spot) {
+        const came = here();
         held = [];
         restart("");
         for (const step of spot.trail) {
@@ -600,8 +605,14 @@ Scope {
             const rows = held.length === 0 ? categories.concat(home())
                 : from ? offered.concat(partsOf(from)) : offered;
             const row = rows.find(one => steadyId(one) === step) ?? null;
+            const listedAt = matches.findIndex(one => steadyId(one) === step);
+            if (listedAt >= 0)
+                current = listedAt;
+            const first = held.length === 0;
             if (row === null || !enter(row))
                 return;
+            if (first)
+                held = [Object.assign({}, held[0], came)].concat(held.slice(1));
         }
         const at = matches.findIndex(row => steadyId(row) === spot.spot);
         if (at >= 0) {
