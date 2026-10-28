@@ -1925,6 +1925,12 @@
       "glyph": "web"
     },
     {
+      "id": "shortcuts:slack",
+      "in": "shortcuts",
+      "name": "Slack",
+      "glyph": "chat"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2535,6 +2541,16 @@
       "id": "shortcuts:chrome:pages",
       "in": "shortcuts",
       "name": "On the page"
+    },
+    {
+      "id": "shortcuts:slack:conversations",
+      "in": "shortcuts",
+      "name": "Conversations"
+    },
+    {
+      "id": "shortcuts:slack:messages",
+      "in": "shortcuts",
+      "name": "Messages"
     },
     {
       "id": "on",
