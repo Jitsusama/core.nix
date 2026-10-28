@@ -117,7 +117,16 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.photograph("launcher-home-missed")
     desktop.type_in("build fin", selecting="the laptop is ready")
     desktop.photograph("launcher-notices")
-    # Nothing sent it that can be gone to, so Return copies what it said.
+    # Nothing sent it that can be gone to, so Return steps in, as the right
+    # arrow does, where copying what it said comes last of its acts, never
+    # first.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][-1:] == ["Copy What It Said"] and shown["rows"][0] != "Copy What It Said"
+        )
+    )
+    desktop.down_to("Copy What It Said")
     machine.send_key("ret")
 
     def told_again(_: bool) -> bool:
@@ -379,10 +388,14 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("reads") == "Quarry take\nz.mp4"
     )
-    # Return's own act, copying what it said, leads; what it offers follows.
+    # With nothing to open or go to, what it offers leads; copying what it
+    # said is last.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy What It Said", "Play it"])
-    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:1] == ["Play it"] and shown["rows"][-1:] == ["Copy What It Said"]
+        )
+    )
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
     machine.send_key("ret")
     assert desktop.answered() == "play", "a notice whose time was up lost what it offered"
