@@ -5,7 +5,9 @@ pragma ComponentBehavior: Bound
 // program keeps it (src/mail.rs) and Google.qml reads it, with how many in
 // the inbox are unread. With no account there's none, and nothing shows.
 //
-// `open` opens a piece of mail in Mail through google-opens (opens.sh).
+// `open` opens a piece of mail in Mail through google-opens (opens.sh),
+// keeping one Mail window: with Mail open, it brings that window forward,
+// so the new one opens beside it, and closes it once the new one shows.
 // `read` and `archive` ask the program, which takes it out of the mail
 // that wants him as soon as Gmail has done it.
 import qs
@@ -25,6 +27,33 @@ Singleton {
     // id, so its row says what became of it once it's gone.
     property var asked: ({})
 
+    // Mail's windows open now, by id; niri's revision says when a window
+    // opens or closes.
+    readonly property var windows: {
+        Niri.revision;
+        return Said.windows(Object.values(Niri.windows));
+    }
+    // The Mail windows open when mail was last opened, to close once its
+    // own window shows. Chrome may never open one, so they're let be after
+    // half a minute.
+    property var replacing: []
+
+    onWindowsChanged: {
+        const going = Said.superseded(replacing, windows);
+        if (going.length === 0)
+            return;
+        replacing = [];
+        letBe.stop();
+        for (const id of going)
+            Niri.act({ CloseWindow: { id: id } });
+    }
+
+    Timer {
+        id: letBe
+        interval: 30000
+        onTriggered: root.replacing = []
+    }
+
     // When it came, as its row says it: "14:02", "yesterday".
     function came(mail) {
         return Said.came(mail.at, Calendar.now);
@@ -41,8 +70,14 @@ Singleton {
     }
 
     function open(mail) {
-        if (mail && mail.page)
-            Niri.spawn(["google-opens", mail.page]);
+        if (!mail || !mail.page)
+            return;
+        if (windows.length > 0) {
+            Niri.act({ FocusWindow: { id: windows[0] } });
+            replacing = windows;
+            letBe.restart();
+        }
+        Niri.spawn(["google-opens", mail.page]);
     }
 
     function read(mail) {
