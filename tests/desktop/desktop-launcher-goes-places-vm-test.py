@@ -1939,13 +1939,14 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.launcher_ready()
     # Its top is the layers, each with its count and as many of its first
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
-    # theirs, nor Chrome or Slack, so none of theirs either; the picture
-    # viewer's, the markdown reader's, the document viewer's, the player's,
-    # 1Password's, GIMP's, Inkscape's and Spotify's come after the
-    # terminal's.
+    # theirs, nor Chrome or Slack, so none of theirs either. After the
+    # terminal's come btop's, which every machine has, the picture viewer's,
+    # the markdown reader's, the document viewer's, the player's,
+    # 1Password's, GIMP's, Inkscape's and Spotify's.
     layers = [
         "Desktop",
         "Terminal",
+        "Processes",
         "Picture viewer",
         "Markdown reader",
         "Document viewer",

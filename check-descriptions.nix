@@ -115,6 +115,9 @@
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
   '';
+  btop-names-its-window = ''
+    btop names its terminal's window btop while it runs, and gives the title back as it quits
+  '';
   btrfs-reclaims-its-chunks = ''
     tmpfiles turns Btrfs's reclaim on for data and metadata
   '';

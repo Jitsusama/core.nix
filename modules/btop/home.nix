@@ -17,6 +17,11 @@
 # details, off the process chosen, then out of btop, and m alone opens the
 # menu Escape used to (escape-backs-out.patch). Left and Right choose what
 # the processes are sorted by, that way along their columns.
+#
+# While it runs, btop names the terminal's window btop, keeping the title
+# it had on the terminal's stack and putting it back as it quits
+# (names-its-window.patch), so the launcher knows to list btop's keys over
+# it.
 {
   config,
   lib,
@@ -26,6 +31,118 @@
 let
   inherit (config.jitsusama.theme) roles terminal shades;
   shade = builtins.elemAt shades;
+
+  grouped = group: map (key: key // { inherit group; });
+
+  # btop's keys, as escape-backs-out.patch leaves them, from its own list
+  # (src/btop_menu.cpp's help_text).
+  keys =
+    grouped "processes" [
+      {
+        chord = "Up";
+        does = "The process above";
+      }
+      {
+        chord = "Down";
+        does = "The process below";
+      }
+      {
+        chord = "Return";
+        does = "The chosen process's details";
+      }
+      {
+        chord = "Escape";
+        does = "Back out a step";
+      }
+      {
+        chord = "Left";
+        does = "Sort by the column to the left";
+      }
+      {
+        chord = "Right";
+        does = "Sort by the column to the right";
+      }
+      {
+        chord = "r";
+        does = "Reverse the sort";
+      }
+      {
+        chord = "f";
+        does = "Filter the processes";
+      }
+      {
+        chord = "e";
+        does = "The processes as a tree";
+      }
+      {
+        chord = "Space";
+        does = "Open or close the chosen branch";
+      }
+      {
+        chord = "t";
+        does = "End the chosen process";
+      }
+      {
+        chord = "k";
+        does = "Kill the chosen process";
+      }
+      {
+        chord = "s";
+        does = "Send the chosen process a signal";
+      }
+    ]
+    ++ grouped "boxes" [
+      {
+        chord = "1";
+        does = "The processor's box on or off";
+      }
+      {
+        chord = "2";
+        does = "The memory's box on or off";
+      }
+      {
+        chord = "3";
+        does = "The network's box on or off";
+      }
+      {
+        chord = "4";
+        does = "The processes' box on or off";
+      }
+      {
+        chord = "5";
+        does = "The graphics card's box on or off";
+      }
+      {
+        chord = "d";
+        does = "The disks on or off";
+      }
+      {
+        chord = "p";
+        does = "The next view";
+      }
+      {
+        chord = "Shift+p";
+        does = "The view before";
+      }
+    ]
+    ++ [
+      {
+        chord = "m";
+        does = "btop's menu";
+      }
+      {
+        chord = "o";
+        does = "btop's options";
+      }
+      {
+        chord = "?";
+        does = "btop's own list of keys";
+      }
+      {
+        chord = "q";
+        does = "Quit btop";
+      }
+    ];
 
   slots = {
     main_bg = roles.background;
@@ -82,7 +199,13 @@ let
   };
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../keys/home.nix
+    ../theme/home.nix
+  ];
+
+  # btop's keys, for the launcher to list over a terminal titled btop.
+  jitsusama.keys.btop = keys;
 
   programs.btop = {
     enable = true;
@@ -90,6 +213,7 @@ in
       patches = (old.patches or [ ]) ++ [
         ./gives-way.patch
         ./escape-backs-out.patch
+        ./names-its-window.patch
       ];
     });
     themes.theme = lib.concatLines (
