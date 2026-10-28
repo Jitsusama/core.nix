@@ -392,7 +392,7 @@ in
     };
 
     colours = lib.mapAttrs (
-      name: description: colorOption theme.roles.${name} "The colour for ${description}."
+      name: description: colorOption theme.colours.${name} "The colour for ${description}."
     ) colours;
 
     terminal = lib.mapAttrs (
@@ -863,8 +863,8 @@ in
   # The whole theme, for a program that reads JSON rather than having a file
   # of its own written: pi, a script, the stick's guide.
   config.xdg.configFile."jitsusama/theme.json".text = builtins.toJSON {
-    roles = cfg.colours;
     inherit (cfg)
+      colours
       terminal
       syntax
       shades

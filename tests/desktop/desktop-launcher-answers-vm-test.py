@@ -786,13 +786,13 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     after = machine.succeed("date -u +%H:%M").strip()
     assert desktop.as_account("wl-paste --no-newline") in [before, after]
-    # A theme's colour is found by its role, as the theme exports it.
+    # A theme's colour is found by its name, as the theme exports it.
     theme = json.loads(desktop.as_account("cat ~/.config/jitsusama/theme.json"))
-    copied("colour accent", theme["roles"]["accent"].lower())
+    copied("colour accent", theme["colours"]["accent"].lower())
     # Slack takes its theme only by hand, so the launcher copies it,
-    # in the theme's own roles.
+    # in the theme's own colours.
     slack = ["accent", "selection", "success", "warning"]
-    copied("slack theme", ",".join(theme["roles"][role] for role in slack))
+    copied("slack theme", ",".join(theme["colours"][colour] for colour in slack))
     desktop.answer("#f53")
     desktop.photograph("launcher-colour")
     machine.send_key("esc")

@@ -4,7 +4,7 @@
 # Translated from Omarchy 4.0.4's flexoki-light, which picks a few of them:
 # https://github.com/omacom/omarchy/blob/c668141e9c42b13c80c9ca4ea108e11708c5e8a5/themes/flexoki-light/colors.toml
 # Light paper makes Flexoki's lighter inks too faint to read as text, so the
-# text roles and the terminal take its 600 and 700 inks where Omarchy took
+# text colours and the terminal take its 600 and 700 inks where Omarchy took
 # its 400s, and two pigments are ours, marked below.
 
 name = "Flexoki Light"
@@ -40,7 +40,7 @@ navy = "#1A4F8C"     # blue-700
 violet = "#5E409D"   # purple-600
 plum = "#A02F6F"     # magenta-600
 
-[roles]
+[colours]
 background = "paper"
 sunken = "bone"
 deepest = "flax"

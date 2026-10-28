@@ -25,7 +25,7 @@ listed in `themes` in `modules/theme/home.nix`. It holds:
 - `shades`: eight pigments from the background to the brightest text.
 - `[palette]`: every colour the theme uses, once, as `#rrggbb` or
   `#rrggbbaa`.
-- `[roles]`: what each colour means. Every role `modules/theme/home.nix`
+- `[colours]`: what each colour means. Every one `modules/theme/home.nix`
   declares has to be given, each naming a pigment.
 - `[terminal]`: the terminal's own six colours and its sixteen ANSI ones,
   each naming a pigment.

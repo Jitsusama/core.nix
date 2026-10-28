@@ -28,7 +28,7 @@ let
   slot =
     role:
     let
-      pigment = read.roles.${role} or null;
+      pigment = read.colours.${role} or null;
       at = lib.lists.findFirstIndex (name: (read.terminal.${name} or null) == pigment) null names;
     in
     if pigment == null || at == null then "39" else toString (if at < 8 then 30 + at else 82 + at);
