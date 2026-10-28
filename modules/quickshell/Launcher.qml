@@ -1221,9 +1221,10 @@ Scope {
 
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
-    // step, and Tab while the field shows a completion for the selected
-    // row, since it does nothing otherwise. The left arrow is said only
-    // where it goes back: that it takes away what's typed is what any field does, and
+    // step. Tab is said in the field, after the completion it takes
+    // (Prompt.qml), not here: it comes and goes with each letter, so in the
+    // foot it moved the keys or took room from how things stand. The left
+    // arrow is said only where it goes back: that it takes away what's typed is what any field does, and
     // saying so took room from how things stand as soon as Joel typed.
     // Whether Return does something and keeps the launcher, as a setting
     // does, rather than going somewhere inside it, as a spot, a row with
@@ -1249,8 +1250,6 @@ Scope {
             keys.push(["\u2192", choice.from ? "see all" : "more"]);
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", "back"]);
-        if (choice === selected && completion !== "")
-            keys.push(["\u21e5", "complete"]);
         return keys;
     }
 
@@ -1273,11 +1272,10 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    // Tab's place is kept from the first, so its coming and going as Joel
-    // types never moves how things stand. A row opened below never stays,
-    // so Ctrl+Return's place is the wider of the two it could have.
+    // A row opened below never stays, so Ctrl+Return's place is the wider
+    // of the two it could have.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "and close"],
-        ["\u2192", "see all"], ["\u21e5", "complete"]]
+        ["\u2192", "see all"]]
     property string footVerbWidest: footVerbRoom
     property real footKeysWidest: 0
 

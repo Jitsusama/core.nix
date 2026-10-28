@@ -180,16 +180,16 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
         machine.send_key("esc")
     # Half a word asks its question too: "batt" is the battery, and
-    # Tab finishes the word, the foot saying so.
-    tab = "\u21e5 complete"
+    # Tab finishes the word, its key after the completion in the field.
     desktop.answer("batt")
     desktop.launcher_until(
         lambda shown: (
             shown["kind"] == "answer"
             and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
-            and tab in (shown["selected"] or {}).get("told", [])
         )
     )
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    assert any("\u21e5" in word["text"] for word in field), field
     machine.send_key("tab")
     desktop.launcher_until(lambda shown: shown["typed"] == "battery")
     machine.send_key("ret")
