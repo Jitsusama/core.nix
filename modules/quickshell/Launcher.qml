@@ -1176,10 +1176,12 @@ Scope {
             // One with no act of its own, only more inside (an
             // orchestrator, a device), lands inside it on Return, its
             // collection's crumb before its own, as the approved proposal's
-            // one feel has it; the right arrow still lists all it found.
+            // one feel has it, and the right arrow lands there too, so
+            // Return never goes further in than it (Joel, 2026-10-26).
             if (!best.run && (best.verbs || best.targets))
                 Object.assign(gathered, {
                     stays: true,
+                    lands: true,
                     run: () => root.landInside(gathered, best)
                 });
             rows.push(gathered);
@@ -1188,15 +1190,19 @@ Scope {
     }
 
     // Steps into a collection's matches, and then into the one of them that
-    // was found, by what it is.
+    // was found, which stepping in keeps selected.
     function landInside(gathered, best) {
-        if (!enter(gathered))
-            return;
-        const at = matches.findIndex(row => steadyId(row) === steadyId(best));
-        if (at < 0)
-            return;
-        current = at;
-        enter(matches[at]);
+        if (enter(gathered) && selected && steadyId(selected) === steadyId(best))
+            enter(selected);
+    }
+
+    // The right arrow: into the selected row, or, for a match that lands
+    // inside what it found on Return, there as well.
+    function inward(row) {
+        if (row && row.lands)
+            row.run();
+        else
+            enter(row);
     }
 
     // How tall the list is while the launcher's open: always its rows, and
@@ -1271,7 +1277,7 @@ Scope {
     function stepsIn(choice) {
         if (choice.start !== undefined || choice.given || !holdsMore(choice))
             return false;
-        if (choice.category || choice.group || !choice.run)
+        if (choice.category || choice.group || choice.lands || !choice.run)
             return true;
         if (held.length > 0 && choice.targets && choice.verb === "more")
             return true;
@@ -1282,7 +1288,7 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        const more = choice.from ? "see all" : "more";
+        const more = choice.from && !choice.lands ? "see all" : "more";
         const stepping = stepsIn(choice);
         const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
         // One that keeps the launcher can be done and closed at once, the
@@ -1768,8 +1774,17 @@ Scope {
         if (row.from)
             row.from.opened();
         // What was typed found the row, so it goes: inside, everything the row
-        // holds shows, and the left arrow puts it back on the way out.
+        // holds shows, and the left arrow puts it back on the way out. Stepped
+        // into from a collection's match, the match stays selected among all
+        // it holds (Joel, 2026-10-26: stepping in keeps the match).
         restart("");
+        if (row.from) {
+            const matched = matches.findIndex(one => steadyId(one) === steadyId(row));
+            if (matched >= 0) {
+                current = matched;
+                list.positionViewAtIndex(matched, ListView.Contain);
+            }
+        }
         return true;
     }
 
@@ -2830,7 +2845,7 @@ Scope {
                         onCancelled: root.open = false
                         onForward: {
                             trials.pressed("steps");
-                            root.enter(root.matches[root.current]);
+                            root.inward(root.matches[root.current]);
                         }
                         onBackward: {
                             trials.pressed("backs");

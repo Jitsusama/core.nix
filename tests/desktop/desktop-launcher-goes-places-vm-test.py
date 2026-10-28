@@ -329,8 +329,36 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Found from the root by its name, Return lands inside it, its
-    # collection's crumb before its own.
+    # Found from the root by its name, the right arrow lands inside it, as
+    # Return does, never short of it (Joel, 2026-10-26: Return never goes
+    # further in than the right arrow), so the foot says the two as one.
+    # The left arrow climbs back out the way it came, Lighthouse selected
+    # among the orchestrators, then onto what was typed.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    told = desktop.showing()["selected"]["told"]
+    assert told == ["\u21b5 \u2192 more"], told
+    machine.send_key("right")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Orchestrators", "Lighthouse"]
+            and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
+        )
+    )
+    machine.send_key("left")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Orchestrators"]
+            and (shown["selected"] or {}).get("name") == "Lighthouse"
+        )
+    )
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "lighthouse")
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Return lands inside it the same way, its collection's crumb before
+    # its own.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
