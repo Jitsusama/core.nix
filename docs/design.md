@@ -228,7 +228,7 @@ which draws the face itself, so the prompt there has its real marks.
 
 The table is `jitsusama.theme.marks`, each mark with what it means and its
 stand-in. Every program that can read it is given it: Quickshell as
-`Theme.glyph`, Neovim as `require('theme').glyphs`, and anything else through
+`Theme.glyph`, Neovim as `require('theme').marks`, and anything else through
 `~/.config/jitsusama/theme.json`, which holds the whole theme.
 
 ## Shape and Kinds

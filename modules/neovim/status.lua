@@ -15,7 +15,7 @@
 -- or a terminal left, a change made through fugitive. Nothing polls.
 local theme = require('theme')
 local where = require('where')
-local glyph = theme.glyphs
+local glyph = theme.marks
 
 local M = {}
 

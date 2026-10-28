@@ -193,7 +193,7 @@ in
           shades
           appearance
           ;
-        glyphs = lib.mapAttrs (_: mark: mark.glyph) config.jitsusama.theme.marks;
+        marks = lib.mapAttrs (_: mark: mark.glyph) config.jitsusama.theme.marks;
       }
     )
   }\n";
