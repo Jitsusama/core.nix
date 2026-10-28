@@ -1254,13 +1254,20 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["computer"]
-            and any(thing["is"] == "answer:machine" for thing in shown["things"])
+            and any(thing["is"] == "answer:machine:cpu" for thing in shown["things"])
         )
     )
-    processors = [thing["is"] for thing in desktop.showing()["things"]].index("answer:machine")
+    # Named Processor where it's held, as when stepped into; nothing in
+    # Machine repeats its name.
+    rows = desktop.showing()["rows"]
+    assert "Processor" in rows, rows
+    assert "Machine" not in rows, rows
+    processors = [thing["is"] for thing in desktop.showing()["things"]].index("answer:machine:cpu")
     for _ in range(processors):
         machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "answer:machine")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("is") == "answer:machine:cpu"
+    )
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Processor"] and "Cores" in shown["rows"]
