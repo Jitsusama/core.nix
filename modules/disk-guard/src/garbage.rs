@@ -336,15 +336,20 @@ pub fn stale(why: &str) -> bool {
 }
 
 /// Deletes the batch's `paths` that still exist through `nix store
-/// delete`, whose dead referrers are among them or gone. Nix refuses the
-/// whole call when any path a root reaches again since the batch was
-/// made, naming one, so it's dropped and the rest tried again.
-pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
+/// delete`, whose dead referrers are among them or gone. What a process
+/// holds as a temporary root in `roots` just before each call is left
+/// out: an evaluation holds every derivation it writes for as long as it
+/// runs, minutes for a flake's checks, and writes the same ones each time
+/// it runs, so a batch made a minute before meets them. Nix refuses the
+/// whole call when a root reaches any path again, naming one, so it's
+/// dropped and the rest tried again.
+pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<(), String> {
     let mut alive: Vec<String> = Vec::new();
     loop {
+        let held = temp_roots(roots);
         let left: Vec<&String> = paths
             .iter()
-            .filter(|path| !alive.contains(path))
+            .filter(|path| !alive.contains(path) && !held.contains(path.as_str()))
             .filter(|path| Path::new(path).symlink_metadata().is_ok())
             .collect();
         if left.is_empty() {

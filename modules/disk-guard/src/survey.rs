@@ -52,6 +52,9 @@ pub enum Action {
     Collect {
         root: PathBuf,
         nix: PathBuf,
+        /// Where Nix's clients keep their temporary roots, read again just
+        /// before each delete.
+        roots: PathBuf,
         paths: Vec<String>,
     },
     /// The system daemon's garbage on the filesystem mounted at `root`,

@@ -419,9 +419,12 @@ impl Reclaimer for Reclaim<'_> {
                     }),
                 )
             }
-            Action::Collect { nix, paths, .. } => {
-                let (nix, paths, gentle) = (nix.clone(), paths.clone(), self.gentle);
-                ended(self.waiting(move || garbage::delete(&nix, &paths, gentle)))
+            Action::Collect {
+                nix, roots, paths, ..
+            } => {
+                let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
+                let gentle = self.gentle;
+                ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)))
             }
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
