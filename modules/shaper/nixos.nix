@@ -27,10 +27,11 @@
 # wants it, and a sixteenth while something does. What a link reaches
 # without the router isn't slowed.
 #
-# A VPN leaves by the connection as one flow, whatever it carries, so CAKE
-# there can't tell a name lookup inside it from a build's upload. A VPN
-# named in jitsusama.shaper.vpns gets a CAKE of its own, sorted by the same
-# classes, at a little under the connection's rate, so its queue forms
+# A VPN leaves and arrives by the connection as one flow, whatever it
+# carries, so CAKE there can't tell a name lookup inside it from a build's
+# upload, or a model's reply from a git fetch. A VPN named in
+# jitsusama.shaper.vpns gets a CAKE of its own each way, sorted by the same
+# classes, at a little under the connection's rates, so its queues form
 # inside it.
 #
 # Each time the shaper starts, the kernel warns "htb: cake qdisc 2: is
