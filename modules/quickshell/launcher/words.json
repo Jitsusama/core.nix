@@ -1933,7 +1933,7 @@
     {
       "id": "shortcuts:onepassword",
       "in": "shortcuts",
-      "name": "1Password",
+      "name": "Passwords",
       "glyph": "password"
     },
     {

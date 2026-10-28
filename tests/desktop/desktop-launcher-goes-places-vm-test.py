@@ -1844,7 +1844,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Markdown reader",
         "Document viewer",
         "Player",
-        "1Password",
+        "Passwords",
     ]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
     desktop_row = desktop.showing()["things"][0]["reads"]
