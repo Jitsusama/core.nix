@@ -354,7 +354,8 @@ impl Source {
                 }
                 if let Some(path) = watch.iter().find(|path| !plain_absolute(path)) {
                     return Err(format!(
-                        "it watches {path:?}, which is not an absolute path"
+                        "it watches {}, which is not an absolute path",
+                        path.display()
                     ));
                 }
             }
