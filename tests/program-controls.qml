@@ -134,7 +134,7 @@ ShellRoot {
 
             const sure = quit.targets();
             same("Quit asks once, saying what it closes", names(sure),
-                "Quit now, closing 2 windows");
+                "Quit Now, Closing 2 Windows");
             same("as an alert", sure[0].hue, "alert");
             Niri.acted = [];
             sure[0].run();

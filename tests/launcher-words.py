@@ -201,7 +201,7 @@ def miscased(vocabulary: Entry) -> list[str]:
         out.extend(
             f"{entry['id']}'s {field} {state[field]!r} isn't in Title Case."
             for state in [entry, *entry.get("states", {}).values()]
-            for field in ("name", "part")
+            for field in ("name", "part", "sure")
             if state.get(field) and not titled(state[field])
         )
         empty = entry.get("empty", "")

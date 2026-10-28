@@ -1544,7 +1544,7 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     # Return asks first, saying Google tells the one guest, and cancels nothing yet.
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Cancel it now, telling 1 guest"
+        lambda shown: (shown["selected"] or {}).get("name") == "Cancel It Now, Telling 1 Guest"
     )
     machine.fail(f"test -s {asked}")
     machine.send_key("ret")

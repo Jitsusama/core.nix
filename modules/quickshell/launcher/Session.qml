@@ -107,7 +107,7 @@ Provider {
     readonly property string closing: {
         // Niri's windows are kept by id.
         const open = Object.keys(Niri.windows).length;
-        return open === 0 ? "" : `, closing ${open === 1 ? "the window" : `${open} windows`}`;
+        return open === 0 ? "" : `, Closing ${open === 1 ? "the Window" : `${open} Windows`}`;
     }
 
     // What's shown of them says how they stand now: Return on a setting
