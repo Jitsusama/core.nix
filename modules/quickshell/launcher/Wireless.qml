@@ -872,7 +872,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of all) {
+        for (const row of everything()) {
             if ((row.prepared.mask & need) !== need)
                 continue;
             const m = Fuzzy.match(row.prepared, words, false);
@@ -886,9 +886,12 @@ Provider {
         return { rows: kept.map(f => f.row), grade: finest };
     }
 
-    // With Wi-Fi off, turning it on is all there is to do.
+    // Wi-Fi holds its own off, after the networks so stepping in never
+    // lands on it, as Bluetooth holds its radio (collection-order.md);
+    // typed from the top, it's still found by name. With Wi-Fi off,
+    // turning it on is all there is to do.
     function everything() {
-        return on ? all.slice() : [radio];
+        return on ? all.concat([radio]) : [radio];
     }
 
     function counted() {
