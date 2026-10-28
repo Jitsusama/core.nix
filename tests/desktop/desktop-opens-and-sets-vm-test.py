@@ -299,9 +299,10 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.as_account("qs ipc call launcher collection capture")
     desktop.launcher_ready()
     desktop.launcher_until(
-        lambda shown: shown["rows"][-2:]
-        == ["Edit the Newest Screenshot", "Look Through the Screenshots"]
-        and (shown["selected"] or {}).get("name") == "The Whole Screen",
+        lambda shown: (
+            shown["rows"][-2:] == ["Edit the Newest Screenshot", "Look Through the Screenshots"]
+            and (shown["selected"] or {}).get("name") == "The Whole Screen"
+        ),
     )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
