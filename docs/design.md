@@ -678,8 +678,11 @@ works the same way everywhere.
   it reads as a place, not as tags side by side. The left arrow takes
   away what's typed, whole, and with nothing typed steps back out,
   putting back what was typed before with the same row selected;
-  Backspace in an empty field does the same. Escape always closes. The
-  foot names what Return does and where the arrows go. A step in lists
+  Backspace in an empty field does the same. Escape always closes, and
+  only the launcher: the window behind never hears it. The foot names
+  every key that works on the selection: what Return does, Shift+Return
+  where a row opens below, and the right arrow wherever there's something
+  inside, a step in as well as at the top. A step in lists
   what Return does first, where the row's own list left it out, so the
   right arrow never hides the act Return would have done. Every row has
   a Return act: it steps in, does a thing, or copies the value it shows,

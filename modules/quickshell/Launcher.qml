@@ -1224,8 +1224,13 @@ Scope {
     // step. Tab is said in the field, after the completion it takes
     // (Prompt.qml), not here: it comes and goes with each letter, so in the
     // foot it moved the keys or took room from how things stand. The left
-    // arrow is said only where it goes back: that it takes away what's typed is what any field does, and
-    // saying so took room from how things stand as soon as Joel typed.
+    // arrow is said only where it goes back: that it takes away what's
+    // typed is what any field does, and saying so took room from how things
+    // stand as soon as Joel typed. Shift+Return and the right arrow are said
+    // wherever they work, a step in too (Joel, 2026-10-26: "the foot shows
+    // every key that works on the selection"): the right arrow where `enter`
+    // finds somewhere to go, by what it would ask, never by asking it, since
+    // the foot is said for every row.
     // Whether Return does something and keeps the launcher, as a setting
     // does, rather than going somewhere inside it, as a spot, a row with
     // more inside, one holding rows (its verbs and targets both, as a
@@ -1233,6 +1238,17 @@ Scope {
     function keepsOpen(choice) {
         return !!choice.stays && !!choice.run && !choice.spot && !choice.from
             && verbOf(choice) !== "more" && !(choice.verbs && choice.targets);
+    }
+
+    // Whether the right arrow steps into a row, as `enter` would: a thing's
+    // verbs at the top or in a collection, a verb's targets in a step, a
+    // place found from the top, or an ask.
+    function holdsMore(choice) {
+        if (held.length > 0 && choice.given)
+            return true;
+        if (held.length === 0 && choice.category)
+            return true;
+        return held.length === 0 || collecting ? !!choice.verbs : !!choice.targets;
     }
 
     function keysFor(choice) {
@@ -1244,9 +1260,9 @@ Scope {
         // font having no Ctrl key's mark, so it's spelled as chords are.
         if (keepsOpen(choice))
             keys.push(["Ctrl+\u21b5", "and close"]);
-        if (held.length === 0 && choice.below)
+        if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
-        if ((held.length === 0 || collecting) && choice.verbs)
+        if (holdsMore(choice))
             keys.push(["\u2192", choice.from ? "see all" : "more"]);
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", "back"]);
