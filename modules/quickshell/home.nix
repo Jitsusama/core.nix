@@ -949,11 +949,6 @@ in
   };
 
   config = {
-    # kitty's Recent watches zoxide's database from inside its folder, which
-    # zoxide makes only at the first cd, so the folder is there from the
-    # start and the first cd counts.
-    systemd.user.tmpfiles.rules = lib.optional config.programs.zoxide.enable "d ${config.xdg.dataHome}/zoxide 0700 - - -";
-
     # A thing found by name ranks a little ahead of an action matching as
     # well, and an action ahead of ending the session.
     jitsusama.quickshell.launcher.providers = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
@@ -1698,8 +1693,12 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders WaitingOnYou.qml watches for what waits on Joel.
+    # folders WaitingOnYou.qml watches for what waits on Joel, and the one
+    # kitty's Recent reads zoxide's database in (launcher/Recents.qml
+    # watches a list from inside its folder), which zoxide makes only at
+    # its first cd, so that cd counts.
     systemd.user.tmpfiles.rules = [
+      "d ${config.xdg.dataHome}/zoxide 0700 - - -"
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
