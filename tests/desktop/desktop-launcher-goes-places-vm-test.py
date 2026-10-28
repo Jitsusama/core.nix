@@ -1946,7 +1946,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     layers = [
         "Desktop",
         "Terminal",
-        "System monitor",
+        "Processes",
         "Picture viewer",
         "Markdown reader",
         "Document viewer",

@@ -24,7 +24,7 @@ let
     terminal = "the terminal, inside a window";
     neovim = "Neovim, the editor in the terminal";
     pi = "pi, the coding agent in the terminal";
-    btop = "btop, the system monitor in the terminal";
+    btop = "btop, which watches the processes, in the terminal";
     swayimg = "swayimg, the picture viewer, in a window of its own";
     inlyne = "inlyne, the markdown reader, in a window of its own";
     zathura = "zathura, the document viewer, in a window of its own";

@@ -1897,7 +1897,7 @@
     {
       "id": "shortcuts:btop",
       "in": "shortcuts",
-      "name": "System monitor",
+      "name": "Processes",
       "glyph": "processor"
     },
     {
@@ -2635,7 +2635,7 @@
     {
       "id": "shortcuts:btop:processes",
       "in": "shortcuts",
-      "name": "Processes"
+      "name": "The process list"
     },
     {
       "id": "shortcuts:btop:boxes",
