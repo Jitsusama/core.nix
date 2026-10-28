@@ -1117,6 +1117,27 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # Found from the root, the right arrow steps into every network with
+    # the Office still selected among them (Joel, 2026-10-26: stepping in
+    # keeps the match), and the left arrow puts back what was typed.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("office", selecting="Office")
+    told = desktop.showing()["selected"]["told"]
+    assert "\u2192 see all" in told, told
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            len(shown["held"]) == 1
+            and shown["typed"] == ""
+            and len(shown["rows"]) > 1
+            and (shown["selected"] or {}).get("name") == "Office"
+        )
+    )
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "office")
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Stepped into, a network says after what can be done to it what's
     # heard of it, each a part named first, the selected row's footer
     # saying more: the card's Signal and Speed once the card has read
