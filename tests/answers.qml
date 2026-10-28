@@ -1159,6 +1159,11 @@ QtObject {
             "bluez_input.00:11:22:33:44:55", "bluez_output.00_11_22_33_44_55.1",
             `${soundOut}HDMI1__sink`, undefined].map(name => Sounds.called(name)),
             ["speakers", "microphones", "jack", "jack-microphone", "its-microphone", "", "", ""]);
+        // A USB microphone named as its own headphone socket is, its
+        // device's microphone; one named alone keeps its name.
+        const usb = "alsa_input.usb-Shure_Inc_Shure_MV7-00.mono-fallback";
+        machine("a microphone named as an output", [Sounds.called(usb, true),
+            Sounds.called(usb, false)], ["its-microphone", ""]);
         // A jack's "nothing" hides it only while desk-facts still runs to say
         // otherwise; once it's gone, headphones may have come since.
         const sturdyNothing = [{ name: "plugged in", value: "nothing" }];
