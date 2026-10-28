@@ -2553,11 +2553,6 @@
       "name": "Messages"
     },
     {
-      "id": "shortcuts:slack:huddles",
-      "in": "shortcuts",
-      "name": "Huddles"
-    },
-    {
       "id": "on",
       "once": ["What's on"],
       "name": "Now",

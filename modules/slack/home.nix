@@ -91,7 +91,7 @@ in
         does = "Search the conversation";
       }
     ]
-    ++ grouped "huddles" [
+    ++ [
       {
         chord = "Ctrl+Shift+h";
         does = "Start, join or leave a huddle";
@@ -100,8 +100,6 @@ in
         chord = "Ctrl+Shift+Space";
         does = "Mute or unmute the huddle";
       }
-    ]
-    ++ [
       {
         chord = "Ctrl+Shift+y";
         does = "Set your status";
