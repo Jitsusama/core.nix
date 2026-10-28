@@ -190,6 +190,31 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     )
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
     assert any("\u21e5" in word["text"] for word in field), field
+    # The left arrow takes what's typed away only where the field says
+    # so, its mark after the completion's, and the right arrow right
+    # after puts it back, what it took standing in grey with the right
+    # arrow's mark meanwhile. With Ctrl it moves the caret, as in any
+    # field: a letter typed then lands at the start.
+    assert any("\u2190" in word["text"] for word in field), field
+    machine.send_key("ctrl-left")
+    machine.send_chars("x")
+    desktop.launcher_until(lambda shown: shown["typed"] == "xbatt")
+    machine.send_key("backspace")
+    desktop.launcher_until(lambda shown: shown["typed"] == "batt")
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    assert any(word["text"].startswith("batt ") and "\u2192" in word["text"] for word in field), (
+        field
+    )
+    machine.send_key("right")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["typed"] == "batt"
+            and shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
+        )
+    )
     machine.send_key("tab")
     desktop.launcher_until(lambda shown: shown["typed"] == "battery")
     machine.send_key("ret")
@@ -1157,7 +1182,7 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place(
+def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place(  # noqa: PLR0915
     desktop: Desktop,
 ) -> None:
     """A step finds its rows by their hidden words, and its parts move in place."""
@@ -1175,10 +1200,17 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.type_in("tailscale0", selecting="VPN")
     assert "tailscale0" not in desktop.showing()["rows"]
     # The left arrow takes what's typed away, the selection staying on
-    # the VPN, and the right arrow steps into it.
+    # the VPN; the right arrow right after puts it back, and then steps
+    # into it.
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: shown["typed"] == "" and (shown["selected"] or {}).get("name") == "VPN"
+    )
+    machine.send_key("right")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["typed"] == "tailscale0" and (shown["selected"] or {}).get("name") == "VPN"
+        )
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Address" in shown["rows"])
