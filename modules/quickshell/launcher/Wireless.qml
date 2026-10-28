@@ -827,8 +827,12 @@ Provider {
             const at = launcher.selected ?? launcher.asking;
             const showing = launcher.open && at && at.network === name;
             if (refused === "") {
+                // Joined, every ask it made is put away, its name, its
+                // server's and its password, back to the network itself.
                 if (showing && launcher.asking === at)
-                    launcher.back();
+                    while (launcher.asking && launcher.asking.network === name
+                        && launcher.held.length > 0)
+                        launcher.back();
                 return;
             }
             Report.say(`refused wifi ${name}`);

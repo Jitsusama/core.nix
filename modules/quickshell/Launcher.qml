@@ -244,9 +244,13 @@ Scope {
         const below = Rank.keysHeld(Rank.once(Rank.placed(found.filter(once),
             gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
-        // it's shown in (reshow).
-        matches = steadying ? Steady.kept(matches, rows.concat(below), steadyId)
-            : rows.concat(below);
+        // it's shown in (reshow). A row still there keeps its place as it
+        // reads now, though what it says no longer matches what's typed: a
+        // Play that Return made a Pause shows Pause, rather than going.
+        const now = rows.concat(below);
+        const renamed = steadying ? matches.filter(row => !row.gone && keyed[row.key] !== undefined
+            && !now.some(one => one.key === row.key)).map(row => keyed[row.key]) : [];
+        matches = steadying ? Steady.kept(matches, now.concat(renamed), steadyId) : now;
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
