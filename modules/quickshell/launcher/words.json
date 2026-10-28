@@ -57,7 +57,7 @@
         "sound",
         "cameras",
         "light",
-        "machine",
+        "machine:cpu",
         "machine:memory",
         "heat",
         "machine:disk"
@@ -326,17 +326,6 @@
       "name": "Last Run"
     },
     {
-      "id": "machine",
-      "name": "Machine",
-      "term": "Machine/machine",
-      "question": "processor",
-      "parts": [
-        "machine:memory",
-        "machine:cpu",
-        "machine:uptime"
-      ]
-    },
-    {
       "id": "machine:memory",
       "once": ["RAM"],
       "name": "Memory",
@@ -398,6 +387,8 @@
       "once": ["CPU"],
       "name": "Processor",
       "term": "Machine/processor",
+      "provider": "machine",
+      "question": "processor",
       "glyph": "processor",
       "answers": [
         "processor",
@@ -489,6 +480,7 @@
     },
     {
       "id": "machine:uptime",
+      "in": "computer",
       "name": "Uptime",
       "answers": [
         "uptime"
