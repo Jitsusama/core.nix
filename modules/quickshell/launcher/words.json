@@ -2752,6 +2752,75 @@
       "ask": "which notice?"
     },
     {
+      "id": "verb:notice:open",
+      "in": "notices",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "offer"
+    },
+    {
+      "id": "verb:notice:goTo",
+      "in": "notices",
+      "name": "Go to {program}",
+      "verb": "switch",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:notice:copy",
+      "in": "notices",
+      "name": "Copy What It Said",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:notice:mark",
+      "in": "notices",
+      "name": "Mark It Read",
+      "verb": "mark",
+      "glyph": "read",
+      "states": {
+        "read": {
+          "name": "Mark It Unread",
+          "glyph": "unread"
+        }
+      }
+    },
+    {
+      "id": "verb:notice:forget",
+      "in": "notices",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notices:forget",
+      "in": "notices",
+      "name": "Forget Them All",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notices:all",
+      "in": "notices",
+      "name": "All the Notices",
+      "verb": "see",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:notices:show",
+      "in": "notices",
+      "name": "Show Them",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:notices:seen",
+      "in": "notices",
+      "name": "Forget Them",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
       "id": "wifi",
       "once": ["Wireless", "WLAN"],
       "name": "Wi-Fi",

@@ -179,7 +179,7 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     since = desktop.mark()
     with desktop.told("notice verb Play it"):
         machine.send_key("right")
-    with desktop.told("notice verb Copy what it said"):
+    with desktop.told("notice verb Copy What It Said"):
         machine.send_key("down")
     desktop.photograph("notices-held-verbs")
     with desktop.told("notice back"):
@@ -217,7 +217,7 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     # It offers nothing and opens nothing, so copying leads its verbs.
-    with desktop.told("notice verb Copy what it said"):
+    with desktop.told("notice verb Copy What It Said"):
         machine.send_key("right")
     with desktop.told("copied card Build log"):
         machine.send_key("ret")
@@ -381,7 +381,7 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     )
     # Return's own act, copying what it said, leads; what it offers follows.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy what it said", "Play it"])
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy What It Said", "Play it"])
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
     machine.send_key("ret")
