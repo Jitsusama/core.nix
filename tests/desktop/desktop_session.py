@@ -36,6 +36,7 @@ class Values(TypedDict):
     # The programs tests/desktop.nix writes for the test to run inside the machine.
     asking: str
     ask_portal: str
+    copilot_key: str
     touchscreen: str
     tuple_window: str
     # A picture, a document, a text and a track to open, as a download would be.

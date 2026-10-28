@@ -760,6 +760,43 @@ def test_dictation_says_what_its_doing_and_when_it_heard_nothing(desktop: Deskto
     machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=10))
 
 
+# The laptop's Copilot key sends Super, Shift and F23 together, which the
+# keyboard's layout reads as F23, and niri's bind for it starts
+# dictation. A stand-in key sends the same, through the kernel as the
+# laptop's does, since QEMU's keyboard has no F23.
+
+
+def test_the_copilot_key_starts_dictation(desktop: Desktop) -> None:
+    """The Copilot key starts dictation."""
+    machine = desktop.machine
+    dictation = "niri msg layers | grep -q dictation"
+    machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=15))
+    machine.succeed(f"systemd-run --unit=copilot-key {desktop.values['copilot_key']}")
+    machine.wait_for_file("/run/copilot-key", timeout=timedelta(seconds=30))
+    # A press before the key is open would be lost, so the test waits until
+    # it is. Here niri runs nested in Cage, which reads the machine's input
+    # devices and hands their keys on to niri, so it's Cage that opens it.
+    node = machine.succeed("cat /run/copilot-key.device").strip()
+    # Its process isn't named cage exactly, so it's found by its command.
+    held = f"find /proc/$(pgrep -o -f bin/cage)/fd -lname {node} | grep -q ."
+    try:
+        machine.wait_until_succeeds(held, timeout=30)
+    except AssertionError:
+        # What udev made of the key says why Cage passed it by.
+        seen = machine.execute(f"udevadm info {node}", check_return=False)[1]
+        pytest.fail(f"Cage never opened the Copilot key; udev says:\n{seen}")
+    since = desktop.mark()
+    machine.succeed("echo press > /run/copilot-key")
+    try:
+        desktop.reported("says dictation listening", lambda rest: rest == "", since)
+    finally:
+        machine.succeed("systemctl stop copilot-key")
+    # It's put back as it was: stopped, it types what it heard, nothing here.
+    desktop.as_account("dictation toggle")
+    desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
+    machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=10))
+
+
 # Any player that tells the desktop what it plays shows in the margin
 # while it plays, and the media keys' command shows what it is.
 
