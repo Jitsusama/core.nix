@@ -138,7 +138,7 @@ QtObject {
         expect("the row the keys are on",
             Marks.pointed(launcher(true, "on", ["on:camera"])), "camera");
         expect("a thing stepped into, on one of its actions",
-            Marks.pointed(launcher(true, "on", ["on:awake", "verb:on:awake:Let it sleep"])),
+            Marks.pointed(launcher(true, "on", ["on:awake", "verb:on:awake:Let It Sleep"])),
             "awake");
         expect("an action alone says its thing",
             Marks.pointed(launcher(true, "on", ["verb:on:muted:Unmute it"])), "muted");

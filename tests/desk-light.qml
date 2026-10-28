@@ -105,7 +105,7 @@ ShellRoot {
         expect("how it's lit", told !== null && told.headline === "the desk light is 40%, 4000 K",
             told?.headline);
         expect("its parts", told.rows.map(row => `${row.name} ${row.side}`).join(", ")
-            === "Brightness 40%, Warmth 4000 K, Turn it off ",
+            === "Brightness 40%, Warmth 4000 K, Turn It Off ",
             JSON.stringify(told.rows.map(row => [row.name, row.side])));
         expect("never by the program's name", light.answer("litra") === null,
             light.answer("litra")?.headline);
@@ -140,7 +140,7 @@ ShellRoot {
         // a bar, and putting it out.
         const parts = light.answer("desk light").rows;
         const partNames = parts.map(part => part.name).join(", ");
-        expect("the parts", partNames === "Brightness, Warmth, Turn it off", partNames);
+        expect("the parts", partNames === "Brightness, Warmth, Turn It Off", partNames);
         expect("how each is set", parts[0].side === "60%" && parts[1].side === "4100 K"
             && parts[0].graph.shape === "bar" && parts[1].graph.shape === "bar",
             JSON.stringify(parts.slice(0, 2).map(part => [part.side, part.graph])));
@@ -152,7 +152,7 @@ ShellRoot {
         const warmer = parts[1].verbs();
         const steps = brighter.slice(0, 2).concat(warmer.slice(0, 2), [parts[2]]);
         const stepNames = steps.map(verb => verb.name).join(", ");
-        expect("the steps", stepNames === "Brighter, Dimmer, Warmer, Cooler, Turn it off",
+        expect("the steps", stepNames === "Brighter, Dimmer, Warmer, Cooler, Turn It Off",
             stepNames);
         expect("each its one word",
             steps.map(verb => verb.verb).join(" ") === "brighter dimmer warmer cooler off",

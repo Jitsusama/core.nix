@@ -119,7 +119,7 @@ ShellRoot {
         try {
             const tester = program("tester").verbs();
             same("acts first, then parts, each where it applies", names(tester),
-                "Switch, New window, New window below, Draft, Private window, "
+                "Switch, New Window, New Window Below, Draft, Private window, "
                 + "Open the logbook, Quit, Media, Sound, Notices");
             const [switching, , , draft, secret, logbook, quit, media, sound, told] = tester;
             same("Switch names the window used last", switching.side, "Logbook");
@@ -195,12 +195,12 @@ ShellRoot {
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
-                names(quiet), "New window, New window below, Shortcuts");
+                names(quiet), "New Window, New Window Below, Shortcuts");
             same("its Shortcuts counts its keys", quiet[2].count, "4");
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
-                "New window, New window below, Media, Sound");
+                "New Window, New Window Below, Media, Sound");
             same("Media holds only what the player can do", names(radio[2].targets()), "Play");
             const recording = radio[3];
             same("Sound says it records, with nothing to draw",

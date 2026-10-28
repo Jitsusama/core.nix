@@ -117,7 +117,7 @@ Singleton {
     function region(back: var): void {
         if (stopped())
             return;
-        Picker.pick("Record a region", Theme.glyph.recording, geometry => {
+        Picker.pick("Record a Region", Theme.glyph.recording, geometry => {
             what = "a region";
             record(["--geometry", geometry]);
         }, back ?? null);

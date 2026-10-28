@@ -219,7 +219,7 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     retry(still_kept, timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("forget the clip", selecting="Forget the clipboard")
+    desktop.type_in("forget the clip", selecting="Forget the Clipboard")
     desktop.photograph("launcher-forget-copies")
     with desktop.told("forgot the copies"):
         machine.send_key("ret")
@@ -866,8 +866,8 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     # it changes something, so Return keeps the launcher, the row saying
     # it's in use, and Ctrl+Return sets it and closes.
     for typed, profile, name, key in [
-        ("balanced power", "balanced", "Balanced power", "ret"),
-        ("power saver", "power-saver", "Power saver", "ctrl-ret"),
+        ("balanced power", "balanced", "Balanced Power", "ret"),
+        ("power saver", "power-saver", "Power Saver", "ctrl-ret"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
@@ -892,7 +892,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         lambda shown: (
             shown["held"] == ["now"]
             and any(
-                thing["reads"].startswith("Power Profile \u00b7 Power saver")
+                thing["reads"].startswith("Power Profile \u00b7 Power Saver")
                 for thing in shown["things"]
             )
         )
@@ -903,16 +903,16 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     # choices a step in by Return or the right arrow, each named there as
     # the part reads it.
     for key, profile, name, was in [
-        ("ret", "balanced", "Balanced", "Power saver"),
-        ("right", "power-saver", "Power saver", "Balanced"),
+        ("ret", "balanced", "Balanced", "Power Saver"),
+        ("right", "power-saver", "Power Saver", "Balanced"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
-        desktop.type_in("power profile", selecting="Power profile")
+        desktop.type_in("power profile", selecting="Power Profile")
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == was)  # noqa: B023
         desktop.step_in(key)
-        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power saver", "Balanced"])
+        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
         desktop.type_in(name.split()[0][:3].lower(), selecting=name)
         machine.send_key("ret")
         machine.wait_until_succeeds(
@@ -963,8 +963,8 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"][:2] == ["Focus", "Brightness"]
-                and [row for row in shown["rows"] if row != "Room light"][2:8]
-                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
+                and [row for row in shown["rows"] if row != "Room Light"][2:8]
+                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour Depth", "EDID"]
             )
         )
         desktop.photograph("launcher-displays")
@@ -1062,7 +1062,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to it", "Disconnect it"])
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to It", "Disconnect It"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
@@ -1133,7 +1133,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: "Transmit power" in shown["rows"])
+    desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
     # The left arrow steps out with the word put back, and again takes
     # the word.
     machine.send_key("left")
@@ -1153,12 +1153,12 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them.
-    desktop.type_in("access", selecting="Access points")
+    desktop.type_in("access", selecting="Access Points")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, channel 1"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1"])
     desktop.photograph("launcher-wifi-points")
     desktop.step_in("ret")
-    desktop.type_in("hardware", selecting="Hardware address")
+    desktop.type_in("hardware", selecting="Hardware Address")
     assert desktop.showing()["selected"]["side"] == "02:00:00:00:02:00"
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
@@ -1170,9 +1170,9 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
     )
-    # It changed something, so the launcher stays, its row now Wi-Fi on.
+    # It changed something, so the launcher stays, its row now Wi-Fi On.
     desktop.launcher_until(
-        lambda shown: shown["open"] and (shown["selected"] or {}).get("name") == "Wi-Fi on"
+        lambda shown: shown["open"] and (shown["selected"] or {}).get("name") == "Wi-Fi On"
     )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
@@ -1201,7 +1201,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.type_in("wi-fi", selecting="Wi-Fi")
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: {"Address", "Hardware address", "MTU", "State"} <= set(shown["rows"])
+        lambda shown: {"Address", "Hardware Address", "MTU", "State"} <= set(shown["rows"])
     )
     assert "Device name" not in desktop.showing()["rows"], desktop.showing()
     desktop.type_in("mtu", selecting="MTU")
@@ -1225,7 +1225,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.step_in()
     desktop.type_in("address", selecting="Address")
     assert desktop.showing()["selected"]["side"] == "100.100.1.2/32"
-    assert "Hardware address" not in desktop.showing()["rows"], desktop.showing()
+    assert "Hardware Address" not in desktop.showing()["rows"], desktop.showing()
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.succeed("ip link delete tailscale0")

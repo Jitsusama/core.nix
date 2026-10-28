@@ -42,7 +42,7 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
     """Print opens Capture, where Return takes the whole screen."""
     desktop.capture()
     screen = desktop.showing()["selected"]
-    assert screen["name"] == "The whole screen"
+    assert screen["name"] == "The Whole Screen"
     assert screen["chord"] == "\u21e7 Print", "the whole screen's row shows its chord"
     desktop.photograph("capture")
     with desktop.told("shows card Screenshot captured"), desktop.captured():
@@ -55,7 +55,7 @@ def test_capture_takes_a_window_found_by_its_title_on_any_workspace(desktop: Des
     # The window the keys were in, though niri says none has focus
     # while the launcher has the keys.
     desktop.capture()
-    desktop.type_in("this window", selecting="This window \u00b7 Seashells")
+    desktop.type_in("this window", selecting="This Window \u00b7 Seashells")
     assert desktop.showing()["selected"]["chord"] == "Alt Print"
     with desktop.captured():
         desktop.machine.send_key("ret")
@@ -79,7 +79,7 @@ def test_capture_records_the_window_and_says_why_when_niri_cant_share_it(
     """Capture records the window, and says why when niri can't share it."""
     pool = desktop.opened("Tidepool")
     desktop.capture()
-    desktop.type_in("record this window", selecting="Record this window \u00b7 Tidepool")
+    desktop.type_in("record this window", selecting="Record This Window \u00b7 Tidepool")
     assert desktop.showing()["selected"]["chord"] == "Ctrl Alt Print"
     # niri here offers no screencast on the session bus, so the
     # recording can't start, and the notice says why rather than it
@@ -113,7 +113,7 @@ def test_a_region_is_picked_by_the_keys_and_escape_goes_back_to_capture(
     def picker() -> None:
         """Open Capture's region picker, ready for the keys."""
         desktop.capture()
-        desktop.type_in("region", selecting="A region")
+        desktop.type_in("region", selecting="A Region")
         with desktop.told("keys picker"):
             machine.send_key("ret")
 
@@ -326,7 +326,7 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     # The margin wears recording's mark while it records, as for the screen.
     desktop.reported("sets margin ", marked, since)
     desktop.capture()
-    desktop.type_in("stop", selecting="Stop recording")
+    desktop.type_in("stop", selecting="Stop Recording")
     assert desktop.showing()["selected"]["side"] == "a video from the camera"
     since = desktop.mark()
     # It stops as Return would, and the viewfinder takes the camera back.
@@ -343,8 +343,8 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
         f"""echo '{{"pid":999999,"stop":"/tmp/stop","file":"/tmp/v.mp4"}}' > {state}"""
     )
     desktop.capture()
-    desktop.launcher_until(lambda shown: "A region" in shown["rows"])
-    assert "Stop recording" not in desktop.showing()["rows"], desktop.showing()
+    desktop.launcher_until(lambda shown: "A Region" in shown["rows"])
+    assert "Stop Recording" not in desktop.showing()["rows"], desktop.showing()
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"rm {state}")
@@ -366,11 +366,11 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     )
     # Return's own Copy, then the camera.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Built-in camera"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Built-In Camera"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.answer("built-in camera")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     assert desktop.showing()["selected"]["side"] == "in use by chrome"
     desktop.step_in()
     # Return's own Open first, then who has it, then what it gives, from
@@ -378,18 +378,18 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     # whatever the stand-in's writer asks.
     parts = [thing["reads"] for thing in desktop.showing()["things"]]
     assert len(parts) == 3, parts  # noqa: PLR2004 # Open, who has it, and what it gives.
-    assert parts[:2] == ["Open", "In use \u00b7 chrome"], parts
+    assert parts[:2] == ["Open", "In Use \u00b7 chrome"], parts
     assert re.fullmatch("Streaming \u00b7 YUYV 640 \u00d7 480 at [0-9]+", parts[2]), parts
     desktop.photograph("launcher-camera")
     machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In use")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In Use")
     desktop.step_in()
     assert desktop.showing()["rows"] == ["chrome"]
     machine.send_key("left")
     desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == [])
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-in camera")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Built-In Camera")
     machine.send_key("ret")
     machine.wait_until_succeeds(desktop.in_session(CAMERA), timeout=WAKING)
     machine.send_key("esc")

@@ -326,7 +326,7 @@ Provider {
             glyph: action.glyph,
             hue: "action",
             chord: action.chord ?? [],
-            // One that changes how things stand, such as Let it sleep,
+            // One that changes how things stand, such as Let It Sleep,
             // keeps the launcher, which shows it changed (Piece.qml).
             stays: action.stays ?? false,
             run: () => action.run(provider.shell)

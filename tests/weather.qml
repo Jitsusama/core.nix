@@ -204,7 +204,7 @@ ShellRoot {
 
         // Elsewhere, with its own clock and its own rain.
         const tokyo = weather.answer("weather in tokyo");
-        expect("the time there", tokyo.rows[0].name === "Now, 22:45 Saturday there", tokyo.rows[0].name);
+        expect("the time there", tokyo.rows[0].name === "Now There, 22:45 Saturday", tokyo.rows[0].name);
         expect("its own rain", tokyo.rows[1].side === "none in the next 12 hours", tokyo.rows[1].side);
         expect("where it is", tokyo.note === "Tokyo, Japan \u00b7 Open-Meteo", tokyo.note);
         expect("its hours run into tomorrow",

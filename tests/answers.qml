@@ -784,7 +784,7 @@ QtObject {
         machine("no throttling counted", Heat.throttled([]), null);
         machine("each core's first processor", Heat.coreCpus([{ cpu: 0, core: 0 },
             { cpu: 1, core: 0 }, { cpu: 2, core: 4 }]), { 0: 0, 4: 2 });
-        machine("a part's name in a sentence", ["Processor", "Wi-Fi card", "Air inside", "HDR"]
+        machine("a part's name in a sentence", ["Processor", "Wi-Fi Card", "Air Inside", "HDR"]
             .map(Heat.phrase), ["processor", "Wi-Fi card", "air inside", "HDR"]);
         machine("a fan's id", Heat.fanId("Video Fan"), "video-fan");
         machine("a sensor whose label says nothing", [Heat.labelled("CPU"), Heat.labelled("Other"),

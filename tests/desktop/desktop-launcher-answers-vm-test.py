@@ -301,7 +301,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.as_account("qs ipc call launcher collection displays")
     desktop.launcher_ready()
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Focus", "Brightness", "Room light"])
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Focus", "Brightness", "Room Light"])
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Brightness")
     desktop.step_in("ret")
@@ -321,7 +321,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     kbd_light = "/sys/class/leds/stand-in::kbd_backlight/brightness"
     kbd_lit = int(machine.succeed(f"cat {kbd_light}"))
     kbd_said = "off" if kbd_lit == 0 else f"{kbd_lit} of 2"
-    kbd_levels = ["Light off", "Light to 1 of 2", "Light to 2 of 2"]
+    kbd_levels = ["Light Off", "Light to 1 of 2", "Light to 2 of 2"]
     desktop.answer("keyboard light")
     desktop.launcher_until(
         lambda shown: (
@@ -343,9 +343,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # The power actions answer to their names, and only those; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
-        ("power off", "Power off", "Power off"),
+        ("power off", "Power Off", "Power off"),
         ("reboot", "Reboot", "Reboot"),
-        ("log out", "Log out", "Log out"),
+        ("log out", "Log Out", "Log out"),
     ]:
         desktop.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
@@ -464,9 +464,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.answer("disk")
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Space", "What's filling it"]
+        lambda shown: shown["rows"][:3] == ["Copy", "Space", "What's Filling It"]
     )
-    desktop.type_in("filling", selecting="What's filling it")
+    desktop.type_in("filling", selecting="What's Filling It")
     assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
     desktop.step_in()
     desktop.launcher_until(
@@ -528,7 +528,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:6] == ["Copy", "In", "Out", "Connection", "Round trip", "Dropped"]
+            shown["rows"][:6] == ["Copy", "In", "Out", "Connection", "Round Trip", "Dropped"]
         )
     )
     assert (
@@ -705,7 +705,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.answer("memory")
     desktop.launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
     desktop.step_in()
-    desktop.launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
+    desktop.launcher_until(lambda shown: {"Used", "Cached", "Using It"} <= set(shown["rows"]))
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The keyboards QEMU gives it, however many, and caps lock.
@@ -728,7 +728,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         f" && echo '{json.dumps(board_facts)}' > $XDG_RUNTIME_DIR/desk/.k"
         " && mv $XDG_RUNTIME_DIR/desk/.k $XDG_RUNTIME_DIR/desk/keyboards.json"
     )
-    board = "The laptop's keyboard"
+    board = "The Laptop's Keyboard"
     desktop.answer("keyboards")
     desktop.step_in()
     desktop.launcher_until(lambda shown: board in shown["rows"])
@@ -736,7 +736,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:3] == ["Caps lock", "Num lock", "Scroll lock"]
+            shown["rows"][:3] == ["Caps Lock", "Num Lock", "Scroll Lock"]
             and {"Repeat", "Light", "Connection", "Keys"} <= set(shown["rows"])
         ),
     )
@@ -753,7 +753,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     )
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light off")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light Off")
     machine.send_key("ret")
     machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=dt.timedelta(seconds=10))
     # It changed something, so the launcher stays until it's closed.
@@ -1020,9 +1020,9 @@ def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(
     # Return, since Return would do them.
     for typed, name, verb in [
         ("sle", "Sleep", "sleep"),
-        ("keep", "Keep awake", "start"),
+        ("keep", "Keep Awake", "start"),
         ("reb", "Reboot", "reboot"),
-        ("do not", "Do not disturb", "start"),
+        ("do not", "Do Not Disturb", "start"),
     ]:
         desktop.answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
@@ -1137,7 +1137,7 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
         ("calls", ["Calls"]),
         ("lock", ["Lock"]),
         ("kitty", ["kitty"]),
-        ("do not disturb", ["Do not disturb"]),
+        ("do not disturb", ["Do Not Disturb"]),
         ("capture", ["Capture"]),
         ("", []),
     ]:

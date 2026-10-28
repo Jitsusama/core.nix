@@ -22,7 +22,7 @@ Piece {
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{
         glyph: Theme.glyph.ringing,
-        name: Quiet.kept ? "End it now" : "Let notices show",
+        name: Quiet.kept ? "End It Now" : "Let Notices Show",
         stays: true,
         run: () => Quiet.end()
     }].concat(ends !== "" ? [{
