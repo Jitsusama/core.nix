@@ -1772,7 +1772,7 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     # A harmless one is done at once, and once it ends something, offered.
     awake = one(entries, "Keep Awake", "Machine \u203a Power")
     assert not awake["disruptive"]
-    assert ran(awake) == {"done": True, "said": "Machine \u203a Power \u203a Keep awake"}
+    assert ran(awake) == {"done": True, "said": "Machine \u203a Power \u203a Keep Awake"}
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=dt.timedelta(seconds=10))
     sleep = one(listed(), "Let It Sleep", "Machine \u203a Power")
     assert sleep["id"] == awake["id"], "its id changed with its state"
@@ -2277,7 +2277,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     # Home's Now names the first Joel can do now, with its minutes.
     desktop.launcher_until(
         lambda shown: any(
-            thing["reads"].startswith("Now \u00b7 Waiting on you: Answer the ask, 2 min")
+            thing["reads"].startswith("Now \u00b7 Waiting on You: Answer the ask, 2 min")
             for thing in shown["things"]
         )
     )

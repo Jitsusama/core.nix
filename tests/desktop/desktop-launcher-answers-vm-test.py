@@ -343,9 +343,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # The power actions answer to their names, and only those; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
-        ("power off", "Power Off", "Power Off"),
+        ("power off", "Power Off", "Power off"),
         ("reboot", "Reboot", "Reboot"),
-        ("log out", "Log Out", "Log Out"),
+        ("log out", "Log Out", "Log out"),
     ]:
         desktop.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
