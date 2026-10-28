@@ -482,7 +482,7 @@ local function draw(on)
     put(left, 'muted', '  ' .. here.after)
   end
   if vim.bo[buf].modified then
-    put(left, 'text', ' ' .. glyph.on)
+    put(left, 'text', ' ' .. glyph.unsaved)
   end
   if here.file and (vim.bo[buf].readonly or not vim.bo[buf].modifiable) then
     put(left, 'muted', ' ' .. glyph.locked)
@@ -584,7 +584,7 @@ local function draw(on)
         put(right, 'muted', ' ' .. (on.branchshort and middle(state.branch, 14) or state.branch))
       end
       if state.unsaved then
-        put(right, 'text', ' ' .. glyph.on)
+        put(right, 'text', ' ' .. glyph.unsaved)
       end
       if state.ahead then
         put(right, 'text', ' ' .. glyph.unpushed)
@@ -632,7 +632,7 @@ function M.tabs()
     local here = placed(buf)
     local name = here.path and (here.path.parts[#here.path.parts] or '/') or here.name
     local role = tab == current and 'strong' or 'muted'
-    local mark = vim.bo[buf].modified and ' ' .. glyph.on or ''
+    local mark = vim.bo[buf].modified and ' ' .. glyph.unsaved or ''
     table.insert(
       out,
       '%' .. number .. 'T%#' .. groups[role] .. '#' .. name:gsub('%%', '%%%%') .. mark
