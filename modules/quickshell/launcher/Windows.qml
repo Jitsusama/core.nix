@@ -202,6 +202,17 @@ Provider {
         }, fields));
     }
 
+    // What can be done to a window, as its own row holds it, for the same
+    // window shown elsewhere, as among its program's (Applications.qml), so
+    // one thing has one set of insides wherever it shows (Joel, 2026-10-26).
+    function actsOf(window, entry) {
+        const program = entry ? entry.name : (window.app_id ?? "");
+        const title = provider.tidy(window.title ?? "", program) || program;
+        const below = entry
+            ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
+        return provider.verbs(window, title, program, below);
+    }
+
     // What can be done to a window, the likeliest first.
     function verbs(window, title, program, below) {
         const id = window.id;

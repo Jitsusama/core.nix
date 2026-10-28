@@ -685,8 +685,9 @@ Scope {
     // Orchestrators, Quests, Runs and AI spend); from a thing's own verbs,
     // what each is done to. One whose rows can't be made out of the
     // launcher's step holds nothing here.
-    function catalogueHolds(row, things) {
+    function catalogueHolds(row, among) {
         try {
+            const things = asThing(row, among);
             const making = things ? row.verbs : row.targets;
             const made = making ? making() ?? [] : [];
             const own = things ? led(row, made) : made;
@@ -1257,15 +1258,26 @@ Scope {
             && verbOf(choice) !== "more" && !(choice.verbs && choice.targets);
     }
 
+    // Whether a row holds a thing's insides (its verbs, Return's act first,
+    // then its parts) rather than a verb's targets: wherever things are
+    // listed, at the top or in a collection, and anywhere for a row with
+    // verbs and no targets, so a row's insides don't depend on the level
+    // it's shown at (Joel, 2026-10-26: one thing, one set of insides). Inside
+    // a program, its Shortcuts and its windows held nothing.
+    function asThing(row, among) {
+        return among || (!row.targets && !!row.verbs);
+    }
+
     // Whether the right arrow steps into a row, as `enter` would: a thing's
-    // verbs at the top or in a collection, a verb's targets in a step, a
-    // place found from the top, or an ask.
+    // insides, a verb's targets in a step, a place found from the top, or an
+    // ask.
     function holdsMore(choice) {
         if (held.length > 0 && choice.given)
             return true;
         if (held.length === 0 && choice.category)
             return true;
-        return held.length === 0 || collecting ? !!choice.verbs : !!choice.targets;
+        return asThing(choice, held.length === 0 || collecting) ? !!choice.verbs
+            : !!choice.targets;
     }
 
     // Whether Return steps into a row where the right arrow would, as `run`
@@ -1759,7 +1771,7 @@ Scope {
             intoCategory(row.category, typed);
             return true;
         }
-        const things = held.length === 0 || collecting;
+        const things = asThing(row, held.length === 0 || collecting);
         const own = stepRows(row, things);
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
@@ -1877,7 +1889,7 @@ Scope {
         for (let at = from; at < steps.length; at++) {
             const step = steps[at];
             const thing = rows.find(row => sameRow(row, step.row));
-            const things = at === 0 || collects(steps[at - 1]);
+            const things = !!thing && asThing(thing, at === 0 || collects(steps[at - 1]));
             const own = !thing ? null : stepRows(thing, things);
             const parts = thing && things ? partsIn(thing) : [];
             const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
