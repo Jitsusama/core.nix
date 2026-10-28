@@ -248,8 +248,12 @@ Scope {
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
         matches = steadying ? steadied(rows.concat(below)) : rows.concat(below);
-        // An answer only started gives way to a name that starts the same.
-        const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
+        // An answer only started gives way to a name that starts the same,
+        // its first word: "pow" is still Power Off. A later word starting
+        // so is no name Joel was typing, and gave "batt" to a copy that
+        // said "50%, on battery", above the battery's own answer.
+        const meant = answer && !(answer.question && below.length > 0
+            && String(below[0].name).toLowerCase().startsWith(Fuzzy.plainly(typed)));
         if (fresh || (current === -1 && !answer))
             current = meant ? (rows.length > 0 ? 0 : -1) : answer ? rows.length : 0;
         else if (current === -1 && rows.length > 0)
