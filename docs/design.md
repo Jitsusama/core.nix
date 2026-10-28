@@ -473,7 +473,7 @@ it. Owners go by layer:
 | Battery, power                                                         | the margin mark, only when low; the launcher's foot | "battery", "charger"; Now |
 | Network, Bluetooth, audio devices                                      | the network in the launcher's foot, in the warning colour when something's wrong | Wi-Fi, Bluetooth and Sound |
 | Volume, brightness                                                     | an overlay while it changes; the volume in the launcher's foot | Sound                |
-| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
+| Do Not Disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
 | An agent wanting Joel, and for what                                   | the margin mark while one waits, a notice once     | Agents ("pi" finds them); Now |
@@ -577,8 +577,8 @@ works the same way everywhere.
   called Caffeinate." so the new name is learned as it's used. A word
   may mean its own thing in another context, the crumbs saying which. A
   set is a plural noun ("Windows", "Quests"); an act is short, in
-  sentence case, saying what it does ("Lock", "Keep awake", "Power
-  saver", "Wi-Fi off", "New window", "Bring here"), a switch saying what
+  Title Case, saying what it does ("Lock", "Keep Awake", "Power
+  Saver", "Wi-Fi Off", "New Window", "Bring Here"), a switch saying what
   it will do now. Implementation names are never shown or typed. An
   answer is asked by its term, or a part's name after its thing's
   ("battery health"). A word finds one thing at each strength (a name
@@ -595,8 +595,8 @@ works the same way everywhere.
   "slack" is Slack and "slack theme" the theme. A part is still found
   from anywhere by its own name. A program holds what controls it, the
   same for every program and each only while it applies, made as it's
-  stepped into: first what can be done (Switch to the window used last,
-  New window, New window below, its other windows by title, its desktop
+  stepped into: first what can be done (Switch to the Window Used Last,
+  New Window, New Window Below, its other windows by title, its desktop
   entry's own actions such as Chrome's New Incognito Window, and Quit,
   asked once since a window may hold unsaved work), then Media while it
   has a player (Play or Pause, Next, Previous, and what's playing), Sound
@@ -618,8 +618,8 @@ works the same way everywhere.
   Only what a thing reads or holds is found so, never what it does.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
-  Power (Battery, the power profile, Keep awake, Sleep, Lock, Log out,
-  Reboot and Power off). Each is a row found by its word, stepping in
+  Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,
+  Reboot and Power Off). Each is a row found by its word, stepping in
   lists what it holds, and its word and a space steps into it, through
   the places it sits in, so what's typed after it searches only inside
   it ("machine " and then "heat"). When a name goes on from the word and
@@ -633,8 +633,8 @@ works the same way everywhere.
   ⟨unit⟩ in ⟨unit⟩"), and Tab or Return on one puts its start in the
   field, out at the top, to finish there. A command is the one row
   written as it's typed, in lowercase; every other row's name, and every
-  step of the path, starts with a capital, and what an empty list says is
-  a sentence. The-launcher-means-one-thing-a-word holds the vocabulary to
+  step of the path, is in Title Case as the glossary sets it, and what an
+  empty list says is a sentence. The-launcher-means-one-thing-a-word holds the vocabulary to
   it.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
@@ -654,7 +654,7 @@ works the same way everywhere.
   place in Machine, beside Processor, Memory and Heat, and a disk filling
   fast shows in Now. Each says what it holds after its name,
   muted, by its members' own names in the place's own order (Desktop:
-  "This window, Windows, Screens, Light"), as many whole as fit, so a glance
+  "This Window, Windows, Screens, Light"), as many whole as fit, so a glance
   reminds Joel what there is. Inside a place, things come by importance
   and relation, never A to Z, and a typed command comes last in the place
   whose answer it gives (Network's "ip ⟨address or network⟩").
@@ -802,7 +802,7 @@ works the same way everywhere.
   Nothing keeps its detail somewhere else.
 - **Hints in place.** Wherever there are actions, their keys sit beside them in
   muted type, part of the design rather than a cheat sheet bolted on.
-- **No hidden modes.** Do not disturb, caffeinate, recording, a resize, an
+- **No hidden modes.** Do Not Disturb, caffeinate, recording, a resize, an
   editor's modes, a waiting gate: each shows that it's on, and Escape leaves.
 - **One gesture per meaning.** A surface that needs a gesture of its own is a
   design problem to solve, not a feature.
