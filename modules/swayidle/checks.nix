@@ -15,7 +15,7 @@
   # a VM's niri runs nested, so this holds the order rather than the screen.
   the-screens-go-off-before-sleep =
     let
-      beforeSleep = (account graphical).services.swayidle.events.before-sleep or "";
+      beforeSleep = toString (account graphical).services.swayidle.events.before-sleep;
     in
     assert lib.assertMsg (lib.hasSuffix "/bin/lock-for-sleep" beforeSleep)
       "swayidle doesn't turn the screens off before sleep.";
@@ -33,7 +33,7 @@
       "swayidle doesn't turn the screens back on once the machine wakes."
       (
         lib.hasSuffix " msg action power-on-monitors" (
-          (account graphical).services.swayidle.events.after-resume or ""
+          toString (account graphical).services.swayidle.events.after-resume
         )
       );
 
