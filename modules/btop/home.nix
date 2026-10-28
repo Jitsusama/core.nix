@@ -19,7 +19,7 @@
 # the processes are sorted by, that way along their columns.
 #
 # While it runs, btop names the terminal's window btop, keeping the title
-# it had on the terminal's stack and putting it back as it ends
+# it had on the terminal's stack and putting it back as it quits
 # (names-its-window.patch), so the launcher knows to list btop's keys over
 # it.
 {

@@ -38,8 +38,9 @@ onLinux {
       '';
 
   # btop names its window as it starts, keeping the terminal's own title on
-  # the terminal's stack, and gives that title back as it ends, even when
-  # it's told to end, so the launcher lists btop's keys only while it runs.
+  # the terminal's stack, and gives that title back as it quits, so the
+  # launcher lists btop's keys only while it runs. tmux gives it q, as a
+  # terminal sends it, and script, inside, keeps what btop writes.
   btop-names-its-window =
     let
       home = account workstation;
@@ -48,20 +49,34 @@ onLinux {
       {
         nativeBuildInputs = [
           home.programs.btop.package
+          pkgs.tmux
           pkgs.util-linux
         ];
       }
       ''
-        export HOME=$PWD LANG=C.UTF-8
-        script -q -c 'stty cols 120 rows 40; timeout 3 btop' drawn > /dev/null || true
+        export HOME=$PWD LANG=C.UTF-8 TMUX_TMPDIR=$PWD
         named=$(printf '\033[22;0t\033]2;btop\033\\')
         given=$(printf '\033[23;0t')
-        if ! grep -q -F "$named" drawn; then
+        tmux new-session -d -x 120 -y 40 "script -q -c btop $PWD/drawn; touch $PWD/ended; sleep 60"
+        # Up to a minute each, so a busy machine can't fail it.
+        for _ in $(seq 600); do
+          grep -q -F "$named" drawn 2> /dev/null && break
+          sleep 0.1
+        done
+        if ! grep -q -F "$named" drawn 2> /dev/null; then
+          tmux kill-server
           echo "btop didn't keep the terminal's title and name its window btop."
           exit 1
         fi
-        if ! tail -c 200 drawn | grep -q -F "$given"; then
-          echo "btop didn't give the terminal its title back as it ended."
+        sleep 2
+        tmux send-keys q
+        for _ in $(seq 600); do
+          [ -e ended ] && break
+          sleep 0.1
+        done
+        tmux kill-server
+        if ! grep -q -F "$given" drawn; then
+          echo "btop didn't give the terminal its title back as it quit."
           exit 1
         fi
         touch $out
