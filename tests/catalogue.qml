@@ -129,6 +129,9 @@ QtObject {
             "Turn it off");
         expect("not for a row that only steps in", names(Catalogue.leading({ name: "Space",
             verb: "more", run: does, verbs: opens }, offers)), "Copy, Forget");
+        expect("nor for one holding rows, its Return their step", names(Catalogue.leading({
+            name: "See It", verb: "see", run: does, verbs: opens, targets: opens }, offers)),
+            "Copy, Forget");
         expect("not for one that asks first", names(Catalogue.leading({ name: "Reboot",
             verb: "reboot", confirm: true, run: does, verbs: opens }, offers)), "Copy, Forget");
         expect("not for one holding nothing", Catalogue.leading(notice, []).length, 0);

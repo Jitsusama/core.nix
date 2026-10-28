@@ -90,10 +90,13 @@ function saysAct(one, said) {
 // than Return and never less (Joel's concept map: Return is the default
 // act and the right arrow does more; agreed with 15J7N3 for every row).
 // A row that only steps in, asks first or asks for words has no act of
-// its own to add, nor does one holding nothing. One already inside, by its
+// its own to add, nor does one holding nothing. One giving both its verbs
+// and its targets holds rows, as a holder, a talk or a meeting's See It
+// does, so its Return is the step itself. One already inside, by its
 // verb or its name, is moved first rather than said twice.
 function leading(row, inside) {
-    if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given) {
+    const holds = !!row.verbs && !!row.targets;
+    if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given || holds) {
         return inside;
     }
     const verb = verbOf(row);
