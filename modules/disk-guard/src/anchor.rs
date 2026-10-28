@@ -56,6 +56,18 @@ pub struct Counted {
     extents: HashSet<u64>,
 }
 
+impl Counted {
+    /// How many of a file's bytes lie in shared extents counted already,
+    /// counting those that aren't yet.
+    fn again(&mut self, file: &OwnedFd) -> u64 {
+        crate::pool::shared_extents(file)
+            .into_iter()
+            .filter(|&(physical, _)| !self.extents.insert(physical))
+            .map(|(_, length)| length)
+            .sum()
+    }
+}
+
 impl Detached<'_> {
     pub fn name(&self) -> &OsStr {
         &self.name
@@ -520,9 +532,8 @@ impl Dir {
             // The kernel never counts a negative number of blocks.
             let blocks = u64::try_from(stat.st_blocks).unwrap_or(0) * 512;
             let shared = if kind == FileType::RegularFile && blocks >= SHARED_FROM {
-                self.file(name, false).map_or(0, |file| {
-                    crate::pool::shared_counted(&file, &mut counted.extents)
-                })
+                self.file(name, false)
+                    .map_or(0, |file| counted.again(&file))
             } else {
                 0
             };

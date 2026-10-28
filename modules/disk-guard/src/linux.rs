@@ -749,13 +749,13 @@ const FIEMAP_BATCH: u32 = 64;
 const FIEMAP_EXTENT_LAST: u32 = 0x1;
 const FIEMAP_EXTENT_SHARED: u32 = 0x2000;
 
-/// How many of a file's bytes lie in shared extents already in `counted`,
-/// by where each lies on the disk, adding those not yet there. A file
-/// cloned from another, as a tree cloned with its builds inside is, shares
-/// the other's extents, and they're freed only once the last goes. A
-/// filesystem that won't map a file shares nothing of it.
-pub fn shared_counted(file: &std::os::fd::OwnedFd, counted: &mut HashSet<u64>) -> u64 {
-    let mut seen = 0;
+/// A file's extents shared with other files, each as where it lies on the
+/// disk and its length. A file cloned from another, as a tree cloned with
+/// its builds inside is, shares the other's extents, and they're freed
+/// only once the last goes. A filesystem that won't map a file shares
+/// nothing of it.
+pub fn shared_extents(file: &std::os::fd::OwnedFd) -> Vec<(u64, u64)> {
+    let mut shared = Vec::new();
     let mut start: u64 = 0;
     loop {
         let mut map = vec![0u8; FIEMAP_HEADER + FIEMAP_BATCH as usize * FIEMAP_EXTENT];
@@ -765,29 +765,28 @@ pub fn shared_counted(file: &std::os::fd::OwnedFd, counted: &mut HashSet<u64>) -
         // SAFETY: map is the header and as many extents as it asks for,
         // and outlives the call.
         if unsafe { libc::ioctl(file.as_raw_fd(), FS_IOC_FIEMAP as _, map.as_mut_ptr()) } != 0 {
-            return seen;
+            return shared;
         }
         let field = |at: usize| u64::from_ne_bytes(map[at..at + 8].try_into().unwrap());
         let flags = |at: usize| u32::from_ne_bytes(map[at..at + 4].try_into().unwrap());
         let mapped = flags(20) as usize;
         if mapped == 0 {
-            return seen;
+            return shared;
         }
         for extent in 0..mapped.min(FIEMAP_BATCH as usize) {
             let at = FIEMAP_HEADER + extent * FIEMAP_EXTENT;
             let (logical, physical, length) = (field(at), field(at + 8), field(at + 16));
             let flags = flags(at + 40);
-            if flags & FIEMAP_EXTENT_SHARED != 0 && !counted.insert(physical) {
-                seen += length;
+            if flags & FIEMAP_EXTENT_SHARED != 0 {
+                shared.push((physical, length));
             }
             if flags & FIEMAP_EXTENT_LAST != 0 {
-                return seen;
+                return shared;
             }
             start = logical + length;
         }
     }
 }
-use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::fs;

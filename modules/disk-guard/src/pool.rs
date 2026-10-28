@@ -44,18 +44,17 @@ pub fn beneath(_parent: &OwnedFd, _child: &OwnedFd) -> bool {
     false
 }
 
-/// How many of a file's bytes lie in shared extents already counted, by
-/// where each lies on the disk, counting those not yet: on Linux, as
-/// `FIEMAP` maps them.
+/// A file's extents shared with other files, as where each lies on the
+/// disk and its length: on Linux, as `FIEMAP` maps them.
 #[cfg(target_os = "linux")]
-pub fn shared_counted(file: &OwnedFd, counted: &mut std::collections::HashSet<u64>) -> u64 {
-    crate::linux::shared_counted(file, counted)
+pub fn shared_extents(file: &OwnedFd) -> Vec<(u64, u64)> {
+    crate::linux::shared_extents(file)
 }
 
 /// Anywhere else a file's blocks are its own: APFS clones aren't mapped.
 #[cfg(not(target_os = "linux"))]
-pub fn shared_counted(_file: &OwnedFd, _counted: &mut std::collections::HashSet<u64>) -> u64 {
-    0
+pub fn shared_extents(_file: &OwnedFd) -> Vec<(u64, u64)> {
+    Vec::new()
 }
 
 /// The APFS container a volume is in, by what it's mounted from: volume
