@@ -105,7 +105,7 @@ def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: D
 
 
 # One walk, as its subtest was: each step starts where the last left it.
-def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, PLR0915
+def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR0915
     desktop: Desktop,
 ) -> None:
     """The launcher answers what's asked, and copies the answer."""
@@ -638,8 +638,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.step_in()
     # Past Return's own act, where the step leads with it.
     desktop.launcher_until(lambda shown: "Lighthouse" in shown["rows"])
-    for _ in range(desktop.showing()["rows"].index("Lighthouse")):
-        machine.send_key("down")
+    desktop.down_to("Lighthouse")
     for index, (name, side, footer) in enumerate(
         [
             ("Lighthouse", r"[12] of 25 min", r"build \u00b7 holds [\d.]+ GiB"),
@@ -686,9 +685,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.step_in()
     desktop.launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
     # Past the answer's own Copy, which leads, to Cores.
-    for _ in range(desktop.showing()["rows"].index("Cores")):
-        machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    desktop.down_to("Cores")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Core 0")
     machine.send_key("esc")
@@ -725,9 +722,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.answer("keyboards")
     desktop.step_in()
     desktop.launcher_until(lambda shown: board in shown["rows"])
-    for _ in range(desktop.showing()["rows"].index(board)):
-        machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    desktop.down_to(board)
     desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (
@@ -739,8 +734,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     assert desktop.showing()["selected"]["side"] == "off"
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
-    for _ in range(desktop.showing()["rows"].index("Light")):
-        machine.send_key("down")
+    desktop.down_to("Light")
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Light"
@@ -756,9 +750,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     desktop.answer("keyboards")
     desktop.step_in()
     desktop.launcher_until(lambda shown: board in shown["rows"])
-    for _ in range(desktop.showing()["rows"].index(board)):
-        machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == board)
+    desktop.down_to(board)
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Repeat" in shown["rows"])
     machine.send_key("left")
@@ -767,8 +759,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: C901, 
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Repeat" in shown["rows"])
-    for _ in range(desktop.showing()["rows"].index("Repeat")):
-        machine.send_key("down")
+    desktop.down_to("Repeat")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("side", "").startswith("after "),
     )
@@ -1209,9 +1200,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Processor"] and "Cores" in shown["rows"]
     )
-    for _ in range(desktop.showing()["rows"].index("Cores")):
-        machine.send_key("down")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
+    desktop.down_to("Cores")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["path"] == ["Machine", "Processor", "Cores"])
     cores = desktop.showing()["rows"]

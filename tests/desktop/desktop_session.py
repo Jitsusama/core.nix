@@ -509,6 +509,15 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_key(key)
         self.launcher_until(lambda shown: len(shown["held"]) > before)
 
+    def down_to(self, name: str) -> None:
+        """Move the selection down from the first row to the row named, and wait until it's there.
+
+        Rows are counted by name, since what leads a step (Return's own act) moves the rest.
+        """
+        for _ in range(self.showing()["rows"].index(name)):
+            self.machine.send_key("down")
+        self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+
     def whats_on(self, selected: str) -> None:
         """Wait until the launcher holds Now and the keys, with this thing's row selected."""
         self.launcher_until(
