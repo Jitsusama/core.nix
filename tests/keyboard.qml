@@ -107,13 +107,13 @@ ShellRoot {
                 names.filter(name => /^Lock |^Let |light/.test(name)).join(", "));
             const numbActs = keyboard.search("numb").rows.map(row => row.name);
             const punkActs = keyboard.search("punk").rows.map(row => row.name);
-            expect("the locked layer let go", numbActs.includes("Let Numb go")
-                && !numbActs.includes("Lock Numb on") && punkActs.includes("Lock Punk on"),
+            expect("the locked layer let go", numbActs.includes("Let Numb Go")
+                && !numbActs.includes("Lock Numb On") && punkActs.includes("Lock Punk On"),
                 numbActs.concat(punkActs).join(", "));
             const lit = ["turn off keyboard", "turn on keyboard", "brighten keyboard",
                 "dim keyboard"].map(typed => first(typed).name);
             expect("each light's choice found", lit.join(", ") === "Turn Off the "
-                + "Keyboard's Light, Turn On the Keyboard's Light, Brighten the "
+                + "Keyboard's Light, Turn on the Keyboard's Light, Brighten the "
                 + "Keyboard's Light, Dim the Keyboard's Light", lit.join(", "));
             const brighter = first("brighten keyboard");
             expect("a choice found by its words",
@@ -145,13 +145,13 @@ ShellRoot {
                 && layer.side === "Numb, locked" && layer.verb === "more",
                 parts.map(part => `${part.name} ${part.side}`).join(", "));
             expect("the Layer's choices run ergodox", runs(layer.verbs())
-                === "Let Numb go: ergodox layer 0; Lock Punk on: ergodox layer 1",
+                === "Let Numb Go: ergodox layer 0; Lock Punk On: ergodox layer 1",
                 runs(layer.verbs()));
             const lights = parts.find(part => part.name === "Light");
             expect("the board's Light, a setting", lights !== undefined
                 && lights.verb === "more", parts.map(part => part.name).join(", "));
             expect("the Light's choices run ergodox", runs(lights.verbs())
-                === "Light off: ergodox lights off; Light on: ergodox lights on; "
+                === "Light Off: ergodox lights off; Light On: ergodox lights on; "
                 + "Brighter: ergodox brighter; Dimmer: ergodox dimmer", runs(lights.verbs()));
 
             slash.run();

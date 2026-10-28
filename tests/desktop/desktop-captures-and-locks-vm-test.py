@@ -79,7 +79,7 @@ def test_capture_records_the_window_and_says_why_when_niri_cant_share_it(
     """Capture records the window, and says why when niri can't share it."""
     pool = desktop.opened("Tidepool")
     desktop.capture()
-    desktop.type_in("record this window", selecting="Record this window \u00b7 Tidepool")
+    desktop.type_in("record this window", selecting="Record This Window \u00b7 Tidepool")
     assert desktop.showing()["selected"]["chord"] == "Ctrl Alt Print"
     # niri here offers no screencast on the session bus, so the
     # recording can't start, and the notice says why rather than it

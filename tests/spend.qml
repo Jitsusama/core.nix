@@ -337,7 +337,7 @@ ShellRoot {
             burn.run();
             expect("going to its session", Niri.spawned.join(" ") === "spend-watch go s1",
                 Niri.spawned.join(" "));
-            const expected = burn.verbs().find(row => row.name === "It's expected");
+            const expected = burn.verbs().find(row => row.name === "It's Expected");
             expected.run();
             expect("marking it expected",
                 Niri.spawned.join(" ") === "spend-watch findings expect burn:s1",

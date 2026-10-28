@@ -1155,7 +1155,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     # holding its own parts, its hardware address among them.
     desktop.type_in("access", selecting="Access Points")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, channel 1"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1"])
     desktop.photograph("launcher-wifi-points")
     desktop.step_in("ret")
     desktop.type_in("hardware", selecting="Hardware Address")
