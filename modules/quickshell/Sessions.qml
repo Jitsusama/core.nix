@@ -264,6 +264,7 @@ Singleton {
         if (said === liveSaid)
             return;
         liveSaid = said;
+        keep(next);
         const by = {};
         for (const record of next) {
             for (const address of record.presence.addresses)
@@ -447,6 +448,61 @@ Singleton {
         folder: `file://${root.state}/mesh-workflow/presence`
         showDirs: false
         nameFilters: ["*.json"]
+        onStatusChanged: {
+            if (status === FolderListModel.Ready)
+                root.settle();
+        }
+    }
+
+    // The records last read, kept so a shell just started shows the
+    // sessions at once rather than none while it reads the folder (Joel,
+    // 2026-10-28: Agents showed no sessions). Each is still a session only
+    // while its process runs, and the folder's own records replace them as
+    // they're read.
+    FileView {
+        id: lastRead
+        path: Quickshell.statePath("sessions-read.json")
+        blockLoading: true
+        printErrors: false
+    }
+    function keep(next) {
+        const out = {};
+        for (const record of next)
+            out[record.file] = record.presence;
+        lastRead.setText(JSON.stringify(out));
+    }
+    Component.onCompleted: {
+        let stored;
+        try {
+            stored = JSON.parse(lastRead.text() || "{}");
+        } catch (e) {
+            stored = {};
+        }
+        if (!stored || typeof stored !== "object")
+            return;
+        const next = Object.assign({}, stored, records);
+        records = next;
+        relive();
+    }
+
+    // Once the folder is listed, a kept record whose file is gone, a
+    // session that ended while the shell was down, is let go.
+    function settle() {
+        const there = {};
+        for (let i = 0; i < presences.count; i++)
+            there[presences.get(i, "filePath")] = true;
+        const next = {};
+        let dropped = false;
+        for (const file in records) {
+            if (there[file])
+                next[file] = records[file];
+            else
+                dropped = true;
+        }
+        if (dropped) {
+            records = next;
+            relive();
+        }
     }
 
     Instantiator {

@@ -2039,6 +2039,33 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts(
+    desktop: Desktop,
+) -> None:
+    """The launcher's Agents lists the sessions from the moment the shell starts."""
+    machine = desktop.machine
+    desktop.pi_session()
+
+    def sessions() -> list[str]:
+        """Say what Agents lists of the sessions, as the launcher's catalogue has it."""
+        listed = json.loads(machine.succeed(desktop.in_session("qs ipc call launcher list")))
+        return [
+            entry["says"]
+            for entry in listed
+            if entry["in"] == "Agents" and entry["kind"] == "action" and "says" in entry
+        ]
+
+    retry(lambda _: any("TESTQA" in said for said in sessions()), timeout=dt.timedelta(seconds=30))
+    # A switch restarts the shell; the first list it gives already holds
+    # the session, never an empty Agents while it reads the folder.
+    desktop.as_account("systemctl --user restart quickshell")
+    machine.wait_until_succeeds(
+        desktop.in_session("qs ipc call launcher list"), timeout=dt.timedelta(seconds=60)
+    )
+    first = sessions()
+    assert any("TESTQA" in said for said in first), first
+
+
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
     desktop: Desktop,
 ) -> None:
