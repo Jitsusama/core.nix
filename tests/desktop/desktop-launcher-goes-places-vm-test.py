@@ -2238,23 +2238,19 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
 def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
     """A session's want counts only while its quest has something ready, or it's his."""
     desktop.pi_session()
-    presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence/testqa.json"
     waiting = "$HOME/.local/state/mission/waiting/TESTQA.json"
 
     def wants(kind: str, orchestrated: str | None = None) -> None:
-        read = {
-            "session": "01a1face-test",
-            "addresses": ["TESTQA"],
-            "busy": False,
-            "owns": ["QEST-20261022-TESTQA"],
-            "title": PI_WINDOW,
-            "orchestratedBy": orchestrated,
-            "wants": {"kind": kind, "since": "2026-10-26T00:00:00Z", "said": "Do it"},
-            "owner": {"startedAt": int(time.time() * 1000)},
-        }
-        desktop.as_account(
-            f"printf %s {shlex.quote(json.dumps(read))} > {presence}.q"
-            f" && mv {presence}.q {presence}"
+        """Say the session wants Joel, its record still naming its process and window."""
+        desktop.presence_says(
+            {
+                "session": "01a1face-test",
+                "addresses": ["TESTQA"],
+                "busy": False,
+                "owns": ["QEST-20261022-TESTQA"],
+                "orchestratedBy": orchestrated,
+                "wants": {"kind": kind, "since": "2026-10-26T00:00:00Z", "said": "Do it"},
+            }
         )
 
     def marked() -> bool:
