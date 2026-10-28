@@ -40,7 +40,7 @@ const TERMINAL_APP = "kitty";
 
 // The layers of programs in windows of their own, by their windows' app
 // ids, each with its own keys over the desktop's.
-const WINDOW_APPS = new Map([["swayimg", "swayimg"], ["inlyne", "inlyne"], ["org.pwmt.zathura", "zathura"]]);
+const WINDOW_APPS = new Map([["swayimg", "swayimg"], ["inlyne", "inlyne"], ["org.pwmt.zathura", "zathura"], ["mpv", "mpv"]]);
 
 // A place a chord works in, said after another: "in a pull request" after
 // "in a GitHub issue" is "a pull request".
