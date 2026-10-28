@@ -2574,17 +2574,23 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         ),
         timeout=dt.timedelta(seconds=30),
     )
-    # The right arrow steps into one: Return's act, Done and Not Now, then
-    # what there is to know of it.
+    # The right arrow steps into one: going to its window, where one is
+    # open, Done and Not Now, copying it, then what there is to know of it.
     waiting_opened(desktop)
     desktop.step_in()
     machine.send_key("down")
     picked(desktop, "Answer the old")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][1:4] == ["Done", "Not Now", "Why"])
+    acts = ["Done", "Not Now", "Copy What It Said", "Why"]
+    desktop.launcher_until(
+        lambda shown: (
+            "Done" in shown["rows"]
+            and shown["rows"][shown["rows"].index("Done") :][:4] == acts
+            and shown["rows"][0] != "Copy What It Said"
+        )
+    )
     # Done keeps the launcher, and is kept where Joel's word is.
-    machine.send_key("down")
-    picked(desktop, "Done")
+    desktop.down_to("Done")
     machine.send_key("ret")
     retry(
         lambda _: "OLDQA:old" in desktop.as_account(f"cat {state}/mission/settled.json || true"),
@@ -2601,9 +2607,7 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     desktop.step_in()
     picked(desktop, "Restart once")
     desktop.step_in()
-    machine.send_key("down")
-    machine.send_key("down")
-    picked(desktop, "Not Now")
+    desktop.down_to("Not Now")
     machine.send_key("ret")
     launcher_closed(desktop)
     retry(
@@ -2631,6 +2635,50 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
         f" {state}/mission/settled.json"
         f" {quests}/QEST-20261026-LIVEQA {quests}/QEST-20261026-DONEQA"
     )
+
+
+def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
+    desktop: Desktop,
+) -> None:
+    """Waiting on You steps in where nothing is open to go to, and copying comes after Done."""
+    machine = desktop.machine
+    queue = f"{MISSION}/queue.json"
+    # An orchestrator with no session, so the item has no window to go to.
+    kept(
+        desktop,
+        queue,
+        {
+            "orchestrator": "GONEQA",
+            "items": [{"id": "form", "title": "Sign the form", "when": "now", "why": "to send"}],
+        },
+    )
+    try:
+        retry(
+            lambda _: waiting_inside(desktop) == ("1", ["Sign the form"]),
+            timeout=dt.timedelta(seconds=30),
+        )
+        # Return on Waiting on You steps in, as the right arrow does, rather
+        # than copying the first.
+        waiting_opened(desktop)
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "more")
+        desktop.step_in("ret")
+        picked(desktop, "Sign the form")
+        # And on the item: its acts, copying last of them, then its facts.
+        desktop.step_in("ret")
+        desktop.launcher_until(
+            lambda shown: shown["rows"][:4] == ["Done", "Not Now", "Copy What It Said", "Why"]
+        )
+        desktop.down_to("Copy What It Said")
+        machine.send_key("ret")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session('[ "$(wl-paste --no-newline)" = "Sign the form" ]'),
+            timeout=dt.timedelta(seconds=10),
+        )
+    finally:
+        desktop.as_account(f"rm -f {queue}")
 
 
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:
