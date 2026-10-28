@@ -1862,7 +1862,10 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
     """Escape closes only the launcher, and the window behind it never hears the key."""
     # Joel, 2026-10-26: "Escape closes only the launcher; the key never
     # reaches the program behind it." wev says every key its window hears,
-    # held as it gets the keyboard or pressed and let go after.
+    # held as it gets the keyboard or pressed and let go after. The launcher
+    # goes on Escape's press, so the keyboard may come back to the window
+    # with the key still down: it's then told the key is held, and told of
+    # its release, which no program acts on. Only a press would reach it.
     machine = desktop.machine
     values = desktop.values
     log = "/run/user/1000/wev-escape.log"
@@ -1897,7 +1900,7 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
             timeout=dt.timedelta(seconds=10),
         )
         heard = machine.succeed(f"cat {log}")
-        assert "sym: Escape" not in heard, heard
+        assert not re.search(r"state: 1 \(pressed\)\s*\n\s*sym: Escape", heard), heard
     finally:
         desktop.as_account("systemctl --user stop wev-escape")
 
