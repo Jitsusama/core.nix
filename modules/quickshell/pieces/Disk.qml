@@ -9,7 +9,7 @@
 // nearly full it's true and takes the warning colour, and at critically
 // full the alert colour, when it wants Joel now:
 // the guard is taking all it safely can. A writer the guard froze for
-// filling a disk wants him now too, with a way to let it go on. It's true
+// filling a disk wants him now too, with Thaw It to let it carry on. It's true
 // as well when a guard has stopped writing, since then nothing watches the
 // disks. Nothing else asks for him, since nothing else needs him. It also
 // holds what the guards measured filling the disks, for the launcher's
@@ -96,13 +96,13 @@ Piece {
     }
     actions: (frozen.length > 0 ? [{
         glyph: Theme.glyph.resume,
-        name: "Let it go on",
-        verb: "resume",
+        name: "Thaw It",
+        verb: "thaw",
         stays: true,
         run: () => Niri.spawn(["disk-guard", "thaw"])
     }] : []).concat(silent ? [{
         glyph: Theme.glyph.resume,
-        name: "Start the guard",
+        name: "Start the Guard",
         stays: true,
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])
