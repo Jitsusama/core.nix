@@ -676,7 +676,11 @@ works the same way everywhere.
   by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
   the one before it (the Shortcuts category's Shortcuts) is said once, so
   it reads as a place, not as tags side by side. The left arrow takes
-  away what's typed, whole, and with nothing typed steps back out,
+  away what's typed, whole, where the field says so with ← after it, as
+  ⇥ follows a completion; what it took then stands in grey with → after
+  it, and the right arrow right after puts it back. Any other key lets it
+  go, and with Ctrl the left arrow moves the caret as in any field. With
+  nothing typed it steps back out,
   putting back what was typed before with the same row selected;
   Backspace in an empty field does the same. Escape always closes, and
   only the launcher: the window behind never hears it. The foot names
