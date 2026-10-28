@@ -163,7 +163,9 @@ ShellRoot {
             for (const field of [ghosted, hinted]) {
                 const end = field.mapToItem(null, field.end, 0).x;
                 texts = drawn(field, []);
-                const after = texts.find(t => t.text === (field.ghost || field.hint));
+                // A ghost is drawn with Tab's key after it, so it's found by
+                // how it starts.
+                const after = texts.find(t => t.text.startsWith(field.ghost || field.hint));
                 expect("a field's ghost or hint ends at its end", after !== undefined
                     && after.truncated && after.to <= end, `${said(texts)}, end ${end}`);
             }
