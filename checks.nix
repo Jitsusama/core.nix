@@ -235,6 +235,11 @@ let
   vmTestsOn = pkgs: {
     # The disk layout and Secure Boot decide whether a machine starts at all.
     vm-secure-boot-installs = import ./tests/vm/guide/secure-boot.nix { inherit self pkgs; };
+    # A keyboard at the disk prompt is the TPM, the boot stub, the initrd's
+    # BlueZ and the kernel's HID together, before any disk is open.
+    vm-bluetooth-types-at-the-disk-prompt = import ./tests/bluetooth-disk-prompt.nix {
+      inherit self pkgs;
+    };
     # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
     # a TPM together, driven by its keys as a person drives it.
     vm-guide-installs = import ./tests/vm/guide/guide-install.nix { inherit self pkgs; };
@@ -830,6 +835,7 @@ gather (
     ./hardware/microsoft-surface-laptop-4-1958/checks.nix
     ./modules/backlight/checks.nix
     ./modules/bat/checks.nix
+    ./modules/bluetooth-disk-prompt/checks.nix
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix
     ./modules/btrfs/checks.nix

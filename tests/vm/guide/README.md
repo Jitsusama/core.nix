@@ -11,6 +11,7 @@ guide][agents] says which test proves what.
 | `guide-install.nix`, `-vm-test.py` | a machine installed from its stick, by the guide's keys        |
 | `guide-recover.nix`, `-vm-test.py` | a machine recovered from a repair stick                        |
 | `secure-boot.nix`, `-vm-test.py`   | core's disk and Secure Boot installed, opened by TPM and PIN   |
+| `secure-boot-machine.nix`          | that test's machine, which tests of an installed laptop share  |
 | `canokeys.nix`, `set-pin.py`       | the security keys these tests plug in, made before QEMU starts |
 | `make-recipient.py`                | a key's age recipient, made as a person makes one              |
 
