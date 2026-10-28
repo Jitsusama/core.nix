@@ -207,10 +207,11 @@ Scope {
     function compose(fresh) {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         const said = answering(typed, fresh);
+        const listed = root.found.concat(stillActed(root.found));
         // An answer only there when nothing else is, as asking a model by a
         // question's first word is, gives way to anything found.
         answer = said && said.fallback
-            && (root.found.some(row => !row.category) || gathered.length > 0) ? null : said;
+            && (listed.some(row => !row.category) || gathered.length > 0) ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -222,9 +223,9 @@ Scope {
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
         // At home, every category is listed, to be browsed.
-        const things = new Set(root.found.filter(row => !row.category)
+        const things = new Set(listed.filter(row => !row.category)
             .map(row => Fuzzy.plainly(row.name)));
-        const found = root.found.filter(row => !row.category || atHome
+        const found = listed.filter(row => !row.category || atHome
             || !(things.has(Fuzzy.plainly(row.name)) || (answer && !answer.question)));
         // A thing shows once: a collection found whole stands for what's in
         // it, so neither its own rows, nor the things that live in it
@@ -1640,6 +1641,15 @@ Scope {
     // place. One still on offer keeps it as it reads now, though what it
     // says no longer matches what's typed: a Play that Return made a Pause
     // shows Pause, rather than going.
+    // The row Return last changed something with, kept among what's found
+    // until Joel types or steps again, so Wi-Fi Off that became Wi-Fi On
+    // still shows it, though "wifi off" no longer finds it.
+    property var acted: null
+    function stillActed(found) {
+        const row = acted ? onOffer(acted.key) : undefined;
+        return row && !found.some(one => one.key === row.key) ? [row] : [];
+    }
+
     function steadied(found) {
         const renamed = matches.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
@@ -1740,7 +1750,24 @@ Scope {
     // ones come at the end, the selection stays on its row and the list
     // where it was scrolled, so nothing moves under the cursor. Only what
     // Joel types orders by rank.
+    // Taken once the change has settled, since a provider may say it
+    // changed from within its own things changing (Session.qml does),
+    // before the rows read from them (choices, partsOfRows) have heard;
+    // each source heard is made again once, in the order heard.
+    property var refreshing: []
     function refreshed(source) {
+        if (refreshing.includes(source))
+            return;
+        refreshing = refreshing.concat([source]);
+        Qt.callLater(refreshDue);
+    }
+    function refreshDue() {
+        const due = refreshing;
+        refreshing = [];
+        for (const source of due)
+            refreshNow(source);
+    }
+    function refreshNow(source) {
         if (!open || asking)
             return;
         // Out at the top, a row the search found from it is said again in
@@ -1927,6 +1954,8 @@ Scope {
         const cleared = letters === "" && typed !== "" && held.length > 0 && selected
             ? steadyId(selected) : "";
         typed = letters;
+        if (acted && (letters !== acted.typed || held.length !== acted.depth))
+            acted = null;
         words = Fuzzy.words(letters);
         if (asking) {
             matches = [];
@@ -1988,6 +2017,7 @@ Scope {
             else
                 found = within(offered.reduce((all, row) => all.concat([row],
                     row.offers && row.verbs ? row.verbs() : []), []), letters);
+            found = found.concat(stillActed(found));
             answer = null;
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
@@ -2236,8 +2266,10 @@ Scope {
         // it and closes anyway.
         if (choice.stays) {
             const acting = keepsOpen(choice);
-            if (acting)
+            if (acting) {
                 learn(choice);
+                acted = { key: choice.key, typed: typed, depth: held.length };
+            }
             choice.run();
             if (closing && acting)
                 open = false;
