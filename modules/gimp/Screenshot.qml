@@ -1,5 +1,5 @@
 // The newest screenshot, opened in GIMP from the launcher, found by typing
-// or in Tools. Every
+// or in Capture, after what it captures. Every
 // screenshot lands in one folder, niri's own and the region ones the shell
 // takes with grim alike, so the folder is watched rather than niri, which
 // tells the shell only of its own. One that was only copied has no file, so
@@ -27,8 +27,8 @@ Provider {
 
     readonly property var editing: newest === null ? null : thing({
         key: "gimp:screenshot",
-        verb: "edit",
-        name: "Edit the screenshot in GIMP",
+        verb: Words.verb("gimp:screenshot"),
+        name: Words.name("gimp:screenshot"),
         keywords: "picture image mark up draw",
         glyph: String.fromCodePoint(0xf338),
         hue: "action",

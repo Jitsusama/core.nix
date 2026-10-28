@@ -294,9 +294,21 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.as_account("niri msg action screenshot-screen")
     machine.wait_until_succeeds(f"ls {desktop.pictures}/*.png", timeout=timedelta(seconds=15))
     picture = machine.succeed(f"ls {desktop.pictures}/*.png").strip()
+    # Capture holds what's done with a screenshot once it's taken, after
+    # what it captures, so it still opens on the whole screen.
+    desktop.as_account("qs ipc call launcher collection capture")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][-2:] == ["Edit the Newest Screenshot", "Look Through the Screenshots"]
+            and (shown["selected"] or {}).get("name") == "The Whole Screen"
+        ),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("edit the screenshot", selecting="Edit the screenshot in GIMP")
+    desktop.type_in("edit the newest", selecting="Edit the Newest Screenshot")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"pgrep -u {desktop.account} -f '[g]imp.*{picture}'", timeout=STARTING

@@ -184,6 +184,21 @@ Scope {
         return [];
     }
 
+    // The things of the providers the vocabulary puts inside this one's
+    // collection (their `in`), as GIMP's newest screenshot lives in
+    // Capture, so a collection lists them after its own without naming
+    // them. Each is still found by its name from the top.
+    function lodged() {
+        const here = settings.name ?? "";
+        const spoken = launcher?.vocabulary;
+        if (here === "" || !spoken)
+            return [];
+        return (launcher.sources ?? [])
+            .filter(source => source !== provider
+                && spoken.of(source.settings?.name ?? "").in === here)
+            .reduce((rows, source) => rows.concat(source.things), []);
+    }
+
     // What a collection's row at home says after its title: how many it
     // holds, grouped by thousands.
     function counted() {
