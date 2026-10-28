@@ -28,6 +28,8 @@ CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
 KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 # Where lock-screen and the shell say whether the screens are locked.
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
+# Whether a screen is lit: one niri has turned off drives nothing, and its connector says so.
+LIT = "grep -qx enabled /sys/class/drm/card*-*/enabled"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
 
@@ -453,6 +455,37 @@ def test_the_lock_lets_go_without_its_password_when_released(desktop: Desktop) -
     desktop.as_account("lock-screen")
     with desktop.told("released lock"):
         desktop.machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
+def test_before_sleep_the_lock_is_drawn_and_then_the_screens_go_off(desktop: Desktop) -> None:
+    """Before sleep the lock is drawn and then the screens go off.
+
+    So a hibernation goes down dark: to write its image the kernel wakes the graphics card, which
+    wakes with the screens as they were put down. Waking turns them back on.
+    """
+    machine = desktop.machine
+    machine.succeed(LIT)
+    desktop.as_account("lock-for-sleep")
+    desktop.as_account(f"grep -qx locked {LOCKED}")
+    machine.wait_until_fails(LIT, timeout=timedelta(seconds=30))
+    desktop.as_account("niri msg action power-on-monitors")
+    machine.wait_until_succeeds(LIT, timeout=timedelta(seconds=30))
+    with desktop.told("released lock"):
+        machine.send_chars(f"{desktop.values['secret']}\n")
+    desktop.as_account(f"grep -qx unlocked {LOCKED}")
+
+
+def test_logind_saying_to_unlock_lets_the_lock_go(desktop: Desktop) -> None:
+    """Logind saying to unlock lets the lock go.
+
+    As after a resume from hibernation, where the disk's prompt has already asked for the
+    password, so the lock doesn't ask again.
+    """
+    desktop.as_account("lock-screen")
+    desktop.as_account(f"grep -qx locked {LOCKED}")
+    with desktop.told("released lock"):
+        desktop.machine.succeed("loginctl unlock-sessions")
     desktop.as_account(f"grep -qx unlocked {LOCKED}")
 
 
