@@ -9,8 +9,9 @@
 // right arrow lists Join the Meeting when it has a call, See It, then,
 // for an invitation, Answer Yes, Answer Maybe and Answer No, which keep
 // the launcher, its foot saying the answer once Google has it. Seeing it
-// says its day and times, his answer and its call, and opens it in
-// Calendar. Each row says when the meeting is at the right and its times
+// says its day and times, where, his answer, its call, who holds it, who
+// else is asked and how each answered, and what it's about, each copied
+// by Return, and opens it in Calendar. Each row says when the meeting is at the right and its times
 // below, with his answer to an invitation; its names and words are the
 // vocabulary's (calendar:*, Words.qml). `next` is the next meeting's row,
 // which Now's Today row shows.
@@ -99,14 +100,21 @@ Provider {
         return row;
     }
 
-    // What's known of it, each a figure that copies what it says, then
-    // its page in Google Calendar, where it's changed.
+    // What's known of it, each a figure that copies what it says, a
+    // person their address, then its page in Google Calendar, where it's
+    // changed. What it's about is one line here, copied whole.
     function details(meeting) {
         const rows = [copyRow({
             key: "fact:meeting:when",
             name: Calendar.dated(meeting),
             side: "when"
         })];
+        if (meeting.place)
+            rows.push(copyRow({
+                key: "fact:meeting:place",
+                name: meeting.place,
+                side: "where"
+            }));
         if (Calendar.invited(meeting))
             rows.push(copyRow({
                 key: "fact:meeting:answer",
@@ -119,6 +127,26 @@ Provider {
                 key: "fact:meeting:call",
                 name: meeting.link,
                 side: "its call"
+            }));
+        if (meeting.organizer)
+            rows.push(copyRow({
+                key: "fact:meeting:organizer",
+                name: meeting.organizer.name,
+                copy: meeting.organizer.email ?? meeting.organizer.name,
+                side: "holds it"
+            }));
+        (meeting.guests ?? []).forEach((guest, at) => rows.push(copyRow({
+            key: `fact:meeting:guest:${at}`,
+            name: guest.name,
+            copy: guest.email ?? guest.name,
+            side: Calendar.answered({ answer: guest.answer })
+        })));
+        if (meeting.about)
+            rows.push(copyRow({
+                key: "fact:meeting:about",
+                name: meeting.about.replace(/\s*\n\s*/g, " "),
+                copy: meeting.about,
+                side: "what it's about"
             }));
         if (meeting.page)
             rows.push(thing({

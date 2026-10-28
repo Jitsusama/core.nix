@@ -3,7 +3,8 @@
 It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the whole state as one
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
 that connects. The account is ready, with two meetings on Meet from when the stand-in starts:
-Design Review five minutes on, about to start, and Standup half an hour on. An answer a shell
+Design Review five minutes on, about to start, Joel's own, and Standup half an hour on, Ada's in
+Room 4, with Grace not going. An answer a shell
 writes is written down in google-asked beside the socket, for the test to read, and taken as
 Google would take it, so the file and every shell say the meeting answered. Two pieces of mail
 want Joel, Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read
@@ -25,8 +26,8 @@ AHEAD = 30 * MINUTE
 LASTS = 30 * MINUTE
 
 
-def meeting(key: str, title: str, start: int, call: str) -> dict[str, object]:
-    """Give a meeting as the program says one, answered yes, its call on Meet."""
+def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict[str, object]:
+    """Give a meeting as the program says one, answered yes, its call on Meet, Joel's own."""
     return {
         "id": key,
         "title": title,
@@ -37,6 +38,12 @@ def meeting(key: str, title: str, start: int, call: str) -> dict[str, object]:
         "link": f"https://meet.google.com/{call}",
         "kind": "meet",
         "page": f"https://calendar.google.com/calendar/event?eid={key}",
+        "place": None,
+        "about": None,
+        "holds": True,
+        "organizer": None,
+        "guests": [],
+        **more,
     }
 
 
@@ -52,7 +59,17 @@ class Account:
         self.shells: list[socket.socket] = []
         self.meetings = [
             meeting("review", "Design Review", now + SOON, "pqr-stuv-wxy"),
-            meeting("standup", "Standup", now + AHEAD, "abc-defg-hij"),
+            meeting(
+                "standup",
+                "Standup",
+                now + AHEAD,
+                "abc-defg-hij",
+                place="Room 4",
+                about="What we did yesterday,\nwhat we do today.",
+                holds=False,
+                organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
+                guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "no"}],
+            ),
         ]
         self.mail = [
             {
