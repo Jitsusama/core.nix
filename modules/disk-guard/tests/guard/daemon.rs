@@ -929,7 +929,7 @@ fn held_tree(home: &Home, pid: u32) -> PathBuf {
     fs::create_dir_all(home.root.join("cut")).unwrap();
     let start = 9_000;
     let boot = disk_guard::sys::boot(Path::new("/proc/stat")).unwrap();
-    let started = (boot.wall + start as f64 / boot.ticks) * 1000.0;
+    let started = (boot.wall + disk_guard::units::float(start) / boot.ticks) * 1000.0;
     fs::write(
         home.root.join("cut/app.json"),
         format!(
