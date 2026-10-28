@@ -111,6 +111,7 @@ let
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
     "launcher/Playing.qml"
+    "launcher/Recents.qml"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
@@ -958,6 +959,37 @@ in
       applications = {
         order = 20;
         source = "applications";
+        # What each program had open lately, for its Recent
+        # (launcher/Recents.qml): kitty's folders as zoxide ranks them, by
+        # how often and how lately each was visited, read as zoxide's
+        # database changes. Return opens a kitty window there, through the
+        # kitty behind the window used last while one is open. It shows only
+        # inside kitty's own row, so where kitty isn't installed it's never
+        # seen.
+        recents = lib.optional config.programs.zoxide.enable {
+          app = "kitty";
+          watch = "${config.xdg.dataHome}/zoxide/db.zo";
+          list = [
+            (lib.getExe config.programs.zoxide.package)
+            "query"
+            "--list"
+          ];
+          open = [
+            "kitty"
+            "@"
+            "--to"
+            "unix:@kitty-{pid}"
+            "launch"
+            "--type=os-window"
+            "--cwd"
+            "{path}"
+          ];
+          start = [
+            "kitty"
+            "--directory"
+            "{path}"
+          ];
+        };
       };
       actions = {
         order = 30;

@@ -4143,6 +4143,19 @@
       "glyph": "notifications"
     },
     {
+      "id": "program:recent",
+      "in": "applications",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
+    },
+    {
+      "id": "recent:path",
+      "in": "program:recent",
+      "name": "Opened Lately",
+      "verb": "open"
+    },
+    {
       "id": "verb:float",
       "in": "windows",
       "name": "Float",

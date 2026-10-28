@@ -12,12 +12,17 @@
 // below, and one whose player is found by its identity holds Media with
 // only what that player can do, and Sound with only its Microphone while
 // it records and plays nothing, Mute there reaching what it records alone.
-// A program with keys of its own holds them as its Shortcuts. Typing on
+// A program with keys of its own holds them as its Shortcuts. One that
+// keeps what it had open lately holds Recent, each path by its name beside
+// its folder, opened by its start command while none of its windows is
+// open and through the process behind its last window while one is, and
+// read again as its file changes, nine at most. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import qs
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
 
@@ -25,6 +30,10 @@ ShellRoot {
     id: root
 
     property string waiting: "the programs"
+
+    readonly property string home: Quickshell.env("HOME")
+    // What quiet had open lately, one path a line, as the check writes it.
+    readonly property string recentFile: `${home}/recent`
 
     function expect(what, holds, said) {
         if (!holds)
@@ -71,13 +80,60 @@ ShellRoot {
         id: applications
 
         launcher: launcher
-        settings: ({ name: "applications" })
-        // Desktop entries are read in the background, so the cases wait for
-        // all three.
-        onThingsChanged: {
-            if (root.waiting === "the programs"
-                    && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined))
-                Qt.callLater(root.cases);
+        settings: ({
+            name: "applications",
+            recents: [{
+                app: "quiet",
+                watch: root.recentFile,
+                list: [Quickshell.env("RECENT_LIST")],
+                open: ["quiet", "@", "--to", "unix:@quiet-{pid}", "launch", "{path}"],
+                start: ["quiet", "--directory", "{path}"]
+            }]
+        })
+        // Desktop entries and what quiet had open are read in the
+        // background, so the cases wait for all three and the list.
+        onThingsChanged: root.ready()
+    }
+
+    Connections {
+        target: applications.recents
+
+        function onLatelyChanged() {
+            if (root.waiting === "the recents to change")
+                root.changed();
+            else
+                root.ready();
+        }
+    }
+
+    // Writes quiet's list anew, as the program would.
+    FileView {
+        id: writer
+
+        path: root.recentFile
+        printErrors: false
+    }
+
+    function ready() {
+        if (root.waiting === "the programs"
+                && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined)
+                && applications.recents.of("quiet").length === 2)
+            Qt.callLater(root.cases);
+    }
+
+    // Once its file changes, Recent says what's in it now, nine at most.
+    function changed() {
+        const now = applications.recents.of("quiet");
+        if (now.length !== 9)
+            return;
+        try {
+            const recent = program("quiet").verbs()[2];
+            same("Recent follows its file, nine at most", `${recent.count} ${names(recent.targets())}`,
+                "9 folder 1, folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9");
+            same("each in the folder it's in", recent.targets()[0].side, "~");
+            Qt.callLater(() => Qt.exit(0));
+        } catch (error) {
+            fail(error.message);
         }
     }
 
@@ -195,8 +251,32 @@ ShellRoot {
 
             const quiet = program("quiet").verbs();
             same("a program with keys of its own holds them, and only its new windows besides",
-                names(quiet), "New Window, New Window Below, Shortcuts");
-            same("its Shortcuts counts its keys", quiet[2].count, "4");
+                names(quiet), "New Window, New Window Below, Recent, Shortcuts");
+            same("its Shortcuts counts its keys", quiet[3].count, "4");
+
+            const recent = quiet[2];
+            same("Recent holds more, counting what it had open",
+                `${recent.verb} ${recent.count} ${recent.nested}`, "more 2 true");
+            const lately = recent.targets();
+            same("each by its name, in the order it keeps them", names(lately), "core.nix, etc");
+            same("beside the folder it's in", lately.map(row => row.side).join(" "), "~/src /");
+            same("Return opens it", lately.map(row => row.verb).join(" "), "open open");
+            lately[0].run();
+            same("with none of its windows open, by starting it there",
+                JSON.stringify(Niri.spawned),
+                JSON.stringify(["quiet", "--directory", `${root.home}/src/core.nix`]));
+            const before = Niri.windows;
+            Niri.windows = Object.assign({}, before, {
+                "13": { id: 13, app_id: "quiet", pid: 4242, title: "Quiet", workspace_id: 1,
+                    focus_timestamp: { secs: 50, nanos: 0 } }
+            });
+            Niri.revision += 1;
+            lately[0].run();
+            same("with one open, through the process behind it", JSON.stringify(Niri.spawned),
+                JSON.stringify(["quiet", "@", "--to", "unix:@quiet-4242", "launch",
+                    `${root.home}/src/core.nix`]));
+            Niri.windows = before;
+            Niri.revision += 1;
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
@@ -237,7 +317,9 @@ ShellRoot {
                 same(`"${typed}" found as looking whole does`, got, whole(typed));
                 found(typed);
             }
-            Qt.callLater(() => Qt.exit(0));
+            root.waiting = "the recents to change";
+            writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
+                .join("\n") + "\n");
         } catch (error) {
             fail(error.message);
         }

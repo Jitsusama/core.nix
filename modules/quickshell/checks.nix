@@ -1301,6 +1301,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
+      cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
@@ -1313,6 +1314,10 @@ onLinux {
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
+      # What quiet had open lately, as a program keeps it, and the command
+      # that lists it.
+      printf '%s\n' "$HOME/src/core.nix" /etc > $HOME/recent
+      export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

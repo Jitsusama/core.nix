@@ -10,8 +10,8 @@
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
 // first (Switch, New window, New window below, its other windows by title,
-// its desktop entry's own actions, its Shortcuts where it has keys of its
-// own, Quit), then its parts (Media while it
+// its desktop entry's own actions, Recent where it keeps what it had open
+// lately, its Shortcuts where it has keys of its own, Quit), then its parts (Media while it
 // has a player, Sound while it plays or records, Notifications while the
 // history holds any of its), then any part another provider gives it, such
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
@@ -480,6 +480,53 @@ Provider {
         return own === "desktop" ? "" : own;
     }
 
+    // What each program had open lately, from the files they write.
+    readonly property Recents recents: Recents {
+        sources: provider.settings.recents ?? []
+    }
+
+    // Recent: what it had open lately (Recents.qml), in the order it keeps
+    // them, each a folder or a file by its name, beside the folder it's in.
+    // Return opens it through the program as its settings say: `open`
+    // while a window of it is open, through the process behind the window
+    // used last ({pid}), and `start` while none is.
+    function recent(entry) {
+        const source = (settings.recents ?? []).find(each => each.app === entry.id);
+        const paths = source ? provider.recents.of(entry.id) : [];
+        if (paths.length === 0)
+            return [];
+        return [said("program:recent", "", {
+            hue: "program",
+            count: String(paths.length),
+            ask: "which?",
+            nested: true,
+            targets: () => provider.recents.of(entry.id).map(path => provider.opened(entry, source, path))
+        })];
+    }
+
+    function opened(entry, source, path) {
+        const home = Quickshell.env("HOME");
+        const shown = path === home ? "~"
+            : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+        // "~/src/core.nix" is core.nix in ~/src; "/etc" is etc in /.
+        const cut = shown.lastIndexOf("/");
+        const folder = cut < 0 || shown === "/" ? "" : cut === 0 ? "/" : shown.slice(0, cut);
+        return thing({
+            key: `recent:${entry.id}:${path}`,
+            verb: Words.verb("recent:path"),
+            name: cut < 0 || shown === "/" ? shown : shown.slice(cut + 1),
+            glyph: "path",
+            hue: "program",
+            side: folder,
+            run: () => {
+                const window = (provider.running[entry.id] ?? [])[0] ?? null;
+                const command = window ? source.open : source.start;
+                Niri.spawn(command.map(part => part.replace("{path}", path)
+                    .replace("{pid}", String(window?.pid ?? ""))));
+            }
+        });
+    }
+
     // Its own keys, where Shortcuts has a layer of them (KeyMap.qml's
     // layerOf), as Shortcuts lists the layer, named Shortcuts here since
     // the program already says whose they are.
@@ -506,7 +553,8 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), keysOf(entry), latest ? [quit(entry, windows)] : [],
+        return acts.concat(menu(entry, taken), recent(entry), keysOf(entry),
+            latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             notices(same));
