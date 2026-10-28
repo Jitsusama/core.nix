@@ -1192,6 +1192,8 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     """Now's Today row says today's next meeting and takes its verb, joining one about to start."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
     # The next meeting is the stand-in's Design Review, five minutes on.
     desktop.as_account("systemctl --user start google.service")
     desktop.answer("now")
@@ -1211,7 +1213,13 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     assert (today["selected"] or {}).get("is") == "on:today", today
     assert today["selected"]["verb"] == "join", today
     assert re.fullmatch(r"Design Review in [1-5] min", today["footer"]), today
-    desktop.as_account("qs ipc call launcher toggle")
+    # Return joins it, as the meeting's own row does, rather than stepping
+    # into Today.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
