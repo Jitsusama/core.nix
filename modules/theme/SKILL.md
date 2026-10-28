@@ -6,7 +6,7 @@ description: >
   he's liked and turned down, and the questions to judge a design by. Use
   before designing, building or changing anything he sees, types or presses:
   a window, a launcher, a notice, a prompt, a status line, terminal or
-  command output, a theme, colours, type, spacing, glyphs, motion, key
+  command output, a theme, colours, type, spacing, marks, motion, key
   chords, a page or a document laid out for him.
 ---
 
@@ -14,7 +14,7 @@ description: >
 
 How what Joel sees and touches should feel, found over many rounds of
 building things and his verdicts on them. The system built from it, the type
-and space scales, the colour roles, the glyphs, the shapes and kinds of
+and space scales, the colours, the marks, the shapes and kinds of
 surface, motion and the keyboard's language, is the design document:
 `design.md` beside this file where the theme module installs it, and
 `docs/design.md` in core.nix. Read both before designing anything.
@@ -73,7 +73,7 @@ constrain".
   grid of one unit, with hierarchy made by order, weight and colour rather
   than by boxes or size. Nothing is ornament that doesn't also work: a
   border says a thing is a thing, a radius says whether it's whole or a
-  part, and a glyph names an idea.
+  part, and a mark names an idea.
 - **Nordic.** Calm, restrained and made to be lived with. Generous air, few
   things on screen, each made with care, and a surface that recedes until
   it's wanted. Light shadows rather than heavy ones, opaque windows, and
@@ -84,12 +84,12 @@ constrain".
   neon and never glowing. Edges are softened, by the theme's radius and
   feathered shadows, but never bubbly, and motion arrives easily and settles
   without a wobble.
-- **Whimsy.** The warmth that keeps minimalism from going cold: glyphs in
+- **Whimsy.** The warmth that keeps minimalism from going cold: marks in
   their kind's colour, the padlock beside the password dots, a strong
-  picture behind everything, a row of glyphs in the corner saying what's
+  picture behind everything, a row of marks in the margin saying what's
   on, a suggestion in the field that changes each time. It
   lives at thresholds and in marks, never on the numbers or the controls he
-  needs mid-task. Pure text with no glyphs grows dull.
+  needs mid-task. Pure text with no marks grows dull.
 - **Simple, never constraining.** Few ideas, each reaching far. Nothing
   useful is taken away to look clean: numbers stay, made quiet by type.
   Every choice is an option underneath, and the default is the one that
@@ -97,8 +97,8 @@ constrain".
 
 ## What He's Liked
 
-- **The text is the star, the glyphs add the impact.** A glyph leads only a
-  line to act on, and text below a glyph lines up with its ink, never
+- **The text is the star, the marks add the impact.** A mark leads only a
+  line to act on, and text below a mark lines up with its ink, never
   indented from it. A figure wears none, since "it is hard to tell actions
   from stats" when both lead alike (2026-10-24).
 - **Braille graphs, ten characters wide.** Over a dim track of every dot,
@@ -114,17 +114,17 @@ constrain".
   windows too by a halo, never by a dark block.
 - **Things that feel physical.** Motion carries a thing the way it would
   move.
-- **Glyphs one height.** A row of glyphs stands level, every one's ink the
+- **Marks one height.** A row of marks stands level, every one's ink the
   same height on one middle line, however tall its font draws it; uneven
   heights set off "my autism infused OCD" (2026-10-24).
 - **Margin round a highlight, not padding inside it.** A selected item's
   fill sits close round its ink, with room outside it, so it doesn't float.
 - **A step inside the edge.** Things in a corner sit a little inside the
   windows' edge, so nothing lines up with something else by chance.
-- **Chords drawn as keys.** A key's glyph where a good one exists, its name
+- **Chords drawn as keys.** A key's mark where a good one exists, its name
   where none does, joined by + with room on each side, muted.
 - **Signatures, not headers.** A notice says who in strong type, then the
-  message, then a muted footer: the program's glyph and name at the bottom
+  message, then a muted footer: the program's mark and name at the bottom
   left, the time at the bottom right.
 - **The calm prompt.** Where he is, where his keys go, and only what's true
   besides; the rest a step away.
@@ -139,7 +139,7 @@ constrain".
 - **Inconsistency.** Spacing, sizes or weights that differ for no reason, a
   font that isn't quite Monaspace, typed text smaller than what it
   completes, a hint colliding with the line above.
-- **Jarring alignment.** A heading indented from the glyph above it, an edge
+- **Jarring alignment.** A heading indented from the mark above it, an edge
   that nearly lines up with another.
 - **Darkness under text and boxes over things.** A shaded block behind text
   on the picture, an opaque box over the overview, an overlay covering his
@@ -177,7 +177,7 @@ and answer these for it:
 - Is every edge on the grid and aligned to the ink, and is the space round
   each thing the same on every side?
 - Is anything in a box, a border or a shade that space would group better?
-- Does it read at a glance: colour on glyphs and text in its roles, contrast
+- Does it read at a glance: marks and text in the theme's colours, contrast
   passing, nothing told by colour alone?
 - Is it held to its kind, so it looks like what it is and nothing else?
 - Does it hold up at his scale, with dozens of windows, a long title, an
