@@ -1255,15 +1255,15 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
         )
     )
     machine.fail(f"test -s {opened}")
-    # Back out, its acts start with joining, which goes into its call.
+    # Back out, its acts lead with seeing it, Return's own, and then
+    # joining, which goes into its call.
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: shown["path"] == [] and (shown["selected"] or {}).get("name") == "Standup"
     )
     desktop.step_in()
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Join the Meeting"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "See It")
+    desktop.down_to("Join the Meeting")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/abc-defg-hij {opened}",
@@ -1285,7 +1285,8 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.answer("standup")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.step_in()
-    # Its acts: joining and seeing it first, then the three answers.
+    # Its acts: seeing it, Return's own, and joining first, then the three
+    # answers.
     for _ in range(6):
         if (desktop.showing()["selected"] or {}).get("name") == "Answer Maybe":
             break
