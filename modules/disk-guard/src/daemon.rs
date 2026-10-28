@@ -281,6 +281,8 @@ pub struct Guard {
     last: Option<LastPass>,
     saved_at: Option<f64>,
     written: Option<(f64, Status)>,
+    /// The status last written, which each beat writes again fresh.
+    beaten: Arc<Mutex<Option<Status>>>,
     /// Whether what an earlier run left moved aside has been seen to.
     resumed: bool,
     /// Nix's garbage as last listed, for the system daemon, and where it's
@@ -603,6 +605,7 @@ impl Guard {
             last: None,
             saved_at: None,
             written: None,
+            beaten: Arc::default(),
             resumed: false,
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing,
@@ -2070,7 +2073,7 @@ impl Guard {
     fn pacer(&self, path: &Path, band: Band, thresholds: Thresholds) -> Pacer {
         let clock = Box::new(Monotonic::new());
         if band >= Band::Urgent {
-            return Pacer::hurried(clock, self.beat());
+            return Pacer::hurried(clock, self.beating());
         }
         let watched = path.to_owned();
         let pressed = move || {
@@ -2081,7 +2084,7 @@ impl Guard {
             self.config.pacing,
             clock,
             self.probe(path),
-            self.beat(),
+            self.beating(),
             Box::new(pressed),
         )
     }
@@ -2106,48 +2109,77 @@ impl Guard {
         }
     }
 
-    /// Says the guard is alive while a pass holds it: the status last
-    /// written, with a fresh heartbeat and each filesystem's free space as
-    /// it is now, so the desktop neither calls it silent nor shows stale
-    /// room.
-    fn beat(&self) -> Box<dyn FnMut()> {
-        let (Some(path), Some((_, mut status))) = (self.status_path.clone(), self.written.clone())
-        else {
+    /// Says the guard is alive: the status last written, with a fresh
+    /// heartbeat and each filesystem's free space as it is now, so the
+    /// desktop neither calls it silent nor shows stale room. A pass's
+    /// pacer calls it as it works, and `beat_always`'s thread every
+    /// `HEARTBEAT_EVERY`. Until this guard has written a status of its
+    /// own it stamps the one the last guard left, so a restart, whose
+    /// first step can take minutes, never reads as a guard that stopped.
+    pub fn beating(&self) -> Box<dyn FnMut() + Send> {
+        let Some(path) = self.status_path.clone() else {
             return Box::new(|| {});
         };
+        let beaten = Arc::clone(&self.beaten);
         let bands = self.config.bands.clone();
         let home = self.home.clone();
         Box::new(move || {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_or(0.0, |since| since.as_secs_f64());
-            status.heartbeat = now;
-            for filesystem in &mut status.filesystems {
-                if let Ok(space) = crate::sys::space(&filesystem.path) {
-                    filesystem.measured(&space, &bands, now, home.as_deref());
+            let now = wall_now();
+            let mut beaten = beaten.lock().unwrap_or_else(PoisonError::into_inner);
+            let saved = match beaten.as_mut() {
+                None => restamp(&path, now),
+                Some(status) => {
+                    status.heartbeat = now;
+                    for filesystem in &mut status.filesystems {
+                        if let Ok(space) = crate::sys::space(&filesystem.path) {
+                            filesystem.measured(&space, &bands, now, home.as_deref());
+                        }
+                    }
+                    let rooms: Vec<_> = status
+                        .filesystems
+                        .iter()
+                        .map(|filesystem| filesystem.room(filesystem.full_at.map(|at| at - now)))
+                        .collect();
+                    status.says = crate::words::machine(&rooms, home.as_deref());
+                    state::save(&path, status)
                 }
-            }
-            let rooms: Vec<_> = status
-                .filesystems
-                .iter()
-                .map(|filesystem| filesystem.room(filesystem.full_at.map(|at| at - now)))
-                .collect();
-            status.says = crate::words::machine(&rooms, home.as_deref());
-            if let Err(error) = state::save(&path, &status) {
+            };
+            if let Err(error) = saved {
                 eprintln!("disk-guard: writing its status: {error}");
             }
         })
+    }
+
+    /// Beats on a thread of its own for as long as the process runs, so
+    /// the status file's heartbeat says what the unit's state does: that
+    /// the guard is running, however long a step, a delete Nix holds up
+    /// or a restart's first look takes. The desktop calls a guard silent
+    /// two minutes after its last heartbeat.
+    pub fn beat_always(&self) -> io::Result<()> {
+        let mut beat = self.beating();
+        std::thread::Builder::new()
+            .name("heartbeat".to_owned())
+            .spawn(move || {
+                loop {
+                    beat();
+                    std::thread::sleep(Duration::from_secs_f64(HEARTBEAT_EVERY));
+                }
+            })?;
+        Ok(())
     }
 
     fn write_status(&mut self, now: f64) -> io::Result<()> {
         let Some(path) = self.status_path.clone() else {
             return Ok(());
         };
-        let status = self.status(now);
+        let mut status = self.status(now);
+        // Stamped as it's written, not as its step began: a step can run
+        // for minutes, and a status written old reads as a guard stopped.
+        status.heartbeat = wall_now();
         let unchanged = self.written.as_ref().is_some_and(|(at, written)| {
             now - at < HEARTBEAT_EVERY
                 && Status {
-                    heartbeat: now,
+                    heartbeat: status.heartbeat,
                     ..written.clone()
                 } == status
         });
@@ -2157,9 +2189,32 @@ impl Guard {
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
+        // One writer at a time, since a beat saves through the same file.
+        let mut beaten = self.beaten.lock().unwrap_or_else(PoisonError::into_inner);
         state::save(&path, &status)?;
+        *beaten = Some(status.clone());
+        drop(beaten);
         self.written = Some((now, status));
         Ok(())
+    }
+}
+
+/// The time now, in wall seconds.
+fn wall_now() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64())
+}
+
+/// Writes the status file a guard left again with a fresh heartbeat and
+/// all else as it said, or nothing when there's none or none that reads.
+fn restamp(path: &Path, now: f64) -> io::Result<()> {
+    match state::load::<serde_json::Map<String, serde_json::Value>>(path) {
+        Ok(Some(mut left)) => {
+            left.insert("heartbeat".to_owned(), now.into());
+            state::save(path, &left)
+        }
+        _ => Ok(()),
     }
 }
 

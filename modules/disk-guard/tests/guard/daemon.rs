@@ -702,6 +702,60 @@ fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     );
 }
 
+/// A step can run for minutes, and its status was stamped with the
+/// moment it began: on 28 October a system guard's read 189 seconds old
+/// as it was written, and the desktop said the disks weren't watched.
+#[test]
+fn a_status_is_stamped_when_it_is_written_not_when_its_step_began() {
+    let home = Home::new();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    let begun = Tick {
+        wall: wall() - 300.0,
+        ..tick()
+    };
+    guard.step(&begun, &CALM).unwrap();
+    let age = wall() - home.status()["heartbeat"].as_f64().unwrap();
+    assert!(age < 5.0, "written {age:.0} seconds ago");
+}
+
+/// A restarted guard's first step can take minutes, in which the status
+/// the last one left went quiet and the desktop took a restart for a
+/// guard that had stopped. It beats from its first moment, on what the
+/// last one said until it has said something itself.
+#[test]
+fn a_restarted_guard_beats_on_the_last_status_before_its_first_step() {
+    let home = Home::new();
+    fs::write(
+        home.root.join("status.json"),
+        r#"{ "version": 2, "heartbeat": 1, "says": "left by the last guard" }"#,
+    )
+    .unwrap();
+    let guard = home.guard(home.config("0%", "0%"));
+    guard.beating()();
+    let status = home.status();
+    let age = wall() - status["heartbeat"].as_f64().unwrap();
+    assert!(age < 5.0, "beat {age:.0} seconds ago");
+    assert_eq!(status["says"], "left by the last guard");
+}
+
+/// Once a guard has written its own, a beat rewrites that, fresh.
+#[test]
+fn a_beat_rewrites_the_status_last_written_with_a_fresh_heartbeat() {
+    let home = Home::new();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let written = home.status();
+    fs::write(home.root.join("status.json"), r#"{ "heartbeat": 1 }"#).unwrap();
+    guard.beating()();
+    let beaten = home.status();
+    assert!(wall() - beaten["heartbeat"].as_f64().unwrap() < 5.0);
+    assert_eq!(beaten["says"], written["says"]);
+    assert_eq!(
+        beaten["filesystems"][0]["path"],
+        written["filesystems"][0]["path"]
+    );
+}
+
 #[test]
 fn pretending_free_space_bands_the_preview() {
     let home = Home::new();

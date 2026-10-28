@@ -702,7 +702,9 @@ Provider {
     // to take", so Joel sees why the disk is still short.
     function guardSays(guard, worst) {
         if (guard.silent)
-            return "the disk guard has stopped saying";
+            return [guard.accountStopped ? "the disk guard stopped"
+                : "the machine's disk guard stopped", guard.context]
+                .filter(part => part !== "").join("; ");
         const said = [worst && worst.band !== "healthy" ? guard.banded(worst.band) : "",
             guard.context].filter(part => part !== "");
         return said.length > 0 ? said.join("; ") : "from the disk guard";

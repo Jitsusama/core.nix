@@ -7,9 +7,11 @@
 // to run, the worse of the two guards' words wins for a disk both watch, a
 // disk only the
 // machine's guard watches counts, a writer frozen wants Joel with a way to let
-// it go on, a guard that stopped writing is a warning
-// of its own with a way to start it, as is one whose heartbeat ages past
-// silence with nothing written after it, what holds the disks is one list
+// it go on, a guard gone quiet whose unit says it's starting again shows
+// nothing, one whose heartbeat ages past silence with nothing written after
+// it and whose unit failed is a warning of its own saying why, with a way to
+// start it, and the machine's guard stopped says a restart starts it, with
+// no way of its own, what holds the disks is one list
 // from both guards, biggest first, and a guard that never wrote leaves no
 // piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
@@ -124,20 +126,36 @@ ShellRoot {
             && piece.hint === "dd was frozen for filling /"
             && piece.actions[0].name === "Thaw It" && piece.actions[0].verb === "thaw"
     }, {
+        // Quiet as each switch leaves it while its unit restarts it.
+        what: "a guard being restarted",
+        accountUnit: "ActiveState=activating\nResult=success\n",
+        account: status([disk("/", "healthy", 400)], null, root.now - 600),
+        machine: status([disk("/", "healthy", 400)]),
+        holds: piece => piece.units.account.asked
+            && piece.units.account.state === "activating"
+            && !piece.active && piece.value === "400.0 GiB free on /"
+    }, {
         // After one that isn't silent, so only this one's heartbeat can
         // make it so: a second short of silence, and nothing after it, so
         // only the deadline it set can say so.
-        what: "a guard that falls silent",
+        what: "a guard that falls silent and failed",
+        accountUnit: "ActiveState=failed\nResult=exit-code\n",
         account: () => status([disk("/", "healthy", 400)], null, Date.now() / 1000 - 119),
         machine: status([disk("/", "healthy", 400)]),
-        holds: piece => piece.active && piece.value === "not watching"
-    }, {
-        what: "a guard that stopped",
-        account: status([disk("/", "healthy", 400)], null, root.now - 600),
-        machine: status([disk("/", "healthy", 400)]),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
-            && piece.value === "not watching"
+            && piece.value === "guard stopped"
+            && piece.hint === "The disk guard stopped, so nothing keeps the disks from filling"
+            && piece.context === "it failed"
             && piece.actions.some(action => action.name === "Start the Guard")
+    }, {
+        what: "the machine's guard turned off",
+        machineUnit: "ActiveState=inactive\nResult=success\n",
+        account: status([disk("/", "healthy", 400)]),
+        machine: status([disk("/", "healthy", 400)], null, root.now - 600),
+        holds: piece => piece.active && piece.value === "guard stopped"
+            && piece.hint.endsWith("restarting the machine starts it again")
+            && piece.context === "it was turned off"
+            && piece.actions.length === 0
     }]
 
     property int at: 0
@@ -147,8 +165,25 @@ ShellRoot {
         id: piece
         settings: ({
             account: `${root.runtime}/account.json`,
-            machine: `${root.runtime}/machine.json`
+            machine: `${root.runtime}/machine.json`,
+            accountUnit: ["cat", `${root.runtime}/account-unit`],
+            machineUnit: ["cat", `${root.runtime}/machine-unit`]
         })
+    }
+
+    // What each guard's unit says when asked, written before its status.
+    FileView {
+        id: accountUnit
+        path: `${root.runtime}/account-unit`
+        blockWrites: true
+        printErrors: false
+    }
+
+    FileView {
+        id: machineUnit
+        path: `${root.runtime}/machine-unit`
+        blockWrites: true
+        printErrors: false
     }
 
     FileView {
@@ -170,6 +205,10 @@ ShellRoot {
 
     function begin() {
         const step = cases[at];
+        // A unit is running unless the case says otherwise.
+        const running = "ActiveState=active\nResult=success\n";
+        accountUnit.setText(step.accountUnit ?? running);
+        machineUnit.setText(step.machineUnit ?? running);
         // A guard's words may be reckoned as its case begins.
         write(account, typeof step.account === "function" ? step.account() : step.account);
         write(machine, step.machine);

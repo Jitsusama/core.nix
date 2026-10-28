@@ -125,11 +125,16 @@ or launchd, and [`home.nix`][2] the account's.
   collects with `nix store gc --max` from urgent.
 - **Status.** Each daemon keeps a status file, the account's in its
   runtime directory and the system's in `/run/disk-guard`, which the
-  desktop and `disk-guard status` read. Its second version says things in
-  sentences the desktop shows as they are: one for the machine, one for
-  each disk beside its size, use, fill an hour and when it fills, and one
-  for each of the last 20 things cleared, which the journal remembers
-  across restarts. `src/words.rs` writes them. The fill and when it fills
+  desktop and `disk-guard status` read. A thread of its own writes it
+  again every 30 seconds for as long as the daemon runs, from its first
+  moment, on what the last daemon left until it has its own, each stamped
+  as it's written: so the heartbeat says what the unit's state does, and
+  neither a restart nor a long step reads as a guard that stopped. The
+  desktop asks the unit before it says one has. Its second version says
+  things in sentences the desktop shows as they are: one for the machine,
+  one for each disk beside its size, use, fill an hour and when it fills,
+  and one for each of the last 20 things cleared, which the journal
+  remembers across restarts. `src/words.rs` writes them. The fill and when it fills
   are the trend over about two hours, told once it's watched ten minutes
   and while the disk is filling now too, since builds writing and freeing
   gigabytes every few minutes swing the two-minute rate passes plan by
