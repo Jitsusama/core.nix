@@ -140,10 +140,10 @@ Provider {
             .filter(part => part !== "").join(" \u00b7 ");
     }
 
-    // The session a job is for, while its window is open.
+    // The session a job is for, while it runs.
     function sessionOf(job) {
-        return Sessions.running.find(session => session.presence?.session === job.owner?.session
-            && session.window) ?? null;
+        return Sessions.running.find(session => session.presence.session === job.owner?.session)
+            ?? null;
     }
 
     // The quest's own row in Quests, so its Return opens it as there.
@@ -153,7 +153,7 @@ Provider {
     }
 
     function goes(session) {
-        return () => Niri.act({ FocusWindow: { id: session.window.id } });
+        return () => Sessions.goTo(session);
     }
 
     function made(given) {

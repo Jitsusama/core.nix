@@ -57,7 +57,7 @@ Provider {
             // The session is its window, which the windows and its quest
             // also find, and it says the most of the three, so it's the
             // one row left of them (Launcher.qml's compose).
-            is: `window:${session.window.id}`,
+            is: Sessions.isOf(session),
             rich: 2,
             verb: "switch",
             name: session.title,
@@ -71,7 +71,7 @@ Provider {
             note: asks && presence.wants.said ? presence.wants.said
                 : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
-            run: () => Niri.act({ FocusWindow: { id: session.window.id } }),
+            run: () => Sessions.goTo(session),
             verbs: () => provider.verbs(session, quest, spent)
         });
     }
@@ -129,7 +129,7 @@ Provider {
             glyph: Words.glyph("verb:agent:switch"),
             hue: "action",
             later: true,
-            run: () => Niri.act({ FocusWindow: { id: session.window.id } })
+            run: () => Sessions.goTo(session)
         })].concat(facts);
     }
 

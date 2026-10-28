@@ -34,9 +34,9 @@ Provider {
     readonly property string holding: {
         const by = {};
         for (const session of Sessions.running) {
-            const pid = session.presence && session.presence.owner ? session.presence.owner.pid : null;
+            const pid = session.presence.owner ? session.presence.owner.pid : null;
             if (pid && !by[pid])
-                by[pid] = { address: session.address, window: session.window.id };
+                by[pid] = { address: session.address };
         }
         return JSON.stringify(by);
     }
@@ -147,8 +147,10 @@ Provider {
 
     function go(run) {
         const session = started[run.pid];
-        if (session)
-            Niri.act({ FocusWindow: { id: session.window } });
+        const ongoing = session
+            ? Sessions.running.find(one => one.address === session.address) : undefined;
+        if (ongoing)
+            Sessions.goTo(ongoing);
         else
             Quickshell.clipboardText = run.id;
     }

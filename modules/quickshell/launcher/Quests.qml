@@ -45,15 +45,16 @@ Provider {
     }
 
     // The session that has each quest loaded, the one used last: its
-    // address and window. Said as text first, which changes only when they
-    // do, since the sessions are listed again whenever a window does.
+    // address and what it is (Sessions.isOf). Said as text first, which
+    // changes only when they do, since the sessions are listed again
+    // whenever a window does.
     readonly property string holding: {
         const by = {};
         for (const session of Sessions.running) {
-            const owns = session.presence && session.presence.owns ? session.presence.owns : [];
+            const owns = session.presence.owns ?? [];
             const quest = owns.find(owned => /^QEST-/.test(owned));
             if (quest && !by[quest])
-                by[quest] = { address: session.address, window: session.window.id };
+                by[quest] = { address: session.address, is: Sessions.isOf(session) };
         }
         return JSON.stringify(by);
     }
@@ -86,8 +87,10 @@ Provider {
 
     function go(quest) {
         const session = loaded[quest.id];
-        if (session)
-            Niri.act({ FocusWindow: { id: session.window } });
+        const ongoing = session
+            ? Sessions.running.find(one => one.address === session.address) : undefined;
+        if (ongoing)
+            Sessions.goTo(ongoing);
         else
             Niri.spawn(["kitty", "--directory", quest.folder, "env",
                 `QUEST_WORKFLOW_AUTOLOAD_ID=${quest.id}`, "pi"]);
@@ -99,7 +102,7 @@ Provider {
             key: `quest:${quest.id}`,
             // A quest a session has loaded is that session's window, which
             // its Agents row says more of (Launcher.qml's compose).
-            is: session ? `window:${session.window}` : `quest:${quest.id}`,
+            is: session ? session.is : `quest:${quest.id}`,
             rich: 1,
             verb: session ? "switch" : "open",
             name: quest.title || quest.id,
