@@ -3,7 +3,7 @@
 The key sends Super, Shift and F23 at once, and lets them go in the other order, as the XPS 14's
 does: within a millisecond of each other, with F23 held a tenth of a second. Each line written to
 /run/copilot-key presses it once. The device's event node goes to /run/copilot-key.device first,
-so a test can wait until niri has it open before it presses.
+so a test can wait until the desktop has it open before it presses.
 """
 
 import os
