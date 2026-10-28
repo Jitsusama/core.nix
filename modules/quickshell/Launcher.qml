@@ -248,8 +248,8 @@ Scope {
         // reads now, though what it says no longer matches what's typed: a
         // Play that Return made a Pause shows Pause, rather than going.
         const now = rows.concat(below);
-        const renamed = steadying ? matches.filter(row => !row.gone && keyed[row.key] !== undefined
-            && !now.some(one => one.key === row.key)).map(row => keyed[row.key]) : [];
+        const renamed = !steadying ? [] : matches.filter(row => !row.gone && onOffer(row.key)
+            && !now.some(one => one.key === row.key)).map(row => onOffer(row.key));
         matches = steadying ? Steady.kept(matches, now.concat(renamed), steadyId) : now;
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
@@ -1635,6 +1635,12 @@ Scope {
     }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
+    // A row on offer now by its key, as it reads now: in the step held, or
+    // at the top. Undefined where it's gone.
+    function onOffer(key) {
+        return held.length > 0 ? offered.find(row => row.key === key && !row.gone) : keyed[key];
+    }
+
     // Whether the step held last is a collection, whose members are things
     // with verbs of their own, as at the top; or a row that says its verbs
     // are things too (nested), as a report's rows are, so stepping goes on
@@ -2018,7 +2024,7 @@ Scope {
             const early = [];
             // Said again in place, what was found is each row as it is now.
             const looked = !narrowing ? choices : !steadying ? candidates
-                : candidates.filter(choice => keyed[choice.key]).map(choice => keyed[choice.key]);
+                : candidates.map(choice => onOffer(choice.key)).filter(choice => !!choice);
             for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
                 // and kept for a word past the whole's name.
