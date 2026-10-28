@@ -1,8 +1,9 @@
 // The launcher on Super+Space, the desktop's command palette: type what you
 // want, a window, an application, an action or what a key does, pick it
 // with the arrows, and Return runs it, or Shift+Return opens it below the
-// focused window. Tab takes the completion the command line offers, and does
-// nothing at home, where the arrows already reach every category. Each
+// focused window. Tab takes the grey completion the command line shows, and
+// does nothing while it shows none, as at home, where the arrows already
+// reach every category. Each
 // action shows its chord, so keys are learned by use.
 //
 // It opens as fast as niri can hand it the keys. Super+Space says "toggle"
@@ -1220,8 +1221,9 @@ Scope {
 
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
-    // step, and Tab at home. The left arrow is said only where it goes
-    // back: that it takes away what's typed is what any field does, and
+    // step, and Tab while the field shows a completion for the selected
+    // row, since it does nothing otherwise. The left arrow is said only
+    // where it goes back: that it takes away what's typed is what any field does, and
     // saying so took room from how things stand as soon as Joel typed.
     // Whether Return does something and keeps the launcher, as a setting
     // does, rather than going somewhere inside it, as a spot, a row with
@@ -1247,6 +1249,8 @@ Scope {
             keys.push(["\u2192", choice.from ? "see all" : "more"]);
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", "back"]);
+        if (choice === selected && completion !== "")
+            keys.push(["\u21e5", "complete"]);
         return keys;
     }
 
@@ -1269,8 +1273,11 @@ Scope {
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
+    // Tab's place is kept from the first, so its coming and going as Joel
+    // types never moves how things stand. A row opened below never stays,
+    // so Ctrl+Return's place is the wider of the two it could have.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "and close"],
-        ["\u2192", "see all"]]
+        ["\u2192", "see all"], ["\u21e5", "complete"]]
     property string footVerbWidest: footVerbRoom
     property real footKeysWidest: 0
 
@@ -2711,12 +2718,13 @@ Scope {
                         // being asked for leaves the question as it is.
                         onCompleted: {
                             trials.pressed("tabs");
-                            // At home there's nothing to complete: home
-                            // is the categories, a row each, and an arrow
-                            // reaches any of them (Joel, 2026-10-25: "i
-                            // don't like tab for browse, that seems
-                            // useless").
-                            if (root.atHome)
+                            // Tab does something only while the field
+                            // shows a grey completion, and only takes it;
+                            // stepping in is the right arrow's (Joel,
+                            // 2026-10-26). At home there's none, since
+                            // nothing is typed (2026-10-25: "i don't like
+                            // tab for browse, that seems useless").
+                            if (root.completion === "")
                                 return;
                             // A command puts its start in the field.
                             if (root.current !== -1 && root.selected?.start !== undefined)
@@ -2725,14 +2733,6 @@ Scope {
                             else if (root.question !== ""
                                 && (root.current === -1 || root.selected?.answered))
                                 text = root.question;
-                            // A row that holds more is stepped into, so a
-                            // few letters and Tab reach inside a thing from
-                            // anywhere, as the right arrow would, and so
-                            // does Tab alone inside a step.
-                            else if ((root.typed !== "" || root.held.length > 0)
-                                && root.current !== -1
-                                && root.enter(root.matches[root.current]))
-                                return;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
                             // An answer that does something has nothing to

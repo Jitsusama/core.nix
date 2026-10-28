@@ -659,9 +659,12 @@ works the same way everywhere.
   and relation, never A to Z, and a typed command comes last in the place
   whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
+- **Tab only completes.** It takes the grey completion the field shows, and
+  does nothing while none shows; the foot names it, as "complete", only
+  then, its place kept so its coming and going moves nothing.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
-  steps into the selected row, and so does Tab when the row holds more, so a
-  few letters reach inside a thing from anywhere: what can be done to it,
+  steps into the selected row, so a few letters reach inside a thing from
+  anywhere: what can be done to it,
   searched the same way, each with its chord, and a verb needing a target
   asks for it in the same field. What was typed found the row, so stepping
   in takes it away, and everything inside shows. Where Joel is shows as
