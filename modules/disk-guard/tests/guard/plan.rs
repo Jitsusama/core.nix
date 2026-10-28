@@ -320,6 +320,30 @@ fn the_plan_goes_cheapest_loss_first() {
 }
 
 #[test]
+fn waste_goes_largest_first() {
+    // Waste costs nothing to lose, so what frees most goes first: taken
+    // longest idle first on 28 October, six thousand small temp entries
+    // from before the boot kept a pass from 185 GiB of spent builds for an
+    // hour.
+    let sized = |mut candidate: Candidate, size: u64| {
+        candidate.size = size;
+        candidate
+    };
+    let candidates = vec![
+        sized(candidate("temp-old", Class::Temp, 10.0 * DAY), 4096),
+        sized(
+            spent(candidate("build", Class::Target, 8.0 * HOUR)),
+            50 * GIB,
+        ),
+        sized(candidate("trash-old", Class::Trash, 31.0 * DAY), GIB),
+    ];
+    assert_eq!(
+        taken(&candidates, Band::Healthy),
+        ["build", "trash-old", "temp-old"]
+    );
+}
+
+#[test]
 fn a_plan_stops_once_its_predicted_free_covers_the_shortfall() {
     let candidates: Vec<_> = (0..10)
         .map(|n| candidate(&format!("t{n}"), Class::Target, f64::from(10 + n) * HOUR))

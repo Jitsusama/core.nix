@@ -194,6 +194,13 @@ const HELD_ENDED_GAP: f64 = 120.0;
 /// a minute keeps what an owner leaves from outliving it by much more.
 const OWNERS_EVERY: f64 = 60.0;
 
+/// How soon upkeep comes again when it kept something only the system
+/// daemon could have vouched for, and couldn't be asked. A switch restarts
+/// both daemons, so the user's upkeep can begin while the system's is down;
+/// ten minutes lets it come back, and costs a daemon that stays down one
+/// walk in ten minutes rather than one a minute.
+const UNHEARD_AGAIN: f64 = 600.0;
+
 /// What holds the store, as cheaply read as it changes: the processes with
 /// temporary roots, by their files' names, and each of Nix's roots that
 /// still leads somewhere, by its link.
@@ -1795,7 +1802,21 @@ impl Guard {
                 None => seconds,
             });
         } else {
-            self.memory.upkept = Some(tick.wall);
+            // Kept by the survey before it was offered, or by the pass.
+            let unvouched = scan.went_unheard()
+                && (self
+                    .kept
+                    .iter()
+                    .any(|(_, used)| matches!(used, crate::activity::Use::Unknown(_)))
+                    || report
+                        .actions
+                        .iter()
+                        .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))));
+            self.memory.upkept = Some(if unvouched {
+                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
+            } else {
+                tick.wall
+            });
         }
         // Whatever came of it, so a failing command waits its window too.
         for (taken, outcome) in &report.actions {

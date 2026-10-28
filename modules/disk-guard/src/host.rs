@@ -34,6 +34,10 @@ pub struct Scan {
     fresh: Duration,
     seen: Option<(Instant, Vec<Process>)>,
     voucher: Option<Voucher>,
+    /// Whether the system daemon couldn't be asked at some point in this
+    /// scan's life, so what it judged then may have been kept for want of
+    /// an answer.
+    went_unheard: bool,
 }
 
 /// The system daemon, asked about the processes this account can't read.
@@ -63,7 +67,14 @@ impl Scan {
             fresh,
             seen: None,
             voucher: None,
+            went_unheard: false,
         }
+    }
+
+    /// Whether the system daemon couldn't be asked at some point since the
+    /// scan began.
+    pub fn went_unheard(&self) -> bool {
+        self.went_unheard
     }
 
     /// Asks the system daemon at `socket` about the processes this account
@@ -131,6 +142,7 @@ impl Scan {
                 }
                 heard => heard,
             };
+            self.went_unheard |= heard.is_err();
             voucher.heard = Some((Instant::now(), heard));
             voucher.asked_about = unread;
         }

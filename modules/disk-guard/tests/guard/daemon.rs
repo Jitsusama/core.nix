@@ -996,6 +996,43 @@ fn a_new_boot_makes_upkeep_due_and_a_restart_does_not() {
 }
 
 #[test]
+fn upkeep_the_system_daemon_could_not_vouch_for_comes_again_soon() {
+    // A switch restarts both guards, and on 28 October the user guard's
+    // upkeep began in the seven seconds the system's was down: it kept
+    // 3,036 temp entries for a process of root's it couldn't read, and
+    // would have left them for six hours.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(built.exists(), "kept while nothing vouches for process 300");
+    let at = |seconds: f64| Tick {
+        wall: wall() + seconds,
+        monotonic: 3600.0 + seconds,
+        ..tick()
+    };
+    let _heard = fake_system(&socket, false);
+    guard.step(&at(60.0), &CALM).unwrap();
+    assert!(
+        built.exists(),
+        "an unheard system daemon costs a pass now and then, not every minute"
+    );
+    guard.step(&at(660.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "upkeep comes again once the system daemon can vouch"
+    );
+}
+
+#[test]
 fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
     let home = Home::new();
     let (config, deps) = home.replaced_build("0%");
