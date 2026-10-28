@@ -651,7 +651,8 @@ works the same way everywhere.
   then after a gap the places, each a context with its own words: Agents,
   Programs, Desktop, Machine, Network and Keyboard, always in that order,
   seven rows in a card of eight, so home's shape never changes. Disk is a
-  place in Machine, beside Processor, Memory and Heat, and a disk filling
+  place in Machine, beside Processor, Memory and Heat, with Lag after it,
+  since what slowed the desktop is one of them, and a disk filling
   fast shows in Now. Now lists what wants Joel, then what reaches other
   people, what's playing and the modes left on, by name within each, and
   Today last. Each says what it holds after its name,

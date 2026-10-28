@@ -26,8 +26,7 @@
         "today",
         "time",
         "weather",
-        "session:quiet",
-        "waits"
+        "session:quiet"
       ],
       "commands": [
         "command:brightness",
@@ -56,7 +55,8 @@
         "machine:cpu",
         "machine:memory",
         "heat",
-        "machine:disk"
+        "machine:disk",
+        "waits"
       ],
       "commands": [
         "command:volume"
@@ -905,7 +905,7 @@
     {
       "id": "waits",
       "name": "Lag",
-      "term": "Desktop/lag",
+      "term": "Machine/lag",
       "answers": [
         "lag"
       ],
