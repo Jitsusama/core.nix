@@ -1,7 +1,7 @@
 # Every shortcut Joel has, gathered from each layer that takes keys: the
 # desktop first, then the terminal, then the programs inside it, Neovim and
 # pi, side by side, then the programs in windows of their own, such as the
-# picture viewer, the markdown reader, the document viewer, the player, the browser, Slack, 1Password, GIMP and Inkscape, beside the terminal. A layer above sees a key before the ones below, so a
+# picture viewer, the markdown reader, the document viewer, the player, the browser, Slack, 1Password, GIMP, Inkscape and Spotify, beside the terminal. A layer above sees a key before the ones below, so a
 # chord two layers both claim never reaches the lower one; the machine
 # refuses to build with one, naming the chord and both layers. The programs
 # never hear a key at the same time, so a chord both claim is no clash. A
@@ -33,6 +33,7 @@ let
     onepassword = "1Password, the password manager, in a window of its own";
     gimp = "GIMP, the picture editor, in a window of its own";
     inkscape = "Inkscape, the drawing editor, in a window of its own";
+    spotify = "Spotify, the music, in a window of its own";
   };
   order = [
     "desktop"
@@ -48,6 +49,7 @@ let
     "onepassword"
     "gimp"
     "inkscape"
+    "spotify"
   ];
   # The layers inside another's window, which hears a key first.
   inside = {
@@ -57,8 +59,8 @@ let
   # Two layers below the desktop sit side by side, and so never hear a key
   # at the same time, unless one is inside the other's window: Neovim and pi
   # in one terminal, the terminal, the picture viewer, the markdown reader,
-  # the document viewer, the player, the browser, Slack, 1Password, GIMP and
-  # Inkscape in windows of their own.
+  # the document viewer, the player, the browser, Slack, 1Password, GIMP,
+  # Inkscape and Spotify in windows of their own.
   beside =
     upper: lower:
     upper != "desktop"

@@ -1949,6 +1949,12 @@
       "glyph": "vector"
     },
     {
+      "id": "shortcuts:spotify",
+      "in": "shortcuts",
+      "name": "Music",
+      "glyph": "playing"
+    },
+    {
       "id": "shortcuts:desktop:windows",
       "in": "shortcuts",
       "name": "Windows",
@@ -2619,6 +2625,16 @@
       "id": "shortcuts:inkscape:panels",
       "in": "shortcuts",
       "name": "Panels"
+    },
+    {
+      "id": "shortcuts:spotify:going",
+      "in": "shortcuts",
+      "name": "Going places"
+    },
+    {
+      "id": "shortcuts:spotify:playing",
+      "in": "shortcuts",
+      "name": "Playing"
     },
     {
       "id": "on",

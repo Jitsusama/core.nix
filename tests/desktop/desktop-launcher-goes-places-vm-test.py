@@ -1941,7 +1941,8 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     # groups as fit whole; the machine has no Neovim or pi, so no layer of
     # theirs, nor Chrome or Slack, so none of theirs either; the picture
     # viewer's, the markdown reader's, the document viewer's, the player's,
-    # 1Password's, GIMP's and Inkscape's come after the terminal's.
+    # 1Password's, GIMP's, Inkscape's and Spotify's come after the
+    # terminal's.
     layers = [
         "Desktop",
         "Terminal",
@@ -1952,6 +1953,7 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
         "Passwords",
         "Picture editor",
         "Drawing editor",
+        "Music",
     ]
     desktop.launcher_until(lambda shown: shown["rows"] == layers)
     desktop_row = desktop.showing()["things"][0]["reads"]
