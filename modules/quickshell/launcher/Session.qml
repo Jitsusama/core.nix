@@ -36,7 +36,7 @@ Provider {
     readonly property var awake: said("session:awake", Caffeinate.on ? "on" : "", {
         side: !Caffeinate.on ? "" : Caffeinate.lid ? "awake, lid shut too" : "awake while open",
         hue: "machine",
-        now: true,
+        stays: true,
         run: () => Caffeinate.on ? Caffeinate.release() : Caffeinate.keep()
     })
 
@@ -46,12 +46,14 @@ Provider {
         side: Quiet.on ? Quiet.lasts : "for an hour",
         chord: bound(holds),
         hue: "voice",
+        stays: true,
         run: () => Quiet.on ? Quiet.end() : Quiet.keep(60),
         verbs: Quiet.on ? null : () => [60, 0].map(minutes => provider.said(
             `session:quiet:${minutes}`, "", {
                 verb: "hold",
                 glyph: minutes > 0 ? Theme.glyph.timed : Theme.glyph.quiet,
                 hue: "action",
+                stays: true,
                 run: () => Quiet.keep(minutes)
             }))
     })
@@ -77,6 +79,7 @@ Provider {
             hue: "machine",
             of: Words.of(key).of,
             part: Words.of(key).part,
+            stays: true,
             run: () => PowerProfiles.profile = choice.profile
         });
     })
@@ -96,6 +99,7 @@ Provider {
     readonly property var recording: said("session:recording", "", {
         side: `recording ${Recorder.what}`,
         hue: "machine",
+        stays: true,
         run: () => Recorder.stop()
     })
 
@@ -106,8 +110,13 @@ Provider {
         return open === 0 ? "" : `, closing ${open === 1 ? "the window" : `${open} windows`}`;
     }
 
+    // What's shown of them says how they stand now: Return on a setting
+    // keeps the launcher, and its row says what it changed to (Launcher.qml's
+    // refreshed). Ending the session takes Joel out, so those close it.
+    onThingsChanged: changed()
+
     // Each is learned by the name it had first (was), so renaming one keeps
-    // what Joel taught it; its old name no longer finds it.
+    // what Joel taught it.
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], [profile], profiles, [
         { was: "Lock", does: locks, run: () => provider.launcher.lock.lock() },
         { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]) },

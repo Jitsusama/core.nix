@@ -207,10 +207,11 @@ Scope {
     function compose(fresh) {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         const said = answering(typed, fresh);
+        const listed = root.found.concat(stillActed(root.found));
         // An answer only there when nothing else is, as asking a model by a
         // question's first word is, gives way to anything found.
         answer = said && said.fallback
-            && (root.found.some(row => !row.category) || gathered.length > 0) ? null : said;
+            && (listed.some(row => !row.category) || gathered.length > 0) ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -222,9 +223,9 @@ Scope {
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
         // At home, every category is listed, to be browsed.
-        const things = new Set(root.found.filter(row => !row.category)
+        const things = new Set(listed.filter(row => !row.category)
             .map(row => Fuzzy.plainly(row.name)));
-        const found = root.found.filter(row => !row.category || atHome
+        const found = listed.filter(row => !row.category || atHome
             || !(things.has(Fuzzy.plainly(row.name)) || (answer && !answer.question)));
         // A thing shows once: a collection found whole stands for what's in
         // it, so neither its own rows, nor the things that live in it
@@ -245,8 +246,7 @@ Scope {
             gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
-        matches = steadying ? Steady.kept(matches, rows.concat(below), steadyId)
-            : rows.concat(below);
+        matches = steadying ? steadied(rows.concat(below)) : rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
@@ -1223,11 +1223,24 @@ Scope {
     // step, and Tab at home. The left arrow is said only where it goes
     // back: that it takes away what's typed is what any field does, and
     // saying so took room from how things stand as soon as Joel typed.
+    // Whether Return does something and keeps the launcher, as a setting
+    // does, rather than going somewhere inside it, as a spot, a row with
+    // more inside, one holding rows (its verbs and targets both, as a
+    // meeting's See It) or a collection's match does.
+    function keepsOpen(choice) {
+        return !!choice.stays && !!choice.run && !choice.spot && !choice.from
+            && verbOf(choice) !== "more" && !(choice.verbs && choice.targets);
+    }
+
     function keysFor(choice) {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
         const keys = [["\u21b5", verbOf(choice)]];
+        // One that keeps the launcher can be done and closed at once, the
+        // font having no Ctrl key's mark, so it's spelled as chords are.
+        if (keepsOpen(choice))
+            keys.push(["Ctrl+\u21b5", "and close"]);
         if (held.length === 0 && choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
         if ((held.length === 0 || collecting) && choice.verbs)
@@ -1251,12 +1264,12 @@ Scope {
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
     // under the selection. They open as wide as most rows need, Return's
-    // place as wide as "connect" and the keys as wide as a program's at
-    // the top, so the first letter typed doesn't move them: grown only as
+    // place as wide as "connect" and the keys as wide as a setting's with
+    // more behind it, so the first letter typed doesn't move them: grown only as
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["\u21e7\u21b5", "below"],
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "and close"],
         ["\u2192", "see all"]]
     property string footVerbWidest: footVerbRoom
     property real footKeysWidest: 0
@@ -1618,6 +1631,31 @@ Scope {
     }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
+    // A row on offer now by its key, as it reads now: in the step held, or
+    // at the top. Undefined where it's gone.
+    function onOffer(key) {
+        return held.length > 0 ? offered.find(row => row.key === key && !row.gone) : keyed[key];
+    }
+
+    // The rows shown, said again as they are now (Steady.js), each in its
+    // place. One still on offer keeps it as it reads now, though what it
+    // says no longer matches what's typed: a Play that Return made a Pause
+    // shows Pause, rather than going.
+    // The row Return last changed something with, kept among what's found
+    // until Joel types or steps again, so Wi-Fi Off that became Wi-Fi On
+    // still shows it, though "wifi off" no longer finds it.
+    property var acted: null
+    function stillActed(found) {
+        const row = acted ? onOffer(acted.key) : undefined;
+        return row && !found.some(one => one.key === row.key) ? [row] : [];
+    }
+
+    function steadied(found) {
+        const renamed = matches.filter(row => !row.gone && onOffer(row.key)
+            && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
+        return Steady.kept(matches, found.concat(renamed), steadyId);
+    }
+
     // Whether the step held last is a collection, whose members are things
     // with verbs of their own, as at the top; or a row that says its verbs
     // are things too (nested), as a report's rows are, so stepping goes on
@@ -1712,9 +1750,36 @@ Scope {
     // ones come at the end, the selection stays on its row and the list
     // where it was scrolled, so nothing moves under the cursor. Only what
     // Joel types orders by rank.
+    // Taken once the change has settled, since a provider may say it
+    // changed from within its own things changing (Session.qml does),
+    // before the rows read from them (choices, partsOfRows) have heard;
+    // each source heard is made again once, in the order heard.
+    property var refreshing: []
     function refreshed(source) {
+        if (refreshing.includes(source))
+            return;
+        refreshing = refreshing.concat([source]);
+        Qt.callLater(refreshDue);
+    }
+    function refreshDue() {
+        const due = refreshing;
+        refreshing = [];
+        for (const source of due)
+            refreshNow(source);
+    }
+    function refreshNow(source) {
         if (!open || asking)
             return;
+        // Out at the top, a row the search found from it is said again in
+        // place, so a setting Return changed shows how it stands now
+        // (Joel, 2026-10-26: an act that changes something stays open and
+        // shows the new state on its row at once).
+        if (held.length === 0) {
+            if (typed.trim() !== ""
+                && matches.some(row => source.things.some(own => own.key === row.key)))
+                reshow(0);
+            return;
+        }
         const from = held.findIndex(step => step.row.from === source);
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
         // A thing of its own stepped into from the top, as a program is, is
@@ -1889,6 +1954,8 @@ Scope {
         const cleared = letters === "" && typed !== "" && held.length > 0 && selected
             ? steadyId(selected) : "";
         typed = letters;
+        if (acted && (letters !== acted.typed || held.length !== acted.depth))
+            acted = null;
         words = Fuzzy.words(letters);
         if (asking) {
             matches = [];
@@ -1950,11 +2017,12 @@ Scope {
             else
                 found = within(offered.reduce((all, row) => all.concat([row],
                     row.offers && row.verbs ? row.verbs() : []), []), letters);
+            found = found.concat(stillActed(found));
             answer = null;
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = Steady.kept(matches, found, steadyId);
+                matches = steadied(found);
                 return;
             }
             matches = found;
@@ -1989,7 +2057,9 @@ Scope {
             // What the next letter narrows from: everything found, and a
             // collection held back only for being too short yet.
             const early = [];
-            const looked = narrowing ? candidates : choices;
+            // Said again in place, what was found is each row as it is now.
+            const looked = !narrowing ? choices : !steadying ? candidates
+                : candidates.map(choice => onOffer(choice.key)).filter(choice => !!choice);
             for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
                 // and kept for a word past the whole's name.
@@ -2141,7 +2211,21 @@ Scope {
         return out;
     }
 
-    function run(choice, below) {
+    // Acting on a thing says it was what was meant by what was typed; in a
+    // collection or a category, the one picked from it was. Learned before
+    // the launcher closes, while what's typed and held is still there.
+    function learn(choice) {
+        trials.picked(choice, typed, held.length);
+        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
+        const picking = !!first.row.from || !!first.row.category;
+        const meant = picking ? choice : first.row;
+        // One that can't be taken back is latched only once its first word's
+        // been typed (Rank.js's leastOf), so a slip of two letters never
+        // powers off.
+        picks.picked(picking ? typed : first.typed, meant.key, knowing());
+    }
+
+    function run(choice, below, closing) {
         if (!choice) {
             open = false;
             return;
@@ -2177,10 +2261,18 @@ Scope {
         // One with nothing to do of its own, only more inside, steps in.
         if (!choice.run && enter(choice))
             return;
-        // One whose outcome takes a while keeps the launcher, which says how
-        // it's going.
+        // One that changes something, or whose outcome takes a while, keeps
+        // the launcher, its row saying how it stands now; Ctrl+Return does
+        // it and closes anyway.
         if (choice.stays) {
+            const acting = keepsOpen(choice);
+            if (acting) {
+                learn(choice);
+                acted = { key: choice.key, typed: typed, depth: held.length };
+            }
             choice.run();
+            if (closing && acting)
+                open = false;
             return;
         }
         // One that opens a collection steps into it, the launcher kept open.
@@ -2193,17 +2285,8 @@ Scope {
         // The clipboard takes text only from a program holding the keys.
         if (choice.now)
             choice.run();
-        trials.picked(choice, typed, held.length);
+        learn(choice);
         open = false;
-        // Acting on a thing says it was what was meant by what was typed;
-        // in a collection or a category, the one picked from it was.
-        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
-        const picking = !!first.row.from || !!first.row.category;
-        const meant = picking ? choice : first.row;
-        // One that can't be taken back is latched only once its first word's
-        // been typed (Rank.js's leastOf), so a slip of two letters never
-        // powers off.
-        picks.picked(picking ? typed : first.typed, meant.key, knowing());
         if (choice.now)
             return;
         if (below && choice.below)
@@ -2364,6 +2447,8 @@ Scope {
                 side: row.side ?? "",
                 // The whole words drawn below the rows for it, if any.
                 reads: row.reads ?? "",
+                // The keys the foot says for it, each a mark and its word.
+                told: root.keysFor(row).map(key => key.join(" ")),
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },
@@ -2614,12 +2699,12 @@ Scope {
                             if (!root.asking)
                                 root.keyTimed(text, began);
                         }
-                        onAccepted: below => {
+                        onAccepted: (below, closing) => {
                             trials.pressed("returns");
                             if (root.asking)
                                 root.give();
                             else
-                                root.run(root.selected, below);
+                                root.run(root.selected, below, closing);
                         }
                         // Tab on an answer puts the answer in place of the
                         // question, so a sum can be carried on; one still

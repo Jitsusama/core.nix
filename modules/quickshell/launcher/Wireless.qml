@@ -60,6 +60,7 @@ Provider {
         name: Words.name("wifi:radio", on ? "" : "off"),
         glyph: Words.glyph("wifi:radio", on ? "" : "off"),
         hue: "machine",
+        stays: true,
         run: () => Wifi.turn(!provider.on)
     })
 
@@ -227,9 +228,12 @@ Provider {
         const signal = network.strength > 0 ? `${network.strength} of 4 bars · ` : "";
         const note = `${signal}${locked.words}`;
         const opening = met && locked.account ? provider.accountFor(network, "peap") : null;
+        // Joined but wanting a sign-in, Return signs in, as it's all that's
+        // left to do there; otherwise it leaves a network joined or joins one.
+        const signing = joined && SignIn.network === network.name;
         return member({
             key: `wifi:${network.name}`,
-            verb: joined ? "disconnect" : "connect",
+            verb: signing ? Words.verb("verb:wifi-sign-in") : joined ? "disconnect" : "connect",
             name: network.name,
             glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
@@ -238,14 +242,16 @@ Provider {
             note: note,
             network: network.name,
             state: () => provider.said(network, note),
-            // Joining keeps the launcher, which says how it went.
-            stays: !joined,
+            // Joining or leaving keeps the launcher, which says how it went;
+            // signing in opens the page, so it closes.
+            stays: !signing,
             secret: asks,
             ask: asks ? "password" : opening ? opening.ask : "",
             chip: network.name,
             given: asks ? password => provider.join(network, password)
                 : opening ? opening.given : null,
-            run: joined ? () => Wifi.leave(network.name) : () => provider.join(network),
+            run: signing ? () => SignIn.open() : joined ? () => Wifi.leave(network.name)
+                : () => provider.join(network),
             verbs: () => provider.verbs(network, locked)
         });
     }
@@ -763,6 +769,7 @@ Provider {
         if (network.connected)
             rows.push(thing(act("wifi-leave", "", {
                 glyph: Theme.glyph.offline,
+                stays: true,
                 run: () => Wifi.leave(network.name)
             })));
         else if (network.known || !locked.locked || locked.password)
@@ -794,20 +801,24 @@ Provider {
                 note: network.trusted ? "this machine stops finding others on it, and they it"
                     : "this machine finds others on it, and they it",
                 glyph: Theme.glyph.trust,
+                stays: true,
                 run: () => Wifi.trust(network.name, !network.trusted)
             })));
             rows.push(thing(act("wifi-forget", "", {
                 glyph: Theme.glyph.forget,
+                stays: true,
                 run: () => Wifi.forget(network.name)
             })));
         }
         return rows.concat(facts(network));
     }
 
-    // How the join went: once the card is on the network, the launcher's
-    // done, if it's still showing it; a password that didn't work, or none
-    // given where one's needed, asks for it; anything else says what
-    // happened.
+    // How the join went: once the card is on the network, a password asked
+    // for is done with, so the launcher steps back to the network, which
+    // says it's joined, and stays (Joel, 2026-10-26: an act that changes
+    // something "stays open and shows the new state on its row"); a
+    // password that didn't work, or none given where one's needed, asks for
+    // it; anything else says what happened.
     Connections {
         target: Wifi
 
@@ -816,8 +827,12 @@ Provider {
             const at = launcher.selected ?? launcher.asking;
             const showing = launcher.open && at && at.network === name;
             if (refused === "") {
-                if (showing)
-                    launcher.open = false;
+                // Joined, every ask it made is put away, its name, its
+                // server's and its password, back to the network itself.
+                if (showing && launcher.asking === at)
+                    while (launcher.asking && launcher.asking.network === name
+                        && launcher.held.length > 0)
+                        launcher.back();
                 return;
             }
             Report.say(`refused wifi ${name}`);

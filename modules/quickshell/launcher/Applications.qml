@@ -275,6 +275,7 @@ Provider {
                 const going = player.isPlaying;
                 if (going ? player.canPause : player.canPlay)
                     rows.push(provider.said("verb:program:play", going ? "playing" : "", {
+                        stays: true,
                         run: () => {
                             if (player.isPlaying)
                                 player.pause();
@@ -380,6 +381,7 @@ Provider {
             targets: () => [provider.said("verb:program:mute",
                 provider.muted(recorders) ? "muted" : "", {
                     key: "verb:program:mute:microphone",
+                    stays: true,
                     run: () => {
                         const hushed = provider.muted(recorders);
                         for (const node of provider.live(recorders))
@@ -405,6 +407,7 @@ Provider {
                 });
                 const rows = streams.length === 0 ? [] : [provider.said("verb:program:mute",
                     provider.muted(streams) ? "muted" : "", {
+                        stays: true,
                         run: () => {
                             const hushed = provider.muted(streams);
                             for (const node of provider.live(streams))

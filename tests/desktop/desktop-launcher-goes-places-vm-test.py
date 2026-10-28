@@ -644,6 +644,8 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
         desktop.in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"),
         timeout=dt.timedelta(seconds=10),
     )
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
