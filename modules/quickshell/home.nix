@@ -179,7 +179,7 @@ let
   # Keys that send their modifiers themselves, as the Copilot key sends
   # Shift and Super with F23, so a chord of them is drawn as the one key
   # pressed.
-  wholeKeys = [ "xf86touchpadoff" ];
+  wholeKeys = [ "f23" ];
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
