@@ -256,6 +256,7 @@ let
       "terminal"
       "neovim"
       "pi"
+      "btop"
       "swayimg"
       "inlyne"
       "zathura"
@@ -436,6 +437,8 @@ let
     terminal = nerd "f489";
     neovim = nerd "e6ae";
     pi = nerd "f03ff";
+    # The theme's processor, as btop watches it.
+    btop = nerd "f061a";
     # The theme's picture, as the viewer shows pictures.
     swayimg = nerd "f02e9";
     # The theme's document, as the reader shows documents.

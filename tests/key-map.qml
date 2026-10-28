@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor, Music",
+                === "Desktop, Terminal, Neovim, Agents, System monitor, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor, Music",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor, Music",
+                === "Neovim, Terminal, Desktop, Agents, System monitor, Picture viewer, Markdown reader, Document viewer, Player, Browser, Slack, Passwords, Picture editor, Drawing editor, Music",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -212,6 +212,9 @@ ShellRoot {
             over("kitty", "\u03C0 - core.nix");
             expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
                 === "Agents, Terminal, Desktop", names(map.everything()).join(", "));
+            over("kitty", "btop");
+            expect("over btop, System monitor first", names(map.everything()).slice(0, 3).join(", ")
+                === "System monitor, Terminal, Desktop", names(map.everything()).join(", "));
             over("kitty", "~");
             expect("over the terminal, its own", map.leading().name === "Terminal"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));

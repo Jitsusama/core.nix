@@ -27,13 +27,12 @@ const PAST_THE_EDGE = /-or-(to-)?(monitor|workspace)-[a-z]+$/;
 // A table with no groups, whose chords are all loose.
 const NONE = { order: [], rules: [] };
 
-// Where a terminal's title says it runs Neovim or pi: Neovim titles it by a
-// memo and the file (modules/neovim/init.lua's titlestring), or by its own
-// name, and pi by its letter and the session's name. Each is read from the
-// title's start, since what follows is a file, a folder or a quest's name,
-// any of which may hold "vim".
-const NEOVIM_TITLE = /^(\u{1F4DD}|n?vim\b)/iu;
-const PI_TITLE = /^(\u03C0|pi)( |$)/u;
+// Where a terminal's title says it runs pi, Neovim or btop: pi titles it by
+// its letter and the session's name, Neovim by a memo and the file
+// (modules/neovim/init.lua's titlestring) or by its own name, each read from
+// the title's start, since a file, a folder or a quest's name may hold "vim";
+// btop by its name alone (modules/btop/names-its-window.patch).
+const TITLED = [["pi", /^(\u03C0|pi)( |$)/u], ["neovim", /^(\u{1F4DD}|n?vim\b)/iu], ["btop", /^btop$/u]];
 
 // The program whose keys are each layer's, by its window's app id.
 const TERMINAL_APP = "kitty";
@@ -484,7 +483,7 @@ function paths() {
 }
 
 // The layers whose keys work in a window, its own first: a terminal's, or
-// Neovim's or pi's and then the terminal's when its title says it runs one,
+// pi's, Neovim's or btop's and then the terminal's when its title says so,
 // and then the desktop's, which work over any window. A window of a program
 // with a layer of its own has that first, and any other, or none, has only
 // the desktop's.
@@ -493,8 +492,6 @@ function over(app, title) {
         const own = WINDOW_APPS.get(app) ?? (CHROME_SITE.test(app) ? "chrome" : undefined);
         return own === undefined ? ["desktop"] : [own, "desktop"];
     }
-    if (PI_TITLE.test(title)) {
-        return ["pi", "terminal", "desktop"];
-    }
-    return NEOVIM_TITLE.test(title) ? ["neovim", "terminal", "desktop"] : ["terminal", "desktop"];
+    const titled = TITLED.find(([, pattern]) => pattern.test(title));
+    return titled === undefined ? ["terminal", "desktop"] : [titled[0], "terminal", "desktop"];
 }

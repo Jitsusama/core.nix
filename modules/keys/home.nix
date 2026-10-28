@@ -24,6 +24,7 @@ let
     terminal = "the terminal, inside a window";
     neovim = "Neovim, the editor in the terminal";
     pi = "pi, the coding agent in the terminal";
+    btop = "btop, the system monitor in the terminal";
     swayimg = "swayimg, the picture viewer, in a window of its own";
     inlyne = "inlyne, the markdown reader, in a window of its own";
     zathura = "zathura, the document viewer, in a window of its own";
@@ -40,6 +41,7 @@ let
     "terminal"
     "neovim"
     "pi"
+    "btop"
     "swayimg"
     "inlyne"
     "zathura"
@@ -55,10 +57,11 @@ let
   inside = {
     neovim = "terminal";
     pi = "terminal";
+    btop = "terminal";
   };
   # Two layers below the desktop sit side by side, and so never hear a key
-  # at the same time, unless one is inside the other's window: Neovim and pi
-  # in one terminal, the terminal, the picture viewer, the markdown reader,
+  # at the same time, unless one is inside the other's window: Neovim, pi and
+  # btop in one terminal, the terminal, the picture viewer, the markdown reader,
   # the document viewer, the player, the browser, Slack, 1Password, GIMP,
   # Inkscape and Spotify in windows of their own.
   beside =

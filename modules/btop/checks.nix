@@ -37,6 +37,36 @@ onLinux {
         touch $out
       '';
 
+  # btop names its window as it starts, keeping the terminal's own title on
+  # the terminal's stack, and gives that title back as it ends, even when
+  # it's told to end, so the launcher lists btop's keys only while it runs.
+  btop-names-its-window =
+    let
+      home = account workstation;
+    in
+    pkgs.runCommandLocal "btop-names-its-window"
+      {
+        nativeBuildInputs = [
+          home.programs.btop.package
+          pkgs.util-linux
+        ];
+      }
+      ''
+        export HOME=$PWD LANG=C.UTF-8
+        script -q -c 'stty cols 120 rows 40; timeout 3 btop' drawn > /dev/null || true
+        named=$(printf '\033[22;0t\033]2;btop\033\\')
+        given=$(printf '\033[23;0t')
+        if ! grep -q -F "$named" drawn; then
+          echo "btop didn't keep the terminal's title and name its window btop."
+          exit 1
+        fi
+        if ! tail -c 200 drawn | grep -q -F "$given"; then
+          echo "btop didn't give the terminal its title back as it ended."
+          exit 1
+        fi
+        touch $out
+      '';
+
   # Escape backs out of btop a step at a time: alone it ends btop, and with
   # a process chosen by Down, one leaves btop running and a second ends it,
   # where btop's own Escape opens its menu and never ends it. The keys go

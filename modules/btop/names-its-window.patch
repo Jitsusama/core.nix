@@ -1,0 +1,21 @@
+--- a/src/btop_tools.cpp
++++ b/src/btop_tools.cpp
+@@ -166,6 +166,9 @@
+ 				refresh();
+ 
+ 				const auto is_mouse_enabled = !Config::getB("disable_mouse");
++				//? The terminal's title is kept on its stack and the window named
++				//? btop while it runs, so whatever reads the title knows it's here.
++				cout << "\x1b[22;0t\x1b]2;btop\x1b\\";
+ 				cout << alt_screen << hide_cursor << (is_mouse_enabled ? mouse_on : mouse_off) << flush;
+ 				Global::resized = false;
+ 			}
+@@ -176,7 +179,7 @@
+ 	void restore() {
+ 		if (initialized) {
+ 			tcsetattr(STDIN_FILENO, TCSANOW, &initial_settings);
+-			cout << mouse_off << clear << Fx::reset << normal_screen << show_cursor << flush;
++			cout << mouse_off << clear << Fx::reset << normal_screen << show_cursor << "\x1b[23;0t" << flush;
+ 			initialized = false;
+ 		}
+ 	}

@@ -1895,6 +1895,12 @@
       "glyph": "agent"
     },
     {
+      "id": "shortcuts:btop",
+      "in": "shortcuts",
+      "name": "System monitor",
+      "glyph": "processor"
+    },
+    {
       "id": "shortcuts:swayimg",
       "in": "shortcuts",
       "name": "Picture viewer",
@@ -2625,6 +2631,16 @@
       "id": "shortcuts:inkscape:panels",
       "in": "shortcuts",
       "name": "Panels"
+    },
+    {
+      "id": "shortcuts:btop:processes",
+      "in": "shortcuts",
+      "name": "Processes"
+    },
+    {
+      "id": "shortcuts:btop:boxes",
+      "in": "shortcuts",
+      "name": "The boxes"
     },
     {
       "id": "shortcuts:spotify:going",
