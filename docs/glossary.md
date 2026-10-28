@@ -203,7 +203,6 @@ or a copy, can be opened, copied or forgotten.
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `WhatsOn.qml` |
 | Waiting on You | everything waiting on Joel, each with its minutes, at the top of Now | | |
-| lag | how long the desktop takes to answer a key or a click | slow, jank, stutter | `lag-watch` |
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
@@ -226,6 +225,7 @@ off.
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zram |
 | memory pressure | how long programs are waiting for memory | | PSI |
+| lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |

@@ -1746,8 +1746,9 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
     # Power comes first, saying what it holds, and Memory is a row of its
-    # own, before Heat, as the processor is, and Disk after it. The queue
-    # is Agents', so Machine keeps only the machine's own.
+    # own, before Heat, as the processor is, Disk after it and Lag last,
+    # since what it points at is the processor, the memory and the disk.
+    # The queue is Agents', so Machine keeps only the machine's own.
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Power"
@@ -1757,7 +1758,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
                 for thing in shown["things"]
             )
             and "Memory" in shown["rows"]
-            and shown["rows"][shown["rows"].index("Memory") + 1 :][:2] == ["Heat", "Disk"]
+            and shown["rows"][shown["rows"].index("Memory") + 1 :][:3] == ["Heat", "Disk", "Lag"]
         )
     )
     desktop.step_in("ret")
