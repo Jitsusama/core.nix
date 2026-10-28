@@ -818,10 +818,11 @@ works the same way everywhere.
   far, and none reaches further than its program is kept to. The desktop
   makes one sound, softly: when a pi session first wants Joel and its
   notice is said (`sounds.wants`), never while notices are held.
-- **Joining waits to say how it went.** Return on a Wi-Fi network joins it
-  and the launcher stays, its footer saying how far the join has got, until
-  the network takes it or says why not; joined, a password asked for is put
-  away and the network's row says it's joined. A locked network met for the first
+- **Connecting waits to say how it went.** Return on a Wi-Fi network
+  connects it and the launcher stays, its footer saying how far it has got,
+  until the network takes it or says why not; connected, a password asked for
+  is put away and the network's row says it's connected. Join is a call's
+  word, never a network's. A locked network met for the first
   time, or one whose password changed, asks for the password in the field,
   the padlock beside the dots. The radio looks for networks only while the
   launcher is open.

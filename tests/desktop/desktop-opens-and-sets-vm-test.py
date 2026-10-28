@@ -1037,14 +1037,14 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         "journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=timedelta(seconds=60)
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
-    # Once it's joined, the password is done with: the launcher steps back
-    # to Lantern, which says so, and stays.
+    # Once it's connected, the password is done with: the launcher steps
+    # back to Lantern, which says so, and stays.
     desktop.launcher_until(
         lambda shown: (
             shown["open"]
             and not shown["asking"]
             and (shown["selected"] or {}).get("name") == "Lantern"
-            and (shown["selected"] or {}).get("side") == "joined"
+            and (shown["selected"] or {}).get("side") == "connected"
         )
     )
     machine.send_key("esc")

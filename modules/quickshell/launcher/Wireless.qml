@@ -237,8 +237,9 @@ Provider {
             name: network.name,
             glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
-            // Joined, as Return joins it and its access point says it is.
-            side: joined ? "joined" : network.known ? "saved" : "",
+            // Connected, as Return connects it and its access point says it
+            // is; join is a call's word (docs/glossary.md).
+            side: joined ? "connected" : network.known ? "saved" : "",
             note: note,
             network: network.name,
             state: () => provider.said(network, note),
@@ -590,7 +591,7 @@ Provider {
         const trouble = read.retries + (read.failed ?? 0);
         return holds(`wifi:link:${card}:speed:retries`, "retries", trouble === 0 ? "none"
             : `${number(read.retries)} sent again, ${number(read.failed ?? 0)} never sent`, {
-                note: "since it joined"
+                note: "since it connected"
             }, () => provider.retryParts(card));
     }
 
@@ -648,7 +649,7 @@ Provider {
         const key = id => `wifi:protection:${id}`;
         const rows = [fact(key("standard"), "standard", protection.standard),
             fact(key("proof"), "proof", protection.ways.join(" or "), {
-                note: "how a card proves it may join"
+                note: "how a card proves it may connect"
             })];
         if (protection.ciphers.length > 0)
             rows.push(fact(key("cipher"), "cipher", protection.ciphers.join(" or "), {
@@ -700,7 +701,7 @@ Provider {
     // the fastest, why. A step in, its parts.
     function pointRow(point, detail) {
         const fastest = fastestOf(point, detail);
-        const mark = point.joined ? " \u00b7 joined" : fastest ? " \u00b7 fastest" : "";
+        const mark = point.joined ? " \u00b7 connected" : fastest ? " \u00b7 fastest" : "";
         return thingRow({
             key: `wifi:point:${point.bssid}`,
             name: named("point", { band: ghz[point.band], channel: point.channel }),
@@ -860,10 +861,10 @@ Provider {
             provider.trouble = {
                 TimedOut: "it didn't answer in time",
                 NotNearby: "it's out of reach",
-                TurnedAway: "it didn't let this machine join",
+                TurnedAway: "it didn't let this machine connect",
                 ServerUnproven: "its server couldn't prove it's that domain's",
                 Declared: "Nix keeps its password"
-            }[refused] ?? "it couldn't be joined";
+            }[refused] ?? "it couldn't be connected";
         }
     }
 
