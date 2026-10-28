@@ -32,7 +32,9 @@ or launchd, and [`home.nix`][2] the account's.
   rests: a concluded or retired quest's scratch ten minutes after its last
   write, and the builds in every tree its README lists, at once, whatever
   the band. So do the builds in a tree the tree broker's records say no
-  running process holds, unless a quest still going lists it.
+  running process holds, unless a quest still going lists it, and a temp
+  entry nothing has changed since the last boot, whatever its name, since
+  whatever made it ended with that boot.
   `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process

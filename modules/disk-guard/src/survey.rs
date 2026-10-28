@@ -315,8 +315,9 @@ fn offer_temp(path: &Path, world: &World, offers: &mut Vec<Offer>) {
         .filter(|(name, _)| name == "TMPDIR")
         .map(|(_, value)| PathBuf::from(value))
         .collect();
-    for entry in temp::leftovers(temp::survey(path), world.uid, &tmpdirs) {
-        let candidate = temp::candidate(&entry, world.awake, world.now);
+    let boot = world.boot.wall;
+    for entry in temp::leftovers(temp::survey(path), world.uid, &tmpdirs, boot) {
+        let candidate = temp::candidate(&entry, world.awake, world.now, boot);
         offers.push(Offer {
             candidate,
             action: Action::Entry {
