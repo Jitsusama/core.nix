@@ -19,7 +19,8 @@
 # Mail are programs of their own, each its Google web app in a window of
 # its own, opened as jitsusama.google.window says, since which browser
 # makes one is the machine's to choose. A meeting's call is joined through
-# google-opens (opens.sh), which opens a Meet link the same way.
+# google-opens (opens.sh), which opens a Meet link the same way, and a
+# call open in a window of its own is on air while it is (Call.qml).
 { quickshell }:
 {
   config,
@@ -90,6 +91,16 @@ in
       "quickshell/Calendar.js".source = ./Calendar.js;
       "quickshell/Mail.qml".source = ./Mail.qml;
       "quickshell/Mail.js".source = ./Mail.js;
+    };
+
+    # A Meet call, wearing the call mark Tuple's does, since it's a call
+    # too; after Tuple's and before the sharing a call often brings.
+    jitsusama.quickshell.overview.pieces.meet = {
+      order = 79;
+      source = ./Call.qml;
+      label = "meet";
+      tier = "when";
+      mark = "call";
     };
 
     # The meetings, as parts of the Calendar program.

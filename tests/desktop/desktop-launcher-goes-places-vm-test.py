@@ -1325,6 +1325,53 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def now_rows(desktop: Desktop) -> Json:
+    """Open the launcher on Now, and give what it shows once it holds Now's rows."""
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: shown["held"] == ["now"] and shown["selected"])
+    return desktop.showing()
+
+
+def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -> None:
+    """A Meet call in a window of its own is in Now named for its meeting, and goes from it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.as_account("systemctl --user start google.service")
+    # Standup's call, in the window Chrome would open its link in as an
+    # app of its own, which kitty stands in for by taking its app id.
+    call = "chrome-meet.google.com__abc-defg-hij-Default"
+    desktop.as_account(f"niri msg action spawn -- kitty --class {call} --title Meet")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''),
+        timeout=STARTING,
+    )
+    # Another window takes the keys, so Return going to the call is seen.
+    other = desktop.opened("Beside the call")
+    now_rows(desktop)
+    desktop.down_to("In a call")
+    desktop.launcher_until(
+        lambda shown: shown["selected"]["side"] == "Standup" and shown["selected"]["verb"] == "show"
+    )
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.wait_until_succeeds(
+        desktop.in_session(f'niri msg --json focused-window | grep -qF \'"app_id":"{call}"\''),
+        timeout=dt.timedelta(seconds=10),
+    )
+    # Its window closed, the call is over, and Now no longer lists it.
+    desktop.as_account("niri msg action close-window")
+    desktop.close(other)
+    machine.wait_until_fails(
+        desktop.in_session(f'niri msg --json windows | grep -qF \'"app_id":"{call}"\''),
+        timeout=dt.timedelta(seconds=10),
+    )
+    assert "In a call" not in now_rows(desktop)["rows"], desktop.showing()
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:
