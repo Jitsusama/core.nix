@@ -15,6 +15,8 @@
 # The launcher offers the newest screenshot to edit in GIMP
 # (Screenshot.qml), at home for a couple of minutes after it's taken.
 #
+# The launcher lists GIMP's own keys over its window, as the Picture editor.
+#
 # GIMP's main window opens across the screen's whole width, since at niri's
 # half a column its docks cover the picture; its dialogs still float.
 { niri, quickshell }:
@@ -63,6 +65,146 @@ let
     @define-color ruler-color alpha(${roles.rule}, 0.3);
   '';
 
+  grouped = group: map (key: key // { inherit group; });
+
+  # From GIMP 3.2.6's own defaults: its tools' keys in app/tools and app/paint,
+  # the rest in app/actions, with shortcutsrc's ? beside its own /.
+  keys =
+    grouped "tools" [
+      {
+        chord = "r";
+        does = "Select a rectangle";
+      }
+      {
+        chord = "e";
+        does = "Select an ellipse";
+      }
+      {
+        chord = "f";
+        does = "Select freehand";
+      }
+      {
+        chord = "u";
+        does = "Select a colour's area";
+      }
+      {
+        chord = "m";
+        does = "Move";
+      }
+      {
+        chord = "Shift+c";
+        does = "Crop";
+      }
+      {
+        chord = "Shift+t";
+        does = "Scale, rotate and shear";
+      }
+      {
+        chord = "t";
+        does = "Write on the picture";
+      }
+      {
+        chord = "p";
+        does = "Paint with a brush";
+      }
+      {
+        chord = "Shift+e";
+        does = "Erase";
+      }
+      {
+        chord = "Shift+b";
+        does = "Fill an area of colour";
+      }
+      {
+        chord = "o";
+        does = "Pick a colour from the picture";
+      }
+      {
+        chord = "h";
+        does = "Heal";
+      }
+    ]
+    ++ grouped "view" [
+      {
+        chord = "1";
+        does = "The picture at its own size";
+      }
+      {
+        chord = "Ctrl+Shift+j";
+        does = "The picture to fit the window";
+      }
+      {
+        chord = "Plus";
+        does = "The picture larger";
+      }
+      {
+        chord = "Minus";
+        does = "The picture smaller";
+      }
+      {
+        chord = "Tab";
+        does = "Show or hide the docks";
+      }
+      {
+        chord = "F11";
+        does = "The window on the whole screen";
+      }
+    ]
+    ++ grouped "selection" [
+      {
+        chord = "Ctrl+a";
+        does = "Select everything";
+      }
+      {
+        chord = "Ctrl+Shift+a";
+        does = "Select nothing";
+      }
+      {
+        chord = "Ctrl+i";
+        does = "Select what isn't selected";
+      }
+    ]
+    ++ grouped "layers" [
+      {
+        chord = "Ctrl+Shift+n";
+        does = "A new layer";
+      }
+      {
+        chord = "Ctrl+Shift+d";
+        does = "Duplicate the layer";
+      }
+      {
+        chord = "Ctrl+h";
+        does = "Anchor the floating selection";
+      }
+    ]
+    ++ [
+      {
+        chord = "Ctrl+Shift+v";
+        does = "Paste as a new picture";
+      }
+      {
+        chord = "?";
+        does = "Search GIMP's commands";
+      }
+      {
+        chord = "Ctrl+z";
+        does = "Undo the last change";
+      }
+      {
+        chord = "Ctrl+y";
+        does = "Redo the change undone";
+      }
+      {
+        chord = "Ctrl+s";
+        does = "Save the picture";
+      }
+      {
+        chord = "Ctrl+Shift+e";
+        does = "Export the picture";
+      }
+    ];
+
   gimp = pkgs.gimp3-with-plugins.override {
     plugins = [
       pkgs.gimpPlugins.gmic
@@ -108,12 +250,16 @@ let
 in
 {
   imports = [
+    ../keys/home.nix
     ../theme/home.nix
     niri
     quickshell
   ];
 
   home.packages = [ wrapped ];
+
+  # GIMP's keys, for the launcher to list over its window.
+  jitsusama.keys.gimp = keys;
 
   # The main window is the only one titled this as it opens; by the time a
   # picture is in it, the title names the picture. Maximized in niri keeps
