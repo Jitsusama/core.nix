@@ -60,10 +60,9 @@ Provider {
         return presence.busy || presence.state === "busy" ? "busy" : "listening";
     }
 
-    // Its session's window, by its address, or null.
-    function windowOf(address) {
-        const session = Sessions.running.find(one => one.address === address) ?? null;
-        return session ? session.window : null;
+    // Its running session, by its address, or null.
+    function sessionOf(address) {
+        return Sessions.running.find(one => one.address === address) ?? null;
     }
 
     readonly property var all: {
@@ -111,15 +110,15 @@ Provider {
     function verbs(one, stands) {
         if (stands === "off")
             return [act("start", { run: () => provider.start(one) })];
-        const window = windowOf(one.address);
+        const session = sessionOf(one.address);
         const rows = [act("talk", {
             ask: Words.of("verb:orchestrator:talk").ask ?? "",
             chip: one.short || one.address,
             state: () => provider.told,
             given: words => provider.talk(one, words)
         })];
-        if (window)
-            rows.push(act("open", { run: () => Niri.act({ FocusWindow: { id: window.id } }) }));
+        if (session)
+            rows.push(act("open", { run: () => Sessions.goTo(session) }));
         rows.push(stands === "paused"
             ? act("resume", { run: () => provider.steer(one, { act: "resume" }) })
             : act("pause", { run: () => provider.steer(one, { act: "pause" }) }));

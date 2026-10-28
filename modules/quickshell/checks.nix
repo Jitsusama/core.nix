@@ -776,6 +776,8 @@ onLinux {
         readonly property string home: Quickshell.env("HOME")
         readonly property string quests: Quickshell.env("QUESTS")
         property var running: []
+        function isOf(session) { return `window:''${session.window.id}`; }
+        function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
       '';
       quests = pkgs.callPackage ./pi-helper.nix {
         name = "pi-quests";
@@ -1319,6 +1321,7 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         readonly property string state: Quickshell.env("PI_STATE")
         property var running: []
+        function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
       '';
       runs = pkgs.callPackage ./pi-helper.nix {
         name = "pi-runs";
@@ -1373,6 +1376,7 @@ onLinux {
       '';
       sessions = singleton "Sessions.qml" ''
         property var running: [{ presence: { session: "s1" }, window: { id: 7 }, address: "QUEUE1" }]
+        function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
       '';
       jobs = singleton "Jobs.qml" ''
         property var said: null
@@ -1399,6 +1403,60 @@ onLinux {
       cp ${jobs} Jobs.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export CGROUPS=$PWD/cgroups
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # pi's sessions are known by their own records and the processes those
+  # name, never by a window's title, and each one's window through the
+  # kitty it runs in (tests/sessions.qml), over real processes
+  # tests/sessions-state.sh starts, with niri and kitten stood in.
+  a-session-is-known-by-its-own-record =
+    let
+      # Three windows of the same title, one of kitty 500's and two of 600's.
+      niri = singleton "Niri.qml" ''
+        property var windows: ({
+          "10": { id: 10, pid: 500, title: "\u03c0 - Optimus" },
+          "20": { id: 20, pid: 600, title: "\u03c0 - Optimus" },
+          "21": { id: 21, pid: 600, title: "\u03c0 - Optimus" }
+        })
+        property int revision: 0
+        property var current: null
+        property var acted: null
+        property var spawned: []
+        function act(request) { acted = request; }
+        function spawn(command) { spawned = command; }
+      '';
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+    in
+    pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
+      export XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
+      export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
+      cp ${./Sessions.qml} Sessions.qml
+      cp ${./Waiting.js} Waiting.js
+      cp ${waiting} WaitingOnYou.qml
+      cp ${../../tests/sessions.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${notices} Notices.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

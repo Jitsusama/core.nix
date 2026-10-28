@@ -33,6 +33,6 @@ Piece {
     actions: wanting.slice(0, 3).map(session => ({
         glyph: Theme.glyph.windows,
         name: `Go to ${session.title}`,
-        run: () => Niri.act({ FocusWindow: { id: session.window.id } })
+        run: () => Sessions.goTo(session)
     }))
 }

@@ -31,6 +31,11 @@
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
   '';
+  a-session-is-known-by-its-own-record = ''
+    pi's sessions are those whose records name a process running on this boot since when they
+    say, never found by a window's title, each with its window found through the kitty it runs
+    in, and gone once its record or its process is
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
   '';

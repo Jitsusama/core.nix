@@ -513,10 +513,10 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     """The launcher finds pi's runs, going to the session that started one and reading an answer."""
     machine = desktop.machine
     desktop.pi_session()
-    # A fleet as the harness keeps one, started by the session, whose
-    # window's process stands in for pi's: one member still at work,
-    # its process the other window's, and one done with its answer.
-    leader = desktop.window_titled(PI_WINDOW)["pid"]
+    # A fleet as the harness keeps one, started by the session's process:
+    # one member still at work, its process the other window's, and one
+    # done with its answer.
+    leader = desktop.pi_record("TESTQA")["owner"]["pid"]
     crew = "~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/reviewers"
 
     def keeps(path: str, said: Json) -> None:
@@ -548,7 +548,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
             "finalAssistantText": "Two coats.",
         },
     )
-    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "owner": {"pid": leader}})
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
@@ -1635,26 +1635,16 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     machine = desktop.machine
     desktop.pi_session()
     # A second session in a window of its own, with its own presence. Its
-    # title is the shape pi gives one now, the quest's short name and no
-    # address, so only the title its presence says joins the two.
+    # label is the shape pi gives one now, the quest's short name and no
+    # address; its record's process and kitty window join the two.
     other = "\u03c0 - Another - other-tree"
+    desktop.pi_window("TESTQB", other)
 
     def present(address: str, said: Json) -> None:
         """Replace a session's presence with this, by rename, as pi does."""
-        name = address.lower()
-        if address == "TESTQB":
-            said = {**said, "title": other}
-        desktop.as_account(
-            f"echo '{json.dumps(said)}' > {PI_PRESENCE}/.{name}"
-            f" && mv {PI_PRESENCE}/.{name} {PI_PRESENCE}/{name}.json"
-        )
+        desktop.presence_says(said, address)
 
     present("TESTQB", {"addresses": ["TESTQB"], "busy": True})
-    desktop.as_account(f"niri msg action spawn -- kitty --title '{other}'")
-    machine.wait_until_succeeds(
-        desktop.in_session(f"niri msg --json windows | grep -qF '{other}'"),
-        timeout=STARTING,
-    )
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("agents")
