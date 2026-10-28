@@ -177,12 +177,14 @@ vim.api.nvim_create_autocmd('BufReadPost', {
 })
 
 -- The files opened lately, newest first, one a line, for the launcher's
--- Recent inside Neovim, written as each opens rather than when Neovim
--- quits, as its shada is, so the launcher has it at once. It's written
--- whole beside the list and moved over it, so it's never read half done.
+-- Recent inside Neovim, written as each comes into view rather than when
+-- Neovim quits, as its shada is, so the launcher has it at once; going
+-- back to one already open counts too. It's written whole beside the list
+-- and moved over it, so it's never read half done, and not at all when
+-- the file already leads it.
 local recent = vim.fn.stdpath('state') .. '/recent'
 local kept = 50
-vim.api.nvim_create_autocmd('BufReadPost', {
+vim.api.nvim_create_autocmd('BufWinEnter', {
   group = augroup('recent_files'),
   callback = function(event)
     if vim.bo[event.buf].buftype ~= '' then
@@ -195,6 +197,11 @@ vim.api.nvim_create_autocmd('BufReadPost', {
     local files = { path }
     local was = io.open(recent, 'r')
     if was then
+      if was:read('l') == path then
+        was:close()
+        return
+      end
+      was:seek('set')
       for line in was:lines() do
         if line ~= path and #files < kept then
           table.insert(files, line)

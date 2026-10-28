@@ -976,58 +976,59 @@ in
         # kitty behind the window used last while one is open. It shows only
         # inside kitty's own row, so where kitty isn't installed it's never
         # seen.
-        recents = lib.optional config.programs.zoxide.enable {
-          app = "kitty";
-          watch = "${config.xdg.dataHome}/zoxide/db.zo";
-          list = [
-            (lib.getExe config.programs.zoxide.package)
-            "query"
-            "--list"
-          ];
-          open = [
-            "kitty"
-            "@"
-            "--to"
-            "unix:@kitty-{pid}"
-            "launch"
-            "--type=os-window"
-            "--cwd"
-            "{path}"
-          ];
-          start = [
-            "kitty"
-            "--directory"
-            "{path}"
-          ];
-        }
-        # Neovim's files, newest first, from the list it writes as each
-        # opens (modules/neovim/init.lua), leaving out any since gone.
-        # Return opens one in Neovim in a kitty window, through the kitty
-        # used last, since Neovim is drawn in kitty's windows.
-        ++ lib.optional config.programs.neovim.enable {
-          app = "nvim";
-          via = "kitty";
-          watch = "${config.xdg.stateHome}/nvim/recent";
-          list = [
-            stillThere
-            "${config.xdg.stateHome}/nvim/recent"
-          ];
-          open = [
-            "kitty"
-            "@"
-            "--to"
-            "unix:@kitty-{pid}"
-            "launch"
-            "--type=os-window"
-            "nvim"
-            "{path}"
-          ];
-          start = [
-            "kitty"
-            "nvim"
-            "{path}"
-          ];
-        };
+        recents =
+          lib.optional config.programs.zoxide.enable {
+            app = "kitty";
+            watch = "${config.xdg.dataHome}/zoxide/db.zo";
+            list = [
+              (lib.getExe config.programs.zoxide.package)
+              "query"
+              "--list"
+            ];
+            open = [
+              "kitty"
+              "@"
+              "--to"
+              "unix:@kitty-{pid}"
+              "launch"
+              "--type=os-window"
+              "--cwd"
+              "{path}"
+            ];
+            start = [
+              "kitty"
+              "--directory"
+              "{path}"
+            ];
+          }
+          # Neovim's files, newest first, from the list it writes as each
+          # opens (modules/neovim/init.lua), leaving out any since gone.
+          # Return opens one in Neovim in a kitty window, through the kitty
+          # used last, since Neovim is drawn in kitty's windows.
+          ++ lib.optional config.programs.neovim.enable {
+            app = "nvim";
+            via = "kitty";
+            watch = "${config.xdg.stateHome}/nvim/recent";
+            list = [
+              stillThere
+              "${config.xdg.stateHome}/nvim/recent"
+            ];
+            open = [
+              "kitty"
+              "@"
+              "--to"
+              "unix:@kitty-{pid}"
+              "launch"
+              "--type=os-window"
+              "nvim"
+              "{path}"
+            ];
+            start = [
+              "kitty"
+              "nvim"
+              "{path}"
+            ];
+          };
       };
       actions = {
         order = 30;
