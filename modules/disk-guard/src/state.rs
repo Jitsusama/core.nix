@@ -6,9 +6,9 @@ use crate::clock::Awake;
 use crate::pass::Learned;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Write};
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 /// The version this guard writes.

@@ -252,12 +252,16 @@ fn a_parked_quests_tree_is_over_once_its_holders_have_ended() {
     let (records, quests) = (root.path().join("cut"), root.path().join("quests"));
     fs::create_dir_all(&records).unwrap();
     let record = |key: &str, owner: u32| {
-        let body = format!(
-            r#"{{"path":"/t/{key}","owners":[{{"pid":{owner},"startedAt":1000000}}]}}"#
-        );
+        let body =
+            format!(r#"{{"path":"/t/{key}","owners":[{{"pid":{owner},"startedAt":1000000}}]}}"#);
         fs::write(records.join(format!("{key}.json")), body).unwrap();
     };
-    for (key, owner) in [("bench", 200), ("someday", 200), ("held", 100), ("queued", 200)] {
+    for (key, owner) in [
+        ("bench", 200),
+        ("someday", 200),
+        ("held", 100),
+        ("queued", 200),
+    ] {
         record(key, owner);
     }
     let listing = |id: &str, priority: &str, tree: &str| {
