@@ -32,6 +32,7 @@ in
 {
   GUIDE_BASH = lib.getExe pkgs.bash;
   GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
+  GUIDE_BTRFS = lib.getExe' pkgs.btrfs-progs "btrfs";
   GUIDE_CAT = lib.getExe' pkgs.coreutils "cat";
   GUIDE_CHOWN = lib.getExe' pkgs.coreutils "chown";
   GUIDE_CRYPTSETUP = lib.getExe' pkgs.cryptsetup "cryptsetup";

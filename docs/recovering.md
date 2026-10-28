@@ -94,7 +94,12 @@ again, or the TPM refuses that boot.
 A repair stick starts recovering when it boots, and `guide recover` starts it
 from any stick's shell. It shows the disk it found before anything is typed,
 opens it with the YubiKey's PIN or the recovery key, never the TPM, and
-mounts everything under /mnt. Then it offers, coming back after each:
+checks its filesystem with `btrfs check --readonly`, which changes nothing.
+Then it mounts everything under /mnt: as the machine does when the check is
+clean, or only to read, with every rescue btrfs has, when it finds errors.
+Copy off what matters from the root shell before any repair, since writing
+to a damaged filesystem can lose more of it. Then it offers, coming back
+after each:
 
 - a root shell inside the installed system;
 - which generation boots next;

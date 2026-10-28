@@ -35,6 +35,7 @@ macro_rules! tools {
 tools! {
     Bash => "bash", "GUIDE_BASH";
     Bootctl => "bootctl", "GUIDE_BOOTCTL";
+    Btrfs => "btrfs", "GUIDE_BTRFS";
     Cat => "cat", "GUIDE_CAT";
     Chown => "chown", "GUIDE_CHOWN";
     Cryptsetup => "cryptsetup", "GUIDE_CRYPTSETUP";
