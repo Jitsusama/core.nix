@@ -69,9 +69,16 @@ Provider {
         const said = notice.body === "" ? notice.summary : `${notice.summary}\n${notice.body}`;
         const from = source(notice.app);
         const opened = opens(notice) !== null;
-        return member({
+        // With nothing to open or go to, Return steps in, as the right
+        // arrow does, rather than copying: copying is never first (Joel,
+        // 2026-10-28: "having the separate copy option at the top is very
+        // confusing"). Its verbs and targets both make it a row holding
+        // rows, which Return's own act never leads (Catalogue.js's leading).
+        const nowhere = !opened && !from.window && !from.entry;
+        const verbs = () => provider.verbs(notice, said);
+        const row = member({
             key: `notice:${notice.app}:${notice.summary}`,
-            verb: opened || (!from.window && from.entry) ? "open" : from.window ? "switch" : "copy",
+            verb: nowhere ? "more" : opened || !from.window ? "open" : "switch",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
             // The whole of what it said, summary over body.
@@ -87,25 +94,30 @@ Provider {
             // keys, and a sender can raise its window only from a token
             // asked for while it does; going to a window niri focuses
             // waits for the launcher to be gone.
-            now: opened || (!from.window && !from.entry),
-            later: !opened,
-            verbs: () => provider.verbs(notice, said),
+            now: opened,
+            later: !opened && !nowhere,
+            stays: nowhere,
+            verbs: verbs,
+            targets: nowhere ? verbs : null,
             run: () => {
+                if (nowhere) {
+                    provider.launcher?.enter(row);
+                    return;
+                }
                 Notices.mark(notice.id, true);
                 const opening = provider.opens(notice);
                 if (opening)
                     Notices.open(opening, notice.app);
-                else if (!from.window && !from.entry)
-                    Quickshell.clipboardText = said;
                 else
                     provider.go(notice.app);
             }
         });
+        return row;
     }
 
     // What can be done to a notice: what its program offers while it's
-    // open, then going to the program, copying what it said, and letting
-    // it go. Quickshell
+    // open, then going to the program, marking it read or unread, letting
+    // it go, and last of them copying what it said, never first. Quickshell
     // destroys a notification's actions when it closes or its program
     // replaces it, so each is found again by its identifier when it's run;
     // one whose notice has gone by then goes to its program instead.
@@ -133,16 +145,6 @@ Provider {
             }
         })) : [];
         return offered.concat(provider.program(notice), [thing({
-            key: "verb:notice:copy",
-            name: Words.name("verb:notice:copy"),
-            glyph: Words.glyph("verb:notice:copy"),
-            hue: "action",
-            now: true,
-            run: () => {
-                Notices.mark(notice.id, true);
-                Quickshell.clipboardText = said;
-            }
-        }), thing({
             key: "verb:notice:mark",
             name: Words.name("verb:notice:mark", notice.read ? "read" : ""),
             glyph: Words.glyph("verb:notice:mark", notice.read ? "read" : ""),
@@ -162,7 +164,17 @@ Provider {
                 if (still)
                     still.dismiss();
             }
-        })] : []);
+        })] : [], [thing({
+            key: "verb:notice:copy",
+            name: Words.name("verb:notice:copy"),
+            glyph: Words.glyph("verb:notice:copy"),
+            hue: "action",
+            now: true,
+            run: () => {
+                Notices.mark(notice.id, true);
+                Quickshell.clipboardText = said;
+            }
+        })]);
     }
 
     // Going to its program while a window of it is open, whatever the
