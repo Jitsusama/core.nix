@@ -5,9 +5,25 @@
   graphical,
   holds,
   lib,
+  pkgs,
   ...
 }:
 {
+  # Before sleep the lock is drawn and then the screens go off, even when
+  # the lock was late (lock-for-sleep-test.sh), and swayidle runs it before
+  # every sleep. Only a niri driving a graphics card turns a screen off, and
+  # a VM's niri runs nested, so this holds the order rather than the screen.
+  the-screens-go-off-before-sleep =
+    let
+      beforeSleep = (account graphical).services.swayidle.events.before-sleep or "";
+    in
+    assert lib.assertMsg (lib.hasSuffix "/bin/lock-for-sleep" beforeSleep)
+      "swayidle doesn't turn the screens off before sleep.";
+    pkgs.runCommandLocal "the-screens-go-off-before-sleep" { } ''
+      ${lib.getExe pkgs.bash} ${./lock-for-sleep-test.sh} ${./lock-for-sleep.sh} $PWD/stand-ins
+      touch $out
+    '';
+
   # Once the machine has woken, the screens it went down without come back
   # on, to the lock after a suspend. Only logind can say a sleep ended, so
   # the desktop's VM test runs what comes before it and this holds what
