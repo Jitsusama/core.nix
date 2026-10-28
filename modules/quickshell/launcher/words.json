@@ -4119,17 +4119,17 @@
     },
     {
       "id": "tuple:ringing",
-      "name": "Show the call from {who}",
+      "name": "Show the Call from {who}",
       "verb": "show",
       "by": "tuple"
     },
     {
       "id": "tuple:mute",
-      "name": "Mute me in the call",
+      "name": "Mute Me in the Call",
       "verb": "mute",
       "states": {
         "muted": {
-          "name": "Let them hear me again",
+          "name": "Let Them Hear Me Again",
           "verb": "unmute"
         }
       },
@@ -4137,31 +4137,31 @@
     },
     {
       "id": "tuple:share",
-      "name": "Share the screen in the call",
+      "name": "Share the Screen in the Call",
       "verb": "share",
       "by": "tuple"
     },
     {
       "id": "tuple:leave",
-      "name": "Leave the call",
+      "name": "Leave the Call",
       "verb": "leave",
       "by": "tuple"
     },
     {
       "id": "tuple:open",
-      "name": "Open my room",
+      "name": "Open My Room",
       "verb": "open",
       "by": "tuple"
     },
     {
       "id": "tuple:join",
-      "name": "Join the call in the clipboard",
+      "name": "Join the Call in the Clipboard",
       "verb": "join",
       "by": "tuple"
     },
     {
       "id": "tuple:link",
-      "name": "Copy my room's link",
+      "name": "Copy My Room's Link",
       "verb": "copy",
       "by": "tuple"
     }

@@ -52,23 +52,23 @@ Piece {
         : Log.company(Tuple.others.map(who => first(who)))
     actions: rings ? [{
         glyph: Theme.glyph.call,
-        name: "Show the call",
+        name: "Show the Call",
         run: () => Tuple.show()
     }] : [{
         glyph: Theme.glyph.hangUp,
-        name: "Leave the call",
+        name: "Leave the Call",
         run: () => Tuple.leave()
     }].concat(sharing ? [] : [{
         glyph: Theme.glyph.sharing,
-        name: "Share the screen",
+        name: "Share the Screen",
         run: () => Tuple.share()
     }], [{
         glyph: Tuple.muted === true ? Theme.glyph.microphone : Theme.glyph.muted,
-        name: Tuple.muted === true ? "Let them hear me again" : "Mute me in the call",
+        name: Tuple.muted === true ? "Let Them Hear Me Again" : "Mute Me in the Call",
         run: () => Tuple.mute(Tuple.muted !== true)
     }], Tuple.room === "" ? [] : [{
         glyph: Theme.glyph.link,
-        name: "Copy my room's link",
+        name: "Copy My Room's Link",
         run: () => Tuple.copyRoom()
     }])
 

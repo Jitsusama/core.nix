@@ -26,15 +26,15 @@ Piece {
     context: meeting ? Calendar.span(meeting) : "on Meet"
     actions: !call ? [] : [{
         glyph: Theme.glyph.windows,
-        name: "Show the call",
+        name: "Show the Call",
         run: () => Niri.act({ FocusWindow: { id: piece.call.window.id } })
     }, {
         glyph: Theme.glyph.link,
-        name: "Copy its link",
+        name: "Copy Its Link",
         run: () => Niri.spawn(["wl-copy", piece.link])
     }, {
         glyph: Theme.glyph.hangUp,
-        name: "Leave the call",
+        name: "Leave the Call",
         run: () => Niri.act({ CloseWindow: { id: piece.call.window.id } })
     }]
 }

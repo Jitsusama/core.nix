@@ -262,11 +262,11 @@ Singleton {
                 notify(`${someone} left the call`, "", [], false);
             else if (what === "alone")
                 notify(`${someone} left the call`, "You're the only one still in it", [
-                    ["leave", "Leave the call"]
+                    ["leave", "Leave the Call"]
                 ], true);
             else if (what === "rings")
                 notify(`${someone} is calling`, "Answer in Tuple's window", [
-                    ["show", "Show the call"]
+                    ["show", "Show the Call"]
                 ], true);
             else if (what === "missed")
                 notify(`Missed a call from ${name(who) || "someone"}`, "", [], true);
