@@ -217,6 +217,27 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
         return desktop.as_account("wl-paste --no-newline 2>&1 || true") == "kept until forgotten"
 
     retry(still_kept, timeout=timedelta(seconds=10))
+    # The clipboard holds its own Forget, after the copies, so it opens on
+    # the newest copy, and Desktop lists the clipboard alone.
+    desktop.as_account("qs ipc call launcher collection clipboard")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][-1:] == ["Forget the Clipboard"]
+            and (shown["selected"] or {}).get("name") != "Forget the Clipboard"
+        ),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("desktop ")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and "Clipboard" in shown["rows"],
+    )
+    assert "Forget the Clipboard" not in desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("forget the clip", selecting="Forget the Clipboard")

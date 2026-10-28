@@ -19,7 +19,6 @@
         "displays",
         "notices",
         "clipboard",
-        "copies:forget",
         "capture",
         "gimp",
         "swayimg",
@@ -3753,6 +3752,7 @@
     },
     {
       "id": "copies:forget",
+      "in": "clipboard",
       "name": "Forget the Clipboard",
       "verb": "forget",
       "glyph": "forget"
