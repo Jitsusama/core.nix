@@ -178,7 +178,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.signing.allowedSigners` | every key that signs Joel's work, per machine repository |
 | `jitsusama.theme.name`, `.file`    | which theme everything draws in, Osaka Jade by default   |
 | `jitsusama.theme.palette.*`        | every colour the theme uses, by the name it gives it     |
-| `jitsusama.theme.roles.*`          | what each colour means: text, muted, accent, alert       |
+| `jitsusama.theme.colours.*`        | what each colour means: text, muted, accent, alert       |
 | `jitsusama.theme.terminal.*`       | the terminal's own colours and its sixteen ANSI ones     |
 | `jitsusama.theme.shades`           | eight colours from the background to the brightest text  |
 | `jitsusama.theme.font.*`           | the monospaced and proportional faces, and their sizes   |

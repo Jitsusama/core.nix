@@ -562,12 +562,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   values =
     { nodes, ... }:
     let
-      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) roles font;
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colours font;
 
       # A silent track with a title, an artist and a cover, for a player to
       # play through no sound card at all.
       track = pkgs.runCommandLocal "track.mp3" { nativeBuildInputs = [ pkgs.ffmpeg-headless ]; } ''
-        ffmpeg -loglevel error -f lavfi -i color=c=0x${pkgs.lib.removePrefix "#" roles.program}:s=300x300 \
+        ffmpeg -loglevel error -f lavfi -i color=c=0x${pkgs.lib.removePrefix "#" colours.program}:s=300x300 \
           -frames:v 1 cover.png
         ffmpeg -loglevel error -f lavfi -i anullsrc=r=44100:cl=stereo -i cover.png -t 60 \
           -map 0 -map 1 -c:a libmp3lame -c:v png -disposition:v attached_pic \
@@ -599,7 +599,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             ;
           ffmpeg_headless = pkgs.ffmpeg-headless;
           fontconfig_bin = pkgs.fontconfig.bin;
-          inherit (roles) accent action sunken;
+          inherit (colours) accent action sunken;
           mono_family = font.mono.family;
           photographs = gallery;
         }

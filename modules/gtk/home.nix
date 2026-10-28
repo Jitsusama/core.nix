@@ -16,7 +16,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     font
     shape
     appearance
@@ -28,39 +28,39 @@ let
   # Each surface's background and text, and the colours of buttons and
   # messages that mean something, with the theme's text for drawing on them.
   palette = {
-    window_bg_color = roles.background;
-    window_fg_color = roles.text;
-    view_bg_color = roles.sunken;
-    view_fg_color = roles.text;
+    window_bg_color = colours.background;
+    window_fg_color = colours.text;
+    view_bg_color = colours.sunken;
+    view_fg_color = colours.text;
     # A window's frame sits a step deeper than its content, focused or not.
     # Chrome draws its tab strip in this and the current tab in the
     # window's colour, which is how the current tab stands out.
-    headerbar_bg_color = roles.deepest;
-    headerbar_backdrop_color = roles.deepest;
-    headerbar_fg_color = roles.text;
-    sidebar_bg_color = roles.sunken;
+    headerbar_bg_color = colours.deepest;
+    headerbar_backdrop_color = colours.deepest;
+    headerbar_fg_color = colours.text;
+    sidebar_bg_color = colours.sunken;
     # Cards, such as a calculator's display or a settings group, raised
     # from the window rather than libadwaita's white wash over it.
-    card_bg_color = roles.raised;
-    card_fg_color = roles.text;
-    sidebar_fg_color = roles.text;
-    dialog_bg_color = roles.background;
-    dialog_fg_color = roles.text;
+    card_bg_color = colours.raised;
+    card_fg_color = colours.text;
+    sidebar_fg_color = colours.text;
+    dialog_bg_color = colours.background;
+    dialog_fg_color = colours.text;
     # Menus and popovers float over the window in the colour its frame is
     # drawn in, as the shell's floating panels start from it, rather than
     # in the window's own colour with only a hairline between them.
-    popover_bg_color = roles.deepest;
-    popover_fg_color = roles.text;
-    accent_bg_color = roles.accent;
-    accent_fg_color = roles.on_accent;
-    destructive_bg_color = roles.alert;
-    destructive_fg_color = roles.on_accent;
-    success_bg_color = roles.success;
-    success_fg_color = roles.on_accent;
-    warning_bg_color = roles.warning;
-    warning_fg_color = roles.on_accent;
-    error_bg_color = roles.alert;
-    error_fg_color = roles.on_accent;
+    popover_bg_color = colours.deepest;
+    popover_fg_color = colours.text;
+    accent_bg_color = colours.accent;
+    accent_fg_color = colours.on_accent;
+    destructive_bg_color = colours.alert;
+    destructive_fg_color = colours.on_accent;
+    success_bg_color = colours.success;
+    success_fg_color = colours.on_accent;
+    warning_bg_color = colours.warning;
+    warning_fg_color = colours.on_accent;
+    error_bg_color = colours.alert;
+    error_fg_color = colours.on_accent;
   };
 
   # libadwaita and adw-gtk3 both draw from these names, and a user stylesheet
@@ -76,13 +76,13 @@ let
   # colours the words of a tooltip's every part, Chromium's included.
   tooltips = ''
     tooltip.background, tooltip.background.chromium {
-      background-color: ${rgba roles.deepest (toString floating.opacity)};
-      border: ${toString shape.border}px solid ${roles.rule};
+      background-color: ${rgba colours.deepest (toString floating.opacity)};
+      border: ${toString shape.border}px solid ${colours.rule};
       border-radius: ${toString shape.radius}px;
-      color: ${roles.text};
+      color: ${colours.text};
       text-shadow: none;
     }
-    tooltip * { color: ${roles.text}; }
+    tooltip * { color: ${colours.text}; }
   '';
 
   # A slider's and a switch's knob, which both themes mix from white rather
@@ -95,9 +95,9 @@ let
       scale = "scale:not(.marks-before):not(.marks-after)";
     in
     ''
-      ${scale} slider, switch slider { background-color: ${roles.text}; }
-      ${scale} slider:hover, switch:hover slider { background-color: ${roles.strong}; }
-      ${scale} slider:disabled, switch:disabled slider { background-color: ${roles.muted}; }
+      ${scale} slider, switch slider { background-color: ${colours.text}; }
+      ${scale} slider:hover, switch:hover slider { background-color: ${colours.strong}; }
+      ${scale} slider:disabled, switch:disabled slider { background-color: ${colours.muted}; }
     '';
 in
 {

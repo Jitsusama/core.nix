@@ -17,7 +17,7 @@ onLinux {
       home = account workstation;
       files = home.xdg.configFile;
       foreground = lib.concatMapStringsSep ";" (byte: toString (lib.fromHexString byte)) (
-        builtins.match "#(..)(..)(..)" home.jitsusama.theme.roles.text
+        builtins.match "#(..)(..)(..)" home.jitsusama.theme.colours.text
       );
     in
     pkgs.runCommandLocal "btop-draws-in-the-theme"

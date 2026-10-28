@@ -31,11 +31,11 @@ onLinux {
   spotify-draws-in-the-theme =
     let
       home = account graphical;
-      inherit (home.jitsusama.theme) roles font;
+      inherit (home.jitsusama.theme) colours font;
       client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
     in
     pkgs.runCommandLocal "spotify-draws-in-the-theme" { } ''
-      grep -q -F -- '--spice-main: ${lib.toLower roles.background};' ${client}/colors.css
+      grep -q -F -- '--spice-main: ${lib.toLower colours.background};' ${client}/colors.css
       grep -q -F -- '--encore-body-font-stack: "${font.sans.family}"' ${client}/user.css
       grep -q "href='colors.css'" ${client}/index.html
       grep -q "href='user.css'" ${client}/index.html

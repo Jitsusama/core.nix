@@ -31,7 +31,7 @@
         {
           home-manager.users.someone = {
             imports = [ ./home.nix ];
-            jitsusama.theme.roles.muted = "#53685B";
+            jitsusama.theme.colours.muted = "#53685B";
           };
         }
       ];
@@ -56,7 +56,7 @@
       mix = import ./mix.nix { inherit lib; };
     in
     holds "claude-wears-the-theme" "Claude Code's theme isn't the machine's, or mixes wrong." (
-      theme.overrides.text == home.jitsusama.theme.roles.text
+      theme.overrides.text == home.jitsusama.theme.colours.text
       && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
       && mix 0.5 "#000000" "#ffffff" == "#808080"
       && mix 0.25 "#ff0000" "#000000" == "#400000"
@@ -78,7 +78,7 @@
       home = account machine;
     in
     pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
-      test ${lib.escapeShellArg home.jitsusama.theme.roles.background} = '#FFFCF0'
+      test ${lib.escapeShellArg home.jitsusama.theme.colours.background} = '#FFFCF0'
       if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
         --glob '!**/skills/aesthetic/design.md' \
         ${

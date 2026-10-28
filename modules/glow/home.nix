@@ -4,7 +4,7 @@
 # style.
 { config, pkgs, ... }:
 let
-  inherit (config.jitsusama.theme) roles terminal;
+  inherit (config.jitsusama.theme) colours terminal;
 
   # glamour's style format, the library glow draws with, as its own dark
   # style lays it out.
@@ -12,18 +12,18 @@ let
     document = {
       block_prefix = "\n";
       block_suffix = "\n";
-      color = roles.text;
+      color = colours.text;
       margin = 2;
     };
     block_quote = {
       indent = 1;
       indent_token = "│ ";
-      color = roles.muted;
+      color = colours.muted;
     };
     list.level_indent = 2;
     heading = {
       block_suffix = "\n";
-      color = roles.strong;
+      color = colours.strong;
       bold = true;
     };
     h1.prefix = "# ";
@@ -36,10 +36,10 @@ let
     emph.italic = true;
     strong = {
       bold = true;
-      color = roles.strong;
+      color = colours.strong;
     };
     hr = {
-      color = roles.rule;
+      color = colours.rule;
       format = "\n────────\n";
     };
     item.block_prefix = "• ";
@@ -49,58 +49,58 @@ let
       unticked = "[ ] ";
     };
     link = {
-      color = roles.muted;
+      color = colours.muted;
       underline = true;
     };
-    link_text.color = roles.strong;
+    link_text.color = colours.strong;
     image = {
-      color = roles.muted;
+      color = colours.muted;
       underline = true;
     };
     image_text = {
-      color = roles.muted;
+      color = colours.muted;
       format = "Image: {{.text}}";
     };
     code = {
       prefix = " ";
       suffix = " ";
-      color = roles.strong;
-      background_color = roles.raised;
+      color = colours.strong;
+      background_color = colours.raised;
     };
     code_block = {
-      color = roles.text;
+      color = colours.text;
       margin = 2;
       chroma = {
-        text.color = roles.text;
-        error.color = roles.alert;
-        comment.color = roles.muted;
-        comment_preproc.color = roles.muted;
+        text.color = colours.text;
+        error.color = colours.alert;
+        comment.color = colours.muted;
+        comment_preproc.color = colours.muted;
         keyword.color = terminal.magenta;
         keyword_reserved.color = terminal.magenta;
         keyword_namespace.color = terminal.magenta;
         keyword_type.color = terminal.bright_yellow;
-        operator.color = roles.muted;
-        punctuation.color = roles.muted;
-        name.color = roles.text;
+        operator.color = colours.muted;
+        punctuation.color = colours.muted;
+        name.color = colours.text;
         name_builtin.color = terminal.cyan;
         name_tag.color = terminal.magenta;
-        name_attribute.color = roles.text;
+        name_attribute.color = colours.text;
         name_class.color = terminal.bright_yellow;
         name_constant.color = terminal.bright_red;
         name_decorator.color = terminal.cyan;
-        name_exception.color = roles.alert;
+        name_exception.color = colours.alert;
         name_function.color = terminal.cyan;
-        name_other.color = roles.text;
+        name_other.color = colours.text;
         literal.color = terminal.bright_red;
         literal_number.color = terminal.bright_red;
         literal_date.color = terminal.bright_red;
         literal_string.color = terminal.green;
         literal_string_escape.color = terminal.bright_cyan;
-        generic_deleted.color = roles.alert;
+        generic_deleted.color = colours.alert;
         generic_emph.italic = true;
-        generic_inserted.color = roles.success;
+        generic_inserted.color = colours.success;
         generic_strong.bold = true;
-        generic_subheading.color = roles.strong;
+        generic_subheading.color = colours.strong;
       };
     };
     definition_description.block_prefix = "\n→ ";

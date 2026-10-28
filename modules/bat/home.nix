@@ -7,7 +7,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles terminal;
+  inherit (config.jitsusama.theme) colours terminal;
 
   # bat reads TextMate's theme format, the theme's (../theme/tmtheme.nix),
   # its code on the terminal's own background.
@@ -15,10 +15,10 @@ let
     inherit
       lib
       pkgs
-      roles
+      colours
       terminal
       ;
-  } roles.background;
+  } colours.background;
 
   # bat finds a theme of its own only in its cache, which home-manager
   # rebuilds at every activation: 0.7 s of each switch on the laptop, and

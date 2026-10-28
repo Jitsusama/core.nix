@@ -119,7 +119,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
           inherit account passphrase password;
           encrypted = "${encrypted}";
           stops = "${stops}";
-          alert = theme.roles.alert;
+          alert = theme.colours.alert;
           inherit (theme.terminal) background;
           monoFamily = theme.font.mono.family;
           font = "${font}";

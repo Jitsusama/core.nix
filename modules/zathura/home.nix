@@ -33,7 +33,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     font
     type
     space
@@ -176,56 +176,56 @@ in
       font = "${font.sans.family} ${type.sans.body}";
       guioptions = "";
 
-      default-bg = roles.deepest;
-      default-fg = roles.text;
+      default-bg = colours.deepest;
+      default-fg = colours.text;
       page-v-padding = space.s;
       page-h-padding = space.s;
-      render-loading-bg = roles.background;
-      render-loading-fg = roles.muted;
+      render-loading-bg = colours.background;
+      render-loading-fg = colours.muted;
 
       recolor = true;
       recolor-keephue = true;
       recolor-reverse-video = true;
-      recolor-lightcolor = roles.background;
-      recolor-darkcolor = roles.text;
+      recolor-lightcolor = colours.background;
+      recolor-darkcolor = colours.text;
 
-      statusbar-bg = roles.sunken;
-      statusbar-fg = roles.text;
+      statusbar-bg = colours.sunken;
+      statusbar-fg = colours.text;
       statusbar-h-padding = space.m;
       statusbar-v-padding = space.s;
       statusbar-home-tilde = true;
-      inputbar-bg = roles.sunken;
-      inputbar-fg = roles.strong;
+      inputbar-bg = colours.sunken;
+      inputbar-fg = colours.strong;
 
-      completion-bg = roles.sunken;
-      completion-fg = roles.text;
-      completion-group-bg = roles.deepest;
-      completion-group-fg = roles.muted;
-      completion-highlight-bg = roles.selection;
-      completion-highlight-fg = roles.strong;
+      completion-bg = colours.sunken;
+      completion-fg = colours.text;
+      completion-group-bg = colours.deepest;
+      completion-group-fg = colours.muted;
+      completion-highlight-bg = colours.selection;
+      completion-highlight-fg = colours.strong;
 
-      index-bg = roles.background;
-      index-fg = roles.text;
-      index-active-bg = roles.selection;
-      index-active-fg = roles.strong;
+      index-bg = colours.background;
+      index-fg = colours.text;
+      index-active-bg = colours.selection;
+      index-active-fg = colours.strong;
 
-      notification-bg = roles.raised;
-      notification-fg = roles.text;
-      notification-warning-bg = roles.warning;
-      notification-warning-fg = roles.on_accent;
-      notification-error-bg = roles.alert;
-      notification-error-fg = roles.on_accent;
+      notification-bg = colours.raised;
+      notification-fg = colours.text;
+      notification-warning-bg = colours.warning;
+      notification-warning-fg = colours.on_accent;
+      notification-error-bg = colours.alert;
+      notification-error-fg = colours.on_accent;
 
       # Washed over the words, which are lighter than the page: a wash as dark
       # as the selection would dull them, so a lighter one lifts the page to
       # about the selection's colour and leaves the words legible.
-      highlight-color = rgba roles.muted "0.35";
-      highlight-active-color = rgba roles.accent "0.4";
-      highlight-fg = roles.strong;
+      highlight-color = rgba colours.muted "0.35";
+      highlight-active-color = rgba colours.accent "0.4";
+      highlight-fg = colours.strong;
 
-      signature-success-color = rgba roles.success "0.9";
-      signature-warning-color = rgba roles.warning "0.9";
-      signature-error-color = rgba roles.alert "0.9";
+      signature-success-color = rgba colours.success "0.9";
+      signature-warning-color = rgba colours.warning "0.9";
+      signature-error-color = rgba colours.alert "0.9";
 
       selection-clipboard = "clipboard";
       window-title-basename = true;

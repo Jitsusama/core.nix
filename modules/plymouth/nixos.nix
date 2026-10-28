@@ -19,7 +19,7 @@
 }:
 let
   inherit (import ../greetd/account.nix { inherit config lib options; }) theme;
-  inherit (theme) roles;
+  inherit (theme) colours;
 
   number = value: builtins.fromJSON (toString value);
   # Two hex digits of opacity, for a colour ImageMagick reads as #rrggbbaa.
@@ -98,7 +98,7 @@ let
           sigma = toString (shadow.blur * scale / 2.0);
         in
         lib.optionalString (shadow.blur > 0) "-blur 0x${sigma}";
-      hint = key: text: words (file "hint-${key}") mono large roles.muted 0 text;
+      hint = key: text: words (file "hint-${key}") mono large colours.muted 0 text;
       words = out: face: size: colour: margin: text: ''
         pango-view -q --no-display --dpi=${toString (96 * scale)} --margin=${at margin} \
           --antialias=gray --hinting=none --background=transparent \
@@ -109,13 +109,13 @@ let
       # Each shadow, the farthest first, under the words: their outline
       # blurred, darkened, coloured and moved.
       lifted = out: face: size: text: ''
-        ${words "words.png" face size roles.text pad text}
+        ${words "words.png" face size colours.text pad text}
         magick words.png ${
           lib.concatMapStringsSep " "
             (shadow: ''
               \( -clone 0 -channel A ${blurred shadow} \
                 -evaluate multiply ${toString (number shadow.opacity)} +channel \
-                -fill '${roles.shadow}' -colorize 100 -roll +${at shadow.x}+${at shadow.y} \)'')
+                -fill '${colours.shadow}' -colorize 100 -roll +${at shadow.x}+${at shadow.y} \)'')
             (lib.reverseList theme.wallpaper.shadows)
         } \( -clone 0 \) -delete 0 -background none -flatten ${out}
       '';
@@ -141,10 +141,10 @@ let
           magick -size ${size} xc:none ${
             lib.concatMapStringsSep " "
               (shadow: ''
-                \( -size ${size} xc:none -fill '${roles.shadow}${alpha shadow.opacity}' \
+                \( -size ${size} xc:none -fill '${colours.shadow}${alpha shadow.opacity}' \
                   -draw '${box 0 (shadow.offset * scale)}' ${blurred shadow} \)'')
               (lib.reverseList theme.floating.shadows)
-          } \( -size ${size} xc:none -fill '${roles.deepest}${alpha theme.floating.opacity}' \
+          } \( -size ${size} xc:none -fill '${colours.deepest}${alpha theme.floating.opacity}' \
               -stroke '${edge}' -strokewidth ${at theme.shape.border} -draw '${box half 0}' \) \
             -background none -flatten ${out}
         '';
@@ -160,19 +160,19 @@ let
         digit: lifted (file "digit-${digit}") mono (points "mono" "small") digit
       ) digits}
       ${lifted (file "digits") mono (points "mono" "small") (lib.concatStrings digits)}
-      ${framed (file "panel") roles.accent}
-      ${framed (file "panel-urgent") roles.alert}
+      ${framed (file "panel") colours.accent}
+      ${framed (file "panel-urgent") colours.alert}
       # The lock's ink reaches past its cell, so it's drawn with room round
       # it and cut to the line's height and its ink's width; drawn without,
       # its right side would be cut away.
-      ${words "lock.png" mono large roles.machine space.l lockGlyph}
+      ${words "lock.png" mono large colours.machine space.l lockGlyph}
       magick lock.png -shave 0x${at space.l} -define trim:edges=east,west -trim +repage \
         ${file "lock"}
       ${lib.concatStrings (lib.mapAttrsToList hint hints)}
       ${halo scale}
-      ${words (file "dot") mono large roles.strong 0 "●"}
+      ${words (file "dot") mono large colours.strong 0 "●"}
       # The caret in the accent, as tall as a line and two pixels wide.
-      magick ${file "dot"} -fill '${roles.accent}' -colorize 100 \
+      magick ${file "dot"} -fill '${colours.accent}' -colorize 100 \
         -channel A -fx 1 +channel -crop ${at 2}x+0+0 +repage ${file "caret"}
     '';
 
@@ -195,7 +195,7 @@ let
         --output=line.png --text=Hg
       line=$(magick identify -format %h line.png)
       magick -size ${at (inner + 2 * pad)}x$((line + ${at (2 * pad)})) xc:none \
-        -fill '${roles.shadow}' -draw "rectangle ${at pad},${at pad} ${at (pad + inner)},$((line + ${at pad} - 1))" \
+        -fill '${colours.shadow}' -draw "rectangle ${at pad},${at pad} ${at (pad + inner)},$((line + ${at pad} - 1))" \
         -channel A -blur 0x${sigma} -evaluate multiply ${toString (number wide.opacity / 2)} +channel \
         -roll +${at wide.x}+${at wide.y} halo.png
       magick halo.png -crop ${at (pad + inner / 2)}x+0+0 +repage ${file "halo-left"}
@@ -232,11 +232,11 @@ let
 
   script = pkgs.replaceVars ./theme.script {
     inherit pad reach;
-    deepest = channels roles.deepest;
-    textColour = channels roles.text;
+    deepest = channels colours.deepest;
+    textColour = channels colours.text;
     sansFamily = sans;
     sansBody = toString (points "sans" "body");
-    shadowColour = channels roles.shadow;
+    shadowColour = channels colours.shadow;
     tightX = tight.x;
     tightY = tight.y;
     tightOpacity = toString (number tight.opacity);

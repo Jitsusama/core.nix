@@ -3,7 +3,7 @@
 # module reads it from jitsusama.theme and writes it in the program's own
 # format, so a terminal, a notification and the lock screen all look alike,
 # and picking another theme changes them all. Surfaces name what a colour
-# means (roles), never the colour itself, and the theme is checked for
+# means (its colours), never the colour itself, and the theme is checked for
 # legibility as the machine is evaluated.
 { config, lib, ... }:
 let
@@ -32,7 +32,7 @@ let
       inherit description;
     };
 
-  roles = {
+  colours = {
     background = "behind everything: windows, the terminal, menus";
     sunken = "below the background: a sidebar, an inactive tab, a list";
     deepest = "the very back: the overview's backdrop, a tab bar";
@@ -154,7 +154,7 @@ let
         };
       role = name: {
         inherit name;
-        value = cfg.roles.${name};
+        value = cfg.colours.${name};
       };
       term = name: {
         name = "terminal ${name}";
@@ -391,9 +391,9 @@ in
       '';
     };
 
-    roles = lib.mapAttrs (
+    colours = lib.mapAttrs (
       name: description: colorOption theme.roles.${name} "The colour for ${description}."
-    ) roles;
+    ) colours;
 
     terminal = lib.mapAttrs (
       name: description: colorOption theme.terminal.${name} "The colour for ${description}."
@@ -403,7 +403,7 @@ in
       colour = lib.mkOption {
         type = color;
         default =
-          if written name ? pigment then pigment (written name).pigment else cfg.roles.${about.role};
+          if written name ? pigment then pigment (written name).pigment else cfg.colours.${about.role};
         defaultText = lib.literalMD "the pigment the theme file names, or the ${about.role} role";
         description = "The colour for ${about.means}.";
       };
@@ -863,8 +863,8 @@ in
   # The whole theme, for a program that reads JSON rather than having a file
   # of its own written: pi, a script, the stick's guide.
   config.xdg.configFile."jitsusama/theme.json".text = builtins.toJSON {
+    roles = cfg.colours;
     inherit (cfg)
-      roles
       terminal
       syntax
       shades

@@ -2,7 +2,7 @@
 # to the other: Claude Code's diffs, whose backgrounds are a tint of the
 # success or alert colour over the background.
 #
-#   mix 0.25 roles.success roles.background  →  25% success, 75% background
+#   mix 0.25 colours.success colours.background  →  25% success, 75% background
 { lib }:
 weight: over: under:
 let

@@ -35,7 +35,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font;
+  inherit (config.jitsusama.theme) colours font;
 
   # The theme's #RRGGBB as stats writes a colour, blue first.
   bgr =
@@ -197,58 +197,58 @@ in
 
       osd-font = font.sans.family;
       osd-font-size = 24;
-      osd-color = roles.strong;
-      osd-border-color = roles.shadow;
+      osd-color = colours.strong;
+      osd-border-color = colours.shadow;
       osd-border-size = 2;
-      osd-back-color = roles.deepest;
-      osd-selected-color = roles.on_accent;
-      osd-selected-outline-color = roles.accent;
+      osd-back-color = colours.deepest;
+      osd-selected-color = colours.on_accent;
+      osd-selected-outline-color = colours.accent;
       sub-font = font.sans.family;
-      sub-color = roles.strong;
-      sub-border-color = roles.shadow;
+      sub-color = colours.strong;
+      sub-border-color = colours.shadow;
 
       screenshot-directory = "${config.home.homeDirectory}/Pictures/Screenshots";
       screenshot-format = "png";
       screenshot-template = "%F %wH-%wM-%wS";
     };
     scriptOpts.osc = {
-      background_color = roles.deepest;
-      timecode_color = roles.text;
-      title_color = roles.strong;
-      time_pos_color = roles.text;
-      buttons_color = roles.text;
-      small_buttonsL_color = roles.text;
-      small_buttonsR_color = roles.text;
-      top_buttons_color = roles.text;
-      held_element_color = roles.muted;
-      time_pos_outline_color = roles.shadow;
+      background_color = colours.deepest;
+      timecode_color = colours.text;
+      title_color = colours.strong;
+      time_pos_color = colours.text;
+      buttons_color = colours.text;
+      small_buttonsL_color = colours.text;
+      small_buttonsR_color = colours.text;
+      top_buttons_color = colours.text;
+      held_element_color = colours.muted;
+      time_pos_outline_color = colours.shadow;
     };
     # The console, where a command is typed and a list is chosen from, and
     # the menu a right click opens: the choice in the accent, as the
     # launcher's is.
     scriptOpts.console = {
       monospace_font = font.mono.family;
-      focused_color = roles.on_accent;
-      focused_back_color = roles.accent;
-      match_color = roles.accent;
-      menu_outline_color = roles.edge;
+      focused_color = colours.on_accent;
+      focused_back_color = colours.accent;
+      match_color = colours.accent;
+      menu_outline_color = colours.edge;
     };
     scriptOpts.context_menu = {
-      focused_color = roles.on_accent;
-      focused_back_color = roles.accent;
-      disabled_color = roles.muted;
-      menu_outline_color = roles.edge;
+      focused_color = colours.on_accent;
+      focused_back_color = colours.accent;
+      disabled_color = colours.muted;
+      menu_outline_color = colours.edge;
     };
     # What's playing and how, and the page of keys ? opens, in the sans
     # face with figures in the monospaced one, its graphs in the accent.
     scriptOpts.stats = {
       font = font.sans.family;
       font_mono = font.mono.family;
-      font_color = bgr roles.text;
-      border_color = bgr roles.shadow;
-      plot_color = bgr roles.accent;
-      plot_bg_color = bgr roles.deepest;
-      plot_bg_border_color = bgr roles.edge;
+      font_color = bgr colours.text;
+      border_color = bgr colours.shadow;
+      plot_color = bgr colours.accent;
+      plot_bg_color = bgr colours.deepest;
+      plot_bg_border_color = bgr colours.edge;
     };
   };
 }

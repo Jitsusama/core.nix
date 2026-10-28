@@ -38,7 +38,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     font
     type
     space
@@ -230,15 +230,15 @@ let
 
   given = {
     colour = {
-      deepest = opaque roles.deepest;
-      sunken = opaque roles.sunken;
-      raised = opaque roles.raised;
-      text = opaque roles.text;
-      strong = opaque roles.strong;
-      muted = opaque roles.muted;
-      accent = opaque roles.accent;
+      deepest = opaque colours.deepest;
+      sunken = opaque colours.sunken;
+      raised = opaque colours.raised;
+      text = opaque colours.text;
+      strong = opaque colours.strong;
+      muted = opaque colours.muted;
+      accent = opaque colours.accent;
       # Under the name, so it reads on any picture.
-      shadow = argb "d0" roles.shadow;
+      shadow = argb "d0" colours.shadow;
     };
     sans = font.sans.family;
     size = pixels type.sans.large;

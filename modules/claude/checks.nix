@@ -17,7 +17,7 @@ let
 
   # The theme's strong colour as a terminal is told it, red;green;blue, which
   # the folder is drawn in.
-  inherit (linuxAccount.jitsusama.theme.roles) strong;
+  inherit (linuxAccount.jitsusama.theme.colours) strong;
   channel = at: toString (lib.fromHexString (builtins.substring at 2 strong));
   strongDrawn = lib.concatMapStringsSep ";" channel [
     1

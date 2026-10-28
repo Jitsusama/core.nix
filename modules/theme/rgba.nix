@@ -2,7 +2,7 @@
 # program that reads rgba() and not #RRGGBBAA: zathura's search highlight,
 # which has to let the words under it show.
 #
-#   rgba roles.selection "0.5"  →  rgba(50, 71, 59, 0.5)
+#   rgba colours.selection "0.5"  →  rgba(50, 71, 59, 0.5)
 { lib }:
 colour: alpha:
 let

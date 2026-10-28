@@ -2,7 +2,7 @@
 # program that takes those rather than #RRGGBB: 38 for the text's colour, 48
 # for what's behind it.
 #
-#   sgr "48" roles.selection  →  48;2;50;71;59
+#   sgr "48" colours.selection  →  48;2;50;71;59
 { lib }:
 layer: colour:
 let
