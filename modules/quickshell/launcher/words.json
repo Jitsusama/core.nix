@@ -114,8 +114,8 @@
         "runs",
         "spend"
       ],
-      "ask": "which agent?",
-      "empty": "No agents running."
+      "ask": "which session?",
+      "empty": "No sessions running."
     },
     {
       "id": "agents:task",
