@@ -1440,12 +1440,17 @@ onLinux {
         property var live: ({})
         function mark(id, read) {}
       '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
     in
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
       export XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
       cp ${./Sessions.qml} Sessions.qml
+      cp ${./Waiting.js} Waiting.js
+      cp ${waiting} WaitingOnYou.qml
       cp ${../../tests/sessions.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${options} Options.qml
