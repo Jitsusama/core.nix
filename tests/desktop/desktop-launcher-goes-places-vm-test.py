@@ -1113,6 +1113,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
 def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop) -> None:
     """The launcher remembers where it was when stepping back."""
     machine = desktop.machine
+    desktop.notes_window()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
 
@@ -1133,6 +1134,9 @@ def test_the_launcher_remembers_where_it_was_when_stepping_back(desktop: Desktop
             break
     chosen = selected()
     desktop.step_in()
+    # Open programs come first, so kitty, whose notes are open, leads the
+    # programs closed, however they're named.
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["kitty"])
     machine.send_key("down")
     machine.send_key("left")
     desktop.launcher_until(
