@@ -3531,11 +3531,11 @@
       "glyph": "meeting"
     },
     {
-      "id": "verb:calendar:copy",
+      "id": "verb:calendar:see",
       "in": "calendar:meeting",
-      "name": "Copy the Link",
-      "verb": "copy",
-      "glyph": "link"
+      "name": "See It",
+      "verb": "see",
+      "glyph": "meetingDetails"
     },
     {
       "id": "verb:calendar:yes",

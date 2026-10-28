@@ -1073,8 +1073,8 @@
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
-    no to, says when it is in words, when it's about to start and how Joel answered it, and writes
-    the line that answers it
+    no to, says when it is in words, when it's about to start, whether Return joins it or shows it,
+    whether it's today's and how Joel answered it, and writes the line that answers it
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1211,8 +1211,10 @@
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting by its name and answers its invitation, opens mail by its subject, marks it read and
-    archives it, sets the volume, loses no letter typed after its chord, and shows the shortcuts
+    a meeting about to start by its name, says it in Now's Today, shows one further off, and
+    answers its invitation, opens
+    mail by its subject, marks it read and archives it, sets the volume, loses no letter typed
+    after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

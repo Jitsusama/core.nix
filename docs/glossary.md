@@ -138,7 +138,7 @@ first in the queue and conclude.
 
 What Joel runs, and the terminal he types commands into, and the mail,
 meetings and calls he has through them. A program can be opened, opened below,
-given a new window and quit. A meeting can be joined, and an invitation
+given a new window and quit. A meeting can be joined or seen, and an invitation
 answered yes, maybe or no; mail can be read, marked unread and archived.
 
 | Word | Means | Not | In code |
@@ -161,6 +161,7 @@ answered yes, maybe or no; mail can be read, marked unread and archived.
 | not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | join | going into a meeting's call, or a call another sends | | |
+| see | looking at a meeting's details in the launcher: when, its call, who's going | | |
 
 ## Desktop
 
@@ -205,7 +206,7 @@ or a copy, can be opened, copied or forgotten.
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
-| Today | Now's row for the date, the weather and the next meeting, whose Return joins the meeting | | |
+| Today | Now's row for the date, the weather and the next meeting, whose Return joins the meeting when it's about to start, and otherwise shows it | | |
 | here | where the weather is when no town is typed: where the laptop is, else the town set, else the time zone's city | | the `whereabouts` program; the weather provider's `place` |
 
 ## Machine

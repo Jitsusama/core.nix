@@ -1,5 +1,6 @@
-// Which meeting is next, when it is in words, whether it's about to start,
-// how Joel answered it and the line answering it, from meetings like the google program's, run in Qt's own
+// Which meeting is next, when it is in words, whether it's about to start
+// and whether Return joins it, its day in full, how Joel answered it and
+// the line answering it, from meetings like the google program's, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-shell-tells-the-next-meeting` check copies Calendar.js beside this
 // file and runs `qml -platform offscreen calendar.qml`. Times are made on
@@ -105,6 +106,39 @@ QtObject {
             check(`about to start at ${new Date(time).toTimeString()}`,
                 Calendar.aboutToStart(standup, time), meant);
         check("nothing is about to start", Calendar.aboutToStart(null, now), false);
+
+        // Whether Return joins it: [what, the meeting, joins]
+        const joins = [
+            ["one on", meeting("on", at(26, 15, 0), at(26, 16, 0)), true],
+            ["one ten minutes off", meeting("ten", at(26, 15, 30), at(26, 16, 0)), true],
+            ["one eleven minutes off", meeting("eleven", at(26, 15, 31), at(26, 16, 0)), false],
+            ["one tomorrow", meeting("tomorrow", at(27, 9, 0), at(27, 9, 30)), false],
+            ["one over", meeting("over", at(26, 14, 0), at(26, 15, 20)), false],
+            ["one with no call", meeting("room", at(26, 15, 25), at(26, 16, 0), { link: "" }),
+                false],
+            ["a whole day", meeting("all", at(26, 0, 0), at(27, 0, 0), { allDay: true }), false],
+            ["no meeting", null, false]
+        ];
+        for (const [what, one, meant] of joins)
+            check(`Return joins ${what}`, Calendar.joinable(one, now), meant);
+
+        // On or starting today: [what, the meeting, today]
+        const todays = [
+            ["one this evening", meeting("evening", at(26, 23, 0), at(26, 23, 30)), true],
+            ["one on", meeting("on", at(26, 15, 0), at(26, 16, 0)), true],
+            ["one past midnight", meeting("late", at(27, 0, 0), at(27, 0, 30)), false],
+            ["one tomorrow", meeting("tomorrow", at(27, 9, 0), at(27, 9, 30)), false],
+            ["one over", meeting("over", at(26, 14, 0), at(26, 15, 0)), false],
+            ["no meeting", null, false]
+        ];
+        for (const [what, one, meant] of todays)
+            check(`today, ${what}`, Calendar.today(one, now), meant);
+
+        check("its day and times in full", Calendar.dated(
+            meeting("m", at(26, 14, 0), at(26, 14, 30))), "Monday 26 October, 14:00 to 14:30");
+        check("a whole day's in full", Calendar.dated(
+            meeting("m", at(28, 0, 0), at(29, 0, 0), { allDay: true })),
+            "Wednesday 28 October, all day");
 
         // How he answered, and his answer: [answer, said, invited]
         const answers = [

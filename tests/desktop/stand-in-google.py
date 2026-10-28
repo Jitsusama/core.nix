@@ -2,12 +2,12 @@
 
 It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the whole state as one
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
-that connects. The account is ready, with one meeting, Standup, half an hour from when the
-stand-in starts, joined on Meet. An answer a shell writes is written down in google-asked beside
-the socket, for the test to read, and taken as Google would take it, so the file and every shell
-say the meeting answered. Two pieces of mail want Joel, Lunch on Friday and Quarterly Numbers,
-with three unread in the inbox; one marked read or archived is written down too, and taken out of
-the mail that wants him, as Gmail would.
+that connects. The account is ready, with two meetings on Meet from when the stand-in starts:
+Design Review five minutes on, about to start, and Standup half an hour on. An answer a shell
+writes is written down in google-asked beside the socket, for the test to read, and taken as
+Google would take it, so the file and every shell say the meeting answered. Two pieces of mail
+want Joel, Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read
+or archived is written down too, and taken out of the mail that wants him, as Gmail would.
 """
 
 import json
@@ -19,32 +19,41 @@ from pathlib import Path
 
 # Milliseconds in a minute, as the program counts times.
 MINUTE = 60_000
-# How far ahead the meeting starts, and how long it lasts.
+# How far ahead each meeting starts, and how long one lasts.
+SOON = 5 * MINUTE
 AHEAD = 30 * MINUTE
 LASTS = 30 * MINUTE
+
+
+def meeting(key: str, title: str, start: int, call: str) -> dict[str, object]:
+    """Give a meeting as the program says one, answered yes, its call on Meet."""
+    return {
+        "id": key,
+        "title": title,
+        "start": start,
+        "end": start + LASTS,
+        "allDay": False,
+        "answer": "yes",
+        "link": f"https://meet.google.com/{call}",
+        "kind": "meet",
+        "page": f"https://calendar.google.com/calendar/event?eid={key}",
+    }
 
 
 class Account:
     """The account as the program would hold it, the file it leaves, and the shells it tells."""
 
     def __init__(self, told: Path, asked: Path) -> None:
-        """Hold the one meeting, answered yes, with no shell yet, and leave it in the file."""
+        """Hold the meetings, answered yes, with no shell yet, and leave them in the file."""
         now = int(time.time() * 1000)
         self.told = told
         self.asked = asked
         self.lock = threading.Lock()
         self.shells: list[socket.socket] = []
-        self.meeting = {
-            "id": "standup",
-            "title": "Standup",
-            "start": now + AHEAD,
-            "end": now + AHEAD + LASTS,
-            "allDay": False,
-            "answer": "yes",
-            "link": "https://meet.google.com/abc-defg-hij",
-            "kind": "meet",
-            "page": "https://calendar.google.com/calendar/event?eid=standup",
-        }
+        self.meetings = [
+            meeting("review", "Design Review", now + SOON, "pqr-stuv-wxy"),
+            meeting("standup", "Standup", now + AHEAD, "abc-defg-hij"),
+        ]
         self.mail = [
             {
                 "id": "lunch",
@@ -69,7 +78,7 @@ class Account:
         """Give the state the program would say."""
         said = {
             "account": "ready",
-            "meetings": [self.meeting],
+            "meetings": self.meetings,
             "mail": self.mail,
             "unread": self.unread,
             "heard": self.heard,
@@ -92,15 +101,16 @@ class Account:
             self.shells.append(shell)
 
     def ask(self, line: str) -> None:
-        """Write down what a shell asked, and answer the meeting it names."""
+        """Write down what a shell asked, and answer the meeting or tidy the mail it names."""
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
         answer = said.get("answer", {})
         tidied = (said.get("read") or said.get("archive") or {}).get("id")
         with self.lock:
-            if answer.get("id") == self.meeting["id"]:
-                self.meeting["answer"] = answer["with"]
+            for one in self.meetings:
+                if answer.get("id") == one["id"]:
+                    one["answer"] = answer["with"]
             held = [mail for mail in self.mail if mail["id"] != tidied]
             if len(held) < len(self.mail):
                 self.mail = held

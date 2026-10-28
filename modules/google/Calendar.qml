@@ -6,7 +6,8 @@ pragma ComponentBehavior: Bound
 // nothing shows.
 //
 // `next` is the meeting he's about to go to, or the one going on, the same
-// one for the Today row and Now's wants (Calendar.js says which), and
+// one for the Today row and Now's wants (Calendar.js says which);
+// `joinable` says whether Return on any of them joins it; and
 // `join` goes into a meeting's call through google-opens (opens.sh), which
 // joins a Tuple link through Tuple and opens Google's own in a window of
 // their own. `answer` answers an invitation through the program (ask.rs),
@@ -45,6 +46,23 @@ Singleton {
     // When a meeting is, as its row says it: "in 12 min", "at 16:00".
     function when(meeting) {
         return Said.when(meeting, now);
+    }
+
+    // Whether Return on a meeting joins its call, as it does only when the
+    // call is on or starts within ten minutes; otherwise Return shows it.
+    // Every row that stands for a meeting asks this, so none differs.
+    function joinable(meeting) {
+        return Said.joinable(meeting, now);
+    }
+
+    // Whether it's on or starts today.
+    function today(meeting) {
+        return Said.today(meeting, now);
+    }
+
+    // Its day and times in full: "Monday 26 October, 14:00 to 14:30".
+    function dated(meeting) {
+        return Said.dated(meeting);
     }
 
     // Its times: "14:00 to 14:30", or "all day".

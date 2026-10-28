@@ -1,10 +1,10 @@
 // What the shell works out from the meetings the google program keeps
 // (src/state.rs): which meeting is next, when it is in words, whether it's
-// about to start, how Joel answered it, and the line that answers it
-// (src/ask.rs). Calendar.qml asks these of the meetings Google.qml
-// holds, Mail.js asks the day and the time, and the checks run them in
-// Qt's own engine (tests/calendar.qml). Times are milliseconds since 1970,
-// as the program gives them.
+// about to start, whether Return joins it, how Joel answered it, and the
+// line that answers it (src/ask.rs). Calendar.qml asks these of the
+// meetings Google.qml holds, Mail.js asks the day and the time, and the
+// checks run them in Qt's own engine (tests/calendar.qml). Times are
+// milliseconds since 1970, as the program gives them.
 .pragma library
 
 // In milliseconds.
@@ -23,6 +23,8 @@ const SOON = 3_600_000;
 const DIGITS = 2;
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
+    "September", "October", "November", "December"];
 
 // The meetings that could be next: not over, not all day, and not ones
 // Joel said no to.
@@ -52,6 +54,15 @@ function aboutToStart(meeting, now) {
     return Boolean(meeting) && now >= meeting.start - BEFORE && now <= meeting.start + AFTER;
 }
 
+// Whether Return joins a meeting's call rather than showing the meeting:
+// it has a call, isn't over or all day, and is on or starts within ten
+// minutes. Any further off, he's more likely looking at it, answering it
+// or moving it than going to it, so Return never joins one by surprise.
+function joinable(meeting, now) {
+    return Boolean(meeting) && Boolean(meeting.link) && !meeting.allDay
+        && meeting.end > now && meeting.start - now <= TAKES_OVER;
+}
+
 function clock(date) {
     const two = n => String(n).padStart(DIGITS, "0");
     return `${two(date.getHours())}:${two(date.getMinutes())}`;
@@ -62,6 +73,12 @@ function midnight(time) {
     const day = new Date(time);
     day.setHours(0, 0, 0, 0);
     return day.getTime();
+}
+
+// Whether a meeting is on or starts today, as the Today row shows only
+// today's.
+function today(meeting, now) {
+    return Boolean(meeting) && meeting.start < midnight(now) + DAY && meeting.end > now;
 }
 
 // The day `time` is on, as said before its time: nothing for today,
@@ -99,6 +116,13 @@ function span(meeting) {
         return "all day";
     }
     return `${clock(new Date(meeting.start))} to ${clock(new Date(meeting.end))}`;
+}
+
+// A meeting's day and times in full, as its details say them: "Monday 26
+// October, 14:00 to 14:30", or "Wednesday 28 October, all day".
+function dated(meeting) {
+    const day = new Date(meeting.start);
+    return `${DAYS[day.getDay()]} ${day.getDate()} ${MONTHS[day.getMonth()]}, ${span(meeting)}`;
 }
 
 // How Joel answered an invitation, as his calendar would say it to him,
