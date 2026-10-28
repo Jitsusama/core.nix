@@ -20,8 +20,6 @@
         "notices",
         "clipboard",
         "capture",
-        "gimp",
-        "swayimg",
         "session:recording",
         "tuple",
         "people",
@@ -3132,11 +3130,25 @@
     },
     {
       "id": "gimp",
+      "in": "capture",
       "name": "The Newest Screenshot"
     },
     {
+      "id": "gimp:screenshot",
+      "in": "capture",
+      "name": "Edit the Newest Screenshot",
+      "verb": "edit"
+    },
+    {
       "id": "swayimg",
+      "in": "capture",
       "name": "Screenshots"
+    },
+    {
+      "id": "swayimg:screenshots",
+      "in": "capture",
+      "name": "Look Through the Screenshots",
+      "verb": "look"
     },
     {
       "id": "applications",
