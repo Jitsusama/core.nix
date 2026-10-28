@@ -259,7 +259,9 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
 }
 
 /// What a band takes, cheapest loss first: by group, caches by how cheaply
-/// they refill, then the longest idle. With a shortfall the plan stops once
+/// they refill, then the longest idle. Waste costs nothing to lose, so it
+/// goes largest first, and a few big builds aren't left behind thousands of
+/// small temp entries that are idle longer. With a shortfall the plan stops once
 /// what it predicts freeing covers it, each candidate predicted at its size
 /// times the share of its size its class has been measured to free; without
 /// one, as on a healthy disk's upkeep, it takes everything due.
@@ -294,8 +296,17 @@ pub fn plan(
     };
     steps.sort_by(|a, b| {
         let idle = |step: &Step| candidates[step.index].idle;
+        let size = |step: &Step| candidates[step.index].size;
+        let waste = a.group == Group::Waste && b.group == Group::Waste;
         (a.group, rank(a))
             .cmp(&(b.group, rank(b)))
+            .then_with(|| {
+                if waste {
+                    size(b).cmp(&size(a))
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
             .then(idle(b).total_cmp(&idle(a)))
     });
     if let Some(shortfall) = shortfall {

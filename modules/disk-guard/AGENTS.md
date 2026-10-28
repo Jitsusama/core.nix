@@ -19,14 +19,18 @@ or launchd, and [`home.nix`][2] the account's.
   oversized logs, Nix's leftover build directories), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,
   caches cheapest to refill first, idle targets and installs, older builds a
-  newer one of their crate replaced, and last what is occupied. While
+  newer one of their crate replaced, and last what is occupied. Waste,
+  which costs nothing to lose, goes largest first; the rest of a group
+  goes longest idle first. While
   healthy, routine upkeep takes what's due every six hours: on the charger or a
   battery over half, ten minutes after boot or resume, however busy the
   machine, since a workstation that's always busy would otherwise never
   be tidied. It comes at once, too, when an owner ends: the guard looks
   each minute, and a tree newly spent, a new boot or a guard with new
   rules makes upkeep due, so what an owner leaves never waits hours for
-  the routine.
+  the routine. Upkeep that kept something only the system daemon could
+  have vouched for, while it couldn't be asked, as when a switch restarts
+  both daemons, comes again ten minutes later.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
