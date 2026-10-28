@@ -140,6 +140,20 @@ Scope {
     readonly property int peek: Theme.space.s
     // The front card's height, which the cards behind it take.
     property real frontHeight: 0
+    // Said while the stack holds the keys, so the desktop test sees the
+    // card hold still as the keys move into, through and out of its acts.
+    // It's said once its bindings settle, since one step changes several
+    // and the height between them is never drawn, and only when it differs
+    // from what was said last.
+    property int stood: 0
+    onFrontHeightChanged: Qt.callLater(stands)
+    function stands() {
+        const standing = Math.round(frontHeight);
+        if (!holding || standing === stood)
+            return;
+        stood = standing;
+        Report.say(`notice stands ${standing}`);
+    }
 
     // Whether the stack holds the keys, which Super+N gives it while there
     // are notices; whether they've stepped into the front one's verbs, as
@@ -159,6 +173,8 @@ Scope {
     }
     onHoldingChanged: {
         stepped = false;
+        stood = 0;
+        Qt.callLater(stands);
         Report.say(holding ? "holds notices" : "lets notices go");
     }
     onSteppedChanged: if (!stepped) Report.say("notice back")
@@ -829,7 +845,7 @@ Scope {
                             // The default is the card's own click, not one
                             // of these.
                             readonly property var offers: root.offers(card.modelData)
-                            visible: offers.length > 0 && !(card.keys && root.stepped)
+                            visible: offers.length > 0 && !card.keys
 
                             Row {
                                 anchors.bottom: parent.bottom
@@ -895,25 +911,30 @@ Scope {
                             }
                         }
 
-                        // Its verbs, once the right arrow steps into them:
-                        // a launcher row's shape at the card's size, the
-                        // glyph in a column of its own, the name, the key
-                        // that does it straight away on the right, muted,
-                        // and the chosen one filled a step round its words.
+                        // Its verbs, in the offers' place while the stack
+                        // holds the keys, so the right arrow only chooses
+                        // among what's already there and stepping in,
+                        // through and out moves nothing (Joel, 2026-10-26:
+                        // no size jump). A launcher row's shape at the
+                        // card's size: the glyph in a column of its own,
+                        // the name, the key that does it straight away on
+                        // the right, muted, and once stepped in, the chosen
+                        // one filled a step round its words.
                         Column {
                             width: parent.width
                             topPadding: Theme.space.s
-                            visible: card.keys && root.stepped
+                            visible: card.keys
 
                             Repeater {
-                                model: card.keys && root.stepped ? root.verbs : []
+                                model: card.keys ? root.verbs : []
 
                                 Item {
                                     id: verb
 
                                     required property var modelData
                                     required property int index
-                                    readonly property bool chosen: root.chosen === index
+                                    readonly property bool chosen: root.stepped
+                                        && root.chosen === index
 
                                     width: parent.width
                                     height: root.line + Theme.space.xs
@@ -959,6 +980,7 @@ Scope {
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
+                                            root.stepped = true;
                                             root.chosen = verb.index;
                                             root.run();
                                         }
@@ -966,6 +988,7 @@ Scope {
                                 }
                             }
                         }
+
 
                         // Where it came from, a step below the message,
                         // and on the right when it came; or while the stack

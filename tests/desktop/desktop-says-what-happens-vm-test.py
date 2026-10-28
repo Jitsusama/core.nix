@@ -173,6 +173,10 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     desktop.photograph("notices-held")
     machine.send_key("tab")
     machine.send_key("backspace")
+    # Held, the card is as tall as its verbs need from the start, so
+    # stepping in, through and out of them moves nothing.
+    desktop.held_still()
+    since = desktop.mark()
     with desktop.told("notice verb Play it"):
         machine.send_key("right")
     with desktop.told("notice verb Copy what it said"):
@@ -182,6 +186,11 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
         machine.send_key("left")
     with desktop.told("notice verb Play it"):
         machine.send_key("right")
+    moved = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)} | grep -F 'notice stands'; true"
+    )
+    assert moved.strip() == "", f"the held card changed its height: {moved}"
     with desktop.told("lets notices go"):
         machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
