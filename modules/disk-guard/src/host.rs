@@ -279,6 +279,11 @@ pub struct Reclaim<'a> {
     scan: &'a mut Scan,
     notes: Vec<String>,
     gentle: bool,
+    /// Whether a delete this pass met garbage come alive since the listing.
+    /// Builds root again what a listing called dead, hundreds of paths a
+    /// batch here, so its other batches would meet the same, each refused
+    /// whole for a look for roots, and are kept for a fresh listing.
+    stale: bool,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
 }
@@ -298,6 +303,7 @@ impl<'a> Reclaim<'a> {
             scan,
             notes: Vec::new(),
             gentle: false,
+            stale: false,
             band: Band::Healthy,
             pacer: None,
         }
@@ -422,9 +428,15 @@ impl Reclaimer for Reclaim<'_> {
             Action::Collect {
                 nix, roots, paths, ..
             } => {
+                if self.stale {
+                    return Outcome::Kept("its listing was found stale this pass".to_owned());
+                }
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
                 let gentle = self.gentle;
-                ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)))
+                let outcome =
+                    ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)));
+                self.stale = matches!(&outcome, Outcome::Failed(why) if garbage::stale(why));
+                outcome
             }
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
