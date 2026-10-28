@@ -880,6 +880,10 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     # The window used last is chosen as it opens, and this one isn't
     # there to choose.
     tab_to("", scratch[-1])
+    # Shift+Return opens one below the window Joel is in, a step in as
+    # well as at the top, and the foot says so wherever it works.
+    told = (desktop.showing()["selected"] or {}).get("told", [])
+    assert "\u21e7\u21b5 below" in told, told
     desktop.photograph("launcher-windows")
     went("Scratch 25")
     tab_to("", "Notes for Tuesday")
@@ -1042,6 +1046,9 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.type_in("this window", selecting="This Window")
     desktop.step_in("ret")
     desktop.type_in("size", selecting="Size")
+    # Its sizes are a step in by the right arrow too, and the foot says so.
+    told = (desktop.showing()["selected"] or {}).get("told", [])
+    assert "\u2192 more" in told, told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
     machine.send_key("ret")
@@ -1785,6 +1792,52 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # One not there says so.
     assert "error" in ran({"id": "nothing:here"})
+
+
+def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
+    desktop: Desktop,
+) -> None:
+    """Escape closes only the launcher, and the window behind it never hears the key."""
+    # Joel, 2026-10-26: "Escape closes only the launcher; the key never
+    # reaches the program behind it." wev says every key its window hears,
+    # held as it gets the keyboard or pressed and let go after.
+    machine = desktop.machine
+    values = desktop.values
+    log = "/run/user/1000/wev-escape.log"
+    desktop.as_account(
+        "systemd-run --user --collect --quiet --unit=wev-escape -- sh -c "
+        f"'{values['coreutils']}/bin/stdbuf -oL {values['wev']}/bin/wev > {log} 2>&1'"
+    )
+    retry(lambda _: any(w["title"] == "wev" for w in desktop.windows()), timeout=STARTING)
+    wev = next(w for w in desktop.windows() if w["title"] == "wev")
+    desktop.as_account(f"niri msg action focus-window --id {wev['id']}")
+
+    def entered() -> int:
+        """Give how many times wev's window has had the keyboard."""
+        return int(machine.succeed(f"grep -c 'wl_keyboard] enter' {log} || true").strip())
+
+    retry(lambda _: entered() >= 1, timeout=STARTING)
+    before = entered()
+    try:
+        # Opened as Joel opens it, by its chord, so its keys are his too.
+        machine.send_key("meta_l-spc")
+        desktop.launcher_ready()
+        machine.send_key("esc")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+        # The keyboard is wev's again, and a key pressed after reaches it,
+        # so all it was given as the launcher went is in its log.
+        retry(lambda _: entered() > before, timeout=dt.timedelta(seconds=10))
+        machine.send_key("a")
+        retry(
+            lambda _: "sym: a " in machine.succeed(f"cat {log}"),
+            timeout=dt.timedelta(seconds=10),
+        )
+        heard = machine.succeed(f"cat {log}")
+        assert "sym: Escape" not in heard, heard
+    finally:
+        desktop.as_account("systemctl --user stop wev-escape")
 
 
 def test_every_row_has_a_return_act(desktop: Desktop) -> None:
