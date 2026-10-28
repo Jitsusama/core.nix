@@ -67,7 +67,7 @@ Provider {
             side: programs.length > 0 ? `in use by ${programs.join(", ")}` : ""
         };
         if (name !== viewfound)
-            return holderRow(fields, () => provider.partRows(name));
+            return thingRow(fields, () => provider.partRows(name));
         return thing(Object.assign(fields, {
             verb: Words.verb(`cameras:${name}`),
             later: true,

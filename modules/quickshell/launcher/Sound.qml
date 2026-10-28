@@ -604,7 +604,7 @@ Provider {
         const first = streams[0];
         const paused = streams.every(stream => stream.properties["pulse.corked"] === "true");
         const key = `sound:${node.name}:program:${program.name}`;
-        return holderRow({
+        return thingRow({
             key: key,
             name: program.name,
             side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),
@@ -678,7 +678,7 @@ Provider {
             return null;
         const id = node.isSink ? "tuning" : "voice";
         const key = `sound:${node.name}:${id}`;
-        return holderRow({
+        return thingRow({
             key: key,
             name: Words.name(`sound:${id}`),
             side: found.some(filter => provider.flowing(filter, node)) ? said("running")

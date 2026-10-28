@@ -87,7 +87,7 @@ Provider {
         const choice = profileChoices.find(each => each.profile === PowerProfiles.profile);
         return choice ? `session:power:${choice.was}` : "";
     }
-    readonly property var profile: holderRow({
+    readonly property var profile: thingRow({
         key: "session:profile",
         name: Words.name("session:profile"),
         side: profileInUse !== "" ? Words.of(profileInUse).part : "",

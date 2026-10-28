@@ -326,8 +326,9 @@ Provider {
             side: headline,
             glyph: glyph(now.weather_code, day)
         })];
-        // Rain holds its hours, and Return steps into them, since copying
-        // them would be copying a table: a part holding more, as any is.
+        // Rain holds its hours, a step in by the right arrow, and Return
+        // copies when it next rains, as asked alone: a part holding more,
+        // as any is.
         if (hours.length > 0) {
             const inside = hourRows(hours);
             rows.push(holderRow({

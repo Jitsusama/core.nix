@@ -1153,7 +1153,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("signal", selecting="Signal")
     desktop.launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
-    desktop.step_in("ret")
+    desktop.step_in()
     desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
     # The left arrow steps out with the word put back, and again takes
     # the word.
