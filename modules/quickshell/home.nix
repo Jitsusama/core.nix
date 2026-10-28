@@ -28,7 +28,7 @@ let
     space
     type
     motion
-    glyphs
+    marks
     floating
     wallpaper
     ;
@@ -47,7 +47,7 @@ let
   # A JavaScript object of the values, which QML reads as Theme.space.m.
   object = values: "(${builtins.toJSON values})";
   # The marks the theme draws as paths, for Theme.drawn.
-  drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") glyphs);
+  drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") marks);
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
   face = family: sizes: object ({ inherit family; } // lib.mapAttrs (_: builtins.fromJSON) sizes);
 
@@ -172,7 +172,7 @@ let
   # A mark from the icon font by its code point.
   nerd = import ../theme/nerd.nix { inherit lib; };
   # A mark from the theme, by its name.
-  mark = name: config.jitsusama.theme.glyphs.${name}.glyph;
+  mark = name: marks.${name}.glyph;
 
   # How a chord's keys are drawn, the theme's (../theme/keys.nix).
   keyFaces = config.jitsusama.theme.keys;
@@ -697,7 +697,7 @@ in
   options.jitsusama.quickshell.overview.pieces = lib.mkOption {
     type = lib.types.attrsOf (
       pieces.piece {
-        inherit (config.jitsusama.theme) glyphs;
+        inherit (config.jitsusama.theme) marks;
         sources = builtIn;
       }
     );
@@ -1610,7 +1610,7 @@ in
                   ];
                 }
               }
-              readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) glyphs)}
+              readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) marks)}
               // The marks drawn as paths, for where a glyph is too small to
               // read: on a 12 by 12 grid, filled even-odd.
               readonly property var drawn: ${object drawn}

@@ -49,7 +49,7 @@ Scope {
     // The launcher, which says what the marks are.
     required property var launcher
 
-    // The grid the theme's drawings are made on (jitsusama.theme.glyphs).
+    // The grid the theme's drawings are made on (jitsusama.theme.marks).
     readonly property int grid: 12
     // Each mark's cell, its drawing and the room around it.
     readonly property var size: Marks.sized(Theme.gap)

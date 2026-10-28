@@ -82,7 +82,7 @@ let
     ];
     text = lib.concatLines [
       "alert=${slot "alert"} strong=${slot "strong"} text=${slot "text"} muted=${slot "muted"}"
-      "mark=${lib.escapeShellArg theme.glyphs.failed.console}"
+      "mark=${lib.escapeShellArg theme.marks.failed.console}"
       (builtins.readFile ./stopped.sh)
     ];
   };

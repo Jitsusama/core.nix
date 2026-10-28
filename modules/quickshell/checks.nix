@@ -294,11 +294,11 @@ onLinux {
   the-launcher-means-one-thing-a-word =
     let
       home = account graphical;
-      glyphs = pkgs.writeText "glyphs.json" (builtins.toJSON (lib.attrNames home.jitsusama.theme.glyphs));
+      marks = pkgs.writeText "marks.json" (builtins.toJSON (lib.attrNames home.jitsusama.theme.marks));
       words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
-      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${glyphs}
+      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${marks}
       touch $out
     '';
 
@@ -1905,7 +1905,7 @@ onLinux {
           lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.overview.pieces
         )
       );
-      drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.glyphs;
+      drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.marks;
       drawings = pkgs.writeText "Drawings.js" ''
         .pragma library
         var marks = ${builtins.toJSON marks};

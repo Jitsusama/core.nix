@@ -43,7 +43,7 @@ let
         ;
       opacity = toString config.jitsusama.theme.floating.opacity;
       picture = nerd "f0100";
-      video = config.jitsusama.theme.glyphs.recording.glyph;
+      video = config.jitsusama.theme.marks.recording.glyph;
     }
   );
 

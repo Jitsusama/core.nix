@@ -226,7 +226,7 @@ stand-in the console can draw, and a surface running on a console (the prompt
 in an emergency shell) uses those. The consoles signed in on are kmscon's,
 which draws the face itself, so the prompt there has its real marks.
 
-The table is `jitsusama.theme.glyphs`, each mark with what it means and its
+The table is `jitsusama.theme.marks`, each mark with what it means and its
 stand-in. Every program that can read it is given it: Quickshell as
 `Theme.glyph`, Neovim as `require('theme').glyphs`, and anything else through
 `~/.config/jitsusama/theme.json`, which holds the whole theme.
@@ -1035,7 +1035,7 @@ ratio = "1.25"
 unit = 4
 [motion]
 stiffness = 1600
-[glyphs]
+[marks]
 cursor = { glyph = "\u25b8", console = ">" }
 
 # How cloudy a floating surface is, its scrim and selection, and its shadows.

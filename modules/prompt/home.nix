@@ -12,7 +12,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles glyphs;
+  inherit (config.jitsusama.theme) roles marks;
   cfg = config.jitsusama.prompt;
 
   quote = lib.escapeShellArg;
@@ -27,8 +27,8 @@ let
   header = lib.concatLines [
     "# Written from jitsusama.theme and jitsusama.prompt."
     (table "_prompt_hue" roles)
-    (table "_prompt_glyph" (lib.mapAttrs (_: mark: mark.glyph) glyphs))
-    (table "_prompt_console" (lib.mapAttrs (_: mark: mark.console) glyphs))
+    (table "_prompt_glyph" (lib.mapAttrs (_: mark: mark.glyph) marks))
+    (table "_prompt_console" (lib.mapAttrs (_: mark: mark.console) marks))
     "typeset -ga _prompt_roots=(${lib.concatMapStringsSep " " quote cfg.roots})"
     "typeset -ga _prompt_steps=(${lib.concatStringsSep " " cfg.givesWay})"
     "typeset -gi _prompt_long=${toString cfg.longRun}"
