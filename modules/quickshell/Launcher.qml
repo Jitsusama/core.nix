@@ -1516,7 +1516,8 @@ Scope {
         // In Now, what waits on Joel leads, named by the first of it, since
         // it's the one thing there only he can move; the rest follow by name.
         const lead = source.foremost ?? "";
-        const names = source.everything().filter(one => lead === "" || one.key !== "on:waiting")
+        const names = source.everything()
+            .filter(one => lead === "" || one.key !== "on:waitingOnYou")
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
         const rest = names.length === 0 ? ""

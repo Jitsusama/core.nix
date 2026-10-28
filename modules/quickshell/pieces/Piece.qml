@@ -50,6 +50,9 @@ Item {
     // `leftOn` for a mode he set and might forget. And whether it needs
     // him now, not soon (`now`): the battery about to die, a call ringing.
     property string kind: wants ? "wants" : "leftOn"
+    // Which of Now's groups it's listed in (launcher/Now.js): its kind,
+    // but for one with a group of its own, as what's playing has.
+    property string group: kind
     property bool now: false
     // The program whose notices say this piece's news, as a notification
     // names it, so its mark waits while one of its cards is on screen:

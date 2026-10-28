@@ -22,6 +22,9 @@ Piece {
     context: [Music.artist, Music.album, Music.revealable ? "" : Music.from]
         .filter(said => said !== "").join(" · ")
     hue: "program"
+    // A song isn't a mode Joel left on, so Now lists it in a group of its
+    // own, between what reaches other people and the modes.
+    group: "playing"
     actions: Music.player === null ? [] : [{
         glyph: Theme.glyph.pause,
         name: "Pause",

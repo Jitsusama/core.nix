@@ -2,9 +2,12 @@
 // margin (Margin.qml), saying in words what the glyph only pictures. Each
 // row is the glyph in the colour the margin gives it, the piece's name, and
 // how it stands at the right, with what more there is to know in the footer
-// while it's picked. They're listed by name, as every list in the launcher
-// is, so one keeps its place however many are on; what each asks of Joel
-// shows in its glyph's colour. Return does a piece's first action, and the
+// while it's picked. They're listed in Now's groups, what wants Joel first,
+// then what reaches other people, what's playing and the modes left on, and
+// by name within each (Now.js), so what can need him leads and one keeps
+// its place while its group stands; Today is always last. What each asks
+// of Joel shows in its glyph's colour too. Return does a piece's first
+// action, and the
 // right arrow steps into the rest.
 //
 // It holds nothing of its own: the pieces are the margin's (Facts.qml), so
@@ -14,6 +17,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Marks.js" as Marks
+import "Now.js" as Now
 
 Provider {
     id: provider
@@ -28,9 +32,6 @@ Provider {
     // in, which is why the collection adds no row to a search.
     things: waiting === null ? [] : [waiting]
 
-    // The kinds of piece it lists: what wants Joel, what's on air, what
-    // was left on, and Today, its own row, always last.
-    readonly property var groups: ["wants", "onAir", "leftOn", "today"]
     // What the thing is where the launcher has a row of its own for it, by
     // its mark, so one found in both is listed once (Rank.identity).
     readonly property var same: ({
@@ -43,16 +44,17 @@ Provider {
     readonly property var all: {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active);
-        const rows = [];
-        // By name, as every list the launcher holds is, so each keeps one
-        // place however many are on (RSCH-20261025-U7566F); what each asks
-        // of Joel is its glyph's colour, not its place.
-        for (const kind of groups)
-            lit.filter(fact => fact.piece.kind === kind).forEach(fact => rows.push(made(fact)));
+        // By group, what wants Joel first, and by name within each, so a
+        // row keeps its place while its group stands (Now.js); Today, its
+        // own row, always last.
+        const rows = lit.map(fact => ({
+            group: fact.piece.group,
+            name: fact.piece.title,
+            row: made(fact)
+        }));
         if (waiting !== null)
-            rows.push(waiting);
-        return rows.sort((a, b) => a.name.localeCompare(b.name, undefined,
-            { numeric: true, sensitivity: "base" })).concat([today]);
+            rows.push({ group: "wants", name: waiting.name, row: waiting });
+        return Now.ordered(rows).map(each => each.row).concat([today]);
     }
     onAllChanged: changed()
 
@@ -286,7 +288,9 @@ Provider {
     readonly property var lead: WaitingOnYou.foremost === null ? null
         : provider.item(WaitingOnYou.foremost)
     readonly property var waiting: lead === null ? null : member({
-        key: "on:waiting",
+        // Not `on:waiting`, which is the missed notices' row, by its mark
+        // (pieces/Waiting.qml), so the two are never taken for one.
+        key: "on:waitingOnYou",
         verb: lead.verb,
         now: lead.now,
         later: lead.later,
