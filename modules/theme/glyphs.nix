@@ -984,6 +984,11 @@ in
     console = "w";
     means = "the web, and what browses it";
   };
+  chat = {
+    glyph = nerd "f0b79";
+    console = "c";
+    means = "people talking in writing, and where they do";
+  };
   # What an answer in the field is about, by what was asked.
   number = {
     glyph = nerd "f03a0";

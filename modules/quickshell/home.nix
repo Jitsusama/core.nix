@@ -261,6 +261,7 @@ let
       "zathura"
       "mpv"
       "chrome"
+      "slack"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -441,6 +442,8 @@ let
     mpv = nerd "f0381";
     # The theme's web, as the browser goes about it.
     chrome = nerd "f059f";
+    # The theme's chat, as Slack is where people talk.
+    slack = nerd "f0b79";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

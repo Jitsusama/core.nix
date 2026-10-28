@@ -188,6 +188,7 @@
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;
+        slack = ./modules/slack/home.nix;
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
