@@ -78,6 +78,11 @@ Item {
     signal accepted(bool below, bool closing)
     // Tab, which takes the ghost.
     signal completed
+
+    // Words as they read, in the styled text a ghost is drawn in.
+    function plain(words: string): string {
+        return words.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
     signal cancelled
     // The right arrow past the end of what's typed, and the left arrow before
     // its start (or anywhere, with leftClears, once what's typed is gone) or
@@ -284,12 +289,19 @@ Item {
 
         // A hint stands just clear of the caret; a ghost runs on from what's
         // typed as one word, and ends in an ellipsis where the field does.
+        // Tab's key follows the ghost it takes, as a key's mark does in the
+        // foot: said where it works and only while it does, and one word
+        // with the ghost, so it never stands still while the letters move
+        // it, nor takes the foot's room from how things stand.
         Text {
             x: input.text === "" ? Theme.space.xs : input.contentWidth
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.verticalCenter: parent.verticalCenter
-            text: input.text === "" ? prompt.hint : prompt.ghost
+            textFormat: Text.StyledText
+            text: input.text === "" ? prompt.plain(prompt.hint)
+                : prompt.ghost === "" ? ""
+                : `${prompt.plain(prompt.ghost)} <font color="${Theme.text}">\u21e5</font>`
             visible: text !== "" && (input.text === "" || !prompt.secret)
             color: Theme.muted
             font.family: Theme.mono.family

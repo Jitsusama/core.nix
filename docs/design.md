@@ -660,8 +660,10 @@ works the same way everywhere.
   whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
 - **Tab only completes.** It takes the grey completion the field shows, and
-  does nothing while none shows; the foot names it, as "complete", only
-  then, its place kept so its coming and going moves nothing.
+  does nothing while none shows. Its key, ⇥, follows the completion in the
+  field, only then, rather than standing in the foot, where its coming and
+  going with each letter moved the other keys or took room from how things
+  stand.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, so a few letters reach inside a thing from
   anywhere: what can be done to it,
