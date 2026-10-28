@@ -451,28 +451,47 @@ Scope {
         }
     }
 
-    // An application's own glyph where the icon font has one, by its desktop
-    // entry's id or a window's app id, with a machine's own from
-    // `settings.glyphs`, as hex code points. These are the programs' own
-    // logos, named by the programs rather than by a meaning, so they're
-    // kept here and not among the theme's marks; one without a logo wears
+    // An application's own glyph, by its desktop entry's id or a window's
+    // app id, with a machine's own from `settings.glyphs`: its logo where
+    // the icon font has one, as a hex code point, and otherwise the
+    // theme's mark for what it is, as `mark:` and the mark's name, so no
+    // two programs read alike. Logos are named by the programs rather than
+    // by a meaning, so they're kept here and not among the theme's marks.
+    // A window Chrome opens for a site wears Chrome's, and anything else
     // the theme's program mark, through the launcher, since this file
-    // mustn't import qs.
+    // mustn't import qs; every program an account lists has its own
+    // (`every-program-wears-its-own-mark`).
     readonly property var programGlyphs: Object.assign({
         "kitty": "f011b",
         "google-chrome": "f268",
         "slack": "f198",
         "nvim": "f36f",
-        "1password": "f0881",
+        "com.onepassword.onepassword": "f0881",
         "gimp": "f338",
         "org.inkscape.inkscape": "f33b",
         "spotify": "f1bc",
         "swayimg": "f02e9",
-        "org.pwmt.zathura": "f0219"
+        "org.pwmt.zathura": "f0219",
+        "mpv": "f36e",
+        "inlyne": "f0354",
+        "btop": "mark:processor",
+        "pi": "mark:agent",
+        "tuple": "f1218",
+        "google-mail": "f02ab",
+        "google-calendar": "mark:meeting",
+        "google-drive": "f02b6",
+        "google-docs": "f0dc8",
+        "google-sheets": "f09f7",
+        "google-slides": "f0428",
+        "google-meet": "f0567"
     }, settings.glyphs ?? {})
 
     function programGlyph(id) {
-        const code = programGlyphs[(id ?? "").toLowerCase()] ?? "";
+        const key = (id ?? "").toLowerCase();
+        const code = programGlyphs[key]
+            ?? (/^chrome-.+-[^-]+$/.test(key) ? programGlyphs["google-chrome"] : "");
+        if (code.startsWith("mark:"))
+            return provider.launcher?.marks?.[code.slice("mark:".length)] ?? "";
         return code === "" ? provider.launcher?.marks?.program ?? ""
             : String.fromCodePoint(parseInt(code, 16));
     }
