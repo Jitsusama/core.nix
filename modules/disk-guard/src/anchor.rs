@@ -4,7 +4,10 @@
 //! an open directory, refusing a symlink, a `..` or another filesystem
 //! anywhere on the way, so nothing swapped in between a check and a delete
 //! can send the guard somewhere else. A Btrfs subvolume reads as another
-//! device, so it's never crossed either.
+//! device too. One reached through the same mount and writable, as the work
+//! broker clones each tree, is opened on the way down to what's reclaimed,
+//! since the walk that found it went in; emptying never enters one, so one
+//! inside what's emptied is left whole.
 
 #[cfg(target_os = "linux")]
 use rustix::fs::ResolveFlags;
@@ -195,7 +198,8 @@ impl Dir {
         let resolve = ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_XDEV;
         let fd = rustix::fs::openat2(&self.fd, relative, DIRECTORY, Mode::empty(), resolve)?;
         let child = Dir::from_fd(fd)?;
-        if child.dev != self.dev {
+        // `NO_XDEV` refuses a mount, but not a subvolume on this one.
+        if self.foreign(&child) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "another filesystem",
@@ -204,9 +208,15 @@ impl Dir {
         Ok(child)
     }
 
+    /// Whether a directory opened beneath this one is on another filesystem:
+    /// another device, unless it's a subvolume `pool::beneath` lets through.
+    fn foreign(&self, child: &Dir) -> bool {
+        child.dev != self.dev && !crate::pool::beneath(&self.fd, &child.fd)
+    }
+
     /// Opens a directory beneath this one a component at a time, each one
-    /// without following a symlink and checked to be on this filesystem,
-    /// refusing any `..`. It's how `child` resolves where there's no
+    /// without following a symlink and checked to be on the filesystem of
+    /// the one before, refusing any `..`. It's how `child` resolves where there's no
     /// `openat2`, and public so Linux's tests hold it to the same rules.
     #[doc(hidden)]
     pub fn child_stepwise(&self, relative: &Path) -> io::Result<Dir> {
@@ -220,7 +230,7 @@ impl Dir {
                 }
             };
             let next = Dir::from_fd(rustix::fs::openat(&dir.fd, name, DIRECTORY, Mode::empty())?)?;
-            if next.dev != self.dev {
+            if dir.foreign(&next) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "another filesystem",

@@ -14,7 +14,9 @@ or launchd, and [`home.nix`][2] the account's.
   pressure, urgent or critical by its free space (25%, 10% and 4% by
   default), and a pass reclaims towards the target (35%). A forecast starts a pass
   before the next band arrives. Btrfs pools are one filesystem however many
-  subvolumes they hold.
+  subvolumes they hold. A writable subvolume reached through the same mount, as
+  the work broker clones each tree, is walked into and reclaimed from as any
+  folder is; a mount, a read-only snapshot and a subvolume inside a build aren't.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
   oversized logs, Nix's leftover build directories), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,

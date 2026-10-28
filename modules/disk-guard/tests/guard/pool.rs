@@ -15,6 +15,27 @@ pub(crate) fn on_btrfs(path: &Path) -> bool {
     i128::from(rustix::fs::statfs(path).unwrap().f_type) == i128::from(BTRFS_SUPER_MAGIC)
 }
 
+/// `BTRFS_IOC_SUBVOL_SETFLAGS`, `_IOW(0x94, 26, __u64)`, and the flag it
+/// sets to make a subvolume read-only, as a snapshot taken with `-r` is.
+const BTRFS_IOC_SUBVOL_SETFLAGS: libc::c_ulong = 0x4008_941a;
+const BTRFS_SUBVOL_RDONLY: u64 = 1 << 1;
+
+/// Makes the subvolume at `path` read-only, or writable again, which its
+/// owner may.
+pub(crate) fn read_only(path: &Path, on: bool) {
+    let file = fs::File::open(path).unwrap();
+    let flags: u64 = if on { BTRFS_SUBVOL_RDONLY } else { 0 };
+    // SAFETY: the kernel reads one u64, which outlives the call.
+    let set = unsafe {
+        libc::ioctl(
+            file.as_raw_fd(),
+            BTRFS_IOC_SUBVOL_SETFLAGS as _,
+            &raw const flags,
+        )
+    };
+    assert_eq!(set, 0, "{}", std::io::Error::last_os_error());
+}
+
 /// Makes the subvolume `name` in `dir`, which any account owning `dir` may.
 pub(crate) fn subvolume(dir: &Path, name: &str) {
     let file = fs::File::open(dir).unwrap();

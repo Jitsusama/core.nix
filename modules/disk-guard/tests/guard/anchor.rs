@@ -93,22 +93,33 @@ fn a_file_is_not_a_directory() {
     }
 }
 
+/// The work broker clones each tree as a subvolume, so a build the walk
+/// finds in one has to be opened through it to be reclaimed. A read-only
+/// snapshot can't be emptied, and the walk never offers what's in one.
 #[test]
-fn nothing_on_another_filesystem_is_reached_beneath_a_root() {
+fn a_writable_subvolume_beneath_a_root_is_reached_and_a_read_only_one_isnt() {
     let root = sandbox();
     if !crate::pool::on_btrfs(root.path()) {
         eprintln!("skipped: {} isn't on Btrfs", root.path().display());
         return;
     }
     fs::create_dir_all(root.path().join("a")).unwrap();
-    crate::pool::subvolume(&root.path().join("a"), "held");
-    fs::create_dir_all(root.path().join("a/held/inside")).unwrap();
+    crate::pool::subvolume(&root.path().join("a"), "clone");
+    crate::pool::subvolume(&root.path().join("a"), "frozen");
+    fs::create_dir_all(root.path().join("a/clone/inside")).unwrap();
+    fs::create_dir_all(root.path().join("a/frozen/inside")).unwrap();
+    crate::pool::read_only(&root.path().join("a/frozen"), true);
     let dir = Dir::open(root.path()).unwrap();
     for (how, child) in BOTH {
         assert!(child(&dir, Path::new("a")).is_ok(), "{how}");
-        assert!(child(&dir, Path::new("a/held")).is_err(), "{how}");
-        assert!(child(&dir, Path::new("a/held/inside")).is_err(), "{how}");
+        assert!(child(&dir, Path::new("a/clone")).is_ok(), "{how}");
+        assert!(child(&dir, Path::new("a/clone/inside")).is_ok(), "{how}");
+        let inside = child(&dir, Path::new("a/clone")).and_then(|c| child(&c, Path::new("inside")));
+        assert!(inside.is_ok(), "{how}: on from the subvolume itself");
+        assert!(child(&dir, Path::new("a/frozen")).is_err(), "{how}");
+        assert!(child(&dir, Path::new("a/frozen/inside")).is_err(), "{how}");
     }
+    crate::pool::read_only(&root.path().join("a/frozen"), false);
 }
 
 #[test]
