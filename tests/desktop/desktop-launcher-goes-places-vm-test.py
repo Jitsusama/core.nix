@@ -2066,6 +2066,34 @@ def test_the_launchers_agents_list_the_sessions_from_the_moment_the_shell_starts
     assert any("TESTQA" in said for said in first), first
 
 
+def test_the_launchers_home_counts_the_sessions_whose_names_are_too_long_to_list(
+    desktop: Desktop,
+) -> None:
+    """The launcher's home counts the sessions whose names are too long to list."""
+    machine = desktop.machine
+    desktop.pi_session()
+    # A session whose quest's name is longer than home's row has room for,
+    # as Joel's are, in the window used last, so it's listed first.
+    long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
+    desktop.pi_window("TESTQC", long)
+    desktop.presence_says({"addresses": ["TESTQC"], "busy": True, "title": long}, "TESTQC")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: any(
+            thing["is"] == "collection:agents"
+            and re.match(r"Agents \u00b7 \d+ running", thing["reads"])
+            for thing in shown["things"]
+        )
+    )
+    reads = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
+    assert "No sessions" not in reads["collection:agents"], reads
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
+    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+
+
 def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row(
     desktop: Desktop,
 ) -> None:

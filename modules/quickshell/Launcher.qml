@@ -1613,8 +1613,13 @@ Scope {
             .filter(one => lead === "" || one.key !== "on:waitingOnYou")
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
-        const rest = names.length === 0 ? ""
+        const fitted = names.length === 0 ? ""
             : listed(names, lead === "" ? left : left - lead.length - " \u00b7 ".length);
+        // Where not even the first name fits, as a session's whole quest
+        // title doesn't, it says how many it holds, as its own count does,
+        // and never that it holds none (Joel, 2026-10-28: "agents shows no
+        // sessions when i super space right now").
+        const rest = names.length > 0 && fitted === "" ? source.counted() : fitted;
         return Object.assign({}, row, {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
