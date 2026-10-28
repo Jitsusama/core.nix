@@ -1487,7 +1487,7 @@ onLinux {
       '';
       # Out of a call, as Tuple.qml would be, which the test changes.
       calls = singleton "Tuple.qml" ''
-        property var controls: [{ key: "tuple:open", verb: "open", name: "Open my Tuple room",
+        property var controls: [{ key: "tuple:open", verb: "open", name: "Open My Tuple Room",
           keywords: "pair call start new", glyph: "o", hue: "action", run: () => {} }]
         property bool calling: false
         property string standing: ""

@@ -103,7 +103,7 @@ Provider {
             person: person,
             known: stands !== null,
             status: stands ? stands.status : "unknown",
-            glyph: String.fromCodePoint(stands !== null && stands.favourite ? 0xf04ce : 0xf0004),
+            glyph: stands !== null && stands.favourite ? Theme.glyph.favourite : Theme.glyph.person,
             hue: "person",
             side: how(stands).said,
             note: person.email,
@@ -151,7 +151,7 @@ Provider {
         const favourite = stood !== null && stood.favourite;
         return [thing({
             key: busy ? "verb:person:join" : "verb:person:call",
-            name: busy ? "Join their call" : "Call them",
+            name: busy ? "Join Their Call" : "Call Them",
             side: how(stood).said,
             glyph: busy ? Theme.glyph.joinCall : Theme.glyph.call,
             hue: "action",
@@ -159,8 +159,8 @@ Provider {
             run: () => provider.pair(person)
         }), thing({
             key: "verb:person:favourite",
-            name: favourite ? "Stop them being a favourite" : "Make them a favourite",
-            glyph: String.fromCodePoint(favourite ? 0xf04d2 : 0xf04ce),
+            name: favourite ? "Stop Them Being a Favourite" : "Make Them a Favourite",
+            glyph: favourite ? Theme.glyph.notFavourite : Theme.glyph.favourite,
             hue: "action",
             run: () => provider.favour(person, !favourite)
         })].concat(person.email ? [copyRow({

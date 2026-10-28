@@ -191,6 +191,23 @@ in
       "C4.5 11.5 0.5 7.5 0 2.5Z"
     ];
   };
+  # Someone Joel can call, and the star a favourite of his wears, filled
+  # once they are one and outlined for letting one go.
+  person = {
+    glyph = nerd "f0004";
+    console = "p";
+    means = "someone Joel can call";
+  };
+  favourite = {
+    glyph = nerd "f04ce";
+    console = "*";
+    means = "someone Joel keeps first, and making them so";
+  };
+  notFavourite = {
+    glyph = nerd "f04d2";
+    console = "*";
+    means = "letting a favourite go back among the rest";
+  };
   joinCall = {
     glyph = nerd "f0659";
     console = "+";
