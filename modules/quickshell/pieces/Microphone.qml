@@ -20,6 +20,7 @@ Piece {
     actions: [{
         glyph: Theme.glyph.microphone,
         name: "Unmute it",
+        stays: true,
         run: () => {
             if (piece.audio)
                 piece.audio.muted = false;

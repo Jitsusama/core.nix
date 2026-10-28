@@ -30,6 +30,7 @@ Piece {
         glyph: Theme.glyph.dismiss,
         name: "Let them go",
         verb: "dismiss",
+        stays: true,
         run: () => Notices.seen()
     }]
 }

@@ -23,10 +23,12 @@ Piece {
     actions: [{
         glyph: Theme.glyph.ringing,
         name: Quiet.kept ? "End it now" : "Let notices show",
+        stays: true,
         run: () => Quiet.end()
     }].concat(ends !== "" ? [{
         glyph: Theme.glyph.timed,
         name: "An hour more",
+        stays: true,
         run: () => Quiet.more(60)
     }] : [], held > 0 ? [{
         glyph: Theme.glyph.notifications,

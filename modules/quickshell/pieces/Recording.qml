@@ -26,6 +26,7 @@ Piece {
     actions: Recorder.stoppable ? [{
         glyph: Theme.glyph.recording,
         name: "Stop recording",
+        stays: true,
         run: () => Recorder.stop()
     }] : []
 

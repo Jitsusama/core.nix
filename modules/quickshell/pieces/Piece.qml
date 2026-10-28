@@ -64,6 +64,9 @@ Item {
     property bool collected: false
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }, and a `verb` where the name is
-    // too long for the launcher's foot to say beside Return.
+    // too long for the launcher's foot to say beside Return. One that only
+    // changes how things stand, rather than taking Joel somewhere, says
+    // `stays: true`, so the launcher stays open and shows the change
+    // (Joel, 2026-10-26: Return closes only when it takes him out).
     property var actions: []
 }
