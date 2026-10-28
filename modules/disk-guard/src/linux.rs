@@ -624,6 +624,29 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     Ok((halves[0] ^ halves[1]) | 1 << 63)
 }
 
+/// Whether `path`, a directory beneath `parent` with a device number of
+/// its own, is a Btrfs subvolume of the same pool, reached through the
+/// same mount and writable, so a walk may go on into it as into any
+/// directory. A mount is another filesystem, or this one seen again, and
+/// a read-only snapshot can't be emptied; neither is entered. A kernel
+/// that doesn't say which mount a path is on enters nothing.
+pub fn subvolume_within(parent: &Path, path: &Path) -> bool {
+    let btrfs = |dir: &Path| rustix::fs::statfs(dir).is_ok_and(|stats| is_btrfs(&stats));
+    let mount = |dir: &Path| {
+        let flags = rustix::fs::AtFlags::SYMLINK_NOFOLLOW;
+        let wanted = rustix::fs::StatxFlags::MNT_ID;
+        rustix::fs::statx(rustix::fs::CWD, dir, flags, wanted)
+            .ok()
+            .filter(|stat| stat.stx_mask & wanted.bits() != 0)
+            .map(|stat| stat.stx_mnt_id)
+    };
+    btrfs(parent)
+        && btrfs(path)
+        && btrfs_id(parent).is_ok_and(|id| btrfs_id(path).is_ok_and(|other| other == id))
+        && mount(parent).is_some_and(|id| mount(path) == Some(id))
+        && rustix::fs::access(path, rustix::fs::Access::WRITE_OK).is_ok()
+}
+
 /// Whether a filesystem's statistics say it's Btrfs. The kernel's type is
 /// signed, so its bits are read as the unsigned magic number they are.
 fn is_btrfs(stats: &rustix::fs::StatFs) -> bool {

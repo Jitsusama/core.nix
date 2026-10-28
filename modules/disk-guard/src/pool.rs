@@ -1,6 +1,7 @@
 //! Which filesystem a path is on, as its free space is shared, which is
-//! how the daemons tell their filesystems apart. Walks still stop at any
-//! change of device, so they never cross into a mount or a subvolume.
+//! how the daemons tell their filesystems apart. Walks stop at a change of
+//! device, so they never cross into a mount; the walk that finds targets
+//! goes on into a Btrfs subvolume, which `within` tells from a mount.
 
 use std::io;
 use std::path::Path;
@@ -9,6 +10,22 @@ use std::path::Path;
 #[cfg(target_os = "linux")]
 pub fn pool(path: &Path) -> io::Result<u64> {
     crate::linux::pool(path)
+}
+
+/// Whether a walk may go on from `parent` into `path`, a directory beneath
+/// it with a device number of its own: on Linux, when it's a subvolume of
+/// the same Btrfs pool, not mounted and not read-only. The work broker
+/// clones each tree as a subvolume, and its builds are in it.
+#[cfg(target_os = "linux")]
+pub fn within(parent: &Path, path: &Path) -> bool {
+    crate::linux::subvolume_within(parent, path)
+}
+
+/// Anywhere else a change of device is a mount, or an APFS volume, which
+/// is mounted as one.
+#[cfg(not(target_os = "linux"))]
+pub fn within(_parent: &Path, _path: &Path) -> bool {
+    false
 }
 
 /// The APFS container a volume is in, by what it's mounted from: volume
