@@ -132,7 +132,7 @@ Provider {
                     provider.go(notice.app);
             }
         })) : [];
-        return provider.leading(notice).concat(offered, [thing({
+        return provider.returns(notice).concat(offered, [thing({
             key: "verb:notice:copy",
             name: "Copy what it said",
             glyph: Theme.glyph.copy,
@@ -164,7 +164,7 @@ Provider {
     // Return's own acts, so the right arrow holds them too: opening what
     // it's about while its sender still can, and going to its program,
     // or opening it when no window of it is open.
-    function leading(notice) {
+    function returns(notice) {
         const from = source(notice.app);
         const named = from.entry ? from.entry.name : notice.app;
         const open = opens(notice) === null ? [] : [thing({
