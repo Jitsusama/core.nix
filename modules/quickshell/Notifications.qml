@@ -215,9 +215,10 @@ Scope {
     // What can be done with the front one, the same as its past self in
     // the launcher (launcher/PastNotices.qml): opening what it's about,
     // which Return does too, what it offers, copying what it said,
-    // letting it go, letting them
-    // all go, and the rest of the notices; each with the key that does it
-    // straight away, where there is one. Letting one go changes the stack
+    // forgetting it, forgetting them all, and the rest of the notices;
+    // each named as the vocabulary says it (launcher/words.json), with
+    // the key that does it straight away, where there is one. Forgetting
+    // one changes the stack
     // rather than taking Joel anywhere, so it stays: the keys stay with
     // the stack, which shows the next. The rest take him out, so they give
     // the keys back (Joel, 2026-10-26: Return closes only when the act
@@ -232,8 +233,8 @@ Scope {
         };
         const opening = opens(notification);
         const open = opening === null ? [] : [{
-            glyph: Theme.glyph.offer,
-            name: "Open",
+            glyph: Words.glyph("verb:notice:open"),
+            name: Words.name("verb:notice:open"),
             chord: [{ text: "\u21b5" }],
             run: () => {
                 Notices.mark(notification.id, true);
@@ -246,8 +247,8 @@ Scope {
             chord: [],
             run: done(() => offer.invoke())
         }))).concat([{
-            glyph: Theme.glyph.copy,
-            name: "Copy what it said",
+            glyph: Words.glyph("verb:notice:copy"),
+            name: Words.name("verb:notice:copy"),
             chord: [],
             run: done(() => {
                 Quickshell.clipboardText = root.said(notification);
@@ -255,22 +256,22 @@ Scope {
                 copiedFor.restart();
             })
         }, {
-            glyph: Theme.glyph.dismiss,
-            name: "Let it go",
+            glyph: Words.glyph("verb:notice:forget"),
+            name: Words.name("verb:notice:forget"),
             // Keys drawn as the desktop draws them (home.nix, keyFaces),
             // Backspace by its name, since it has no glyph of its own.
             chord: [{ text: "Backspace" }],
             stays: true,
             run: () => notification.dismiss()
         }, {
-            glyph: Theme.glyph.dismiss,
-            name: "Let them all go",
+            glyph: Words.glyph("verb:notices:forget"),
+            name: Words.name("verb:notices:forget"),
             chord: [{ text: "\u21e7" }, { text: "Backspace" }],
             stays: true,
             run: () => root.putAway()
         }, {
-            glyph: Theme.glyph.notifications,
-            name: "All the notices",
+            glyph: Words.glyph("verb:notices:all"),
+            name: Words.name("verb:notices:all"),
             // The chord that opens them, pressed again while the stack
             // holds the keys; Tab only completes (Joel, 2026-10-26).
             chord: root.reaching,

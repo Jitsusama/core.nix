@@ -134,8 +134,8 @@ Provider {
         })) : [];
         return offered.concat(provider.program(notice), [thing({
             key: "verb:notice:copy",
-            name: "Copy what it said",
-            glyph: Theme.glyph.copy,
+            name: Words.name("verb:notice:copy"),
+            glyph: Words.glyph("verb:notice:copy"),
             hue: "action",
             now: true,
             run: () => {
@@ -144,17 +144,17 @@ Provider {
             }
         }), thing({
             key: "verb:notice:mark",
-            name: notice.read ? "Mark it unread" : "Mark it read",
-            glyph: notice.read ? Theme.glyph.unread : Theme.glyph.read,
+            name: Words.name("verb:notice:mark", notice.read ? "read" : ""),
+            glyph: Words.glyph("verb:notice:mark", notice.read ? "read" : ""),
             hue: "action",
             // It changes the notice rather than taking Joel anywhere, so
             // the launcher stays and shows it changed.
             stays: true,
             run: () => Notices.mark(notice.id, !notice.read)
         })], live ? [thing({
-            key: "verb:notice:dismiss",
-            name: "Let it go",
-            glyph: Theme.glyph.dismiss,
+            key: "verb:notice:forget",
+            name: Words.name("verb:notice:forget"),
+            glyph: Words.glyph("verb:notice:forget"),
             hue: "action",
             stays: true,
             run: () => {
@@ -174,9 +174,10 @@ Provider {
         const from = source(notice.app);
         return !from.window ? [] : [thing({
             key: "verb:notice:goTo",
-            name: `Go to ${from.entry ? from.entry.name : notice.app}`,
-            verb: "switch",
-            glyph: Theme.glyph.windows,
+            name: Words.name("verb:notice:goTo", "",
+                { program: from.entry ? from.entry.name : notice.app }),
+            verb: Words.verb("verb:notice:goTo"),
+            glyph: Words.glyph("verb:notice:goTo"),
             hue: "action",
             later: true,
             run: () => provider.go(notice.app)
