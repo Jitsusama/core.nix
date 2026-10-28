@@ -6,7 +6,11 @@
 # it after it's installed, and Spotify keeps its own prefs file, which holds
 # the account it signs in with.
 #
-# The launcher lists Spotify's own keys over its window, as Music.
+# The launcher lists Spotify's own keys over its window, as Music. Spotify
+# takes no settings for its keys, and it has every key of the desktop's but
+# one: Escape only closes and lets go there. So a Spicetify extension of
+# ours, backs-out.js, makes Escape go back a page once nothing is left to
+# close or let go of, as it backs out a step everywhere else.
 #
 # The shell shows each new track itself (Music.qml). Spotify's own notice
 # for one is off unless it's turned on in Spotify's settings, and Spotify
@@ -54,7 +58,8 @@ let
   grouped = group: map (key: key // { inherit group; });
 
   # Spotify's own keys, which it takes no settings for, from its list for
-  # Windows and Linux (support.spotify.com's keyboard shortcuts).
+  # Windows and Linux (support.spotify.com's keyboard shortcuts), and the
+  # one backs-out.js adds.
   keys =
     grouped "going" [
       {
@@ -158,11 +163,15 @@ let
         does = "Show or hide the library beside";
       }
       {
+        chord = "Escape";
+        does = "Back in Spotify";
+      }
+      {
         chord = "Ctrl+,";
         does = "Spotify's settings";
       }
       {
-        chord = "Ctrl+/";
+        chord = "?";
         does = "Spotify's own list of keys";
       }
     ];
@@ -191,6 +200,12 @@ in
     theme = spices.themes.default // {
       additionalCss = faces;
     };
+    enabledExtensions = [
+      {
+        src = pkgs.writeTextDir "backs-out.js" (builtins.readFile ./backs-out.js);
+        name = "backs-out.js";
+      }
+    ];
   };
 
   # Spotify's keys, for the launcher to list over its window, whose app id

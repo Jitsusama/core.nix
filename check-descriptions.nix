@@ -756,6 +756,9 @@
     the AI spend watch yields to the account, comes back when it fails, and leaves its status behind
     when it stops
   '';
+  spotify-backs-out-on-escape = ''
+    Escape goes back a page in Spotify once nothing is left to close or let go of
+  '';
   spotify-draws-in-the-theme = ''
     Spotify's client is built in the theme's colours and faces
   '';
