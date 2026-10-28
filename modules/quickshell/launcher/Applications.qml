@@ -125,8 +125,12 @@ Provider {
     // Its windows but the one used last, which Switch already goes to, as
     // rows Return goes to, each by its own title, saying where it is as the
     // Windows collection does: nothing on the workspace in front, and a
-    // column when two are titled alike.
+    // column when two are titled alike. Each holds what Windows' row for it
+    // does (Windows.qml's actsOf), so a window has one set of insides
+    // wherever it shows.
     function windowsOf(entry) {
+        const listing = (provider.launcher?.sources ?? [])
+            .find(source => typeof source.actsOf === "function") ?? null;
         const windows = running[entry.id] ?? [];
         const here = Niri.workspace();
         const alike = {};
@@ -142,7 +146,8 @@ Provider {
                 glyph: programGlyph(entry.id),
                 hue: "program",
                 side: provider.placeOf(window, workspace, here, alike[titled(window, entry)]),
-                run: () => Niri.act({ FocusWindow: { id: window.id } })
+                run: () => Niri.act({ FocusWindow: { id: window.id } }),
+                verbs: listing ? () => listing.actsOf(window, entry) : null
             });
         });
     }

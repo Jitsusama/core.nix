@@ -923,6 +923,20 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     tab_to("kitty", "Notes for Tuesday")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Inside kitty, each of its windows holds what its own row among the
+    # windows does (Joel, 2026-10-26: one thing, one set of insides,
+    # everywhere). The one Joel is in, Scratch 07, isn't among them.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.step_in("right")
+    desktop.type_in("scratch 08", selecting="Scratch 08")
+    told = (desktop.showing()["selected"] or {}).get("told", [])
+    assert "\u2192 more" in told, told
+    desktop.step_in("right")
+    desktop.launcher_until(lambda shown: {"Size", "Float"} <= set(shown["rows"]))
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     for title in scratch:
         desktop.as_account(
             f"niri msg action close-window --id {desktop.window_titled(title)['id']}"
