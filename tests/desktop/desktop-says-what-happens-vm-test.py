@@ -257,13 +257,10 @@ def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_lau
         machine.send_key("down")
     with desktop.told("notice back"):
         machine.send_key("left")
-    # Super+N again hands on to the history, where its row holds the same.
+    # Super+N again hands on to the history, opened on the newest notice's
+    # acts, which hold the same.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
-    )
-    desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
