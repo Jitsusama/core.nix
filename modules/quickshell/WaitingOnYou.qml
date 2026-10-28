@@ -15,7 +15,8 @@ pragma ComponentBehavior: Bound
 // files, so it stays across restarts and an agent can read what he said;
 // the shell never writes the agents' files. An item that can be done now
 // is said once as a notice, the moment it's heard, and remembered as said
-// across restarts, so the agents never have to wait on a turn to tell him.
+// across restarts, so the agents never have to wait on a turn to tell him;
+// its notice goes, read, once it can't be done now any more.
 // All of it is heard rather than read on a clock, and nothing goes by its
 // age. Both folders are made at login (this module's home.nix), so the
 // watch hears the first file.
@@ -137,6 +138,7 @@ Singleton {
     // twice.
     property var noticed: ({})
     property bool remembered: false
+    readonly property real forgetting: 7 * 24 * 3600 * 1000
 
     // Nothing is said until every quest the files name has been read, so an
     // ended quest's item is never said in the moment before its README is.
@@ -154,9 +156,52 @@ Singleton {
         noticed = next;
         memory.setText(JSON.stringify(noticed));
     }
-    onNowChanged: Qt.callLater(notice)
+    onNowChanged: {
+        Qt.callLater(notice);
+        withdrawing.restart();
+    }
     onOwnersChanged: Qt.callLater(notice)
     onRememberedChanged: Qt.callLater(notice)
+
+    // A notice goes, marked read, a moment after its item stops being one
+    // Joel can do now: done, put off, gone or of an ended quest. The
+    // moment lets a file replaced by rename, which takes its items away
+    // for an instant, pass. What's remembered as said forgets one that no
+    // longer waits once it was said a week ago, so the memory never grows;
+    // a week, rather than at once, since the files are read a moment after
+    // the shell starts and every item would look gone until they are.
+    Timer {
+        id: withdrawing
+        interval: 1000
+        onTriggered: {
+            if (!root.remembered)
+                return;
+            const standing = {};
+            for (const item of root.now)
+                standing[root.identity(item)] = true;
+            for (const id in Notices.live) {
+                const notice = Notices.live[id];
+                const said = notice.hints["x-waiting"];
+                if (notice.appName === "waiting" && said !== undefined && !standing[said]) {
+                    Notices.mark(notice.id, true);
+                    notice.dismiss();
+                }
+            }
+            const waits = {};
+            for (const item of root.items)
+                waits[root.identity(item)] = true;
+            const forgotten = Date.now() - root.forgetting;
+            const kept = Object.keys(root.noticed)
+                .filter(said => waits[said] || root.noticed[said] > forgotten);
+            if (kept.length === Object.keys(root.noticed).length)
+                return;
+            const next = {};
+            for (const said of kept)
+                next[said] = root.noticed[said];
+            root.noticed = next;
+            memory.setText(JSON.stringify(next));
+        }
+    }
 
     // A notice offering to go where it's done, which notify-send prints
     // when Joel takes it. It's named by what's asked, its minutes below,
@@ -178,6 +223,7 @@ Singleton {
             running: item !== null
             command: item === null ? [] : ["notify-send", "--app-name=waiting",
                 `--action=go=${root.capitalised(Words.verb("on:waiting"))}`,
+                `--hint=string:x-waiting:${root.identity(item)}`,
                 item.title, root.minutes(item)]
             stdout: SplitParser {
                 onRead: line => {

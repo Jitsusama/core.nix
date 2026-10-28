@@ -2235,6 +2235,31 @@ def test_waiting_on_you_holds_only_what_is_true(desktop: Desktop) -> None:
     )
 
 
+def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:
+    """A waiting notice goes, read, once its item can't be done now any more."""
+    machine = desktop.machine
+    notices = desktop.in_session("niri msg layers | grep -q notifications")
+    machine.wait_until_fails(notices, timeout=dt.timedelta(seconds=30))
+    readme(desktop, "QEST-20261027-GONEQA", "active")
+    path = f"{MISSION}/waiting/GONEQA.json"
+    item = {"id": "plug", "title": "Plug in the dock", "ready": True, "minutes": 1}
+    with desktop.told("shows card Plug in the dock"):
+        kept(desktop, path, {"quest": "QEST-20261027-GONEQA", "items": [item]})
+    # Its owner says it's for later: the notice goes well before its own
+    # time would, and the history keeps it read, so it isn't missed.
+    later = {**item, "ready": False, "when": "soon"}
+    kept(desktop, path, {"quest": "QEST-20261027-GONEQA", "items": [later]})
+    machine.wait_until_fails(notices, timeout=dt.timedelta(seconds=5))
+    machine.wait_until_succeeds(
+        desktop.in_session(
+            "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+            ' | grep -q \'"summary":"Plug in the dock"[^}]*"read":true\''
+        ),
+        timeout=dt.timedelta(seconds=10),
+    )
+    desktop.as_account(f"rm {path} && rm -r {QUESTS}/QEST-20261027-GONEQA")
+
+
 def test_a_session_wants_joel_only_while_it_is_true(desktop: Desktop) -> None:
     """A session's want counts only while its quest has something ready, or it's his."""
     desktop.pi_session()
