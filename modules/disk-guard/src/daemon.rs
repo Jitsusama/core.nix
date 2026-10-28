@@ -304,6 +304,13 @@ pub struct Guard {
     /// Whether garbage is to be listed again at once, generations having
     /// expired since the listing began, or a batch having found it stale.
     relist: bool,
+    /// Whether a batch from the listing held was refused as stale. Builds
+    /// root again what a listing called dead, on 28 October 538 roots
+    /// reaching into one batch of 2,000 two minutes after it was made, so
+    /// its other batches meet the same, each refusal a whole look for roots, while the listing
+    /// that would cure it waits on the lock those deletes take: none is
+    /// offered until the next listing is heard.
+    stale_listing: bool,
     /// What held the store at the last look: the processes with temporary
     /// roots, and the results Nix's roots link to that are still there.
     holding: Option<Holding>,
@@ -606,6 +613,7 @@ impl Guard {
             running: places.running.clone(),
             system_heard: false,
             relist: false,
+            stale_listing: false,
             holding: None,
             owners_at: None,
             root_left: false,
@@ -1152,6 +1160,7 @@ impl Guard {
                 };
                 state::save(&self.listing_path, &listing)?;
                 self.collect = true;
+                self.stale_listing = false;
                 if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
                     self.memory.upkept = None;
                 }
@@ -1473,6 +1482,9 @@ impl Guard {
         let Some(listing) = &self.listing else {
             return vec![self.gc_offer(tick, device)];
         };
+        if self.stale_listing {
+            return vec![self.gc_offer(tick, device)];
+        }
         self.batches(listing, tick.wall)
             .into_iter()
             .enumerate()
@@ -1832,29 +1844,7 @@ impl Guard {
                 tick.wall
             });
         }
-        // Whatever came of it, so a failing command waits its window too.
-        for (taken, outcome) in &report.actions {
-            let offered = here.iter().find(|offer| &offer.candidate.path == taken);
-            match offered.map(|offer| &offer.action) {
-                Some(Action::Run { source, .. }) => {
-                    self.memory.ran.insert(source.clone(), tick.wall);
-                }
-                // What they kept is garbage now, which no listing holds.
-                Some(Action::Expire { .. }) if *outcome == Outcome::Reclaimed => {
-                    self.relist = true;
-                }
-                // A batch made again from the same listing meets the same
-                // paths alive, each refusal a whole look for roots, so the
-                // store is listed again; a listing under way is new enough.
-                Some(Action::Collect { .. })
-                    if matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
-                        && self.listing_out.is_none() =>
-                {
-                    self.relist = true;
-                }
-                _ => {}
-            }
-        }
+        self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
         self.journal.write(&Line::Pass {
             at: tick.wall,
@@ -1871,6 +1861,33 @@ impl Guard {
             freed: report.freed,
         });
         Ok(report.end)
+    }
+
+    /// Notes what came of each action a pass took, whatever it was, so a
+    /// failing command waits its window too.
+    fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
+        for (taken, outcome) in actions {
+            let offered = here.iter().find(|offer| &offer.candidate.path == taken);
+            match offered.map(|offer| &offer.action) {
+                Some(Action::Run { source, .. }) => {
+                    self.memory.ran.insert(source.clone(), wall);
+                }
+                // What they kept is garbage now, which no listing holds.
+                Some(Action::Expire { .. }) if *outcome == Outcome::Reclaimed => {
+                    self.relist = true;
+                }
+                // The listing's other batches would meet the same, so the
+                // store is listed again, a listing under way being new
+                // enough, and none of them is offered meanwhile.
+                Some(Action::Collect { .. }) if stale(outcome) => {
+                    self.stale_listing = true;
+                    if self.listing_out.is_none() {
+                        self.relist = true;
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// What a pass would take now on each filesystem, in `band` and with
@@ -2218,6 +2235,11 @@ fn mounted(path: &Path, device: u64) -> PathBuf {
         top = above.to_owned();
     }
     top
+}
+
+/// Whether a delete failed for garbage that came alive since the listing.
+fn stale(outcome: &Outcome) -> bool {
+    matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
 }
 
 /// How a pass ended, in the journal's words.
