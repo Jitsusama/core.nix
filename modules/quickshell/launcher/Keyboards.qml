@@ -11,8 +11,8 @@
 // and how long they stay on once nothing's touched, and the ErgoDox's, which
 // it can be told to change but never asked, its steps a step in; then its
 // Connection, a USB board's Maker and Model, and what desk-facts says of it
-// (its Polling rate, Keys and Firmware). Every name is the vocabulary's
-// (Words.qml).
+// (its Polling rate, Keys and Firmware); and last, the ZSA board's Flash.
+// Every name is the vocabulary's (Words.qml).
 //
 // The keyboards' lights are asked alone too, by "keyboard light", as
 // the glossary names a keyboard's own light: one keyboard's choices are the
@@ -134,7 +134,25 @@ Provider {
                     `USB id ${device.vendor}:${device.product}`));
         }
         return rows.concat(factParts("keyboards", device.name, facts[device.name],
-            ["polling rate", "keys"]));
+            ["polling rate", "keys"]), flashing(device));
+    }
+
+    // Flashing a board with this machine's build, the ZSA board's alone,
+    // since no other can be: last, so stepping in never lands on it, and
+    // still found by name from anywhere (Keyboard.qml).
+    function flashing(device) {
+        if (!Keyboards.zsa(device) || !KeyboardLayout.present)
+            return [];
+        return [thing({
+            key: "keyboard:flash",
+            what: "",
+            verb: Words.verb("keyboard:flash"),
+            name: Words.name("keyboard:flash"),
+            glyph: Theme.glyph.flash,
+            hue: "action",
+            later: true,
+            run: () => KeyboardLayout.flash()
+        })];
     }
 
     // What desk-facts says of each keyboard, keyed by the kernel's name for
