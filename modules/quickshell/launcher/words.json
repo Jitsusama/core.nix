@@ -3268,7 +3268,7 @@
       "term": "Machine/log out",
       "verb": "leave",
       "glyph": "logout",
-      "sure": "Log out now"
+      "sure": "Log Out Now"
     },
     {
       "id": "session:Reboot",
@@ -3277,7 +3277,7 @@
       "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
-      "sure": "Reboot now"
+      "sure": "Reboot Now"
     },
     {
       "id": "session:Power Off",
@@ -3286,7 +3286,7 @@
       "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
-      "sure": "Power off now"
+      "sure": "Power Off Now"
     },
     {
       "id": "wifi:radio",
@@ -3803,7 +3803,7 @@
       "name": "Cancel the Meeting",
       "verb": "cancel",
       "glyph": "cancelMeeting",
-      "sure": "Cancel it now"
+      "sure": "Cancel It Now"
     },
     {
       "id": "verb:calendar:yes",
@@ -3939,7 +3939,7 @@
       "name": "Quit",
       "verb": "quit",
       "glyph": "close",
-      "sure": "Quit now"
+      "sure": "Quit Now"
     },
     {
       "id": "program:media",

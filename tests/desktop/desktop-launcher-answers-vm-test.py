@@ -343,9 +343,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # The power actions answer to their names, and only those; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
-        ("power off", "Power Off", "Power off"),
+        ("power off", "Power Off", "Power Off"),
         ("reboot", "Reboot", "Reboot"),
-        ("log out", "Log Out", "Log out"),
+        ("log out", "Log Out", "Log Out"),
     ]:
         desktop.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
@@ -363,7 +363,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
             lambda shown: (
                 shown["held"] == [action]  # noqa: B023
                 and re.fullmatch(
-                    f"{verb} now(, closing (the window|\\d+ windows))?",  # noqa: B023
+                    f"{verb} Now(, Closing (the Window|\\d+ Windows))?",  # noqa: B023
                     (shown["selected"] or {}).get("name", ""),
                 )
                 is not None

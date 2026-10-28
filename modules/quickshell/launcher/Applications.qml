@@ -235,12 +235,12 @@ Provider {
     // asks about anything unsaved as its window's close button would.
     function quit(entry, windows) {
         const key = "verb:program:quit";
-        const closing = windows.length === 1 ? "its window" : `${windows.length} windows`;
+        const closing = windows.length === 1 ? "Its Window" : `${windows.length} Windows`;
         return said(key, "", {
             targets: () => [provider.thing({
                 key: `${key}:sure`,
                 verb: Words.verb(key),
-                name: `${Words.of(key).sure}, closing ${closing}`,
+                name: `${Words.of(key).sure}, Closing ${closing}`,
                 glyph: Words.glyph(key),
                 hue: "alert",
                 run: () => {

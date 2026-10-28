@@ -90,8 +90,8 @@ Provider {
     function cancelling(meeting) {
         const key = "verb:calendar:cancel";
         const asked = (meeting.guests ?? []).length;
-        const told = asked === 0 ? "telling nobody else"
-            : asked === 1 ? "telling 1 guest" : `telling ${asked} guests`;
+        const told = asked === 0 ? "Telling Nobody Else"
+            : asked === 1 ? "Telling 1 Guest" : `Telling ${asked} Guests`;
         return thing({
             key: key,
             name: Words.name(key),
