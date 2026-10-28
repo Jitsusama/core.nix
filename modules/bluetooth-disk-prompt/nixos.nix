@@ -7,10 +7,14 @@
 # The pairings are the keyboard's keys: anyone holding one can type as the
 # keyboard. So they reach the initrd only sealed to the TPM, bound to
 # Secure Boot's state, from the ESP's \loader\credentials, which the boot
-# stub hands to the initrd. seal.sh says when they're sealed and why to
-# that. With none sealed, or a seal that won't open, the
-# prompt asks as it always has, on the built-in keyboard, waiting for
-# nothing.
+# stub hands to the initrd. seal.sh says when they're sealed and why they're
+# bound that way. With none sealed, or a seal that won't open, the prompt
+# asks as it always has, on the built-in keyboard, waiting for nothing.
+#
+# bootctl status marks the stub's "Picks up credentials from boot
+# partition" as missing. Lanzaboote's stub does pick them up; it only
+# doesn't report that feature, and the VM test proves the credential
+# arrives.
 {
   config,
   lib,
