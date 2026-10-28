@@ -815,11 +815,11 @@ onLinux {
       touch $out
     '';
 
-  # Now's Today row: the date, the weather read as the launcher opens and
-  # the next meeting, whose Return is the meeting's own (tests/today.qml),
-  # with the margin's pieces, the agents' waiting list, the weather and the
-  # calendar stood in.
-  the-launcher-shows-today-in-now =
+  # Now's own rows, last: the time, the date, the weather read as the
+  # launcher opens and the next meeting, whose Return is the meeting's own
+  # (tests/now-moment.qml), with the margin's pieces, the agents' waiting
+  # list, the weather and the calendar stood in.
+  the-launcher-shows-the-moment-in-now =
     let
       facts = singleton "Facts.qml" ''
         property var all: []
@@ -836,8 +836,12 @@ onLinux {
         function settle(each, how) {}
         function go(each) {}
       '';
+      # Where an item is done names its session, which needs none here.
+      sessions = singleton "Sessions.qml" ''
+        property var running: []
+      '';
     in
-    pkgs.runCommandLocal "the-launcher-shows-today-in-now" { } ''
+    pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
       mkdir launcher
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
@@ -849,9 +853,10 @@ onLinux {
       cp ${./launcher/Now.js} launcher/Now.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
-      cp ${../../tests/today.qml} shell.qml
+      cp ${../../tests/now-moment.qml} shell.qml
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
+      cp ${sessions} Sessions.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}

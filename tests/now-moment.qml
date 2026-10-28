@@ -77,9 +77,15 @@ ShellRoot {
 
     Component.onCompleted: Qt.callLater(root.cases)
 
-    function today() {
-        const rows = now.everything();
-        return rows[rows.length - 1];
+    // Now's own rows, after what's on: the time, the date, then the
+    // weather and the meeting where there are.
+    function moment() {
+        return now.everything().filter(row => String(row.key).startsWith("on:")
+            || row.key === calendar.next?.key);
+    }
+
+    function names() {
+        return moment().map(row => row.name);
     }
 
     function cases() {
@@ -94,49 +100,52 @@ ShellRoot {
     }
 
     function run() {
-        const date = Qt.formatDate(new Date(), "dddd d MMMM");
-        let row = today();
-        expect("Today is Now's last row", row.name === "Today" && row.key === "on:today",
-            JSON.stringify(row));
-        expect("Today says the date at its right", row.side === date, row.side);
-        expect("nothing counted while only Today is there", now.counted() === "nothing",
+        const time = Qt.formatDateTime(new Date(), "HH:mm");
+        const date = Qt.formatDate(new Date(), "dddd d MMMM yyyy");
+        let rows = moment();
+        expect("no Today to step into",
+            !now.everything().some(row => row.key === "on:today" || row.name === "Today"),
+            JSON.stringify(now.everything().map(row => row.name)));
+        expect("the time and the date lead Now's own rows, the meeting after them",
+            JSON.stringify(names()) === JSON.stringify(["Time", "Date", "Standup"]),
+            JSON.stringify(names()));
+        expect("the time says the minute", rows[0].side === time, rows[0].side);
+        expect("the date says the day", rows[1].side === date, rows[1].side);
+        expect("and each copies what it says", rows[0].verb === "copy" && rows[1].verb === "copy",
+            `${rows[0].verb} ${rows[1].verb}`);
+        expect("nothing counted while only they are there", now.counted() === "nothing",
             now.counted());
         expect("the weather isn't asked before the launcher opens", weather.asked === 0,
             weather.asked);
-        expect("the note says the meeting before the weather is read",
-            row.note === "Standup in 12 min", row.note);
 
         launcher.open = true;
-        row = today();
-        expect("opening reads the weather, then the meeting",
-            row.note === "7\u00b0 \u00b7 cloudy \u00b7 Standup in 12 min", row.note);
-        expect("Return is the meeting's", row.verb === "join" && row.later === true,
-            JSON.stringify(row));
-        row.run();
+        expect("opening reads the weather, before the meeting",
+            JSON.stringify(names()) === JSON.stringify(["Time", "Date", "Weather", "Standup"]),
+            JSON.stringify(names()));
+        rows = moment();
+        expect("the weather says the sky", rows[2].side === "7\u00b0 \u00b7 cloudy", rows[2].side);
+        const meeting = rows[3];
+        expect("the meeting's Return is its own", meeting.verb === "join" && meeting.later === true,
+            JSON.stringify(meeting));
+        meeting.run();
         expect("Return joins it", calendar.joined, "not joined");
-        const inside = row.verbs().map(each => each.name);
-        expect("a step in holds the date, the weather and the meeting",
-            JSON.stringify(inside) === JSON.stringify(["Date", "Weather", "Standup"]),
-            JSON.stringify(inside));
 
         weather.asking = true;
         weather.answered();
-        expect("asking again keeps what it knew",
-            today().note === "7\u00b0 \u00b7 cloudy \u00b7 Standup in 12 min", today().note);
+        expect("asking again keeps what it knew", moment()[2].side === "7\u00b0 \u00b7 cloudy",
+            moment()[2].side);
         weather.asking = false;
         weather.sky = "9\u00b0 \u00b7 rain";
         weather.answered();
-        expect("a forecast heard says the new sky",
-            today().note === "9\u00b0 \u00b7 rain \u00b7 Standup in 12 min", today().note);
+        expect("a forecast heard says the new sky", moment()[2].side === "9\u00b0 \u00b7 rain",
+            moment()[2].side);
+        expect("the weather's row holds its own parts",
+            moment()[2].verbs().map(each => each.name).join() === "Now",
+            JSON.stringify(moment()[2]));
 
         calendar.next = null;
-        row = today();
-        expect("without a meeting, only the weather", row.note === "9\u00b0 \u00b7 rain",
-            row.note);
-        expect("and Return steps in", row.verb === "more", row.verb);
-        const weatherRow = row.verbs()[1];
-        expect("the weather's row holds its own parts",
-            weatherRow.verbs().map(each => each.name).join() === "Now",
-            JSON.stringify(weatherRow));
+        expect("without a meeting, no meeting row",
+            JSON.stringify(names()) === JSON.stringify(["Time", "Date", "Weather"]),
+            JSON.stringify(names()));
     }
 }

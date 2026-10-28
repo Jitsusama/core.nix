@@ -1297,7 +1297,7 @@ def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
 
 @pytest.mark.usefixtures("google")
 def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
-    """Now's Today row says today's next meeting and takes its verb, joining one about to start."""
+    """Now lists today's next meeting as a row of its own, joining one about to start."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
@@ -1307,21 +1307,14 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["now"] and shown["selected"])
-    # Today is Now's last row, after what's on.
-    for _row in range(20):
-        before = (desktop.showing()["selected"] or {}).get("is")
-        if before == "on:today":
-            break
-        machine.send_key("down")
-        desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("is") != before  # noqa: B023
-        )
+    # The meeting is Now's last row, after the time, the date and the
+    # weather, with no Today to step into.
+    assert "Today" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Design Review"])
+    desktop.down_to("Design Review")
     today = desktop.showing()
-    assert (today["selected"] or {}).get("is") == "on:today", today
     assert today["selected"]["verb"] == "join", today
-    assert re.fullmatch(r"Design Review in [1-5] min", today["footer"]), today
-    # Return joins it, as the meeting's own row does, rather than stepping
-    # into Today.
+    # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
@@ -1469,10 +1462,10 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 
 
 @pytest.mark.usefixtures("google")
-def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_today_last(
+def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
     desktop: Desktop,
 ) -> None:
-    """Now lists what waits on Joel, then a call, a song and a mode left on, and Today last."""
+    """Now lists what waits on Joel, then a call, a song and a mode, and the time last."""
     queue = "$HOME/.local/state/mission/queue.json"
     kept(
         desktop,
@@ -1487,8 +1480,16 @@ def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_today_last(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
         f" {shlex.quote(desktop.values['track'])}"
     )
-    # Each by what it is, in the order Now lists its groups, Today last.
-    groups = ["on:waitingOnYou", "on:call", "on:playing", "session:awake", "on:today"]
+    # Each by what it is, in the order Now lists its groups, the time and
+    # the date, Now's own, last.
+    groups = [
+        "on:waitingOnYou",
+        "on:call",
+        "on:playing",
+        "session:awake",
+        "on:time",
+        "on:date",
+    ]
 
     def listed() -> list[str]:
         """Open Now, and give which of those it lists, in its order."""

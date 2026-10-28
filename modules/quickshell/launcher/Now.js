@@ -1,8 +1,9 @@
 // The order Now lists what's on in (WhatsOn.qml): by group, top to
 // bottom, then by name within each, so what can need Joel always leads
 // and a row keeps its place while its group stands (Joel, 2026-10-26,
-// finding 15: "Now in its four groups"). Today isn't among them; it's
-// always the last row, after every group. Apart from the launcher, so
+// finding 15: "Now in its four groups"). Now's own rows, the time, the
+// date, the weather and the next meeting, aren't among them; they're
+// always last, after every group. Apart from the launcher, so
 // tests/now-groups.qml holds it in Qt's own engine.
 .pragma library
 
