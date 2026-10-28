@@ -98,11 +98,12 @@ ShellRoot {
 
             expect("an action by what it does", first("flash").name === "Flash the Keyboard",
                 first("flash").name);
-            // Only what's done to the board itself is listed; locking a
-            // layer and its light are the board's Layer's and Light's.
+            // Only showing the layout is listed; locking a layer and its
+            // light are the board's Layer's and Light's, and flashing it the
+            // ZSA board's own (Keyboards.qml).
             const names = keyboard.everything().map(row => row.name);
             expect("the board's own acts listed", names[0] === "Show the Keyboard's Layout"
-                && names[1] === "Flash the Keyboard" && !names.includes("Light")
+                && !names.includes("Flash the Keyboard") && !names.includes("Light")
                 && !names.some(name => /^Lock .* on$|^Let .* go$|keyboard's light/.test(name)),
                 names.filter(name => /^Lock |^Let |light/.test(name)).join(", "));
             const numbActs = keyboard.search("numb").rows.map(row => row.name);
@@ -153,6 +154,14 @@ ShellRoot {
             expect("the Light's choices run ergodox", runs(lights.verbs())
                 === "Light Off: ergodox lights off; Light On: ergodox lights on; "
                 + "Brighter: ergodox brighter; Dimmer: ergodox dimmer", runs(lights.verbs()));
+            // Flashing is the board's own act, its last part, so stepping
+            // in never lands on it.
+            const flashed = parts[parts.length - 1];
+            expect("the board's Flash, its last part", flashed.name === "Flash the Keyboard"
+                && flashed.verb === "flash", parts.map(part => part.name).join(", "));
+            flashed.run();
+            expect("flashing runs ergodox", Niri.spawned.join(" ").includes("ergodox flash"),
+                Niri.spawned.join(" "));
 
             slash.run();
             expect("a key shown on its layer", KeyboardLayout.shown && KeyboardLayout.layer === 1
