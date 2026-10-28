@@ -66,6 +66,10 @@ Item {
     // own out while What's on still lists it: quiet turned on by a share is
     // the share's, whose words say notices are held.
     property bool collected: false
+    // The glyph its mark is drawn with, by name, where it isn't the mark's
+    // own: the power profile's mark says which profile is on. The mark
+    // stays its name, so what Now lists is the same thing whichever it is.
+    property string markGlyph: ""
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }, and a `verb` where the name is
     // too long for the launcher's foot to say beside Return. One that only

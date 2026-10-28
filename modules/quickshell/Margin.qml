@@ -67,7 +67,8 @@ Scope {
     readonly property string pointed: Marks.pointed(showing)
 
     // Every piece with a mark that's true now, as { entry, piece, mark,
-    // glyph, kind, order, tone }.
+    // drawn, glyph, kind, order, tone }: `mark` its name, `drawn` the mark
+    // it's drawn as, which a piece may change (Piece.qml's markGlyph).
     readonly property var lit: Facts.all
         .filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active && !fact.piece.collected)
@@ -75,8 +76,9 @@ Scope {
             entry: fact.entry,
             piece: fact.piece,
             mark: fact.entry.mark,
+            drawn: fact.piece.markGlyph || fact.entry.mark,
             app: fact.piece.app,
-            glyph: Theme.glyph[fact.entry.mark],
+            glyph: Theme.glyph[fact.piece.markGlyph || fact.entry.mark],
             kind: fact.piece.kind,
             order: fact.entry.order,
             tone: Marks.tone(fact.piece)
@@ -244,7 +246,7 @@ Scope {
                             id: slot
 
                             required property var modelData
-                            readonly property string drawing: Theme.drawn[modelData.mark] ?? ""
+                            readonly property string drawing: Theme.drawn[modelData.drawn] ?? ""
                             property color hue: modelData.mark === window.pointed
                                 ? Theme.accent : Theme[modelData.tone]
 

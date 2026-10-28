@@ -36,6 +36,7 @@ Provider {
     readonly property var same: ({
         awake: "session:awake",
         quiet: "session:quiet",
+        saver: "session:profile",
         recording: "session:recording"
     })
 
@@ -336,7 +337,7 @@ Provider {
             name: piece.title,
             side: piece.value,
             note: piece.context,
-            glyph: Theme.glyph[fact.entry.mark],
+            glyph: Theme.glyph[piece.markGlyph || fact.entry.mark],
             hue: Marks.tone(piece),
             plain: actions.length === 0,
             stays: actions.length > 0 && actions[0].stays,

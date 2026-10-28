@@ -885,6 +885,20 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
             )
             machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # A profile that isn't balanced is a mode left on, so Now lists it,
+    # saying which.
+    machine.send_key("meta_l-o")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now"]
+            and any(
+                thing["reads"].startswith("Power Profile \u00b7 Power saver")
+                for thing in shown["things"]
+            )
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # And as the setting it is: one part saying which is in use, its
     # choices a step in by Return or the right arrow, each named there as
     # the part reads it.
