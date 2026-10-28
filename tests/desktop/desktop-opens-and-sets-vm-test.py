@@ -1183,7 +1183,25 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     assert desktop.showing()["selected"]["side"] == "02:00:00:00:02:00"
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    # Turning Wi-Fi off is an action like any.
+    # Wi-Fi holds its own off, last, so stepping in never lands on it;
+    # Network lists Wi-Fi alone.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("network ")
+    desktop.launcher_until(lambda shown: shown["held"] == ["network"] and "Wi-Fi" in shown["rows"])
+    assert "Wi-Fi Off" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    desktop.type_in("wi-fi", selecting="Wi-Fi")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            len(shown["rows"]) > 1
+            and shown["rows"][-1] == "Wi-Fi Off"
+            and (shown["selected"] or {}).get("name") != "Wi-Fi Off"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # Turning Wi-Fi off is an action like any, found by name from the top.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("wifi off")

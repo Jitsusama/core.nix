@@ -86,7 +86,6 @@
       "term": "Network",
       "holds": [
         "wifi",
-        "wifi:radio",
         "wifi:sign-in",
         "networks",
         "traffic"
@@ -3291,6 +3290,7 @@
     },
     {
       "id": "wifi:radio",
+      "in": "wifi",
       "name": "Wi-Fi Off",
       "verb": "off",
       "glyph": "offline",
