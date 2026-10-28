@@ -113,6 +113,40 @@ Singleton {
             Google.ask(Said.cancel(meeting));
     }
 
+    // Whether Joel may move a meeting: Google lets him change it, and it
+    // isn't all day.
+    function movable(meeting) {
+        return Said.movable(meeting);
+    }
+
+    // Where Move the Meeting offers to take one: [{ name, start, end }].
+    function later(meeting) {
+        return Said.later(meeting);
+    }
+
+    // Which of his other meetings a meeting moved there would overlap.
+    function clashes(meeting, start, end) {
+        return Said.clashes(meeting, start, end, meetings);
+    }
+
+    // When a time typed for a meeting would have it run, or null.
+    function typed(text, meeting) {
+        return Said.typed(text, meeting, Date.now());
+    }
+
+    // Who Google tells of a change to it, as a sure row says it.
+    function tellingOfChanges(meeting) {
+        return Said.tellingThem(Said.toldOfChanges(meeting));
+    }
+
+    // Moves a meeting Google lets Joel change to run from `start` to `end`,
+    // through the program, which moves only one it holds as his to change,
+    // and Google tells everyone on it.
+    function move(meeting, start, end) {
+        if (Said.movable(meeting))
+            Google.ask(Said.move(meeting, start, end));
+    }
+
     // The meeting that wants Joel (Starting.qml): the first coming within
     // the hour, or from its first reminder, until five minutes after its
     // start, whose call isn't open in a window of its own, when it's on air

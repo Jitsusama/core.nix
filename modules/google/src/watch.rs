@@ -1,11 +1,13 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
 //! asks for the meetings and the mail that wants Joel, and says how it all
-//! stands; an answer to an invitation, and mail marked read or archived,
-//! are asked the same way, and change what's held at once.
+//! stands; an answer to an invitation, a meeting cancelled or moved, and
+//! mail marked read or archived, are asked the same way, and change what's
+//! held at once.
 
 use std::path::PathBuf;
 
-use jiff::Zoned;
+use jiff::{Timestamp, Zoned};
+use serde_json::Value;
 
 use crate::account::{self, Missing};
 use crate::api::{Google, Refused};
@@ -21,6 +23,8 @@ pub struct Watch {
     pub account: Option<String>,
     keeper: Keeper,
     state: State,
+    /// The calendars Joel may change events on, as last heard.
+    writable: Vec<String>,
 }
 
 impl Watch {
@@ -31,17 +35,29 @@ impl Watch {
             account,
             keeper: Keeper::default(),
             state: State::default(),
+            writable: Vec::new(),
         }
     }
 
     /// How the account stands at `now`, asking Google if it's signed in.
     /// Unreachable, what was held is kept, with when it was heard. The
     /// mail is asked after the meetings, so Gmail failing alone keeps the
-    /// mail held and costs the meetings nothing.
+    /// mail held and costs the meetings nothing. Which calendars Joel may
+    /// change events on is asked with the meetings, and kept as last heard
+    /// when only that can't be.
     pub fn look(&mut self, now: &Zoned) -> &State {
         let (from, to) = calendar::window(now);
         match self.asking(now, |google, token| google.events(token, from, to)) {
-            Ok(answer) => {
+            Ok(mut answer) => {
+                match self.asking(now, Google::writable) {
+                    Ok(writable) => self.writable = writable,
+                    Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                    Err(looked) => {
+                        self.fell(looked, Standing::Unreachable);
+                        return &self.state;
+                    }
+                }
+                answer["writable"] = Value::from(self.writable.clone());
                 self.state.account = Standing::Ready;
                 self.state.meetings = calendar::meetings(&answer, now.time_zone());
                 self.state.heard = Some(now.timestamp().as_millisecond());
@@ -101,6 +117,46 @@ impl Watch {
         }
         match self.asking(now, |google, token| google.cancel(token, id)) {
             Ok(()) => self.state.meetings.retain(|meeting| meeting.id != id),
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Moves the meeting `id` to run from `start` to `end`, through the
+    /// calendar Google lets Joel change it on, and holds it moved so the
+    /// shell hears it at once. Only a meeting held as one he may change is
+    /// moved, and never one lasting all day, whose times are days. One
+    /// Google didn't take changes nothing held.
+    pub fn reschedule(&mut self, id: &str, start: i64, end: i64, now: &Zoned) -> &State {
+        let through = self
+            .state
+            .meetings
+            .iter()
+            .find(|meeting| meeting.id == id && !meeting.all_day)
+            .and_then(|meeting| meeting.through.clone());
+        let (Some(through), Ok(from), Ok(to)) = (
+            through,
+            Timestamp::from_millisecond(start),
+            Timestamp::from_millisecond(end),
+        ) else {
+            eprintln!("<4>a meeting asked to be moved isn't one Joel may change");
+            return &self.state;
+        };
+        let moved = self.asking(now, |google, token| {
+            google.reschedule(token, &through, id, from, to)
+        });
+        match moved {
+            Ok(()) => {
+                for meeting in &mut self.state.meetings {
+                    if meeting.id == id {
+                        meeting.start = start;
+                        meeting.end = end;
+                    }
+                }
+                self.state
+                    .meetings
+                    .sort_by_key(|meeting| (meeting.start, meeting.end));
+            }
             Err(looked) => self.fell(looked, self.state.account),
         }
         &self.state

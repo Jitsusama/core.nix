@@ -5,9 +5,10 @@ line of JSON, left in google.json beside the socket, which the shell reads, and 
 that connects. The account is ready, unless a test signs it out, with three meetings on Meet
 from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
 minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4,
-with Grace not going; and Planning two hours on, Joel's own with Grace asked. An answer a shell
-writes is written down in google-asked beside the socket, for the test to read, and taken as
-Google would take it, so the file and every shell say the meeting answered; a meeting Joel holds
+with Grace not going; and Planning two hours on, Joel's own with Grace asked. Joel may change
+his own, and Standup on Ada's calendar, which she shares with him. An answer a shell writes is
+written down in google-asked beside the socket, for the test to read, and taken as Google would
+take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
 that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read or
 archived is written down too, and taken out of the mail that wants him, as Gmail would.
@@ -50,6 +51,7 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "place": None,
         "about": None,
         "holds": True,
+        "through": "primary",
         "organizer": None,
         "guests": [],
         "reminders": [],
@@ -77,6 +79,7 @@ class Account:
                 place="Room 4",
                 about="What we did yesterday,\nwhat we do today.",
                 holds=False,
+                through="ada@example.com",
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
                 guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "no"}],
             ),
@@ -144,17 +147,23 @@ class Account:
             self.shells.append(shell)
 
     def ask(self, line: str) -> None:
-        """Write down what a shell asked, and take it: a meeting answered or cancelled, or mail."""
+        """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
+
+        Or mail marked read or archived.
+        """
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
         answer = said.get("answer", {})
         tidied = (said.get("read") or said.get("archive") or {}).get("id")
         cancelled = said.get("cancel", {}).get("id")
+        moved = said.get("move", {})
         with self.lock:
             for one in self.meetings:
                 if answer.get("id") == one["id"]:
                     one["answer"] = answer["with"]
+                if moved.get("id") == one["id"] and one["through"]:
+                    one["start"], one["end"] = moved["start"], moved["end"]
             self.meetings = [
                 one for one in self.meetings if not (one["id"] == cancelled and one["holds"])
             ]

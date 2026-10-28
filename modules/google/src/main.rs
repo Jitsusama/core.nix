@@ -96,6 +96,7 @@ fn main() -> ExitCode {
                 let state = match ask::read(&line) {
                     Some(Ask::Answer { id, with }) => watch.answer(&id, with, &now),
                     Some(Ask::Cancel { id }) => watch.cancel(&id, &now),
+                    Some(Ask::Move { id, start, end }) => watch.reschedule(&id, start, end, &now),
                     Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),
                     Some(Ask::Archive { id }) => watch.tidy(&id, Tidy::Archive, &now),
                     None => continue,

@@ -232,3 +232,135 @@ function calledBy(meetings, code) {
 function cancel(meeting) {
     return `${JSON.stringify({ cancel: { id: meeting.id } })}\n`;
 }
+
+// Whether Joel may move a meeting: Google lets him change it (the
+// program says through which calendar), and it isn't all day, whose
+// times are days.
+function movable(meeting) {
+    return Boolean(meeting) && Boolean(meeting.through) && !meeting.allDay;
+}
+
+// Where Move the Meeting offers to take one, each its name and how far:
+// by minutes, or by days, kept at the same time on the clock.
+const LATER = [
+    { name: "15 Minutes Later", minutes: 15 },
+    { name: "30 Minutes Later", minutes: 30 },
+    { name: "An Hour Later", minutes: 60 },
+    { name: "Tomorrow, Same Time", days: 1 },
+    { name: "Next Week, Same Time", days: 7 }
+];
+
+// Its start moved by minutes, or by days at the same time on the clock,
+// which a change of the clocks between doesn't move.
+function shifted(start, by) {
+    if (by.days) {
+        const day = new Date(start);
+        day.setDate(day.getDate() + by.days);
+        return day.getTime();
+    }
+    return start + by.minutes * MINUTE;
+}
+
+// Where Move the Meeting offers to take a meeting, each lasting as long:
+// [{ name, start, end }].
+function later(meeting) {
+    const lasts = meeting.end - meeting.start;
+    return LATER.map(by => {
+        const start = shifted(meeting.start, by);
+        return { name: by.name, start, end: start + lasts };
+    });
+}
+
+// The first of Joel's other meetings that a meeting moved to run from
+// `start` to `end` would overlap, or null: not one all day, nor one he
+// said no to.
+function clashes(meeting, start, end, meetings) {
+    return meetings.find(other => other.id !== meeting.id && !other.allDay
+        && other.answer !== "no" && other.start < end && other.end > start) ?? null;
+}
+
+// A time typed to move a meeting to: its hour, a colon and its minutes
+// when it has them, and "am" or "pm" when typed, after a day when one
+// is: "14:30", "9", "tomorrow 10:00", "thursday 9", "thu 2pm".
+const TYPED_TIME = /^(?:(\S+)\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/;
+// Hours on a clock.
+const HOURS = 24;
+const HALF_DAY = 12;
+const MINUTES = 60;
+// How few letters of a day's name name it: "thu" is Thursday.
+const DAY_LETTERS = 3;
+
+// The day a word names, as days from today: "today", "tomorrow", or a
+// day of the week by its name or its first three letters or more, the
+// next one on or after today; or null for a word that names none. Today's
+// own name comes back as a week on, for a time gone by today.
+function dayNamed(word, now) {
+    if (word === undefined || word === "today") {
+        return 0;
+    }
+    if (word === "tomorrow") {
+        return 1;
+    }
+    const named = word.length >= DAY_LETTERS ? DAYS.findIndex(day => day.toLowerCase().startsWith(word))
+        : -1;
+    return named < 0 ? null : (named - new Date(now).getDay() + DAYS.length) % DAYS.length;
+}
+
+// When a typed time would start a meeting, lasting as long, or null for
+// text that isn't a time, or one gone by. A day of the week named as
+// today, at a time gone by, is next week's.
+function typed(text, meeting, now) {
+    const found = TYPED_TIME.exec(text.trim().toLowerCase());
+    if (!found) {
+        return null;
+    }
+    const days = dayNamed(found[1], now);
+    let hour = Number(found[2]);
+    const minute = Number(found[3] ?? 0);
+    if (found[4]) {
+        if (hour < 1 || hour > HALF_DAY) {
+            return null;
+        }
+        hour = hour % HALF_DAY + (found[4] === "pm" ? HALF_DAY : 0);
+    }
+    if (days === null || hour >= HOURS || minute >= MINUTES) {
+        return null;
+    }
+    const day = new Date(now);
+    day.setDate(day.getDate() + days);
+    day.setHours(hour, minute, 0, 0);
+    const weekday = ![undefined, "today", "tomorrow"].includes(found[1]);
+    if (day.getTime() <= now && weekday) {
+        day.setDate(day.getDate() + DAYS.length);
+    }
+    const start = day.getTime();
+    return start <= now ? null : { start, end: start + meeting.end - meeting.start };
+}
+
+// Who Google tells of a change to a meeting, by name: everyone else on
+// it, and who holds it when that isn't Joel.
+function toldOfChanges(meeting) {
+    return (meeting.organizer ? [meeting.organizer] : []).concat(meeting.guests ?? [])
+        .map(person => person.name);
+}
+
+// Who's told, as the sure row says it: "Telling Nobody Else", "Telling
+// Ada Lovelace", "Telling Ada Lovelace and Grace Hopper", or the first
+// two and how many more.
+function tellingThem(people) {
+    if (people.length === 0) {
+        return "Telling Nobody Else";
+    }
+    if (people.length <= 2) {
+        return `Telling ${people.join(" and ")}`;
+    }
+    const more = people.length - 2;
+    return `Telling ${people.slice(0, 2).join(", ")} and ${more} ${more === 1 ? "Other"
+        : "Others"}`;
+}
+
+// The line that asks the program to move a meeting to run from `start`
+// to `end`.
+function move(meeting, start, end) {
+    return `${JSON.stringify({ move: { id: meeting.id, start, end } })}\n`;
+}

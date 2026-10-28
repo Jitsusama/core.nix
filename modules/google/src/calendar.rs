@@ -9,7 +9,8 @@
 //!
 //! Each meeting says what the launcher shows of it: where, who holds it,
 //! who else is asked and how each answered, and what it's about, its
-//! description as plain text, and when Joel is reminded of it.
+//! description as plain text, when Joel is reminded of it, and the
+//! calendar he may change it through, when Google lets him.
 
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
@@ -44,8 +45,13 @@ pub struct Meeting {
     /// What it's about: its description as plain text, at most
     /// `ABOUT_MOST` characters.
     pub about: Option<String>,
-    /// Whether Joel holds it, which makes it his to cancel or move.
+    /// Whether Joel holds it, which makes it his to cancel.
     pub holds: bool,
+    /// The calendar Joel changes it through, as moving it does, when
+    /// Google lets him: his own ("primary") for one he holds or whose
+    /// guests may change it, or the calendar it lives on, its organizer's,
+    /// when he may write to that; and none otherwise.
+    pub through: Option<String>,
     /// Who holds it, when it isn't Joel.
     pub organizer: Option<Person>,
     /// Everyone else asked, as the event lists them: neither Joel, nor
@@ -114,16 +120,25 @@ fn midnight(day: Date, zone: &TimeZone) -> Timestamp {
         .map_or(Timestamp::UNIX_EPOCH, |zoned| zoned.timestamp())
 }
 
-/// The meetings in one page of the API's answer, in its order, which is
-/// by start.
+/// The meetings in the calendar's answer, in its order, which is by
+/// start. Beside Google's events and reminders, the answer may say which
+/// calendars Joel may write to (`writable`, from his calendar list), which
+/// say what he may change; with none, he may change only his own.
 pub fn meetings(answer: &Value, zone: &TimeZone) -> Vec<Meeting> {
     let defaults = popups(answer.get("defaultReminders"));
+    let writable: Vec<&str> = answer
+        .get("writable")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
     answer
         .get("items")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|event| meeting(event, zone, &defaults))
+        .filter_map(|event| meeting(event, zone, &defaults, &writable))
         .collect()
 }
 
@@ -154,7 +169,7 @@ fn reminded(event: &Value, defaults: &[i64]) -> Vec<i64> {
     }
 }
 
-fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64]) -> Option<Meeting> {
+fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) -> Option<Meeting> {
     let text = |field: &str| event.get(field).and_then(Value::as_str);
     if text("status") == Some("cancelled") {
         return None;
@@ -182,6 +197,15 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64]) -> Option<Meeting> 
         || attendees.iter().all(|attendee| is(attendee, "self")),
         |organizer| is(organizer, "self"),
     );
+    let through = if holds || is(event, "guestsCanModify") {
+        Some("primary".to_owned())
+    } else {
+        organizer
+            .and_then(|organizer| organizer.get("email"))
+            .and_then(Value::as_str)
+            .filter(|calendar| writable.contains(calendar))
+            .map(str::to_owned)
+    };
     let guests = attendees
         .iter()
         .filter(|attendee| {
@@ -218,6 +242,7 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64]) -> Option<Meeting> 
             .map(plain)
             .filter(|about| !about.is_empty()),
         holds,
+        through,
         organizer: organizer.filter(|_| !holds).map(person),
         guests,
         reminders: reminded(event, defaults),
@@ -369,6 +394,7 @@ mod tests {
                 place: None,
                 about: None,
                 holds: false,
+                through: None,
                 organizer: None,
                 guests: vec![Guest {
                     name: "a@example.com".into(),
@@ -581,5 +607,49 @@ mod tests {
             &zone(),
         )[0];
         assert_eq!(found.reminders, Vec::<i64>::new());
+    }
+
+    #[test]
+    fn a_meeting_is_changed_through_a_calendar_google_lets_joel_change_it_on() {
+        let at = json!({"dateTime": "2026-10-26T16:00:00Z"});
+        let by = |email: &str, mine: bool| json!({"email": email, "self": mine});
+        let answer = json!({
+            "writable": ["team@group.calendar.google.com"],
+            "items": [
+                {"id": "his", "start": at, "end": at, "organizer": by("joel@example.com", true)},
+                {"id": "open", "start": at, "end": at, "guestsCanModify": true,
+                    "organizer": by("ada@example.com", false)},
+                {"id": "team", "start": at, "end": at,
+                    "organizer": by("team@group.calendar.google.com", false)},
+                {"id": "ada", "start": at, "end": at, "organizer": by("ada@example.com", false)},
+                {"id": "closed", "start": at, "end": at, "guestsCanModify": false,
+                    "organizer": by("grace@example.com", false)}
+            ]
+        });
+        let through: Vec<_> = meetings(&answer, &zone())
+            .into_iter()
+            .map(|m| (m.id, m.through))
+            .collect();
+        assert_eq!(
+            through,
+            vec![
+                ("his".into(), Some("primary".into())),
+                ("open".into(), Some("primary".into())),
+                ("team".into(), Some("team@group.calendar.google.com".into())),
+                ("ada".into(), None),
+                ("closed".into(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn with_no_calendar_list_only_his_own_is_his_to_change() {
+        let at = json!({"dateTime": "2026-10-26T16:00:00Z"});
+        let found = &meetings(
+            &json!({"items": [{"id": "team", "start": at, "end": at,
+                "organizer": {"email": "team@group.calendar.google.com"}}]}),
+            &zone(),
+        )[0];
+        assert_eq!(found.through, None);
     }
 }

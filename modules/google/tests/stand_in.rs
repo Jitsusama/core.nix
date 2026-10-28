@@ -34,7 +34,7 @@ struct StandIn {
 }
 
 impl StandIn {
-    fn new(answer: fn(&str, &str) -> (u16, String)) -> StandIn {
+    fn new(answer: impl Fn(&str, &str) -> (u16, String) + Send + 'static) -> StandIn {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -594,6 +594,134 @@ fn a_cancel_google_refuses_changes_nothing_held() {
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
     let before = watch.look(&now()).clone();
     assert_eq!(watch.cancel("e1", &now()), &before);
+}
+
+/// The team's Standup, held on a calendar Joel may write to when the
+/// calendar list says so, which `lists` answers, and a move Google takes.
+fn on_the_team(path: &str, lists: (u16, &str)) -> (u16, String) {
+    if path.starts_with("GET /calendar/v3/users/me/calendarList?") {
+        return (lists.0, lists.1.into());
+    }
+    if path.starts_with("GET /calendar") {
+        return (
+            200,
+            r#"{"items": [{"id": "e1", "summary": "Standup",
+                "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+                "end": {"dateTime": "2026-10-26T16:15:00-04:00"},
+                "organizer": {"email": "team@group.calendar.google.com"}}]}"#
+                .into(),
+        );
+    }
+    if path.starts_with("PATCH") {
+        return (200, r#"{"id": "e1"}"#.into());
+    }
+    google(path, "")
+}
+
+const THE_TEAMS: (u16, &str) = (
+    200,
+    r#"{"items": [{"id": "team@group.calendar.google.com"}]}"#,
+);
+
+#[test]
+fn a_meeting_on_a_calendar_joel_may_write_to_is_moved_telling_everyone() {
+    let stand_in = StandIn::new(|path, _| on_the_team(path, THE_TEAMS));
+    let path = credentials("move", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let held = watch.look(&now()).meetings[0].clone();
+    assert_eq!(
+        held.through.as_deref(),
+        Some("team@group.calendar.google.com")
+    );
+    let (start, end) = (held.start + 1_800_000, held.end + 1_800_000);
+    let state = watch.reschedule("e1", start, end, &now()).clone();
+    assert_eq!(
+        (state.meetings[0].start, state.meetings[0].end),
+        (start, end)
+    );
+    let heard = stand_in.heard();
+    let asked = heard
+        .iter()
+        .find(|heard| {
+            heard
+                .line
+                .starts_with("GET /calendar/v3/users/me/calendarList?")
+        })
+        .unwrap();
+    assert!(
+        asked.line.contains("minAccessRole=writer"),
+        "{}",
+        asked.line
+    );
+    let written = heard.last().unwrap();
+    assert!(
+        written.line.starts_with(
+            "PATCH /calendar/v3/calendars/team@group.calendar.google.com/events/e1?sendUpdates=all"
+        ),
+        "{}",
+        written.line
+    );
+    let body: serde_json::Value = serde_json::from_str(&written.body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "start": {"dateTime": "2026-10-26T20:30:00Z"},
+            "end": {"dateTime": "2026-10-26T20:45:00Z"}
+        })
+    );
+}
+
+#[test]
+fn a_meeting_joel_may_not_change_is_never_moved() {
+    let stand_in = StandIn::new(|path, _| on_the_team(path, (200, r#"{"items": []}"#)));
+    let path = credentials(
+        "not-movable",
+        now().timestamp().as_millisecond() + 3_600_000,
+    );
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(before.meetings[0].through, None);
+    let (start, end) = (before.meetings[0].start + 1, before.meetings[0].end + 1);
+    assert_eq!(watch.reschedule("e1", start, end, &now()), &before);
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .all(|heard| !heard.line.starts_with("PATCH"))
+    );
+}
+
+#[test]
+fn the_calendars_joel_may_write_to_are_kept_when_only_their_list_fails() {
+    let listed = Arc::new(Mutex::new(THE_TEAMS));
+    let lists = Arc::clone(&listed);
+    let stand_in = StandIn::new(move |path, _| on_the_team(path, *lists.lock().unwrap()));
+    let path = credentials("list-fails", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    *listed.lock().unwrap() = (500, "{}");
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert_eq!(
+        state.meetings[0].through.as_deref(),
+        Some("team@group.calendar.google.com")
+    );
+}
+
+#[test]
+fn a_move_google_refuses_changes_nothing_held() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("PATCH") {
+            (403, "{}".into())
+        } else {
+            google(path, body)
+        }
+    });
+    let path = credentials("unmoved", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    let (start, end) = (before.meetings[0].start + 1, before.meetings[0].end + 1);
+    assert_eq!(watch.reschedule("e1", start, end, &now()), &before);
 }
 
 #[test]
