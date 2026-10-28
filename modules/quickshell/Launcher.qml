@@ -1321,8 +1321,8 @@ Scope {
     // as the arrows went from a row that opens to one with more behind it,
     // and squeezed how things stand beside them from words to glyphs and
     // back (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So
-    // Return, last at the right end, keeps a place as wide as the longest
-    // word it's said since the launcher opened, and how things stand keeps
+    // Return, last at the right end, keeps a place as wide as the widest
+    // it's been said since the launcher opened, and how things stand keeps
     // clear of where the widest set of keys has reached. The rest sit just
     // before Return, each as wide as it is: a place kept for every key any
     // row had left holes between them as soon as Joel typed ("the
@@ -1339,11 +1339,16 @@ Scope {
     // of the two it could have.
     readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "and close"],
         ["\u2192", "see all"]]
-    property string footVerbWidest: footVerbRoom
+    // Return's place, as wide as the widest Return said since the launcher
+    // opened, its marks and its word whole: kept by its word alone, a
+    // Return said with the right arrow beside it, as a collection's "see
+    // all", was wider than the place and moved its marks along from a
+    // category's (Joel, 2026-10-25: "jumpy ... at home arrowing around").
+    property real footReturnWidest: 0
     property real footKeysWidest: 0
 
     function footReset() {
-        footVerbWidest = footVerbRoom;
+        footReturnWidest = measure.advanceWidth(`\u21b5 ${footVerbRoom}`);
         footKeysWidest = keysWide(footKeysRoom);
     }
 
@@ -1355,21 +1360,18 @@ Scope {
             + measure.advanceWidth(`${key[0]} ${key[1]}`), returnPlace(told[0]));
     }
 
-    // How wide Return's place is beside what it says now, the room kept
-    // measured from its first mark alone, so a Return said with the right
-    // arrow beside it doesn't widen it and move the keys.
+    // How wide Return's place is beside what it says now.
     function returnPlace(key) {
-        return Math.max(measure.advanceWidth(`${key[0]} ${key[1]}`),
-            measure.advanceWidth(`${key[0].split(" ")[0]} ${footVerbWidest}`));
+        return Math.max(measure.advanceWidth(`${key[0]} ${key[1]}`), footReturnWidest);
     }
 
     function noteKeys() {
         const rows = asking ? matches.concat([asking]) : matches;
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
-        const verb = said.reduce((longest, keys) => keys[0][1].length > longest.length
-            ? keys[0][1] : longest, footVerbWidest);
-        if (verb !== footVerbWidest)
-            footVerbWidest = verb;
+        const place = Math.max(footReturnWidest,
+            ...said.map(keys => measure.advanceWidth(`${keys[0][0]} ${keys[0][1]}`)));
+        if (place > footReturnWidest)
+            footReturnWidest = place;
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
         if (wide > footKeysWidest)
             footKeysWidest = wide;
@@ -3246,7 +3248,7 @@ Scope {
                             x: foot.width - Theme.space.l - implicitWidth
                             anchors.verticalCenter: parent.verticalCenter
                             // The selected row's keys, Return last in its
-                            // place (footVerbWidest), the rest close by.
+                            // place (footReturnWidest), the rest close by.
                             keys: foot.shown
                             endsRight: true
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
