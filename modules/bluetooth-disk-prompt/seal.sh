@@ -2,14 +2,13 @@
 # Seals the machine's Bluetooth pairings to its TPM and puts them on the ESP,
 # where the boot stub hands them to the initrd, so a paired keyboard types at
 # the disk prompt. Anyone holding a keyboard's link key can type as it, so the
-# pairings never sit on the ESP in the clear: they open only where the disk's
-# own key would. It seals again only when the pairings changed, so the ESP is
-# written once per pairing, not at every run.
+# pairings never sit on the ESP in the clear: they open only in this machine's
+# TPM, with Secure Boot as it was at the seal. It seals again only when the
+# pairings changed, so the ESP is written once per pairing, not at every run.
 #
-# The environment names where things go: ESP (the ESP's mount point), POLICY
-# (the pcrlock policy the disk's key is bound to, or empty to bind to PCR 7
-# alone) and STATE_DIRECTORY (systemd's, for the last seal's checksum). Its
-# check names BLUEZ_STATE too, BlueZ's own being /var/lib/bluetooth.
+# The environment names where things go: ESP (the ESP's mount point) and
+# STATE_DIRECTORY (systemd's, for the last seal's checksum). Its check names
+# BLUEZ_STATE too, BlueZ's own being /var/lib/bluetooth.
 set -euo pipefail
 
 store=${BLUEZ_STATE:-/var/lib/bluetooth}
@@ -53,14 +52,12 @@ if [ -e "$credential" ] && [ "$(cat "$sealed" 2>/dev/null)" = "$checksum" ]; the
   exit 0
 fi
 
-if [ -n "$POLICY" ]; then
-  binding=(--tpm2-pcrlock="$POLICY")
-else
-  binding=(--tpm2-pcrs=7)
-fi
-
+# Bound to PCR 7, Secure Boot's state and keys, rather than the disk's
+# pcrlock policy, since systemd-creds can't bind to a pcrlock policy. A
+# change to PCR 7 leaves the seal shut until the passphrase opens the disk
+# and the next run seals again.
 mkdir -p "$(dirname "$credential")"
-systemd-creds encrypt --name=bluetooth-pairing --with-key=tpm2 "${binding[@]}" \
+systemd-creds encrypt --name=bluetooth-pairing --with-key=tpm2 --tpm2-pcrs=7 \
   "$pairings" "$credential.new"
 mv -f "$credential.new" "$credential"
 sync --file-system "$credential"

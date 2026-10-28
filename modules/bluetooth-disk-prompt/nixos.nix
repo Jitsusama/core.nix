@@ -5,10 +5,10 @@
 # boot.initrd.extraFirmwarePaths, since the drivers don't list it.
 #
 # The pairings are the keyboard's keys: anyone holding one can type as the
-# keyboard. So they reach the initrd only sealed to the TPM, bound to the
-# same measured-boot policy as the disk's own key, from the ESP's
-# \loader\credentials, which the boot stub hands to the initrd. seal.sh says
-# when they're sealed. With none sealed, or a seal that won't open, the
+# keyboard. So they reach the initrd only sealed to the TPM, bound to
+# Secure Boot's state, from the ESP's \loader\credentials, which the boot
+# stub hands to the initrd. seal.sh says when they're sealed and why to
+# that. With none sealed, or a seal that won't open, the
 # prompt asks as it always has, on the built-in keyboard, waiting for
 # nothing.
 {
@@ -22,8 +22,6 @@ let
   initrd = config.boot.initrd.systemd;
   dbus = config.services.dbus;
 
-  measuredBoot = config.boot.lanzaboote.measuredBoot.enable or false;
-
   seal = pkgs.writeShellApplication {
     name = "bluetooth-pairing-seal";
     runtimeInputs = [
@@ -36,10 +34,7 @@ let
     text = builtins.readFile ./seal.sh;
   };
 
-  sealEnvironment = {
-    ESP = config.boot.loader.efi.efiSysMountPoint;
-    POLICY = lib.optionalString measuredBoot config.boot.lanzaboote.measuredBoot.pcrlockPolicy;
-  };
+  sealEnvironment.ESP = config.boot.loader.efi.efiSysMountPoint;
 in
 {
   imports = [ ../bluetooth/nixos.nix ];
@@ -132,10 +127,7 @@ in
   # has written its last.
   systemd.services.bluetooth-pairing-seal = {
     description = "Seals the Bluetooth pairings for the disk prompt";
-    after = [
-      "bluetooth.service"
-      "systemd-pcrlock-make-policy.service"
-    ];
+    after = [ "bluetooth.service" ];
     unitConfig.RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
     environment = sealEnvironment;
     serviceConfig = {
@@ -157,10 +149,7 @@ in
     wantedBy = [ "multi-user.target" ];
     # Stopped, and so sealing, before bluetooth.service stops and before the
     # ESP is unmounted.
-    after = [
-      "bluetooth.service"
-      "systemd-pcrlock-make-policy.service"
-    ];
+    after = [ "bluetooth.service" ];
     unitConfig.RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
     environment = sealEnvironment;
     serviceConfig = {

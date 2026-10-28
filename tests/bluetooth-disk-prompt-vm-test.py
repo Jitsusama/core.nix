@@ -216,7 +216,7 @@ def test_the_keyboard_pairs_and_types_in_the_running_system(real: QemuMachine, p
 def test_the_seal_opens_only_with_the_tpm_and_holds_no_key_in_the_clear(
     sealed: QemuMachine, paired: str
 ) -> None:
-    """The ESP holds the pairing only sealed, and the TPM opens it under the disk's policy."""
+    """The ESP holds the pairing only sealed, and the machine's TPM opens it."""
     info = sealed.succeed(f"cat /var/lib/bluetooth/*/{paired}/info")
     key = info.split("[LinkKey]", 1)[1].split("Key=", 1)[1].split()[0]
     sealed.fail(f"grep -r -i -q {key} /boot")

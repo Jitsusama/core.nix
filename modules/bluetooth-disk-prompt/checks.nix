@@ -43,9 +43,9 @@ in
 onLinux {
   # The seal, against a made-up BlueZ state and a stand-in systemd-creds,
   # leaves nothing on the ESP with nothing paired, seals a paired keyboard's
-  # keys and service records to the TPM under the disk's policy (PCR 7
-  # without one) and no device only seen in a scan, seals unchanged
-  # pairings only once, and takes the keys off the ESP once unpaired.
+  # keys and service records to the TPM under PCR 7 and no device only
+  # seen in a scan, seals unchanged pairings only once and changed ones
+  # again, and takes the keys off the ESP once unpaired.
   bluetooth-seal-keeps-only-what-a-keyboard-needs =
     pkgs.runCommandLocal "bluetooth-seal-keeps-only-what-a-keyboard-needs"
       {

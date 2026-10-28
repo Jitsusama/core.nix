@@ -98,8 +98,8 @@
   '';
   bluetooth-seal-keeps-only-what-a-keyboard-needs = ''
     the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to
-    the TPM under the disk's policy, leaves out devices only seen in a scan, seals unchanged
-    pairings once and takes the keys off once unpaired
+    the TPM under PCR 7, leaves out devices only seen in a scan, seals unchanged pairings once and
+    changed ones again, and takes the keys off once unpaired
   '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
@@ -1198,7 +1198,7 @@
     stays; two quests' work on one CPU shares it four to one by weight, and one alone takes it all
   '';
   vm-bluetooth-types-at-the-disk-prompt = ''
-    a keyboard paired in the running system is sealed to the TPM under the disk's policy, with its
+    a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its
     link key nowhere in the ESP; after a restart it types the passphrase at the disk prompt and the
     disk opens, the laptop's address unchanged; with nothing sealed the pairings are skipped, and a
     seal that won't open leaves the prompt asking for the passphrase
