@@ -1504,9 +1504,10 @@ What each studio round settled, newest first, with the reason.
   the fewest rows). The first screen said the week twice, this week since
   Monday beside the cap's last seven days, and held a premium day at 0%
   and a forecast nobody had asked about. Now it's today, each cap longer
-  than a day and Earlier: a day's cap is behind today, the next seven days
-  behind the week's cap, whose days are the week that can stop work, and
-  this week among the periods before, still found by typing. What's near a
+  than a day, then the periods before: a day's cap is behind today and the
+  next seven days behind the week's cap, whose days are the week that can
+  stop work. The periods once sat behind an Earlier row, which put a
+  period's cuts four steps deep, so they're in AI spend itself. What's near a
   cap leads as a finding, so the rows can stay plain. The margin's header
   stays how today stands, since a cap's share there would run past it.
 

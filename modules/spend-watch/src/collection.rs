@@ -26,7 +26,8 @@ pub const VERSION: u32 = 2;
 /// How many of a cut's rows are shown before the rest are one row.
 const TOP: usize = 12;
 
-/// The periods behind Earlier, most recent first.
+/// The periods before today, most recent first, each a row of the first
+/// screen after the caps, so none is more than a step from it.
 const EARLIER: [Period; 6] = [
     Period::Yesterday,
     Period::ThisWeek,
@@ -588,9 +589,7 @@ fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Li
             None => now.push(made),
         }
     }
-    let mut earlier = line("earlier", "Earlier", "");
-    earlier.note = "yesterday, this week and the months before".into();
-    earlier.rows = EARLIER
+    let earlier: Vec<Line> = EARLIER
         .iter()
         .map(|period| {
             let (figure, basis) = figure_of(picture, *period);
@@ -614,8 +613,10 @@ fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Li
             made
         })
         .collect();
-    if earlier.rows.iter().any(|row| !row.rows.is_empty()) {
-        now.push(earlier);
+    // Joel, 2026-10-26: no path deeper than three, so the periods sit in
+    // the collection itself rather than behind a row of their own.
+    if earlier.iter().any(|row| !row.rows.is_empty()) {
+        now.extend(earlier);
     }
     now
 }
@@ -942,10 +943,9 @@ mod tests {
     }
 
     // The first screen holds how things stand and what was found: today,
-    // each cap longer than a day and Earlier, then the findings, with every
-    // report behind the row it belongs to. A day's cap is behind today, the
-    // week ahead behind the week's cap, and this week among the periods
-    // before, since the cap's own seven days are the week that matters.
+    // each cap longer than a day and the periods before, then the findings,
+    // with every report behind the row it belongs to. A day's cap is behind
+    // today, and the week ahead behind the week's cap.
     #[test]
     fn the_first_screen_is_short_and_says_each_thing_once() {
         let (collected, found) = collected();
@@ -954,7 +954,19 @@ mod tests {
             .iter()
             .map(|line| line.name.as_str())
             .collect();
-        assert_eq!(names, ["Today", "Weekly cap", "Earlier"]);
+        assert_eq!(
+            names,
+            [
+                "Today",
+                "Weekly cap",
+                "Yesterday",
+                "This week",
+                "Last week",
+                "This month",
+                "Last month",
+                "The last 30 days"
+            ]
+        );
         assert_eq!(collected.findings.len(), found.len());
         assert!(collected.more.len() <= 2, "{:?}", collected.more);
         // The cap's figure is its share; its dollars are in the footer.
@@ -986,13 +998,6 @@ mod tests {
             .map(|line| line.name.as_str())
             .collect();
         assert_eq!(quiet, ["Today", "Weekly cap"]);
-        // This week is the first period after yesterday.
-        let earlier: Vec<&str> = collected.now[2]
-            .rows
-            .iter()
-            .map(|row| row.name.as_str())
-            .collect();
-        assert_eq!(earlier[..2], ["Yesterday", "This week"]);
         // A period's cuts are behind it, after a day's caps, each standing
         // for its report.
         let today = &collected.now[0];
