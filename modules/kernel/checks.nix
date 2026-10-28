@@ -31,7 +31,7 @@
       file = theme: builtins.fromTOML (builtins.readFile ../theme/${theme}.toml);
       pigment =
         theme: role:
-        "0x${lib.toLower (lib.removePrefix "#" (file theme).palette.${(file theme).roles.${role}})}";
+        "0x${lib.toLower (lib.removePrefix "#" (file theme).palette.${(file theme).colours.${role}})}";
       colour =
         settings: option: (settings.${option}.content or settings.${option} or { }).freeform or null;
       follows =

@@ -1023,8 +1023,8 @@ shades = ["forest", "fern", "moss", "lichen", "seafoam", "parchment", "linen", "
 jade = "#509475"
 forest = "#111c18"
 
-# What each colour means, by role (see Colour). Each names a pigment.
-[roles]
+# What each colour means (see Colour). Each names a pigment.
+[colours]
 background = "forest"
 accent = "jade"
 
@@ -1065,7 +1065,7 @@ lock = "landscapes/mountain-woods-green.png"
 [console]
 ```
 
-The shades, `palette`, `roles` and `terminal` are required. Every other table
+The shades, `palette`, `colours` and `terminal` are required. Every other table
 falls back to the defaults the theme module carries, so a theme changes only
 what it means to.
 
