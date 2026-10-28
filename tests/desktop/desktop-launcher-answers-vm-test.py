@@ -114,7 +114,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     def copied(typed: str, expected: str) -> None:
         """Ask the launcher, take its answer with Return, and check that it copied this."""
         desktop.answer(typed)
-        machine.send_key("ret")
+        # It says so as it closes.
+        with desktop.told("parted copied"):
+            machine.send_key("ret")
         closed = desktop.in_session(LAUNCHER_OPEN)
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         assert desktop.as_account("wl-paste --no-newline") == expected
