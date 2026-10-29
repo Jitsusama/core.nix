@@ -310,12 +310,17 @@ so where a name is cut holds still as "working" becomes "asks you" and
 back.
 
 **A long name reads on.** A name too long for its row ends in an ellipsis,
-and once selected it reads on in place: after a second's rest it slides at
-a steady reading pace, eight characters a second, until its end shows,
-rests, then glides back to its start and rests again, for as long as it's
-selected. Only the name moves, inside its own room, so nothing beside it
-does, and given up by the selection it's back at its start at once (Joel,
-2026-10-25: titles "get elipsed really quick").
+and once the selection rests on it, it reads on in place: after half a
+second it slides until its end shows, rests a second, then glides back to
+its start and rests again, for as long as it's selected, so holding an
+arrow never sets one going. The slide is a reading motion, not an
+arrival: a steady twelve characters a second with soft ends, gathering
+speed from rest and settling back in at most a fifth of a second each, so
+the eye follows one speed and nothing starts or stops hard. It moves on
+the render thread, so a busy shell never stutters it. Only the name moves, inside its own room, so nothing beside it does,
+and given up by the selection it's back at its start at once (Joel,
+2026-10-25: titles "get elipsed really quick"; 2026-10-29: the slide
+stuttered, was too slow and started and stopped abruptly).
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a

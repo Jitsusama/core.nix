@@ -600,6 +600,22 @@ onLinux {
       touch $out
     '';
 
+  # A long name slides at one reading pace between soft ends, as
+  # tests/reading.qml says, in Qt's own engine.
+  a-long-name-reads-at-one-pace =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-long-name-reads-at-one-pace" { } ''
+      cp ${../../tests/reading.qml} reading.qml
+      cp ${./Reading.js} Reading.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml reading.qml
+      touch $out
+    '';
+
   # The askpass prompt says who's asking for what, for each program's words,
   # as tests/askpass.qml says, in Qt's own engine.
   the-askpass-says-who-asks-for-what =
@@ -1798,6 +1814,7 @@ onLinux {
     pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${../../tests/graphs.qml} shell.qml
@@ -1826,6 +1843,7 @@ onLinux {
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
