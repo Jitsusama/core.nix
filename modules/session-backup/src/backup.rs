@@ -223,7 +223,9 @@ fn send_log(
 /// second sent rows already, since Drive would hold both under one name.
 fn batch_name(host: &str, at: u64, ledger: &Ledger) -> String {
     let run = names::stamp(at);
-    (1..)
+    // The ledger can't hold more names than it has entries, so one more
+    // try than that always finds a free one.
+    (1..=ledger.len() + 1)
         .map(|nth| match nth {
             1 => format!("{host}/index/{run}.jsonl.zst.age"),
             nth => format!("{host}/index/{run}-{nth}.jsonl.zst.age"),
