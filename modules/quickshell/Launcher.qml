@@ -2706,8 +2706,17 @@ Scope {
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card) });
         }
+        // Where the selection is drawn, and where its row is, so a test can
+        // say it's drawn on its row.
+        const chosen = list.itemAtIndex(root.current);
+        const selection = !picked.visible || !chosen ? null : {
+            y: Math.round(picked.mapToItem(card, 0, 0).y),
+            row: Math.round(chosen.mapToItem(card, 0, chosen.height - Theme.space.xxxl).y),
+            origin: Math.round(list.originY), scrolled: Math.round(list.contentY)
+        };
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
-            foot: wordsIn(foot, card), rows, made: root.rowsMade, drawn: root.rowsDrawn });
+            foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
+            drawn: root.rowsDrawn });
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
@@ -3284,6 +3293,8 @@ Scope {
                             // The selection itself, under the rows, which
                             // draw no fill of their own here (Choice's fills).
                             Rectangle {
+                                id: picked
+
                                 z: -1
                                 width: list.width
                                 height: Theme.space.xxxl

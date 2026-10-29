@@ -146,6 +146,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
                 and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
             )
         )
+    # Scrolled down past its first rows, the selection is still drawn on
+    # its own row.
+    selection = laid_out(desktop)["selection"]
+    assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
