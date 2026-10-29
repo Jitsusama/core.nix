@@ -534,6 +534,61 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         raise AssertionError(kept) from None
 
 
+def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
+    desktop: Desktop,
+) -> None:
+    """The launcher's picker finds Google Drive, steps into it and hands over a file fetched."""
+    machine = desktop.machine
+    notes = f"/home/{desktop.account}/drive-notes"
+    chose = "/run/user/1000/portal-chose"
+    # The stand-in Google fetches a file into its own folder, its bytes its id.
+    fetched = "/run/user/1000/google-files/drive/menu/menu.pdf"
+    desktop.as_account("systemctl --user restart google.service")
+    try:
+        # The shell hears the stand-in before the picker asks: its meeting is found.
+        desktop.answer("design review")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Design Review"
+        )
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
+        machine.succeed(f"rm -f {chose}")
+        desktop.as_account(f"mkdir -p {notes} && touch {notes}/plan.md")
+        desktop.as_account(
+            "systemd-run --user --collect --unit=choose-from-drive"
+            f" {desktop.values['choose_a_file']} open {notes}"
+        )
+        desktop.launcher_until(
+            lambda shown: shown["path"] == ["Open the Notes", "~/drive-notes"],
+            timeout=timedelta(seconds=60),
+        )
+        # Typed in any folder, Google Drive is found, and steps in to its three.
+        machine.send_chars("drive")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Google Drive"
+        )
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: shown["rows"][:3] == ["My Drive", "Shared with Me", "Shared Drives"]
+        )
+        desktop.down_to("My Drive")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "menu.pdf" in shown["rows"])
+        desktop.photograph("file-chooser-drive")
+        desktop.down_to("menu.pdf")
+        machine.send_key("ret")
+        # Fetched first, then handed over, and the launcher closes.
+        machine.wait_until_succeeds(
+            f'[ "$(cat {chose})" = "$(printf \'0\\nfile://{fetched}\')" ]',
+            timeout=timedelta(seconds=60),
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+        assert desktop.as_account(f"cat {fetched}") == "menu", fetched
+    finally:
+        desktop.as_account("systemctl --user stop google.service")
+        desktop.as_account(f"rm -rf {notes}")
+
+
 def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Desktop) -> None:
     """A picture opens floating in swayimg, and e takes it to GIMP."""
     machine = desktop.machine
