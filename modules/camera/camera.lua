@@ -39,6 +39,8 @@ local recording = nil
 -- Escape closes once a recording has finished, or at once when pressed again.
 local closing = false
 local ready = false
+-- The source whose frames the viewfinder shows, or nil while it changes.
+local shown = nil
 local flash = false
 local overlay = mp.create_osd_overlay('ass-events')
 
@@ -335,7 +337,7 @@ local playing = camera
 local released = nil
 
 local function play(source, after)
-  playing, released = source, after
+  playing, released, shown = source, after, nil
   mp.commandv('loadfile', source, 'replace')
 end
 
@@ -469,7 +471,11 @@ end
 local waiting = false
 
 local function act()
-  if not ready then
+  -- Until the camera is shown again after a recording, too: mpv sends no
+  -- end-file for a source it replaces before starting it, so a recording
+  -- started then would wait for a camera never let go (2026-10-29, the
+  -- desktop test's second video).
+  if not ready or (not recording and shown ~= camera) then
     waiting = true
     return
   end
@@ -538,6 +544,9 @@ end)
 -- viewfinder changes source. A recording's time starts with its first frame.
 mp.observe_property('video-params', 'native', function(_, params)
   ready = ready or params ~= nil
+  if params then
+    shown = playing
+  end
   if params and recording and playing == recording.feed and not recording.began then
     recording.began = mp.get_time()
     ticking:resume()
