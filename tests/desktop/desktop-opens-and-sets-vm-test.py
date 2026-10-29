@@ -447,6 +447,13 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     desktop.as_account(f"mkdir -p {notes} && touch {notes}/plan.md {notes}/list.md")
     # The files, then each folder from /home down to the notes.
     held = 1 + notes.count("/")
+    # The shell's watchers, each an inotify of its own, counted before
+    # any ask: each folder held is read and watched only while it's asked.
+    watchers = (
+        "ls -l /proc/$(systemctl --user show quickshell -p MainPID --value)/fd"
+        " | grep -c inotify; true"
+    )
+    watching = int(desktop.as_account(watchers))
 
     def choose(mode: str, name: str = "") -> None:
         """Ask the portal for a file in the notes, and wait until the launcher holds them."""
@@ -490,6 +497,10 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     machine.send_key("esc")
     answered("1")
     desktop.as_account(f"rm -r {notes}")
+    # Three asks later, the shell watches no more than it did before them.
+    machine.wait_until_succeeds(
+        desktop.in_session(f'[ "$({watchers})" -le {watching} ]'), timeout=timedelta(seconds=30)
+    )
 
 
 def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Desktop) -> None:
