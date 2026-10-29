@@ -770,6 +770,33 @@ fn says_when_the_settings_name_no_key_this_machine_has() {
 }
 
 #[test]
+fn says_to_name_a_key_when_the_settings_name_none() {
+    let google = StandIn::start();
+    let mut account = Account::new(&google);
+    account.log("--a--", "one.jsonl", "one\n", 3 * DAY);
+    account.run().unwrap();
+    account.config.identities = Vec::new();
+
+    let why = account
+        .fetch(&only_name(&google), "back.jsonl")
+        .unwrap_err();
+
+    assert!(
+        why.contains("name no key") && why.contains("identities"),
+        "{why}"
+    );
+    // Nothing was downloaded to find that out.
+    assert!(
+        !google
+            .calls()
+            .iter()
+            .any(|call| call.starts_with("GET /drive/v3/files/id-")),
+        "{:?}",
+        google.calls()
+    );
+}
+
+#[test]
 fn never_writes_over_a_file_already_there() {
     let google = StandIn::start();
     let account = Account::new(&google);
@@ -939,14 +966,131 @@ fn a_log_sent_before_it_is_removed_keeps_its_row() {
     assert_eq!(rows(&kept).len(), 1);
 }
 
+/// The account with `count` logs sent and then removed from the machine,
+/// before it kept an index, the oldest `SESSION`.
+fn removed(account: &mut Account, count: usize) {
+    keeping(account, 90);
+    account.log("--a--", "old-0.jsonl", SESSION, 100 * DAY);
+    for at in 1..count {
+        let days = 100 - u32::try_from(at).unwrap();
+        account.log("--a--", &format!("old-{at}.jsonl"), "{}\n", DAY * days);
+    }
+    account.run().unwrap();
+    assert_eq!(account.run().unwrap().removed, count);
+}
+
+/// The files left in the account's state folder.
+fn state(account: &Account) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(account.root.join("state"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn reads_a_log_gone_from_the_machine_back_for_its_row() {
+    let google = StandIn::start();
+    let mut account = Account::new(&google);
+    removed(&mut account, 1);
+    indexing(&mut account);
+
+    let done = account.run().unwrap();
+
+    assert_eq!((done.sent, done.indexed, done.unread), (0, 1, None));
+    let sent = rows(&account.open(&google.file(&index_objects(&google)[0])));
+    assert_eq!(sent[0]["id"], "s-1");
+    assert_eq!(sent[0]["title"], "Better Name");
+    assert_eq!(sent[0]["bytes"], SESSION.len());
+    // The copy read back is gone, and nothing else is left beside the ledger.
+    assert_eq!(
+        state(&account),
+        ["index.jsonl", "sent.jsonl", "sent.lock"],
+        "only the index is new"
+    );
+    // An index object is never read back as a log.
+    let again = account.run().unwrap();
+    assert_eq!(again.indexed, 0);
+    assert_eq!(index_objects(&google).len(), 1);
+    only_backup_calls(&google);
+}
+
+#[test]
+fn reads_back_only_as_many_as_the_settings_say_a_run() {
+    let google = StandIn::start();
+    let mut account = Account::new(&google);
+    removed(&mut account, 3);
+    indexing(&mut account);
+    account.config.backfill = 2;
+
+    assert_eq!(account.run().unwrap().indexed, 2);
+    assert_eq!(account.run().unwrap().indexed, 1);
+    assert_eq!(account.run().unwrap().indexed, 0);
+    assert_eq!(index_objects(&google).len(), 2);
+}
+
+#[test]
+fn carries_on_without_the_rows_no_key_here_can_read() {
+    let google = StandIn::start();
+    let mut account = Account::new(&google);
+    removed(&mut account, 1);
+    indexing(&mut account);
+    let other = account.root.join("other.txt");
+    fs::write(
+        &other,
+        age::x25519::Identity::generate()
+            .to_string()
+            .expose_secret(),
+    )
+    .unwrap();
+    account.config.identities = vec![other];
+    account.log("--a--", "new.jsonl", "new\n", 3 * DAY);
+
+    let done = account.run().unwrap();
+
+    assert!(
+        done.unread
+            .as_deref()
+            .unwrap_or("")
+            .contains("no key here opens"),
+        "{done:?}"
+    );
+    // The new log still went, and has its row.
+    assert_eq!((done.sent, done.indexed, done.busy), (1, 1, None));
+    assert_eq!(state(&account), ["index.jsonl", "sent.jsonl", "sent.lock"]);
+}
+
+#[test]
+fn reads_nothing_back_when_the_settings_name_no_key() {
+    let google = StandIn::start();
+    let mut account = Account::new(&google);
+    removed(&mut account, 1);
+    indexing(&mut account);
+    account.config.identities = Vec::new();
+
+    let done = account.run().unwrap();
+
+    assert_eq!((done.indexed, done.unread), (0, None));
+    assert!(
+        !google
+            .calls()
+            .iter()
+            .any(|call| call.starts_with("GET /drive/v3/files/id-")),
+        "{:?}",
+        google.calls()
+    );
+}
+
 #[test]
 fn reads_where_the_index_and_the_records_are_from_the_settings() {
     let settings = Config::from_json(&json!({
         "sessions": "/s", "ledger": "/l", "folder": "f", "host": "h",
         "recipients": ["age1someone"], "credentials": "/c",
-        "index": "/i.jsonl", "records": "/r",
+        "index": "/i.jsonl", "records": "/r", "backfillPerRun": 7,
     }))
     .unwrap();
     assert_eq!(settings.index, Some(PathBuf::from("/i.jsonl")));
     assert_eq!(settings.records, Some(PathBuf::from("/r")));
+    assert_eq!(settings.backfill, 7);
 }

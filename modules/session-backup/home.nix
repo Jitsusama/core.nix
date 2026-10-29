@@ -92,7 +92,10 @@ in
       description = ''
         The age identity files `session-backup fetch` opens a copy with,
         such as a TPM's made without a PIN. Those a machine doesn't hold are
-        passed over, so one list serves every machine.
+        passed over, so one list serves every machine. With one named, each
+        hourly run also reads back up to 100 logs gone from the machine that
+        have no row in the index, for their rows, and removes each copy once
+        read.
       '';
       type = lib.types.listOf lib.types.str;
       default = [ ];

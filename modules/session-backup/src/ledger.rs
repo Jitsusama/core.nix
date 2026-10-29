@@ -52,6 +52,13 @@ impl Ledger {
             .filter(|id| !id.is_empty())
     }
 
+    /// Each object sent, by its name and Drive id, in no order.
+    pub fn sent(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.sent
+            .iter()
+            .map(|(name, id)| (name.as_str(), id.as_str()))
+    }
+
     /// How many objects were sent.
     pub fn len(&self) -> usize {
         self.sent.len()

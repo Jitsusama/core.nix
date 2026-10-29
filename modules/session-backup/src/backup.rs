@@ -1,6 +1,6 @@
 //! One run: every settled log not yet in the ledger, sealed and sent, then
-//! the index's rows for the logs that have none, then every old one Drive
-//! holds removed from the machine.
+//! the index's rows for the logs that have none, some of them read back
+//! from Drive, then every old one Drive holds removed from the machine.
 
 use std::fs::{self, File, TryLockError};
 use std::path::Path;
@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::config::Config;
 use crate::drive::{self, Drive, Fault};
+use crate::fetch::{self, Reading};
 use crate::index::{self, Index};
 use crate::ledger::Ledger;
 use crate::names::{self, Settled};
@@ -35,6 +36,9 @@ pub struct Done {
     pub held: bool,
     /// Logs given a row in the index, sent sealed as one object.
     pub indexed: usize,
+    /// Why no copy could be read back for its row, when none could; the
+    /// rest of the run goes on.
+    pub unread: Option<String>,
     /// Logs removed from the machine, since Drive holds them and they are
     /// older than the settings keep them for.
     pub removed: usize,
@@ -51,7 +55,9 @@ pub struct Done {
 ///
 /// Then, when the settings name an index and Drive wasn't busy, every log
 /// the ledger names that has no row yet, those sent before there was an
-/// index among them, gets one, and the rows go as one sealed object.
+/// index among them, gets one, and the rows go as one sealed object. So
+/// do the rows of up to `backfill` logs gone from the machine that have
+/// none, each read back from its copy and removed once read.
 ///
 /// Then, when the settings say how long to keep a log and Drive wasn't
 /// busy, each log last written longer ago than that is removed from the
@@ -85,19 +91,14 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
             .collect()
     });
     let mut index = config.index.as_deref().map(Index::open).transpose()?;
-    let unindexed = |ledger: &Ledger, index: &Index| -> Vec<&Settled> {
-        settled
-            .iter()
-            .filter(|log| ledger.has(&log.name) && !index.has(&log.name))
-            .collect()
-    };
     let mut done = Done {
         before: settled.len() - waiting.len(),
         ..Done::default()
     };
-    let backlog = index
-        .as_ref()
-        .is_some_and(|index| !unindexed(&ledger, index).is_empty());
+    let backlog = index.as_ref().is_some_and(|index| {
+        !unindexed(&settled, &ledger, index).is_empty()
+            || !gone(config, &settled, &ledger, index).is_empty()
+    });
     if waiting.is_empty() && old.is_empty() && !backlog {
         return Ok(done);
     }
@@ -110,91 +111,41 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
     };
     let scratch = config.ledger.with_extension("sealing");
     let recipients = Recipients::parse(&config.recipients)?;
+    let sending = Sending {
+        drive: &drive,
+        agent: &agent,
+        retries: &config.retries,
+        recipients: &recipients,
+        scratch: &scratch,
+    };
     for log in waiting.into_iter().take(most.unwrap_or(usize::MAX)) {
-        let at = seconds(SystemTime::now());
-        let held = patiently(&config.retries, || {
-            again(&mut login, &agent, |token| drive.find(token, &log.name))
-        });
-        let held = match held {
-            Err(Fault::Busy(why)) => {
-                done.busy = Some(why);
-                break;
-            }
-            other => other.map_err(|fault| fault.to_string())?,
-        };
-        if let Some(id) = held {
-            ledger.record(&log.name, &id, 0, at)?;
-            done.found += 1;
-            continue;
-        }
-        let bytes = seal::seal(&log.path, &scratch, &recipients)?;
-        let mut tried = false;
-        let sent = patiently(&config.retries, || {
-            // A send Drive answered busy may still have landed, so a retry
-            // looks before it sends again, and never makes a second copy.
-            if std::mem::replace(&mut tried, true)
-                && let Some(id) = again(&mut login, &agent, |token| drive.find(token, &log.name))?
-            {
-                return Ok((id, false));
-            }
-            again(&mut login, &agent, |token| {
-                drive.create(token, &log.name, &scratch, bytes)
-            })
-            .map(|id| (id, true))
-        });
-        // The sealed copy is scratch whether it went or not.
-        let _ = fs::remove_file(&scratch);
-        match sent {
-            Err(Fault::Busy(why)) => {
-                done.busy = Some(why);
-                break;
-            }
-            Err(fault) => return Err(fault.to_string()),
-            Ok((id, false)) => {
-                ledger.record(&log.name, &id, 0, at)?;
-                done.found += 1;
-            }
-            Ok((id, true)) => {
-                ledger.record(&log.name, &id, bytes, at)?;
-                done.sent += 1;
-                done.bytes += bytes;
-            }
+        send_log(log, &sending, &mut login, &mut ledger, &mut done)?;
+        if done.busy.is_some() {
+            break;
         }
     }
     if done.busy.is_none()
         && let Some(index) = index.as_mut()
     {
-        let rows: Vec<Value> = unindexed(&ledger, &*index)
-            .into_iter()
-            // A log gone or unreadable since it was listed has no row to
-            // give; a later run reads it again if it is back.
-            .filter_map(|log| {
-                index::row(&log.name, &log.path, log.bytes, config.records.as_deref()).ok()
-            })
-            .collect();
-        if !rows.is_empty() {
-            let sending = Sending {
-                drive: &drive,
-                agent: &agent,
-                retries: &config.retries,
-                recipients: &recipients,
-                scratch: &scratch,
-            };
-            let name = format!(
-                "{}/index/{}.jsonl.zst.age",
-                config.host,
-                names::stamp(seconds(now))
-            );
-            send_rows(
-                &rows,
-                &name,
-                &sending,
-                &mut login,
-                &mut ledger,
-                index,
-                &mut done,
-            )?;
-        }
+        let mut rows = rows(&unindexed(&settled, &ledger, index), config);
+        let reading = Reading {
+            drive: &drive,
+            agent: &agent,
+            retries: &config.retries,
+            identities: &config.identities,
+        };
+        let gone = gone(config, &settled, &ledger, index);
+        rows.extend(read_back(&gone, config, &reading, &mut login, &mut done));
+        let name = batch_name(&config.host, seconds(now), &ledger);
+        send_rows(
+            &rows,
+            &name,
+            &sending,
+            &mut login,
+            &mut ledger,
+            index,
+            &mut done,
+        )?;
     }
     if done.busy.is_none() {
         remove_held(&old, &drive, &mut login, &agent, &config.retries, &mut done)?;
@@ -202,7 +153,168 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
     Ok(done)
 }
 
+/// Seal and send one log, unless Drive holds it already from a run
+/// stopped before the ledger said so. Drive busy through every retry says
+/// so in `busy`, leaving the log for the next run.
+fn send_log(
+    log: &Settled,
+    sending: &Sending<'_>,
+    login: &mut Login,
+    ledger: &mut Ledger,
+    done: &mut Done,
+) -> Result<(), String> {
+    let Sending {
+        drive,
+        agent,
+        retries,
+        recipients,
+        scratch,
+    } = *sending;
+    let at = seconds(SystemTime::now());
+    let held = match patiently(retries, || {
+        again(login, agent, |token| drive.find(token, &log.name))
+    }) {
+        Err(Fault::Busy(why)) => {
+            done.busy = Some(why);
+            return Ok(());
+        }
+        other => other.map_err(|fault| fault.to_string())?,
+    };
+    if let Some(id) = held {
+        ledger.record(&log.name, &id, 0, at)?;
+        done.found += 1;
+        return Ok(());
+    }
+    let bytes = seal::seal(&log.path, scratch, recipients)?;
+    let mut tried = false;
+    let sent = patiently(retries, || {
+        // A send Drive answered busy may still have landed, so a retry
+        // looks before it sends again, and never makes a second copy.
+        if std::mem::replace(&mut tried, true)
+            && let Some(id) = again(login, agent, |token| drive.find(token, &log.name))?
+        {
+            return Ok((id, false));
+        }
+        again(login, agent, |token| {
+            drive.create(token, &log.name, scratch, bytes)
+        })
+        .map(|id| (id, true))
+    });
+    // The sealed copy is scratch whether it went or not.
+    let _ = fs::remove_file(scratch);
+    match sent {
+        Err(Fault::Busy(why)) => done.busy = Some(why),
+        Err(fault) => return Err(fault.to_string()),
+        Ok((id, false)) => {
+            ledger.record(&log.name, &id, 0, at)?;
+            done.found += 1;
+        }
+        Ok((id, true)) => {
+            ledger.record(&log.name, &id, bytes, at)?;
+            done.sent += 1;
+            done.bytes += bytes;
+        }
+    }
+    Ok(())
+}
+
+/// The name a run's rows go to Drive as, `<host>/index/<run>.jsonl.zst.age`,
+/// or with `-2`, `-3` and on after the run's time when a run in the same
+/// second sent rows already, since Drive would hold both under one name.
+fn batch_name(host: &str, at: u64, ledger: &Ledger) -> String {
+    let run = names::stamp(at);
+    (1..)
+        .map(|nth| match nth {
+            1 => format!("{host}/index/{run}.jsonl.zst.age"),
+            nth => format!("{host}/index/{run}-{nth}.jsonl.zst.age"),
+        })
+        .find(|name| !ledger.has(name))
+        .unwrap_or_default()
+}
+
+/// The settled logs the ledger says were sent that have no row yet.
+fn unindexed<'a>(settled: &'a [Settled], ledger: &Ledger, index: &Index) -> Vec<&'a Settled> {
+    settled
+        .iter()
+        .filter(|log| ledger.has(&log.name) && !index.has(&log.name))
+        .collect()
+}
+
+/// The objects the ledger names, by name and id, whose logs are no longer
+/// on the machine and have no row, at most as many as the settings read
+/// back a run, by name. The index's own objects are no logs.
+fn gone<'a>(
+    config: &Config,
+    settled: &[Settled],
+    ledger: &'a Ledger,
+    index: &Index,
+) -> Vec<(&'a str, &'a str)> {
+    if config.identities.is_empty() {
+        return Vec::new();
+    }
+    let rows = format!("{}/index/", config.host);
+    let here: std::collections::HashSet<&str> =
+        settled.iter().map(|log| log.name.as_str()).collect();
+    let mut gone: Vec<(&str, &str)> = ledger
+        .sent()
+        .filter(|(name, id)| {
+            !id.is_empty() && !name.starts_with(&rows) && !index.has(name) && !here.contains(name)
+        })
+        .collect();
+    gone.sort_unstable();
+    gone.truncate(config.backfill);
+    gone
+}
+
+/// The row of each of `gone`, read from its copy, read back beside the
+/// ledger and removed once read. Drive busy through every retry ends it
+/// there, saying so in `busy`; a copy no key here opens ends it too,
+/// saying so in `unread`, since what stops one stops the rest.
+fn read_back(
+    gone: &[(&str, &str)],
+    config: &Config,
+    reading: &Reading<'_>,
+    login: &mut Login,
+    done: &mut Done,
+) -> Vec<Value> {
+    let copy = config.ledger.with_extension("reading");
+    let mut rows = Vec::new();
+    for (name, id) in gone {
+        // A copy left by a run that was stopped is no copy of anything.
+        let _ = fs::remove_file(&copy);
+        match fetch::read_back(reading, login, id, name, &copy) {
+            Ok(bytes) => {
+                if let Ok(row) = index::row(name, &copy, bytes, config.records.as_deref()) {
+                    rows.push(row);
+                }
+            }
+            Err(Fault::Busy(why)) => {
+                done.busy = Some(why);
+                break;
+            }
+            Err(fault) => {
+                done.unread = Some(fault.to_string());
+                break;
+            }
+        }
+    }
+    // The copy was only read for its row.
+    let _ = fs::remove_file(&copy);
+    rows
+}
+
+/// The row of each of `logs`. A log gone or unreadable since it was
+/// listed has no row to give; a later run reads it again if it is back.
+fn rows(logs: &[&Settled], config: &Config) -> Vec<Value> {
+    logs.iter()
+        .filter_map(|log| {
+            index::row(&log.name, &log.path, log.bytes, config.records.as_deref()).ok()
+        })
+        .collect()
+}
+
 /// What sending one more object takes.
+#[derive(Clone, Copy)]
 struct Sending<'a> {
     drive: &'a Drive<'a>,
     agent: &'a ureq::Agent,
@@ -211,10 +323,11 @@ struct Sending<'a> {
     scratch: &'a Path,
 }
 
-/// Send `rows` sealed as `name`, then keep them in the index and the
-/// object in the ledger. Drive busy through every retry leaves the rows
-/// for the next run, saying so in `busy`; a copy that landed even so is
-/// one more object holding the same rows, which mining reads as one.
+/// Send `rows`, if there are any, sealed as `name`, then keep them in the
+/// index and the object in the ledger. Drive busy through every retry
+/// leaves the rows for the next run, saying so in `busy`; a copy that
+/// landed even so is one more object holding the same rows, which mining
+/// reads as one.
 fn send_rows(
     rows: &[Value],
     name: &str,
@@ -224,8 +337,15 @@ fn send_rows(
     index: &mut Index,
     done: &mut Done,
 ) -> Result<(), String> {
+    if rows.is_empty() {
+        return Ok(());
+    }
     let plain = sending.scratch.with_extension("rows");
-    let text: String = rows.iter().map(|row| format!("{row}\n")).collect();
+    let text: String = rows.iter().fold(String::new(), |mut text, row| {
+        text.push_str(&row.to_string());
+        text.push('\n');
+        text
+    });
     fs::write(&plain, text).map_err(|why| format!("can't write {}: {why}", plain.display()))?;
     let sealed = seal::seal(&plain, sending.scratch, sending.recipients);
     let _ = fs::remove_file(&plain);
