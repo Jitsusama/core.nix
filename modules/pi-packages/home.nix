@@ -167,6 +167,12 @@ in
       Unit = {
         Description = "Removes the versions of pi's packages that no pi runs";
         X-RestartIfChanged = false;
+        # Every pi rewrites its file at once when an install moves, and the
+        # path starts a sweep for each: on 29 October six in a second hit
+        # systemd's limit of five in ten seconds, which stopped the path
+        # too. A sweep takes milliseconds and sweeps every package, so a
+        # burst of them costs nothing.
+        StartLimitIntervalSec = 0;
       };
       Service = {
         Type = "oneshot";
