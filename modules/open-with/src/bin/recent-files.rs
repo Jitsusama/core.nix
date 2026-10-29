@@ -24,7 +24,7 @@ fn main() -> ExitCode {
             let (program, files) = rest.split_first().expect("two or more");
             let here = env::current_dir().unwrap_or_default();
             let paths: Vec<PathBuf> = files.iter().map(|file| here.join(file)).collect();
-            recent::add(&list, program, &format!("'{program} %u'"), &paths, None).map_err(|error| error.to_string())
+            recent::add(&list, program, &format!("{program} %u"), &paths, None).map_err(|error| error.to_string())
         }
         Some((verb, [])) if verb == "list" => recent::list(&list).map_err(|error| error.to_string()).and_then(|opened| {
             let mut out = io::stdout().lock();

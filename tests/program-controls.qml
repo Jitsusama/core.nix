@@ -130,7 +130,8 @@ ShellRoot {
         if (root.waiting === "the programs"
                 && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
-                && applications.recents.of("tester").length === 2)
+                && applications.recents.of("tester").length === 2
+                && applications.recents.of("radio").length === 1)
             Qt.callLater(root.cases);
     }
 
@@ -322,9 +323,12 @@ ShellRoot {
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
-                "New Window, New Window Below, Media, Sound");
-            same("Media holds only what the player can do", names(radio[2].targets()), "Play");
-            const recording = radio[3];
+                "New Window, New Window Below, Recent, Media, Sound");
+            radio[2].targets()[0].run();
+            same("a file given to a program that opens none opens as the desktop opens it",
+                JSON.stringify(Niri.spawned), JSON.stringify(["xdg-open", `${root.home}/song.ogg`]));
+            same("Media holds only what the player can do", names(radio[3].targets()), "Play");
+            const recording = radio[4];
             same("Sound says it records, with nothing to draw",
                 `${recording.side} ${recording.graph}`, "recording undefined");
             const [microphone] = recording.targets();

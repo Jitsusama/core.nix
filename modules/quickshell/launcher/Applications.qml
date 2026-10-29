@@ -506,8 +506,10 @@ Provider {
     // Return opens it through the program as its own list's settings say:
     // `open` while a window of it is open, through the process behind the
     // window used last ({pid}), and `start` while none is. A file from the
-    // desktop's list programs share opens as the program's own command
-    // does, given the file, as opening it from the file manager would. Any
+    // desktop's list programs share opens in the program, by its own
+    // command given the file, when its entry takes files; one given to a
+    // program that opens none, such as a chat's attachment, opens as the
+    // desktop opens it, which is what the list itself says of those. Any
     // other provider may give a program's Recent its own things after
     // these, each its one row, by `recentOf(program)`, newest first, as
     // Docs' documents are given (Documents.qml).
@@ -569,7 +571,8 @@ Provider {
             side: folder,
             run: () => {
                 if (source === null) {
-                    Niri.spawn(provider.command(entry).concat([path]));
+                    Niri.spawn(/%[fFuU]/.test(entry.execString)
+                        ? provider.command(entry).concat([path]) : ["xdg-open", path]);
                     return;
                 }
                 const window = (provider.running[entry.id] ?? [])[0] ?? null;
