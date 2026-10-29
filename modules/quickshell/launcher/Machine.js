@@ -2,8 +2,10 @@
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // how busy the processors and each core were between two reads, which kind
 // each core is, how fast a disk read and wrote between two reads, which
-// programs use the processors and the memory, and the memory modules the
-// machine read at boot. Machine.qml reads the files and says the figures.
+// programs use the processors and the memory, what held the processor
+// back and what kept it from resting as its own telemetry says, and the
+// memory modules the machine read at boot. Machine.qml reads the files
+// and says the figures.
 .pragma library
 
 // A line of /proc/stat counting a processor's time: "cpu" for them all,
@@ -131,6 +133,106 @@ function cpus(text) {
         }
     }
     return listed;
+}
+
+// What held a processor back, as a note says it after "by": the whole
+// processor's limits by the names Intel gives them, and a core cluster's
+// by the kind of limit it was.
+const LIMITS = {
+    pl1: "its power limit, PL1",
+    pl2: "its short power limit, PL2",
+    pl3: "its peak power limit, PL3",
+    platformPl1: "the whole machine's power limit, PL1",
+    platformPl2: "the whole machine's short power limit, PL2",
+    platformPl3: "the whole machine's peak power limit, PL3",
+    prochot: "being told to slow down",
+    regulatorHot: "a regulator running hot",
+    heat: "heat",
+    power: "power",
+    current: "current",
+    other: "something else"
+};
+
+function limit(by) {
+    return LIMITS[by] ?? by;
+}
+
+function strongest(causes) {
+    return (causes ?? []).reduce((a, b) => (a && a.share >= b.share ? a : b), null);
+}
+
+// What held the processor back over the last second, from its telemetry's
+// reading (ProcessorTelemetry.qml), or null while nothing did: the share
+// of that second and the limit that held it most, the whole processor's
+// where one did and else its most held cluster's, and each core held, by
+// its number, with what held its cluster most, as { n, share, by }. A
+// limit under a twentieth isn't said by the reader, so a core missing
+// wasn't held.
+function heldBack(reading) {
+    if (!reading) {
+        return null;
+    }
+    const cores = [];
+    for (const cluster of reading.clusters ?? []) {
+        const most = strongest(cluster.heldBack);
+        if (most) {
+            for (const n of cpus(cluster.cpus)) {
+                cores.push({ n, share: most.share, by: most.by });
+            }
+        }
+    }
+    cores.sort((a, b) => a.n - b.n);
+    const whole = strongest(reading.heldBack);
+    const most = whole ?? strongest(cores);
+    return most ? { share: most.share, by: most.by, whole: whole !== null, cores } : null;
+}
+
+// Each part the processor's telemetry says kept the package from resting,
+// by the reader's name for it: its own word's id, under the part's row,
+// and how a note says it.
+const KEEPERS = {
+    npu: { id: "npu", said: "the NPU" },
+    imageProcessor: { id: "image-processor", said: "the image processor" },
+    media: { id: "media-engine", said: "the media engine" },
+    graphics: { id: "graphics", said: "the graphics" },
+    display: { id: "display-engine", said: "the display engine" },
+    chipset: { id: "chipset", said: "the chipset's devices" },
+    cores: { id: "cores", said: "busy cores" },
+    internal: { id: "power-controller", said: "the processor's own power controller" },
+    other: { id: "other", said: "something else" }
+};
+
+function keeper(by) {
+    return KEEPERS[by] ?? { id: "other", said: by };
+}
+
+// The least share the reader says a part kept the package from resting
+// for, a twentieth, and so the least a part is named for.
+const RESTLESS = 0.05;
+
+// What kept the package from resting over its last readings, oldest first,
+// each { kept, by } as the reader says a second (ProcessorTelemetry.qml
+// keeps about ten): the share of that time anything did, on average, and
+// each part's share of it, longest first, leaving out those under a
+// twentieth, and whether it's under a twentieth as a whole, when nothing
+// is said to keep it from resting. Averaged, a share near a twentieth
+// doesn't jump each second. Null with no readings.
+function kept(readings) {
+    if (readings.length === 0) {
+        return null;
+    }
+    const share = readings.reduce((sum, each) => sum + each.kept, 0) / readings.length;
+    const parts = {};
+    for (const reading of readings) {
+        for (const part of reading.by) {
+            parts[part.by] = (parts[part.by] ?? 0) + part.share;
+        }
+    }
+    const by = Object.keys(parts)
+        .map(part => ({ by: part, share: parts[part] / readings.length }))
+        .filter(part => part.share >= RESTLESS)
+        .sort((a, b) => b.share - a.share);
+    return { share, by, quiet: share < RESTLESS };
 }
 
 // Each core's kind, by its number, on a processor of more than one kind:

@@ -3,8 +3,13 @@
 //
 // - "cpu", "processor", "cores" or "load": how busy the processors are, and
 //   their Cores (one reading each, oldest core first), which are Maxed, the
-//   Clock, the Temperature (as Heat reads it), the programs Using it, the
-//   Load, the Kinds of core and the Model.
+//   Clock, what Held it Back over the last second and each core held (as
+//   its own telemetry says, ProcessorTelemetry.qml), the Temperature (as
+//   Heat reads it), the programs Using it, the Load, the Kinds of core and
+//   the Model, then what Kept it From Resting over the last ten seconds
+//   and each part that did. Both telemetry rows stand whenever the
+//   telemetry answers, at 0% when nothing holds it back or keeps it from
+//   resting, so the rows under them don't move.
 // - "memory" or "ram": what's Used, the Pressure (how long something waited
 //   for it), the Swap, what's Cached, the programs Using it, and its Type,
 //   as the machine read it at boot.
@@ -352,6 +357,7 @@ Provider {
             graph: bar(total),
             glyph: Words.glyph(kinds.cpu),
             title: Words.name(kinds.cpu),
+            about: kinds.cpu,
             note: since(kept)
         }, () => cpuParts(kept));
     }
@@ -394,6 +400,31 @@ Provider {
                 note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
             }));
         }
+        // Held Back stands while the telemetry answers, held or not, so the
+        // rows under it never move under Joel's selection (VKCF3Z).
+        const telemetry = ProcessorTelemetry.reading;
+        const held = Machine.heldBack(telemetry);
+        if (held && held.cores.length > 0)
+            rows.push(holderRow({
+                name: named("cpu:held-back"),
+                side: percent(held.share),
+                graph: bar(held.share),
+                glyph: chip,
+                note: `by ${Machine.limit(held.by)}, over the last second`
+            }, () => held.cores.map(core => figure({
+                name: named("cpu:held-back-core", { n: core.n }),
+                side: percent(core.share),
+                graph: bar(core.share),
+                note: `by ${Machine.limit(core.by)}`
+            }))));
+        else if (telemetry)
+            rows.push(figure({
+                name: named("cpu:held-back"),
+                side: percent(held ? held.share : 0),
+                graph: bar(held ? held.share : 0),
+                note: held ? `by ${Machine.limit(held.by)}, over the last second`
+                    : "nothing holds it back now"
+            }));
         if (now.heat)
             rows.push(heated("cpu:temperature", now.heat, "processor"));
         const users = programs
@@ -449,6 +480,26 @@ Provider {
         }
         if (info.model !== "")
             rows.push(leaf({ name: named("cpu:model"), side: info.model }));
+        // Kept From Resting stands while the telemetry says it, kept from
+        // resting or not, as Held Back does; last, as VKCF3Z placed it.
+        const resting = ProcessorTelemetry.kept;
+        if (resting) {
+            const most = resting.by[0];
+            const fields = {
+                name: named("cpu:kept-from-resting"),
+                side: percent(resting.share),
+                graph: bar(resting.share),
+                note: most ? `by ${Machine.keeper(most.by).said}`
+                    : resting.quiet ? "nothing keeps it from resting now"
+                    : "by no one part for long"
+            };
+            rows.push(resting.by.length > 0 ? holderRow(Object.assign({ glyph: chip }, fields),
+                () => resting.by.map(part => figure({
+                    name: named(`cpu:kept-by-${Machine.keeper(part.by).id}`),
+                    side: percent(part.share),
+                    graph: bar(part.share)
+                }))) : figure(fields));
+        }
         return rows;
     }
 
@@ -968,6 +1019,17 @@ Provider {
         && (launcher.answer?.live === provider
             || launcher.held.some(step => step.row.live === provider)
             || launcher.matches.some(row => row.live === provider))
+
+    // The processor's telemetry is watched while a Processor answer is
+    // listed, shown or stepped into, so what held it back is there once its
+    // parts are opened, and it's read for nothing else Machine answers.
+    // Held Back and Kept From Resting have no words of their own: asked
+    // alone, each would wait on the reading that only its being shown asks
+    // for.
+    readonly property bool watched: shown && [launcher.answer,
+        ...launcher.held.map(step => step.row), ...launcher.matches]
+        .some(row => row?.live === provider && row.about === kinds.cpu)
+    onWatchedChanged: ProcessorTelemetry.watching += watched ? 1 : -1
 
     Timer {
         interval: provider.second
