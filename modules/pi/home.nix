@@ -278,8 +278,14 @@ in
   config = {
     assertions = [
       {
+        # A further realm with a home beside it: with no home realm named,
+        # the harness would take this one for home and write into its folders.
         assertion =
-          config.jitsusama.pi.claude.realm != null -> lib.elem config.jitsusama.pi.claude.realm further;
+          config.jitsusama.pi.claude.realm != null
+          ->
+            homeRealm != null
+            && config.jitsusama.pi.claude.realm != homeRealm
+            && lib.elem config.jitsusama.pi.claude.realm further;
         message = "jitsusama.pi.claude.realm names no realm of jitsusama.mycelium.alsoJoins.";
       }
     ];

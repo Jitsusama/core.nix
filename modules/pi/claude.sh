@@ -7,10 +7,11 @@
 # apart from those of the machine's home realm ($MACHINE_REALM), and
 # elsewhere it is on no mesh (PI_MESH=off). The login lives in a config
 # folder of its own, ~/.claude-personal, apart from any other Claude Code
-# login in ~/.claude, and `pi-claude login` signs it in. On a machine whose only login is the
-# plan's ($OWN_LOGIN, or ~/.claude named in PI_CLAUDE_CONFIG_DIR), no folder
-# is named to Claude Code at all: on macOS a named folder is a keychain entry
-# of its own, so naming even the default one leaves its login unseen.
+# login in ~/.claude, and `pi-claude login` signs it in. On a machine whose
+# only login is the plan's ($OWN_LOGIN, or ~/.claude named in
+# PI_CLAUDE_CONFIG_DIR), no folder is named to Claude Code at all: on macOS
+# a named folder is a keychain entry of its own, so naming even the default
+# one leaves its login unseen.
 #
 # Anything pointing Claude Code at an API key, a proxy or a cloud bills that
 # rather than the plan, and the provider refuses to start beside it, so none
