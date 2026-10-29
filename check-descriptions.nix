@@ -996,10 +996,11 @@
     vocabulary breaking each of its rules
   '';
   the-launcher-shows-the-moment-in-now = ''
-    Now's last rows are its own: the time, the date, the location, saying its town and when the
-    place keeps another zone than the clock, the weather read as the launcher opens and kept while
-    it's asked again, and the next meeting, whose Return is the meeting's own, with no Today row to
-    step into, and Now counts nothing while only they are there
+    Now's last rows are the time and the date as the launcher places each anywhere, never a
+    version Now draws, the location, saying its town and when the place keeps another zone than
+    the clock, the weather, placed the same way, read as the launcher opens and kept while it's
+    asked again, then the calendar's own row for the next meeting, and Now counts nothing while
+    only they are there
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a

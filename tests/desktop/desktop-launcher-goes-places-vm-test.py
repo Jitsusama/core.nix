@@ -1557,8 +1557,8 @@ def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
         "on:call",
         "on:playing",
         "session:awake",
-        "on:time",
-        "on:date",
+        "answer:time",
+        "answer:today",
     ]
 
     def listed() -> list[str]:
@@ -2239,6 +2239,10 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     fewest = 100
     assert said["walked"] > fewest, said["walked"]
     assert actless == [], "\n".join(f"{row['in']} \u203a {row['words']}" for row in actless)
+    # A thing with one row of its own, as the time, the date and the
+    # weather are, shows as that row wherever it's listed, never as a
+    # version a surface drew itself (Joel, 2026-10-28).
+    assert said["ownVersions"] == [], "\n".join(said["ownVersions"])
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

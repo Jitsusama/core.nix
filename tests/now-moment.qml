@@ -1,15 +1,16 @@
 // Drives Now's own rows (modules/quickshell/launcher/WhatsOn.qml) through
 // Quickshell itself, with the margin's pieces, the agents' waiting list,
-// the weather and the calendar stood in, and Location.qml's own, reading a
-// file beside the shell and a stand-in timedatectl. After what's on come
-// the time, the date, the location, the weather and the next meeting, with
-// no Today to step into. The time and the date copy what they say; the
-// location says its town, and where the place keeps another zone than the
-// clock, says so; the weather is read once the launcher opens and again
-// when it hears from Open-Meteo, keeping what it knew while it asks again;
-// the meeting's Return is its own; and Now counts nothing while only they
-// are there. It exits 0 once every case holds, and otherwise 1, saying
-// which didn't.
+// the launcher, the weather and the calendar stood in, and Location.qml's
+// own, reading a file beside the shell and a stand-in timedatectl. After
+// what's on come the time, the date, the location, the weather and the
+// next meeting, with no Today to step into. The time, the date and the
+// weather are each the row the launcher places for that thing (its
+// `resolved`), never one Now draws itself; the location says its town,
+// and where the place keeps another zone than the clock, says so; the
+// weather is read once the launcher opens and again when it hears from
+// Open-Meteo, keeping what it knew while it asks again; the meeting is the
+// calendar's own row; and Now counts nothing while only they are there.
+// It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -64,11 +65,40 @@ ShellRoot {
         })
     }
 
+    // The launcher's placing of an answered thing, as Launcher.qml's
+    // resolved gives it: named by the thing, what it says beside, its
+    // parts a step in. Each row it gives is marked, so the test knows Now
+    // showed the launcher's row and not one of its own.
     QtObject {
         id: launcher
 
         property bool open: false
         readonly property var sources: [weather, calendar]
+        property int placed: 0
+
+        function resolved(id) {
+            placed += 1;
+            const now = new Date();
+            const row = (name, side, parts) => ({
+                key: "",
+                is: `answer:${id}`,
+                answered: true,
+                placed: name,
+                name: name,
+                side: side,
+                verb: "copy",
+                fromLauncher: true,
+                verbs: () => parts
+            });
+            if (id === "time")
+                return row("Time", Qt.formatDateTime(now, "HH:mm"), [{ name: "Zone" }]);
+            if (id === "today")
+                return row("Date", Qt.formatDate(now, "dddd d MMMM yyyy"), [{ name: "Week" }]);
+            if (id !== "weather")
+                return null;
+            const said = weather.answer("weather");
+            return said && said.rows.length > 0 ? row("Weather", said.headline, said.rows) : null;
+        }
     }
 
     Launcher.WhatsOn {
@@ -94,8 +124,8 @@ ShellRoot {
 
     // Now's own rows, after what's on.
     function moment() {
-        return now.everything().filter(row => String(row.key).startsWith("on:")
-            || row.key === calendar.next?.key);
+        return now.everything().filter(row => String(row.is ?? "").startsWith("answer:")
+            || row.key === "on:location" || row.key === calendar.next?.key);
     }
 
     function names() {
@@ -123,10 +153,15 @@ ShellRoot {
         expect("the time, the date and the location lead Now's own rows, the meeting after them",
             JSON.stringify(names()) === JSON.stringify(["Time", "Date", "Location", "Standup"]),
             JSON.stringify(names()));
+        expect("the time and the date are the launcher's own rows for them",
+            rows[0].fromLauncher === true && rows[0].is === "answer:time"
+                && rows[1].fromLauncher === true && rows[1].is === "answer:today",
+            JSON.stringify(rows.slice(0, 2)));
         expect("the time says the minute", rows[0].side === time, rows[0].side);
         expect("the date says the day", rows[1].side === date, rows[1].side);
-        expect("and each copies what it says", rows[0].verb === "copy" && rows[1].verb === "copy",
-            `${rows[0].verb} ${rows[1].verb}`);
+        expect("and each holds its parts, as it does anywhere",
+            rows[0].verbs()[0].name === "Zone" && rows[1].verbs()[0].name === "Week",
+            JSON.stringify(rows.slice(0, 2)));
         expect("nothing counted while only they are there", now.counted() === "nothing",
             now.counted());
         expect("the weather isn't asked before the launcher opens", weather.asked === 0,
@@ -160,6 +195,9 @@ ShellRoot {
             JSON.stringify(names()));
         rows = moment();
         expect("the weather says the sky", rows[3].side === "7\u00b0 \u00b7 cloudy", rows[3].side);
+        expect("the weather is the launcher's own row for it",
+            rows[3].fromLauncher === true && rows[3].is === "answer:weather",
+            JSON.stringify(rows[3]));
         const meeting = rows[4];
         expect("the meeting's Return is its own", meeting.verb === "join" && meeting.later === true,
             JSON.stringify(meeting));
