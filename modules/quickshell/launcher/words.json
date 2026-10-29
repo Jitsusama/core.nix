@@ -476,6 +476,7 @@
         "machine:cpu:temperature",
         "machine:cpu:using",
         "machine:cpu:load",
+        "machine:cpu:npu-load",
         "machine:cpu:kinds",
         "machine:cpu:model",
         "machine:cpu:kept-from-resting"
@@ -531,6 +532,11 @@
       "id": "machine:cpu:load",
       "in": "machine:cpu",
       "name": "Load"
+    },
+    {
+      "id": "machine:cpu:npu-load",
+      "in": "machine:cpu",
+      "name": "NPU Load"
     },
     {
       "id": "machine:cpu:kinds",

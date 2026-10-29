@@ -5,11 +5,12 @@
 //   their Cores (one reading each, oldest core first), which are Maxed, the
 //   Clock, what Held it Back over the last second and each core held (as
 //   its own telemetry says, ProcessorTelemetry.qml), the Temperature (as
-//   Heat reads it), the programs Using it, the Load, the Kinds of core and
-//   the Model, then what Kept it From Resting over the last ten seconds
-//   and each part that did. Both telemetry rows stand whenever the
-//   telemetry answers, at 0% when nothing holds it back or keeps it from
-//   resting, so the rows under them don't move.
+//   Heat reads it), the programs Using it, the Load, the NPU's Load (as
+//   its driver says it), the Kinds of core and the Model, then what Kept
+//   it From Resting over the last ten seconds and each part that did.
+//   Both telemetry rows stand whenever the telemetry answers, at 0% when
+//   nothing holds it back or keeps it from resting, so the rows under
+//   them don't move.
 // - "memory" or "ram": what's Used, the Pressure (how long something waited
 //   for it), the Swap, what's Cached, the programs Using it, and its Type,
 //   as the machine read it at boot.
@@ -330,8 +331,26 @@ Provider {
             clocks: info.maxes.map(core => Number(said(
                 `/sys/devices/system/cpu/cpu${core.n}/cpufreq/scaling_cur_freq`)) || 0),
             load: read(loadavg).trim().split(/\s+/).slice(0, 3),
-            heat: processorHeat()
+            heat: processorHeat(),
+            npu: npuRead()
         }));
+    }
+
+    // The NPU's counters, as its driver gives them to any account: its busy
+    // time since boot and its clock now and at most, or null with no NPU
+    // that says them. Neither wakes it: the busy time is a counter, and
+    // the clock reads 0 unless it's already awake, when a read holds it
+    // awake at most its own 100 ms longer (ivpu_sysfs.c in 7.2).
+    readonly property string npuAt: "/sys/class/accel/accel0/device"
+    function npuRead() {
+        const busy = said(`${npuAt}/npu_busy_time_us`);
+        if (busy === "")
+            return null;
+        return {
+            busy: Number(busy),
+            clock: Number(said(`${npuAt}/npu_current_frequency_mhz`)) || 0,
+            top: Number(said(`${npuAt}/npu_max_frequency_mhz`)) || 0
+        };
     }
 
     // The processor's temperature, as Heat says it: its package's sensor
@@ -448,6 +467,16 @@ Provider {
                 name: named("cpu:load"),
                 side: now.load.join(" \u00b7 "),
                 note: "over 1, 5 and 15 minutes"
+            }));
+        // The NPU's load sits with the processors', so the two read as a
+        // pair (VKCF3Z, 2026-10-29).
+        const npu = Machine.npuLoad(now.npu, kept.before?.said.npu ?? null, between(kept));
+        if (npu)
+            rows.push(npu.share === null ? reading(named("cpu:npu-load")) : figure({
+                name: named("cpu:npu-load"),
+                side: percent(npu.share),
+                graph: bar(npu.share),
+                note: npu.clock
             }));
         if (info.kinds) {
             const order = ["performance", "efficient", "low-power"];
