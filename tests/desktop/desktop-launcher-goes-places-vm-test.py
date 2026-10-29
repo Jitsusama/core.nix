@@ -1793,6 +1793,8 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
             and drawer.get("title") == lunch["title"]
             and drawer.get("facts", [])[:2] == lunch["facts"]
             and drawer.get("facts", [{}] * 3)[2].get("label") == "Date"
+            # The file it carries, by name, after when it came.
+            and drawer.get("facts", [{}] * 4)[3:] == [{"label": "Attachment", "value": "menu.pdf"}]
             and drawer.get("body") == lunch["body"]
         )
 

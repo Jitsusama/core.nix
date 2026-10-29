@@ -60,6 +60,9 @@ pub struct Mail {
     /// What it says, as plain text: its plain part, or its HTML part as
     /// text when it has no plain one, at most `BODY_MOST` characters.
     pub body: String,
+    /// The name of each file it carries, in order, as Gmail lists them
+    /// under it.
+    pub attachments: Vec<String>,
 }
 
 /// The ids of the mail a search answered with, in its order.
@@ -112,7 +115,43 @@ pub fn read(answer: &Value) -> Option<Mail> {
             .unwrap_or(0),
         page: format!("https://mail.google.com/mail/u/0/#inbox/{thread}"),
         body: answer.get("payload").map(body).unwrap_or_default(),
+        attachments: answer.get("payload").map(attached).unwrap_or_default(),
     })
+}
+
+/// The name of each file a message carries: every part with a filename,
+/// found depth first, but for what its HTML shows inline (a signature's
+/// logo, a pasted picture), which lives in a multipart/related beside the
+/// HTML and which Gmail doesn't list as an attachment either.
+fn attached(payload: &Value) -> Vec<String> {
+    let mut names = Vec::new();
+    carried(payload, &mut names);
+    names
+}
+
+fn carried(part: &Value, into: &mut Vec<String>) {
+    let text = |field: &str| part.get(field).and_then(Value::as_str).unwrap_or("");
+    let name = text("filename").trim();
+    if !name.is_empty() {
+        into.push(name.to_owned());
+        return;
+    }
+    if text("mimeType").eq_ignore_ascii_case("multipart/related") {
+        // Its first part is what it relates the rest to, which may itself
+        // hold attachments, as an alternative's parts never do.
+        if let Some(first) = part.pointer("/parts/0") {
+            carried(first, into);
+        }
+        return;
+    }
+    for inner in part
+        .get("parts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        carried(inner, into);
+    }
 }
 
 /// The address a From header names, or nothing when it names none.
@@ -280,6 +319,7 @@ mod tests {
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
                 body: String::new(),
+                attachments: Vec::new(),
             })
         );
     }
@@ -327,6 +367,32 @@ mod tests {
             read(&answer).unwrap().body,
             "Lunch on Friday?\n\nAda <ada@example.com>"
         );
+    }
+
+    #[test]
+    fn mail_lists_the_files_it_carries_but_not_what_its_html_shows_inline() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {
+        "mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "multipart/related", "parts": [
+                {"mimeType": "multipart/alternative", "parts": [
+                    {"mimeType": "text/plain", "body": {"data": encoded("Menu attached")}},
+                    {"mimeType": "text/html", "body": {"data": encoded("<p>Menu</p>")}}
+                ]},
+                {"mimeType": "image/png", "filename": "logo.png", "body": {}}
+            ]},
+            {"mimeType": "application/pdf", "filename": "menu.pdf", "body": {}},
+            {"mimeType": "image/jpeg", "filename": " patio.jpg ", "body": {}}
+        ]}});
+        let mail = read(&answer).unwrap();
+        assert_eq!(mail.attachments, ["menu.pdf", "patio.jpg"]);
+        assert_eq!(mail.body, "Menu attached");
+    }
+
+    #[test]
+    fn mail_with_no_files_carries_none() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {
+            "mimeType": "text/plain", "body": {"data": encoded("Hi")}}});
+        assert!(read(&answer).unwrap().attachments.is_empty());
     }
 
     #[test]

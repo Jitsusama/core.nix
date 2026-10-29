@@ -57,13 +57,19 @@ function sender(mail) {
 }
 
 // Its details, as the launcher's drawer shows them beside its row: its
-// subject, who it's from and to, when it came, and what it says, every
-// one plain text, since they're someone else's words.
+// subject, who it's from and to, when it came, the files it carries by
+// name, and what it says, every one plain text, since they're someone
+// else's words.
 function details(mail, untitled) {
+    const attachments = mail.attachments ?? [];
     const facts = [
         { label: "From", value: sender(mail) },
         { label: "To", value: mail.to ?? "" },
-        { label: "Date", value: dated(mail.at) }
+        { label: "Date", value: dated(mail.at) },
+        {
+            label: attachments.length === 1 ? "Attachment" : "Attachments",
+            value: attachments.join(", ")
+        }
     ];
     return {
         title: mail.subject === "" ? untitled : mail.subject,

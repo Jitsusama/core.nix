@@ -107,6 +107,12 @@ QtObject {
             ],
             body: "Friday?\n\nAda"
         });
+        check("the details of mail carrying files",
+            Mail.details(Object.assign({}, lunch, { attachments: ["menu.pdf", "patio.jpg"] }),
+                "No Subject").facts[3], { label: "Attachments", value: "menu.pdf, patio.jpg" });
+        check("the details of mail carrying one file",
+            Mail.details(Object.assign({}, lunch, { attachments: ["menu.pdf"] }), "No Subject")
+                .facts[3], { label: "Attachment", value: "menu.pdf" });
         const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
             at: lunch.at };
         check("the details of mail saying little", Mail.details(bare, "No Subject"), {

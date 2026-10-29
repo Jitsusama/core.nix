@@ -335,11 +335,12 @@
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
     meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
-    first, each asked for once, with who it went to and its text, never an attachment's, marking
-    it read or archiving it when asked, marking it unread again, mail read here wanting Joel again
-    at once, and the documents of each kind he looked at lately, his last first, asking Drive again
-    only every five minutes and keeping them while Drive fails
+    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest first,
+    each asked for once, with who it went to, its text, never an attachment's, and the name of each
+    file it carries but what its HTML shows inline, marking it read or archiving it when asked,
+    marking it unread again, mail read here wanting Joel again at once, and the documents of each
+    kind he looked at lately, his last first, asking Drive again only every five minutes and
+    keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1158,8 +1159,9 @@
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and
-    its details say; writes a reply to who sent it, and a mail to everyone else a meeting names;
-    and writes the lines that mark mail read or unread again or archive it
+    its details say, the files it carries among them; writes a reply to who sent it, and a mail to
+    everyone else a meeting names; and writes the lines that mark mail read or unread again or
+    archive it
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
