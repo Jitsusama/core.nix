@@ -76,8 +76,11 @@ in
       );
       default = [ ];
       description = ''
-        Builders always there, such as other machines nearby, named beside any
-        lent one while they answer, so Nix never waits on one that's away.
+        Builders always there, such as other machines nearby, named while they
+        answer, so Nix never waits on one that's away. They're never offered to
+        every build: only one that names /run/nix-offload/machines-with-standing
+        (`--builders @/run/nix-offload/machines-with-standing`) reaches them,
+        beside any lent one, so a build of code they mustn't hold never does.
       '';
     };
     timeZone = lib.mkOption {

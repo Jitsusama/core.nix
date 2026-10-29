@@ -1,5 +1,10 @@
-//! What Nix and the machine queue read: the builders standing by that
-//! answer now, and the one lent, if any.
+//! What Nix and the machine queue read: the one builder lent, if any, for
+//! every build; and beside it the builders standing by that answer now, for
+//! a build that asks for them by naming their file.
+//!
+//! Standing builders are never offered to every build, since they may be
+//! machines whose owner wants only some work on them: a build of private
+//! code must never reach one by default.
 
 use std::fs;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -50,34 +55,53 @@ pub fn answers(address: &str) -> bool {
     })
 }
 
-/// The machines file, written only when what it should say changes.
-pub struct Machines {
+/// A file of machines lines, written only when what it should say changes.
+struct File {
     path: PathBuf,
-    standing: Vec<Standing>,
     written: Option<String>,
 }
 
+impl File {
+    fn say(&mut self, text: String) {
+        if self.written.as_ref() != Some(&text) {
+            write(&self.path, &text);
+            self.written = Some(text);
+        }
+    }
+}
+
+/// The two machines files: `every` for every build, holding only the one
+/// lent, and `with_standing` for a build that names it, holding the
+/// standing builders that answer as well.
+pub struct Machines {
+    every: File,
+    with_standing: File,
+    standing: Vec<Standing>,
+}
+
 impl Machines {
-    pub fn new(path: PathBuf, standing: Vec<Standing>) -> Self {
-        Self {
+    pub fn new(every: PathBuf, with_standing: PathBuf, standing: Vec<Standing>) -> Self {
+        let file = |path| File {
             path,
-            standing,
             written: None,
+        };
+        Self {
+            every: file(every),
+            with_standing: file(with_standing),
+            standing,
         }
     }
 
-    /// Say the standing builders that answer, and the one lent.
+    /// Say the one lent to every build, and it with the standing builders
+    /// that answer to a build that asks for them.
     pub fn show(&mut self, lent: Option<&str>) {
         let answering = self
             .standing
             .iter()
             .filter(|builder| answers(&builder.address))
             .map(|builder| builder.line.as_str());
-        let text = text(answering, lent);
-        if self.written.as_ref() != Some(&text) {
-            write(&self.path, &text);
-            self.written = Some(text);
-        }
+        self.with_standing.say(text(answering, lent));
+        self.every.say(text(std::iter::empty(), lent));
     }
 }
 
@@ -124,25 +148,30 @@ mod tests {
     }
 
     #[test]
-    fn a_builder_that_stops_answering_leaves_the_file() {
+    fn a_standing_builder_is_named_only_to_builds_that_ask_while_it_answers() {
         let dir = tempfile::tempdir().expect("a folder");
-        let path = dir.path().join("machines");
+        let every = dir.path().join("machines");
+        let asked = dir.path().join("machines-with-standing");
         let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
         let address = listening.local_addr().expect("its address").to_string();
         let mut machines = Machines::new(
-            path.clone(),
+            every.clone(),
+            asked.clone(),
             vec![Standing {
                 address,
                 line: "ssh-ng://home".to_owned(),
             }],
         );
+        let read = |path| fs::read_to_string(path).expect("read");
         machines.show(Some("ssh-ng://lent"));
-        assert_eq!(
-            fs::read_to_string(&path).expect("read"),
-            "ssh-ng://home\nssh-ng://lent\n"
-        );
+        assert_eq!(read(&every), "ssh-ng://lent\n");
+        assert_eq!(read(&asked), "ssh-ng://home\nssh-ng://lent\n");
+        machines.show(None);
+        assert_eq!(read(&every), "");
+        assert_eq!(read(&asked), "ssh-ng://home\n");
         drop(listening);
         machines.show(None);
-        assert_eq!(fs::read_to_string(&path).expect("read"), "");
+        assert_eq!(read(&every), "");
+        assert_eq!(read(&asked), "");
     }
 }

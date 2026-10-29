@@ -12,7 +12,9 @@
 //! the helper for a builder, names it `NAME<seconds>`, and writes the Nix
 //! machines line the helper gives into /run/nix-offload/machines, which
 //! nix-daemon reads at each build (`builders = @` it) and the queue reads
-//! to count the builder's room. Once nothing has reached it for fifteen
+//! to count the builder's room. Standing builders that answer go only into
+//! /run/nix-offload/machines-with-standing, beside the lent one, for a
+//! build that names that file (`--builders @...`), never every build. Once nothing has reached it for fifteen
 //! minutes, or the deadline comes, it takes the line out first, so no build
 //! is sent to a builder that's going, then gives the builder back. It
 //! starts none outside the day's hours, so none is made overnight or to
@@ -70,8 +72,13 @@ const WAIT: u64 = 180;
 const READY: Duration = Duration::from_mins(15);
 /// How often the queue is read.
 const TICK: Duration = Duration::from_secs(20);
-/// Where nix-daemon and the queue read the builder's line.
+/// Where nix-daemon and the queue read the lent builder's line, for every
+/// build.
 const MACHINES: &str = "/run/nix-offload/machines";
+/// Where a build that asks for standing builders too reads them, by
+/// `--builders @` it: never every build, since they may be machines only
+/// some work may reach.
+const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
@@ -237,7 +244,7 @@ fn read_standing(path: &Path) -> Vec<machines::Standing> {
 /// Name the standing builders that answer, lending none, until told to end.
 fn stand(standing: &[machines::Standing]) {
     hear_stops();
-    let mut machines = Machines::new(MACHINES.into(), standing.to_vec());
+    let mut machines = Machines::new(MACHINES.into(), WITH_STANDING.into(), standing.to_vec());
     while !ENDING.load(Ordering::SeqCst) {
         machines.show(None);
         rest(TICK);
@@ -251,7 +258,7 @@ fn serve(settings: &Settings) {
         .standing
         .as_deref()
         .map_or_else(Vec::new, read_standing);
-    let mut machines = Machines::new(MACHINES.into(), standing);
+    let mut machines = Machines::new(MACHINES.into(), WITH_STANDING.into(), standing);
     machines.show(None);
     let mut lent: Option<Lent> = None;
     let mut not_before = 0;
