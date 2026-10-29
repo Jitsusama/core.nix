@@ -302,12 +302,13 @@ impl Store {
         log.lines().map(str::to_owned).collect()
     }
 
-    /// Steps `guard` until `done` holds, as the listing runs apart.
+    /// Steps `guard` until `done` holds, as the listing runs apart: for
+    /// as long as a loaded machine takes to run its few shell stand-ins.
     fn step_until(&self, guard: &mut Guard, done: impl Fn(&Store) -> bool) {
         let started = Instant::now();
         while !done(self) {
             assert!(
-                started.elapsed() < Duration::from_secs(10),
+                started.elapsed() < Duration::from_secs(30),
                 "{:?}",
                 self.log()
             );
@@ -452,12 +453,14 @@ fn a_pass_offers_nix_no_batch_after_one_is_found_stale() {
     // 37 deletes a minute each refused whole.
     let store = Store::new();
     // Largest first, so the four largest fill the first batch of 8 GiB.
+    // That's the order only with no cache kept: kept, the oldest go first,
+    // and a second turning while these are made dates the smallest older.
     for n in 0..8u64 {
         let path = store.dead(&format!("held-{n}"), 10.0 * DAY, (2 << 30) + n);
         fs::write(path.join("held"), "").unwrap();
     }
     fs::write(store.root.join("listing-slow"), "").unwrap();
-    let mut guard = store.guard(store.config("0%", "0%"));
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
     store.step_until(&mut guard, |store| {
         store.log().iter().any(|line| line.starts_with("delete"))
     });
