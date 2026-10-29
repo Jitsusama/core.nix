@@ -85,6 +85,24 @@ extern "C" fn ending(_: libc::c_int) {
     ENDING.store(true, Ordering::SeqCst);
 }
 
+/// How often a rest looks to see whether it's been told to end.
+const HEARD_WITHIN: Duration = Duration::from_millis(100);
+
+/// Wait `length`, or less once told to end. A signal can only set a flag
+/// safely, and `thread::sleep` sleeps on through one, so the flag is read
+/// in short steps: a stop that waited out a whole tick would hold every
+/// other unit's start at a switch that long.
+fn rest(length: Duration) {
+    let began = Instant::now();
+    while !ENDING.load(Ordering::SeqCst) {
+        let left = length.saturating_sub(began.elapsed());
+        if left.is_zero() {
+            return;
+        }
+        thread::sleep(left.min(HEARD_WITHIN));
+    }
+}
+
 /// What `serve` was given.
 struct Settings {
     helper: PathBuf,
@@ -221,7 +239,7 @@ fn stand(standing: &[machines::Standing]) {
     let mut machines = Machines::new(MACHINES.into(), standing.to_vec());
     while !ENDING.load(Ordering::SeqCst) {
         machines.show(None);
-        thread::sleep(TICK);
+        rest(TICK);
     }
 }
 
@@ -279,7 +297,7 @@ fn serve(settings: &Settings) {
             said_on = Some(day);
         }
         machines.show(lent.as_ref().map(|builder| builder.line.as_str()));
-        thread::sleep(TICK);
+        rest(TICK);
     }
     if let Some(builder) = lent {
         give_back(settings, &mut machines, builder, Event::Stopped);
@@ -515,6 +533,24 @@ fn state() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stop_ends_a_rest_at_once() {
+        hear_stops();
+        thread::spawn(|| {
+            thread::sleep(Duration::from_millis(200));
+            // SAFETY: a signal to this process, whose handler only stores
+            // to an atomic.
+            unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
+        });
+        let began = Instant::now();
+        rest(TICK);
+        assert!(
+            began.elapsed() < Duration::from_secs(1),
+            "a stop took {:?} to end a rest",
+            began.elapsed()
+        );
+    }
 
     #[test]
     fn a_lines_host_is_what_ssh_reaches() {
