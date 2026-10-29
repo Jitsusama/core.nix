@@ -28,7 +28,9 @@
 //! the builder lives:
 //! - `helper up NAME SECONDS` makes it, to live at most SECONDS, the time
 //!   left until the deadline, prints its machines line once Nix can use
-//!   it, and stays running while it's there, holding the way to it. It
+//!   it, and stays running while it's there, holding the way to it. Before
+//!   that line it may print `price DOLLARS`, the hour's price of what it
+//!   made, since a fallback machine can cost more than `--rate`. It
 //!   ends once the builder goes on its own, and gives the way up when told
 //!   to end (SIGTERM, to its whole process group). The seconds are counted
 //!   here, in the zone TZ names, so the helper needs no time zones of its
@@ -59,7 +61,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, fs, thread};
 
 use decide::{Hours, Tick};
-use journal::Event;
+use journal::{Event, Ran};
 use machines::Machines;
 
 /// How long a job waits before a builder is asked for.
@@ -99,8 +101,23 @@ struct Lent {
     helper: Child,
     line: String,
     host: String,
+    rate: Option<u64>,
     since: u64,
     used: u64,
+}
+
+/// What the helper said once its builder was made: its price, if it gave
+/// one, and its machines line.
+fn heard_from(helper: impl BufRead) -> (Option<u64>, String) {
+    let mut rate = None;
+    for line in helper.lines() {
+        let Ok(line) = line else { break };
+        match line.strip_prefix("price ") {
+            Some(price) => rate = journal::price(price.trim()),
+            None => return (rate, line),
+        }
+    }
+    (rate, String::new())
 }
 
 fn main() -> ExitCode {
@@ -127,8 +144,8 @@ fn main() -> ExitCode {
     let journal = state().join("nix-offload/journal.jsonl");
     match arguments.first().map(String::as_str) {
         Some("report") => {
-            let today = journal::day(&fs::read_to_string(&journal).unwrap_or_default(), today());
-            println!("{}", journal::said(&today, rate));
+            let journal = fs::read_to_string(&journal).unwrap_or_default();
+            println!("{}", journal::said(&journal::day(&journal, today(), rate)));
             ExitCode::SUCCESS
         }
         Some("serve") => {
@@ -288,17 +305,15 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
     let (said, heard) = mpsc::channel();
     let out = helper.stdout.take()?;
     thread::spawn(move || {
-        let mut line = String::new();
-        let _ = BufReader::new(out).read_line(&mut line);
-        let _ = said.send(line);
+        let _ = said.send(heard_from(BufReader::new(out)));
     });
     // In short waits, so a stop is heard while the builder is being made.
     let asked = Instant::now();
-    let mut line = String::new();
+    let (mut rate, mut line) = (None, String::new());
     while asked.elapsed() < READY && !ENDING.load(Ordering::SeqCst) {
         match heard.recv_timeout(Duration::from_secs(1)) {
             Ok(said) => {
-                line = said;
+                (rate, line) = said;
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -316,6 +331,7 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
                 helper,
                 line: line.to_owned(),
                 host,
+                rate,
                 since: now,
                 used: self::now(),
             })
@@ -324,7 +340,10 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
             eprintln!("nix-offload: {name} wasn't ready, so it's given back");
             end(&mut helper);
             if down(settings, &name) {
-                let ran = self::now() - now;
+                let ran = Ran {
+                    seconds: self::now() - now,
+                    rate,
+                };
                 let _ = journal::note(
                     &settings.journal,
                     self::now(),
@@ -344,12 +363,15 @@ fn give_back(settings: &Settings, machines: &mut Machines, mut builder: Lent, ev
     end(&mut builder.helper);
     if down(settings, &builder.name) {
         let now = now();
-        let ran = now - builder.since;
+        let ran = Ran {
+            seconds: now - builder.since,
+            rate: builder.rate,
+        };
         let _ = journal::note(&settings.journal, now, event, &builder.name, Some(ran));
         eprintln!(
             "nix-offload: gave {} back after {} minutes",
             builder.name,
-            ran / 60
+            ran.seconds / 60
         );
     }
 }
@@ -541,5 +563,22 @@ mod tests {
         assert_eq!(second_of("19:30"), Some(70_200));
         assert_eq!(second_of("24:00"), None);
         assert_eq!(second_of("noon"), None);
+    }
+
+    #[test]
+    fn the_helper_may_price_its_builder_before_its_line() {
+        let line = "ssh-ng://nix-offload x86_64-linux /key 5 1 kvm - aG9zdA==";
+        assert_eq!(
+            heard_from(format!("price 0.89\n{line}\nlater\n").as_bytes()),
+            (Some(890), line.to_owned())
+        );
+        assert_eq!(
+            heard_from(format!("{line}\n").as_bytes()),
+            (None, line.to_owned())
+        );
+        assert_eq!(
+            heard_from("price 0.89\n".as_bytes()),
+            (Some(890), String::new())
+        );
     }
 }

@@ -42,21 +42,26 @@ impl Event {
     }
 }
 
+/// How long a builder ran, and its price an hour in thousandths of a
+/// dollar where the helper said one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ran {
+    pub seconds: u64,
+    pub rate: Option<u64>,
+}
+
 /// Add an event to the journal at `path`: when, what, which builder, and
-/// how long it ran, where that's known.
-pub fn note(
-    path: &Path,
-    at: u64,
-    event: Event,
-    name: &str,
-    seconds: Option<u64>,
-) -> io::Result<()> {
+/// how long it ran and at what price, where that's known.
+pub fn note(path: &Path, at: u64, event: Event, name: &str, ran: Option<Ran>) -> io::Result<()> {
     if let Some(folder) = path.parent() {
         fs::create_dir_all(folder)?;
     }
     let mut line = json!({ "at": at, "event": event.name(), "name": name });
-    if let Some(seconds) = seconds {
-        line["seconds"] = seconds.into();
+    if let Some(ran) = ran {
+        line["seconds"] = ran.seconds.into();
+        if let Some(rate) = ran.rate {
+            line["rate"] = rate.into();
+        }
     }
     let mut journal = OpenOptions::new().create(true).append(true).open(path)?;
     writeln!(journal, "{line}")
@@ -85,18 +90,22 @@ pub fn unreturned(journal: &str) -> Vec<String> {
     out
 }
 
-/// A day of the journal: builders asked for, seconds they ran, and builders
+/// A day of the journal: builders asked for, seconds they ran, what that
+/// cost in thousandths of a dollar times seconds an hour, and builders
 /// found left over.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Day {
     pub started: u64,
     pub seconds: u64,
+    pub spent: u64,
     pub left: u64,
 }
 
 /// The day of the journal's text from `from`, in seconds since the epoch,
-/// up to a day after it.
-pub fn day(journal: &str, from: u64) -> Day {
+/// up to a day after it. Each builder's time is priced at the rate the
+/// helper said for it, since a fallback machine costs more, or at `rate`
+/// where it said none.
+pub fn day(journal: &str, from: u64, rate: u64) -> Day {
     let mut day = Day::default();
     for line in journal.lines() {
         let Ok(line) = serde_json::from_str::<Value>(line) else {
@@ -111,7 +120,9 @@ pub fn day(journal: &str, from: u64) -> Day {
         match line["event"].as_str() {
             Some("asked") => day.started += 1,
             Some("stopped" | "lost" | "failed") => {
-                day.seconds += line["seconds"].as_u64().unwrap_or(0);
+                let seconds = line["seconds"].as_u64().unwrap_or(0);
+                day.seconds += seconds;
+                day.spent += seconds * line["rate"].as_u64().unwrap_or(rate);
             }
             Some("left") => day.left += 1,
             _ => {}
@@ -131,10 +142,10 @@ pub fn price(written: &str) -> Option<u64> {
     Some(dollars * 1000 + thousandths)
 }
 
-/// The day said in a line: how many builders, how long, what it cost at
-/// `rate` thousandths of a dollar an hour, and what was left over.
-pub fn said(day: &Day, rate: u64) -> String {
-    let cost = (day.seconds * rate).div_ceil(3600);
+/// The day said in a line: how many builders, how long, what it cost, and
+/// what was left over.
+pub fn said(day: &Day) -> String {
+    let cost = day.spent.div_ceil(3600);
     let minutes = day.seconds.div_ceil(60);
     let builders = if day.started == 1 {
         "builder"
@@ -163,22 +174,25 @@ mod tests {
     fn a_day_counts_its_builders_time_and_what_was_left() {
         let dir = tempfile::tempdir().expect("a folder");
         let path = dir.path().join("journal.jsonl");
+        let (cheap, dear) = (Some(680), Some(890));
+        let ran = |seconds, rate| Some(Ran { seconds, rate });
         note(&path, 90, Event::Asked, "b-1", None).expect("noted");
         note(&path, 100, Event::Started, "b-1", None).expect("noted");
-        note(&path, 2000, Event::Stopped, "b-1", Some(1910)).expect("noted");
+        note(&path, 2000, Event::Stopped, "b-1", ran(1910, cheap)).expect("noted");
         note(&path, 2900, Event::Asked, "b-2", None).expect("noted");
         note(&path, 3000, Event::Started, "b-2", None).expect("noted");
-        note(&path, 4000, Event::Lost, "b-2", Some(1100)).expect("noted");
+        note(&path, 4000, Event::Lost, "b-2", ran(1100, dear)).expect("noted");
         note(&path, 4100, Event::Asked, "b-3", None).expect("noted");
-        note(&path, 4700, Event::Failed, "b-3", Some(600)).expect("noted");
+        note(&path, 4700, Event::Failed, "b-3", ran(600, None)).expect("noted");
         note(&path, 5000, Event::Left, "b-0", None).expect("noted");
         note(&path, 90_000, Event::Asked, "tomorrow", None).expect("noted");
         let journal = fs::read_to_string(&path).expect("read");
         assert_eq!(
-            day(&journal, 0),
+            day(&journal, 0, 1000),
             Day {
                 started: 3,
                 seconds: 3610,
+                spent: 1910 * 680 + 1100 * 890 + 600 * 1000,
                 left: 1
             }
         );
@@ -187,7 +201,7 @@ mod tests {
     #[test]
     fn a_line_it_cant_read_is_passed_over() {
         assert_eq!(
-            day("not json\n{\"at\":5,\"event\":\"asked\"}\n", 0).started,
+            day("not json\n{\"at\":5,\"event\":\"asked\"}\n", 0, 680).started,
             1
         );
     }
@@ -222,19 +236,18 @@ mod tests {
         let day = Day {
             started: 2,
             seconds: 5400,
+            spent: 5400 * 680,
             left: 0,
         };
-        assert_eq!(
-            said(&day, 680),
-            "2 builders, 1h 30m, $1.02, nothing left over"
-        );
+        assert_eq!(said(&day), "2 builders, 1h 30m, $1.02, nothing left over");
         let one = Day {
             started: 1,
             seconds: 61,
+            spent: 61 * 680,
             left: 1,
         };
         assert_eq!(
-            said(&one, 680),
+            said(&one),
             "1 builder, 0h 02m, $0.02, 1 found left over and given back"
         );
     }
