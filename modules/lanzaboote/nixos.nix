@@ -269,23 +269,26 @@ in
     # and the first boot on the new firmware locks it again. Started at
     # boot to do nothing, it does its work as it's stopped, after the TPM's
     # units and the filesystems, since no unit can start during shutdown.
-    systemd.services.tpm-follows-a-firmware-update = lib.mkIf config.services.fwupd.enable {
-      description = "Free PCR 0 for a firmware update fwupd has waiting";
-      wantedBy = [ "multi-user.target" ];
-      after = [
-        "local-fs.target"
-        "tpm2.target"
-        "systemd-pcrlock-make-policy.service"
-        "sys-firmware-efi-efivars.mount"
-      ];
-      unitConfig.ConditionSecurity = "measured-uki";
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = lib.getExe' pkgs.coreutils "true";
-        ExecStop = lib.getExe firmwareUpdate;
-      };
-    };
+    # Without measured boot, there's no policy to free.
+    systemd.services.tpm-follows-a-firmware-update =
+      lib.mkIf (config.services.fwupd.enable && config.boot.lanzaboote.measuredBoot.enable)
+        {
+          description = "Free PCR 0 for a firmware update fwupd has waiting";
+          wantedBy = [ "multi-user.target" ];
+          after = [
+            "local-fs.target"
+            "tpm2.target"
+            "systemd-pcrlock-make-policy.service"
+            "sys-firmware-efi-efivars.mount"
+          ];
+          unitConfig.ConditionSecurity = "measured-uki";
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = lib.getExe' pkgs.coreutils "true";
+            ExecStop = lib.getExe firmwareUpdate;
+          };
+        };
 
     # systemd-boot enrols the keys it's given only while the firmware is in
     # setup mode, with Secure Boot off, so they're given only then, and the
