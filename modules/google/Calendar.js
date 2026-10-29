@@ -210,23 +210,39 @@ function asked(person) {
 }
 
 // Its details, as the launcher's drawer shows them beside its row: its
-// title, when and where it is, its call, his answer, who holds it and who
-// else is asked, and what it's about, every one plain text, since the
+// title, when and where it is, its call and the number it's dialled into
+// by, his answer, who holds it and who else is asked, the files on it by
+// their titles, and what it's about, every one plain text, since the
 // description is someone else's words.
 function details(meeting, untitled) {
+    const attachments = meeting.attachments ?? [];
     const facts = [
         { label: "When", value: dated(meeting) },
         { label: "Where", value: meeting.place ?? "" },
         { label: "Call", value: meeting.link ?? "" },
+        { label: "Dial In", value: dialled(meeting.dial) },
         { label: "Your Answer", value: answered(meeting) },
         { label: "Holds It", value: meeting.organizer ? asked(meeting.organizer) : "" },
-        { label: "Asked", value: (meeting.guests ?? []).map(asked).join("; ") }
+        { label: "Asked", value: (meeting.guests ?? []).map(asked).join("; ") },
+        {
+            label: attachments.length === 1 ? "Attachment" : "Attachments",
+            value: attachments.join(", ")
+        }
     ];
     return {
         title: meeting.title === "" ? untitled : meeting.title,
         facts: facts.filter(fact => fact.value !== ""),
         body: meeting.about ?? ""
     };
+}
+
+// The number a call is dialled into by, and its PIN when it asks one, as
+// +1 555-010-0199, PIN 123456789; or "" for a call with none.
+function dialled(dial) {
+    if (!dial) {
+        return "";
+    }
+    return dial.pin ? `${dial.number}, PIN ${dial.pin}` : dial.number;
 }
 
 // The line that asks the program to answer a meeting yes, maybe or no.
