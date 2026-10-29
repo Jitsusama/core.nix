@@ -2717,6 +2717,108 @@
       "name": "Detail"
     },
     {
+      "id": "verb:on:layer:release",
+      "in": "on",
+      "name": "Release It",
+      "verb": "release",
+      "glyph": "layerOff"
+    },
+    {
+      "id": "verb:on:awake:open",
+      "in": "on",
+      "name": "Only While the Lid Is Open",
+      "verb": "keep",
+      "glyph": "lidOpen"
+    },
+    {
+      "id": "verb:on:awake:shut",
+      "in": "on",
+      "name": "With the Lid Shut Too",
+      "verb": "keep",
+      "glyph": "awake"
+    },
+    {
+      "id": "verb:on:quiet:more",
+      "in": "on",
+      "name": "An Hour More",
+      "verb": "extend",
+      "glyph": "timed"
+    },
+    {
+      "id": "verb:on:quiet:held",
+      "in": "on",
+      "name": "Show What's Held",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:on:low:save",
+      "in": "on",
+      "name": "Save Power",
+      "verb": "save",
+      "glyph": "saver"
+    },
+    {
+      "id": "verb:on:muted:unmute",
+      "in": "on",
+      "name": "Unmute It",
+      "verb": "unmute",
+      "glyph": "microphone"
+    },
+    {
+      "id": "verb:on:network:check",
+      "in": "on",
+      "name": "Check It Again",
+      "verb": "check",
+      "glyph": "retry"
+    },
+    {
+      "id": "verb:on:playing:pause",
+      "in": "on",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:on:playing:next",
+      "in": "on",
+      "name": "Next Track",
+      "verb": "next",
+      "glyph": "next"
+    },
+    {
+      "id": "verb:on:playing:previous",
+      "in": "on",
+      "name": "Previous Track",
+      "verb": "previous",
+      "glyph": "previous"
+    },
+    {
+      "id": "verb:on:playing:show",
+      "in": "on",
+      "name": "Show {player}",
+      "verb": "show"
+    },
+    {
+      "id": "verb:on:playing:pauseOther",
+      "in": "on",
+      "name": "Pause {player} Too",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:on:sharing:stop",
+      "in": "on",
+      "name": "Stop Sharing",
+      "verb": "stop",
+      "glyph": "displayOff",
+      "states": {
+        "all": {
+          "name": "Stop Sharing All of It"
+        }
+      }
+    },
+    {
       "id": "clipboard",
       "name": "Clipboard",
       "term": "Desktop/clipboard",

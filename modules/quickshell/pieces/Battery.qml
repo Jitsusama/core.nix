@@ -50,8 +50,9 @@ Piece {
     context: battery.changeRate >= 0.05
         ? `drawing ${battery.changeRate.toFixed(1)} W` : "plug in to keep going"
     actions: PowerProfiles.profile === PowerProfile.PowerSaver ? [] : [{
-        glyph: Theme.glyph.saver,
-        name: "Save power",
+        glyph: Words.glyph("verb:on:low:save"),
+        name: Words.name("verb:on:low:save"),
+        verb: Words.verb("verb:on:low:save"),
         stays: true,
         run: () => PowerProfiles.profile = PowerProfile.PowerSaver
     }]

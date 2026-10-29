@@ -141,7 +141,7 @@ QtObject {
             Marks.pointed(launcher(true, "on", ["on:awake", "verb:on:awake:Let It Sleep"])),
             "awake");
         expect("an action alone says its thing",
-            Marks.pointed(launcher(true, "on", ["verb:on:muted:Unmute it"])), "muted");
+            Marks.pointed(launcher(true, "on", ["verb:on:muted:Unmute It"])), "muted");
         expect("nothing selected points nowhere",
             Marks.pointed(launcher(true, "on", [""])), "");
         expect("shut points nowhere", Marks.pointed(launcher(false, "on", ["on:camera"])), "");

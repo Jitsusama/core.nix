@@ -18,8 +18,9 @@ Piece {
     hint: "Microphone muted"
     context: node ? node.description || node.name : ""
     actions: [{
-        glyph: Theme.glyph.microphone,
-        name: "Unmute it",
+        glyph: Words.glyph("verb:on:muted:unmute"),
+        name: Words.name("verb:on:muted:unmute"),
+        verb: Words.verb("verb:on:muted:unmute"),
         stays: true,
         run: () => {
             if (piece.audio)
