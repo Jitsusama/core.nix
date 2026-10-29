@@ -1,7 +1,9 @@
 //! What each run took, kept as a line of JSON in `changed-checks/runs.jsonl`
 //! under XDG's state folder, so the time from a change to its proof is
 //! measured run after run rather than remembered: each side's evaluation
-//! chunk by chunk, what the comparison named, and the build.
+//! chunk by chunk, what the comparison named, and the build: where it ran,
+//! and, on a lent builder, what it sent up, so a build sent there is seen
+//! to cost the upload nothing bulky.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -81,6 +83,15 @@ impl Run {
             "seconds": seconds(took),
             "passed": passed,
         }));
+    }
+
+    /// Note that the build ran on the lent builder, sending it this many
+    /// bytes, where ssh said.
+    pub fn lent(&mut self, sent: Option<u64>) {
+        if let Some(Value::Object(built)) = &mut self.built {
+            built.insert("lent".to_owned(), Value::Bool(true));
+            built.insert("sent".to_owned(), json!(sent));
+        }
     }
 
     /// The run as its line, with how long it took so far.

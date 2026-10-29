@@ -21,6 +21,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Notice.js" as Notice
+import "Ago.js" as Ago
 
 Provider {
     id: provider
@@ -29,17 +30,6 @@ Provider {
 
     // Named Notifications, Joel's word, as the vocabulary says (Words.qml).
     collection: Words.collection("notices")
-
-    function ago(at) {
-        const seconds = Math.max(0, (Date.now() - at) / 1000);
-        if (seconds < 60)
-            return "just now";
-        if (seconds < 3600)
-            return `${Math.floor(seconds / 60)} min ago`;
-        if (seconds < 86400)
-            return `${Math.floor(seconds / 3600)} h ago`;
-        return `${Math.floor(seconds / 86400)} d ago`;
-    }
 
     // The window of the program that sent it, or the program to open.
     function source(app) {
@@ -224,8 +214,9 @@ Provider {
     readonly property var all: Notices.history.map(notice => made(notice))
 
     function aged(rows) {
+        const now = Date.now();
         for (const row of rows)
-            row.side = row.unread ? `unread · ${ago(row.at)}` : ago(row.at);
+            row.side = row.unread ? `unread · ${Ago.ago(row.at, now)}` : Ago.ago(row.at, now);
         return rows;
     }
 

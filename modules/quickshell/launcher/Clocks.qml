@@ -12,16 +12,22 @@
 //
 // The time here goes on to how the clock is kept, as timekeeping last
 // heard systemd-timesyncd say (timekeeping/src/main.rs): whether it's
-// synchronised, the server, how far the clock is from it, the round trip's
-// delay and jitter, the server's stratum and what it keeps its time by, how
-// often it's asked and the leap second announced, each a figure Return
-// copies. The file is watched, never asked, and says nothing on a machine
-// that keeps no time that way.
+// synchronised and since when, then the server it asks, a thing Return
+// steps into for all it says (its address, stratum and reference, the
+// offset, delay and jitter, its root delay and dispersion, precision, leap
+// second and NTP version, the last sync, the poll and its bounds, the
+// packets and the clock's frequency), its drawer saying them all; then
+// the service keeping it, and the other servers it's given (VKCF3Z's
+// design, 2026-10-29, for Joel's "for time i want to be able to dig into
+// ntp server details"). Each figure is one Return copies. The file is
+// watched, never asked; with nothing keeping the time that way, Time says
+// so and no more.
 import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Zones.js" as Zones
+import "Ago.js" as Ago
 
 Provider {
     id: provider
@@ -112,7 +118,7 @@ Provider {
     }
 
     // How timesyncd keeps the clock, as timekeeping last wrote it, or null
-    // for nothing said.
+    // while nothing keeps it that way.
     property var kept: null
 
     // Milliseconds from microseconds, to a tenth.
@@ -122,36 +128,115 @@ Provider {
     }
 
     // A poll's seconds as minutes and seconds, as timedatectl says them.
-    function every(seconds) {
+    function span(seconds) {
         const minutes = Math.floor(seconds / 60);
         const left = seconds % 60;
         if (minutes === 0)
-            return `every ${left} s`;
-        return left === 0 ? `every ${minutes} min` : `every ${minutes} min ${left} s`;
+            return `${left} s`;
+        return left === 0 ? `${minutes} min` : `${minutes} min ${left} s`;
     }
 
-    // The clock's keeping as figures, in the order timedatectl says them.
-    // Each is a figure, so each wears no mark.
-    function keeping() {
-        if (!kept)
+    // A precision, a power of two of a second, in the unit that reads it.
+    function finest(power) {
+        const seconds = Math.pow(2, power);
+        if (seconds < 1e-6)
+            return `${Math.round(seconds * 1e9)} ns`;
+        return seconds < 1e-3 ? `${Math.round(seconds * 1e6)} \u00b5s`
+            : `${(seconds * 1000).toFixed(1)} ms`;
+    }
+
+    // What Time says of its keeping, in the vocabulary's words.
+    function keptWord(key) {
+        return String((Words.of("time:server").said ?? {})[key] ?? "");
+    }
+
+    // What the server says, each a part named and its figure, in the order
+    // its inside lists them; the drawer shows the same, so both read alike.
+    function serverParts() {
+        const at = kept?.exchange;
+        if (!at)
             return [];
-        const figure = (part, side, copy) => copyRow({
+        const part = (id, side, copy, note) => ({ id: id, side: side, copy: copy ?? side,
+            note: note ?? "" });
+        const micros = value => `${value} \u00b5s`;
+        const lastPoll = keptWord("asOfLastPoll");
+        const poll = kept.poll ?? {};
+        return [
+            part("name", at.server),
+            part("address", at.address),
+            part("stratum", String(at.stratum)),
+            part("reference", at.reference),
+            part("offset", millis(at.offset, true), micros(at.offset), lastPoll),
+            part("delay", millis(at.delay, false), micros(at.delay)),
+            part("jitter", millis(at.jitter, false), micros(at.jitter), lastPoll),
+            part("root-delay", millis(at.rootDelay, false), micros(at.rootDelay)),
+            part("root-dispersion", millis(at.rootDispersion, false), micros(at.rootDispersion)),
+            part("precision", finest(at.precision), `2^${at.precision} s`),
+            part("leap", at.leap),
+            part("ntp-version", String(at.ntpVersion)),
+            part("last-sync", Ago.ago(at.last, Date.now()), new Date(at.last).toISOString()),
+            part("poll", `every ${span(poll.now ?? 0)}`, `${poll.now ?? 0} s`,
+                keptWord("between").replace("{least}", span(poll.least ?? 0))
+                    .replace("{most}", span(poll.most ?? 0))),
+            part("packets", String(at.packets)),
+            part("frequency", `${kept.frequency < 0 ? "\u2212" : "+"}`
+                + `${Math.abs(kept.frequency).toFixed(3)} ppm`)
+        ].filter(each => each.side !== "");
+    }
+
+    // The other servers timesyncd is given, each where it's given from,
+    // but for the one it asks now.
+    function otherServers() {
+        const current = kept?.exchange?.server ?? "";
+        const from = kept?.servers ?? {};
+        return ["system", "link", "runtime", "fallback"].reduce((listed, source) => listed.concat(
+            (from[source] ?? []).filter(name => name !== current
+                && !listed.some(one => one.name === name))
+                .map(name => ({ name: name, note: keptWord(source) }))), []);
+    }
+
+    // The clock's keeping: whether it's synchronised, the server, the
+    // service and the other servers, in that order (VKCF3Z). A figure wears
+    // no mark; the server, holding more, wears its mark dimmed.
+    function keeping() {
+        const figure = (part, side, copy, note) => copyRow({
             name: Words.name(`time:${part}`),
             side: side,
             copy: copy ?? side,
+            note: note ?? "",
             glyph: ""
         });
-        const server = [kept.server, kept.address].filter(part => part).join(" \u00b7 ");
+        if (!kept)
+            return [figure("synchronised", keptWord("nothing"))];
+        const at = kept.exchange ?? null;
+        const synced = !kept.synchronised ? keptWord("no")
+            : at ? `${keptWord("yes")}, ${Ago.ago(at.last, Date.now())}` : keptWord("yes");
+        const parts = serverParts();
+        const server = at ? thingRow({
+            key: "time:server",
+            name: at.server || at.address,
+            side: [keptWord("stratum").replace("{stratum}", at.stratum), millis(at.offset, true)]
+                .join(", "),
+            glyph: Theme.glyph.clock,
+            drawer: () => ({
+                title: at.server || at.address,
+                facts: parts.map(each => ({ label: Words.name(`time:server:${each.id}`),
+                    value: each.side }))
+            })
+        }, () => parts.map(each => figure(`server:${each.id}`, each.side, each.copy,
+            each.note))) : null;
+        const others = otherServers();
         return [
-            figure("synchronised", kept.synchronised ? "yes" : "no"),
-            server !== "" ? figure("server", server, kept.server || kept.address) : null,
-            figure("offset", millis(kept.offset, true), `${kept.offset} \u00b5s`),
-            figure("delay", millis(kept.delay, false), `${kept.delay} \u00b5s`),
-            figure("jitter", millis(kept.jitter, false), `${kept.jitter} \u00b5s`),
-            figure("stratum", String(kept.stratum)),
-            kept.reference ? figure("reference", kept.reference) : null,
-            figure("poll", every(kept.poll)),
-            figure("leap", kept.leap)
+            figure("synchronised", synced),
+            server,
+            figure("service", "systemd-timesyncd", "systemd-timesyncd", keptWord("running")),
+            others.length > 0 ? holderRow({
+                key: "time:servers",
+                name: Words.name("time:servers"),
+                side: String(others.length),
+                glyph: Theme.glyph.clock
+            }, () => others.map(one => copyRow({ name: one.name, note: one.note, glyph: "" })))
+                : null
         ].filter(row => row !== null);
     }
 
@@ -163,7 +248,7 @@ Provider {
         onLoaded: {
             try {
                 const said = JSON.parse(text());
-                provider.kept = said.version === 1 ? said : null;
+                provider.kept = said.version === 2 ? said : null;
             } catch (e) {
                 provider.kept = null;
             }

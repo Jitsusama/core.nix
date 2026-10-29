@@ -1066,6 +1066,7 @@ onLinux {
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Zones.js} launcher/Zones.js
+        cp ${./launcher/Ago.js} launcher/Ago.js
         cp ${./launcher/Addresses.js} launcher/Addresses.js
         cp ${./launcher/Calculator.qml} launcher/Calculator.qml
         cp ${./launcher/Clocks.qml} launcher/Clocks.qml
@@ -1451,6 +1452,7 @@ onLinux {
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
+      cp ${./launcher/Ago.js} launcher/Ago.js
       cp ${./Words.qml} Words.qml
       cp ${./Files.qml} Files.qml
       cp ${./launcher/words.json} launcher/words.json

@@ -163,6 +163,7 @@
   changed-checks-names-what-moved = ''
     changed-checks names a check added, changed, removed or broken by its derivation, fails on a
     broken one, builds those added and changed when asked, leaving out the VM tests with --no-vm,
+    sends a commit origin has to a lent builder to build by itself and anything else builds here,
     and evaluates a commit's checks once
   '';
   changed-checks-passes-clippy = ''
@@ -626,9 +627,12 @@
     and it's named as being made until it stands or won't; it's given back once idle, at the
     deadline or once gone, with a wait after a failure;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
-    for the next start, which prices it to then or its own idle delete; standing builders are
+    for the next start, which takes it back before the deadline, keeping its price and idle
+    time, or gives it back, priced to then or its own idle delete; standing builders are
     named while they answer, and only to builds that ask for them, never in the file every
-    build reads; and a day's journal sums to its hours and cost, each at its price
+    build reads; a day's journal sums to its hours and cost, each at its price; and `there`
+    sends a flake's build to the lent builder as one command, returning its status and
+    journalling what ssh sent, or builds here, saying so, when none stands or none answers
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests

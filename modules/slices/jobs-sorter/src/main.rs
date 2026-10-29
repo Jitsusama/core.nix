@@ -293,6 +293,22 @@ fn pieces(procs: &[Sample], holder: Option<u32>) -> Vec<Piece> {
         .collect()
 }
 
+/// Those of `pids` still in `cgroup`, as `cgroup_of` reads each again,
+/// just before they're moved. A process can leave in the second since the
+/// sample, as `systemd-run --scope` does when it puts itself in a scope of
+/// its own, and moving it then would take it out of that scope, which
+/// systemd ends once it's empty; on 29 October that left a test's
+/// `kept.scope` gone and its starter waiting on it for good. This narrows
+/// the window to the moment between reading and moving, which the user
+/// manager's call can't close.
+fn still_in(pids: &[u32], cgroup: &str, cgroup_of: impl Fn(u32) -> Option<String>) -> Vec<u32> {
+    let here = format!("/{}", cgroup.trim_start_matches('/'));
+    pids.iter()
+        .copied()
+        .filter(|pid| cgroup_of(*pid).is_some_and(|path| path == here))
+        .collect()
+}
+
 /// A `--split` value's cgroup, the slice its scopes go in, and its unit.
 /// The slice is the one named after `=`, or else the one the unit sits in:
 /// jobs-awaited.slice for jobs.slice/jobs-awaited.slice/awaited.service.
@@ -430,7 +446,11 @@ fn split(
     if holder.is_none_or(|pid| !procs.iter().any(|proc| proc.pid == pid)) {
         *holder = main_pid(unit);
     }
-    for piece in pieces(&procs, *holder) {
+    for mut piece in pieces(&procs, *holder) {
+        piece.pids = still_in(&piece.pids, cgroup, |pid| cgroup_of(pid, manager));
+        if piece.pids.is_empty() {
+            continue;
+        }
         if let Some(parent) = cgroup_of(piece.ppid, manager).filter(|path| made_here(path)) {
             send(
                 &root.join(parent.trim_start_matches('/')),
@@ -911,6 +931,22 @@ mod tests {
         assert!(!unlimited(capped));
         let quota = |file: &str| (file == "cpu.max").then(|| "50000 100000\n".to_owned());
         assert!(!unlimited(quota));
+    }
+
+    #[test]
+    fn only_what_is_still_in_the_cgroup_is_moved() {
+        // 41 put itself in a scope of its own since the sample; 42 exited.
+        let now = |pid: u32| match pid {
+            40 | 43 => Some("/jobs.slice/jobs.service".to_owned()),
+            41 => Some("/app.slice/kept.scope".to_owned()),
+            _ => None,
+        };
+        assert_eq!(
+            still_in(&[40, 41, 42, 43], "jobs.slice/jobs.service", now),
+            [40, 43]
+        );
+        let lookalike = |_| Some("/jobs.slice/jobs.service-x".to_owned());
+        assert!(still_in(&[40], "jobs.slice/jobs.service", lookalike).is_empty());
     }
 
     #[test]

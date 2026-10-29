@@ -21,8 +21,9 @@ const ANSWER: Duration = Duration::from_secs(2);
 /// its small derivations went out. VM tests stay too: their machines are
 /// built here, and copying those out is most of their time over a slow
 /// upload. On 29 October one took 17 minutes there, its test 55 s of it,
-/// against 60 s here. Sent whole to the builder's store instead, they're
-/// built there and only their derivations cross.
+/// against 60 s here. Sent to the builder as a command naming a commit
+/// instead, they're fetched, evaluated and built there, and only the
+/// command crosses.
 const BIG: [&str; 1] = ["big-parallel"];
 
 /// What a VM test needs, kept out of what the lent line offers, so neither

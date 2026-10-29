@@ -813,6 +813,16 @@ QtObject {
         machine("what kept it from resting, as a note says it", ["display", "internal",
             "novel"].map(by => Machine.keeper(by).said), ["the display engine",
             "the processor's own power controller", "novel"]);
+        // The NPU's load is its busy time between two reads over the time
+        // between them, its clock said in gigahertz, and "resting" while
+        // it's powered down; with no read before, there's no share yet.
+        const npuThen = { busy: 5000000, clock: 0, top: 2050 };
+        const npuNow = { busy: 5040000, clock: 1400, top: 2050 };
+        machine("the NPU's load over a second", Machine.npuLoad(npuNow, npuThen, 1),
+            { share: 0.04, clock: "at 1.4 GHz of 2.05 GHz" });
+        machine("the NPU resting, unmeasured", Machine.npuLoad(npuThen, null, null),
+            { share: null, clock: "resting" });
+        machine("no NPU, no load", Machine.npuLoad(null, null, 1), null);
         machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
             .length, 5);
         machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps
