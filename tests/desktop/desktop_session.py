@@ -511,12 +511,18 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.launcher_until(lambda shown: len(shown["held"]) > before)
 
     def down_to(self, name: str) -> None:
-        """Move the selection down from the first row to the row named, and wait until it's there.
+        """Move the selection to the row named, and wait until it's there.
 
-        Rows are counted by name, since what leads a step (Return's own act) moves the rest.
+        Rows are counted by name, since what leads a step (Return's own act) moves the rest,
+        and from the row selected, since a place may open on its most pressing row rather
+        than its first, as Now does on a meeting about to start.
         """
-        for _ in range(self.showing()["rows"].index(name)):
-            self.machine.send_key("down")
+        shown = self.showing()
+        rows = shown["rows"]
+        selected = (shown["selected"] or {}).get("name")
+        steps = rows.index(name) - (rows.index(selected) if selected in rows else 0)
+        for _ in range(abs(steps)):
+            self.machine.send_key("down" if steps > 0 else "up")
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
 
     def whats_on(self, selected: str) -> None:
