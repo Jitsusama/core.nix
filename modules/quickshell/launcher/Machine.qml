@@ -4,11 +4,12 @@
 // - "cpu", "processor", "cores" or "load": how busy the processors are, and
 //   their Cores (one reading each, oldest core first), which are Maxed, the
 //   Clock, what Held it Back over the last second and each core held (as
-//   its own telemetry says, ProcessorTelemetry.qml, shown only while
-//   something did), the Temperature (as Heat reads it), the programs Using
-//   it, the Load, the Kinds of core and the Model, then what Kept it From
-//   Resting over the last ten seconds and each part that did, shown only
-//   while something does.
+//   its own telemetry says, ProcessorTelemetry.qml), the Temperature (as
+//   Heat reads it), the programs Using it, the Load, the Kinds of core and
+//   the Model, then what Kept it From Resting over the last ten seconds
+//   and each part that did. Both telemetry rows stand whenever the
+//   telemetry answers, at 0% when nothing holds it back or keeps it from
+//   resting, so the rows under them don't move.
 // - "memory" or "ram": what's Used, the Pressure (how long something waited
 //   for it), the Swap, what's Cached, the programs Using it, and its Type,
 //   as the machine read it at boot.
