@@ -47,7 +47,9 @@ struct Site {
 
 /// The host a web address names, or none when it isn't one.
 fn host(address: &str) -> Option<&str> {
-    let rest = address.strip_prefix("https://").or_else(|| address.strip_prefix("http://"))?;
+    let rest = address
+        .strip_prefix("https://")
+        .or_else(|| address.strip_prefix("http://"))?;
     let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
     let authority = authority.rsplit('@').next().unwrap_or(authority);
     let host = match authority.strip_prefix('[') {
@@ -100,7 +102,8 @@ fn read(profile: &Path, scratch: &Path) -> Result<Vec<Site>, String> {
         fs::copy(&history, &copy).map_err(|error| format!("{}: {error}", history.display()))?;
         let journal = profile.join("History-journal");
         if journal.exists() {
-            fs::copy(&journal, folder.join("History-journal")).map_err(|error| format!("{}: {error}", journal.display()))?;
+            fs::copy(&journal, folder.join("History-journal"))
+                .map_err(|error| format!("{}: {error}", journal.display()))?;
         }
         let connection = Connection::open(&copy).map_err(|error| error.to_string())?;
         sites(&connection).map_err(|error| error.to_string())
@@ -112,7 +115,8 @@ fn read(profile: &Path, scratch: &Path) -> Result<Vec<Site>, String> {
 fn main() -> ExitCode {
     let profile = match env::args_os().nth(1) {
         Some(profile) => PathBuf::from(profile),
-        None => PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".config/google-chrome/Default"),
+        None => PathBuf::from(env::var_os("HOME").unwrap_or_default())
+            .join(".config/google-chrome/Default"),
     };
     let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
     let printed = read(&profile, &scratch).and_then(|found| {
@@ -136,7 +140,10 @@ mod tests {
     use super::*;
 
     fn folder(name: &str) -> PathBuf {
-        let folder = env::temp_dir().join(format!("chrome-recent-sites-test-{}-{name}", std::process::id()));
+        let folder = env::temp_dir().join(format!(
+            "chrome-recent-sites-test-{}-{name}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(&folder).unwrap();
         folder
@@ -179,7 +186,10 @@ mod tests {
                 ("http://plain.example.net:8080/a?b", "Plain", 20, 0),
             ],
         );
-        assert_eq!(titles(&read(&profile, &profile).unwrap()), ["New page", "News", "Plain"]);
+        assert_eq!(
+            titles(&read(&profile, &profile).unwrap()),
+            ["New page", "News", "Plain"]
+        );
     }
 
     #[test]
@@ -195,18 +205,30 @@ mod tests {
                 ("https://hidden.example.com/", "Hidden", 50, 1),
                 ("https://untitled.example.com/", "", 40, 0),
                 ("chrome://settings/", "Settings", 30, 0),
-                ("https://www.google.com/search?q=x", "x - Google Search", 20, 0),
+                (
+                    "https://www.google.com/search?q=x",
+                    "x - Google Search",
+                    20,
+                    0,
+                ),
             ],
         );
-        assert_eq!(titles(&read(&profile, &profile).unwrap()), ["x - Google Search"]);
+        assert_eq!(
+            titles(&read(&profile, &profile).unwrap()),
+            ["x - Google Search"]
+        );
     }
 
     #[test]
     fn nine_at_most() {
         let profile = folder("nine");
-        let addresses: Vec<String> = (0..12).map(|n| format!("https://site{n}.example.com/")).collect();
-        let pages: Vec<(&str, &str, i64, i64)> =
-            addresses.iter().enumerate().map(|(n, address)| (address.as_str(), "A page", n as i64, 0)).collect();
+        let addresses: Vec<(String, i64)> = (0..12_i64)
+            .map(|n| (format!("https://site{n}.example.com/"), n))
+            .collect();
+        let pages: Vec<(&str, &str, i64, i64)> = addresses
+            .iter()
+            .map(|(address, n)| (address.as_str(), "A page", *n, 0))
+            .collect();
         history(&profile.join("History"), &pages);
         let found = read(&profile, &profile).unwrap();
         assert_eq!(found.len(), 9);
@@ -216,19 +238,32 @@ mod tests {
     #[test]
     fn a_title_is_one_line() {
         let profile = folder("one-line");
-        history(&profile.join("History"), &[("https://example.org/", "Two\tparts\nhere", 1, 0)]);
-        assert_eq!(titles(&read(&profile, &profile).unwrap()), ["Two parts here"]);
+        history(
+            &profile.join("History"),
+            &[("https://example.org/", "Two\tparts\nhere", 1, 0)],
+        );
+        assert_eq!(
+            titles(&read(&profile, &profile).unwrap()),
+            ["Two parts here"]
+        );
     }
 
     #[test]
     fn reading_leaves_chromes_history_as_it_was_and_no_copy_behind() {
         let profile = folder("untouched");
         let scratch = folder("scratch");
-        history(&profile.join("History"), &[("https://example.org/", "A page", 1, 0)]);
+        history(
+            &profile.join("History"),
+            &[("https://example.org/", "A page", 1, 0)],
+        );
         let before = fs::read(profile.join("History")).unwrap();
         read(&profile, &scratch).unwrap();
         assert_eq!(fs::read(profile.join("History")).unwrap(), before);
-        assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0, "the copy is gone");
+        assert_eq!(
+            fs::read_dir(&scratch).unwrap().count(),
+            0,
+            "the copy is gone"
+        );
     }
 
     #[test]
