@@ -3062,6 +3062,11 @@ Scope {
 
     onOpenChanged: {
         if (open) {
+            // Joined whole each time it opens, stale or not: a
+            // collection's count reads live state (Agents' sessions, the
+            // machine's room) that marks nothing stale as it changes, so
+            // home would open saying the count of the last join.
+            choicesStale = true;
             freshen();
             trials.opened();
             partingLater.stop();
