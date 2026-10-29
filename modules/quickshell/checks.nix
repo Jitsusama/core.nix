@@ -1128,6 +1128,10 @@ onLinux {
       cp ${./launcher/words.json} launcher/words.json
       cp ${singleton "Jobs.qml" "property var said: null"} Jobs.qml
       cp ${singleton "Niri.qml" "function act(action) {}"} Niri.qml
+      cp ${singleton "ProcessorTelemetry.qml" ''
+        property int watching: 0
+        property var reading: null
+      ''} ProcessorTelemetry.qml
       cp ${../../tests/machine.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PROCESSES=${listing}
