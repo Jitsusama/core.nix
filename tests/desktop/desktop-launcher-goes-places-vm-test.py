@@ -1968,7 +1968,10 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.launcher_until(lunch_in_full)
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"] == ["Open in Mail", "Reply", "Archive", "Read", "Copy the Link"]
+        lambda shown: (
+            shown["rows"]
+            == ["Open in Mail", "Reply", "Archive", "Read", "Attachments", "Copy the Link"]
+        )
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -2018,6 +2021,52 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
+    desktop: Desktop,
+) -> None:
+    """A file mail carries is fetched only on Return, to open, closing, or to save in Downloads."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    kept = "/run/user/1000/google-files/lunch/menu.pdf"
+    saved = "/home/jitsusama/Downloads/menu.pdf"
+    machine.succeed(f"rm -f {asked} {kept} {saved}")
+
+    def into_the_menu() -> None:
+        """Step into Lunch on Friday's Attachments, its menu selected."""
+        desktop.answer("lunch on friday")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Attachments" in shown["rows"])
+        desktop.down_to("Attachments")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["menu.pdf"])
+
+    into_the_menu()
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "PDF \u00b7 4 B", selected
+    assert selected["drawer"]["facts"] == [
+        {"label": "Kind", "value": "PDF"},
+        {"label": "Size", "value": "4 B"},
+    ], selected
+    # Listing a file fetches nothing; Return fetches it, opens it and closes.
+    machine.fail(f"grep -qs fetch {asked}")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"test -f {kept}", timeout=dt.timedelta(seconds=30))
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Save a Copy keeps one in Downloads, the launcher staying to say so.
+    into_the_menu()
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
+    desktop.down_to("Save a Copy")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"test -f {saved}", timeout=dt.timedelta(seconds=30))
+    desktop.launcher_until(lambda shown: shown["footer"] == "saved in Downloads")
+    desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 

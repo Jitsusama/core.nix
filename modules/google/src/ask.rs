@@ -4,8 +4,9 @@
 //! `{"cancel": {"id": "…"}}`; to move one Google lets him change,
 //! `{"move": {"id": "…", "start": …, "end": …}}` in milliseconds since
 //! the epoch; to mark mail read, `{"read": {"id": "…"}}`, or unread
-//! again, `{"unread": {"id": "…"}}`; and to archive it,
-//! `{"archive": {"id": "…"}}`.
+//! again, `{"unread": {"id": "…"}}`; to archive it,
+//! `{"archive": {"id": "…"}}`; and to fetch one of the files it carries,
+//! from 0, to open or save, `{"fetch": {"id": "…", "file": 0, "how": "open"}}`.
 //!
 //! A line that isn't one of these is let go. The id goes into the path
 //! of a request to Google, so only the letters, digits and underscores
@@ -14,6 +15,7 @@
 use serde::Deserialize;
 
 use crate::calendar::Answer;
+use crate::files::How;
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -31,6 +33,8 @@ pub enum Ask {
     Unread { id: String },
     /// Take the mail `id` out of the inbox.
     Archive { id: String },
+    /// Fetch the mail `id`'s file `file` to open or save, as `how` says.
+    Fetch { id: String, file: usize, how: How },
 }
 
 /// What a line asks, or none when it asks nothing this program does.
@@ -38,9 +42,11 @@ pub fn read(line: &str) -> Option<Ask> {
     let ask: Ask = serde_json::from_str(line).ok()?;
     let taken = match &ask {
         Ask::Answer { id, with } => named(id) && *with != Answer::Waiting,
-        Ask::Cancel { id } | Ask::Read { id } | Ask::Unread { id } | Ask::Archive { id } => {
-            named(id)
-        }
+        Ask::Cancel { id }
+        | Ask::Read { id }
+        | Ask::Unread { id }
+        | Ask::Archive { id }
+        | Ask::Fetch { id, .. } => named(id),
         // A meeting ends after it starts, and both are after 1970.
         Ask::Move { id, start, end } => named(id) && 0 < *start && start < end,
     };
@@ -116,6 +122,30 @@ mod tests {
             Some(Ask::Unread {
                 id: "19a2b3c4d5e6f708".into()
             })
+        );
+    }
+
+    #[test]
+    fn a_file_is_fetched_by_its_mail_and_its_place_on_it_to_open_or_save() {
+        assert_eq!(
+            read(r#"{"fetch": {"id": "19a2b3c4d5e6f708", "file": 1, "how": "save"}}"#),
+            Some(Ask::Fetch {
+                id: "19a2b3c4d5e6f708".into(),
+                file: 1,
+                how: How::Save
+            })
+        );
+        assert_eq!(
+            read(r#"{"fetch": {"id": "m1", "file": -1, "how": "open"}}"#),
+            None
+        );
+        assert_eq!(
+            read(r#"{"fetch": {"id": "m1", "file": 0, "how": "run"}}"#),
+            None
+        );
+        assert_eq!(
+            read(r#"{"fetch": {"id": "../m1", "file": 0, "how": "open"}}"#),
+            None
         );
     }
 
