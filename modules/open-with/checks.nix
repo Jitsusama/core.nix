@@ -16,10 +16,10 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
 
-  # open-with chooses a file in the shell when the shell answers, and in
-  # GTK's portal when it refuses, as a shell with no picker does, each
-  # stood in for on a session bus of its own (files-chosen.py).
-  files-are-chosen-with-or-without-the-picker =
+  # open-with chooses a file in the shell when the shell answers, and none
+  # when it can't be asked, as while it restarts, never asking GTK's
+  # portal, each stood in for on a session bus of its own (files-chosen.py).
+  files-are-chosen-in-the-launcher-alone =
     let
       python = pkgs.python3.withPackages (python: [ python.jeepney ]);
       picked = "/home/someone/picked.md";
@@ -28,7 +28,7 @@ onLinux {
         echo '{"paths": ["${picked}"]}' | ${lib.getExe pkgs.socat} - UNIX-CONNECT:"$5"
       '';
     in
-    pkgs.runCommandLocal "files-are-chosen-with-or-without-the-picker" { } ''
+    pkgs.runCommandLocal "files-are-chosen-in-the-launcher-alone" { } ''
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
       mkdir -m 700 "$XDG_RUNTIME_DIR"
       ${lib.getExe' pkgs.coreutils "timeout"} 120 ${lib.getExe' pkgs.dbus "dbus-run-session"} \
@@ -84,8 +84,8 @@ onLinux {
     '';
 
   # A graphical machine's portal asks the launcher for a file to open or
-  # save, which hands it to GTK's dialog while the shell has no picker
-  # (src/files.rs), open-with's description says it answers that, and GTK
+  # save, and never GTK's dialog (src/files.rs), open-with's description
+  # says it answers that, and GTK
   # 3's native chooser is told to ask the portal, its own dialogs asking
   # through the native one (dialogs-ask-the-portal.c).
   the-launcher-chooses-files =
