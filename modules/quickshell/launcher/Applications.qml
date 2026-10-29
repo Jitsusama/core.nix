@@ -670,16 +670,18 @@ Provider {
     // and Quit, then Media and Sound while it plays. What it does comes
     // first and what ends it near the bottom, so Return on a program never
     // lands in its Recent. One that steps in has only what's given it,
-    // its Recent, its notices and Shortcuts, in that order, never starting,
-    // with what's given it to copy after everything, since Copy is last.
+    // its Recent, its notices and Shortcuts, in that order, never starting.
+    // Either way, what's given it to copy comes after everything, as Meet's
+    // Copy a New Meeting's Link does, since Copy is last.
     function controls(entry, start, below) {
         const looked = {};
         const same = given => provider.names(entry, given, looked);
+        const given = givenActs(entry.id);
+        const copying = row => row.verb === "copy";
+        const doing = given.filter(row => !copying(row));
+        const copies = given.filter(copying);
         if (stepsIn(entry)) {
-            const given = givenActs(entry.id);
-            const copying = row => row.verb === "copy";
-            return given.filter(row => !copying(row)).concat(recent(entry), notices(same),
-                keysOf(entry), given.filter(copying));
+            return doing.concat(recent(entry), notices(same), keysOf(entry), copies);
         }
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
@@ -693,11 +695,12 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), windowsOf(entry),
+        return acts.concat(menu(entry, taken), doing, recent(entry), windowsOf(entry),
             notices(same), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
-            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : []);
+            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
+            copies);
     }
 
     // Quickshell lists no entry that hides itself, so a hidden one another

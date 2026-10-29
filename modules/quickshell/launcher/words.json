@@ -4336,6 +4336,13 @@
       "ask": "which code?"
     },
     {
+      "id": "verb:meet:link",
+      "in": "applications",
+      "name": "Copy a New Meeting's Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
       "id": "docs:document",
       "of": "program:google-docs",
       "name": "Document",

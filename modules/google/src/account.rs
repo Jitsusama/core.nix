@@ -22,6 +22,16 @@ pub struct Account {
     /// since the epoch), which saves a refresh while pi's is still fresh.
     pub access_token: String,
     pub expires: i64,
+    /// What the sign-in lets this program do, as Google's scopes, which
+    /// signing in again from pi may widen.
+    pub scopes: Vec<String>,
+}
+
+impl Account {
+    /// Whether the sign-in lets this program ask Google `scope`.
+    pub fn grants(&self, scope: &str) -> bool {
+        self.scopes.iter().any(|granted| granted == scope)
+    }
 }
 
 /// Why there's no account to ask as. Neither is an error to say: a
@@ -67,6 +77,9 @@ struct Tokens {
     refresh_token: String,
     #[serde(default)]
     expiry_date: i64,
+    /// The scopes granted, apart by spaces, as OAuth writes them.
+    #[serde(default)]
+    scope: String,
 }
 
 /// The account `name` names, else the file's default, else its first, as
@@ -99,6 +112,7 @@ fn parse(text: &str, name: Option<&str>) -> Result<Account, Missing> {
         refresh_token: tokens.refresh_token.clone(),
         access_token: tokens.access_token.clone(),
         expires: tokens.expiry_date,
+        scopes: tokens.scope.split_whitespace().map(str::to_owned).collect(),
     })
 }
 
@@ -123,6 +137,19 @@ mod tests {
         assert_eq!(account.access_token, "w");
         assert_eq!(account.expires, 2);
         assert_eq!(account.client_id, "app");
+    }
+
+    #[test]
+    fn an_account_grants_only_the_scopes_it_was_signed_in_with() {
+        let file = FILE.replace(
+            r#""scope": "calendar""#,
+            r#""scope": "calendar https://www.googleapis.com/auth/meetings.space.created""#,
+        );
+        let account = parse(&file, None).unwrap();
+        assert!(account.grants("https://www.googleapis.com/auth/meetings.space.created"));
+        assert!(account.grants("calendar"));
+        assert!(!account.grants("meetings"), "a part of a scope was granted");
+        assert!(!parse(FILE, Some("home")).unwrap().grants("calendar"));
     }
 
     #[test]

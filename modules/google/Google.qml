@@ -40,6 +40,19 @@ Singleton {
     // The file mail carries last asked for, as it stands: { mail, file,
     // how, asked, path, failed }, or null.
     property var fetched: null
+    // Making a Meet meeting: whether Joel's sign-in grants it, and the one
+    // last asked for, { asked, link, failed }, or null.
+    property var meet: ({ granted: false, made: null })
+
+    // How the meeting asked for at `since` stands (Google.js).
+    function making(since) {
+        return Said.making(meet, since);
+    }
+
+    // Asks the program to make a new Meet meeting.
+    function make() {
+        ask(Said.make());
+    }
 
     function hear(line) {
         const said = Said.heard(line);
@@ -52,6 +65,7 @@ Singleton {
         documents = said.documents;
         heard = said.heard;
         fetched = said.fetched;
+        meet = said.meet;
     }
 
     // Everyone the meetings and mail name, by address, for People
@@ -76,6 +90,7 @@ Singleton {
         documents = [];
         heard = null;
         fetched = null;
+        meet = { granted: false, made: null };
     }
 
     // Asks the program one thing, a line its ask.rs reads. It's running

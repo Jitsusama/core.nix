@@ -25,8 +25,28 @@ function heard(line) {
         unread: typeof said.unread === "number" ? said.unread : null,
         documents: Array.isArray(said.documents) ? said.documents : [],
         heard: said.heard ?? null,
-        fetched: said.fetched ?? null
+        fetched: said.fetched ?? null,
+        meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null }
     };
+}
+
+// The line that asks the program to make a new Meet meeting.
+function make() {
+    return `${JSON.stringify({ make: {} })}\n`;
+}
+
+// How the meeting asked for at `since` stands, as { state, link }: "making"
+// until the program says it made one asked since, then "made" with its
+// link, or "failed"; "" when none was asked.
+function making(meet, since) {
+    if (since === null) {
+        return { state: "", link: "" };
+    }
+    const made = meet?.made;
+    if (!made || made.asked < since || !(made.link || made.failed)) {
+        return { state: "making", link: "" };
+    }
+    return made.link ? { state: "made", link: made.link } : { state: "failed", link: "" };
 }
 
 // Everyone the account's meetings and mail name, as People's Google

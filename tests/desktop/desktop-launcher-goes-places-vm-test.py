@@ -2356,6 +2356,30 @@ def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> Non
 
 
 @pytest.mark.usefixtures("google")
+def test_meet_copies_a_new_meetings_link_last_without_opening_meet(desktop: Desktop) -> None:
+    """Meet's last act has the program make a meeting and copies its link, opening nothing."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {opened} {asked}")
+    desktop.answer("meet")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy a New Meeting's Link")
+    desktop.down_to("Copy a New Meeting's Link")
+    machine.send_key("ret")
+    link = "https://meet.google.com/new-abcd-efg"
+    machine.wait_until_succeeds(
+        desktop.in_session(f'[ "$(wl-paste --no-newline)" = "{link}" ]'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.succeed(f"grep -qxF '{{\"make\":{{}}}}' {asked}")
+    machine.fail(f"grep -qF new-abcd-efg {opened}")
+
+
+@pytest.mark.usefixtures("google")
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:

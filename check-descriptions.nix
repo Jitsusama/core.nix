@@ -358,7 +358,8 @@
     into a folder only Joel reads or into Downloads, never over a file there, marking it read or
     archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
     the documents of each kind he looked at lately, his last first, asking Drive again only every
-    five minutes and keeping them while Drive fails
+    five minutes and keeping them while Drive fails, and makes a Meet meeting for its link when
+    asked, only once Joel's sign-in grants Meet's scope
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1022,8 +1023,9 @@
   '';
   the-launcher-holds-a-programs-controls = ''
     a program's step holds its windows, its own actions, Quit asked once, then Media, Sound and
-    Notifications, in order and only where they apply, each reaching only that program, and a
-    hidden program another provider gives acts to is listed and steps in rather than starting
+    Notifications, in order and only where they apply, each reaching only that program, with what
+    another provider gives it to copy last, and a hidden program another provider gives acts to is
+    listed and steps in rather than starting
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
@@ -1220,7 +1222,8 @@
     details say, who was copied and the files it carries among them, each file by its kind and size;
     writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
     everyone else a meeting names; writes the lines that mark mail read or unread again or archive
-    it or fetch a file it carries; and says how that fetch stands
+    it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
+    meeting and says how one asked for stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1386,9 +1389,10 @@
     all, opens mail by its subject, keeping one Mail window, replies to it, and to all on mail that
     went to others too, flips its Read switch both ways, archives it, and opens a file it carries or
     saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
-    its title finds, joins a Meet call by its code after Meet's New Meeting, finds a person by name
-    with the ways to reach them, their next meeting, their Recent and their address last, sets the
-    volume, loses no letter typed after its chord, and shows the shortcuts
+    its title finds, joins a Meet call by its code after Meet's New Meeting and copies a new
+    meeting's link last, finds a person by name with the ways to reach them, their next meeting,
+    their Recent and their address last, sets the volume, loses no letter typed after its chord, and
+    shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
