@@ -27,6 +27,9 @@
     "The charger" = "/sys/class/power_supply/ADP1";
     "The camera" = "/sys/class/video4linux/video*";
     "The watchdog" = "/sys/class/watchdog/watchdog0";
+    # The controller's sensors and fan, which the kernel patch below names.
+    "The temperature sensors" = "/sys/bus/surface_aggregator/devices/01:03:01:00:02";
+    "The fan" = "/sys/bus/surface_aggregator/devices/01:05:01:01:01";
   };
 
   # The keyboard reaches the system through the Surface Aggregator, as
@@ -101,7 +104,14 @@
   # timers disagree by up to 0.35%, so the kernel's watchdog throws the TSC
   # out, and with the watchdog off its calibration can come out 0.16% fast,
   # more than NTP can steer. docs/hardware.md has the measurements.
-  boot.kernelParams = [ "tsc=unstable" ];
+  #
+  # amd-pstate runs in guided mode: the firmware is always autonomous, and
+  # its _OSC doesn't grant what active mode's energy preference writes need.
+  # The patch below says how both were found.
+  boot.kernelParams = [
+    "tsc=unstable"
+    "amd_pstate=guided"
+  ];
 
   # A panic drew its text but never restarted the laptop, which sat frozen
   # until the power button was held. The chipset's watchdog, which systemd
@@ -120,4 +130,21 @@
       };
     in
     "${hook}/bin/watchdog-wakes-again";
+
+  boot.kernelPatches = [
+    # The Surface Aggregator answers for eight thermal sensors and the fan's
+    # speed, but the kernel's registry gives this model the Intel models'
+    # devices, which have neither. The patch says what the controller
+    # answered.
+    {
+      name = "surface-laptop-amd-sensors-and-fan";
+      patch = ./kernel/surface-laptop-amd-sensors-and-fan.patch;
+    }
+    # The firmware fixes _CPC's Autonomous Selection Enable at 1, which
+    # amd-pstate refused to accept, so the CPU fell back to acpi-cpufreq.
+    {
+      name = "amd-pstate-fixed-autonomous-selection";
+      patch = ./kernel/amd-pstate-fixed-autonomous-selection.patch;
+    }
+  ];
 }
