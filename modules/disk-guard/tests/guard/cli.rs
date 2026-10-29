@@ -518,8 +518,7 @@ fn holding(machine: &Machine, path: &Path) {
         "holders": [{
             "path": path, "bytes": 4096, "owner": { "kind": "other", "name": "photos" },
             "name": "~/photos", "clearable": true, "clears": 4096, "why": null, "kept": null,
-            "says": "~/photos holds 4.0 KiB, of which 4.0 KiB is builds or caches the guard \
-                     clears once they sit idle long enough."
+            "says": "~/photos holds 4.0 KiB, of which 4.0 KiB can be cleared now."
         }]
     });
     write_file(&machine.env.status, &status.to_string());
@@ -566,8 +565,51 @@ fn a_keep_holds_its_reason_and_shows_in_the_status_before_the_command_ends() {
         let_go["says"]
             .as_str()
             .unwrap()
-            .contains("the guard clears once"),
+            .ends_with("of which 4.0 KiB can be cleared now."),
         "{let_go}"
+    );
+}
+
+#[test]
+fn a_clear_shows_as_clearing_before_the_command_ends() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(&photos).unwrap();
+    holding(&machine, &photos);
+    let (code, out, err) = machine.run(&format!("clear {}", photos.display()));
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert_eq!(
+        out,
+        format!(
+            "Clearing {}; the guard starts on its next step.\n",
+            photos.display()
+        )
+    );
+    assert_eq!(holder(&machine)["clearing"], true);
+    assert_eq!(
+        disk_guard::clears::clearing(&machine.env.state),
+        [photos.canonicalize().unwrap()]
+    );
+}
+
+#[test]
+fn a_clear_refuses_what_is_kept_or_not_there() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(photos.join("2019")).unwrap();
+    let (code, _, _) = machine.run(&format!("keep {} the only copies", photos.display()));
+    assert_eq!(code, 0);
+    let (code, _, err) = machine.run(&format!("clear {}", photos.join("2019").display()));
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("you keep it: the only copies"), "{err}");
+    let gone = machine.root.join("gone");
+    let (code, _, err) = machine.run(&format!("clear {}", gone.display()));
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("isn't there"), "{err}");
+    assert_eq!(
+        disk_guard::clears::clearing(&machine.env.state),
+        Vec::<PathBuf>::new(),
+        "nothing refused is asked"
     );
 }
 

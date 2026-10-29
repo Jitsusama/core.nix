@@ -1,5 +1,5 @@
 use disk_guard::band::Band;
-use disk_guard::plan::{Candidate, Class, Group, plan, windows};
+use disk_guard::plan::{Candidate, Class, Group, clears, plan, windows};
 use disk_guard::units::{float, whole};
 use std::path::PathBuf;
 
@@ -220,6 +220,56 @@ fn critical_takes_everything_offered() {
     assert_eq!(
         taken(&everything(), Band::Critical).len(),
         everything().len()
+    );
+}
+
+#[test]
+fn a_clear_takes_what_a_critically_full_disk_would_but_nothing_in_use() {
+    let mut all = everything();
+    all.push(candidate("temp-1h", Class::Temp, HOUR));
+    all.push(candidate(
+        "garbage",
+        Class::Garbage {
+            kept: false,
+            order: 0,
+        },
+        DAY,
+    ));
+    let names: Vec<_> = all
+        .iter()
+        .filter(|candidate| clears(candidate))
+        .map(|candidate| {
+            candidate
+                .path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    for name in [
+        "target-shell-23h",
+        "target-shell-25h",
+        "install-shell-2d",
+        "core-1h",
+    ] {
+        assert!(
+            !names.iter().any(|n| n == name),
+            "{name} is in use: {names:?}"
+        );
+    }
+    assert!(
+        !names.iter().any(|n| n == "temp-1h"),
+        "a young temporary may still be its maker's"
+    );
+    assert!(
+        !names.iter().any(|n| n == "garbage"),
+        "the store's garbage is the store's to collect"
+    );
+    assert_eq!(
+        names.len(),
+        everything().len() - 4,
+        "the rest all go: {names:?}"
     );
 }
 

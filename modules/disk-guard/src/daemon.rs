@@ -351,9 +351,13 @@ pub struct Guard {
     damaged: bool,
     /// The trees the last survey kept for their use without offering.
     kept: Vec<(PathBuf, crate::activity::Use)>,
-    /// What the last survey offered, by path and size, so a holder can
-    /// say how much of it the guard may clear.
-    offered: Vec<(PathBuf, u64)>,
+    /// What the last survey offered, less what passes took since, so a
+    /// holder can say how much of it the guard may clear, and how much a
+    /// clear would take now.
+    offered: Vec<crate::holders::Offered>,
+    /// Whether the holders are to be measured again on the next step,
+    /// since a clear has just changed them.
+    remeasure: bool,
     /// What holds the disks, as last measured and when, in wall seconds.
     measured: Measured,
     /// The thread measuring them, while it does.
@@ -635,6 +639,7 @@ impl Guard {
             damaged,
             kept: Vec::new(),
             offered: Vec::new(),
+            remeasure: false,
             measured: Arc::new(Mutex::new(None)),
             measuring: None,
         })
@@ -667,9 +672,10 @@ impl Guard {
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
             .is_some_and(|(at, _)| now - at < HOLDERS_EVERY);
-        if !pressed || fresh {
+        if !pressed || (fresh && !self.remeasure) {
             return;
         }
+        self.remeasure = false;
         let places = crate::holders::places(&self.config);
         let measured = Arc::clone(&self.measured);
         let started = std::thread::Builder::new()
@@ -987,7 +993,8 @@ impl Guard {
         let calm_moment = spare_moment && calm(senses.pressure);
         self.dedupe(tick, calm_moment, powered(senses.power, senses.saver))?;
         self.collects(tick);
-        let passed = !due.is_empty();
+        let asked = self.clear_asked(tick)?;
+        let passed = asked || !due.is_empty();
         if passed {
             // So a pass's heartbeat starts from what the disks are now.
             self.write_status(tick.wall)?;
@@ -1107,6 +1114,61 @@ impl Guard {
             .collect()
     }
 
+    /// Clears each folder Joel asked cleared, saying whether there were
+    /// any. Each takes what the survey offers inside it that a clear takes
+    /// (`crate::plan::clears`), judged for use again as it goes, paced by
+    /// its disk's own band, so a clear on a healthy disk is a gentle one.
+    /// An ask ends once its pass has, so until then the status says the
+    /// folder is clearing.
+    fn clear_asked(&mut self, tick: &Tick) -> io::Result<bool> {
+        let asks = crate::clears::asked(self.state())?;
+        if asks.is_empty() {
+            return Ok(false);
+        }
+        self.write_status(tick.wall)?;
+        let (mut scan, offers) = self.offers(tick)?;
+        for (file, ask) in asks {
+            // A source's root may be named through a link, and an ask's
+            // folder never is.
+            let inside: Vec<Offer> = offers
+                .iter()
+                .filter(|offer| {
+                    let path = &offer.candidate.path;
+                    let resolved = fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+                    resolved.starts_with(&ask.path) && crate::plan::clears(&offer.candidate)
+                })
+                .cloned()
+                .collect();
+            let cleared = self.clear_on(tick, &inside, &mut scan);
+            // Ended whatever the pass did, since one that failed would
+            // fail again, each step surveying everything to.
+            crate::clears::done(&file)?;
+            cleared?;
+        }
+        self.remeasure = true;
+        Ok(true)
+    }
+
+    /// A clear's passes over `inside`, one on each filesystem it spans.
+    fn clear_on(&mut self, tick: &Tick, inside: &[Offer], scan: &mut Scan) -> io::Result<()> {
+        let devices: BTreeSet<u64> = inside.iter().map(|offer| offer.device).collect();
+        for device in devices {
+            let Some(watched) = self.watched.get(&device) else {
+                continue;
+            };
+            let band = watched.band;
+            let space = crate::sys::space(&watched.path)?;
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            let here: Vec<Offer> = inside
+                .iter()
+                .filter(|offer| offer.device == device)
+                .cloned()
+                .collect();
+            self.pass_on(tick, device, &here, (band, Goal::Clear), thresholds, scan)?;
+        }
+        Ok(())
+    }
+
     /// Hears user daemons from now on.
     pub fn hear(&mut self, hearing: Hearing) {
         self.hearing = Some(hearing);
@@ -1143,9 +1205,15 @@ impl Guard {
         // Neither takes a process to judge, so the scan is never read.
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
-        let decision = Decision::Reach(band);
-        self.pass_on(tick, device, &here, decision, thresholds, &mut scan)
-            .map_err(|error| error.to_string())
+        self.pass_on(
+            tick,
+            device,
+            &here,
+            (band, Goal::Reach),
+            thresholds,
+            &mut scan,
+        )
+        .map_err(|error| error.to_string())
     }
 
     /// Takes a listing of Nix's garbage that has finished, keeping it for
@@ -1672,7 +1740,7 @@ impl Guard {
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            let end = self.pass_on(tick, device, &here, decision, thresholds, &mut scan)?;
+            let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
             let Decision::Reach(band) = decision else {
                 continue;
             };
@@ -1781,7 +1849,11 @@ impl Guard {
         });
         self.offered = offers
             .iter()
-            .map(|offer| (offer.candidate.path.clone(), offer.candidate.size))
+            .map(|offer| crate::holders::Offered {
+                path: offer.candidate.path.clone(),
+                size: offer.candidate.size,
+                now: crate::plan::clears(&offer.candidate),
+            })
             .collect();
         offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
@@ -1796,7 +1868,7 @@ impl Guard {
         tick: &Tick,
         device: u64,
         here: &[Offer],
-        decision: Decision,
+        (band, goal): (Band, Goal),
         thresholds: Thresholds,
         scan: &mut Scan,
     ) -> io::Result<End> {
@@ -1808,10 +1880,6 @@ impl Guard {
             return Ok(End::Exhausted);
         };
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
-        let (band, goal) = match decision {
-            Decision::Reach(band) => (band, Goal::Reach),
-            _ => (Band::Healthy, Goal::Upkeep),
-        };
         let started = Instant::now();
         let gentle = band < Band::Urgent;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
@@ -1851,7 +1919,7 @@ impl Guard {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
                 None => seconds,
             });
-        } else {
+        } else if goal == Goal::Upkeep {
             // Kept by the survey before it was offered, or by the pass.
             let unvouched = scan.went_unheard()
                 && (self
@@ -1891,6 +1959,9 @@ impl Guard {
     /// failing command waits its window too.
     fn note_actions(&mut self, here: &[Offer], actions: &[(PathBuf, Outcome)], wall: f64) {
         for (taken, outcome) in actions {
+            if *outcome == Outcome::Reclaimed {
+                self.offered.retain(|offer| &offer.path != taken);
+            }
             let offered = here.iter().find(|offer| &offer.candidate.path == taken);
             match offered.map(|offer| &offer.action) {
                 Some(Action::Run { source, .. }) => {
@@ -2228,12 +2299,21 @@ impl Guard {
     }
 }
 
-/// Marks a status's holders with the keeps in `state` as they are now,
-/// since `disk-guard keep` changes them between steps. Keeps that won't
-/// read leave the holders as they were.
+/// Marks a status's holders with the keeps and clears in `state` as they
+/// are now, since `disk-guard keep` and `clear` change them between
+/// steps. Keeps that won't read leave the holders as they were.
 fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
     if let Ok(keeps) = crate::keeps::load(state) {
-        crate::holders::mark(&mut status.holders, &keeps, home);
+        let clearing = crate::clears::clearing(state);
+        crate::holders::mark(&mut status.holders, &keeps, &clearing, home);
+    }
+}
+
+/// The band a decision's pass plans by, and what it's for.
+fn aim(decision: Decision) -> (Band, Goal) {
+    match decision {
+        Decision::Reach(band) => (band, Goal::Reach),
+        _ => (Band::Healthy, Goal::Upkeep),
     }
 }
 

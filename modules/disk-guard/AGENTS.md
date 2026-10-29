@@ -162,6 +162,18 @@ or launchd, and [`home.nix`][2] the account's.
   every writer of the file marks what it writes the same way, so the
   holder has changed by the time the answer is heard. `src/keeps.rs`
   holds it.
+- **Clears.** `disk-guard clear FOLDER` asks the account's guard to clear
+  what it may of a folder now, without waiting for its band or for it to
+  sit idle. Each ask is a file of its own in the state folder's `clears/`,
+  so two never race, and the next step takes it: a pass of the survey's
+  offers inside the folder that `plan::clears` allows, which is what a
+  critically full disk would take, less anything occupied and the store's
+  garbage, each judged for use again as it goes and paced by the disk's
+  own band. An ask ends with its pass, whatever the pass did, and until
+  then the holders it touches say `clearing`. A holder's `clears` counts
+  the same set, so what a clear offers to free is what it takes, and a
+  pass drops what it reclaimed from it at once. The command refuses a
+  kept folder. `src/clears.rs` holds the asks.
 - **Notices.** The account's guard shows one desktop notice, and only from
   urgent on: a disk under pressure is the launcher's to show. A notice the
   desktop didn't take, as when the notification server is still starting,
@@ -185,6 +197,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/survey.rs`           | each source's candidates                                 |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
+| `src/clears.rs`           | the folders Joel asked cleared now                       |
 | `src/anchor.rs`           | removal that never leaves its root                       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
