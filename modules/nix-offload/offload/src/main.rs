@@ -8,7 +8,8 @@
 //! today's line.
 //!
 //! Every 20 seconds it reads the machine queue. Once a build or a VM check
-//! has waited three minutes for a slot this machine doesn't have, it asks
+//! has waited three minutes for a slot this machine doesn't have, or one
+//! runs or waits while the queue says the machine is stalling, it asks
 //! the helper for a builder, names it `NAME<seconds>`, and writes the Nix
 //! machines line the helper gives into /run/nix-offload/machines, which
 //! nix-daemon reads at each build (`builders = @` it) and the queue reads

@@ -1,5 +1,10 @@
 //! When the machine queue wants a builder: jobs a builder elsewhere could
-//! take, held back for room this machine doesn't have.
+//! take, held back for room this machine doesn't have, or running and
+//! waiting while the machine stalls.
+//!
+//! A slot held back isn't enough on its own: the queue gives out slots by
+//! count, so on 29 October five VM tests ran here with memory stalled 10%
+//! of the time and nothing waiting, and the person at the machine felt it.
 
 use serde_json::Value;
 
@@ -19,8 +24,10 @@ const SENT: [&str; 2] = ["build", "vm-check"];
 /// stopped, whose waiting jobs would otherwise keep a builder all day.
 const STALE: u64 = 120;
 
-/// Whether any job a builder could take has waited, at `now`, at least
-/// `wait` seconds since it asked. A queue that can't be read, or that
+/// Whether a builder is wanted at `now`: a job a builder could take has
+/// waited at least `wait` seconds since it asked for a slot, or the queue
+/// says the machine is over a pressure line (`machine.over`) while such a
+/// job runs or waits for any reason. A queue that can't be read, or that
 /// stopped writing, wants nothing.
 pub fn wants(queue: &str, now: u64, wait: u64) -> bool {
     let Ok(queue) = serde_json::from_str::<Value>(queue) else {
@@ -30,17 +37,23 @@ pub fn wants(queue: &str, now: u64, wait: u64) -> bool {
         .as_str()
         .and_then(seconds_of)
         .is_some_and(|at| now.saturating_sub(at) <= STALE);
+    let stalling = queue["machine"]["over"]
+        .as_array()
+        .is_some_and(|over| !over.is_empty());
     fresh
         && queue["jobs"].as_array().is_some_and(|jobs| {
-            jobs.iter().any(|job| {
-                job["state"] == "waiting"
-                    && RELIEVED.iter().any(|on| job["waitingOn"] == *on)
-                    && SENT.iter().any(|kind| job["kind"] == *kind)
-                    && job["since"]
-                        .as_str()
-                        .and_then(seconds_of)
-                        .is_some_and(|since| now.saturating_sub(since) >= wait)
-            })
+            jobs.iter()
+                .filter(|job| SENT.iter().any(|kind| job["kind"] == *kind))
+                .any(|job| {
+                    let state = job["state"].as_str();
+                    let held = state == Some("waiting")
+                        && RELIEVED.iter().any(|on| job["waitingOn"] == *on)
+                        && job["since"]
+                            .as_str()
+                            .and_then(seconds_of)
+                            .is_some_and(|since| now.saturating_sub(since) >= wait);
+                    held || (stalling && matches!(state, Some("waiting" | "running")))
+                })
         })
 }
 
@@ -83,6 +96,12 @@ mod tests {
         format!(r#"{{"v":1,"at":"{at}","jobs":[{jobs}]}}"#)
     }
 
+    fn queue_over(over: &str, jobs: &str) -> String {
+        format!(
+            r#"{{"v":1,"at":"2026-10-29T14:59:50.000Z","machine":{{"over":[{over}]}},"jobs":[{jobs}]}}"#
+        )
+    }
+
     fn job(kind: &str, state: &str, on: &str, asked: u64) -> String {
         let since = time_of(asked);
         format!(r#"{{"kind":"{kind}","state":"{state}","waitingOn":"{on}","since":"{since}"}}"#)
@@ -111,6 +130,29 @@ mod tests {
             NOW,
             180
         ));
+    }
+
+    #[test]
+    fn work_a_builder_could_take_wants_one_while_the_machine_stalls() {
+        for job in [
+            job("build", "running", "", NOW - 30),
+            job("vm-check", "running", "", NOW - 30),
+            job("build", "waiting", "memory", NOW - 10),
+        ] {
+            assert!(wants(&queue_over(r#""memory""#, &job), NOW, 180), "{job}");
+            assert!(!wants(&queue_over("", &job), NOW, 180), "{job}");
+        }
+    }
+
+    #[test]
+    fn a_stall_wants_nothing_without_work_a_builder_could_take() {
+        assert!(!wants(&queue_over(r#""cpu""#, ""), NOW, 180));
+        for job in [
+            job("vm-test", "running", "", NOW - 30),
+            job("build", "done", "", NOW - 30),
+        ] {
+            assert!(!wants(&queue_over(r#""cpu""#, &job), NOW, 180), "{job}");
+        }
     }
 
     #[test]
