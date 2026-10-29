@@ -1003,6 +1003,69 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
 # actions, as on anything at the top.
 
 
+# What the machine chose for the charger and the battery, where the shell
+# reads it (modules/power-profiles-daemon/follow.sh).
+WANTED = "/run/power-profile/wanted"
+
+
+def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) -> None:
+    """Now lists the power profile only when it isn't the machine's own choice."""
+    machine = desktop.machine
+
+    def listed(shown: Json) -> str:
+        """Give what Now's power profile row reads, or nothing while it isn't there."""
+        return next(
+            (
+                str(thing["reads"])
+                for thing in shown["things"]
+                if str(thing["reads"]).startswith("Power Profile") and not thing.get("gone")
+            ),
+            "",
+        )
+
+    def now_reads(reads: str) -> None:
+        """Open Now and wait until its power profile row reads so, or is gone for nothing."""
+        machine.send_key("meta_l-o")
+        desktop.launcher_until(
+            lambda shown: shown["held"] == ["now"] and listed(shown).startswith(reads)
+            if reads
+            else shown["held"] == ["now"] and listed(shown) == ""
+        )
+
+    def close() -> None:
+        machine.send_key("esc")
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+
+    # The VM runs on mains without a performance profile, so the machine
+    # chose balanced, and says so; in use, Now has nothing to say of it.
+    machine.wait_until_succeeds(f"grep -qx balanced {WANTED}", timeout=timedelta(seconds=10))
+    machine.succeed("powerprofilesctl set balanced")
+    now_reads("")
+    close()
+    # Power saver picked by hand is a mode left on, and its Return uses the
+    # machine's choice again, keeping the launcher.
+    machine.succeed("powerprofilesctl set power-saver")
+    now_reads("Power Profile \u00b7 Power Saver")
+    desktop.down_to("Power Profile")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "use")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "powerprofilesctl get | grep -qx balanced", timeout=timedelta(seconds=10)
+    )
+    desktop.launcher_until(lambda shown: shown["open"] and listed(shown) == "")
+    close()
+    # The machine's own power saver, as it chooses on a low battery, says
+    # nothing; the VM has no battery, so its choice is written as follow.sh
+    # writes it. Balanced, then, is the one picked by hand.
+    machine.succeed(f"echo power-saver > {WANTED}")
+    now_reads("Power Profile \u00b7 Balanced")
+    close()
+    machine.succeed("powerprofilesctl set power-saver")
+    now_reads("")
+    close()
+    machine.succeed(f"echo balanced > {WANTED}", "powerprofilesctl set balanced")
+
+
 def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Desktop) -> None:
     """The launcher's Screens scales a screen by keys, and back."""
     machine = desktop.machine
