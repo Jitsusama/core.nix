@@ -660,8 +660,35 @@ Scope {
     // all made one way and are proven offscreen.
     readonly property int actlessDeepest: 6
 
+    // Each thing the vocabulary places that is an answer, by its name, as
+    // Time, Date and Weather are: its one row is the answer as
+    // `resolved` places it, wherever it shows (Joel, 2026-10-28: "we need
+    // to not have different versions of these sort of elements"). A part,
+    // whose id is its holder's and its own, as a display's Brightness is,
+    // shows as its holder makes it, so it isn't one.
+    readonly property var answeredThings: {
+        const out = {};
+        for (const id of Object.keys(Words.things)) {
+            const entry = Words.of(id);
+            if ((entry.answers ?? []).length > 0 && (entry.in ?? "") !== "" && !id.includes(":"))
+                out[entry.name] = id;
+        }
+        return out;
+    }
+
+    // Whether a row bears an answered thing's name without being that
+    // thing's own row, which is a surface drawing its own version of it.
+    // What an answer holds is its own, as the time's Date is the date
+    // where that time is, so it isn't asked of.
+    function ownVersion(row, above) {
+        const id = answeredThings[row.placed ?? row.name];
+        return id !== undefined && above?.answered !== true && row.is !== `answer:${id}`
+            && row.key !== `place:${id}`;
+    }
+
     function actless() {
         const out = [];
+        const own = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -671,6 +698,9 @@ Scope {
                     seen.add(id);
                     if (!Catalogue.acts(row))
                         out.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    if (ownVersion(row, above))
+                        own.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.is ?? row.key})`);
                     if (depth < actlessDeepest && !(row.opens && Catalogue.long(row.opens)))
                         walk(catalogueHolds(row, above === null || collects({ row: above })),
                             row, path, names.concat([row.name]), depth + 1);
@@ -680,7 +710,7 @@ Scope {
         walk(home(), null, [], [], 0);
         // How many it walked too, so a check that finds none knows it
         // looked.
-        return { walked: seen.size, rows: out };
+        return { walked: seen.size, rows: out, ownVersions: own };
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a

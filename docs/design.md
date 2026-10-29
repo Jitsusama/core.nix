@@ -680,7 +680,9 @@ works the same way everywhere.
   always, saying how many wait now and later or that nothing does, a
   session that wants Joel among them, drawn as the session; then its own
   rows, always there in this order: the time, the date, the location,
-  the weather and the next meeting, with no Today to step into. Below
+  the weather and the next meeting, with no Today to step into, each the
+  one row that thing is anywhere it shows, never a version Now draws of
+  it. Below
   them, only while true, come what else wants Joel (unread mail, missed
   notices, a low battery), what reaches other people, what's playing and
   the modes left on, by name within each. Each place says what it holds

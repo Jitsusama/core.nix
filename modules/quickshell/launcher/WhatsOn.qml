@@ -63,13 +63,17 @@ Provider {
     // Time, the Date, the Weather here and the next meeting today, each
     // a row of Now itself rather than inside a Today to step into (Joel,
     // 2026-10-28: "what is the difference between top level now and
-    // today? it feels incongruent ... i want time in now also"). The time
-    // and the date copy what they say; the weather steps into its
-    // forecast; the meeting is the calendar provider's own row (`next`),
-    // whose Return joins it, or steps into it where it can't be joined
-    // yet. A machine without the calendar, or a day with no meeting left,
-    // has no meeting row, and one that can't say the weather has none of
-    // it.
+    // today? it feels incongruent ... i want time in now also"). Each is
+    // that thing's one row, the same wherever it shows (Joel, 2026-10-28:
+    // "in now, time and date should be their fully interactive version
+    // ... they need to be treated the same everywhere"): the time, the
+    // date and the weather as the launcher places an answer
+    // (Launcher.qml's resolved), named by the thing, what it says beside,
+    // its parts a step in and Return copying it; the meeting as the
+    // calendar provider's own row (`next`), whose Return joins it, or
+    // steps into it where it can't be joined yet. A machine without the
+    // calendar, or a day with no meeting left, has no meeting row, and one
+    // that can't say the weather has none of it.
     readonly property var calendar: source("calendar")
     readonly property var weatherSource: source("weather")
     readonly property var meeting: calendar?.next ?? null
@@ -86,11 +90,11 @@ Provider {
     property var weather: null
 
     function reweather() {
-        const said = weatherSource?.answer(Words.answers("weather")[0]) ?? null;
+        const row = weatherSource ? provider.launcher?.resolved?.("weather") ?? null : null;
         // Still asking, failed, or not knowing where here is, it keeps what
         // it last knew rather than blinking out.
-        if (said && (said.rows ?? []).length > 0)
-            weather = said;
+        if (row)
+            weather = row;
     }
 
     Connections {
@@ -163,33 +167,16 @@ Provider {
         }, inside);
     }
 
+    // Made again as the clock turns a minute, so the time says it.
     readonly property var moment: {
-        const rows = [copyRow({
-            key: "on:time",
-            name: Words.name("time"),
-            side: Qt.formatDateTime(clock.date, "HH:mm"),
-            hue: "voice",
-            glyph: Theme.glyph.clock
-        }), copyRow({
-            key: "on:date",
-            name: Words.name("today"),
-            side: Qt.formatDate(clock.date, "dddd d MMMM yyyy"),
-            hue: "voice",
-            glyph: Theme.glyph.date
-        }), location];
+        clock.date;
+        const placed = id => provider.launcher?.resolved?.(id) ?? null;
+        const rows = [placed("time"), placed("today"), location];
         if (weather)
-            rows.push(holderRow({
-                key: "on:weather",
-                name: Words.name("weather"),
-                side: weather.headline,
-                note: weather.note ?? "",
-                hue: "voice",
-                // The sky's own glyph, as the weather's Now row wears it.
-                glyph: weather.rows[0].glyph
-            }, () => weather.rows));
+            rows.push(weather);
         if (meeting)
             rows.push(meeting);
-        return rows;
+        return rows.filter(row => row !== null);
     }
 
     function waitingSaid(id, fill) {
