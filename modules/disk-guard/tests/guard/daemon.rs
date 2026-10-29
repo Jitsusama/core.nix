@@ -1168,12 +1168,13 @@ fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
     );
 }
 
-#[test]
-fn a_predicates_answer_is_kept_for_the_next_guard() {
+/// A committed checkout with a build, and a config whose predicate says
+/// every checkout is finished, writing to the file returned each time
+/// it's asked.
+fn merged_app(home: &Home) -> (impl Fn() -> Config, PathBuf) {
     use crate::finished::git;
     use std::os::unix::fs::PermissionsExt;
-    let home = Home::new();
-    let (_, deps) = home.replaced_build("0%");
+    home.replaced_build("0%");
     let app = home.root.join("src/app");
     git(&app, &["init", "-q", "-b", "work"]);
     git(
@@ -1193,7 +1194,8 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
     )
     .unwrap();
     fs::set_permissions(&predicate, fs::Permissions::from_mode(0o755)).unwrap();
-    let config = || {
+    let root = home.root.clone();
+    let config = move || {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "notify": false,
                  "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
@@ -1202,25 +1204,45 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
                    "src": {{ "kind": "cargo", "roots": ["{0}/src"] }},
                    "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
                                 "command": ["{1}"], "timeout": "5s" }} }} }}"#,
-            home.root.display(),
+            root.display(),
             predicate.display()
         ))
         .unwrap()
     };
-    let _ = deps;
+    (config, asked)
+}
+
+fn times_asked(asked: &Path) -> usize {
+    fs::read_to_string(asked)
+        .unwrap_or_default()
+        .lines()
+        .count()
+}
+
+#[test]
+fn a_predicates_answer_is_kept_for_the_next_guard() {
+    let home = Home::new();
+    let (config, asked) = merged_app(&home);
     let mut first = home.guard(config());
     first.step(&tick(), &CALM).unwrap();
-    let times = || {
-        fs::read_to_string(&asked)
-            .unwrap_or_default()
-            .lines()
-            .count()
-    };
-    assert_eq!(times(), 1, "routine upkeep asks once");
+    assert_eq!(times_asked(&asked), 1, "routine upkeep asks once");
     drop(first);
     let mut second = home.guard(config());
     second.preview(&tick(), Some(Band::Pressure), None).unwrap();
-    assert_eq!(times(), 1, "a finished head is known still");
+    assert_eq!(times_asked(&asked), 1, "a finished head is known still");
+}
+
+#[test]
+fn a_checkout_with_work_not_committed_is_never_finished() {
+    // On 28 October a session went on editing a tree whose head had just
+    // merged, and the guard took its packages from under it twice.
+    let home = Home::new();
+    let (config, asked) = merged_app(&home);
+    let manifest = home.root.join("src/app/Cargo.toml");
+    fs::write(&manifest, "[package]\nname = \"app2\"\n").unwrap();
+    let mut guard = home.guard(config());
+    guard.step(&tick(), &CALM).unwrap();
+    assert_eq!(times_asked(&asked), 0, "its head isn't what's in it");
 }
 
 #[test]

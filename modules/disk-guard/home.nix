@@ -56,7 +56,8 @@ let
   };
 
   # Whether a checkout's branch was merged as it stands: a merged pull
-  # request whose head is the checkout's. More work on top isn't finished.
+  # request whose head is the checkout's. More work on top isn't finished,
+  # committed or not: the guard asks nothing of a checkout with edits.
   merged = pkgs.callPackage ./merged-on-github.nix { gh = config.programs.gh.package; };
 
   podman = osConfig.virtualisation.podman or { };

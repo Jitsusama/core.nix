@@ -1736,6 +1736,11 @@ impl Guard {
             let Some(predicate) = finished::predicate_for(predicates, &checkout.remote) else {
                 return false;
             };
+            // Asked afresh each time, before what's remembered of its head:
+            // a merged head stays merged while someone goes on editing.
+            if finished::changed(dir) {
+                return false;
+            }
             answers.finished(dir, &checkout.head, tick.wall, || {
                 finished::ask(predicate, dir, &checkout)
             })
