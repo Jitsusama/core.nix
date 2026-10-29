@@ -1070,6 +1070,12 @@ Singleton {
     // refused one), as when a switch restarts the node and the shell asks
     // before it listens; then Now read the folder until the shell restarted.
     property bool linking: true
+    // A watch always carries the sessions; the groups it names are those
+    // whose messages it carries too, as one pattern of group names
+    // (mycelium's Pattern), and the shell wants none of them, so it names
+    // a group nobody is in. Every pattern names some group, so none hears
+    // nothing at all.
+    readonly property string unheard: "quickshell.sessions-alone"
     LazyLoader {
         active: root.linking && root.nodePath !== ""
 
@@ -1079,7 +1085,7 @@ Singleton {
             connected: true
             onConnectionStateChanged: {
                 if (mycelium.connected) {
-                    mycelium.write('{"Watch":{"groups":[],"recent":0}}\n');
+                    mycelium.write(`${JSON.stringify({ Watch: { groups: root.unheard, recent: 0 } })}\n`);
                     mycelium.flush();
                     return;
                 }
@@ -1121,6 +1127,11 @@ Singleton {
         } else if (event.SessionChanged) {
             next = Object.assign({}, node ?? {});
             next[event.SessionChanged.session.id] = event.SessionChanged.session;
+        } else if (typeof event.Err === "string") {
+            // A watch refused leaves the folder read, which works but
+            // costs a watcher a session, so it's said where it's seen.
+            Report.say(`the node refused the watch: ${event.Err}`);
+            return;
         } else if (event.SessionForgotten) {
             next = Object.assign({}, node ?? {});
             delete next[event.SessionForgotten.id];
