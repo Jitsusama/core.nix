@@ -859,8 +859,10 @@ works the same way everywhere.
   and the Wi-Fi networks in reach are too many to mix into the search: each
   that has a match adds one row, its best match with a count of the rest,
   so there's no haystack and no mode to enter first. Return uses that
-  match; the right arrow sees all of them, and what's typed then searches
-  them afresh. The row sits below the other matches. Emoji add none, since a
+  match, and the right arrow goes straight inside it, the set's crumb
+  above it saying where it lives; the left arrow comes back to the
+  search, since it goes where Joel came from. The whole set is found by
+  its own name. The row sits below the other matches. Emoji add none, since a
   name like what was typed ("turkey" for "tu") is a row to rule out; they
   are found in their own place. A collection is found whole by its name or
   what a person would call it ("audio" is Sound, "notices" the

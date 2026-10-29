@@ -1301,6 +1301,12 @@ Scope {
                     lands: true,
                     run: () => root.landInside(gathered, best)
                 });
+            // The right arrow on any found thing that holds more goes
+            // straight inside it, whatever its Return does (VKCF3Z,
+            // 2026-10-29: "← is where you came from; the crumbs are
+            // where it lives").
+            else if (best.verbs || best.targets)
+                gathered.landsIn = best;
             rows.push(gathered);
         }
         return rows;
@@ -1309,8 +1315,10 @@ Scope {
     // Steps into a collection's matches, and then into the one of them that
     // was found, which stepping in keeps selected.
     function landInside(gathered, best) {
-        if (enter(gathered) && selected && steadyId(selected) === steadyId(best))
-            enter(selected);
+        if (enter(gathered) && selected && steadyId(selected) === steadyId(best)
+            && enter(selected))
+            // The left arrow comes back past the collection to the search.
+            held[held.length - 1].through = true;
     }
 
     // The right arrow: into the selected row, or, for a match that lands
@@ -1319,6 +1327,8 @@ Scope {
     function inward(row) {
         if (row && row.lands)
             row.run();
+        else if (row && row.landsIn)
+            landInside(row, row.landsIn);
         else if (leadsElsewhere(row))
             run(row, false, false);
         else
@@ -2196,8 +2206,11 @@ Scope {
     function back() {
         if (held.length === 0)
             return;
-        const left = held[held.length - 1];
-        held = held.slice(0, -1);
+        // A thing landed in from a search goes back to the search, past the
+        // collection it was found in.
+        const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
+        const left = held[held.length - steps];
+        held = held.slice(0, -steps);
         restart(left.typed);
         reselect(left);
     }
