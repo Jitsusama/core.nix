@@ -16,7 +16,9 @@ or launchd, and [`home.nix`][2] the account's.
   before the next band arrives. Btrfs pools are one filesystem however many
   subvolumes they hold. A writable subvolume reached through the same mount, as
   the work broker clones each tree, is walked into and reclaimed from as any
-  folder is; a mount, a read-only snapshot and a subvolume inside a build aren't.
+  folder is, and one that is itself what goes, as each quest's scratch is
+  made, goes whole; a mount, a read-only snapshot and a subvolume inside a
+  build or a scratch aren't.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
   oversized logs, Nix's leftover build directories), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,

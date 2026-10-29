@@ -298,6 +298,16 @@ impl Dir {
         Ok((child.dev == self.dev).then_some(child))
     }
 
+    /// Opens a directory entry to reclaim it whole: on this filesystem, or
+    /// a subvolume of its own that `pool::beneath` lets through, as the
+    /// harness makes each quest's scratch. Emptying it still never enters
+    /// another subvolume within, such as a tree cloned there.
+    pub(crate) fn whole_entry(&self, name: &OsStr) -> io::Result<Option<Dir>> {
+        let fd = rustix::fs::openat(&self.fd, name, DIRECTORY, Mode::empty())?;
+        let child = Dir::from_fd(fd)?;
+        Ok((!self.foreign(&child)).then_some(child))
+    }
+
     /// Removes one entry all the way down, as emptying a trash does.
     pub(crate) fn remove_entry(&self, name: &OsStr) -> io::Result<()> {
         remove(self, name, 0, &mut || {})

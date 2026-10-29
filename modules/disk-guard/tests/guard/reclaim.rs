@@ -2,7 +2,7 @@ use disk_guard::activity::Use;
 use disk_guard::anchor::Dir;
 use disk_guard::pass::Outcome;
 use disk_guard::plan::{Candidate, Class};
-use disk_guard::reclaim::{Looker, remove_in_place, target};
+use disk_guard::reclaim::{Looker, entry, remove_in_place, target};
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
@@ -209,6 +209,32 @@ fn a_target_in_a_cloned_subvolume_is_emptied() {
     );
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(names(&path), ["criterion"]);
+}
+
+/// The harness makes each quest's scratch a Btrfs subvolume of its own,
+/// and a guard that wouldn't open one left every finished quest's scratch,
+/// "on another filesystem".
+#[test]
+fn an_entry_that_is_a_subvolume_of_its_own_goes_whole() {
+    let root = tempfile::tempdir().unwrap();
+    if !crate::pool::on_btrfs(root.path()) {
+        eprintln!("skipped: {} isn't on Btrfs", root.path().display());
+        return;
+    }
+    crate::pool::subvolume(root.path(), "scratch");
+    let scratch = root.path().join("scratch");
+    fs::create_dir_all(scratch.join("tmp/run")).unwrap();
+    fs::write(scratch.join("tmp/run/log"), "spent").unwrap();
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = entry(
+        &anchor,
+        root.path(),
+        &candidate(&scratch, false),
+        &mut Script::default(),
+        &mut || {},
+    );
+    assert_eq!(outcome, Outcome::Reclaimed);
+    assert!(!scratch.exists(), "gone, subvolume and all");
 }
 
 #[test]
