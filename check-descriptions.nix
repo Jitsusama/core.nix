@@ -1014,6 +1014,10 @@
     programs ask the portal, their own dialogs included, and open-with's description says it
     answers it
   '';
+  the-launcher-chooses-files-as-asked = ''
+    the launcher chooses the files a program opens or saves in the folder it asks for, the files
+    opened lately first, then its folders and files, then its filters, and answers what was picked
+  '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
   '';

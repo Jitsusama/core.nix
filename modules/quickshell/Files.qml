@@ -8,9 +8,10 @@ pragma Singleton
 // path, so one file is one thing wherever it shows.
 //
 // The surface says what's done to it: its own acts come first, the first
-// being what Return does, and Copy the Path always last. A folder given
-// what it holds steps in on Return instead, its acts first inside, as a
-// folder is gone into rather than opened.
+// being what Return does, and Copy the Path always last. One given what it
+// holds steps in on Return instead, its acts first inside, then what it
+// holds, then Copy the Path: a folder is gone into rather than opened, and
+// a file saved over asks first.
 import qs
 import Quickshell
 import QtQuick
@@ -42,9 +43,9 @@ Singleton {
     }
 
     // A file's row: Return does the first of `acts`, and the right arrow
-    // lists them all, then Copy the Path.
-    function file(path, thing, acts) {
-        return made("file", path, thing, acts, null);
+    // lists them all, then Copy the Path; given `inside`, Return steps in.
+    function file(path, thing, acts, inside) {
+        return made("file", path, thing, acts, inside ?? null);
     }
 
     // A folder's row, the same, but given `inside`, what it holds, Return
@@ -69,7 +70,7 @@ Singleton {
             verbs: all
         };
         if (inside !== null) {
-            const held = () => all().concat(inside());
+            const held = () => acts.concat(inside(), [copying(kind, path, thing)]);
             Object.assign(row, { verb: "more", stays: true, now: false, verbs: held, targets: held });
         }
         return thing(row);

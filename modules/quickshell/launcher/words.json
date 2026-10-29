@@ -4673,18 +4673,53 @@
       "glyph": "copy"
     },
     {
-      "id": "verb:recent:open",
+      "id": "verb:path:file:open",
       "in": "path:file",
       "name": "Open",
       "verb": "open",
       "glyph": "path"
     },
     {
-      "id": "verb:recent:window",
+      "id": "verb:path:folder:window",
       "in": "path:folder",
       "name": "New Window Here",
       "verb": "open",
       "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:folder",
+      "in": "path:folder",
+      "name": "Open This Folder",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:here",
+      "in": "path:folder",
+      "name": "Save Here",
+      "verb": "save",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:replace",
+      "in": "path:file",
+      "name": "Replace It",
+      "verb": "replace",
+      "glyph": "path"
+    },
+    {
+      "id": "file-chooser:filter",
+      "in": "path:folder",
+      "name": "Filter",
+      "verb": "show",
+      "glyph": "filter"
+    },
+    {
+      "id": "file-chooser:choice",
+      "in": "path:folder",
+      "name": "Choice",
+      "verb": "choose",
+      "glyph": "option"
     },
     {
       "id": "verb:float",

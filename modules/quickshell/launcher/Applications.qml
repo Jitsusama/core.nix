@@ -603,7 +603,7 @@ Provider {
     // launcher calls as Programs is stepped into (Provider.qml).
     function lately(entry, source, path) {
         const kind = source?.kind === "folder" ? "folder" : "file";
-        const key = kind === "folder" ? "verb:recent:window" : "verb:recent:open";
+        const key = kind === "folder" ? "verb:path:folder:window" : "verb:path:file:open";
         const act = thing({
             key: `${key}:${path}`,
             name: Words.name(key),

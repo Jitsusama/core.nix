@@ -108,6 +108,13 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/ask-portal.py);
 
+  # Asks the portal for a file to open or save in a folder, and writes down
+  # its answer (desktop/choose-a-file.py).
+  chooseAFile = pkgs.writers.writePython3 "choose-a-file" {
+    libraries = [ pkgs.python3Packages.jeepney ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/choose-a-file.py);
+
   # A window through X11 named only as Tuple names its windows
   # (desktop/tuple-window.py).
   tupleWindow = pkgs.writers.writePython3 "tuple-window" {
@@ -612,6 +619,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             track
             ;
           ask_portal = askPortal;
+          choose_a_file = chooseAFile;
           copilot_key = copilotKey;
           tuple_window = tupleWindow;
           inherit (pkgs)
