@@ -42,6 +42,7 @@ QtObject {
 
         // What the file says: [what, the line, what's read of it]
         const unmade = { granted: false, made: null };
+        const undriven = { listed: null, downloads: [] };
         const lines = [
             ["the whole state",
                 JSON.stringify({
@@ -50,19 +51,20 @@ QtObject {
                 }),
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], heard: 1793042446024, fetched: null, meet: unmade
+                    documents: [], heard: 1793042446024, fetched: null, meet: unmade,
+                    drive: undriven
                 }],
             ["a state with nothing heard yet",
                 '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
                 {
                     account: "none", meetings: [], mail: [], unread: null, documents: [],
-                    heard: null, fetched: null, meet: unmade
+                    heard: null, fetched: null, meet: unmade, drive: undriven
                 }],
             ["a state from before mail",
                 '{"account":"ready","meetings":[],"heard":1}',
                 {
                     account: "ready", meetings: [], mail: [], unread: null, documents: [],
-                    heard: 1, fetched: null, meet: unmade
+                    heard: 1, fetched: null, meet: unmade, drive: undriven
                 }],
             ["half a line", '{"account":"rea', null],
             ["a line that isn't the state", '{"hello":1}', null],
