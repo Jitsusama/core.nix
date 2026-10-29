@@ -101,6 +101,10 @@
     the TPM under PCR 7, leaves out devices only seen in a scan, seals unchanged pairings once and
     changed ones again, and takes the keys off once unpaired
   '';
+  bluetooth-sits-out-hibernation = ''
+    on the XPS 14, a hibernation takes Bluetooth's driver off its chip before the image is written
+    and gives the same chip its driver back after, and a suspend leaves the driver where it is
+  '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
     is a line of text tall
