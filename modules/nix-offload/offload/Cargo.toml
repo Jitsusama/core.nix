@@ -1,0 +1,15 @@
+# nix-offload: lends the machine a builder elsewhere while its machine
+# queue holds builds back, and gives it back once idle (src/main.rs says how).
+[package]
+name = "nix-offload"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+libc = "0.2"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

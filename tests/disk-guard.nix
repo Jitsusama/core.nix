@@ -10,7 +10,9 @@
 # and one in a read-only snapshot isn't. A target on a disk too full to make
 # a trash in is deleted in place. With its store under pressure, the machine's guard expires all but
 # the newest five of a profile's generations and collects what that and
-# anything else left dead. The tests are disk-guard-vm-test.py, which pytest
+# anything else left dead. The machine's guard says what an account's
+# compressed files take on the disk, and refuses what isn't the account's.
+# The tests are disk-guard-vm-test.py, which pytest
 # runs inside the driver (tests/lib/vm_pytest.py); one runs alone with
 # `run-subtests vm-disk-guard-keeps-the-disk <words>`.
 { self, pkgs }:

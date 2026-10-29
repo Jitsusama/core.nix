@@ -23,6 +23,7 @@ pub mod desktop;
 pub mod desktop;
 pub mod discover;
 pub mod finished;
+pub mod footprint;
 pub mod freeze;
 #[cfg(target_os = "linux")]
 pub mod freezer;

@@ -16,6 +16,10 @@
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
   '';
+  a-long-name-reads-at-one-pace = ''
+    a selected name too long for its row slides at one reading pace, gathering speed from rest and
+    settling back to it in at most a fifth of a second at each end, never stepping back
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -510,6 +514,11 @@
     commits with that key; one naming none runs it dialling nothing, and one in no realm has
     neither a realm nor a node
   '';
+  mycelium-keeps-each-realm-apart = ''
+    a machine joining a further realm runs a node of its own for it, with its own state, mesh and
+    steer folders under the harness's per-realm roots and its own link key, apart from the home
+    realm's agents key; its pis are told which realm is home
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints) has it written where mycelium reads it, in
@@ -587,6 +596,14 @@
   '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
+  '';
+  nix-offload-decides-when = ''
+    a builder is asked for only for builds and VM checks held three minutes for room a builder
+    gives, its host is found from its line and its use from ssh, and a day's journal sums to its
+    hours and cost
+  '';
+  nix-offload-passes-clippy = ''
+    clippy finds nothing in nix-offload or its tests
   '';
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
@@ -687,8 +704,13 @@
   '';
   pi-writes-what-the-last-boot-left = ''
     the launcher's list of the pi sessions the last boot's end took away is written as the account's
-    session starts, in background.slice with the store's node, skipped where the harness isn't
-    installed, and never on a Mac
+    session starts, in background.slice with the store's node and no module-type warning, skipped
+    where the harness isn't installed, and never on a Mac
+  '';
+  pi-notes-windows-on-sessions-elsewhere = ''
+    each minute the harness notes which windows here are joined to a session another machine holds,
+    so the next boot can offer them back, in background.slice with the store's node, skipped where
+    the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -1004,6 +1026,10 @@
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
+  '';
+  the-launcher-reads-talks-boundedly = ''
+    the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
+    moving among 120 sessions makes no reader again, so the shell's threads stay bounded
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last

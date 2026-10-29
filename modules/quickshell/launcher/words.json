@@ -138,7 +138,10 @@
       "in": "agents:last-boot",
       "name": "Reopen",
       "verb": "reopen",
-      "glyph": "resume"
+      "glyph": "resume",
+      "said": {
+        "gone": "not reopened, since its folder, {cwd}, is gone"
+      }
     },
     {
       "id": "verb:agents:last-boot:notNow",
@@ -182,6 +185,19 @@
       "id": "agents:started",
       "in": "agents",
       "name": "Started"
+    },
+    {
+      "id": "agents:machine",
+      "in": "agents",
+      "name": "Machine",
+      "said": {
+        "on": "on {machine}",
+        "away": "{machine}, out of reach",
+        "unheld": "not joined, since {machine} doesn't hold it in a way that can be joined from here",
+        "unreached": "not joined, since {machine} is out of reach",
+        "untold": "not told, since {why}",
+        "unanswered": "not told, since the node didn't answer"
+      }
     },
     {
       "id": "agents:spent",
@@ -4781,7 +4797,12 @@
       "in": "orchestrators",
       "name": "Resume",
       "verb": "resume",
-      "glyph": "resume"
+      "glyph": "resume",
+      "said": {
+        "afresh": "started afresh in {folder}, since its last session's folder, {cwd}, is gone",
+        "nowhere": "not resumed, since its last session's folder, {cwd}, is gone and its quest names no folder to start in",
+        "unfound": "not resumed, since its last session's record wasn't found and its quest names no folder to start in"
+      }
     },
     {
       "id": "verb:quest:switch",

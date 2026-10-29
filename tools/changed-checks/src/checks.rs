@@ -178,28 +178,44 @@ fn is_name(text: &str) -> bool {
 /// Give the derivations kept at the path, or evaluate and keep them.
 ///
 /// They're written beside the path and moved onto it, so a run stopped
-/// halfway keeps nothing rather than half.
+/// halfway keeps nothing rather than half. Evaluating holds a lock beside
+/// them, so a run that wants a commit another run is evaluating waits for
+/// its result rather than evaluating it too: main moves between most
+/// runs, and each new base cost every run that met it a whole evaluation.
 pub fn kept(
     path: &Path,
     evaluate: impl FnOnce() -> Result<Derivations, String>,
 ) -> Result<Derivations, String> {
     let unreadable = |error: &dyn std::fmt::Display| format!("{}: {error}", path.display());
-    match fs::read_to_string(path) {
-        Ok(text) => return serde_json::from_str(&text).map_err(|error| unreadable(&error)),
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-            return Err(unreadable(&error));
-        }
-        Err(_) => {}
+    if let Some(found) = read_kept(path)? {
+        return Ok(found);
     }
-    let found = evaluate()?;
-    let writing = path.with_extension("writing");
     if let Some(folder) = path.parent() {
         fs::create_dir_all(folder).map_err(|error| unreadable(&error))?;
     }
+    let lock = fs::File::create(path.with_extension("lock")).map_err(|error| unreadable(&error))?;
+    lock.lock().map_err(|error| unreadable(&error))?;
+    if let Some(found) = read_kept(path)? {
+        return Ok(found);
+    }
+    let found = evaluate()?;
+    let writing = path.with_extension("writing");
     let text = serde_json::to_string(&found).map_err(|error| unreadable(&error))?;
     fs::write(&writing, text).map_err(|error| unreadable(&error))?;
     fs::rename(&writing, path).map_err(|error| unreadable(&error))?;
     Ok(found)
+}
+
+/// Give the derivations kept at the path, or none when nothing is kept.
+fn read_kept(path: &Path) -> Result<Option<Derivations>, String> {
+    let unreadable = |error: &dyn std::fmt::Display| format!("{}: {error}", path.display());
+    match fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|error| unreadable(&error)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(unreadable(&error)),
+    }
 }
 
 /// Give where a commit's derivations for a system are kept, under the
@@ -387,6 +403,37 @@ mod tests {
         kept(&path, || Ok(derivations(&[("a", Some("a.drv"))]))).expect("kept");
         let found = kept(&path, || panic!("it evaluated again"));
         assert_eq!(found, Ok(derivations(&[("a", Some("a.drv"))])));
+    }
+
+    #[test]
+    fn runs_wanting_one_commit_at_once_evaluate_it_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let path = folder("at-once").join("abc-x86_64-linux.json");
+        let evaluations = AtomicUsize::new(0);
+        let found: Vec<_> = thread::scope(|scope| {
+            let runs: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        kept(&path, || {
+                            evaluations.fetch_add(1, Ordering::SeqCst);
+                            // Long enough that the other runs arrive while
+                            // this one holds the lock.
+                            thread::sleep(std::time::Duration::from_millis(200));
+                            Ok(derivations(&[("a", Some("a.drv"))]))
+                        })
+                    })
+                })
+                .collect();
+            runs.into_iter()
+                .map(|run| run.join().expect("ran"))
+                .collect()
+        });
+        assert_eq!(evaluations.load(Ordering::SeqCst), 1);
+        assert!(
+            found
+                .iter()
+                .all(|found| *found == Ok(derivations(&[("a", Some("a.drv"))])))
+        );
     }
 
     #[test]

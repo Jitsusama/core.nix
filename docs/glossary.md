@@ -235,6 +235,7 @@ off.
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
+| offload builder | a builder elsewhere lent to the machine while its queue holds builds back, and given back once idle | remote builder | `nix-offload` |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |
 | chosen | of a setting's choices, the one it's at, whoever picked it: Joel, the charger or a profile | | |
@@ -258,6 +259,7 @@ off.
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
 | VM | a computer run as a program on this one | virtual machine | libvirt, QEMU |
+| Linux builder | a VM on a Mac that builds what Linux machines run, so the Mac's work builds there | | `darwinModules.linux-builder`, `darwin.linux-builder-vz` |
 | container | a program run apart from the machine, with its own files | | Podman |
 
 ## Network
@@ -301,6 +303,7 @@ now, and keep or stop keeping a folder.
 | ledger | the disk guard's record of what held each filesystem over two days, so a holder says how much it grew | history | `ledger.json`, a holder's `grew` |
 | keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
 | clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe | `disk-guard clear` |
+| footprint | what files take on a filesystem, which compressed can be far less than their size | | `disk-guard footprint`, `Request::Footprint` |
 
 ## Keyboards
 

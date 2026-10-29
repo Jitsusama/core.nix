@@ -5,13 +5,14 @@
 use crate::daemon::{Guard, Hearing, Senses};
 use crate::moments::Power;
 use crate::notices::Change;
-use crate::socket::{Reply, Request, Server};
+use crate::socket::{self, Reply, Request, Server};
 use crate::vouch;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::Duration;
 
@@ -78,6 +79,34 @@ pub fn answering(
                             }
                             Reply::Collects(held)
                         }
+                        Request::Footprint { paths } => {
+                            // A walk can take seconds, so it doesn't hold up
+                            // what others ask meanwhile, and one walks at a
+                            // time, so asking often can't pile them up.
+                            if WALKING.swap(true, Ordering::AcqRel) {
+                                Reply::Error(socket::WALKING.to_owned())
+                            } else {
+                                let walking = std::thread::Builder::new()
+                                    .name("footprint".to_owned())
+                                    .spawn(move || {
+                                        // At idle priority, as the account's
+                                        // sizing is, so a walk never slows
+                                        // what the person or a build does. A
+                                        // Mac's only way lowers the whole
+                                        // daemon, so there it runs as it is.
+                                        #[cfg(target_os = "linux")]
+                                        crate::commands::idle();
+                                        let found = footprints(&paths, uid);
+                                        WALKING.store(false, Ordering::Release);
+                                        responder.send(&Reply::Footprints(found));
+                                    });
+                                if let Err(error) = walking {
+                                    WALKING.store(false, Ordering::Release);
+                                    eprintln!("disk-guard: footprint: {error}");
+                                }
+                                return;
+                            }
+                        }
                         Request::Collect { path, band } => {
                             if store.is_none() || device(&path) != store {
                                 Reply::Error(format!(
@@ -106,6 +135,25 @@ pub fn answering(
             }
         })?;
     Ok(hearing)
+}
+
+/// Whether a footprint is being walked.
+static WALKING: AtomicBool = AtomicBool::new(false);
+
+/// What the files under each of `paths` take on the disk, for the account
+/// `uid`: each path is resolved first, so a link the account made can't
+/// lead the walk to what isn't theirs, and the walk never follows one.
+pub fn footprints(paths: &[PathBuf], uid: u32) -> Vec<Option<u64>> {
+    paths
+        .iter()
+        .map(|path| {
+            let path = std::fs::canonicalize(path).ok()?;
+            if !vouch::reached_by(&path, uid) {
+                return None;
+            }
+            crate::footprint::footprint(&path)
+        })
+        .collect()
 }
 
 /// Why the desktop last refused a notice, so a refusal said once isn't
