@@ -750,6 +750,30 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) -> None:
+    """A fact in the foot that reads shorter keeps its room, so nothing after it slides."""
+    machine = desktop.machine
+    was = desktop.as_account("wpctl get-volume @DEFAULT_AUDIO_SINK@").split()[1]
+    desktop.as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: "100%" in shown["glance"])
+    before = laid_out(desktop)
+    # From 100% to 5%, as the battery goes from 100% to 99%: the volume
+    # reads shorter, and what follows it stays where it was.
+    desktop.as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.05")
+    desktop.launcher_until(lambda shown: " 5%" in shown["glance"])
+    after = laid_out(desktop)
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.as_account(f"wpctl set-volume @DEFAULT_AUDIO_SINK@ {was}")
+    shifts = moved(
+        {"field": [], "foot": before["foot"], "rows": []},
+        {"field": [], "foot": after["foot"], "rows": []},
+    )
+    assert not shifts, "the foot's facts slid as the volume read shorter:\n" + "\n".join(shifts)
+
+
 def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     desktop: Desktop,
 ) -> None:
