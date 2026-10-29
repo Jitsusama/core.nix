@@ -93,7 +93,12 @@ again, or the TPM refuses that boot.
 A repair stick starts recovering when it boots, and `guide recover` starts it
 from any stick's shell. It shows the disk it found before anything is typed,
 opens it with the YubiKey's PIN or the recovery key, never the TPM, and
-mounts everything under /mnt. Then it offers, coming back after each:
+checks its filesystem with `btrfs check --readonly`, which changes nothing.
+Then it mounts everything under /mnt: as the machine does when the check is
+clean, or only to read, with every rescue btrfs has, when it finds errors.
+Copy off what matters from the root shell before any repair, since writing
+to a damaged filesystem can lose more of it. Then it offers, coming back
+after each:
 
 - a root shell inside the installed system;
 - which generation boots next;
@@ -219,6 +224,18 @@ nix run <machine repository>#guide
 
 It writes the stick as the person, never root, asking polkit for the disk,
 and finishes by saying how to start that machine from it.
+
+The writer keeps the rescue bundle of every stick it writes over, so one
+stick can boot on each of those machines too, not only its own. Ask for it,
+and the guide opens each bundle in turn, with a YubiKey or its passphrase,
+and signs the stick with every one of those machines' keys:
+
+```sh
+nix run <machine repository>#guide -- --every-machine
+```
+
+Until each laptop's own firmware has booted a stick signed so, keep each
+machine's own stick as well.
 
 [1]: installing.md
 [2]: installing.md#when-the-tpm-refuses

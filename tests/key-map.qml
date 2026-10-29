@@ -66,7 +66,7 @@ ShellRoot {
         try {
             const top = map.everything();
             expect("the layers", names(top).join(", ")
-                === "Desktop, Terminal, Neovim, Agents, Picture viewer, Markdown reader",
+                === "Desktop, Terminal, Neovim, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(top).join(", "));
             const desktop = top[0];
             // Counted as rows: two chords for one act are one.
@@ -96,7 +96,7 @@ ShellRoot {
             // The Copilot key, which sends its own Shift and Super, is said
             // as the one key pressed.
             const copilot = Shortcuts.layers[0].binds.find(bind => bind.keys
-                === "super+shift+xf86touchpadoff");
+                === "super+shift+f23");
             const pressed = map.spelled(copilot?.chord);
             expect("the Copilot key as one key", pressed === "Copilot", pressed);
             // And no two rows read alike: one act in one place is one row.
@@ -117,7 +117,7 @@ ShellRoot {
                 names(work.slice(0, 3)).join(", "));
             const tabs = map.search("tabs").rows.filter(one => one.name === "Tabs");
             expect("a group from the top says what holds it",
-                tabs.map(one => one.side).join(", ") === "Terminal, Files",
+                tabs.map(one => one.side).join(", ") === "Terminal, Files, Browser",
                 tabs.map(one => one.side).join(", "));
             expect("a chord at the top, flat", map.search("open a terminal").rows[0].name
                 === "Open a terminal", map.search("open a terminal").rows[0].name);
@@ -132,8 +132,8 @@ ShellRoot {
                 names(there.slice(0, 3)).join(", "));
             const workspaces = row(inside.everything(), "Workspaces");
             expect("a big group holds groups, then what none takes",
-                names(workspaces.verbs()).join(", ") === "Focus, The column, The window, "
-                + "Above and below, Move the workspace up, Move the workspace down, "
+                names(workspaces.verbs()).join(", ") === "Focus, The Column, The Window, "
+                + "Above and Below, Move the workspace up, Move the workspace down, "
                 + "Show every workspace, Stop showing every workspace",
                 names(workspaces.verbs()).join(", "));
             const going = row(workspaces.verbs(), "Focus");
@@ -147,7 +147,7 @@ ShellRoot {
             const code = row(neovim.verbs(), "Code");
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
                 && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
-                === "Definitions and calls, Hints and fixes", names(code.verbs()).join(", "));
+                === "Definitions and Calls, Hints and Fixes", names(code.verbs()).join(", "));
             // Windows, Columns, Workspaces and Screens each have Focus, so
             // each found from above says what holds it.
             const holders = rows => rows.filter(one => one.name === "Focus")
@@ -171,11 +171,11 @@ ShellRoot {
                 own ? own.side : "not found");
             const github = row(neovim.verbs(), "GitHub");
             expect("a group holding groups", names(github.verbs()).slice(0, 4).join(", ")
-                === "Issues, People and labels, Comments, Reactions",
+                === "Issues, People and Labels, Comments, Reactions",
                 names(github.verbs()).join(", "));
             const pulls = row(neovim.verbs(), "Changes");
             expect("changes, by what they hold", names(pulls.verbs()).slice(0, 4)
-                .join(", ") === "Finding changes, The change, Merging, Checks",
+                .join(", ") === "Finding Changes, The Change, Merging, Checks",
                 names(pulls.verbs()).join(", "));
             const held = top[1].verbs();
             const loose = held.findIndex(one => !one.verbs);
@@ -189,7 +189,7 @@ ShellRoot {
             // Shortcuts opens (KeyMap.qml's opened).
             over("kitty", "\u{1F4DD} notes.md");
             expect("over Neovim, its layers first", names(map.everything()).join(", ")
-                === "Neovim, Terminal, Desktop, Agents, Picture viewer, Markdown reader",
+                === "Neovim, Terminal, Desktop, Agents, Processes, Picture Viewer, Markdown Reader, Document Viewer, Player, Browser, Slack, Passwords, Picture Editor, Drawing Editor, Music",
                 names(map.everything()).join(", "));
             const lead = map.leading();
             expect("the chord opens on Neovim's", lead !== null && lead.name === "Neovim"
@@ -202,7 +202,8 @@ ShellRoot {
             // and the desktop's for one with none; Neovim's layer row says
             // whose it is.
             for (const entry of [["nvim", "neovim"], ["kitty", "terminal"],
-                ["swayimg", "swayimg"], ["google-chrome", "desktop"]])
+                ["swayimg", "swayimg"], ["google-chrome", "chrome"], ["slack", "slack"],
+                ["virt-manager", "desktop"]])
                 expect(`${entry[0]}'s own layer`, map.ofProgram(entry[0]) === entry[1],
                     map.ofProgram(entry[0]));
             const neovimKeys = map.layerOf("nvim");
@@ -211,6 +212,9 @@ ShellRoot {
             over("kitty", "\u03C0 - core.nix");
             expect("over pi, Agents first", names(map.everything()).slice(0, 3).join(", ")
                 === "Agents, Terminal, Desktop", names(map.everything()).join(", "));
+            over("kitty", "btop");
+            expect("over btop, Processes first", names(map.everything()).slice(0, 3).join(", ")
+                === "Processes, Terminal, Desktop", names(map.everything()).join(", "));
             over("kitty", "~");
             expect("over the terminal, its own", map.leading().name === "Terminal"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
@@ -218,12 +222,41 @@ ShellRoot {
             // would leave it leading. A program in a window of its own with
             // keys of its own leads with them, then the desktop's.
             over("swayimg", "holiday.jpg");
-            expect("over the picture viewer, its own", map.leading()?.name === "Picture viewer"
+            expect("over the picture viewer, its own", map.leading()?.name === "Picture Viewer"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
             over("inlyne", "README.md");
-            expect("over the markdown reader, its own", map.leading()?.name === "Markdown reader"
+            expect("over the markdown reader, its own", map.leading()?.name === "Markdown Reader"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
-            over("google-chrome", "");
+            over("org.pwmt.zathura", "paper.pdf");
+            expect("over the document viewer, its own", map.leading()?.name === "Document Viewer"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("mpv", "holiday.mkv - mpv");
+            expect("over the player, its own", map.leading()?.name === "Player"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            // Chrome's own window and one it opens for a site are the browser's.
+            over("google-chrome", "New Tab - Google Chrome");
+            expect("over the browser, its own", map.leading()?.name === "Browser"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("kitty", "~");
+            over("chrome-calendar.google.com__calendar_r-Default", "Calendar");
+            expect("over a site's window, the browser's", map.leading()?.name === "Browser"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("slack", "general (Channel) - Slack");
+            expect("over Slack, its own", map.leading()?.name === "Slack"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("gimp", "[Untitled]-1.0 (RGB color 8-bit gamma integer, GIMP built-in sRGB, 1 layer) 1920x1080 - GIMP");
+            expect("over GIMP, its own", map.leading()?.name === "Picture Editor"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("org.inkscape.Inkscape", "drawing.svg - Inkscape");
+            expect("over Inkscape, its own", map.leading()?.name === "Drawing Editor"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("spotify", "Spotify Premium");
+            expect("over Spotify, its own", map.leading()?.name === "Music"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("com.onepassword.OnePassword", "1Password");
+            expect("over 1Password, its own", map.leading()?.name === "Passwords"
+                && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            over("virt-manager", "");
             expect("over another program, the desktop's", map.leading() === null
                 && names(map.everything())[0] === "Desktop", names(map.everything()).join(", "));
             over("kitty", "~");

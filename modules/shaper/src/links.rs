@@ -13,18 +13,41 @@ const FRAMING: u64 = 4 + 8 + 12;
 /// queue must be the shaper's, and two equal rates leave it to chance.
 const UNDER: u64 = 95;
 
+/// How far under the wire a download is held, in hundredths. What arrives
+/// is slowed only by its sender backing off, so it comes in bursts past
+/// the rate, and the port toward the machine has a buffer of a few
+/// milliseconds. At 95 a download on a 100 Mbit/s wire arrived at 92, and
+/// that port dropped 2% of everything coming in, a call's packets among
+/// them, with no queue for the shaper's pings to see.
+const UNDER_DOWN: u64 = 85;
+
+/// The most a link carries each way, in kbit/s.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ceiling {
+    pub up: u64,
+    pub down: u64,
+}
+
 /// The most a link can carry in the shaper's own counting, in kbit/s, from
-/// the Mbit/s Ethernet says; Wi-Fi says nothing, and is left to the line.
+/// the Mbit/s Ethernet says; Wi-Fi says nothing, and is left to the
+/// connection.
 /// A link speed counts the wire's framing, which CAKE doesn't, so a rate
 /// of 100 Mbit/s on a 100 Mbit/s wire sent it 1.6% more than it carried:
 /// the router's port toward the machine held a queue of 8 ms, under the
 /// delay the shaper cuts at, for as long as a download ran.
-pub fn ceiling(mbit: Option<u64>) -> u64 {
+pub fn ceiling(mbit: Option<u64>) -> Ceiling {
     match mbit {
         Some(mbit) if mbit > 0 && mbit < 1_000_000 => {
-            mbit * 1000 * 1514 / (1514 + FRAMING) * UNDER / 100
+            let wire = mbit * 1000 * 1514 / (1514 + FRAMING);
+            Ceiling {
+                up: wire * UNDER / 100,
+                down: wire * UNDER_DOWN / 100,
+            }
         }
-        _ => 2_000_000,
+        _ => Ceiling {
+            up: 2_000_000,
+            down: 2_000_000,
+        },
     }
 }
 
@@ -68,9 +91,9 @@ pub fn uplinks(v4: &str, v6: &str) -> Vec<Uplink> {
 }
 
 /// Which links follow another's rate, by name: a link whose router is the
-/// same as one before it in the routes' order, so both lead to one line.
-/// Two estimates of one line would each take it whole, and their rates
-/// would add up past it. A link known only by its own name (no router's
+/// same as one before it in the routes' order, so both lead to one
+/// connection. Two estimates of one connection would each take it whole,
+/// and their rates would add up past it. A link known only by its own name (no router's
 /// address learned yet) follows nobody.
 pub fn leaders(order: &[(&str, &str)]) -> BTreeMap<String, String> {
     let mut follows = BTreeMap::new();
@@ -85,10 +108,10 @@ pub fn leaders(order: &[(&str, &str)]) -> BTreeMap<String, String> {
     follows
 }
 
-/// What each leading link's line carries, in kbit/s sent and received,
-/// from what every link carried: its own and its followers', since they
-/// reach the line through the one router.
-pub fn line_loads(
+/// What each leading link's connection carries, in kbit/s sent and
+/// received, from what every link carried: its own and its followers',
+/// since they reach the connection through the one router.
+pub fn connection_loads(
     carried: &BTreeMap<String, (f64, f64)>,
     follows: &BTreeMap<String, String>,
 ) -> BTreeMap<String, (f64, f64)> {
@@ -171,7 +194,7 @@ struct Neighbour {
 }
 
 /// The gateway's hardware address, from `ip -j neigh show dev <link> <gw>`,
-/// which names the network: the same router is the same line.
+/// which names the network: the same router is the same connection.
 pub fn gateway_address(json: &str) -> Option<String> {
     let found: Vec<Neighbour> = serde_json::from_str(json).ok()?;
     found.into_iter().find_map(|n| n.lladdr)
@@ -185,11 +208,24 @@ mod tests {
     fn a_link_s_ceiling_is_under_what_its_wire_carries() {
         // A 100 Mbit/s wire carries 98.4 of CAKE's frames, so the shaper
         // must hold under that, not at 100, or the router's port queues.
-        assert_eq!(ceiling(Some(100)), 93_517);
-        assert_eq!(ceiling(Some(1_000)), 935_175);
+        assert_eq!(ceiling(Some(100)).up, 93_517);
+        assert_eq!(ceiling(Some(1_000)).up, 935_175);
         // Wi-Fi gives no speed, and a link down gives -1 or nothing.
-        assert_eq!(ceiling(None), 2_000_000);
-        assert_eq!(ceiling(Some(0)), 2_000_000);
+        let none = Ceiling {
+            up: 2_000_000,
+            down: 2_000_000,
+        };
+        assert_eq!(ceiling(None), none);
+        assert_eq!(ceiling(Some(0)), none);
+    }
+
+    #[test]
+    fn a_download_is_held_further_under_the_wire_than_an_upload() {
+        // What arrives can only be slowed by the sender backing off, so it
+        // comes in bursts past the rate, and the port toward the machine
+        // drops them once its little buffer is full.
+        assert_eq!(ceiling(Some(100)).down, 83_673);
+        assert_eq!(ceiling(Some(1_000)).down, 836_735);
     }
 
     #[test]
@@ -208,17 +244,18 @@ mod tests {
     }
 
     #[test]
-    fn a_line_carries_what_every_link_to_its_router_carries() {
-        // A download over Wi-Fi while the cable leads fills the one line:
-        // the cable's controller must see it, or it reads the line's queue
-        // against an idle download and cuts the upload instead.
+    fn a_connection_carries_what_every_link_to_its_router_carries() {
+        // A download over Wi-Fi while the cable leads fills the one
+        // connection: the cable's controller must see it, or it reads the
+        // connection's queue against an idle download and cuts the upload
+        // instead.
         let carried = BTreeMap::from([
             ("eth0".to_string(), (500.0, 2_000.0)),
             ("wlan0".to_string(), (300.0, 90_000.0)),
             ("usb0".to_string(), (100.0, 400.0)),
         ]);
         let follows = BTreeMap::from([("wlan0".to_string(), "eth0".to_string())]);
-        let loads = line_loads(&carried, &follows);
+        let loads = connection_loads(&carried, &follows);
         assert_eq!(loads.get("eth0"), Some(&(800.0, 92_000.0)));
         assert_eq!(loads.get("usb0"), Some(&(100.0, 400.0)));
         assert_eq!(loads.get("wlan0"), None);

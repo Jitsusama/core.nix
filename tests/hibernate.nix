@@ -3,12 +3,15 @@
 # own inside LUKS, zram in front of it, and no resume= on the kernel's
 # command line. systemd-hibernate writes where the image went into the EFI
 # variable HibernateLocation, and the initrd resumes from it once LUKS is
-# open, so nothing about the disk's layout is kept in Nix. The tests are
+# open, so nothing about the disk's layout is kept in Nix. The disk opens as
+# a laptop's does, with the TPM and a PIN typed at the initrd's prompt, so
+# coming back asks there once and the lock lets go by itself. The tests are
 # hibernate-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
-  # Where a laptop's disk takes its TPM and PIN, this one takes a key file.
+  # What the disk is made with, before the TPM and its PIN are enrolled.
+  # The initrd isn't given it, so it asks for the PIN.
   key = pkgs.writeText "disk.key" "a key for a test disk";
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
@@ -17,9 +20,20 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   nodes.machine =
     { config, lib, ... }:
     {
-      imports = [ self.nixosModules.memory ];
+      imports = [
+        self.nixosModules.hibernate
+        self.nixosModules.memory
+      ];
       virtualisation = {
         useEFIBoot = true;
+        # A software TPM, whose state outlives each start, as a laptop's
+        # TPM does.
+        tpm.enable = true;
+        # Firmware without TPM support. The full firmware puts a small ACPI
+        # region somewhere new on every start, and the kernel refuses an image
+        # written under a different memory map; a laptop's firmware keeps its
+        # map. The kernel starts the TPM itself.
+        efi.OVMF = pkgs.OVMF;
         memorySize = 1024;
         # The disk LUKS and btrfs are made on, in the tests, with room for a
         # swap file as big as memory. It's /dev/vdc: the root disk is
@@ -42,11 +56,14 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       boot.initrd.luks.devices = lib.mkVMOverride {
         disk = {
           device = "/dev/vdc";
-          keyFile = "/etc/disk.key";
-          crypttabExtraOpts = [ "nofail" ];
+          crypttabExtraOpts = [
+            "nofail"
+            "tpm2-device=auto"
+          ];
         };
       };
-      boot.initrd.systemd.contents."/etc/disk.key".source = key;
+      # QEMU's TPM, for the initrd to open the disk with.
+      boot.initrd.availableKernelModules = [ "tpm_tis" ];
       environment.etc."disk.key".source = key;
       environment.systemPackages = [
         pkgs.btrfs-progs

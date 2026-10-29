@@ -75,7 +75,12 @@ driven on; the installed machine's steps come later.
   again in place of that signature, which at the same moment is exactly
   what signing it the first time made; a signature anywhere else is
   refused. Keys are sbctl's file keys, a `db.key` and `db.pem` in one
-  directory.
+  directory. A stick for several machines is signed by each one's key,
+  the first's signature as sbsign makes it and the others after it in
+  the certificate table, each padded to eight bytes, which UEFI walks,
+  booting the program when any one signer is in its db. Only a stick
+  given several keys is signed so; a stick signed already keeps its
+  signatures when the one key that signs it now is among them.
 - **The writer.** A stick is written on whatever machine writes it, as the
   person and never root. Only a whole USB or removable disk counts, and
   only one may be plugged in; what's mounted from it is unmounted, and its
@@ -268,6 +273,10 @@ driven on; the installed machine's steps come later.
   written, and a stick for a machine it keeps a bundle for is signed from
   that bundle unless `--rescue-bundle`, `--sign-with` or
   `--no-rescue-bundle` is given; one that isn't opened says where it is.
+  Given `--every-machine`, the writer opens every other bundle it keeps,
+  one after another, and signs the stick with each one's key after the
+  machine's own, so one stick boots on all of them; a bundle not opened
+  stops the write and says how to write it without that machine.
   Only the stick gathered from is written over. So a bundle reaches every
   laptop and stick by their being used. A forged one does no harm to a
   machine: an install puts keys back only when the firmware has a
@@ -408,9 +417,10 @@ driven on; the installed machine's steps come later.
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/writer.rs`       | the one stick written, never another disk              |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
-| `../../tests/vm/guide/guide-writer.nix` | a stick written through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
+| `../../tests/vm/guide/guide-writer.nix` | a stick written through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN, then written again for every machine whose bundle the person keeps |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
 | `../../tests/vm/guide/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
+| `../../tests/vm/guide/guide-one-stick.nix` | a stick signed for two machines, booted enforcing by each one's firmware and refused by a third's |
 | `../../tests/vm/guide/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It
@@ -423,7 +433,8 @@ machine it runs on and changes nothing, which is how a parser meets a
 machine it hasn't seen. `guide write-stick IMAGE FILE` writes a repair stick
 into a file already the size of a stick, and refuses a disk; given
 `--sign-with` and sbctl's db key directory, it signs the stick's boot
-program for that machine. It carries no rescue bundles, which only
+program for that machine, and for each machine named by another
+`--sign-with`. It carries no rescue bundles, which only
 `guide host` gathers and spreads.
 
 - Parse what a tool printed on a real machine, never what its manual says it

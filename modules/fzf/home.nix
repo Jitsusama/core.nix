@@ -11,7 +11,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles;
+  inherit (config.jitsusama.theme) colours;
   bindings = pkgs.runCommandLocal "fzf.zsh" { } ''
     ${lib.getExe config.programs.fzf.package} --zsh > $out
   '';
@@ -31,24 +31,24 @@ in
       "--highlight-line"
     ];
     colors = {
-      fg = roles.text;
+      fg = colours.text;
       bg = "-1";
-      hl = roles.strong;
-      "fg+" = roles.strong;
-      "bg+" = roles.selection;
-      "hl+" = roles.strong;
-      gutter = roles.background;
-      query = roles.text;
-      prompt = roles.accent;
-      pointer = roles.accent;
-      marker = roles.accent;
-      info = roles.muted;
-      spinner = roles.muted;
-      header = roles.muted;
-      label = roles.muted;
-      border = roles.rule;
-      separator = roles.rule;
-      scrollbar = roles.rule;
+      hl = colours.strong;
+      "fg+" = colours.strong;
+      "bg+" = colours.selection;
+      "hl+" = colours.strong;
+      gutter = colours.background;
+      query = colours.text;
+      prompt = colours.accent;
+      pointer = colours.accent;
+      marker = colours.accent;
+      info = colours.muted;
+      spinner = colours.muted;
+      header = colours.muted;
+      label = colours.muted;
+      border = colours.rule;
+      separator = colours.rule;
+      scrollbar = colours.rule;
     };
   };
 

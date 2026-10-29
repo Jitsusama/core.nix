@@ -66,6 +66,7 @@ fn offers_using(
         ran,
         uses,
         kept: Vec::new(),
+        counted: std::cell::RefCell::default(),
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
@@ -432,6 +433,49 @@ fn temp_leftovers_trash_and_scratch_are_offered() {
 }
 
 #[test]
+fn what_a_killed_git_left_staged_is_offered_once_no_git_works_there() {
+    // One large repository held 70 folders a fetch stages its packs in, 9.8
+    // GiB, left by fetches killed on the way; git removes them only as it
+    // exits, and never looks for them again.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let git = dir(&home.join("big/git"));
+    let staged = dir(&git.join("objects/tmp_objdir-packfile-uri-x1Yz2W"));
+    file(&staged.join("pack-1.pack"), "a pack");
+    let pack = git.join("objects/pack/tmp_pack_Qw3Er4");
+    file(&pack, "half a pack");
+    file(&git.join("objects/pack/pack-1234.pack"), "a pack");
+    let config = config(&format!(
+        r#""big": {{ "kind": "git", "repos": ["{}"] }}"#,
+        git.display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    let paths: Vec<&Path> = found
+        .iter()
+        .map(|offer| offer.candidate.path.as_path())
+        .collect();
+    assert_eq!(paths, [pack.as_path(), staged.as_path()]);
+    for offer in &found {
+        assert_eq!(offer.candidate.class, Class::GitTemporary);
+        assert_eq!(
+            offer.action,
+            Action::Entry {
+                root: git.join("objects")
+            }
+        );
+    }
+    let fetch = Process {
+        uid: unsafe { libc::geteuid() },
+        exe: Some(PathBuf::from("/nix/store/abc-git/bin/git")),
+        cmdline: vec![OsString::from("git")],
+        cwd: Some(git.clone()),
+        readable: true,
+        ..Default::default()
+    };
+    assert_eq!(offers(&config, &[fetch], &|_| false), []);
+}
+
+#[test]
 fn orphaned_snapshots_and_finished_workspaces_are_offered() {
     let home = tempfile::tempdir().unwrap();
     let home = real(home.path());
@@ -599,4 +643,43 @@ fn logs_past_their_limit_are_offered_to_be_trimmed() {
         "what trimming drops"
     );
     assert_eq!(offered.action, Action::Trim { root: logs.clone() });
+}
+
+#[test]
+fn a_clear_surveys_only_the_sources_inside_its_folder_or_holding_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user",
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{
+               "src": {{ "kind": "cargo", "roots": ["{0}/src", "{0}/trees"] }},
+               "trash": {{ "kind": "trash", "path": "{0}/share/Trash" }},
+               "go": {{ "kind": "cache", "path": "{0}/cache/go-build" }},
+               "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
+                            "command": ["/bin/merged"], "timeout": "20s" }} }} }}"#,
+        root.display()
+    ))
+    .unwrap();
+    let names = |folders: &[&str]| -> Vec<String> {
+        let folders: Vec<_> = folders.iter().map(|folder| root.join(folder)).collect();
+        disk_guard::survey::within(&config, &folders)
+            .sources
+            .into_keys()
+            .collect()
+    };
+    assert_eq!(
+        names(&["trees/fix-1/target"]),
+        ["merged", "src"],
+        "a folder under one of a source's roots, and what judges a tree finished"
+    );
+    assert_eq!(
+        names(&["cache"]),
+        ["go", "merged"],
+        "a source inside the folder"
+    );
+    assert_eq!(
+        names(&["share/Trash/files/a.txt", "cache/go-build"]),
+        ["go", "merged", "trash"]
+    );
 }

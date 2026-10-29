@@ -1,0 +1,11 @@
+// An account in wheel may set the clock's time zone, and nothing else of
+// the clock, without a password, so it can follow where the laptop is
+// (clock-follows/): modules/quickshell/nixos.nix says why that gives it
+// nothing its password didn't. polkit's own engine reads this, in the
+// JavaScript it knows.
+polkit.addRule(function (action, subject) {
+  if (action.id === "org.freedesktop.timedate1.set-timezone" && subject.isInGroup("wheel")) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

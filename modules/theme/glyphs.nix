@@ -191,6 +191,23 @@ in
       "C4.5 11.5 0.5 7.5 0 2.5Z"
     ];
   };
+  # Someone Joel can call, and the star a favourite of his wears, filled
+  # once they are one and outlined for letting one go.
+  person = {
+    glyph = nerd "f0004";
+    console = "p";
+    means = "someone Joel can call";
+  };
+  favourite = {
+    glyph = nerd "f04ce";
+    console = "*";
+    means = "someone Joel keeps first, and making them so";
+  };
+  notFavourite = {
+    glyph = nerd "f04d2";
+    console = "*";
+    means = "letting a favourite go back among the rest";
+  };
   joinCall = {
     glyph = nerd "f0659";
     console = "+";
@@ -464,11 +481,9 @@ in
     console = "N";
     means = "a development shell is loaded";
   };
-  unpushed = {
-    glyph = nerd "f431";
-    console = "^";
-    means = "commits not yet pushed";
-  };
+  # A branch's changes and its upstream have no marks here: the prompt,
+  # Neovim and pi write them in git's own notation (* + ? and arrows with
+  # counts), and Neovim marks a buffer not yet written with Vim's [+].
   locked = {
     glyph = nerd "f023";
     console = "%";
@@ -681,6 +696,12 @@ in
     glyph = nerd "f032a";
     console = "s";
     means = "the power saver profile";
+    # An upright leaf on its stem, its vein cut out and stopping short of
+    # the stem, since one running into it split the leaf in two.
+    drawn = drawing [
+      "M6 0C11 3 11 7.5 6.6 9.7V12H5.4V9.7C1 7.5 1 3 6 0Z"
+      "M5.5 3H6.5V8H5.5Z"
+    ];
   };
   balanced = {
     glyph = nerd "f05d1";
@@ -691,6 +712,17 @@ in
     glyph = nerd "f04c5";
     console = "^";
     means = "the full performance power profile";
+    # A gauge's arc, open below, and its needle turned high on a pivot
+    # under the arc's middle, so it stands the grid's full height. Each arc
+    # ends where it meets the grid's edge, since Qt draws an arc as curves
+    # that fall just short of an edge met partway along one.
+    drawn = drawing [
+      (
+        "M0.204 7.553A6 6 0 0 1 0 6A6 6 0 0 1 6 0A6 6 0 0 1 12 6A6 6 0 0 1 11.796 7.553"
+        + "L9.864 7.035A4 4 0 1 0 2.136 7.035Z"
+      )
+      "M7.341 11.171L9 4.5L4.659 9.829A1.5 1.5 0 0 0 6 12A1.5 1.5 0 0 0 7.341 11.171Z"
+    ];
   };
   suspend = {
     glyph = nerd "f04b2";
@@ -814,6 +846,12 @@ in
     glyph = nerd "f0342";
     console = ">";
     means = "signing in: to a network's page, or to an account";
+    # An arrow going in at a door.
+    drawn = drawing [
+      "M6 0H12V12H6V10.5H10.5V1.5H6Z"
+      "M0 5.25H4V6.75H0Z"
+      "M4 2.5L7.5 6L4 9.5Z"
+    ];
   };
   # A network card, not the cable, since an address is a card's whether it
   # joins through the air or by wire.
@@ -910,7 +948,7 @@ in
   reply = {
     glyph = nerd "f045a";
     console = "<";
-    means = "replying to a message from its notice";
+    means = "replying to a message, from its notice or its row";
   };
   offer = {
     glyph = nerd "f0ce0";
@@ -959,6 +997,11 @@ in
     console = "/";
     means = "where a file or a folder is";
   };
+  recent = {
+    glyph = nerd "f02da";
+    console = "r";
+    means = "what a program had open lately";
+  };
   picture = {
     glyph = nerd "f02e9";
     console = "p";
@@ -968,6 +1011,36 @@ in
     glyph = nerd "f0219";
     console = "d";
     means = "a document, read as a page";
+  };
+  book = {
+    glyph = nerd "f05da";
+    console = "b";
+    means = "a document of pages, turned one by one";
+  };
+  film = {
+    glyph = nerd "f0381";
+    console = "v";
+    means = "a video, and what plays one";
+  };
+  web = {
+    glyph = nerd "f059f";
+    console = "w";
+    means = "the web, and what browses it";
+  };
+  chat = {
+    glyph = nerd "f0b79";
+    console = "c";
+    means = "people talking in writing, and where they do";
+  };
+  brush = {
+    glyph = nerd "f00e3";
+    console = "p";
+    means = "painting on a picture, and what edits one";
+  };
+  vector = {
+    glyph = nerd "f0ae7";
+    console = "d";
+    means = "drawing in shapes and paths, and what draws so";
   };
   # What an answer in the field is about, by what was asked.
   number = {
@@ -990,6 +1063,99 @@ in
     console = "d";
     means = "a date: today, or the day it is somewhere";
   };
+  # A calendar with a person on it, since a meeting is a day with others.
+  meeting = {
+    glyph = nerd "f0ed7";
+    console = "m";
+    means = "a meeting on Joel's calendar, and the calendar holding them";
+    # A calendar page on its two rings, its day marked.
+    drawn = drawing [
+      "M2.5 0H4V2H2.5Z"
+      "M8 0H9.5V2H8Z"
+      "M0 2H12V12H0Z"
+      "M1.5 5H10.5V10.5H1.5Z"
+      "M3 6.5H6V9H3Z"
+    ];
+  };
+  # A calendar page with lines on it, for what's written of a meeting.
+  meetingDetails = {
+    glyph = nerd "f00f5";
+    console = "i";
+    means = "seeing a meeting's details: when, its call, who's going";
+  };
+  # A calendar page with a minus, for a meeting taken off everyone's.
+  cancelMeeting = {
+    glyph = nerd "f0d5c";
+    console = "x";
+    means = "cancelling a meeting Joel holds, for everyone asked";
+  };
+  # A calendar page with an arrow onward, for a meeting taken to a later
+  # time.
+  moveMeeting = {
+    glyph = nerd "f1135";
+    console = ">";
+    means = "moving a meeting to another time, for everyone on it";
+  };
+  # Answering an invitation, each a calendar marked as the answer is, so
+  # the three read as one choice.
+  going = {
+    glyph = nerd "f00ef";
+    console = "y";
+    means = "answering a meeting's invitation yes";
+  };
+  maybeGoing = {
+    glyph = nerd "f0692";
+    console = "?";
+    means = "answering a meeting's invitation maybe";
+  };
+  notGoing = {
+    glyph = nerd "f00f4";
+    console = "n";
+    means = "answering a meeting's invitation no";
+  };
+  # Mail, closed as it comes, and the two ways out of the mail that wants
+  # Joel: ticked once it's read, and dropped into the archive.
+  mail = {
+    glyph = nerd "f01ee";
+    console = "@";
+    means = "mail in Joel's Google account, and the place holding it";
+    # A closed envelope, a dot at its corner saying some of it waits.
+    drawn = drawing [
+      "M0 3H7.5V4.5H1.5V10.5H10.5V5.5H12V12H0Z"
+      "M1.5 4.5H3.3L6 6.3L8.7 4.5H10.5L6 7.8Z"
+      "M10 0A2 2 0 0 1 10 4A2 2 0 0 1 10 0Z"
+    ];
+  };
+  writeMail = {
+    glyph = nerd "f0ee3";
+    console = "w";
+    means = "writing a new mail to someone, in Mail's own window";
+  };
+  readMail = {
+    glyph = nerd "f0ab1";
+    console = "o";
+    means = "whether mail is read, the switch that marks it read or unread";
+  };
+  archive = {
+    glyph = nerd "f1259";
+    console = "a";
+    means = "archiving mail, out of the inbox";
+  };
+  googleDocument = {
+    glyph = nerd "f0dc8";
+    console = "d";
+    means = "a document in Joel's Google account, and Docs, which opens it";
+  };
+  googleSpreadsheet = {
+    glyph = nerd "f09f7";
+    console = "s";
+    means = "a spreadsheet in Joel's Google account, and Sheets, which opens it";
+  };
+  googlePresentation = {
+    glyph = nerd "f0428";
+    console = "p";
+    means = "a presentation in Joel's Google account, and Slides, which opens it";
+  };
   clock = {
     glyph = nerd "f0150";
     console = "o";
@@ -999,6 +1165,11 @@ in
     glyph = nerd "f01e7";
     console = "z";
     means = "a time zone";
+  };
+  location = {
+    glyph = nerd "f034e";
+    console = "@";
+    means = "where the laptop is";
   };
   # What's measured, for a measure from one unit to another.
   distance = {

@@ -36,6 +36,7 @@ class Values(TypedDict):
     # The programs tests/desktop.nix writes for the test to run inside the machine.
     asking: str
     ask_portal: str
+    copilot_key: str
     touchscreen: str
     tuple_window: str
     # A picture, a document, a text and a track to open, as a download would be.
@@ -509,6 +510,21 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_key(key)
         self.launcher_until(lambda shown: len(shown["held"]) > before)
 
+    def down_to(self, name: str) -> None:
+        """Move the selection to the row named, and wait until it's there.
+
+        Rows are counted by name, since what leads a step (Return's own act) moves the rest,
+        and from the row selected, since a place may open on its most pressing row rather
+        than its first, as Now does on a meeting about to start.
+        """
+        shown = self.showing()
+        rows = shown["rows"]
+        selected = (shown["selected"] or {}).get("name")
+        steps = rows.index(name) - (rows.index(selected) if selected in rows else 0)
+        for _ in range(abs(steps)):
+            self.machine.send_key("down" if steps > 0 else "up")
+        self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+
     def whats_on(self, selected: str) -> None:
         """Wait until the launcher holds Now and the keys, with this thing's row selected."""
         self.launcher_until(
@@ -528,9 +544,12 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Give the window niri lists under this title."""
         return next(window for window in self.windows() if window["title"] == title)
 
-    def opened(self, title: str) -> Json:
-        """Open a kitty with this title, and give its window once niri lists it."""
-        self.as_account(f"niri msg action spawn -- kitty --title '{title}'")
+    def opened(self, title: str, program: str = "") -> Json:
+        """Open a kitty with this title, running this program or its shell, and give its window.
+
+        It's given once niri lists it.
+        """
+        self.as_account(f"niri msg action spawn -- kitty --title '{title}' {program}")
         self.machine.wait_until_succeeds(
             self.in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
             timeout=STARTING,
@@ -624,11 +643,58 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             self.as_account(change)
         self.photograph(namespace)
 
-    def presence_says(self, said: Json) -> None:
-        """Replace the session's presence with this, by rename, as pi does."""
+    def pi_window(self, address: str, title: str) -> None:
+        """Open a window titled so whose program stands in for a pi session's, as pi runs in kitty.
+
+        The program writes its own pid and the kitty window it's in, then sleeps until its
+        window closes, so the session's record names a process running while the window is
+        open (pi_record).
+        """
+        name = address.lower()
+        owner = f"$XDG_RUNTIME_DIR/{name}-owner"
         self.as_account(
-            f"echo '{json.dumps(said)}' > {PI_PRESENCE}/.testqa"
-            f" && mv {PI_PRESENCE}/.testqa {PI_PRESENCE}/testqa.json"
+            f"rm -f {owner} && printf '%s\\n' '#!/bin/sh'"
+            f" 'echo \"$$ $KITTY_LISTEN_ON $KITTY_WINDOW_ID\" > {owner}.new'"
+            f" 'mv {owner}.new {owner}'"
+            f" 'exec sleep infinity' > ~/.{name}-pi && chmod +x ~/.{name}-pi"
+            f" && echo {shlex.quote(title)} > $XDG_RUNTIME_DIR/{name}-title"
+        )
+        self.opened(title, f"~/.{name}-pi")
+        self.machine.wait_until_succeeds(self.in_session(f"test -s {owner}"), timeout=STARTING)
+
+    def pi_record(self, address: str) -> Json:
+        """Give what a session's record says of its process and window, as pi's presence does.
+
+        That's the process pi_window's program wrote, on this boot, since its start, the kitty
+        window it's in, and the window's title as its label.
+        """
+        name = address.lower()
+        pid, scope, window = self.as_account(f"cat $XDG_RUNTIME_DIR/{name}-owner").split()
+        title = self.as_account(f"cat $XDG_RUNTIME_DIR/{name}-title").strip()
+        ticks = self.as_account(f"awk '{{sub(/.*\\) /, \"\"); print $20}}' /proc/{pid}/stat")
+        return {
+            "title": title,
+            "owner": {
+                "pid": int(pid),
+                "bootId": self.as_account("cat /proc/sys/kernel/random/boot_id").strip(),
+                "startTicks": int(ticks),
+                "startedAt": int(self.as_account("date +%s%3N")),
+            },
+            "terminal": {
+                "driverId": "kitty",
+                "kind": "kitty-window",
+                "value": window,
+                "scope": scope,
+            },
+        }
+
+    def presence_says(self, said: Json, address: str = "TESTQA") -> None:
+        """Replace a session's presence with this, by rename, as pi does, with its process."""
+        name = address.lower()
+        whole = {**self.pi_record(address), **said}
+        self.as_account(
+            f"echo '{json.dumps(whole)}' > {PI_PRESENCE}/.{name}"
+            f" && mv {PI_PRESENCE}/.{name} {PI_PRESENCE}/{name}.json"
         )
 
     def pi_session(self) -> None:
@@ -638,18 +704,23 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """
         self.as_account(
             f"mkdir -p {PI_QUEST} {PI_PRESENCE} && printf '%s\\n' '---' 'title: no' '---'"
-            " '# A quest of its own & whole'"
-            f' > {PI_QUEST}/README.md && echo \'{{"session":"01a1face-test",'
-            '"addresses":["TESTQA"],"busy":true,'
-            '"owns":["QEST-20261022-TESTQA"],"worksOn":"Tidy the tests",'
-            '"groups":["#desk"],'
-            '"owner":{"startedAt":\'$(date +%s%3N)\'}}\''
-            f" > {PI_PRESENCE}/testqa.json"
+            f" '# A quest of its own & whole' > {PI_QUEST}/README.md"
         )
         titles = {window["title"] for window in self.windows()}
-        for title in [PI_WINDOW, "Elsewhere"]:
-            if title not in titles:
-                self.opened(title)
+        if PI_WINDOW not in titles:
+            self.pi_window("TESTQA", PI_WINDOW)
+        self.presence_says(
+            {
+                "session": "01a1face-test",
+                "addresses": ["TESTQA"],
+                "busy": True,
+                "owns": ["QEST-20261022-TESTQA"],
+                "worksOn": "Tidy the tests",
+                "groups": ["#desk"],
+            }
+        )
+        if "Elsewhere" not in titles:
+            self.opened("Elsewhere")
 
     def copied_then_closed(self, text: str, flags: str = "", served: str | None = None) -> None:
         """Copy from a program that then closes.

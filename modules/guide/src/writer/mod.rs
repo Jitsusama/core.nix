@@ -223,13 +223,13 @@ fn carried_back(bundles: &[Carried], store: &mut dyn Store) -> Result<(), Fault>
     }
 }
 
-/// The stick written and read back: the image, its boot program signed
-/// when a signer is given, and its vault, holding the payload sealed with
-/// the passphrase when one is given. Says how many bytes the vault holds.
+/// The stick written and read back: the image, its boot program signed by
+/// each signer given, and its vault, holding the payload sealed with the
+/// passphrase when one is given. Says how many bytes the vault holds.
 pub fn write(
     image: &Path,
     disk: &mut File,
-    signer: Option<&Signer>,
+    signers: &[Signer],
     payload: Option<(&Payload, &Secret)>,
     bundles: &[Carried],
     meter: &Meter,
@@ -241,7 +241,7 @@ pub fn write(
         .map(stick::gpt::Partition::bytes)
         .sum();
     let Some((payload, passphrase)) = payload else {
-        return write_repair(&mut image, disk, signer, bundles, imaged, meter);
+        return write_repair(&mut image, disk, signers, bundles, imaged, meter);
     };
     let needed = fits(&image, disk, payload)?;
     let key = VaultKey::generate();
@@ -259,7 +259,7 @@ pub fn write(
         &mut image,
         disk,
         stick::new_guid()?,
-        signer,
+        signers,
         meter,
         |store| {
             store
@@ -301,19 +301,19 @@ pub fn write(
 }
 
 /// A repair stick written and read back: the image, its boot program
-/// signed when a signer is given, and a vault holding only its manifest
-/// and the bundles. Says how many bytes the vault holds.
+/// signed by each signer given, and a vault holding only its manifest and
+/// the bundles. Says how many bytes the vault holds.
 fn write_repair(
     image: &mut Image,
     disk: &mut File,
-    signer: Option<&Signer>,
+    signers: &[Signer],
     bundles: &[Carried],
     imaged: u64,
     meter: &Meter,
 ) -> Result<u64, Fault> {
     let manifest = repair_manifest();
     meter.stage(WRITING, Some(imaged));
-    let written = stick::write(image, disk, stick::new_guid()?, signer, meter, |store| {
+    let written = stick::write(image, disk, stick::new_guid()?, signers, meter, |store| {
         let bytes = serde_json::to_vec_pretty(&manifest)
             .map_err(|why| Fault::unreadable("the manifest", why))?;
         store
@@ -579,7 +579,9 @@ fn named(disk: &Disk) -> String {
 pub struct WriteStick {
     pub image: PathBuf,
     pub payload: Option<Payload>,
-    pub signer: Option<Signer>,
+    /// The keys its boot program is signed by, one for each machine it's
+    /// to boot on.
+    pub signers: Vec<Signer>,
     /// The rescue bundles the stick carries on, beside its vault.
     pub bundles: Vec<Carried>,
     /// Whether they were gathered from a stick first, which is then the
@@ -615,11 +617,11 @@ pub fn writing(write: WriteStick, sealed: Option<Vec<u8>>) -> Vec<Box<dyn Step>>
 }
 
 impl WriteStick {
-    pub fn new(image: PathBuf, payload: Option<Payload>, signer: Option<Signer>) -> WriteStick {
+    pub fn new(image: PathBuf, payload: Option<Payload>, signers: Vec<Signer>) -> WriteStick {
         WriteStick {
             image,
             payload,
-            signer,
+            signers,
             bundles: vec![],
             gathered: false,
             words: std::cell::OnceCell::new(),
@@ -829,7 +831,7 @@ impl Step for WriteStick {
         write(
             &self.image,
             &mut disk,
-            self.signer.as_ref(),
+            &self.signers,
             payload,
             &self.bundles,
             &machine.meter(),

@@ -22,13 +22,13 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     font
     shape
     space
     type
     motion
-    glyphs
+    marks
     floating
     wallpaper
     ;
@@ -47,7 +47,7 @@ let
   # A JavaScript object of the values, which QML reads as Theme.space.m.
   object = values: "(${builtins.toJSON values})";
   # The marks the theme draws as paths, for Theme.drawn.
-  drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") glyphs);
+  drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") marks);
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
   face = family: sizes: object ({ inherit family; } // lib.mapAttrs (_: builtins.fromJSON) sizes);
 
@@ -55,6 +55,7 @@ let
     "shell.qml"
     "Prompt.qml"
     "KeyHints.qml"
+    "Drawer.qml"
     "Launcher.qml"
     "Choice.qml"
     "Graph.qml"
@@ -89,8 +90,11 @@ let
     "Words.qml"
     "Pasting.qml"
     "Notices.qml"
+    "Forward.js"
     "Sessions.qml"
-    "Steward.qml"
+    "Location.qml"
+    "WaitingOnYou.qml"
+    "Waiting.js"
     "SpendWatch.qml"
     "Jobs.qml"
     "Caffeinate.qml"
@@ -109,6 +113,7 @@ let
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
     "launcher/Playing.qml"
+    "launcher/Recents.qml"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Heat.js"
@@ -134,6 +139,8 @@ let
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
     "launcher/Keyboards.js"
+    "launcher/Now.js"
+    "launcher/Notice.js"
   ];
 
   # A service holding one of logind's locks for as long as it runs, with a
@@ -170,14 +177,14 @@ let
   # A mark from the icon font by its code point.
   nerd = import ../theme/nerd.nix { inherit lib; };
   # A mark from the theme, by its name.
-  mark = name: config.jitsusama.theme.glyphs.${name}.glyph;
+  mark = name: marks.${name}.glyph;
 
   # How a chord's keys are drawn, the theme's (../theme/keys.nix).
   keyFaces = config.jitsusama.theme.keys;
   # Keys that send their modifiers themselves, as the Copilot key sends
   # Shift and Super with F23, so a chord of them is drawn as the one key
   # pressed.
-  wholeKeys = [ "xf86touchpadoff" ];
+  wholeKeys = [ "f23" ];
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
@@ -254,8 +261,17 @@ let
       "terminal"
       "neovim"
       "pi"
+      "btop"
       "swayimg"
       "inlyne"
+      "zathura"
+      "mpv"
+      "chrome"
+      "slack"
+      "onepassword"
+      "gimp"
+      "inkscape"
+      "spotify"
     ];
 
   # Each swipe as a desktop bind: drawn as how many fingers, then which
@@ -426,10 +442,28 @@ let
     terminal = nerd "f489";
     neovim = nerd "e6ae";
     pi = nerd "f03ff";
+    # The theme's processor, as btop watches it.
+    btop = nerd "f061a";
     # The theme's picture, as the viewer shows pictures.
     swayimg = nerd "f02e9";
     # The theme's document, as the reader shows documents.
     inlyne = nerd "f0219";
+    # The theme's book, as the viewer shows documents of pages.
+    zathura = nerd "f05da";
+    # The theme's film, as the player plays films.
+    mpv = nerd "f0381";
+    # The theme's web, as the browser goes about it.
+    chrome = nerd "f059f";
+    # The theme's chat, as Slack is where people talk.
+    slack = nerd "f0b79";
+    # The theme's password, as 1Password keeps them.
+    onepassword = nerd "f0306";
+    # The theme's brush, as GIMP paints on pictures.
+    gimp = nerd "f00e3";
+    # The theme's vector, as Inkscape draws in shapes and paths.
+    inkscape = nerd "f0ae7";
+    # The theme's music playing, as Spotify plays it.
+    spotify = nerd "f075a";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };
@@ -441,6 +475,7 @@ let
     network = ./pieces/Network.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
+    profile = ./pieces/Profile.qml;
     disk = ./pieces/Disk.qml;
     lag = ./pieces/Lag.qml;
     spend = ./pieces/Spend.qml;
@@ -508,6 +543,7 @@ let
     agents = ./launcher/Agents.qml;
     orchestrators = ./launcher/Orchestrators.qml;
     quests = ./launcher/Quests.qml;
+    queue = ./launcher/Queue.qml;
     runs = ./launcher/Runs.qml;
     byhand = ./launcher/ByHand.qml;
   };
@@ -519,7 +555,7 @@ let
   # deepest background, which it shades to grey. A badge is the warning
   # colour, since Slack writes its number dark on that and light on the
   # alert colour, too faint to read (2.96:1).
-  slackTheme = lib.concatMapStringsSep "," (role: roles.${role}) [
+  slackTheme = lib.concatMapStringsSep "," (role: colours.${role}) [
     "accent"
     "selection"
     "success"
@@ -534,6 +570,12 @@ let
   # runs only while the weather may ask the network, since it has GeoClue
   # ask BeaconDB, and where the machine runs GeoClue (nixos.nix).
   whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
+  clockFollows = pkgs.callPackage ./clock-follows/package.nix { };
+  timedatectl = lib.getExe' pkgs.systemd "timedatectl";
+  # The program that says how the clock is kept, for Time's insides, where
+  # the machine keeps it with systemd-timesyncd.
+  timekeeping = pkgs.callPackage ./timekeeping/package.nix { };
+  keepsTime = osConfig.services.timesyncd.enable or false;
   followsTheLaptop =
     (launcher.providers.weather.enable or false)
     && (launcher.providers.weather.lookups or launcher.lookups)
@@ -659,6 +701,7 @@ in
   imports = [
     ../theme/home.nix
     ../keys/home.nix
+    ./recents.nix
     ../camera/home.nix
     # The brightness bar shows the picks the backlight daemon tells it of.
     ../backlight/home.nix
@@ -667,7 +710,7 @@ in
   options.jitsusama.quickshell.overview.pieces = lib.mkOption {
     type = lib.types.attrsOf (
       pieces.piece {
-        inherit (config.jitsusama.theme) glyphs;
+        inherit (config.jitsusama.theme) marks;
         sources = builtIn;
       }
     );
@@ -836,8 +879,9 @@ in
       };
       description = ''
         Other words that find a row, by the key it's learned by (the
-        launcher's picks file names them). They find it, never name it: a
-        row found by one shows the word in quotes after its name.
+        launcher's picks file names them). They find it, never name it, and
+        the row shows as it always does. A name the row once had belongs in
+        the vocabulary's `once` instead, which says so below it.
       '';
     };
     words = lib.mkOption {
@@ -858,9 +902,11 @@ in
       default = {
         program = "program";
         window = "window";
-        agent = "agent";
-        task = "task";
-        helper = "helper";
+        # Agents' own rows are its sessions (docs/glossary.md).
+        agent = "session";
+        quest = "quest";
+        subagent = "subagent";
+        orchestrator = "orchestrator";
         copy = "copy";
         notice = "notice";
         emoji = "emoji";
@@ -923,6 +969,9 @@ in
       applications = {
         order = 20;
         source = "applications";
+        # What each program had open lately, for its Recent
+        # (launcher/Recents.qml), as each program's module says (recents.nix).
+        inherit (config.jitsusama.quickshell.launcher) recents;
       };
       actions = {
         order = 30;
@@ -1117,6 +1166,13 @@ in
         source = "quests";
         weight = 0.9;
       };
+      # The machine's queue: the heavy work running and waiting its turn,
+      # each job going to the session it's for.
+      jobs = {
+        order = 111;
+        source = "queue";
+        weight = 0.9;
+      };
       # pi's fleets and review rounds of the last day, and those running,
       # each going to the session that started it, its participants'
       # answers read in a terminal.
@@ -1214,6 +1270,16 @@ in
         label = "awake";
         tier = "when";
         mark = "awake";
+      };
+      # A mode too, only while the profile isn't the one the machine chose
+      # for the charger and the battery, its mark drawn with the profile's
+      # own glyph.
+      profile = {
+        order = 61;
+        source = "profile";
+        label = "power";
+        tier = "when";
+        mark = "saver";
       };
       # What AI use cost today against usual, where spend-watch runs
       # (modules/spend-watch), and a glyph in the margin while something
@@ -1338,7 +1404,7 @@ in
     # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
     # run's answer through pi-runs too. The clipboard's Paste presses its
     # window's paste keys through wtype (launcher/Copies.qml).
-    home.packages = [
+    home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
       launcherSay
       piWants
@@ -1443,7 +1509,7 @@ in
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {
-                      inherit roles;
+                      roles = colours;
                       inherit (config.jitsusama.theme) palette;
                     }
                   ) providers
@@ -1529,7 +1595,7 @@ in
 
           Singleton {
           ${lib.concatLines (
-            lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") roles
+            lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") colours
           )}
               readonly property var mono: ${face font.mono.family type.mono}
               readonly property var sans: ${face font.sans.family type.sans}
@@ -1565,6 +1631,10 @@ in
                     medium
                     long
                     ;
+                  # How much slower than written everything moves, for motion
+                  # timed by its distance rather than by a duration, as a
+                  # long row's scroll is.
+                  slowdown = builtins.fromJSON motion.slowdown;
                   # Easing.BezierSpline's form: the two control points, then the end.
                   curve = map builtins.fromJSON motion.curve ++ [
                     1
@@ -1572,7 +1642,7 @@ in
                   ];
                 }
               }
-              readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) glyphs)}
+              readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) marks)}
               // The marks drawn as paths, for where a glyph is too small to
               // read: on a 12 by 12 grid, filled even-odd.
               readonly property var drawn: ${object drawn}
@@ -1610,7 +1680,7 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders Steward.qml watches for what waits on Joel.
+    # folders WaitingOnYou.qml watches for what waits on Joel.
     systemd.user.tmpfiles.rules = [
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
@@ -1650,8 +1720,55 @@ in
         PartOf = [ "graphical-session.target" ];
         After = [ "graphical-session.target" ];
       };
+      # A place Joel sets himself is pinned in its state folder, and Now's
+      # Location sets and takes the pin away through the same program, on
+      # the shell's path.
       Service = {
-        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json";
+        StateDirectory = "whereabouts";
+        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json %S/whereabouts/pin.json";
+        Restart = "on-failure";
+        RestartSec = 60;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    # The clock's zone follows where the laptop is (clock-follows/), asked
+    # each time whereabouts writes it and never otherwise: a path unit
+    # watches the file and starts the one run. What it did is kept in its
+    # state folder for Now to say (Location.qml), and Put It Back starts
+    # its other run, from the launcher.
+    systemd.user.paths.clock-follows = lib.mkIf followsTheLaptop {
+      Unit.Description = "Watches where the laptop is, for the clock's zone";
+      Path.PathChanged = "%t/whereabouts.json";
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+    systemd.user.services.clock-follows = lib.mkIf followsTheLaptop {
+      Unit.Description = "Moves the clock's zone to where the laptop is";
+      Service = {
+        Type = "oneshot";
+        StateDirectory = "clock-follows";
+        ExecStart = "${lib.getExe clockFollows} follow %t/whereabouts.json %S/clock-follows ${timedatectl}";
+      };
+    };
+    systemd.user.services.clock-put-back = lib.mkIf followsTheLaptop {
+      Unit.Description = "Puts the clock's zone back where it was before it followed the laptop";
+      Service = {
+        Type = "oneshot";
+        StateDirectory = "clock-follows";
+        ExecStart = "${lib.getExe clockFollows} put-back %S/clock-follows ${timedatectl}";
+      };
+    };
+    # How the clock is kept, as timesyncd last said, in the runtime
+    # directory for Time to watch: heard over D-Bus as each exchange with
+    # the server is made, never asked on a clock nor through timedatectl.
+    systemd.user.services.timekeeping = lib.mkIf keepsTime {
+      Unit = {
+        Description = "Says how the clock is kept, for the launcher's Time";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${lib.getExe timekeeping} %t/timekeeping.json";
         Restart = "on-failure";
         RestartSec = 60;
       };
@@ -1676,7 +1793,14 @@ in
       flag = "caffeinated-lid";
       Description = "Keeps the machine running with its lid shut, while there's power";
       PartOf = [ "caffeinate.service" ];
-      After = [ "caffeinate.service" ];
+      # Bound to the mains supply, which systemd holds ready only while it's
+      # online (nixos.nix), so it stops the moment the power goes, whatever
+      # the shell heard; it never starts without it.
+      BindsTo = [ "sys-subsystem-power_supply-mains.device" ];
+      After = [
+        "caffeinate.service"
+        "sys-subsystem-power_supply-mains.device"
+      ];
       ConditionACPower = true;
     };
 

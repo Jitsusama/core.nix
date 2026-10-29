@@ -25,12 +25,12 @@ listed in `themes` in `modules/theme/home.nix`. It holds:
 - `shades`: eight pigments from the background to the brightest text.
 - `[palette]`: every colour the theme uses, once, as `#rrggbb` or
   `#rrggbbaa`.
-- `[roles]`: what each colour means. Every role `modules/theme/home.nix`
+- `[colours]`: what each colour means. Every one `modules/theme/home.nix`
   declares has to be given, each naming a pigment.
 - `[terminal]`: the terminal's own six colours and its sixteen ANSI ones,
   each naming a pigment.
 
-Anything else the format grows (type, space, motion, glyphs, floating,
+Anything else the format grows (type, space, motion, marks, floating,
 wallpaper) falls back to the theme module's defaults, so leave it out unless
 the source theme says something about it.
 
@@ -91,7 +91,7 @@ brighter.
      colours, or its red, yellow and green.
    - `shadow` is drawn faint under floating surfaces: the darkest shade on
      a dark theme, the darkest ink on a light one.
-   - `action`, `program`, `machine`, `person`, `voice` are the hues glyphs
+   - `action`, `program`, `machine`, `person`, `voice` are the hues marks
      wear, one per kind of thing (docs/design.md, Colour): a yellow, a
      cyan, a soft red, a magenta and a bright cyan or violet, five hues apart
      from one another and from the accent, each reading on the backgrounds

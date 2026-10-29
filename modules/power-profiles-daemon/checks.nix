@@ -68,7 +68,8 @@
   # holds, and a line from UPower that isn't a change does nothing. UPower and
   # the daemon are stand-ins: each time the service asks whether the machine
   # is on battery, UPower answers with the next of the states listed below
-  # (tests/battery-stand-ins).
+  # (tests/battery-stand-ins). Its last choice is the one it says it chose,
+  # for the shell to tell a profile picked by hand from it.
   the-profile-saves-power-on-a-low-battery =
     let
       inherit ((bareNixos [ self.nixosModules.power-profiles-daemon ]).config) services systemd;
@@ -79,7 +80,7 @@
         echo "UPower's low mark isn't the 20% the steps below expect." >&2
         exit 1
       ''}
-      ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+      WANTED=balanced ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
         lib.escapeShellArgs [
           (unit.serviceConfig.ExecStart or "false")
           # On battery or not, and its percentage, as UPower gives them.
@@ -92,6 +93,7 @@
             false 21
             true 15
             false 15
+            true 50
           '')
           (pkgs.writeText "expected" ''
             false 79: performance
@@ -100,6 +102,7 @@
             false 21: performance
             true 15: power-saver
             false 15: performance
+            true 50: balanced
           '')
           "The power profile"
           (lib.makeBinPath [
@@ -107,6 +110,49 @@
             pkgs.diffutils
             pkgs.gnugrep
           ])
+        ]
+      }
+      touch $out
+    '';
+
+  # On 2026-10-28 the kernel refused power saver for an hour on battery, and
+  # the service asked again twice a minute without a word. A refused profile
+  # is now said once, as a warning, tried again at each change without
+  # repeating it, and said once it takes. The steps' third column names the
+  # profile the daemon refuses in that state.
+  a-refused-profile-is-said-once =
+    let
+      unit =
+        (bareNixos [ self.nixosModules.power-profiles-daemon ])
+        .config.systemd.services.power-profile-follows-the-charger;
+    in
+    pkgs.runCommandLocal "a-refused-profile-is-said-once" { } ''
+      ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+        lib.escapeShellArgs [
+          (unit.serviceConfig.ExecStart or "false")
+          (pkgs.writeText "steps" ''
+            false 79
+            true 19 power-saver
+            true 18 power-saver
+            true 17
+          '')
+          (pkgs.writeText "expected" ''
+            false 79: performance
+            true 19 power-saver: refused power-saver
+            true 18 power-saver: refused power-saver
+            true 17: power-saver
+          '')
+          "The power profile"
+          (lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.diffutils
+            pkgs.gnugrep
+          ])
+          (pkgs.writeText "said" ''
+            power profile: performance, on mains power
+            <4>power profile: power-saver wasn't taken: Operation not supported
+            power profile: power-saver, the battery at 17%
+          '')
         ]
       }
       touch $out

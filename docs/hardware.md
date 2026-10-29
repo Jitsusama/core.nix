@@ -176,7 +176,7 @@ a hunk moved onto 7.2's context, which its header says.
 | `xe-small-fixes`                | fbdev, resume hotplug, UHBR DP audio, four GT fixes |
 | `sof-dsp-and-dma`               | the DSP's DMA, its period on a high-priority queue  |
 | `amp-feedback-channels`         | the amplifiers' feedback on the right channels      |
-| `hdmi-jack-after-resume`        | a jack plugged in during suspend is seen            |
+| `hdmi-jack-after-resume`        | a jack plugged in during sleep is seen              |
 | `sdca-hid-lifetime`             | the headset buttons' device leaves with its codec   |
 | `iwlwifi-core-107`              | Wi-Fi firmware 107 and per-country puncturing       |
 | `iwlmld-resume-fixes`           | Wi-Fi resumes cleanly after being powered off       |
@@ -216,6 +216,7 @@ or a local fix.
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
 | `xe-shared-buffers-keep-their-place` | buffers shared between programs aren't reclaimed first |
+| `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
 into purgeable and non-purgeable halves. Buffers that cost a backup and a
@@ -256,6 +257,19 @@ one back happens with its lock held. A trace of niri overnight caught its
 draws waiting on a client's buffer lock for 122 to 250 ms, three times in
 five minutes, and the section below, The Write-Combined Buffers Under
 Reclaim, says what held them.
+
+`btintel-pcie-pm` is four of mainline's commits from 2026-10-14:
+12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35. At a
+hibernate's thaw, the driver reset the controller and probed it again,
+though freeze never cut its power. The probe waited on the controller's
+firmware while user space was frozen. So the power-off asked a controller
+still in its bootloader for D3, timed out on its interrupt three times
+and returned -EBUSY. The hibernate rolled back, leaving the laptop on
+until its battery ran out. Thaw is now a plain wake, and only a restore
+or a resume from S3 resets. A missed interrupt is checked against the
+controller's boot stage register rather than a cache only the interrupt
+updates. This kernel lacks the mailbox handshake the third commit
+finishes, so that step is left out.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
@@ -486,7 +500,7 @@ ages fastest held near full, and faster warm: Battery University puts a cell
 kept a year at 25 °C at 96% of its capacity at 40% charge, against 80% at
 full. With the starting point that close, the laptop leaves the charger near
 80% however briefly it was plugged in; a start of 50 would leave one plugged
-in at 70% uncharged. On mains the laptop runs from the charger either way, so
+in at 70% uncharged. Plugged in, the laptop runs from the charger either way, so
 the limit costs no speed.
 
 `dell-laptop` offers these as `charge_types` and the charge thresholds, but
@@ -558,7 +572,7 @@ changes it:
   firmware allowed ran no faster: Dell's skin-temperature policy holds
   sustained power near 25 W either way. Firmware 1.11.0 allows 41 W, and the
   30 W limit holds as before.
-- **The performance profile on mains.** It sustains 22 to 28% more work than
+- **The performance profile on the charger.** It sustains 22 to 28% more work than
   balanced, which is why the charger follower asks for it.
 - **Wi-Fi power saving.** It stays on: off, the router's latency was the same
   within the noise.
@@ -575,7 +589,7 @@ changes it:
 
 power-profiles-daemon's performance profile asks Intel's driver for the
 energy preference `performance`. The module patches it to ask for
-`balance_performance`, as balanced already does on mains; the profiles still
+`balance_performance`, as balanced already does on the charger; the profiles still
 differ in the energy bias (0 against 6) and in the firmware's platform
 profile. Measured on a quiet laptop under the performance profile, with
 stress-ng's CPU stressor on sixteen threads for a minute:
@@ -617,7 +631,7 @@ and pstore kept both records:
   the modules' tag area whose counter pointer was garbage, so
   `__alloc_tagging_slab_free_hook()` faulted. It came 60 ms after the
   camera's ISYS bound the CVS bridge.
-- **At reboot, after a suspend.** `device_shutdown()` found that the device
+- **At reboot, after a sleep.** `device_shutdown()` found that the device
   before the one it was removing had been freed: the `kobj.entry` link at
   offset 8 of its 1 KiB slab object held an address in the modules' tag area
   instead. Offset 8 is where an entry in a slab's object vector keeps its
@@ -1018,6 +1032,7 @@ below, so the module adds no patches.
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
+| Mics     | their gain held at their own level, so a call doesn't clip                |
 
 ### The Keyboard at the Disk Prompt
 
@@ -1094,7 +1109,7 @@ module loads it in the initrd, as the XPS 14's does with its GPU.
 
 The laptop sleeps only in s2idle, and it sleeps soundly: one night on the
 charger, `/sys/power/suspend_stats/last_hw_sleep` counted 12,327 s of
-hardware sleep in the 12,328 s between suspend entry and exit, so the SoC
+hardware sleep in the 12,328 s between going to sleep and waking, so the SoC
 sat in its deepest state throughout. The graphics and Wi-Fi came back within
 two seconds.
 
@@ -1105,8 +1120,29 @@ the power button and the Aggregator woke it. The CMOS clock says it can wake
 the machine only from S4. The ACPI time-and-alarm device reports
 capabilities 0x1F4, which set only its S4 and S5 wake bits, so the kernel
 offers no alarm on it, and reading its clock fails with an I/O error. A
-suspend test on this laptop needs someone to open the lid or press the
+sleep test on this laptop needs someone to open the lid or press the
 power button.
+
+### The Microphones
+
+The built-in microphones are a digital pair on the Realtek ALC274 codec
+(pin 0x12, "Internal Mic"), which the HDA driver sets up as it is. The
+audio coprocessor's microphone driver isn't needed: forced to bind with
+`dmic_acpi_check=1`, it gave a capture device whose two channels matched
+exactly and sat at the lowest value nearly throughout.
+
+The codec's mics hear, but too loudly. WirePlumber starts an input nobody
+has set at full volume, and PipeWire's path for an internal mic turns the
+mic boost (0 to 30 dB) and the capture gain (-17.25 to 30 dB) up together,
+so full volume was 60 dB of gain. In a two-second listen at that gain,
+91% to 96% of samples sat at full scale. With both at 0 dB the room read
+an RMS of 489 and 86 of 32,768 on the two mics, and at the lowest gain
+about 6, so the level follows the gain and the mics aren't broken. The
+module's path ([`sound/paths/analog-input-internal-mic.conf`][22]) holds
+the boost at 0 dB and stops the capture gain at its 0 dB step, 23 of 63,
+so the desktop's full volume is the mics' own level. It's given through a
+profile set for the analog card alone; the headset jack and the outputs
+keep PipeWire's paths.
 
 ### What's Left
 
@@ -1114,7 +1150,8 @@ power button.
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
 | Sleep      | the drain on battery overnight isn't measured yet                              |
-| Audio      | the speakers and microphones aren't checked yet                                |
+| Speakers   | the speakers aren't checked yet                                                |
+| Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
 | Firmware   | Microsoft ships firmware updates only for Windows                              |
 | Touch, pen | linux-surface lists the touchscreen and pen as unsupported on this model      |
@@ -1140,3 +1177,4 @@ power button.
 [19]: ../hardware/microsoft-surface-laptop-4-1958/nixos.nix
 [20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
+[22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf

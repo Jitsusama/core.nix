@@ -1,7 +1,7 @@
 //! What was sent: one JSON line per object Drive holds, appended as each
 //! lands, so a run stopped at any point loses nothing it had sent.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 /// The ledger at one path.
 pub struct Ledger {
     path: PathBuf,
-    sent: HashSet<String>,
+    /// Each object sent, by name: its Drive id.
+    sent: HashMap<String, String>,
 }
 
 impl Ledger {
@@ -27,7 +28,10 @@ impl Ledger {
         let sent = text
             .lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-            .filter_map(|entry| entry.get("name").and_then(Value::as_str).map(str::to_owned))
+            .filter_map(|entry| {
+                let field = |key: &str| entry.get(key).and_then(Value::as_str).map(str::to_owned);
+                Some((field("name")?, field("id").unwrap_or_default()))
+            })
             .collect();
         Ok(Ledger {
             path: path.to_owned(),
@@ -37,7 +41,22 @@ impl Ledger {
 
     /// Whether an object of this name was sent.
     pub fn has(&self, name: &str) -> bool {
-        self.sent.contains(name)
+        self.sent.contains_key(name)
+    }
+
+    /// The Drive id of the object sent under this name, if the ledger has it.
+    pub fn id(&self, name: &str) -> Option<&str> {
+        self.sent
+            .get(name)
+            .map(String::as_str)
+            .filter(|id| !id.is_empty())
+    }
+
+    /// Each object sent, by its name and Drive id, in no order.
+    pub fn sent(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.sent
+            .iter()
+            .map(|(name, id)| (name.as_str(), id.as_str()))
     }
 
     /// How many objects were sent.
@@ -65,7 +84,7 @@ impl Ledger {
         writeln!(file, "{line}")
             .and_then(|()| file.sync_data())
             .map_err(|why| format!("can't write the ledger {}: {why}", self.path.display()))?;
-        self.sent.insert(name.to_owned());
+        self.sent.insert(name.to_owned(), id.to_owned());
         Ok(())
     }
 }

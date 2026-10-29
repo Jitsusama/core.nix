@@ -10,7 +10,6 @@
 # guide-recover-vm-test.py, run through pytest.
 { self, pkgs }:
 let
-  inherit (pkgs) lib;
   # Standing in for the recovery key: what opens the disk's passphrase slot
   # is what the recovery key's slot takes, typed text.
   recovery = "the machines recovery key";
@@ -20,7 +19,7 @@ let
   # The kept, lost and new keys, one device swapped between their state
   # files (canokeys.nix).
   canokeys = import ./canokeys.nix { inherit pkgs; };
-  inherit (canokeys) qemu setPin;
+  inherit (canokeys) qemu;
   keys = canokeys.keys [
     "kept"
     "lost"
@@ -32,18 +31,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   globalTimeout = 30 * 60;
   qemu.package = qemu;
 
-  # The stick's system, built as a test node so the driver can reach its
-  # shell, and never started itself: the machine boots its image from USB.
-  nodes.stick = {
-    imports = [ self.nixosModules.guide-stick ];
-    environment.systemPackages = [ setPin ];
-    virtualisation = {
-      fileSystems = lib.mkVMOverride { };
-      directBoot.enable = false;
-      mountHostNixStore = false;
-      useEFIBoot = true;
-    };
-  };
+  nodes.stick = import ./stick.nix { inherit self pkgs; };
 
   nodes.machine =
     { config, lib, ... }:

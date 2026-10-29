@@ -10,7 +10,7 @@ import "Drawings.js" as Drawings
 Item {
     id: root
 
-    // The grid every drawing is made on (jitsusama.theme.glyphs).
+    // The grid every drawing is made on (jitsusama.theme.marks).
     readonly property int grid: 12
 
     // A test that throws ends as a failure, rather than leaving qml running.

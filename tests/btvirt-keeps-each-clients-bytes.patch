@@ -1,0 +1,95 @@
+--- a/emulator/server.c
++++ b/emulator/server.c
+@@ -49,6 +49,7 @@
+ 	uint16_t pkt_expect;
+ 	uint16_t pkt_len;
+ 	uint16_t pkt_offset;
++	uint8_t buf[4096];
+ };
+ 
+ static void server_destroy(void *user_data)
+@@ -91,7 +92,7 @@
+ static void client_read_callback(int fd, uint32_t events, void *user_data)
+ {
+ 	struct client *client = user_data;
+-	static uint8_t buf[4096];
++	uint8_t *buf = client->buf;
+ 	uint8_t *ptr = buf;
+ 	ssize_t len;
+ 	uint16_t count;
+@@ -103,7 +104,7 @@
+ 
+ again:
+ 	len = recv(fd, buf + client->pkt_offset,
+-			sizeof(buf) - client->pkt_offset, MSG_DONTWAIT);
++			sizeof(client->buf) - client->pkt_offset, MSG_DONTWAIT);
+ 	if (len < 0) {
+ 		if (errno == EAGAIN)
+ 			goto again;
+@@ -126,10 +127,8 @@
+ 
+ 			switch (client->pkt_type) {
+ 			case HCI_COMMAND_PKT:
+-				if (count < HCI_COMMAND_HDR_SIZE + 1) {
+-					client->pkt_offset += len;
+-					return;
+-				}
++				if (count < HCI_COMMAND_HDR_SIZE + 1)
++					goto partial;
+ 				cmd_hdr = (hci_command_hdr *) (ptr + 1);
+ 				client->pkt_expect = HCI_COMMAND_HDR_SIZE +
+ 							cmd_hdr->plen + 1;
+@@ -137,20 +136,16 @@
+ 				client->pkt_len = 0;
+ 				break;
+ 			case HCI_ACLDATA_PKT:
+-				if (count < HCI_ACL_HDR_SIZE + 1) {
+-					client->pkt_offset += len;
+-					return;
+-				}
++				if (count < HCI_ACL_HDR_SIZE + 1)
++					goto partial;
+ 				acl_hdr = (hci_acl_hdr*)(ptr + 1);
+ 				client->pkt_expect = HCI_ACL_HDR_SIZE + acl_hdr->dlen + 1;
+ 				client->pkt_data = malloc(client->pkt_expect);
+ 				client->pkt_len = 0;
+ 				break;
+ 			case HCI_ISODATA_PKT:
+-				if (count < HCI_ISO_HDR_SIZE + 1) {
+-					client->pkt_offset += len;
+-					return;
+-				}
++				if (count < HCI_ISO_HDR_SIZE + 1)
++					goto partial;
+ 				iso_hdr = (hci_iso_hdr *)(ptr + 1);
+ 				client->pkt_expect = HCI_ISO_HDR_SIZE +
+ 							iso_hdr->dlen + 1;
+@@ -158,10 +153,8 @@
+ 				client->pkt_len = 0;
+ 				break;
+ 			case HCI_SCODATA_PKT:
+-				if (count < HCI_SCO_HDR_SIZE + 1) {
+-					client->pkt_offset += len;
+-					return;
+-				}
++				if (count < HCI_SCO_HDR_SIZE + 1)
++					goto partial;
+ 				sco_hdr = (hci_sco_hdr *)(ptr + 1);
+ 				client->pkt_expect = HCI_SCO_HDR_SIZE +
+ 							sco_hdr->dlen + 1;
+@@ -196,6 +189,15 @@
+ 			count = 0;
+ 		}
+ 	}
++
++	return;
++
++partial:
++	/* Keep the start of a header at the front of this client's buffer,
++	 * where the next read continues it.
++	 */
++	memmove(buf, ptr, count);
++	client->pkt_offset = count;
+ }
+ 
+ static int accept_client(int fd)

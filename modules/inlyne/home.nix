@@ -1,7 +1,10 @@
 # inlyne, for reading a markdown file as a page: a quest's sheet, a plan, a
 # README, with its pictures, tables and code drawn in place. It reads and
 # never writes, follows the file as it's edited, and opens a link to
-# another markdown file in place, so ← comes back.
+# another markdown file in place, so ← comes back. Each file it's started
+# with is said to the desktop's list of files opened lately
+# (../open-with/says-what-it-opens.nix), so its Recent in the launcher
+# lists them.
 #
 # Every colour is the theme's: the page on the background, headings in the
 # strong text, links and ticked boxes in the accent, code on a block a step
@@ -22,15 +25,18 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles terminal font;
+  inherit (config.jitsusama.theme) colours terminal font;
 
   # The theme's #RRGGBB as the number inlyne reads.
   number = colour: lib.fromHexString (lib.removePrefix "#" colour);
 
+  says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
+  inlyne = says { package = patched; };
+
   # nixpkgs gives inlyne X's libraries by path but not Wayland's, which its
   # window library looks for by name and, not finding it, opens the window
   # through X instead, so it's given Wayland's too.
-  inlyne = pkgs.inlyne.overrideAttrs (old: {
+  patched = pkgs.inlyne.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       ./heading-colour.patch
       ./keys-page.patch
@@ -188,23 +194,23 @@ let
   settings = {
     theme = "Dark";
     dark-theme = {
-      text-color = number roles.text;
-      heading-color = number roles.strong;
-      background-color = number roles.background;
+      text-color = number colours.text;
+      heading-color = number colours.strong;
+      background-color = number colours.background;
       code-color = number terminal.magenta;
-      quote-block-color = number roles.sunken;
-      link-color = number roles.accent;
-      select-color = number roles.selection;
-      checkbox-color = number roles.accent;
+      quote-block-color = number colours.sunken;
+      link-color = number colours.accent;
+      select-color = number colours.selection;
+      checkbox-color = number colours.accent;
       code-highlighter.path = "${
         import ../theme/tmtheme.nix {
           inherit
             lib
             pkgs
-            roles
+            colours
             terminal
             ;
-        } roles.sunken
+        } colours.sunken
       }/Jitsusama.tmTheme";
     };
     font-options = {

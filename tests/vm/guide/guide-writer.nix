@@ -12,7 +12,10 @@
 # recipient made at boot as a person makes them (make-recipient.py).
 # Written over again, the stick keeps the passphrase its vault has: the
 # person types it back, proven against the old vault, and no new words are
-# made.
+# made. That write is for every machine whose bundle the person keeps, and
+# they keep a real one for the desktop by then, sealed to its passphrase
+# under keys of its own, so the stick is signed with both machines' db
+# keys; the first write, not asked to, is signed with the laptop's alone.
 # polkit lets the person open a removable disk without the password a
 # desktop's agent would ask for, since a test has no agent to answer it.
 # The tests are guide-writer-vm-test.py, run through pytest.
@@ -51,6 +54,8 @@ let
   };
   # What opens the bundle the writer keeps for itself.
   bundlePassphrase = "the writer's own bundle's passphrase";
+  # What opens the real bundle the person keeps for the desktop.
+  desktopPassphrase = "the desktops own passphrase";
   # Rescue bundles as far as a writer reads one it carries on: which
   # machine's it is, and when it was sealed.
   bundle =
@@ -125,9 +130,21 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         pkgs.systemd
       ];
       script = ''
+        mkdir -p /var/lib/guide
+        # The desktop's bundle first, under keys of its own made where
+        # seal-keys reads them and gone again, its db certificate kept to
+        # check a stick by. It's sealed to its passphrase alone.
         ${lib.getExe pkgs.sbctl} create-keys --export /var/lib/sbctl/keys \
           --database-path /var/lib/sbctl/GUID
-        mkdir -p /var/lib/guide
+        ${lib.getExe pkgs.jq} '.machine = "desktop" | .recipients = []' \
+          ${payload}/target.json > /run/desktop-target.json
+        echo ${lib.escapeShellArg desktopPassphrase} |
+          ${lib.getExe guide} seal-keys /run/desktop-target.json /var/lib/guide/desktop-rescue-bundle.json
+        chmod 0644 /var/lib/guide/desktop-rescue-bundle.json
+        cp /var/lib/sbctl/keys/db/db.pem /var/lib/guide/desktop-db.pem
+        rm -r /var/lib/sbctl
+        ${lib.getExe pkgs.sbctl} create-keys --export /var/lib/sbctl/keys \
+          --database-path /var/lib/sbctl/GUID
         # The key, once udev has it, given its PIN and a recipient, which
         # the machine's target names as the Nano's.
         for _ in $(seq 60); do
@@ -155,9 +172,10 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       pkgs.gptfdisk
       pkgs.sbsigntool
       # The same write again, for the stick written once to be written
-      # over, keeping its passphrase.
+      # over, keeping its passphrase, and signed for every machine whose
+      # bundle the person keeps.
       (pkgs.writeShellScriptBin "write-the-stick-again" ''
-        exec ${lib.getExe guide} host ${image} --install ${payload}
+        exec ${lib.getExe guide} host ${image} --install ${payload} --every-machine
       '')
     ];
     virtualisation = {
@@ -183,7 +201,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           qemuImg = "${pkgs.qemu}/bin/qemu-img";
           used = "${used}/stick.raw";
           desktopBundle = "${bundle "desktop"}";
-          inherit bundlePassphrase pin;
+          inherit bundlePassphrase desktopPassphrase pin;
         }
       );
     in

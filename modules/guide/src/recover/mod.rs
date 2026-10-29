@@ -341,6 +341,88 @@ const SUBVOLUMES: &[(&str, &str)] = &[
 ];
 const BTRFS: &str = "compress=zstd:1,noatime,discard=async";
 
+/// What a filesystem with errors mounts with: read-only, and every rescue
+/// btrfs has for reading past damage, so nothing on it changes before
+/// what matters is copied off.
+const DAMAGED: &str = "ro,rescue=all";
+
+/// What the check found, kept until the stick restarts: `clean`, or what
+/// `btrfs check` said of the errors.
+pub const CHECKED: &str = "/run/guide/checked";
+const CLEAN: &str = "clean";
+
+/// Whether the check found the machine's filesystem damaged.
+fn damaged(machine: &mut dyn Machine) -> Result<bool, Fault> {
+    Ok(machine
+        .read(CHECKED)?
+        .is_some_and(|kept| kept != CLEAN.as_bytes()))
+}
+
+/// The machine's filesystem checked before anything mounts it, changing
+/// nothing, so one with errors is mounted only to read. Mounted to write,
+/// a damaged filesystem can lose more of what's on it.
+pub struct CheckSystem;
+
+impl Step for CheckSystem {
+    fn id(&self) -> &'static str {
+        "check-system"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Check the machine's filesystem"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let found = match the_machine(machine)? {
+            Ok(found) => found,
+            Err(standing) => return Ok(standing),
+        };
+        if machine.read(CHECKED)?.is_some() {
+            return Ok(Standing::Done {
+                evidence: if damaged(machine)? {
+                    format!(
+                        "its filesystem has errors, so it's mounted only to read: copy off what matters before any repair. What the check said is in {CHECKED}"
+                    )
+                } else {
+                    "its filesystem has no errors".into()
+                },
+            });
+        }
+        let mounted = found
+            .disk
+            .partitions
+            .iter()
+            .any(|partition| partition.mounted.contains(&ROOT.to_string()));
+        Ok(if mounted {
+            Standing::Done {
+                evidence: format!(
+                    "its filesystem was mounted at {ROOT} before it could be checked"
+                ),
+            }
+        } else {
+            Standing::Needed { asks: vec![] }
+        })
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let found = the_machine(machine)?.map_err(|standing| Fault::Blocked {
+            step: self.id(),
+            why: standing.to_string(),
+        })?;
+        let checked = machine.run(Tool::Btrfs, &["check", "--readonly", &found.mapped()])?;
+        let kept = if checked.status == 0 {
+            CLEAN.as_bytes().to_vec()
+        } else {
+            [checked.stdout.as_slice(), checked.stderr.as_slice()].concat()
+        };
+        machine.write(CHECKED, &kept)
+    }
+}
+
 /// Everything the machine mounts, mounted under /mnt, its boot partition too.
 pub struct MountSystem;
 
@@ -376,7 +458,11 @@ impl Step for MountSystem {
         Ok(
             if all && machine.read(&format!("{ROOT}/etc/NIXOS"))?.is_some() {
                 Standing::Done {
-                    evidence: format!("the machine's system is mounted at {ROOT}"),
+                    evidence: if damaged(machine)? {
+                        format!("the machine's system is mounted at {ROOT}, only to read")
+                    } else {
+                        format!("the machine's system is mounted at {ROOT}")
+                    },
                 }
             } else {
                 Standing::Needed { asks: vec![] }
@@ -390,6 +476,7 @@ impl Step for MountSystem {
             why: standing.to_string(),
         })?;
         let mapped = found.mapped();
+        let damaged = damaged(machine)?;
         let mounted: Vec<String> = found
             .disk
             .partitions
@@ -399,7 +486,8 @@ impl Step for MountSystem {
         for (subvolume, at) in SUBVOLUMES {
             let at = format!("{ROOT}{at}");
             if !mounted.contains(&at) {
-                let options = format!("subvol={subvolume},{BTRFS},X-mount.mkdir");
+                let mode = if damaged { DAMAGED } else { BTRFS };
+                let options = format!("subvol={subvolume},{mode},X-mount.mkdir");
                 machine
                     .run(Tool::Mount, &["-o", &options, &mapped, &at])?
                     .ok()?;
@@ -861,6 +949,7 @@ pub fn steps() -> Vec<Box<dyn Step>> {
         Box::new(crate::install::vault::CheckKeyboard),
         Box::new(FindMachine),
         Box::new(OpenDisk),
+        Box::new(CheckSystem),
         Box::new(MountSystem),
     ]
 }

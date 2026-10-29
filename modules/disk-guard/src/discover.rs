@@ -88,8 +88,9 @@ fn git_top(dir: &Path) -> Option<PathBuf> {
 }
 
 /// Every target and install under `root`, going at most `depth` levels
-/// down when given. The walk never follows a symlink or leaves the root's
-/// filesystem, skips git directories and bare repositories, and stops at
+/// down when given. The walk never follows a symlink or crosses a mount,
+/// though it goes on into a Btrfs subvolume, as the work broker clones each
+/// tree. It skips git directories and bare repositories, and stops at
 /// each target and install, where the files are many and nothing more is
 /// to be found. A target is one cargo marked, or one named `target` beside
 /// a manifest before cargo has marked it; a `target` with no manifest
@@ -98,8 +99,10 @@ pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
     let root = fs::canonicalize(root)?;
     let device = fs::metadata(&root)?.dev();
     let mut found = Vec::new();
-    let mut pending = vec![(root, 0)];
-    while let Some((dir, level)) = pending.pop() {
+    // Each directory goes with its own device, so a subvolume is judged
+    // once, where the device changes, rather than at every directory in it.
+    let mut pending = vec![(root, 0, device)];
+    while let Some((dir, level, device)) = pending.pop() {
         if depth.is_some_and(|depth| level >= depth) {
             continue;
         }
@@ -118,7 +121,10 @@ pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
             if !is_dir || downloads || name == ".git" || name.ends_with(".git") {
                 continue;
             }
-            if fs::symlink_metadata(&path).map(|m| m.dev()).ok() != Some(device) {
+            let Ok(here) = fs::symlink_metadata(&path).map(|m| m.dev()) else {
+                continue;
+            };
+            if here != device && !crate::pool::within(&dir, &path) {
                 continue;
             }
             let install = |path: PathBuf| Found {
@@ -158,7 +164,7 @@ pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
                     found.push(install(path));
                 }
             } else {
-                pending.push((path, level + 1));
+                pending.push((path, level + 1, here));
             }
         }
     }

@@ -17,7 +17,7 @@ onLinux {
   inlyne-reads-in-the-theme =
     let
       home = account graphical;
-      inherit (home.jitsusama.theme) roles;
+      inherit (home.jitsusama.theme) colours;
       opens = graphical.config.xdg.mime.defaultApplications."text/markdown" or "";
       inlyne = lib.findFirst (package: lib.getName package == "inlyne") null home.home.packages;
       fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
@@ -88,9 +88,9 @@ onLinux {
         }
         fail() { echo "$1"; exit 1; }
         for page in page.png keys.png; do
-          [ "$(at $page 2,2)" = "${srgb roles.background}" ] \
+          [ "$(at $page 2,2)" = "${srgb colours.background}" ] \
             || fail "inlyne's $page is $(at $page 2,2), not the theme's background"
-          [ "$(many $page '${srgb roles.strong}')" -gt 100 ] \
+          [ "$(many $page '${srgb colours.strong}')" -gt 100 ] \
             || fail "inlyne's heading in $page isn't drawn in the theme's strong text"
           # inlyne's own dark text and background, which the theme replaces.
           for own in 'srgb(157,172,187)' 'srgb(26,29,34)'; do
@@ -100,5 +100,30 @@ onLinux {
         # The photographs stay, to look at.
         mkdir $out
         cp page.png keys.png $out
+      '';
+
+  # inlyne says each file it's started with to the desktop's list of files
+  # opened lately, through recent-files where the desktop has it, stood in
+  # here, handing on all it was given, and then runs as it would.
+  inlyne-says-the-files-it-opens =
+    let
+      home = account graphical;
+      inlyne = lib.findFirst (package: lib.getName package == "inlyne") null home.home.packages;
+      recent-files = pkgs.writeShellScriptBin "recent-files" ''echo "$*" >> "$SAID"'';
+    in
+    pkgs.runCommandLocal "inlyne-says-the-files-it-opens"
+      {
+        nativeBuildInputs = [
+          inlyne
+          recent-files
+        ];
+      }
+      ''
+        export HOME=$PWD SAID=$PWD/said
+        inlyne --version view one.md > version 2>&1 || { cat version; exit 1; }
+        grep -q -i inlyne version || { echo "inlyne didn't run: $(cat version)"; exit 1; }
+        told=$(if [ -e said ]; then cat said; else echo 'nothing said'; fi)
+        [ "$told" = "add inlyne --version view one.md" ] || { echo "inlyne said: $told"; exit 1; }
+        touch $out
       '';
 }

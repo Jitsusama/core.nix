@@ -1,8 +1,9 @@
 // The launcher on Super+Space, the desktop's command palette: type what you
 // want, a window, an application, an action or what a key does, pick it
 // with the arrows, and Return runs it, or Shift+Return opens it below the
-// focused window. Tab takes the completion the command line offers, and does
-// nothing at home, where the arrows already reach every category. Each
+// focused window. Tab takes the grey completion the command line shows, and
+// does nothing while it shows none, as at home, where the arrows already
+// reach every category. Each
 // action shows its chord, so keys are learned by use.
 //
 // It opens as fast as niri can hand it the keys. Super+Space says "toggle"
@@ -42,7 +43,6 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
-import QtQuick.Effects
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
@@ -119,7 +119,8 @@ Scope {
         if (text.length < 3)
             return null;
         for (const source of sources) {
-            const question = source.questions.find(asked => asked.startsWith(text));
+            const question = source.questions.find(asked => asked.startsWith(text)
+                && !oldWords[asked]);
             if (question === undefined)
                 continue;
             const said = started(source, question, fresh);
@@ -146,6 +147,17 @@ Scope {
     // What each word asking an answer names it, as the vocabulary does, so
     // a step into an answer is named as the thing it is ("cpu" is
     // Processor), not as what was typed.
+    // The names things had, as they're typed, each as it was written, so
+    // a name had asks only whole ("sto" asks nothing of the disk) and its
+    // answer says what it was once called.
+    readonly property var oldWords: {
+        const out = {};
+        for (const entry of Object.values(Words.things))
+            for (const old of entry.once ?? [])
+                out[old.toLowerCase()] = old;
+        return out;
+    }
+
     readonly property var answerNames: {
         const out = {};
         for (const id of Object.keys(Words.things)) {
@@ -195,10 +207,11 @@ Scope {
     function compose(fresh) {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         const said = answering(typed, fresh);
+        const listed = root.found.concat(stillActed(root.found));
         // An answer only there when nothing else is, as asking a model by a
         // question's first word is, gives way to anything found.
         answer = said && said.fallback
-            && (root.found.some(row => !row.category) || gathered.length > 0) ? null : said;
+            && (listed.some(row => !row.category) || gathered.length > 0) ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -210,9 +223,9 @@ Scope {
         // it, so "sound" is Sound and "weather" the weather; its word and a
         // space still step into it.
         // At home, every category is listed, to be browsed.
-        const things = new Set(root.found.filter(row => !row.category)
+        const things = new Set(listed.filter(row => !row.category)
             .map(row => Fuzzy.plainly(row.name)));
-        const found = root.found.filter(row => !row.category || atHome
+        const found = listed.filter(row => !row.category || atHome
             || !(things.has(Fuzzy.plainly(row.name)) || (answer && !answer.question)));
         // A thing shows once: a collection found whole stands for what's in
         // it, so neither its own rows, nor the things that live in it
@@ -233,10 +246,13 @@ Scope {
             gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
-        matches = steadying ? Steady.kept(matches, rows.concat(below), steadyId)
-            : rows.concat(below);
-        // An answer only started gives way to a name that starts the same.
-        const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
+        matches = steadying ? steadied(rows.concat(below)) : rows.concat(below);
+        // An answer only started gives way to a name that starts the same,
+        // its first word: "pow" is still Power Off. A later word starting
+        // so is no name Joel was typing, and gave "batt" to a copy that
+        // said "50%, on battery", above the battery's own answer.
+        const meant = answer && !(answer.question && below.length > 0
+            && String(below[0].name).toLowerCase().startsWith(Fuzzy.plainly(typed)));
         if (fresh || (current === -1 && !answer))
             current = meant ? (rows.length > 0 ? 0 : -1) : answer ? rows.length : 0;
         else if (current === -1 && rows.length > 0)
@@ -264,6 +280,8 @@ Scope {
             name: said.headline,
             chip: asked,
             title: said.title ?? answerNames[asked] ?? root.capitalised(asked),
+            // Asked by a name it had, it says so, as a row found by one does.
+            once: oldWords[asked] ? [oldWords[asked]] : [],
             glyph: said.glyph ?? first.glyph,
             graph: said.graph,
             hue: said.hue ?? first.hue,
@@ -358,7 +376,7 @@ Scope {
                 return;
             steps[at] = Object.assign({}, was, {
                 row: row,
-                rows: Steady.kept(was.rows, row.verbs(), steadyId)
+                rows: Steady.kept(was.rows, led(row, row.verbs()), steadyId)
             });
             // The list it was stepped into from says it as it is now too,
             // for the way back out.
@@ -391,6 +409,8 @@ Scope {
         stays: answer.stays ?? false,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
+        // Asked by a name it had, it says so, as a row found by one does.
+        once: oldWords[Fuzzy.plainly(typed)] ? [oldWords[Fuzzy.plainly(typed)]] : [],
         run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
@@ -425,8 +445,8 @@ Scope {
     readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
         .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
-        .map(withSynonyms)
         .concat(collections.map(named), categories)
+        .map(withSynonyms)
     readonly property var collections: sources.filter(source => source.collection)
 
     // Each row by its key, and the rows that are parts of another (`of`
@@ -465,9 +485,10 @@ Scope {
     // details from a root view that would put me in the hierarchy"). Only
     // what a thing reads or holds is a spot; what it does, such as
     // Disconnect, is said once for each thing and would be found many
-    // times over. Made once an opening, by the first search of three
-    // letters or more, of the collections whose things are devices, few
-    // and read whole, so a search after it never reads them again.
+    // times over. Made a moment after each closing (spotsLater), and by
+    // the first search of three letters or more when none were made yet,
+    // of the collections whose things are devices, few and read whole, so
+    // a search never reads them again.
     readonly property var spotCollections: ["sound", "bluetooth", "displays", "wifi",
         "keyboard", "cameras"]
     readonly property int spotsFewest: 3
@@ -539,8 +560,10 @@ Scope {
             trail: trail.map(row => steadyId(row)),
             spot: steadyId(part),
             stays: true,
-            prepared: Fuzzy.prepare(part.name)
+            prepared: Fuzzy.prepare(part.name),
+            once: oldNames(part)
         };
+        spot.olds = spot.once.length > 0 ? Fuzzy.prepare(spot.once.join(" ")) : null;
         spot.run = () => root.goTo(spot);
         return spot;
     }
@@ -557,7 +580,9 @@ Scope {
         }
         const found = [];
         for (const spot of spots) {
-            const m = Fuzzy.match(spot.prepared, words, false);
+            // By its name, or else by a name it had.
+            const byName = Fuzzy.match(spot.prepared, words, false);
+            const m = byName.score < 0 && spot.olds ? Fuzzy.match(spot.olds, words, false) : byName;
             if (m.score >= 0)
                 found.push({ item: spot.prepared, score: m.score, grade: m.grade, row: spot });
         }
@@ -566,8 +591,13 @@ Scope {
 
     // Goes to a spot: from the root into each step of its trail, found again
     // by what it is, then onto the spot itself. A step gone since, such as a
-    // headset turned off, stops it where it got to.
+    // headset turned off, stops it where it got to. Each step's row is
+    // selected before it's stepped into, and the first step keeps what was
+    // typed and selected before it, so the left arrow climbs back out
+    // through every step and onto the search it came from, as any way in
+    // does (Joel, 2026-10-26: every way in climbs back out the same way).
     function goTo(spot) {
+        const came = here();
         held = [];
         restart("");
         for (const step of spot.trail) {
@@ -578,8 +608,14 @@ Scope {
             const rows = held.length === 0 ? categories.concat(home())
                 : from ? offered.concat(partsOf(from)) : offered;
             const row = rows.find(one => steadyId(one) === step) ?? null;
+            const listedAt = matches.findIndex(one => steadyId(one) === step);
+            if (listedAt >= 0)
+                current = listedAt;
+            const first = held.length === 0;
             if (row === null || !enter(row))
                 return;
+            if (first)
+                held = [Object.assign({}, held[0], came)].concat(held.slice(1));
         }
         const at = matches.findIndex(row => steadyId(row) === spot.spot);
         if (at >= 0) {
@@ -614,16 +650,145 @@ Scope {
         return out;
     }
 
+    // Every row Return does nothing on, and how many rows there were,
+    // from home down as stepping in
+    // shows them, each with where it sits, for the check that fails any
+    // (Joel, 2026-10-26: every row has a Return act). It walks deeper
+    // than the catalogue and into each program, window and quest, but not
+    // into the long lists, the clipboard's or the emoji, whose rows are
+    // all made one way and are proven offscreen.
+    readonly property int actlessDeepest: 6
+
+    // Each thing the vocabulary places that is an answer, by its name, as
+    // Time, Date and Weather are: its one row is the answer as
+    // `resolved` places it, wherever it shows (Joel, 2026-10-28: "we need
+    // to not have different versions of these sort of elements"). A part,
+    // whose id is its holder's and its own, as a display's Brightness is,
+    // shows as its holder makes it, so it isn't one.
+    readonly property var answeredThings: {
+        const out = {};
+        for (const id of Object.keys(Words.things)) {
+            const entry = Words.of(id);
+            if ((entry.answers ?? []).length > 0 && (entry.in ?? "") !== "" && !id.includes(":"))
+                out[entry.name] = id;
+        }
+        return out;
+    }
+
+    // Whether a row bears an answered thing's name without being that
+    // thing's own row, which is a surface drawing its own version of it.
+    // What an answer holds is its own, as the time's Date is the date
+    // where that time is, so it isn't asked of.
+    function ownVersion(row, above) {
+        const id = answeredThings[row.placed ?? row.name];
+        return id !== undefined && above?.answered !== true && row.is !== `answer:${id}`
+            && row.key !== `place:${id}`;
+    }
+
+    // The kinds made by one component each, by how their rows are keyed,
+    // and the component that makes them (docs/design.md, one component per
+    // thing): a mail or a meeting row made anywhere but by its component
+    // is a version a surface drew of it.
+    readonly property var components: [
+        { keyed: /^mail:/, made: "mail" },
+        { keyed: /^calendar:meeting:/, made: "meeting" }
+    ]
+
+    // A row of a kind its component makes, made otherwise, or null.
+    function uncomposed(row) {
+        const kind = components.find(one => one.keyed.test(row.key ?? ""));
+        return kind && row.component !== kind.made ? kind.made : null;
+    }
+
+    function actless() {
+        const out = [];
+        const own = [];
+        const loose = [];
+        let composed = 0;
+        // Every step whose first row is a copy where more is held, which
+        // docs/design.md's Return rule never allows ("Copy is never the
+        // first row of a step, unless it's the only one, and is always the
+        // last"; Joel, 2026-10-28: "the copy at the top of most screens is
+        // confusing").
+        const copyFirst = [];
+        // Every row whose Return steps in over an act of its own, where the
+        // step doesn't lead with that act, so it couldn't be chosen inside
+        // (Joel, 2026-10-28: "enter is supposed to be the default action,
+        // but that means that action should be selectable within").
+        const skipped = [];
+        const seen = new Set();
+        const walk = (rows, above, ids, names, depth) => {
+            for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
+                const path = ids.concat([steadyId(row)]);
+                const id = path.join(catalogueStep);
+                if (!seen.has(id)) {
+                    seen.add(id);
+                    if (!Catalogue.acts(row))
+                        out.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    if (ownVersion(row, above))
+                        own.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.is ?? row.key})`);
+                    const kind = uncomposed(row);
+                    if (kind !== null)
+                        loose.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.key}, not made as a ${kind})`);
+                    else if (row.component)
+                        composed += 1;
+                    const deeper = depth < actlessDeepest
+                        && !(row.opens && Catalogue.long(row.opens));
+                    const inside = deeper
+                        ? catalogueHolds(row, above === null || collects({ row: above })) : [];
+                    if (inside.length > 1 && copying(inside[0]))
+                        copyFirst.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    if (inside.length > 0 && stepsOver(row)
+                        && !Catalogue.saysAct(inside[0], verbOf(row).toLowerCase()))
+                        skipped.push({
+                            id,
+                            words: `${row.name} (${verbOf(row)}, led by ${inside[0].name})`,
+                            in: names.join(" \u203a ")
+                        });
+                    walk(inside, row, path, names.concat([row.name]), depth + 1);
+                }
+            }
+        };
+        walk(home(), null, [], [], 0);
+        // How many it walked too, so a check that finds none knows it
+        // looked.
+        return { walked: seen.size, rows: out, ownVersions: own, copyFirst, skipped,
+            uncomposed: loose, composed: composed };
+    }
+
+    // Whether Return on a row steps in where the row has an act of its own
+    // it would otherwise do, which the step must then lead with: not a
+    // copy, which comes after the acts, nor a row that only steps in, asks
+    // first or asks for words.
+    function stepsOver(row) {
+        const verb = verbOf(row).toLowerCase();
+        // A row with no act of its own, as a place or a group, steps over
+        // nothing: stepping in is all its Return does.
+        return !!row.run && stepsIn(row) && !leadsElsewhere(row) && !row.confirm && !row.given
+            && !["", "more", "see all", "copy", "close"].includes(verb);
+    }
+
+    // Whether a row is an act of copying, as a step's Copy is, rather than
+    // a value that copies what it says.
+    function copying(row) {
+        return !!row && row.figure !== true && !row.answered && verbOf(row) === "copy"
+            && /^copy\b/i.test(row.name ?? "");
+    }
+
     // What a row holds as `enter` shows it stepped into: from home or a
     // collection (`things`), what can be done to it, then its parts, a
     // collection's own among them, as a step into it lists them (Agents'
     // Orchestrators, Quests, Runs and AI spend); from a thing's own verbs,
     // what each is done to. One whose rows can't be made out of the
     // launcher's step holds nothing here.
-    function catalogueHolds(row, things) {
+    function catalogueHolds(row, among) {
         try {
+            const things = asThing(row, among);
             const making = things ? row.verbs : row.targets;
-            const own = making ? making() ?? [] : [];
+            const made = making ? making() ?? [] : [];
+            const own = things || copiesOnly(row) ? led(row, made) : made;
             const places = things && row.from ? partsOf(row.from) : [];
             return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
@@ -785,11 +950,29 @@ Scope {
     // says (Sound's Sound). Read from the vocabulary as home is made, so no
     // answer is asked for it.
     function holding(category, room) {
+        const stands = standsOf(category);
+        if (stands !== "")
+            return stands;
         const names = (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "")
             .concat(commandsIn(category).map(row => row.start.trim()
                 || row.key.replace(/^command:/, "")));
         const own = (category.name ?? category.id).toLowerCase();
         return listed(names.filter(name => name.toLowerCase() !== own), room);
+    }
+
+    // How a place stands, where the vocabulary names a provider that says
+    // so (a category's `stands`): docs/design.md's "a place that measures
+    // something says how it stands instead", as Power's row says the charge and the
+    // profile where Machine holds it, the way Processor's says how busy it
+    // is (2026-10-28: "having power as a top under machine with just a list
+    // of options in the hint instead of treated like cpus and stuff is
+    // weird"). Asked as its row is made, like the names it replaces; ""
+    // when nothing says, and the place lists what it holds instead.
+    function standsOf(category) {
+        if (!category.stands)
+            return "";
+        const source = sources.find(one => one.settings.name === category.stands);
+        return source?.stands?.() ?? "";
     }
 
     // Names as one line, as many whole as fit in `room` characters, then
@@ -1110,10 +1293,12 @@ Scope {
             // One with no act of its own, only more inside (an
             // orchestrator, a device), lands inside it on Return, its
             // collection's crumb before its own, as the approved proposal's
-            // one feel has it; the right arrow still lists all it found.
+            // one feel has it, and the right arrow lands there too, so
+            // Return never goes further in than it (Joel, 2026-10-26).
             if (!best.run && (best.verbs || best.targets))
                 Object.assign(gathered, {
                     stays: true,
+                    lands: true,
                     run: () => root.landInside(gathered, best)
                 });
             rows.push(gathered);
@@ -1122,15 +1307,22 @@ Scope {
     }
 
     // Steps into a collection's matches, and then into the one of them that
-    // was found, by what it is.
+    // was found, which stepping in keeps selected.
     function landInside(gathered, best) {
-        if (!enter(gathered))
-            return;
-        const at = matches.findIndex(row => steadyId(row) === steadyId(best));
-        if (at < 0)
-            return;
-        current = at;
-        enter(matches[at]);
+        if (enter(gathered) && selected && steadyId(selected) === steadyId(best))
+            enter(selected);
+    }
+
+    // The right arrow: into the selected row, or, for a match that lands
+    // inside what it found on Return, there as well, and for a row whose
+    // Return goes elsewhere in the launcher, there too.
+    function inward(row) {
+        if (row && row.lands)
+            row.run();
+        else if (leadsElsewhere(row))
+            run(row, false, false);
+        else
+            enter(row);
     }
 
     // How tall the list is while the launcher's open: always its rows, and
@@ -1166,21 +1358,123 @@ Scope {
 
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
-    // step, and Tab at home. The left arrow is said only where it goes
-    // back: that it takes away what's typed is what any field does, and
-    // saying so took room from how things stand as soon as Joel typed.
+    // step. Tab is said in the field, after the completion it takes
+    // (Prompt.qml), not here: it comes and goes with each letter, so in the
+    // foot it moved the keys or took room from how things stand. The left
+    // arrow is said only where it goes back: that it takes away what's
+    // typed is what any field does, and saying so took room from how things
+    // stand as soon as Joel typed. Shift+Return and the right arrow are said
+    // wherever they work, a step in too (Joel, 2026-10-26: "the foot shows
+    // every key that works on the selection"): the right arrow where `enter`
+    // finds somewhere to go, by what it would ask, never by asking it, since
+    // the foot is said for every row.
+    // Whether Return does something and keeps the launcher, as a setting
+    // does, rather than going somewhere inside it, as a spot, a row with
+    // more inside, one holding rows (its verbs and targets both, as a
+    // meeting's See It) or a collection's match does.
+    function keepsOpen(choice) {
+        return !!choice.stays && !!choice.run && !choice.spot && !choice.from
+            && verbOf(choice) !== "more" && !(choice.verbs && choice.targets)
+            && !copiesOnly(choice);
+    }
+
+    // Whether a row's only act is copying the figure it shows while it
+    // holds more, as a disk's Space does, or an answer listed in its
+    // place by name, as Power's Battery is: Return steps in, as the right
+    // arrow does, and the copy is listed inside after what can be done
+    // (Catalogue.js's leading), so Return never copies and closes where
+    // the right arrow would open (Joel, 2026-10-28: "hitting enter on the
+    // battery closes the window when right opens it"). An answer to what
+    // was typed, a sum or a lookup, still copies on Return, since what was
+    // asked is the answer itself; its copy inside comes after its acts too.
+    function copiesOnly(choice) {
+        return !!choice && (choice.figure === true || (choice.answered === true
+            && (choice.placed ?? "") !== "")) && verbOf(choice) === "copy" && holdsMore(choice);
+    }
+
+    // Whether a row holds a thing's insides (its verbs, Return's act first,
+    // then its parts) rather than a verb's targets: wherever things are
+    // listed, at the top or in a collection, and anywhere for a row with
+    // verbs and no targets, so a row's insides don't depend on the level
+    // it's shown at (Joel, 2026-10-26: one thing, one set of insides). Inside
+    // a program, its Shortcuts and its windows held nothing.
+    function asThing(row, among) {
+        return among || (!row.targets && !!row.verbs);
+    }
+
+    // Whether the right arrow steps into a row, as `enter` would: a thing's
+    // insides, a verb's targets in a step, a place found from the top, or an
+    // ask.
+    function holdsMore(choice) {
+        if (held.length > 0 && choice.given)
+            return true;
+        if (held.length === 0 && choice.category)
+            return true;
+        return asThing(choice, held.length === 0 || collecting) ? !!choice.verbs
+            : !!choice.targets;
+    }
+
+    // Whether a row with nothing inside it goes somewhere else in the
+    // launcher on Return: a spot to where it is, a command into the field
+    // to be finished, one that opens a collection into it. The right arrow
+    // goes there as well (Joel, 2026-10-26: where Return goes somewhere in
+    // the launcher, the right arrow does the same).
+    function leadsElsewhere(choice) {
+        return !!choice && !choice.gone && !holdsMore(choice)
+            && (choice.trail !== undefined || choice.start !== undefined || !!choice.opens);
+    }
+
+    // Whether Return steps into a row where the right arrow would, as `run`
+    // decides: a place or a holder, a verb wanting a target, one that can't
+    // be taken back, or one with nothing to do of its own. Such a row says
+    // both keys as one, with the right arrow's word, so stepping in has one
+    // word wherever it's done (Joel, 2026-10-26), where it was open, choose,
+    // go, see or the act asked about, and never says it twice.
+    function stepsIn(choice) {
+        if (leadsElsewhere(choice) || copiesOnly(choice))
+            return true;
+        if (choice.start !== undefined || choice.given || !holdsMore(choice))
+            return false;
+        if (choice.category || choice.group || choice.lands || !choice.run)
+            return true;
+        if (held.length > 0 && choice.targets && choice.verb === "more")
+            return true;
+        return !!choice.confirm && (held.length === 0 || collecting);
+    }
+
     function keysFor(choice) {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        const keys = [["\u21b5", verbOf(choice)]];
-        if (held.length === 0 && choice.below)
+        // The arrows are said by their marks alone, which Joel knows: the
+        // right arrow steps in and the left one steps back wherever they
+        // work, so their words only took room from the marks beside them
+        // (Joel, 2026-10-28: "i want icons to be able to be there as much
+        // as possible"). Going elsewhere keeps Return's own word, where it
+        // takes him.
+        const more = leadsElsewhere(choice) ? verbOf(choice) : "";
+        const stepping = stepsIn(choice);
+        const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
+        // One that keeps the launcher can be done and closed at once, the
+        // font having no Ctrl key's mark, so it's spelled as chords are.
+        if (keepsOpen(choice))
+            keys.push(["Ctrl+\u21b5", "close"]);
+        if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
-        if ((held.length === 0 || collecting) && choice.verbs)
-            keys.push(["\u2192", choice.from ? "see all" : "more"]);
+        if (!stepping && holdsMore(choice))
+            keys.push(["\u2192", ""]);
         if (typed === "" && held.length > 0)
-            keys.push(["\u2190", "back"]);
+            keys.push(["\u2190", ""]);
+        // The drawer's keys, only while it holds more than fits, keeping
+        // their word as Ctrl+Return does, since a chord isn't an arrow.
+        if (choice === selected && drawerOut && drawerCard.more)
+            keys.push(["Ctrl+\u2191\u2193", "scroll"]);
         return keys;
+    }
+
+    // A key as the foot says it: its mark, then its word where it has one.
+    function saidKey(key) {
+        return key[1] === "" ? key[0] : `${key[0]} ${key[1]}`;
     }
 
     // How far in the foot's keys may reach and how wide Return's place is,
@@ -1188,8 +1482,8 @@ Scope {
     // as the arrows went from a row that opens to one with more behind it,
     // and squeezed how things stand beside them from words to glyphs and
     // back (Joel, 2026-10-25: "jumpy ... at home arrowing around"). So
-    // Return, last at the right end, keeps a place as wide as the longest
-    // word it's said since the launcher opened, and how things stand keeps
+    // Return, last at the right end, keeps a place as wide as the widest
+    // it's been said since the launcher opened, and how things stand keeps
     // clear of where the widest set of keys has reached. The rest sit just
     // before Return, each as wide as it is: a place kept for every key any
     // row had left holes between them as soon as Joel typed ("the
@@ -1197,18 +1491,25 @@ Scope {
     // stand that no row used. Both only grow while the
     // launcher's open, and only as the rows change, so nothing gives way
     // under the selection. They open as wide as most rows need, Return's
-    // place as wide as "connect" and the keys as wide as a program's at
-    // the top, so the first letter typed doesn't move them: grown only as
+    // place as wide as "connect" and the keys as wide as a setting's with
+    // more behind it, so the first letter typed doesn't move them: grown only as
     // rows came, Return moved in as soon as Joel typed, since home's rows
     // say less than what a letter finds.
     readonly property string footVerbRoom: "connect"
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["\u21e7\u21b5", "below"],
-        ["\u2192", "see all"]]
-    property string footVerbWidest: footVerbRoom
+    // A row opened below never stays, so Ctrl+Return's place is the wider
+    // of the two it could have.
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "close"],
+        ["\u2192", ""]]
+    // Return's place, as wide as the widest Return said since the launcher
+    // opened, its marks and its word whole: kept by its word alone, a
+    // Return said with the right arrow beside it, as a collection's "see
+    // all", was wider than the place and moved its marks along from a
+    // category's (Joel, 2026-10-25: "jumpy ... at home arrowing around").
+    property real footReturnWidest: 0
     property real footKeysWidest: 0
 
     function footReset() {
-        footVerbWidest = footVerbRoom;
+        footReturnWidest = measure.advanceWidth(`\u21b5 ${footVerbRoom}`);
         footKeysWidest = keysWide(footKeysRoom);
     }
 
@@ -1217,22 +1518,21 @@ Scope {
         if (told.length === 0)
             return 0;
         return told.slice(1).reduce((sum, key) => sum + keys.spacing
-            + measure.advanceWidth(`${key[0]} ${key[1]}`), returnPlace(told[0]));
+            + measure.advanceWidth(saidKey(key)), returnPlace(told[0]));
     }
 
     // How wide Return's place is beside what it says now.
     function returnPlace(key) {
-        return Math.max(measure.advanceWidth(`${key[0]} ${key[1]}`),
-            measure.advanceWidth(`${key[0]} ${footVerbWidest}`));
+        return Math.max(measure.advanceWidth(saidKey(key)), footReturnWidest);
     }
 
     function noteKeys() {
         const rows = asking ? matches.concat([asking]) : matches;
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
-        const verb = said.reduce((longest, keys) => keys[0][1].length > longest.length
-            ? keys[0][1] : longest, footVerbWidest);
-        if (verb !== footVerbWidest)
-            footVerbWidest = verb;
+        const place = Math.max(footReturnWidest,
+            ...said.map(keys => measure.advanceWidth(saidKey(keys[0]))));
+        if (place > footReturnWidest)
+            footReturnWidest = place;
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
         if (wide > footKeysWidest)
             footKeysWidest = wide;
@@ -1245,22 +1545,41 @@ Scope {
     // grew or shrank by a digit.
     property int figuresWidest: 0
     property string figuresStep: ""
+    // The same for what every row says at its right, so where a name is
+    // cut holds still as "working" becomes "asks you" and back: worked out
+    // afresh, each title's cut crept left and right as its side changed
+    // (the launcher audit's finding 31, Joel's yes on 2026-10-26).
+    property int sidesWidest: 0
 
     function noteFigures() {
         const step = `${held.map(each => steadyId(each.row)).join("/")}|${typed}`;
-        const now = Math.max(0, ...matches.filter(row => !!row.graph).map(row => ((held.length === 0
-            ? kindOf(row) : "") || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length));
+        const said = row => ((held.length === 0 ? kindOf(row) : "")
+            || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length;
+        const now = Math.max(0, ...matches.filter(row => !!row.graph).map(said));
+        const sides = Math.max(0, ...matches.map(said));
         if (step !== figuresStep) {
             figuresStep = step;
             figuresWidest = now;
-        } else if (now > figuresWidest)
+            sidesWidest = sides;
+            return;
+        }
+        if (now > figuresWidest)
             figuresWidest = now;
+        if (sides > sidesWidest)
+            sidesWidest = sides;
     }
 
     // The shortest way the foot's facts have had to read since the launcher
     // opened (Standing.js's fittedFrom), which they never read longer than
     // until it closes.
     property int footStage: 0
+    // The room each of the foot's facts has needed since the launcher
+    // opened, by its label and the way it reads, which it keeps: the
+    // battery going from 100% to 99%, or the agents from "10 working" to
+    // "9 working", slid every fact after it (the launcher audit's finding
+    // 32, Joel's yes on 2026-10-26). Kept for each way, so a fact shrunk
+    // to its glyph doesn't keep the room its words took.
+    property var factsWidest: ({})
 
     // A step of its own has notes of its own, so the field's right end
     // takes the room they need afresh (Prompt.qml's steady). Known by the
@@ -1268,18 +1587,29 @@ Scope {
     readonly property string stepsTaken: held.map(step => steadyId(step.row)).join("/")
     onStepsTakenChanged: prompt.forget()
 
+    // How many times the rows have been made, and how many rows drawn
+    // afresh, for the check that a refresh redraws only what changed.
+    property int rowsMade: 0
+    property int rowsDrawn: 0
+
     onMatchesChanged: {
+        rowsMade += 1;
         noteKeys();
         noteFigures();
     }
     onAskingChanged: noteKeys()
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
-    // it" was too many): a turn by the way it goes ("off"), anything else
-    // by its first word.
+    // it" was too many): a turn by the way it goes ("off"), a verb that's
+    // one with the way it goes whole ("log out", "put back", whose first
+    // word alone says nothing), anything else by its first word.
+    readonly property var phrasal: ["in", "out", "back"]
+
     function oneWord(verb) {
         const said = verb.split(" ");
-        return said[0] === "turn" && said.length > 1 ? said[said.length - 1] : said[0];
+        if (said[0] === "turn" && said.length > 1)
+            return said[said.length - 1];
+        return said.length === 2 && phrasal.includes(said[1]) ? verb : said[0];
     }
 
     // A chord as words, for the foot: its keys joined by +, those pressed
@@ -1364,12 +1694,35 @@ Scope {
         return out;
     }
 
-    // A row's own words, with those a machine adds for it
-    // (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's finds
-    // it. Made once for each row, and never twice for the same one.
+    // The names a row had before the glossary renamed it (words.json's
+    // `once`, or the row's own for one whose key isn't a word's, as a
+    // connection's): they still find it, and are never shown, so a rename
+    // never loses a row (Joel, 2026-10-26: "i didn't know its name had
+    // changed, i was used to calling it caffeinate").
+    function oldNames(row) {
+        const id = String(row.key ?? "").replace(/^(?:category|collection|answer|place):/, "");
+        return row.once ?? row.category?.once ?? Words.of(id).once ?? [];
+    }
+
+    // "Once called Caffeinate." below a row found by a name it had and not
+    // by its own, so the new name is learned as it's used.
+    function onceCalled(row) {
+        const typed = Fuzzy.plainly(root.typed);
+        if (typed === "" || startsAWord(row.name ?? "", typed))
+            return "";
+        const old = oldNames(row).find(name => {
+            const plain = Fuzzy.plainly(name);
+            return plain.startsWith(typed) || typed.startsWith(plain);
+        });
+        return old ? `Once called ${old}.` : "";
+    }
+
+    // A row's own words, with the names it had and those a machine adds
+    // for it (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's
+    // finds it. Made once for each row, and never twice for the same one.
     function withSynonyms(row) {
-        const more = Providers.launcher.synonyms[row.key];
-        if (!more || row.synonymised)
+        const more = (Providers.launcher.synonyms[row.key] ?? []).concat(oldNames(row));
+        if (more.length === 0 || row.synonymised)
             return row;
         row.keywords = Fuzzy.prepare([row.keywords ? row.keywords.text : ""].concat(more)
             .join(" ").trim());
@@ -1419,13 +1772,23 @@ Scope {
             return answerPlace(id);
         const row = whole(source, false, false);
         // In Now, what waits on Joel leads, named by the first of it, since
-        // it's the one thing there only he can move; the rest follow by name.
+        // it's the one thing there only he can move; the rest follow by
+        // name, and its row, there with nothing in it too, isn't one.
         const lead = source.foremost ?? "";
-        const names = source.everything().filter(one => lead === "" || one.key !== "on:waiting")
+        // A row folded into a place, as Agents' Start a Session is, does
+        // something there rather than being one of what it holds, so home
+        // never names it.
+        const names = source.everything()
+            .filter(one => one.key !== "on:waitingOnYou" && one.folded !== true)
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
-        const rest = names.length === 0 ? ""
+        const fitted = names.length === 0 ? ""
             : listed(names, lead === "" ? left : left - lead.length - " \u00b7 ".length);
+        // Where not even the first name fits, as a session's whole quest
+        // title doesn't, it says how many it holds, as its own count does,
+        // and never that it holds none (Joel, 2026-10-28: "agents shows no
+        // sessions when i super space right now").
+        const rest = names.length > 0 && fitted === "" ? source.counted() : fitted;
         return Object.assign({}, row, {
             count: lead === "" && rest === "" ? source.collection.empty ?? ""
                 : [lead, rest].filter(part => part !== "").join(" \u00b7 ")
@@ -1471,6 +1834,7 @@ Scope {
             name: collection.title ?? collection.noun,
             plain: true,
             count: counted ? source.counted() : "",
+            note: source.noted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
@@ -1540,6 +1904,31 @@ Scope {
     }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
+    // A row on offer now by its key, as it reads now: in the step held, or
+    // at the top. Undefined where it's gone.
+    function onOffer(key) {
+        return held.length > 0 ? offered.find(row => row.key === key && !row.gone) : keyed[key];
+    }
+
+    // The rows shown, said again as they are now (Steady.js), each in its
+    // place. One still on offer keeps it as it reads now, though what it
+    // says no longer matches what's typed: a Play that Return made a Pause
+    // shows Pause, rather than going.
+    // The row Return last changed something with, kept among what's found
+    // until Joel types or steps again, so Wi-Fi Off that became Wi-Fi On
+    // still shows it, though "wifi off" no longer finds it.
+    property var acted: null
+    function stillActed(found) {
+        const row = acted ? onOffer(acted.key) : undefined;
+        return row && !found.some(one => one.key === row.key) ? [row] : [];
+    }
+
+    function steadied(found) {
+        const renamed = matches.filter(row => !row.gone && onOffer(row.key)
+            && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
+        return Steady.kept(matches, found.concat(renamed), steadyId);
+    }
+
     // Whether the step held last is a collection, whose members are things
     // with verbs of their own, as at the top; or a row that says its verbs
     // are things too (nested), as a report's rows are, so stepping goes on
@@ -1550,11 +1939,40 @@ Scope {
         return !!step.row.from || !!step.row.nested;
     }
 
+    // What a row holds, led by Return's own act where it was left out
+    // (Catalogue.js), that act's name prepared to be found as a
+    // provider's rows are.
+    function led(row, made) {
+        const own = Catalogue.leading(row, made);
+        // Return's act leads, or a copy comes after the acts.
+        const added = own === made ? undefined
+            : own.find(one => String(one.key).startsWith("return:") && !one.prepared);
+        if (added)
+            added.prepared = Fuzzy.prepare(added.name);
+        return own;
+    }
+
+    // What a step into a row lists of its own: a thing's verbs, led by
+    // Return's act, or a verb's targets; null where it holds none. Made the
+    // same way when a step is made again, so a refresh never finds the
+    // act it led with gone.
+    function stepRows(row, things) {
+        const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        // A row that would only copy gains its copy inside wherever it's
+        // stepped into, so the copy is never lost to Return stepping in.
+        return made && (things || copiesOnly(row)) ? led(row, made) : made;
+    }
+
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
     function enter(row) {
         if (!row || row.gone)
             return false;
+        // A step is timed to its frame as a key is, named by the arrow and
+        // the row, so a slow place shows in the journal and the trials
+        // (Joel, 2026-10-28: "programs from the main launcher screen takes
+        // for fucking ever to load").
+        const began = Date.now();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -1565,23 +1983,46 @@ Scope {
             intoCategory(row.category, typed);
             return true;
         }
-        const things = held.length === 0 || collecting;
-        const own = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        const things = asThing(row, held.length === 0 || collecting);
+        const own = stepRows(row, things);
         // A thing's parts come after what can be done to it.
         const parts = things ? partsIn(row) : [];
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
         // A collection with nothing in it still holds the places its
         // vocabulary names, which a step into it shows: Agents with no
-        // agent running still leads to its Quests and Orchestrators.
+        // agent running still leads to its Quests and Orchestrators. A row
+        // saying what it holds when empty, as Waiting on You does, is a
+        // place stepped into however little it holds.
         const places = things && row.from ? partsOf(row.from).length : 0;
-        if ((!into || into.length === 0) && places === 0)
+        if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
+        const made = Date.now();
         held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
+        const pushed = Date.now();
         if (row.from)
             row.from.opened();
+        const opened = Date.now();
         // What was typed found the row, so it goes: inside, everything the row
-        // holds shows, and the left arrow puts it back on the way out.
+        // holds shows, and the left arrow puts it back on the way out. Stepped
+        // into from a collection's match, the match stays selected among all
+        // it holds (Joel, 2026-10-26: stepping in keeps the match).
         restart("");
+        if (row.from) {
+            const matched = matches.findIndex(one => steadyId(one) === steadyId(row));
+            if (matched >= 0) {
+                current = matched;
+                list.positionViewAtIndex(matched, ListView.Contain);
+            } else if (held.length === 1 && row.from.starts) {
+                // A collection stepped into from home opens on its most
+                // pressing row, as Super+O opens it (into).
+                current = Math.max(0, row.from.starts(matches));
+            }
+        }
+        // Said as a key's are: making the step's lists, what each part of
+        // stepping took, and the search that draws its rows.
+        searchParts = { lists: made - began, rows: Date.now() - opened, answers: 0,
+            each: { holding: pushed - made, opening: opened - pushed } };
+        keyTimed(`\u2192 ${row.name}`, began);
         return true;
     }
 
@@ -1615,9 +2056,36 @@ Scope {
     // ones come at the end, the selection stays on its row and the list
     // where it was scrolled, so nothing moves under the cursor. Only what
     // Joel types orders by rank.
+    // Taken once the change has settled, since a provider may say it
+    // changed from within its own things changing (Session.qml does),
+    // before the rows read from them (choices, partsOfRows) have heard;
+    // each source heard is made again once, in the order heard.
+    property var refreshing: []
     function refreshed(source) {
+        if (refreshing.includes(source))
+            return;
+        refreshing = refreshing.concat([source]);
+        Qt.callLater(refreshDue);
+    }
+    function refreshDue() {
+        const due = refreshing;
+        refreshing = [];
+        for (const source of due)
+            refreshNow(source);
+    }
+    function refreshNow(source) {
         if (!open || asking)
             return;
+        // Out at the top, a row the search found from it is said again in
+        // place, so a setting Return changed shows how it stands now
+        // (Joel, 2026-10-26: an act that changes something stays open and
+        // shows the new state on its row at once).
+        if (held.length === 0) {
+            if (typed.trim() !== ""
+                && matches.some(row => source.things.some(own => own.key === row.key)))
+                reshow(0);
+            return;
+        }
         const from = held.findIndex(step => step.row.from === source);
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
         // A thing of its own stepped into from the top, as a program is, is
@@ -1647,9 +2115,8 @@ Scope {
         for (let at = from; at < steps.length; at++) {
             const step = steps[at];
             const thing = rows.find(row => sameRow(row, step.row));
-            const things = at === 0 || collects(steps[at - 1]);
-            const own = !thing ? null : things ? (thing.verbs ? thing.verbs() : null)
-                : thing.targets ? thing.targets() : null;
+            const things = !!thing && asThing(thing, at === 0 || collects(steps[at - 1]));
+            const own = !thing ? null : stepRows(thing, things);
             const parts = thing && things ? partsIn(thing) : [];
             const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
             if (!into)
@@ -1793,6 +2260,8 @@ Scope {
         const cleared = letters === "" && typed !== "" && held.length > 0 && selected
             ? steadyId(selected) : "";
         typed = letters;
+        if (acted && (letters !== acted.typed || held.length !== acted.depth))
+            acted = null;
         words = Fuzzy.words(letters);
         if (asking) {
             matches = [];
@@ -1849,16 +2318,25 @@ Scope {
             // choices of a part that offers them (a display's Scale), so
             // what's typed reaches them without a step in: "scale 150".
             // Found by name or by what it holds, in the top level's tiers.
+            // A step that makes rows of what's typed (`typed`), as Move the
+            // Meeting makes a time, lists them first.
             else if (words.length === 0)
                 found = offered.slice();
             else
-                found = within(offered.reduce((all, row) => all.concat([row],
-                    row.offers && row.verbs ? row.verbs() : []), []), letters);
+                found = (held[held.length - 1].row.typed?.(letters) ?? [])
+                    .concat(within(offered.reduce((all, row) => all.concat([row],
+                        row.offers && row.verbs ? row.verbs() : []), []), letters));
+            found = found.concat(stillActed(found));
             answer = null;
+            // Whether the drawer is out is the level's, read from all of
+            // it as it's stepped into, so narrowing it by typing never
+            // slides the drawer in or out.
+            if (words.length === 0)
+                levelHasDrawer = found.some(row => hasDrawer(row));
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
-                matches = Steady.kept(matches, found, steadyId);
+                matches = steadied(found);
                 return;
             }
             matches = found;
@@ -1880,6 +2358,10 @@ Scope {
         const listed = Date.now();
         latch = "";
         foundHere = {};
+        // What the rows' time went on, for a first letter that's slow
+        // (Joel's own openings put 215 to 271 ms there): matching every
+        // choice, ordering what was found, or making the rows shown.
+        let costs = null;
         if (words.length === 0) {
             candidates = [];
             root.found = home();
@@ -1889,7 +2371,10 @@ Scope {
             // What the next letter narrows from: everything found, and a
             // collection held back only for being too short yet.
             const early = [];
-            for (const choice of narrowing ? candidates : choices) {
+            // Said again in place, what was found is each row as it is now.
+            const looked = !narrowing ? choices : !steadying ? candidates
+                : candidates.map(choice => onOffer(choice.key)).filter(choice => !!choice);
+            for (const choice of looked) {
                 // A part whose whole is all that's named is found in it,
                 // and kept for a word past the whole's name.
                 if (choice.of && partHidden(choice, words)) {
@@ -1929,6 +2414,7 @@ Scope {
                     });
             }
             candidates = found.map(f => f.choice).concat(early);
+            const matchedAll = Date.now();
             const learned = picks.weights(letters);
             const here = {};
             for (const f of found)
@@ -1944,19 +2430,25 @@ Scope {
                 picked: learned,
                 often: often
             });
-            root.found = ordered.map(f => Object.assign({
+            const orderedAll = Date.now();
+            const made = ordered.map(f => Object.assign({
                 byWord: f.byWord === true,
                 times: (learned[f.choice.key] ?? { times: 0 }).times,
                 grade: f.grade,
                 tier: f.tier,
                 kept: !!learned[f.choice.key]
-            }, f.choice)).concat(spotted(letters));
+            }, f.choice));
+            const madeAll = Date.now();
+            root.found = made.concat(spotted(letters));
+            costs = { matching: matchedAll - listed, ordering: orderedAll - matchedAll,
+                making: madeAll - orderedAll, spots: Date.now() - madeAll, looked: looked.length,
+                found: found.length };
         }
         const matched = Date.now();
         compose(true);
         list.positionViewAtBeginning();
         searchParts = { lists: listed - began, rows: matched - listed,
-            answers: Date.now() - matched, each: listsTook };
+            answers: Date.now() - matched, each: listsTook, within: costs };
     }
 
     // What the last search at the top level spent its time on, or null for
@@ -1987,8 +2479,9 @@ Scope {
     }
 
     onCurrentChanged: {
+        list.pick(list.settled);
         if (current >= 0)
-            list.positionViewAtIndex(current, ListView.Contain);
+            list.reveal(current);
     }
 
     // The rest of the selected name from where what's typed starts a word in
@@ -2033,7 +2526,21 @@ Scope {
         return out;
     }
 
-    function run(choice, below) {
+    // Acting on a thing says it was what was meant by what was typed; in a
+    // collection or a category, the one picked from it was. Learned before
+    // the launcher closes, while what's typed and held is still there.
+    function learn(choice) {
+        trials.picked(choice, typed, held.length);
+        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
+        const picking = !!first.row.from || !!first.row.category;
+        const meant = picking ? choice : first.row;
+        // One that can't be taken back is latched only once its first word's
+        // been typed (Rank.js's leastOf), so a slip of two letters never
+        // powers off.
+        picks.picked(picking ? typed : first.typed, meant.key, knowing());
+    }
+
+    function run(choice, below, closing) {
         if (!choice) {
             open = false;
             return;
@@ -2050,8 +2557,10 @@ Scope {
         if ((choice.category || choice.group) && enter(choice))
             return;
         // A verb that needs a target asks for it, and one that needs words
-        // asks for them.
-        if (held.length > 0 && choice.targets) {
+        // asks for them. A row with an act of its own besides stepping in
+        // does it, as a meeting's row joins it (WhatsOn.qml), and the
+        // right arrow still finds what it holds.
+        if (held.length > 0 && choice.targets && (!choice.run || choice.verb === "more")) {
             enter(choice);
             return;
         }
@@ -2059,6 +2568,9 @@ Scope {
             ask(choice);
             return;
         }
+        // One that would only copy what it says steps into what it holds.
+        if (copiesOnly(choice) && enter(choice))
+            return;
         // One that can't be taken back, such as powering off, steps into
         // its verbs, which say what it does, so a second Return does it and
         // Escape or the left arrow backs out.
@@ -2067,10 +2579,18 @@ Scope {
         // One with nothing to do of its own, only more inside, steps in.
         if (!choice.run && enter(choice))
             return;
-        // One whose outcome takes a while keeps the launcher, which says how
-        // it's going.
+        // One that changes something, or whose outcome takes a while, keeps
+        // the launcher, its row saying how it stands now; Ctrl+Return does
+        // it and closes anyway.
         if (choice.stays) {
+            const acting = keepsOpen(choice);
+            if (acting) {
+                learn(choice);
+                acted = { key: choice.key, typed: typed, depth: held.length };
+            }
             choice.run();
+            if (closing && acting)
+                open = false;
             return;
         }
         // One that opens a collection steps into it, the launcher kept open.
@@ -2083,17 +2603,11 @@ Scope {
         // The clipboard takes text only from a program holding the keys.
         if (choice.now)
             choice.run();
-        trials.picked(choice, typed, held.length);
+        learn(choice);
+        // Said as the foot's other words are, beside the key they follow.
+        if (verbOf(choice) === "copy")
+            leaveSaying("copied");
         open = false;
-        // Acting on a thing says it was what was meant by what was typed;
-        // in a collection or a category, the one picked from it was.
-        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
-        const picking = !!first.row.from || !!first.row.category;
-        const meant = picking ? choice : first.row;
-        // One that can't be taken back is latched only once its first word's
-        // been typed (Rank.js's leastOf), so a slip of two letters never
-        // powers off.
-        picks.picked(picking ? typed : first.typed, meant.key, knowing());
         if (choice.now)
             return;
         if (below && choice.below)
@@ -2111,6 +2625,30 @@ Scope {
         onTriggered: {
             root.pending.run();
             root.pending = null;
+        }
+    }
+
+    // A copy closes with nothing else to show it worked, so the card
+    // stays drawn a moment past closing, its foot saying "copied" where
+    // Return's key was, then leaves as anything leaving does (Joel,
+    // 2026-10-26: "copied" as it closes). The keys go back to the window
+    // at once, so nothing waits on it.
+    property string parting: ""
+    property bool fading: false
+    function leaveSaying(word) {
+        parting = word;
+        fading = false;
+        partingLater.restart();
+        Report.say(`parted ${word}`);
+    }
+
+    // Long enough to read one word, short of where it would linger.
+    Timer {
+        id: partingLater
+        interval: 600
+        onTriggered: {
+            root.fading = true;
+            root.parting = "";
         }
     }
 
@@ -2176,7 +2714,24 @@ Scope {
         function laidOut(): string {
             return root.laidOut();
         }
+
+        // Every row Return does nothing on, as JSON, for the check.
+        function actless(): string {
+            return JSON.stringify(root.actless());
+        }
+
+        // How many frames the card has drawn since this was first asked,
+        // for the check that a launcher left still draws nothing.
+        function frames(): string {
+            root.framesCounted = true;
+            return String(root.framesDrawn);
+        }
     }
+
+    // Frames drawn, counted only once a check asks, so a launcher in use
+    // pays nothing for it.
+    property bool framesCounted: false
+    property int framesDrawn: 0
 
     // Every word drawn in an item, the item itself and all inside it, each
     // with where it's drawn on the card: its box's left and top and where
@@ -2191,8 +2746,17 @@ Scope {
             const spare = Math.max(0, item.width - item.contentWidth);
             const inset = item.horizontalAlignment === Qt.AlignRight ? spare
                 : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
+            // How wide it's drawn and whether it's cut, so a test can say
+            // where a name is cut held still. A word in a box that clips it,
+            // as a selected name reading on is, is cut by that box rather
+            // than by an ellipsis, and the box is the room it holds.
+            const clipper = item.parent && item.parent.clip ? item.parent : item;
+            const box = clipper.mapToItem(into, 0, 0);
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
-                starts: Math.round(at.x + inset) });
+                starts: Math.round(at.x + inset), width: Math.round(item.width),
+                inked: Math.round(item.contentWidth), cut: item.truncated === true
+                    || (clipper !== item && item.implicitWidth > clipper.width),
+                room: { x: Math.round(box.x), width: Math.round(clipper.width) } });
         }
         for (const child of item.children)
             for (const word of wordsIn(child, into))
@@ -2214,9 +2778,70 @@ Scope {
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card) });
         }
+        // Where the selection is drawn, and where its row is, so a test can
+        // say it's drawn on its row.
+        const chosen = list.itemAtIndex(root.current);
+        const selection = !picked.visible || !chosen ? null : {
+            y: Math.round(picked.mapToItem(card, 0, 0).y),
+            row: Math.round(chosen.mapToItem(card, 0, chosen.height - Theme.space.xxxl).y)
+        };
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
-            foot: wordsIn(foot, card), rows });
+            foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
+            drawn: root.rowsDrawn });
     }
+
+    // The drawer beside the card (Drawer.qml): what the selected row shows
+    // beyond its line, its own or one made of the picture and the whole
+    // words it has. It's out only inside a place, never for a search typed
+    // at home, where three letters and Return is the habit and a drawer at
+    // every query would be noise; and out for the whole level while any of
+    // its rows has one, so it slides only as Joel steps in or out, never as
+    // he moves. A row of such a level with none of its own shows its name
+    // and note there.
+    function drawerOf(row) {
+        if (!row)
+            return null;
+        const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
+        if (own)
+            return own;
+        if ((row.picture ?? "") === "" && (row.reads ?? "") === "")
+            return null;
+        return { title: row.name, body: row.reads ?? "", picture: row.picture ?? "",
+            across: row.across ?? 0, down: row.down ?? 0 };
+    }
+    function hasDrawer(row) {
+        return !!row.drawer || (row.picture ?? "") !== "" || (row.reads ?? "") !== "";
+    }
+    property bool levelHasDrawer: false
+    // Typed to nothing, it goes in rather than stay out empty or keep the
+    // last row's details.
+    readonly property bool drawerOut: open && held.length > 0 && levelHasDrawer && !!selected
+    // A row with nothing more to show, in a level where the drawer is out,
+    // shows its own name alone (VKCF3Z): never the last row's details, never
+    // an empty slide-in, and never its note, which the foot already says.
+    readonly property var drawerShows: !drawerOut || !selected ? null
+        : drawerOf(selected) ?? { title: selected.name }
+
+    // The drawer's room beside the card, and where the card sits (VKCF3Z's
+    // ruling, after Joel's "never passes the bound of the screen and
+    // resizes to fit there"): the card stays centred, where Super+Space has
+    // always opened it, and the drawer takes what's left on its right, up
+    // to drawerMost. Only where that's less than drawerLeast, too narrow to
+    // hold a line of mail, does the card sit left of centre, the drawer
+    // given drawerLeast or what the screen has. Both are worked out for the
+    // screen alone, never for what's shown, so the card never moves.
+    readonly property int drawerMost: 520
+    readonly property int drawerLeast: 280
+    readonly property real drawerGap: Theme.space.m
+    readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
+    readonly property real drawerRoom: !screenHere ? 0
+        : screenHere.width - centred - width - drawerGap - Theme.space.xl
+    readonly property real drawerWidth: !screenHere ? 0
+        : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom)
+        : Math.min(drawerLeast,
+            Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
+    readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
+        Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -2241,6 +2866,8 @@ Scope {
                     .filter(part => part !== "").join(" \u00b7 ")
             })),
             asking: !!root.asking,
+            // What the list says in place of rows, where it has none.
+            nothing: nothingShown.visible ? nothingShown.name : "",
             selected: !row ? null : {
                 name: row.name,
                 is: Rank.identity(row),
@@ -2249,6 +2876,10 @@ Scope {
                 side: row.side ?? "",
                 // The whole words drawn below the rows for it, if any.
                 reads: row.reads ?? "",
+                // What the drawer beside the rows shows of it, if anything.
+                drawer: row.drawer ?? null,
+                // The keys the foot says for it, each a mark and its word.
+                told: root.keysFor(row).map(key => root.saidKey(key)),
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },
@@ -2258,7 +2889,23 @@ Scope {
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
             // How far the list is scrolled, which only a key changes.
-            scrolled: Math.round(list.contentY)
+            scrolled: Math.round(list.contentY),
+            // The drawer: whether it's out, what it's titled and says,
+            // whether it holds more than fits, and where it and the card sit.
+            drawer: {
+                out: root.drawerOut,
+                title: root.drawerShows?.title ?? "",
+                facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
+                    .map(fact => fact.label ?? ""),
+                body: root.drawerShows?.body ?? "",
+                more: drawerCard.more,
+                scrolled: Math.round(drawerCard.scrolled),
+                cardAt: Math.round(card.mapToGlobal(0, 0).x),
+                at: Math.round(drawerCard.mapToGlobal(0, 0).x),
+                width: Math.round(drawerCard.width),
+                height: Math.round(drawerCard.height),
+                cardHeight: Math.round(card.height)
+            }
         });
     }
 
@@ -2302,6 +2949,10 @@ Scope {
         const lead = source.leading ? source.leading() : null;
         if (lead)
             enter(lead);
+        // Or it says which row is the most pressing, where it isn't the
+        // first, as Now does when nothing waits (WhatsOn.qml's starts).
+        else if (source.starts)
+            current = Math.max(0, source.starts(matches));
     }
 
     // Where the pointer last was, in the window, so the selection follows
@@ -2319,17 +2970,18 @@ Scope {
     onOpenChanged: {
         if (open) {
             trials.opened();
+            partingLater.stop();
+            fading = false;
+            parting = "";
             pointer = Qt.point(-1, -1);
             footReset();
             footStage = 0;
+            factsWidest = {};
             figuresStep = "";
             held = [];
             prompt.forget();
             often = picks.counts();
-            // What's inside things is read again for each opening, the
-            // first time a search needs it.
-            spotsMade = false;
-            spots = [];
+            spotsLater.stop();
             restart("");
             // Always the same height, eight rows and home's gap, kept until
             // it closes, so the card is the same shape however much home
@@ -2342,6 +2994,25 @@ Scope {
         } else {
             screenHere = focusedScreen;
             trials.closed();
+            spotsLater.restart();
+        }
+    }
+
+    // What's inside things is read again a moment after the launcher
+    // closes, from what it just showed, so the next opening has it
+    // ready. Read on the third letter instead, as it was, it held that
+    // key 115 to 250 ms once every opening (launcher-trials.json,
+    // 2026-10-26: "wha" 252 ms, "cpu" 248, "key" 211). The first opening
+    // after the shell starts still reads it on its third letter.
+    Timer {
+        id: spotsLater
+
+        interval: 500
+        onTriggered: {
+            if (!root.open) {
+                root.spots = root.spotsFrom();
+                root.spotsMade = true;
+            }
         }
     }
 
@@ -2394,6 +3065,12 @@ Scope {
         id: nowhere
     }
 
+    // The card and the drawer out beside it, for the pointer and the blur.
+    Region {
+        id: cardAndDrawer
+        regions: [card.area, drawerCard.area]
+    }
+
     // Mapped all along, so opening makes no surface and draws no first
     // frame before niri hands over the keys. While closed it's one pixel at
     // the screen's top edge rather than the card's size, since niri draws a
@@ -2403,16 +3080,22 @@ Scope {
         id: surface
         visible: true
         screen: root.screenHere
+        // Placed from the left, so the card sits where cardLeft says with
+        // the drawer's room on its right, sized once for the screen.
         anchors.top: true
+        anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.open && screen // qmllint disable unqualified
             ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.open ? root.width + 2 * card.reach : 1
+        margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
+        implicitWidth: root.open
+            ? root.width + root.drawerGap + root.drawerWidth + 2 * card.reach : 1
         implicitHeight: root.open ? card.height + 2 * card.reach : 1
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: root.open ? card.area : nowhere
-        BackgroundEffect.blurRegion: root.open ? card.area : nowhere
+        mask: !root.open ? nowhere : root.drawerOut ? cardAndDrawer : card.area
+        BackgroundEffect.blurRegion: !root.open ? nowhere
+            : root.drawerOut ? cardAndDrawer : card.area
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
@@ -2426,6 +3109,15 @@ Scope {
             }
         }
 
+        Connections {
+            target: card.Window.window
+            enabled: root.framesCounted
+
+            function onFrameSwapped() {
+                root.framesDrawn += 1;
+            }
+        }
+
         Floating {
             id: card
             x: reach
@@ -2435,7 +3127,18 @@ Scope {
             // Clear rather than hidden while closed, since a hidden field
             // can't hold the focus, and a key that came before the card was
             // shown would be lost.
-            opacity: root.open ? 1 : 0
+            opacity: root.open || root.parting !== "" ? 1 : 0
+
+            // Only a parting word's card leaves on the curve; anything
+            // else closes on the next frame, as it opens.
+            Behavior on opacity {
+                enabled: root.fading
+                NumberAnimation {
+                    duration: Theme.motion.short
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.motion.curve
+                }
+            }
 
             Column {
                 width: parent.width
@@ -2483,24 +3186,25 @@ Scope {
                             if (!root.asking)
                                 root.keyTimed(text, began);
                         }
-                        onAccepted: below => {
+                        onAccepted: (below, closing) => {
                             trials.pressed("returns");
                             if (root.asking)
                                 root.give();
                             else
-                                root.run(root.selected, below);
+                                root.run(root.selected, below, closing);
                         }
                         // Tab on an answer puts the answer in place of the
                         // question, so a sum can be carried on; one still
                         // being asked for leaves the question as it is.
                         onCompleted: {
                             trials.pressed("tabs");
-                            // At home there's nothing to complete: home
-                            // is the categories, a row each, and an arrow
-                            // reaches any of them (Joel, 2026-10-25: "i
-                            // don't like tab for browse, that seems
-                            // useless").
-                            if (root.atHome)
+                            // Tab does something only while the field
+                            // shows a grey completion, and only takes it;
+                            // stepping in is the right arrow's (Joel,
+                            // 2026-10-26). At home there's none, since
+                            // nothing is typed (2026-10-25: "i don't like
+                            // tab for browse, that seems useless").
+                            if (root.completion === "")
                                 return;
                             // A command puts its start in the field.
                             if (root.current !== -1 && root.selected?.start !== undefined)
@@ -2509,14 +3213,6 @@ Scope {
                             else if (root.question !== ""
                                 && (root.current === -1 || root.selected?.answered))
                                 text = root.question;
-                            // A row that holds more is stepped into, so a
-                            // few letters and Tab reach inside a thing from
-                            // anywhere, as the right arrow would, and so
-                            // does Tab alone inside a step.
-                            else if ((root.typed !== "" || root.held.length > 0)
-                                && root.current !== -1
-                                && root.enter(root.matches[root.current]))
-                                return;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
                             // An answer that does something has nothing to
@@ -2527,7 +3223,7 @@ Scope {
                         onCancelled: root.open = false
                         onForward: {
                             trials.pressed("steps");
-                            root.enter(root.matches[root.current]);
+                            root.inward(root.matches[root.current]);
                         }
                         onBackward: {
                             trials.pressed("backs");
@@ -2537,11 +3233,21 @@ Scope {
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        Keys.onUpPressed: {
+                        // With Ctrl, the arrows scroll the drawer instead,
+                        // since Page Up and Page Down page the list.
+                        Keys.onUpPressed: event => {
+                            if (event.modifiers & Qt.ControlModifier) {
+                                drawerCard.scroll(-1);
+                                return;
+                            }
                             trials.pressed("arrows");
                             root.current = Math.max(root.current - 1, highest);
                         }
-                        Keys.onDownPressed: {
+                        Keys.onDownPressed: event => {
+                            if (event.modifiers & Qt.ControlModifier) {
+                                drawerCard.scroll(1);
+                                return;
+                            }
                             trials.pressed("arrows");
                             root.current = Math.max(highest,
                                 Math.min(root.current + 1, root.matches.length - 1));
@@ -2591,15 +3297,199 @@ Scope {
                             // says it, so their graphs stand in one column that
                             // holds still as 9% becomes 10% (root.figuresWidest).
                             readonly property int figures: root.figuresWidest
+                            // And the widest any row has said there.
+                            readonly property int sides: root.sidesWidest
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            model: root.matches
+                            // The rows by what each is (steadyId), each
+                            // drawn once and kept while it's there: a refresh,
+                            // each second inside Machine and four times a
+                            // second while Sound's meter runs, made every row
+                            // afresh, restarting whatever moved on it (the
+                            // launcher audit's finding 30, Joel's yes on
+                            // 2026-10-26). A row kept reads what it says now
+                            // from root.matches by its place.
+                            model: ListModel {
+                                id: rowsKept
+                            }
+
+                            // Brings the kept rows into line with these, by
+                            // what each is: those the same at the start and
+                            // the end stay, and only those between are drawn
+                            // afresh. Says whether they were all the same.
+                            // The rows go in between the removing and the
+                            // adding, so no kept row ever reads past the end
+                            // of the rows it reads: the removing leaves none
+                            // past the old ones' end, and the new ones reach
+                            // as far as what's left and what's added.
+                            function keep(rows) {
+                                const keys = rows.map(row => root.steadyId(row));
+                                let start = 0;
+                                while (start < rowsKept.count && start < keys.length
+                                    && rowsKept.get(start).key === keys[start])
+                                    start += 1;
+                                if (start === rowsKept.count && start === keys.length) {
+                                    list.rows = rows;
+                                    return true;
+                                }
+                                let was = rowsKept.count;
+                                let now = keys.length;
+                                while (was > start && now > start
+                                    && rowsKept.get(was - 1).key === keys[now - 1]) {
+                                    was -= 1;
+                                    now -= 1;
+                                }
+                                if (was > start)
+                                    rowsKept.remove(start, was - start);
+                                list.rows = rows;
+                                for (let at = start; at < now; at += 1)
+                                    rowsKept.insert(at, { key: keys[at] });
+                                return false;
+                            }
+
+                            // The launcher's one motion is the selection
+                            // moving to its row, the list scrolling with it
+                            // on the same timing, the theme's medium on its
+                            // curve (the launcher audit's finding 33, Joel's
+                            // yes on 2026-10-26: it jumped, and the list
+                            // snapped a row at a time). Only a move among the
+                            // same rows glides: rows made afresh, by a letter,
+                            // a step or a refresh, are a new list, and its
+                            // selection is where it is at once, so typing
+                            // never glides. Everything else stays instant.
+                            property bool settled: false
+                            readonly property var shown: root.matches
+                            property string typedWas: ""
+                            // The rows as the kept ones read them, set by
+                            // keep partway through, so none reads past the end.
+                            property var rows: []
+                            onShownChanged: {
+                                const same = list.keep(root.matches);
+                                // The same rows read again leave a glide under
+                                // way; a letter typed never glides, even onto
+                                // the same rows.
+                                if (same && root.typed === list.typedWas) {
+                                    if (!picking.running)
+                                        list.pick(false);
+                                    return;
+                                }
+                                list.typedWas = root.typed;
+                                list.settled = false;
+                                // A glide under way ends where it was going,
+                                // never stopped short.
+                                scrolling.complete();
+                                list.pick(false);
+                                Qt.callLater(() => list.settled = true);
+                            }
+
+                            // Where the selection is drawn, set by pick
+                            // rather than bound, so a glide under way gives
+                            // way at once to rows made afresh.
+                            property real pickY: 0
+
+                            function pick(glide) {
+                                const to = list.rowTop(root.current) + list.rowHeight(root.current)
+                                    - Theme.space.xxxl;
+                                picking.stop();
+                                if (glide && to !== list.pickY) {
+                                    Report.say(`glides ${Math.round(list.pickY)} to ${Math.round(to)}`);
+                                    picking.to = to;
+                                    picking.start();
+                                } else
+                                    list.pickY = to;
+                            }
+
+                            NumberAnimation {
+                                id: picking
+                                target: list
+                                property: "pickY"
+                                duration: Theme.motion.medium
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.motion.curve
+                            }
+
+                            // Where a row's own place starts and ends in the
+                            // list, its gap above it included.
+                            function rowTop(at) {
+                                let top = 0;
+                                for (let each = 0; each < at && each < root.matches.length; each += 1)
+                                    top += Theme.space.xxxl + (root.matches[each].gap ? list.apart : 0);
+                                return top;
+                            }
+
+                            function rowHeight(at) {
+                                return Theme.space.xxxl + (root.matches[at]?.gap ? list.apart : 0);
+                            }
+
+                            // Scrolls just far enough to show the row, as
+                            // positionViewAtIndex's Contain does, gliding
+                            // there when the selection glides.
+                            function reveal(at) {
+                                if (!list.settled) {
+                                    list.positionViewAtIndex(at, ListView.Contain);
+                                    return;
+                                }
+                                // From where a glide under way is going, so a
+                                // second key while it runs goes on from there.
+                                const from = scrolling.running ? scrolling.to : list.contentY;
+                                const top = list.originY + list.rowTop(at);
+                                const bottom = top + list.rowHeight(at);
+                                const to = top < from ? top
+                                    : bottom > from + list.height ? bottom - list.height : from;
+                                if (to === from)
+                                    return;
+                                scrolling.stop();
+                                scrolling.to = to;
+                                scrolling.start();
+                            }
+
+                            NumberAnimation {
+                                id: scrolling
+                                target: list
+                                property: "contentY"
+                                duration: Theme.motion.medium
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.motion.curve
+                            }
+
+                            // The selection itself, under the rows, which
+                            // draw no fill of their own here (Choice's fills).
+                            Rectangle {
+                                id: picked
+
+                                // Among the rows, so it scrolls with them:
+                                // a child of the list itself stayed put as
+                                // the list scrolled, and sat as far below
+                                // its row as the list had gone down.
+                                parent: list.contentItem
+                                z: -1
+                                width: list.width
+                                height: Theme.space.xxxl
+                                y: list.pickY
+                                visible: root.current >= 0 && root.current < root.matches.length
+                                radius: Theme.inner
+                                color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                            }
 
                             delegate: Item {
                                 id: entry
 
-                                required property var modelData
                                 required property int index
+                                // What it says now, read by its place, so a
+                                // row kept across a refresh says the new. A
+                                // row let go has no place (Qt gives it -1)
+                                // until it's destroyed, a moment later, and
+                                // says what it last said till then, since
+                                // read by a place it hasn't, it said nothing
+                                // and every binding on it failed.
+                                readonly property var modelData: entry.index >= 0
+                                    ? list.rows[entry.index] : entry.said
+                                property var said: ({})
+                                onModelDataChanged: {
+                                    if (entry.index >= 0)
+                                        entry.said = entry.modelData;
+                                }
+                                Component.onCompleted: root.rowsDrawn += 1
                                 // What it's inside, whose glyph an act of its
                                 // own without one wears.
                                 readonly property var thing: root.held.length > 0
@@ -2607,11 +3497,13 @@ Scope {
                                 // Its own glyph, or its thing's, for an act.
                                 readonly property bool own: (modelData.glyph ?? "") !== ""
                                 // Holding more (an answer's parts, a row of rows, a
-                                // collection, a part whose verb is "more") before
-                                // doing, and a figure only once it does nothing
-                                // else (Provider.qml's copyRow).
+                                // collection, a part whose verb is "more", a figure
+                                // that copies and holds more) before doing, and a
+                                // figure only once it does nothing else
+                                // (Provider.qml's copyRow and holderRow).
                                 readonly property bool holds: !!(modelData.opens
-                                    || modelData.nested || modelData.verb === "more")
+                                    || modelData.nested || modelData.verb === "more"
+                                    || modelData.figure === true && modelData.targets)
                                 readonly property string sort: holds ? "holds"
                                     : modelData.figure === true && !modelData.verbs ? "figure"
                                     : "act"
@@ -2622,6 +3514,7 @@ Scope {
                                 Choice {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
+                                    fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
                                     // A colour's swatch wears the colour itself.
@@ -2632,6 +3525,7 @@ Scope {
                                     sort: entry.sort
                                     graph: entry.modelData.graph ?? null
                                     figures: list.figures
+                                    sides: list.sides
                                     name: selected ? entry.modelData.name
                                         : root.marked(entry.modelData)
                                     chord: entry.modelData.chord
@@ -2653,8 +3547,11 @@ Scope {
                         // nothing found, it says so. A field asking for words has
                         // only space below it.
                         Choice {
-                            readonly property var inside: root.held.length > 0
-                                ? root.held[root.held.length - 1].row.from ?? null : null
+                            id: nothingShown
+
+                            readonly property var holder: root.held.length > 0
+                                ? root.held[root.held.length - 1].row : null
+                            readonly property var inside: holder?.from ?? null
                             visible: root.matches.length === 0 && root.answer === null
                                 && root.asking === null
                             glyph: root.typed === "" ? Theme.glyph.greeting
@@ -2663,99 +3560,16 @@ Scope {
                             quiet: true
                             name: root.typed !== ""
                                 ? `Nothing answers to \u201c${root.typed}\u201d.`
+                                : holder?.empty ? holder.empty
                                 : inside?.collection
                                     ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
                                 : "A window, a program, an action, or what a key does."
                         }
                     }
 
-                    // A picture copied, as it is, while its row is selected:
-                    // in its own shape, no wider than the rows nor taller
-                    // than six of them, aligned with the footer's words, its
-                    // corners a part's, and the raised colour until it's
-                    // drawn, as a song's cover is in a notice.
-                    Item {
-                        id: preview
-
-                        readonly property var row: root.selected
-                        readonly property string picture: row ? row.picture ?? "" : ""
-                        readonly property real room: width - 2 * Theme.space.l
-                        readonly property real most: 6 * Theme.space.xxxl
-                        // Its own width and height, or a square for one whose
-                        // type didn't say them.
-                        readonly property real across: row && row.across > 0 ? row.across : most
-                        readonly property real down: row && row.down > 0 ? row.down : most
-                        readonly property real shrunk: Math.min(1, room / across, most / down)
-
-                        width: parent.width
-                        height: visible ? frame.height + Theme.space.m : 0
-                        visible: picture !== ""
-
-                        Rectangle {
-                            id: frame
-                            x: Theme.space.l
-                            y: Theme.space.m
-                            width: Math.round(preview.across * preview.shrunk)
-                            height: Math.round(preview.down * preview.shrunk)
-                            radius: Theme.inner
-                            color: drawn.status === Image.Ready ? "transparent" : Theme.raised
-
-                            Image {
-                                id: drawn
-                                anchors.fill: parent
-                                source: preview.picture === "" ? "" : `file://${preview.picture}`
-                                asynchronous: true
-                                fillMode: Image.PreserveAspectFit
-                                sourceSize.width: 2 * width
-                                sourceSize.height: 2 * height
-                                layer.enabled: true
-                                layer.effect: MultiEffect {
-                                    maskEnabled: true
-                                    maskSource: corners
-                                }
-                                onStatusChanged: {
-                                    if (status === Image.Ready)
-                                        Report.say(`showed ${preview.row.name}`);
-                                }
-                            }
-
-                            Rectangle {
-                                id: corners
-                                anchors.fill: parent
-                                radius: Theme.inner
-                                visible: false
-                                layer.enabled: true
-                            }
-                        }
-                    }
-
-                    // A row's whole words, while it's selected, when one line
-                    // cuts them short: a past notice's summary and body, wrapped
-                    // below the rows as a picture is shown, at most six lines,
-                    // aligned with the footer's words. Joel couldn't tell what
-                    // a notice had said from its one line.
-                    Text {
-                        id: reading
-
-                        readonly property string said: root.selected
-                            ? root.selected.reads ?? "" : ""
-
-                        x: Theme.space.l
-                        width: parent.width - 2 * Theme.space.l
-                        topPadding: Theme.space.m
-                        // The column skips it while it's hidden. A height bound
-                        // to its own layout would loop, since elided text lays
-                        // out to the height it's given.
-                        visible: said !== ""
-                        text: said
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 6
-                        elide: Text.ElideRight
-                        color: Theme.text
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.large
-                    }
+                    // A picture, or a row's whole words, show in the drawer
+                    // beside the card, never below the rows, so the card's
+                    // height never changes with the selection.
 
                     // The foot, one line, the one place that teaches, so the
                     // rows stay clean. On the right, what Return does here,
@@ -2770,7 +3584,11 @@ Scope {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
-                        readonly property var told: root.keysFor(choice)
+                        // A parting word stands where Return was, its
+                        // mark in the success colour.
+                        readonly property var told: root.parting !== ""
+                            ? [[Theme.glyph.done, root.parting, Theme.success]]
+                            : root.keysFor(choice)
                         // As the foot says them: Return last, at the right
                         // end, the rest before it. Return first, in a place
                         // kept for the widest set, left holes after the keys
@@ -2798,6 +3616,9 @@ Scope {
                                 return "";
                             if (choice.state)
                                 return choice.state();
+                            const once = root.onceCalled(choice);
+                            if (once !== "")
+                                return once;
                             if ((choice.note ?? "") !== "")
                                 return choice.note;
                             if (choice.plain && root.answer)
@@ -2831,8 +3652,9 @@ Scope {
                         // typed, held or asked, so it's always where he
                         // looks for it. As room runs short, each says its
                         // least, then by collapse rank, lowest first, its
-                        // glyph alone, and only then do they give way, in
-                        // that order (launcher/Standing.js). Two
+                        // glyph alone, and a glyph never gives way
+                        // (launcher/Standing.js). Each keeps the room it
+                        // has needed since the launcher opened. Two
                         // facts side by side under one glyph (the day's
                         // AI spend and the agents, both AI's) wear it
                         // once.
@@ -2855,8 +3677,16 @@ Scope {
                             // Read no longer than the shortest they've had to
                             // since the launcher opened (root.footStage), so
                             // they change their form once, not back and forth.
+                            // The room a fact takes: what it says, or the
+                            // most it's said that way since the launcher
+                            // opened (root.factsWidest).
+                            function place(fact) {
+                                return Math.max(measure.advanceWidth(fact.said),
+                                    root.factsWidest[`${fact.entry.name}:${fact.way}`] ?? 0);
+                            }
+
                             readonly property var fit: {
-                                const wide = facts => facts.reduce((sum, fact) => sum + measure.advanceWidth(fact.said), 0)
+                                const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
                                 return Standing.fittedFrom(facts, told => wide(told) <= foot.room,
                                     root.footStage);
@@ -2870,6 +3700,25 @@ Scope {
                             function noteStage() {
                                 if (root.open && foot.room > 0 && fit.stage > root.footStage)
                                     root.footStage = fit.stage;
+                                if (!root.open)
+                                    return;
+                                const widest = Object.assign({}, root.factsWidest);
+                                let grew = false;
+                                for (const fact of kept) {
+                                    // By its name, which each has and
+                                    // none shares: by its label, the time
+                                    // and the date, which have none, kept
+                                    // one room, and the time kept the
+                                    // date's once the date gave way.
+                                    const key = `${fact.entry.name}:${fact.way}`;
+                                    const now = measure.advanceWidth(fact.said);
+                                    if (now > (widest[key] ?? 0)) {
+                                        widest[key] = now;
+                                        grew = true;
+                                    }
+                                }
+                                if (grew)
+                                    root.factsWidest = widest;
                             }
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
@@ -2891,6 +3740,7 @@ Scope {
                                 Text {
                                     required property var modelData
 
+                                    width: standing.place(modelData)
                                     text: modelData.said
                                     textFormat: Text.PlainText
                                     // As the margin's mark wears it (Margin.qml).
@@ -2907,7 +3757,7 @@ Scope {
                             x: foot.width - Theme.space.l - implicitWidth
                             anchors.verticalCenter: parent.verticalCenter
                             // The selected row's keys, Return last in its
-                            // place (footVerbWidest), the rest close by.
+                            // place (footReturnWidest), the rest close by.
                             keys: foot.shown
                             endsRight: true
                             widths: foot.shown.map((key, at) => at === foot.shown.length - 1
@@ -2916,6 +3766,17 @@ Scope {
                     }
                 }
             }
+        }
+
+        // Out of the card's right side, top aligned and as tall as it.
+        Drawer {
+            id: drawerCard
+            x: card.reach + root.width + root.drawerGap
+            y: card.reach
+            width: root.drawerWidth
+            tall: card.height
+            out: root.drawerOut
+            given: root.drawerShows
         }
     }
 }

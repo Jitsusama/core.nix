@@ -22,11 +22,23 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "KeyGroups.js" as KeyGroups
 
 Provider {
     id: provider
 
     what: "window"
+
+    // The programs a terminal's window can be running, by the layer of keys
+    // its title gives it (KeyGroups.js's over), as their glyphs know them.
+    readonly property var inTerminal: ({ pi: "pi", neovim: "nvim", btop: "btop" })
+
+    // A window's glyph: its program's, or, in a terminal, that of the
+    // program its title says it's running.
+    function glyphOf(window, entry) {
+        const running = inTerminal[KeyGroups.over(window.app_id ?? "", window.title ?? "")[0]];
+        return programGlyph(running ?? (entry ? entry.id : window.app_id));
+    }
 
     collection: Words.collection("windows", { searched: false })
 
@@ -143,7 +155,7 @@ Provider {
                     owner: Fuzzy.prepare(program),
                     verb: "switch",
                     name: title,
-                    glyph: programGlyph(entry ? entry.id : window.app_id),
+                    glyph: provider.glyphOf(window, entry),
                     hue: "program",
                     side: [title === program ? "" : program, where]
                         .filter(part => part !== "").join(" \u00b7 "),
@@ -200,6 +212,17 @@ Provider {
             glyph: Words.glyph(key, state),
             hue: "action"
         }, fields));
+    }
+
+    // What can be done to a window, as its own row holds it, for the same
+    // window shown elsewhere, as among its program's (Applications.qml), so
+    // one thing has one set of insides wherever it shows (Joel, 2026-10-26).
+    function actsOf(window, entry) {
+        const program = entry ? entry.name : (window.app_id ?? "");
+        const title = provider.tidy(window.title ?? "", program) || program;
+        const below = entry
+            ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
+        return provider.verbs(window, title, program, below);
     }
 
     // What can be done to a window, the likeliest first.

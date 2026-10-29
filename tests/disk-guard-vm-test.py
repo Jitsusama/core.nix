@@ -228,6 +228,31 @@ def test_the_accounts_guard_watches_who_opens_each_targets_builds(on_test_bands:
     )
 
 
+def test_a_target_in_a_subvolume_is_offered_and_one_in_a_read_only_snapshot_isnt(
+    on_test_bands: Account, values: dict[str, Any]
+) -> None:
+    """A target in a Btrfs subvolume is offered; one in a read-only snapshot of it isn't.
+
+    A subvolume has a device number of its own, as a mount does, and the work broker clones
+    each tree as one, so a walk that stopped at every change of device never saw their builds.
+    A read-only snapshot can't be emptied, so it's left out. The subvolumes go once it's seen.
+    """
+    machine, clone, frozen = on_test_bands.machine, "/home/joel/src/clone", "/home/joel/src/frozen"
+    explain = f"{GUARD} explain {{}}/target --config {values['userConfig']}"
+    machine.succeed(f"btrfs subvolume create {clone} && chown joel:users {clone}")
+    try:
+        on_test_bands.run(f"cargo init -q --lib --vcs none {clone}")
+        on_test_bands.run(f"cd {clone} && cargo build -q --offline")
+        machine.succeed(f"btrfs subvolume snapshot -r {clone} {frozen}")
+        offered = on_test_bands.run(explain.format(clone))
+        assert offered.startswith(f"{clone}/target: "), offered
+        left = on_test_bands.run(explain.format(frozen))
+        assert left.startswith("No source offers"), left
+    finally:
+        for subvolume in (frozen, clone):
+            machine.succeed(f"! test -e {subvolume} || btrfs subvolume delete {subvolume}")
+
+
 def test_at_pressure_an_idle_target_goes_and_a_fresh_one_and_a_cache_stay(
     on_test_bands: Account, filling: Callable[[float], None]
 ) -> None:

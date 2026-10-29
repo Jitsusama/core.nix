@@ -40,7 +40,7 @@ Piece {
     role: silent ? "warning" : said?.role ?? "text"
     wants: said !== null && !silent && said.wants === true
     value: silent ? "not watching" : shown?.value ?? ""
-    title: said?.title ?? "AI spend"
+    title: said?.title ?? "AI Spend"
     hint: silent ? "Nothing is watching AI spend" : shown?.hint ?? value
     context: silent ? "the spend-watch unit says why" : shown?.context ?? ""
     actions: (silent ? [] : (said?.actions ?? []).map(action => ({

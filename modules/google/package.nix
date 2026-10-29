@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Holds the Google account for the desktop: the meetings Joel has, for the shell";
+    description = "Holds the Google account for the desktop: Joel's meetings and the mail that wants him, for the shell";
     license = lib.licenses.mit;
     mainProgram = "google";
     # It serves the shell over a Unix socket, on the Linux desktop.

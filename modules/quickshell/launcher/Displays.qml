@@ -229,6 +229,7 @@ Provider {
         return {
             headline: `set the screen to ${kept}%`,
             verb: Words.command("command:brightness").verb,
+            stays: true,
             run: () => provider.brighten(kept),
             rows: [],
             note: `now ${light.share}%`
@@ -331,13 +332,15 @@ Provider {
     onAllChanged: changed()
 
     // A choice wears the theme's mark of the setting it's for, by name.
-    function choice(key, name, mark, inUse, run) {
+    // Setting it keeps the launcher, the setting saying what it's at now.
+    function choice(key, name, mark, chosen, run) {
         return thing({
             key: `verb:display-${key}`,
             name: name,
             glyph: Theme.glyph[mark],
             hue: "action",
-            side: inUse ? "in use" : "",
+            side: chosen ? "chosen" : "",
+            stays: true,
             run: run
         });
     }
@@ -381,12 +384,12 @@ Provider {
     // another is on, then what its EDID says.
     function verbs(output) {
         if (output.logical === null)
-            return [choice("on", "Turn it on", "display", false, () => change(output, "On"))]
+            return [choice("on", "Turn It On", "display", false, () => change(output, "On"))]
                 .concat(factRows(output));
         const rows = setUp(output);
         // The last display on stays on, or nothing would show the launcher.
         if (lit.length > 1)
-            rows.push(choice("off", "Turn it off", "displayOff", false,
+            rows.push(choice("off", "Turn It Off", "displayOff", false,
                 () => change(output, "Off")));
         return rows.concat(factRows(output));
     }
@@ -512,7 +515,6 @@ Provider {
             asking: light && !roomTried && sensor() !== "",
             live: light ? provider : null,
             headline: part.side,
-            copy: "",
             glyph: Theme.glyph.display,
             note: named(focused),
             rows: others.length === 0 ? (part.verbs ? part.verbs() : [])

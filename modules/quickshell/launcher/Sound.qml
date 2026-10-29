@@ -1,10 +1,10 @@
 // Sound, a collection: the devices sound goes out of and comes in through,
-// outputs then inputs, the one in use first in each, every glyph saying
+// outputs then inputs, the one chosen first in each, every glyph saying
 // what kind of device it is, its volume drawn as a bar and said in the
 // footer. A jack with nothing plugged into it, as the headphones' while
-// none are, isn't listed unless it's the one in use, which says so, or
+// none are, isn't listed unless it's the one chosen, which says so, or
 // what's said of its jack can no longer be trusted to be current. Return
-// uses one, or mutes or unmutes the one in use, and the right arrow holds
+// uses one, or mutes or unmutes the one chosen, and the right arrow holds
 // its parts, each named first and saying how it stands:
 //
 // - an output: its Level going out, live while it shows; its Volume, in
@@ -113,20 +113,20 @@ Provider {
             && !node.properties["node.link-group"] && node.properties["stream.monitor"] !== "true";
     }
 
-    function inUse(node) {
+    function chosen(node) {
         return node === (node.isSink ? Pipewire.defaultAudioSink : Pipewire.defaultAudioSource);
     }
 
     // A device is listed while there's something to hear it through: a jack
     // desk-facts says has nothing plugged in isn't, as the headphones
-    // aren't while none are, unless it's the one in use, which says so, or
+    // aren't while none are, unless it's the one chosen, which says so, or
     // what desk-facts said is no longer current (jacksCurrent), when it's
     // listed rather than hidden. A display's output desk-facts says nothing
     // of waits for a display.
     function listed(node) {
         const told = factsOf(node);
         if (Sounds.plugged(told) !== "")
-            return !Sounds.hidden(told, jacksCurrent) || inUse(node);
+            return !Sounds.hidden(told, jacksCurrent) || chosen(node);
         return displayed || !display(node);
     }
 
@@ -143,7 +143,8 @@ Provider {
     // jack, and a headset's microphone is named as its (Sounds.js called).
     function named(node) {
         const own = nicknamed(node);
-        const called = Sounds.called(node.name);
+        const shared = inputs.includes(node) && outputs.some(output => nicknamed(output) === own);
+        const called = Sounds.called(node.name, shared);
         return called === "" ? own : Words.name(`sound:called:${called}`, "", { device: own });
     }
 
@@ -189,28 +190,27 @@ Provider {
     }
 
     function made(node) {
-        const used = inUse(node);
+        const used = chosen(node);
         const muted = node.audio.muted;
         const note = [said("volume", { level: percent(node.audio.volume) })]
             .concat(muted ? [said("muted")] : [],
                 Sounds.hidden(factsOf(node), jacksCurrent) ? [said("unplugged")] : [],
                 switches(node) ? [said("to-calls")] : [])
             .join(" \u00b7 ");
-        return member({
+        // Return steps in, as every device's does, with its likeliest act
+        // first inside: using it, or for the one chosen, whether it's
+        // Muted. A Return that muted it would do the opposite as it
+        // flipped, an act hidden in the row (docs/design.md, a switch is
+        // one row).
+        return entering(member({
             key: `sound:${node.name}`,
-            // Return does what its first act would: use it, or mute or
-            // unmute the one in use.
-            verb: !used ? Words.verb("verb:sound-use")
-                : Words.verb("verb:sound-mute", muted ? "muted" : ""),
             name: named(node),
             glyph: worn(node),
             hue: "machine",
-            side: used ? said("in-use") : "",
+            side: used ? said("chosen") : "",
             graph: loudness(node),
-            note: note,
-            run: used ? () => provider.mute(node) : () => provider.use(node),
-            verbs: () => provider.verbs(node)
-        });
+            note: note
+        }), () => provider.verbs(node));
     }
 
     // What desk-facts knows of each card, by its ALSA id and direction; a
@@ -308,20 +308,21 @@ Provider {
             : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
     }
 
-    // A device's right arrow: using it, when it isn't the one in use, then
+    // A device's right arrow: using it, when it isn't the one chosen, then
     // its parts, and what the kernel says of its card.
     function verbs(node) {
         const using = node.isSink ? "" : "input";
-        const rows = inUse(node) ? [] : [thing({
+        const rows = chosen(node) ? [] : [thing({
             key: "verb:sound-use",
             verb: Words.verb("verb:sound-use", using),
             name: Words.name("verb:sound-use", using),
             glyph: glyph(kind(node)),
             hue: "action",
             note: switches(node) ? said("profile-switches") : "",
+            stays: true,
             run: () => provider.use(node)
         })];
-        const parts = [levelPart(node), volumePart(node), mutePart(node), programsPart(node),
+        const parts = [mutePart(node), levelPart(node), volumePart(node), programsPart(node),
             filterPart(node), portPart(node), channelsPart(node), profilePart(node),
             hardwarePart(node)];
         return rows.concat(parts.filter(part => part !== null), factRows(node));
@@ -445,12 +446,15 @@ Provider {
     }
 
     // An act on a device, as the vocabulary says it, in the state it's in.
+    // Each changes how something sounds, so it keeps the launcher, its row
+    // saying what it changed to.
     function act(key, state, fields) {
         return thing(Object.assign({
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state, fields.fill),
-            hue: "action"
+            hue: "action",
+            stays: true
         }, fields));
     }
 
@@ -476,7 +480,7 @@ Provider {
             fill: { level: percent(each) },
             glyph: Theme.glyph.volume,
             side: !node.audio.muted && Math.abs(node.audio.volume - each) < 0.005
-                ? said("in-use") : "",
+                ? said("chosen") : "",
             note: Sounds.decibels(each),
             run: () => {
                 node.audio.volume = each;
@@ -485,31 +489,37 @@ Provider {
         })));
     }
 
-    // Whether it's Muted: a setting, saying yes or no as Bluetooth's are,
-    // Mute and Unmute a step in, the one it is in use. Each keeps the words
-    // that found it before ("mute it").
+    // Whether it's Muted: one switch, keeping its name as it flips, its
+    // side saying yes or no (docs/design.md, "A switch is one row that
+    // keeps its name as it flips"). Return flips it and the launcher
+    // stays; its words still find it ("mute", "unmute").
     function mutePart(node) {
-        const muted = node.audio.muted;
-        return holderRow({
-            key: `sound:${node.name}:mute`,
+        return mutedSwitch(`sound:${node.name}:mute`, () => node.audio.muted,
+            () => provider.worn(node), () => provider.mute(node));
+    }
+
+    // The one Muted switch, a device's and a program's alike (VKCF3Z,
+    // 2026-10-29: one idea has one word). How it stands is read as it's
+    // drawn and as Return comes, so the row says what Return just did
+    // without being made again.
+    function mutedSwitch(key, muted, mark, flip) {
+        const row = thing({
+            key: key,
             name: Words.name("sound:mute"),
-            side: said(muted ? "yes" : "no"),
-            glyph: worn(node),
-            offers: true
-        }, () => [act("verb:sound-mute", "", {
-            glyph: provider.struck(node),
-            side: node.audio.muted ? provider.said("in-use") : "",
-            run: () => {
-                node.audio.muted = true;
-            }
-        }), act("verb:sound-mute", "muted", {
-            key: "verb:sound-unmute",
-            glyph: provider.glyph(provider.kind(node)),
-            side: node.audio.muted ? "" : provider.said("in-use"),
-            run: () => {
-                node.audio.muted = false;
-            }
-        })]);
+            hue: "action",
+            stays: true,
+            state: () => provider.said(muted() ? "yes" : "no"),
+            run: flip
+        });
+        Object.defineProperties(row, {
+            verb: {
+                enumerable: true,
+                get: () => Words.verb("sound:mute", muted() ? "muted" : "")
+            },
+            glyph: { enumerable: true, get: mark },
+            side: { enumerable: true, get: () => provider.said(muted() ? "yes" : "no") }
+        });
+        return row;
     }
 
     // The programs Playing through an output, or Recording from an input:
@@ -599,7 +609,7 @@ Provider {
         const first = streams[0];
         const paused = streams.every(stream => stream.properties["pulse.corked"] === "true");
         const key = `sound:${node.name}:program:${program.name}`;
-        return holderRow({
+        return thingRow({
             key: key,
             name: program.name,
             side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),
@@ -612,14 +622,13 @@ Provider {
                 state: () => provider.said("now", { level: provider.streamLevel(streams) }),
                 run: () => provider.turn(streams, by)
             });
-            const rows = [act("verb:program:mute", hushed(streams) ? "muted" : "", {
-                glyph: Words.glyph("verb:program:mute", hushed(streams) ? "muted" : ""),
-                run: () => {
-                    const muting = !provider.hushed(streams);
+            const hush = () => provider.hushed(streams);
+            const rows = [mutedSwitch(`${key}:mute`, hush,
+                () => Words.glyph("verb:program:mute", hush() ? "muted" : ""), () => {
+                    const muting = !hush();
                     for (const stream of streams.filter(each => !!each.audio))
                         stream.audio.muted = muting;
-                }
-            }), act("verb:program:louder", "", stepping(step)),
+                }), act("verb:program:louder", "", stepping(step)),
             act("verb:program:quieter", "", stepping(-step))];
             const rate = Sounds.rate(first.properties["node.rate"]);
             if (rate !== "")
@@ -673,7 +682,7 @@ Provider {
             return null;
         const id = node.isSink ? "tuning" : "voice";
         const key = `sound:${node.name}:${id}`;
-        return holderRow({
+        return thingRow({
             key: key,
             name: Words.name(`sound:${id}`),
             side: found.some(filter => provider.flowing(filter, node)) ? said("running")
@@ -722,7 +731,7 @@ Provider {
 
     // Its Port, when its card offers it several, as one card's analog
     // output offers its speakers and a headphone jack: a setting, saying
-    // the one in use, the others a step in, each saying when nothing's
+    // the one chosen, the others a step in, each saying when nothing's
     // plugged into it. Quickshell carries no card's ports, so pw-dump is
     // asked for them, once a device the sound server says has several is
     // stepped into, and again when a jack or the port changes.
@@ -821,7 +830,7 @@ Provider {
     function portPart(node) {
         const offered = portsOf[node.name] ?? [];
         const now = offered.find(port => port.active) ?? null;
-        // A port nothing's plugged into is no choice, unless it's in use.
+        // A port nothing's plugged into is no choice, unless it's chosen.
         const choosable = offered.filter(port => port.active || port.available !== "no");
         if (!routed(node) || now === null || choosable.length < 2)
             return null;
@@ -836,7 +845,7 @@ Provider {
             key: `verb:sound-port-${port.index}`,
             fill: { port: port.name },
             glyph: mark,
-            side: port.active ? provider.said("in-use") : "",
+            side: port.active ? provider.said("chosen") : "",
             note: port.available === "no" ? provider.said("unplugged") : "",
             run: () => provider.movePort(node, port)
         })));
@@ -930,9 +939,9 @@ Provider {
         }, () => rows);
     }
 
-    // In use first, then by name, outputs before inputs.
+    // The chosen first, then by name, outputs before inputs.
     function ordered(nodes) {
-        return nodes.slice().sort((a, b) => Number(inUse(b)) - Number(inUse(a))
+        return nodes.slice().sort((a, b) => Number(chosen(b)) - Number(chosen(a))
             || named(a).localeCompare(named(b)));
     }
 
@@ -1049,6 +1058,7 @@ Provider {
             headline: said("set", { device: named(out), level: `${share}%` }),
             verb: Words.command("command:volume").verb,
             glyph: worn(out),
+            stays: true,
             run: () => {
                 out.audio.volume = share / 100;
                 out.audio.muted = false;

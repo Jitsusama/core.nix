@@ -57,10 +57,12 @@ def test_graphics_buffers_read_back_are_counted_beside_it(machine: BaseMachine, 
     assert "backed up, by shared and caching" in counted, counted
     assert "read back, by thread, shared and caching" in counted, counted
     assert "kept resident by the shrinker as busy, by caching" in counted, counted
+    assert "held at once by the shrinker as busy, by caching" in counted, counted
     # The Intel driver is loaded, so none of its probes went missing, which bpftrace would have
     # warned of in the unit's journal.
     said = machine.succeed("journalctl --boot --unit 'niri-off-cpu@*'")
     assert "xe_bo_shrink" not in said, said
+    assert "xe_ttm_bo_destroy" not in said, said
 
 
 def test_each_sleep_is_said_with_its_kernel_stack(traced: str) -> None:
@@ -88,8 +90,11 @@ def test_a_wait_in_epoll_says_who_woke_it_and_through_which_file(traced: str) ->
 def test_a_sleep_says_the_timer_that_woke_it(traced: str) -> None:
     """A sleep says the timer that woke it."""
     sleeps = spells(traced, "nanosleep")
-    assert sleeps, traced
-    assert all("hrtimer_wakeup" in sleep.split("woken")[1] for sleep in sleeps), traced
+    # A waking can go unseen, as the trace ends or inside another probe, so only the sleeps
+    # whose waker was seen are held to it, as with the waits in epoll.
+    woken = [sleep for sleep in sleeps if "woken unseen" not in sleep]
+    assert len(woken) >= LEAST_SLEEPS, traced
+    assert all("hrtimer_wakeup" in sleep.split("woken")[1] for sleep in woken), traced
 
 
 def test_times_are_on_the_machines_monotonic_clock(machine: BaseMachine, traced: str) -> None:

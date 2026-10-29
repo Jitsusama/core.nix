@@ -81,13 +81,17 @@ in
       wantedBy = [ "power-profiles-daemon.service" ];
       path = [
         config.systemd.package
-        pkgs.power-profiles-daemon
         (lib.getBin pkgs.glib)
       ];
       serviceConfig = {
         ExecStart = "${lib.getExe pkgs.bash} ${./follow.sh} ${low}";
         Restart = "on-failure";
         RestartSec = 10;
+        # Where follow.sh says what it chose, for the shell to tell a
+        # profile picked by hand from its own. Kept over a restart, so the
+        # shell's watch on the file holds.
+        RuntimeDirectory = "power-profile";
+        RuntimeDirectoryPreserve = "yes";
       };
     };
   };

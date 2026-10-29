@@ -13,11 +13,11 @@ word that names a thing it doesn't hold, a name for something the
 vocabulary doesn't know, a glyph the theme hasn't got, a thing with no
 place: not in a category, nor a part of one, nor found inside another, and
 a name or an empty list's words in another case than the rest: a
-category's or a thing's name starts with a capital, as every row's does, and
-what an empty list says is a sentence. So does anything shown that Joel
+category's or a thing's name is in Title Case, as every title is, and what
+an empty list says is a sentence. So does anything shown that Joel
 wouldn't say: a program's or the system's own name (niri, PipeWire, the
 kernel), a name that reads its value first ("10 bit" rather than "Colour
-depth"), a unit written another way than the launcher's ("10-bit", "KB",
+Depth"), a unit written another way than the launcher's ("10-bit", "KB",
 "Mbit/s", "1000 a second" for "1000 Hz"), a thing's words said beside it
 in capitals, or a verb longer than a word but for a turn ("turn off").
 And so does the check itself, should one of those last rules stop refusing
@@ -57,7 +57,8 @@ def spoken(entry: Entry) -> list[tuple[str, str]]:
         said.extend((WORD, word) for word in state.get("hidden", []))
     # A collection's noun finds it as its words do (Launcher.qml's named).
     nouns = [entry["noun"]] if "noun" in entry else []
-    said.extend((WORD, word) for word in [*entry.get("words", []), *nouns])
+    # The names it had find it as its other words do (Launcher.qml's oldNames).
+    said.extend((WORD, word) for word in [*entry.get("words", []), *nouns, *entry.get("once", [])])
     said.extend((ANSWER, word) for word in entry.get("answers", []))
     return [(strength, plainly(word)) for strength, word in said]
 
@@ -153,7 +154,10 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
         homed = {"in", "of", "by"} & entry.keys()
         if entry["id"] not in placed and not homed:
             out.append(f"{entry['id']} has no place: no category holds it, nor anything else.")
-        if entry.get("by") and entry["by"] not in placed:
+        # What gives it may be held, or live inside a place, as The Call
+        # lives in Calls.
+        giver = things.get(entry.get("by", ""), {})
+        if entry.get("by") and entry["by"] not in placed and "in" not in giver:
             out.append(f"{entry['id']} is given by {entry['by']}, which has no place.")
         asked = {plainly(word) for word in entry.get("answers", [])}
         out.extend(
@@ -169,18 +173,39 @@ def capitalised(said: str) -> bool:
     return not said[:1].isalpha() or said[:1].isupper()
 
 
+# The words a title keeps small, but for its first and last (docs/glossary.md).
+SMALL = {"a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "by", "for", "with"}
+
+
+def titled(said: str) -> bool:
+    """Say whether a name is in Title Case, each side of a "\u00b7" a title of its own.
+
+    A word with no letter first (a placeholder, a number) or with a capital
+    inside (iPhone) is taken as it is.
+    """
+    for side in said.split(" \u00b7 "):
+        words = side.split()
+        for at, word in enumerate(words):
+            small = 0 < at < len(words) - 1 and word in SMALL
+            lowered = word[:1].isalpha() and not any(letter.isupper() for letter in word)
+            if lowered and not small:
+                return False
+    return True
+
+
 def miscased(vocabulary: Entry) -> list[str]:
     """Say what's shown in another case than the rest of the rows."""
     out = [
-        f"The {category['id']} category's name {category.get('name', '')!r} isn't capitalised."
+        f"The {category['id']} category's name {category.get('name', '')!r} isn't in Title Case."
         for category in vocabulary["categories"]
-        if not category.get("name") or not capitalised(category["name"])
+        if not category.get("name") or not titled(category["name"])
     ]
     for entry in vocabulary["things"]:
         out.extend(
-            f"{entry['id']}'s name {state['name']!r} isn't capitalised."
+            f"{entry['id']}'s {field} {state[field]!r} isn't in Title Case."
             for state in [entry, *entry.get("states", {}).values()]
-            if state.get("name") and not capitalised(state["name"])
+            for field in ("name", "part", "sure")
+            if state.get(field) and not titled(state[field])
         )
         empty = entry.get("empty", "")
         if empty and not (capitalised(empty) and empty.endswith(".")):
@@ -230,8 +255,11 @@ STRAY_UNITS = [
     (re.compile(r"(\d|\}) a second\b"), "a rate is written in Hz"),
 ]
 
-# A verb of two words is a turn, which says the way it goes.
+# A verb of two words is a turn, which says the way it goes, or one whose
+# second word is part of it ("log out"), as the launcher's foot keeps it
+# whole (Launcher.qml's `phrasal`).
 TURN = "turn"
+PHRASAL = {"in", "out", "back"}
 
 
 def shown(entry: Entry) -> list[tuple[str, str]]:
@@ -268,7 +296,8 @@ def unsaid(vocabulary: Entry) -> list[str]:
     for entry in vocabulary["things"]:
         for state in [entry, *entry.get("states", {}).values()]:
             verb = state.get("verb", "").split()
-            if len(verb) > 1 and verb[0] != TURN:
+            whole = len(verb) > 1 and verb[1] in PHRASAL and not verb[2:]
+            if len(verb) > 1 and verb[0] != TURN and not whole:
                 out.append(f"{entry['id']}'s verb {' '.join(verb)!r} is more than a word.")
     return out
 
@@ -285,7 +314,7 @@ REFUSED: list[tuple[str, Entry]] = [
         "bits a second spelt out",
         {"id": "bad:bits-a-second", "name": "Speed", "said": "40 Mbit/s"},
     ),
-    ("a rate a second", {"id": "bad:rate", "name": "Polling rate", "said": "1000 a second"}),
+    ("a rate a second", {"id": "bad:rate", "name": "Polling Rate", "said": "1000 a second"}),
     ("a side word in capitals", {"id": "bad:side", "name": "Lid", "said": "Open"}),
     (
         "a state's side word in capitals",
@@ -303,8 +332,8 @@ REFUSED_COMMAND: Entry = {"id": "bad:command", "start": "", "form": "ip", "says"
 # a turn, the one verb of two words.
 ALLOWED: Entry = {
     "things": [
-        {"id": "good:depth", "name": "Colour depth", "said": "10 bit", "hidden": ["niri"]},
-        {"id": "good:pinch", "name": "Pinch to zoom", "said": "kernels of corn"},
+        {"id": "good:depth", "name": "Colour Depth", "said": "10 bit", "hidden": ["niri"]},
+        {"id": "good:pinch", "name": "Pinch to Zoom", "said": "kernels of corn"},
         {
             "id": "good:units",
             "name": "Speed",
@@ -332,7 +361,27 @@ def refuses() -> list[str]:
     if len(unsaid({"things": [], "commands": [REFUSED_COMMAND]})) != 1:
         out.append(f"The check lets a command's program through: {REFUSED_COMMAND}.")
     out.extend(f"The check refuses what it shouldn't: {said}" for said in unsaid(ALLOWED))
+    out.extend(f"The check takes {name!r} for Title Case." for name in SENTENCES if titled(name))
+    out.extend(
+        f"The check refuses {name!r}, which is in Title Case."
+        for name in TITLES
+        if not titled(name)
+    )
     return out
+
+
+# Names read as sentences, which titled refuses, and titles beside them it
+# takes: small words inside, a placeholder, a capital inside, two sides.
+SENTENCES = ["Keep awake", "Waiting on you", "Power saver \u00b7 chosen", "Turn it on"]
+TITLES = [
+    "Keep Awake",
+    "Waiting on You",
+    "Connect It with a New Password",
+    "Lock {layer} On",
+    "Pair an iPhone",
+    "Record This Window \u00b7 {title}",
+    "Part Of",
+]
 
 
 def main(argv: list[str]) -> None:

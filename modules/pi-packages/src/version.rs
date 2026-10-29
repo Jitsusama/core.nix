@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 use crate::check;
 use crate::config::{Config, Package};
-use crate::inuse;
+use crate::{inuse, loaded};
 
 /// The variables a build keeps from the environment it was started in:
 /// who and where the account is, and how TLS is trusted. Everything else,
@@ -84,6 +84,12 @@ impl Place {
     #[must_use]
     pub fn former_versions(&self) -> PathBuf {
         self.dir.join("releases")
+    }
+
+    /// What each running pi says it loaded (loaded.rs).
+    #[must_use]
+    pub fn loaded(&self) -> PathBuf {
+        self.dir.join("loaded")
     }
 
     /// When each version `current` left was retired, as a file's time.
@@ -316,37 +322,64 @@ fn retire(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> {
         .map_err(|error| format!("{}: {error}", marker.display()))
 }
 
-/// Remove each version `current` left more than `keep` ago that no
-/// process uses, and anything a stopped build left, in the versions'
-/// folder and the one they were kept in before, which goes once empty.
+/// Remove each version no process uses or runs, but `current` and the
+/// version it left last, which a reload just made or a step back needs;
+/// and anything a stopped build left. Both the versions' folder and the
+/// one they were kept in before are swept, the second going once empty.
 /// Says how many went.
+///
+/// A version goes with the pis running it, not with its age: a cache of
+/// code kept past them is only disk.
 ///
 /// # Errors
 ///
 /// Says which version could not be read or removed.
-pub fn prune(config: &Config, place: &Place, now: SystemTime) -> Result<usize, String> {
+pub fn sweep(place: &Place) -> Result<usize, String> {
     // By where `current` leads rather than its commit's name, since one
     // commit can sit in both folders.
     let current = fs::canonicalize(place.current()).ok();
-    let mut removed = prune_in(config, place, &place.versions(), current.as_deref(), now)?;
-    let former = place.former_versions();
-    removed += prune_in(config, place, &former, current.as_deref(), now)?;
+    let mut left = Vec::new();
+    for folder in [place.versions(), place.former_versions()] {
+        left.extend(versions_left(place, &folder, current.as_deref())?);
+    }
+    let last = left
+        .iter()
+        .max_by_key(|version| version.since)
+        .map(|version| version.path.clone());
+    let said = loaded::read(place);
+    let mut removed = 0;
+    for version in left {
+        if Some(&version.path) == last.as_ref() || inuse::in_use(&version.path, &said) {
+            continue;
+        }
+        let path = &version.path;
+        fs::remove_dir_all(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        let _ = fs::remove_file(place.retired().join(&version.name));
+        removed += 1;
+    }
     // Not there, or still holding a version something uses: both fine.
-    let _ = fs::remove_dir(&former);
+    let _ = fs::remove_dir(place.former_versions());
     Ok(removed)
 }
 
-fn prune_in(
-    config: &Config,
+/// A version `current` has left, and when it left it.
+struct Left {
+    name: String,
+    path: PathBuf,
+    since: SystemTime,
+}
+
+/// The versions in `folder` other than `current`, removing what a stopped
+/// build left there.
+fn versions_left(
     place: &Place,
     folder: &Path,
     current: Option<&Path>,
-    now: SystemTime,
-) -> Result<usize, String> {
+) -> Result<Vec<Left>, String> {
     let Ok(entries) = fs::read_dir(folder) else {
-        return Ok(0);
+        return Ok(Vec::new());
     };
-    let mut removed = 0;
+    let mut left = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = entry.path();
@@ -360,19 +393,18 @@ fn prune_in(
             continue;
         }
         let marker = place.retired().join(&name);
-        let Ok(since) = fs::metadata(&marker).and_then(|meta| meta.modified()) else {
-            // Left by something other than a swap: its clock starts now.
-            retire(place, &name, now)?;
-            continue;
+        let since = if let Ok(since) = fs::metadata(&marker).and_then(|meta| meta.modified()) {
+            since
+        } else {
+            // Left by something other than a swap: it left when it was
+            // last written, as near as can be told.
+            let written = fs::metadata(&path)
+                .and_then(|meta| meta.modified())
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            retire(place, &name, written)?;
+            written
         };
-        let old = now
-            .duration_since(since)
-            .is_ok_and(|age| age >= config.keep);
-        if old && !inuse::in_use(&path) {
-            fs::remove_dir_all(&path).map_err(|error| format!("{}: {error}", path.display()))?;
-            let _ = fs::remove_file(&marker);
-            removed += 1;
-        }
+        left.push(Left { name, path, since });
     }
-    Ok(removed)
+    Ok(left)
 }

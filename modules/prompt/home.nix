@@ -1,6 +1,6 @@
 # Joel's zsh prompt (prompt.zsh): where he is and where his keys go, then
 # what's worth acting on, giving way a step at a time as the window
-# narrows. The theme's roles and marks are written into its header here,
+# narrows. The theme's colours and marks are written into its header here,
 # so it starts nothing to find them, and git's state comes from git-engine
 # through gitstatus's plugin.
 # It's kept as a file in the account as well, which is what kitty's ssh
@@ -12,7 +12,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles glyphs;
+  inherit (config.jitsusama.theme) colours marks;
   cfg = config.jitsusama.prompt;
 
   quote = lib.escapeShellArg;
@@ -26,9 +26,9 @@ let
 
   header = lib.concatLines [
     "# Written from jitsusama.theme and jitsusama.prompt."
-    (table "_prompt_hue" roles)
-    (table "_prompt_glyph" (lib.mapAttrs (_: mark: mark.glyph) glyphs))
-    (table "_prompt_console" (lib.mapAttrs (_: mark: mark.console) glyphs))
+    (table "_prompt_hue" colours)
+    (table "_prompt_glyph" (lib.mapAttrs (_: mark: mark.glyph) marks))
+    (table "_prompt_console" (lib.mapAttrs (_: mark: mark.console) marks))
     "typeset -ga _prompt_roots=(${lib.concatMapStringsSep " " quote cfg.roots})"
     "typeset -ga _prompt_steps=(${lib.concatStringsSep " " cfg.givesWay})"
     "typeset -gi _prompt_long=${toString cfg.longRun}"

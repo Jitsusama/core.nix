@@ -43,15 +43,15 @@ Provider {
     }
 
     // A choice a step into a setting, as the vocabulary names it.
-    function choice(key, fill, inUse, glyph, run) {
+    function choice(key, fill, chosen, glyph, run) {
         return thing({
             key: key,
             verb: Words.verb(key),
             name: Words.name(key, "", fill),
             glyph: glyph,
             hue: "action",
-            side: inUse ? "in use" : "",
-            now: true,
+            side: chosen ? "chosen" : "",
+            stays: true,
             run: run
         });
     }
@@ -71,7 +71,7 @@ Provider {
             name: Words.name(key, state),
             glyph: Theme.glyph.lamp,
             hue: "action",
-            now: true,
+            stays: true,
             run: run
         });
     }
@@ -103,7 +103,7 @@ Provider {
     }
 
     // A step into the desk light's Brightness: a step brighter or dimmer,
-    // then each level, the one it's at in use.
+    // then each level, the one it's at chosen.
     function brightnesses() {
         const at = () => DeskLight.light.percent;
         return [
@@ -157,6 +157,7 @@ Provider {
         };
         return Object.assign(done, {
             verb: Words.command("command:desk").verb,
+            stays: true,
             rows: shown.rows,
             note: `now ${deskLit()}`
         });
@@ -172,6 +173,7 @@ Provider {
             headline: `make the desk light ${way}, ${kept} K`,
             verb: Words.command("command:desk").verb,
             run: () => DeskLight.warm(kept),
+            stays: true,
             rows: shown.rows,
             note: `now ${deskLit()}`
         };
@@ -182,5 +184,15 @@ Provider {
     function level(now, most) {
         return { shape: "bar", values: [most > 0 ? Math.max(0, Math.min(1, now / most)) : 0],
             warn: false };
+    }
+
+    // Its acts keep the launcher, so what they changed is said at once,
+    // wherever its rows are shown.
+    Connections {
+        target: DeskLight
+
+        function onLightChanged() {
+            provider.answered();
+        }
     }
 }

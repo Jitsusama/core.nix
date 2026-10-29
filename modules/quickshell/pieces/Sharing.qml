@@ -26,9 +26,10 @@ Piece {
     context: casts.length === 1 ? Quiet.shared ? "notices are held" : "notices still show"
         : seen.join(", ")
     actions: [{
-        glyph: Theme.glyph.displayOff,
-        name: casts.length === 1 ? "Stop sharing" : "Stop sharing all of it",
-        verb: "stop sharing",
+        glyph: Words.glyph("verb:on:sharing:stop"),
+        name: Words.name("verb:on:sharing:stop", casts.length === 1 ? "" : "all"),
+        verb: Words.verb("verb:on:sharing:stop"),
+        stays: true,
         run: () => {
             for (const session of new Set(casts.map(cast => cast.session_id)))
                 Niri.act({ StopCast: { session_id: session } });

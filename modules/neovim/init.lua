@@ -116,15 +116,15 @@ require('status').setup()
 -- How problems look, set as vim.diagnostic first loads, since nothing
 -- needs it until something reports one. The sign column marks a problem as
 -- the status line counts it, with the theme's marks.
-local glyphs = require('theme').glyphs
+local marks = require('theme').marks
 local signs
 require('later').when('vim.diagnostic', function(diagnostic)
   signs = {
     text = {
-      [diagnostic.severity.ERROR] = glyphs.failed,
-      [diagnostic.severity.WARN] = glyphs.caution,
-      [diagnostic.severity.INFO] = glyphs.note,
-      [diagnostic.severity.HINT] = glyphs.suggestion,
+      [diagnostic.severity.ERROR] = marks.failed,
+      [diagnostic.severity.WARN] = marks.caution,
+      [diagnostic.severity.INFO] = marks.note,
+      [diagnostic.severity.HINT] = marks.suggestion,
     },
   }
   diagnostic.config({
@@ -173,6 +173,44 @@ vim.api.nvim_create_autocmd('BufReadPost', {
     if mark[1] > 0 and mark[1] <= lcount then
       pcall(vim.api.nvim_win_set_cursor, 0, mark)
     end
+  end,
+})
+
+-- Each file Neovim opens goes on the desktop's list of files opened lately,
+-- where the desktop keeps one (open-with's recent-files), for the
+-- launcher's Recent inside Neovim. It's said as each comes into view, so
+-- going back to one already open counts too, and not again while it's the
+-- one said last. It's said in the background, so nothing waits on it, and
+-- one at a time, since each writes the whole list anew and two at once
+-- would lose one: the files opened meanwhile are said once it's done.
+local said_last
+local saying = false
+local waiting = {}
+local function say()
+  if saying or #waiting == 0 then
+    return
+  end
+  saying = true
+  local files = waiting
+  waiting = {}
+  vim.system(vim.list_extend({ 'recent-files', 'add', 'nvim' }, files), {}, function()
+    saying = false
+    vim.schedule(say)
+  end)
+end
+vim.api.nvim_create_autocmd('BufWinEnter', {
+  group = augroup('recent_files'),
+  callback = function(event)
+    if vim.bo[event.buf].buftype ~= '' or vim.fn.executable('recent-files') == 0 then
+      return
+    end
+    local path = vim.api.nvim_buf_get_name(event.buf)
+    if path == '' or path == said_last or vim.fn.filereadable(path) == 0 then
+      return
+    end
+    said_last = path
+    table.insert(waiting, path)
+    say()
   end,
 })
 

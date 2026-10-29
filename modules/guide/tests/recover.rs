@@ -4,8 +4,8 @@
 
 use guide::Machine;
 use guide::recover::{
-    AlreadyThere, BootGeneration, FindMachine, OpenDisk, STOPPED, STOPPED_EARLY, already_there,
-    the_machine,
+    AlreadyThere, BootGeneration, CHECKED, CheckSystem, FindMachine, MountSystem, OpenDisk,
+    STOPPED, STOPPED_EARLY, already_there, the_machine,
 };
 use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
@@ -331,5 +331,109 @@ fn a_generation_chosen_boots_next_and_nothing_is_removed() {
             .any(|call| call.contains("unlink") || call.contains("remove")),
         "{:#?}",
         stand_in.calls
+    );
+}
+
+const CHECK: &[&str] = &["check", "--readonly", "/dev/mapper/system"];
+
+/// The opened machine, nothing of it mounted yet, as a stick that's just
+/// opened it finds it (the fixture was read after an install, still
+/// mounted), its filesystem checked with the status and words `btrfs
+/// check` gives, and every mount it's given taken.
+fn checked(status: i32, said: &str) -> StandIn {
+    let unmounted = ["boot", "var/log", "swap", "nix", "home", ""].iter().fold(
+        fixture!("lsblk-laid-out.json").to_string(),
+        |json, at| {
+            let at = format!("\"/mnt/{at}\"").replace("/\"", "\"");
+            json.replace(&at, "null")
+        },
+    );
+    assert!(!unmounted.contains("/mnt"), "{unmounted}");
+    let mut stand_in = lsblk(&unmounted);
+    stand_in
+        .no_file(CHECKED)
+        .answers(Program::Tool(Tool::Btrfs), CHECK, status, "", said);
+    for (subvolume, at) in [
+        ("@", ""),
+        ("@nix", "/nix"),
+        ("@home", "/home"),
+        ("@log", "/var/log"),
+    ] {
+        for mode in ["compress=zstd:1,noatime,discard=async", "ro,rescue=all"] {
+            let options = format!("subvol={subvolume},{mode},X-mount.mkdir");
+            stand_in.prints(
+                Tool::Mount,
+                &["-o", &options, "/dev/mapper/system", &format!("/mnt{at}")],
+                "",
+            );
+        }
+    }
+    stand_in.prints(
+        Tool::Mount,
+        &[
+            "-o",
+            "umask=0077,X-mount.mkdir",
+            "/dev/disk/by-partlabel/system-boot",
+            "/mnt/boot",
+        ],
+        "",
+    );
+    stand_in
+}
+
+fn mounts(stand_in: &StandIn) -> Vec<&String> {
+    stand_in
+        .calls
+        .iter()
+        .filter(|call| call.contains("subvol="))
+        .collect()
+}
+
+#[test]
+fn a_filesystem_is_checked_before_anything_mounts_it() {
+    let mut stand_in = checked(0, "");
+    let standing = CheckSystem.observe(&mut stand_in);
+    assert!(
+        matches!(standing, Ok(Standing::Needed { .. })),
+        "{standing:?}"
+    );
+    Journey::attempt(&CheckSystem, &mut stand_in, &Answers::new()).unwrap();
+    assert_eq!(stand_in.holds(CHECKED), Some(b"clean".as_slice()));
+    let Standing::Done { evidence } = CheckSystem.observe(&mut stand_in).unwrap() else {
+        panic!("not done")
+    };
+    assert_eq!(evidence, "its filesystem has no errors");
+
+    MountSystem.run(&mut stand_in, &Answers::new()).unwrap();
+    let mounts = mounts(&stand_in);
+    assert_eq!(mounts.len(), 4, "{mounts:#?}");
+    assert!(
+        mounts.iter().all(|call| call.contains("compress=zstd:1")),
+        "{mounts:#?}"
+    );
+}
+
+#[test]
+fn a_filesystem_with_errors_is_mounted_only_to_read() {
+    let said = "ERROR: errors found in fs roots";
+    let mut stand_in = checked(1, said);
+    Journey::attempt(&CheckSystem, &mut stand_in, &Answers::new()).unwrap();
+    assert_eq!(stand_in.holds(CHECKED), Some(said.as_bytes()));
+    let Standing::Done { evidence } = CheckSystem.observe(&mut stand_in).unwrap() else {
+        panic!("not done")
+    };
+    assert!(
+        evidence.contains("mounted only to read") && evidence.contains(CHECKED),
+        "{evidence}"
+    );
+
+    MountSystem.run(&mut stand_in, &Answers::new()).unwrap();
+    let mounts = mounts(&stand_in);
+    assert_eq!(mounts.len(), 4, "{mounts:#?}");
+    assert!(
+        mounts
+            .iter()
+            .all(|call| call.contains(",ro,rescue=all,") && !call.contains("compress")),
+        "{mounts:#?}"
     );
 }

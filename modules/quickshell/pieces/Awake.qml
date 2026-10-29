@@ -12,17 +12,22 @@ Piece {
     context: Caffeinate.lid ? "until the power goes" : "the lid still sleeps it"
     actions: [{
         glyph: Theme.glyph.suspend,
-        name: "Let it sleep",
-        // One word for Return, as the launcher's Let it sleep says it.
+        name: "Let It Sleep",
+        // One word for Return, as the launcher's Let It Sleep says it.
         verb: "stop",
+        stays: true,
         run: () => Caffeinate.release()
     }].concat(Caffeinate.lid ? [{
-        glyph: Theme.glyph.lidOpen,
-        name: "Only while the lid is open",
+        glyph: Words.glyph("verb:on:awake:open"),
+        name: Words.name("verb:on:awake:open"),
+        verb: Words.verb("verb:on:awake:open"),
+        stays: true,
         run: () => Caffeinate.open()
     }] : Caffeinate.plugged ? [{
-        glyph: Theme.glyph.awake,
-        name: "With the lid shut too",
+        glyph: Words.glyph("verb:on:awake:shut"),
+        name: Words.name("verb:on:awake:shut"),
+        verb: Words.verb("verb:on:awake:shut"),
+        stays: true,
         run: () => Caffeinate.keep()
     }] : [])
 }

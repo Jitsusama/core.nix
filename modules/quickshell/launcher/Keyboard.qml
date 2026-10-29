@@ -1,12 +1,13 @@
-// The keyboard, a collection: what can be done to the board first (show its
-// layout and flash it), then every key on every layer (KeyboardLayout.qml),
+// The keyboard, a collection: the keyboards and Shortcuts first (its
+// parts), then showing its layout, then every key on every layer (KeyboardLayout.qml),
 // found by its cap or by what it types in words, each with its layer, where
 // it sits in the footer, and what holding it does. Return on a key shows the
 // layout on that key's layer, the key marked, so finding where a symbol lives
 // is typing its name. The board's Layer and Lights are settings of the board
 // itself, among the keyboards plugged in (Keyboards.qml), as every
-// keyboard's parts are; their choices, locking a layer or letting one go and
-// lighting the board, are still found here from anywhere by what's typed.
+// keyboard's parts are, and so is flashing it, since only the ZSA board can
+// be; their choices, locking a layer or letting one go and lighting the
+// board, and Flash, are still found here from anywhere by what's typed.
 // With no layout, as on a machine without a keyboard's module, it holds
 // nothing. Every name, verb and word is the vocabulary's (Words.qml).
 import qs
@@ -46,7 +47,12 @@ Provider {
             chord: showing.chord,
             later: true,
             run: () => KeyboardLayout.toggle()
-        }),
+        })
+    ]
+
+    // Flashing the board, the ZSA board's own act (Keyboards.qml's
+    // flashing), found here by what's typed.
+    readonly property var flash: !KeyboardLayout.present ? [] : [
         act("keyboard:flash", "keyboard:flash", {
             glyph: Theme.glyph.flash,
             later: true,
@@ -114,9 +120,9 @@ Provider {
 
     readonly property var all: acts.concat(keys)
     // What a search looks through: the board's acts, the choices of its
-    // Layer and Lights, so what's typed reaches them without a step in, and
-    // its keys.
-    readonly property var pool: acts.concat(layers, lights, keys)
+    // Layer and Lights and its Flash, so what's typed reaches them without
+    // a step in, and its keys.
+    readonly property var pool: acts.concat(flash, layers, lights, keys)
 
     onAllChanged: changed()
 

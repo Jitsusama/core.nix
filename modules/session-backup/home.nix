@@ -37,6 +37,11 @@ let
     builtins.toJSON {
       sessions = "${config.home.homeDirectory}/.pi/agent/sessions";
       ledger = "${config.xdg.stateHome}/session-backup/sent.jsonl";
+      # A row for each log sent, which mining reads first (src/index.rs).
+      index = "${config.xdg.stateHome}/session-backup/index.jsonl";
+      # agentic-harness.pi's record of each session, which names its quest;
+      # a session started outside the harness has none, and its row says so.
+      records = "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/sessions";
       inherit (cfg)
         folder
         host
@@ -44,14 +49,15 @@ let
         recipients
         settledHours
         ;
-      inherit (cfg) credentials;
+      inherit (cfg) credentials identities;
     }
   );
-  # The command, told its settings, for the account to ask what's sent.
+  # The command, told its settings, for the account to ask what's sent and
+  # to read a copy back.
   configured = pkgs.writeShellScriptBin "session-backup" ''
     case "''${1:-status}" in
-      run | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} "''${@:2}" ;;
-      *) echo "usage: session-backup [status | run [--most N]]" >&2; exit 2 ;;
+      run | status | fetch) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} "''${@:2}" ;;
+      *) echo "usage: session-backup [status | run [--most N] | fetch NAME --to PATH]" >&2; exit 2 ;;
     esac
   '';
 in
@@ -81,6 +87,19 @@ in
       type = lib.types.str;
       default = "${config.xdg.configHome}/gcloud/application_default_credentials.json";
       defaultText = lib.literalExpression ''"''${config.xdg.configHome}/gcloud/application_default_credentials.json"'';
+    };
+    identities = lib.mkOption {
+      description = ''
+        The age identity files `session-backup fetch` opens a copy with,
+        such as a TPM's made without a PIN. Those a machine doesn't hold are
+        passed over, so one list serves every machine. With one named, each
+        hourly run also reads back up to 100 logs gone from the machine that
+        have no row in the index, for their rows, and removes each copy once
+        read.
+      '';
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression ''[ "''${config.xdg.configHome}/age/tpm.txt" ]'';
     };
     host = lib.mkOption {
       description = "The machine, as each copy's name begins.";
@@ -119,17 +138,32 @@ in
     systemd.user.services.session-backup = {
       Unit = {
         Description = "Copies the account's settled pi session logs, sealed, to Drive";
-        # A run takes most of an hour, longer than a switch waits for a
-        # oneshot to start, so a switch leaves a run going; the next hour's
-        # starts on the new program.
+        # A run takes most of an hour, so a switch leaves a run going; the
+        # next hour's starts on the new program.
         X-RestartIfChanged = false;
+        # Tried four times in half an hour before it counts as failed, as
+        # set out under Restart.
+        StartLimitIntervalSec = "30min";
+        StartLimitBurst = 4;
       };
       Service = {
-        Type = "oneshot";
+        # Started once it runs, not once it's done: a oneshot's start job
+        # lasts the whole run, and the hour a boot catches up on kept the
+        # account's manager "starting" for minutes, in which a switch
+        # reloads none of the account's units. A timer still never starts
+        # a run while one is going.
+        Type = "exec";
         ExecStart = "${lib.getExe package} run --config ${configFile}";
         # Whatever the account runs comes first: the slice gives it the
         # disk's idle priority and a small share of the processor.
         Slice = "background.slice";
+        # The hour a resume catches up on starts before Wi-Fi is back, and
+        # a user's unit can't wait on the machine's network, so a run that
+        # fails is tried again a few minutes on. One still failing half an
+        # hour later, a login refused or no connection at all, is a failed
+        # unit.
+        Restart = "on-failure";
+        RestartSec = "5min";
       };
     };
     systemd.user.timers.session-backup = {

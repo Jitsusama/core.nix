@@ -1,0 +1,12 @@
+# hibernate-unlock lets the lock go after a resume from hibernation, which
+# came through the disk prompt, and rescues one that rolled back (src/main.rs
+# says how it knows each).
+[package]
+name = "hibernate-unlock"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1.0"

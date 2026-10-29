@@ -8,6 +8,8 @@
     a-quiet-file-says-nothing = "quiet is FileView printing no errors, not Do not disturb";
     backlight-passes-clippy = "the backlight program sets a screen's brightness";
     bluetooth-keeps-its-power-limits = "the limits are a radio's SAR table, not an allowance";
+    chrome-recent-sites-reads-a-history-mid-write = "Chrome's History database, by its name";
+    clipboard-history-passes-clippy = "the clipboard-history program, by its name";
     "jitsusama.backlight" = "the backlight program's options, for a screen's brightness";
     "jitsusama.kernel.cpu" = "the CPU Clang's -march and -mtune name, in Clang's word";
     "jitsusama.kernel.packageOverlays" = "an overlay is Nix's, not a meter";
@@ -25,11 +27,8 @@
   waiting = {
     icon-marks-past-the-basic-plane = "Launcher (Y2YBTS): icon to mark";
     the-margins-glyphs-stand-level = "Launcher (Y2YBTS): glyph to mark";
-    "jitsusama.theme.glyphs" = "Look and programs (QGB4ON): glyph to mark";
     palette-graphs-draw-in-braille = "Launcher (Y2YBTS): palette to launcher";
     palette-rows-keep-their-words-apart = "Launcher (Y2YBTS): palette to launcher";
     "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
-    "jitsusama.shaper.tunnels" = "Speed (5FWIUS): tunnel to VPN";
-    xdg-open-opens-each-kind-in-its-app = "Look and programs (QGB4ON): app to program";
   };
 }

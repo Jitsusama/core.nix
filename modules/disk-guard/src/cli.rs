@@ -47,6 +47,18 @@ pub enum Command {
         path: PathBuf,
         config: Option<PathBuf>,
     },
+    /// Never offer what's in a folder, for a reason of Joel's.
+    Keep {
+        path: PathBuf,
+        reason: String,
+    },
+    Unkeep {
+        path: PathBuf,
+    },
+    /// Clear what the guard would take of a folder now, without waiting.
+    Clear {
+        path: PathBuf,
+    },
 }
 
 /// Where the commands find things, worked out once from the environment.
@@ -78,6 +90,9 @@ pub const NO_DAEMON: i32 = 3;
 const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard status [--json]
        disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE]
+       disk-guard keep FOLDER REASON...
+       disk-guard unkeep FOLDER
+       disk-guard clear FOLDER
        disk-guard journal [--since SPAN] [--json]
        disk-guard check-config FILE
        disk-guard explain PATH [--config FILE]
@@ -181,6 +196,26 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             _ => return Err(format!("check-config takes one file\n{USAGE}")),
         },
         Some("thaw") => Command::Thaw,
+        Some("keep") => {
+            let (path, reason) = kept(std::mem::take(&mut options.positional))?;
+            Command::Keep { path, reason }
+        }
+        Some("unkeep") => match options.positional.as_slice() {
+            [path] => {
+                let path = PathBuf::from(path);
+                options.positional.clear();
+                Command::Unkeep { path }
+            }
+            _ => return Err(format!("unkeep takes one path\n{USAGE}")),
+        },
+        Some("clear") => match options.positional.as_slice() {
+            [path] => {
+                let path = PathBuf::from(path);
+                options.positional.clear();
+                Command::Clear { path }
+            }
+            _ => return Err(format!("clear takes one folder\n{USAGE}")),
+        },
         Some("explain") => {
             let config = options.path("--config");
             match options.positional.as_slice() {
@@ -196,6 +231,26 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
     };
     options.finished()?;
     Ok(command)
+}
+
+/// A keep's folder and its reason, the words after the folder.
+fn kept(words: Vec<OsString>) -> Result<(PathBuf, String), String> {
+    let mut words = words.into_iter();
+    let path = words
+        .next()
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("keep takes a folder and a reason\n{USAGE}"))?;
+    let reason = words
+        .map(|word| {
+            word.into_string()
+                .map_err(|word| format!("{} is not text", quoted(&word)))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .join(" ");
+    if reason.trim().is_empty() {
+        return Err(format!("keep needs a reason, after the folder\n{USAGE}"));
+    }
+    Ok((path, reason.trim().to_owned()))
 }
 
 /// Options as `--name value` and `--flag`, and anything else.
@@ -302,6 +357,9 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
         Command::System { config, state } => daemon(env, Scope::System, config, state, err),
         Command::Thaw => thaw(out),
         Command::Explain { path, config } => explain(env, &path, config.as_deref(), out),
+        Command::Keep { path, reason } => keep(env, &path, &reason, out),
+        Command::Unkeep { path } => unkeep(env, &path, out),
+        Command::Clear { path } => clear(env, &path, out),
     };
     match done {
         Ok(code) => code,
@@ -394,6 +452,7 @@ fn daemon(
         .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
     let freezes = config.freeze;
     let mut guard = Guard::new(config, &places).map_err(failed)?;
+    guard.beat_always().map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
@@ -488,6 +547,98 @@ fn explain(env: &Env, path: &Path, config: Option<&Path>, out: &mut dyn Write) -
         writeln!(out, "  {band}: {when}").map_err(failed)?;
     }
     Ok(FINE)
+}
+
+/// Keeps a folder for a reason, and says so in the status file before it
+/// ends, so whatever asked sees the holder change as it hears the answer.
+fn keep(env: &Env, path: &Path, reason: &str, out: &mut dyn Write) -> Done {
+    let path = fs::canonicalize(path)
+        .map_err(|_| (REFUSED, format!("{} isn't there to keep", path.display())))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    fs::create_dir_all(&env.state).map_err(|error| (REFUSED, error.to_string()))?;
+    crate::keeps::keep(&env.state, &path, reason, now)
+        .map_err(|error| (REFUSED, format!("keeping {}: {error}", path.display())))?;
+    marked(env)?;
+    let _ = writeln!(out, "Kept {}: {reason}.", path.display());
+    Ok(FINE)
+}
+
+/// Lets go of a keep, saying whether there was one.
+fn unkeep(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
+    // A kept folder may have gone since, and its keep with it.
+    let path = fs::canonicalize(path)
+        .or_else(|_| std::path::absolute(path))
+        .map_err(|error| (REFUSED, error.to_string()))?;
+    let was = crate::keeps::unkeep(&env.state, &path).map_err(|error| {
+        (
+            REFUSED,
+            format!("letting go of {}: {error}", path.display()),
+        )
+    })?;
+    marked(env)?;
+    if was {
+        let _ = writeln!(out, "No longer kept: {}.", path.display());
+    } else {
+        let _ = writeln!(out, "{} wasn't kept.", path.display());
+    }
+    Ok(FINE)
+}
+
+/// Asks the account's guard to clear what it would take of a folder now,
+/// and says so in the status file before it ends. A kept folder is
+/// refused here, though the guard would take nothing kept anyway, since
+/// asking to clear what Joel keeps is a slip worth saying.
+fn clear(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
+    let path = fs::canonicalize(path)
+        .map_err(|_| (REFUSED, format!("{} isn't there to clear", path.display())))?;
+    let keeps = crate::keeps::load(&env.state)
+        .map_err(|error| (REFUSED, format!("reading the keeps: {error}")))?;
+    if let Some(keep) = crate::keeps::covering(&keeps, &path) {
+        return Err((
+            REFUSED,
+            format!("{} stays: you keep it: {}", path.display(), keep.reason),
+        ));
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    crate::clears::ask(&env.state, &path, now).map_err(|error| {
+        (
+            REFUSED,
+            format!("asking to clear {}: {error}", path.display()),
+        )
+    })?;
+    marked(env)?;
+    let _ = writeln!(
+        out,
+        "Clearing {}; the guard starts on its next step.",
+        path.display()
+    );
+    Ok(FINE)
+}
+
+/// Marks the status file's holders with the keeps and clears as they are
+/// now. The daemon marks each status it writes the same way, so whichever
+/// writes last, the file says what's kept and what's clearing.
+fn marked(env: &Env) -> Result<(), (i32, String)> {
+    let refused = |error: io::Error| (REFUSED, format!("marking the status: {error}"));
+    let Some(mut status) = crate::state::load::<Value>(&env.status).map_err(refused)? else {
+        return Ok(());
+    };
+    let Ok(mut holders) =
+        serde_json::from_value::<Vec<crate::holders::Holder>>(status["holders"].clone())
+    else {
+        return Ok(());
+    };
+    let keeps = crate::keeps::load(&env.state).map_err(refused)?;
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let clearing = crate::clears::clearing(&env.state);
+    crate::holders::mark(&mut holders, &keeps, &clearing, home.as_deref());
+    status["holders"] =
+        serde_json::to_value(holders).map_err(|error| refused(io::Error::other(error)))?;
+    crate::state::save(&env.status, &status).map_err(refused)
 }
 
 /// Thaws whatever the account's guard froze, through the account's own

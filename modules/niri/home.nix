@@ -30,7 +30,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     shape
     motion
     wallpaper
@@ -298,21 +298,21 @@ in
   config.xdg.configFile."niri/theme.kdl".text = ''
     layout {
         gaps ${toString shape.gap}
-        background-color "${if pictured then "transparent" else roles.deepest}"
+        background-color "${if pictured then "transparent" else colours.deepest}"
         border {
             on
             width ${toString shape.border}
-            active-color "${roles.accent}"
-            inactive-color "${roles.edge}"
-            urgent-color "${roles.alert}"
+            active-color "${colours.accent}"
+            inactive-color "${colours.edge}"
+            urgent-color "${colours.alert}"
         }
         tab-indicator {
-            active-color "${roles.accent}"
-            inactive-color "${roles.raised}"
-            urgent-color "${roles.alert}"
+            active-color "${colours.accent}"
+            inactive-color "${colours.raised}"
+            urgent-color "${colours.alert}"
         }
         insert-hint {
-            color "${roles.accent}80"
+            color "${colours.accent}80"
         }
     }
     window-rule {
@@ -320,9 +320,9 @@ in
         clip-to-geometry true
     }
     overview {
-        backdrop-color "${roles.deepest}"
+        backdrop-color "${colours.deepest}"
         workspace-shadow {
-            ${if pictured then "off" else ''color "${roles.shadow}50"''}
+            ${if pictured then "off" else ''color "${colours.shadow}50"''}
         }
     }
     // niri's switcher, used while a modifier is held, is off: the launcher

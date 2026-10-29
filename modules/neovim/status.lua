@@ -1,13 +1,15 @@
 -- Neovim's status line and tab line, in the prompt's language
 -- (docs/design.md, Surfaces). One line along the bottom, on Neovim's own
 -- background, holds the window's facts. On the left: where the file is,
--- told from its root as the prompt tells a folder, with a mark while it's
--- unsaved or can't be changed; what git is in the middle of; and the mode,
--- in the accent, whenever the keys aren't going to Normal mode. On the
--- right: what's selected or found, the file's errors and warnings, a
--- language server at work, an agent paired with the editor, and the branch
--- with its marks. Each shows only while it's true, and they give way a
--- step at a time as the window narrows.
+-- told from its root as the prompt tells a folder, with Vim's [+] while it
+-- has edits not yet written and a mark while it can't be changed; what git
+-- is in the middle of; and the mode, in the accent, whenever the keys
+-- aren't going to Normal mode. On the right: what's selected or found, the
+-- file's errors and warnings, a language server at work, an agent paired
+-- with the editor, and the branch with git's notation for its changes and
+-- its upstream, as the prompt writes it. Each shows only while it's true,
+-- and they give way a step at a time as the window narrows, without a
+-- trace; a name cut short keeps the more mark where it was cut.
 --
 -- Git's state comes from git-engine, the prompt's own, started once for
 -- the editor and asked again when something may have changed it: a buffer
@@ -15,7 +17,7 @@
 -- or a terminal left, a change made through fugitive. Nothing polls.
 local theme = require('theme')
 local where = require('where')
-local glyph = theme.glyphs
+local glyph = theme.marks
 
 local M = {}
 
@@ -66,6 +68,28 @@ local function middle(name, keep)
   local head = math.floor((keep - 1) / 2)
   local tail = keep - 1 - head
   return vim.fn.strcharpart(name, 0, head) .. glyph.more .. vim.fn.strcharpart(name, chars - tail)
+end
+
+-- Vim's own mark for a buffer with edits not yet written.
+local modified = '[+]'
+
+-- The tree's changes and the upstream, in the notation git's own short
+-- status and the prompt use: * not staged, + staged, ? untracked,
+-- together, then ↑N ahead and ↓N behind, together. A tree clean and in
+-- step gives nothing.
+local function notation(state)
+  local changes = (state.unstaged and '*' or '')
+    .. (state.staged and '+' or '')
+    .. (state.untracked and '?' or '')
+  local upstream = (state.ahead > 0 and '↑' .. state.ahead or '')
+    .. (state.behind > 0 and '↓' .. state.behind or '')
+  local told = {}
+  for _, group in ipairs({ changes, upstream }) do
+    if group ~= '' then
+      table.insert(told, group)
+    end
+  end
+  return told
 end
 
 -- Git ---------------------------------------------------------------------
@@ -154,9 +178,12 @@ local function answered(record)
   git.answers[dir] = {
     workdir = fields[3],
     branch = fields[5] ~= '' and fields[5] or fields[4]:sub(1, 7),
-    unsaved = count(11) + count(12) + count(14) > 0,
+    unstaged = count(12) > 0,
+    staged = count(11) > 0,
+    untracked = count(14) > 0,
     conflicted = count(13) > 0,
-    ahead = count(15) > 0,
+    ahead = math.max(count(15), 0),
+    behind = math.max(count(16), 0),
     op = operation(git_dir(fields[3])),
   }
 end
@@ -461,7 +488,6 @@ end
 local function draw(on)
   local buf, above = shown()
   local left, right = {}, {}
-  local lost = false
 
   local here = placed(buf)
   if here.path then
@@ -482,7 +508,7 @@ local function draw(on)
     put(left, 'muted', '  ' .. here.after)
   end
   if vim.bo[buf].modified then
-    put(left, 'text', ' ' .. glyph.on)
+    put(left, 'text', ' ' .. modified)
   end
   if here.file and (vim.bo[buf].readonly or not vim.bo[buf].modifiable) then
     put(left, 'muted', ' ' .. glyph.locked)
@@ -555,9 +581,7 @@ local function draw(on)
     put(right, 'text', ' ' .. warnings)
   end
 
-  if on.right then
-    lost = lost or next(progress) ~= nil or paired() or (state and state.branch ~= nil)
-  else
+  if not on.right then
     local latest = nil
     for _, work in pairs(progress) do
       if not latest or work.at > latest.at then
@@ -578,22 +602,13 @@ local function draw(on)
     if state then
       gap()
       put(right, 'muted', glyph.branch)
-      if on.branchglyph then
-        lost = true
-      else
+      if not on.branchglyph then
         put(right, 'muted', ' ' .. (on.branchshort and middle(state.branch, 14) or state.branch))
       end
-      if state.unsaved then
-        put(right, 'text', ' ' .. glyph.on)
-      end
-      if state.ahead then
-        put(right, 'text', ' ' .. glyph.unpushed)
+      for _, group in ipairs(notation(state)) do
+        put(right, 'text', ' ' .. group)
       end
     end
-  end
-  if lost then
-    gap()
-    put(right, 'muted', glyph.more)
   end
   return left, right
 end
@@ -632,7 +647,7 @@ function M.tabs()
     local here = placed(buf)
     local name = here.path and (here.path.parts[#here.path.parts] or '/') or here.name
     local role = tab == current and 'strong' or 'muted'
-    local mark = vim.bo[buf].modified and ' ' .. glyph.on or ''
+    local mark = vim.bo[buf].modified and ' ' .. modified or ''
     table.insert(
       out,
       '%' .. number .. 'T%#' .. groups[role] .. '#' .. name:gsub('%%', '%%%%') .. mark

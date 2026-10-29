@@ -1,5 +1,7 @@
-// Whether what Joel uses waited, answered in the field: "lag", Desktop's
-// one word for it. lag-watch (modules/lag-watch) writes its last ten
+// Whether what Joel uses waited, answered in the field: "lag", Machine's
+// one word for it, listed last in Machine, after Disk, since what it
+// points at is the processor, the memory and the disk (Joel,
+// 2026-10-28). lag-watch (modules/lag-watch) writes its last ten
 // seconds to a file as each ends; it's read when asked, so nothing is
 // watched or spawned. A machine without lag-watch has no file, and so no
 // answer.

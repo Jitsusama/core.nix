@@ -784,15 +784,15 @@ QtObject {
         machine("no throttling counted", Heat.throttled([]), null);
         machine("each core's first processor", Heat.coreCpus([{ cpu: 0, core: 0 },
             { cpu: 1, core: 0 }, { cpu: 2, core: 4 }]), { 0: 0, 4: 2 });
-        machine("a part's name in a sentence", ["Processor", "Wi-Fi card", "Air inside", "HDR"]
+        machine("a part's name in a sentence", ["Processor", "Wi-Fi Card", "Air Inside", "HDR"]
             .map(Heat.phrase), ["processor", "Wi-Fi card", "air inside", "HDR"]);
         machine("a fan's id", Heat.fanId("Video Fan"), "video-fan");
         machine("a sensor whose label says nothing", [Heat.labelled("CPU"), Heat.labelled("Other"),
             Heat.labelled("SODIMM")], ["", "", "memory"]);
 
         // How things stand in the foot, as room runs short: the least of
-        // each, then each its glyph by rank, then each gives way, each a
-        // character wide here, two between.
+        // each, then each its glyph by rank, and no glyph ever gives way,
+        // each a character wide here, two between.
         const fact = (sign, glance, least, collapse) => ({ sign, glance, least, entry: { collapse } });
         const facts = [fact("", "17:30", "17:30", null), fact("", "Sat 24 Oct", "Sat 24 Oct", 3),
             fact("B", "50% 0:02 left", "50%", 20), fact("N", "", "", 10), fact("V", "40%", "", 0),
@@ -808,9 +808,9 @@ QtObject {
             // The day's spend and the agents as their glyph are one robot.
             [22, "17:30  B 50%  N  V  R"],
             [17, "17:30  B  N  V  R"],
-            [12, "17:30  B  N"],
-            // The time never gives way.
-            [3, "17:30"]
+            // Every glyph stays, however short the room, as the time does.
+            [12, "17:30  B  N  V  R"],
+            [3, "17:30  B  N  V  R"]
         ])
             machine(`how things stand in ${room}`, footFor(room), said);
         // Once the foot has had to read shorter, it reads no longer until
@@ -826,7 +826,7 @@ QtObject {
         machine("from the first way, as long as there's room", Standing.fittedFrom(facts, roomy, 0)
             .stage, 0);
         machine("a way past the last is the last", Standing.fittedFrom(facts, roomy, 99)
-            .told.map(one => one.said).join("  "), "17:30");
+            .told.map(one => one.said).join("  "), "17:30  B  N  V  R");
 
         // The network's figures, from /proc/net/dev and the shaper's file.
         const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"
@@ -1035,6 +1035,8 @@ QtObject {
             null);
         machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
         machine("how long, in days", Interfaces.lasted(200000), "2 d 7 h");
+        machine("how long, in whole hours", Interfaces.lasted(72000), "20 h");
+        machine("how long, in whole days", Interfaces.lasted(172800), "2 d");
         machine("how long, only just", Interfaces.lasted(20), "under a minute");
         machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
 
@@ -1159,6 +1161,11 @@ QtObject {
             "bluez_input.00:11:22:33:44:55", "bluez_output.00_11_22_33_44_55.1",
             `${soundOut}HDMI1__sink`, undefined].map(name => Sounds.called(name)),
             ["speakers", "microphones", "jack", "jack-microphone", "its-microphone", "", "", ""]);
+        // A USB microphone named as its own headphone socket is, its
+        // device's microphone; one named alone keeps its name.
+        const usb = "alsa_input.usb-Shure_Inc_Shure_MV7-00.mono-fallback";
+        machine("a microphone named as an output", [Sounds.called(usb, true),
+            Sounds.called(usb, false)], ["its-microphone", ""]);
         // A jack's "nothing" hides it only while desk-facts still runs to say
         // otherwise; once it's gone, headphones may have come since.
         const sturdyNothing = [{ name: "plugged in", value: "nothing" }];

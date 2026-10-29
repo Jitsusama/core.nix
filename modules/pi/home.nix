@@ -22,15 +22,15 @@
 let
   inherit (config.jitsusama.theme)
     appearance
-    glyphs
-    roles
+    marks
+    colours
     syntax
     ;
   mix = import ../theme/mix.nix { inherit lib; };
 
   # A tool's result is a faint tint of how it went, under text that stays
   # the text's own colour.
-  tint = weight: colour: mix weight colour roles.background;
+  tint = weight: colour: mix weight colour colours.background;
 
   # pi's own names for what it colours, in its theme format:
   # https://pi.dev/schemas/theme.schema.json
@@ -38,54 +38,54 @@ let
     name = "jitsusama";
     inherit appearance;
     colors = {
-      inherit (roles)
+      inherit (colours)
         accent
         text
         success
         warning
         ;
-      error = roles.alert;
-      border = roles.rule;
-      borderAccent = roles.accent;
-      borderMuted = roles.edge;
-      inherit (roles) muted;
-      dim = roles.muted;
-      thinkingText = roles.muted;
-      selectedBg = roles.selection;
-      searchMatchBg = roles.raised;
-      searchMatchText = roles.strong;
-      scrollbarTrack = roles.raised;
-      scrollbarThumb = roles.rule;
+      error = colours.alert;
+      border = colours.rule;
+      borderAccent = colours.accent;
+      borderMuted = colours.edge;
+      inherit (colours) muted;
+      dim = colours.muted;
+      thinkingText = colours.muted;
+      selectedBg = colours.selection;
+      searchMatchBg = colours.raised;
+      searchMatchText = colours.strong;
+      scrollbarTrack = colours.raised;
+      scrollbarThumb = colours.rule;
       # What Joel wrote sits on the sunken shade, a step below the rest.
-      userMessageBg = roles.sunken;
-      userMessageText = roles.text;
-      customMessageBg = roles.sunken;
-      customMessageText = roles.muted;
-      customMessageLabel = roles.voice;
-      toolPendingBg = roles.sunken;
-      toolSuccessBg = tint 0.1 roles.success;
-      toolErrorBg = tint 0.12 roles.alert;
-      toolTitle = roles.strong;
-      toolOutput = roles.muted;
+      userMessageBg = colours.sunken;
+      userMessageText = colours.text;
+      customMessageBg = colours.sunken;
+      customMessageText = colours.muted;
+      customMessageLabel = colours.voice;
+      toolPendingBg = colours.sunken;
+      toolSuccessBg = tint 0.1 colours.success;
+      toolErrorBg = tint 0.12 colours.alert;
+      toolTitle = colours.strong;
+      toolOutput = colours.muted;
       # Markdown reads as Neovim draws it: headings strong, code as strings,
       # the marks between muted.
-      mdHeading = roles.strong;
-      mdLink = roles.program;
-      mdLinkUrl = roles.muted;
+      mdHeading = colours.strong;
+      mdLink = colours.program;
+      mdLinkUrl = colours.muted;
       mdCode = syntax.string.colour;
-      mdCodeBlock = roles.text;
-      mdCodeBlockBorder = roles.rule;
-      mdQuote = roles.muted;
-      mdQuoteBorder = roles.rule;
-      mdHr = roles.rule;
+      mdCodeBlock = colours.text;
+      mdCodeBlockBorder = colours.rule;
+      mdQuote = colours.muted;
+      mdQuoteBorder = colours.rule;
+      mdHr = colours.rule;
       mdListBullet = syntax.punctuation.colour;
-      toolDiffAdded = roles.success;
-      toolDiffRemoved = roles.alert;
-      toolDiffContext = roles.muted;
+      toolDiffAdded = colours.success;
+      toolDiffRemoved = colours.alert;
+      toolDiffContext = colours.muted;
       syntaxComment = syntax.comment.colour;
       syntaxKeyword = syntax.keyword.colour;
       syntaxFunction = syntax.function.colour;
-      syntaxVariable = roles.text;
+      syntaxVariable = colours.text;
       syntaxString = syntax.string.colour;
       syntaxNumber = syntax.constant.colour;
       syntaxType = syntax.type.colour;
@@ -93,20 +93,20 @@ let
       syntaxPunctuation = syntax.punctuation.colour;
       # How hard pi thinks warms from the muted text to the alert, a step
       # through the glyphs' hues at each level.
-      thinkingOff = roles.muted;
+      thinkingOff = colours.muted;
       thinkingMinimal = syntax.type.colour;
-      thinkingLow = roles.program;
-      thinkingMedium = roles.voice;
-      thinkingHigh = roles.person;
-      thinkingXhigh = roles.warning;
-      thinkingMax = roles.alert;
+      thinkingLow = colours.program;
+      thinkingMedium = colours.voice;
+      thinkingHigh = colours.person;
+      thinkingXhigh = colours.warning;
+      thinkingMax = colours.alert;
       # A shell command is something to do.
-      bashMode = roles.action;
+      bashMode = colours.action;
     };
     export = {
-      pageBg = roles.background;
-      cardBg = roles.sunken;
-      infoBg = roles.raised;
+      pageBg = colours.background;
+      cardBg = colours.sunken;
+      infoBg = colours.raised;
     };
   };
   keys = import ./keys.nix;
@@ -301,16 +301,14 @@ in
       engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
       inherit (config.jitsusama.prompt) roots;
       marks = lib.mapAttrs (_: mark: mark.glyph) {
-        inherit (glyphs)
+        inherit (marks)
           branch
-          unpushed
           more
           complete
           active
           pending
           thinking
           ;
-        unsaved = glyphs.on;
       };
     };
 

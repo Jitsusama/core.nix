@@ -118,12 +118,12 @@ ShellRoot {
             heard.map(row => row.key).join(","));
         const parts = heard.slice(2);
         expect("a classic link's parts", said(parts) === ["Battery=15%", "Signal=in range",
-            "Link quality=90%", "Channels=61 of 79 clear",
-            "Connection=Classic, central, encrypted", "Reconnects by itself=yes",
+            "Link Quality=90%", "Channels=61 of 79 clear",
+            "Connection=Classic, central, encrypted", "Reconnects by Itself=yes",
             `Address=${at}`].join(","), said(parts));
         const figures = parts.slice(0, 5);
-        expect("figures wear no glyph", figures.every(row => row.glyph === ""
-            && row.verb === "close"), "a figure wears a glyph or copies");
+        expect("figures wear no glyph, and copy what they show", figures.every(row =>
+            row.glyph === "" && row.verb === "copy"), "a figure wears a glyph or copies nothing");
         expect("the battery warns low", parts[0].graph.shape === "bar" && parts[0].graph.warn
             && parts[0].note === "running low", JSON.stringify(parts[0].graph));
         expect("the signal's note says the power", parts[1].note
@@ -148,8 +148,11 @@ ShellRoot {
 
         const trust = parts[5];
         expect("a setting holds its choices", trust.verb === "more" && trust.glyph !== ""
-            && said(trust.verbs()) === "Let it reconnect by itself=in use,"
-                + "Only connect it when asked=", said(trust.verbs()));
+            && said(trust.verbs()) === "Let It Reconnect by Itself=chosen,"
+                + "Only Connect It When Asked=", said(trust.verbs()));
+        // Each its own word for the foot, which its name's first wouldn't say.
+        expect("a choice says what it does", trust.verbs().map(row => row.verb).join(",")
+            === "reconnect,ask", trust.verbs().map(row => row.verb).join(","));
         trust.verbs()[1].run();
         expect("a choice sets it", !headphones.trusted, "it's still trusted");
         headphones.trusted = true;
@@ -192,7 +195,7 @@ ShellRoot {
     // The adapter's parts: its settings, its traffic, and what it is.
     function adapterHolds() {
         const parts = bluetooth.adapterParts(radio);
-        expect("the adapter's parts", said(parts) === ["Radio=on", "Visible to others=no",
+        expect("the adapter's parts", said(parts) === ["Radio=on", "Visible to Others=no",
             "Pairable=yes", "Traffic=12 kb/s", "Name=studio", "Address=02:00:00:00:00:01",
             "Version=Bluetooth 6.0", "Model=Intel"].join(","), said(parts));
         expect("visible for a while", parts[1].note === "for 3 min once made visible",
@@ -204,7 +207,7 @@ ShellRoot {
             && row.glyph === ""), "a figure of the adapter doesn't copy");
         const choices = parts[0].verbs();
         expect("the radio's choices", said(choices)
-            === "Turn the radio on=in use,Turn the radio off=", said(choices));
+            === "Turn the Radio On=chosen,Turn the Radio Off=", said(choices));
         parts[1].verbs()[0].run();
         expect("made visible", radio.discoverable, "it's still hidden");
         choices[1].run();
@@ -269,7 +272,8 @@ ShellRoot {
                 root.expect("facts after verbs", rows[0].key === "verb:bluetooth-disconnect",
                     `the first row is ${rows[0].key}`);
                 const input = rows.find(row => row.key === `bluetooth:${mouse.address}:input`);
-                root.expect("how it's carried holds the rest", input && input.verb === "more"
+                root.expect("how it's carried holds the rest", input && input.verb === "copy"
+                    && !!input.targets
                     && root.said([input]) === "Input=LE, HID over GATT", root.said(rows));
                 const told = input.verbs();
                 root.expect("facts named first, in order", root.said(told) === "Buttons=5",

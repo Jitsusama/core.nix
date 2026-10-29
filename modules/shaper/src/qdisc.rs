@@ -100,17 +100,48 @@ pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
     all
 }
 
-/// A tunnel's queue: CAKE alone at its root, under the same handle as an
-/// uplink's, so the priority nftables gives a packet names its tin there
-/// too. A tunnel reaches nothing local, so it needs no HTB.
-pub fn tunnel(dev: &str, kbit: u64) -> Vec<String> {
+/// A VPN's queue: CAKE alone at its root, under the same handle as a
+/// connection's, so the priority nftables gives a packet names its tin there
+/// too. A VPN reaches nothing local, so it needs no HTB.
+pub fn vpn(dev: &str, kbit: u64) -> Vec<String> {
     cmd(&format!(
         "tc qdisc replace dev {dev} root handle 2: cake bandwidth {kbit}kbit diffserv4 ack-filter"
     ))
 }
 
-/// Whether a tunnel's root is the shaper's CAKE.
-pub fn tunnel_ours(json: &str) -> bool {
+/// What a VPN brings in, turned round through an IFB of its own to a CAKE
+/// sorted by the same classes. The connection's IFB sees a VPN as one flow
+/// of the VPN's daemon, so there a model's reply inside it waits behind a
+/// git fetch inside it; held a little under the connection's rate here,
+/// the VPN's queue forms where its connections can be told apart. Every
+/// command replaces rather than adds, but for the IFB's, which says it
+/// exists when run again.
+pub fn vpn_ingress(dev: &str, ifb: &str, kbit: u64) -> Vec<Vec<String>> {
+    vec![
+        cmd(&format!("ip link add {ifb} type ifb")),
+        cmd(&format!("ip link set {ifb} up")),
+        cmd(&format!(
+            "tc qdisc replace dev {ifb} root handle 2: {}",
+            ingress_cake(kbit)
+        )),
+        cmd(&format!("tc qdisc replace dev {dev} handle ffff: ingress")),
+        cmd(&format!(
+            "tc filter replace dev {dev} parent ffff: protocol all prio 1 matchall \
+             action ctinfo cpmark {OWN_MASK:#x} pipe action mirred egress redirect dev {ifb}"
+        )),
+    ]
+}
+
+/// A new rate for what a VPN brings in.
+pub fn vpn_ingress_change(ifb: &str, kbit: u64) -> Vec<String> {
+    cmd(&format!(
+        "tc qdisc change dev {ifb} root handle 2: {}",
+        ingress_cake(kbit)
+    ))
+}
+
+/// Whether a VPN's root, or its IFB's, is the shaper's CAKE.
+pub fn vpn_ours(json: &str) -> bool {
     let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
         return false;
     };
@@ -310,18 +341,43 @@ mod tests {
     }
 
     #[test]
-    fn a_tunnels_cake_sits_at_its_root_under_the_uplinks_handle() {
+    fn what_a_vpn_brings_in_is_sorted_by_class_in_an_ifb_of_its_own() {
+        let all: Vec<String> = vpn_ingress("wg0", "shaper9", 45_000)
+            .iter()
+            .map(|c| c.join(" "))
+            .collect();
+        assert!(
+            all.contains(
+                &"tc qdisc replace dev shaper9 root handle 2: \
+              cake bandwidth 45000kbit diffserv4 nat ingress fwmark 0x7000000"
+                    .to_string()
+            )
+        );
+        assert!(
+            all.iter()
+                .any(|c| c.starts_with("tc filter replace dev wg0 parent ffff:")
+                    && c.ends_with(
+                        "ctinfo cpmark 0xf000000 pipe action mirred egress redirect dev shaper9"
+                    ))
+        );
         assert_eq!(
-            tunnel("wg0", 9_000).join(" "),
+            vpn_ingress_change("shaper9", 40_000).join(" "),
+            "tc qdisc change dev shaper9 root handle 2: \
+             cake bandwidth 40000kbit diffserv4 nat ingress fwmark 0x7000000"
+        );
+    }
+
+    #[test]
+    fn a_vpns_cake_sits_at_its_root_under_the_connections_handle() {
+        assert_eq!(
+            vpn("wg0", 9_000).join(" "),
             "tc qdisc replace dev wg0 root handle 2: cake bandwidth 9000kbit diffserv4 ack-filter"
         );
-        assert!(tunnel_ours(
-            r#"[{"kind":"cake","handle":"2:","root":true}]"#
-        ));
-        assert!(!tunnel_ours(
+        assert!(vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#));
+        assert!(!vpn_ours(
             r#"[{"kind":"mq","handle":"0:","root":true},{"kind":"fq_codel","parent":":1"}]"#
         ));
-        assert!(!tunnel_ours(
+        assert!(!vpn_ours(
             r#"[{"kind":"cake","handle":"2:","parent":"1:2"}]"#
         ));
     }

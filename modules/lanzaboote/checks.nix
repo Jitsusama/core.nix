@@ -3,10 +3,24 @@
 {
   bareNixos,
   holds,
+  lib,
+  pkgs,
   self,
   ...
 }:
 {
+  # firmware-update.sh frees PCR 0 only for the boot entry fwupd points
+  # BootNext at, as tests/firmware-update.sh says, with stand-ins for
+  # efibootmgr and systemd-pcrlock. vm-secure-boot-installs shows it at a
+  # real shutdown, in minutes; this holds which BootNext it acts on, in
+  # seconds.
+  a-firmware-update-frees-pcr-0-only-for-fwupds-entry =
+    pkgs.runCommandLocal "a-firmware-update-frees-pcr-0-only-for-fwupds-entry" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/firmware-update.sh} ${./firmware-update.sh}
+        touch $out
+      '';
+
   # Every switch keeps the generation the machine booted on the ESP, so
   # systemd-pcrlock can always account for the running boot and the disk's
   # policy keeps PCR 4.

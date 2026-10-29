@@ -1,0 +1,21 @@
+# processor-telemetry: reads the processor's own telemetry and answers the
+# shell over varlink (src/main.rs says what and how).
+[package]
+name = "processor-telemetry"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+futures-util = { version = "0.3", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.53", features = ["macros", "rt", "time"] }
+# zlink logs through tracing, which says nothing with no subscriber, so the
+# reader keeps to its own journal lines.
+zlink = { version = "0.7", default-features = false, features = ["service", "tokio", "tracing"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+# For tests that let time pass at once.
+tokio = { version = "1.53", features = ["test-util"] }

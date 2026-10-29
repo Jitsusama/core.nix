@@ -1,9 +1,10 @@
-//! Packing and sealing a log: zstd, then age to every recipient.
+//! Packing and sealing a log: zstd, then age to every recipient; and
+//! opening a sealed copy again with a key this machine holds.
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use age::secrecy::SecretString;
 
@@ -90,6 +91,67 @@ fn seal_into(from: &Path, to: &Path, recipients: &Recipients) -> Result<u64, Str
     Ok(out.metadata().map_err(failed)?.len())
 }
 
+/// Open the sealed copy at `from` into `to`, unpacked, with the first of
+/// the identity files at `identities` that this machine holds and that
+/// opens it; answers how long the log is. A plugin's identity, such as a
+/// TPM's, is opened through the plugin on PATH. Whatever stops it leaves
+/// nothing at `to`.
+pub fn open(from: &Path, to: &Path, identities: &[PathBuf]) -> Result<u64, String> {
+    let opened = open_into(from, to, identities);
+    reap_plugins();
+    if opened.is_err() {
+        // A half-opened log is no copy of anything.
+        let _ = fs::remove_file(to);
+    }
+    opened
+}
+
+fn open_into(from: &Path, to: &Path, identities: &[PathBuf]) -> Result<u64, String> {
+    let present: Vec<&PathBuf> = identities.iter().filter(|path| path.exists()).collect();
+    if present.is_empty() {
+        return Err(format!(
+            "none of the keys the settings name is on this machine ({})",
+            identities
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let mut keys = Vec::new();
+    for path in present {
+        let file = age::IdentityFile::from_file(path.display().to_string())
+            .map_err(|why| format!("can't read the key {}: {why}", path.display()))?
+            .with_callbacks(Quiet);
+        keys.extend(
+            file.into_identities()
+                .map_err(|why| format!("can't use the key {}: {why}", path.display()))?,
+        );
+    }
+    let sealed = BufReader::new(
+        File::open(from).map_err(|why| format!("can't read {}: {why}", from.display()))?,
+    );
+    let refused = |why: age::DecryptError| match why {
+        age::DecryptError::NoMatchingKeys => {
+            format!("no key here opens {}", from.display())
+        }
+        why => format!("can't open {}: {why}", from.display()),
+    };
+    let opening = age::Decryptor::new_buffered(sealed)
+        .map_err(refused)?
+        .decrypt(keys.iter().map(|key| key.as_ref() as &dyn age::Identity))
+        .map_err(refused)?;
+    let failed = |why: io::Error| format!("can't open {}: {why}", from.display());
+    let mut unpacking = zstd::Decoder::new(opening).map_err(failed)?;
+    let mut out = BufWriter::new(
+        File::create(to).map_err(|why| format!("can't write {}: {why}", to.display()))?,
+    );
+    let bytes = io::copy(&mut unpacking, &mut out).map_err(failed)?;
+    let out = out.into_inner().map_err(|why| failed(why.into_error()))?;
+    out.sync_all().map_err(failed)?;
+    Ok(bytes)
+}
+
 /// Wait on the plugins age started and left unwaited, so a run sealing a
 /// thousand logs leaves no thousand ended processes behind. This program
 /// starts no other children.
@@ -103,8 +165,9 @@ fn reap_plugins() {
     }
 }
 
-/// Answers nothing a plugin asks: sealing asks for nothing, and a plugin
-/// that does stops rather than waiting on a prompt nobody sees.
+/// Answers nothing a plugin asks: sealing asks for nothing, nor does
+/// opening with a key made to need no PIN, and a plugin that asks stops
+/// rather than waiting on a prompt nobody sees.
 #[derive(Clone, Copy)]
 pub struct Quiet;
 

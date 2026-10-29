@@ -3,11 +3,12 @@
 //! what lies there.
 
 use crate::activity::{self, Process, Use};
-use crate::anchor::Dir;
+use crate::anchor::{Counted, Dir};
 use crate::band::Band;
 use crate::clock::Awake;
 use crate::config::{CacheProtocol, Config, Source};
 use crate::discover::{self, Checkout, Kind};
+use crate::git;
 use crate::plan::{Candidate, Class};
 use crate::replaced::Uses;
 use crate::snapshots::Boot;
@@ -15,6 +16,7 @@ use crate::units::Span;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
 };
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -51,6 +53,9 @@ pub enum Action {
     Collect {
         root: PathBuf,
         nix: PathBuf,
+        /// Where Nix's clients keep their temporary roots, read again just
+        /// before each delete.
+        roots: PathBuf,
         paths: Vec<String>,
     },
     /// The system daemon's garbage on the filesystem mounted at `root`,
@@ -114,11 +119,35 @@ pub struct World<'a> {
     /// The trees found and kept for their use without being offered, as
     /// the survey goes, so a plan or explanation can say why.
     pub kept: Vec<(PathBuf, Use)>,
+    /// What the survey's sizes have counted, so blocks several candidates
+    /// share, as trees cloned with their builds inside do, count once:
+    /// deleting them all frees those once.
+    pub counted: RefCell<Counted>,
 }
 
 /// How deep and how widely a workspace's writes are read.
 const WRITE_DEPTH: usize = 4;
 const WRITE_BUDGET: usize = 50_000;
+
+/// The config with only the sources that could offer something inside
+/// one of `folders`: those lying inside one, or holding one. A clear
+/// surveys only these, so it starts in seconds rather than after a walk
+/// of everything. A source that offers from no folder of its own stays.
+pub fn within(config: &Config, folders: &[PathBuf]) -> Config {
+    let touches = |source: &Source| {
+        let paths = source.under();
+        paths.is_empty()
+            || paths.iter().any(|path| {
+                let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+                folders
+                    .iter()
+                    .any(|folder| folder.starts_with(&path) || path.starts_with(folder))
+            })
+    };
+    let mut scoped = config.clone();
+    scoped.sources.retain(|_, source| touches(source));
+    scoped
+}
 
 /// Every candidate the sources offer now.
 pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
@@ -149,7 +178,12 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 pattern,
                 command,
             } => offer_snapshots(path, pattern, command, world, &mut offers),
-            Source::Workspaces { path, quests } => {
+            Source::Git { repos } => {
+                for repo in repos {
+                    offer_git(repo, world, &mut offers);
+                }
+            }
+            Source::Workspaces { path, quests, .. } => {
                 offer_workspaces(path, quests, world, &mut offers);
             }
             Source::Temp { path } => offer_temp(path, world, &mut offers),
@@ -162,10 +196,15 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 path,
                 every,
                 from,
+                watch,
                 timeout,
             } => {
                 let Some(device) = device(path) else { continue };
-                let idle = since_ran(world, name);
+                let idle = if changed_since(watch, world.ran.get(name).copied()) {
+                    f64::INFINITY
+                } else {
+                    since_ran(world, name)
+                };
                 offers.push(Offer {
                     candidate: Candidate {
                         path: named(path, name),
@@ -225,7 +264,7 @@ fn offer_cache(
             let Some(parent) = path.parent() else {
                 return;
             };
-            let candidate = caches::whole(path, rank, from, size(path));
+            let candidate = caches::whole(path, rank, from, size(path, world));
             offers.push(Offer {
                 candidate,
                 action: Action::Entry {
@@ -242,7 +281,7 @@ fn offer_scratch(path: &Path, healthy: Option<Span>, world: &World, offers: &mut
     let Some(device) = device(path) else { return };
     let healthy = healthy.map(|span| span.0.as_secs_f64());
     for entry in scratch::entries(path) {
-        let size = size(&entry.path);
+        let size = size(&entry.path, world);
         let candidate = scratch::candidate(&entry, healthy, size, world.awake, world.now);
         offers.push(Offer {
             candidate,
@@ -267,8 +306,12 @@ fn offer_snapshots(
     };
     for snapshot in snapshots::entries(path, &pattern) {
         if snapshots::orphaned(&snapshot, world.processes, &[command], world.boot) {
-            let candidate =
-                snapshots::candidate(&snapshot, size(&snapshot.path), world.awake, world.now);
+            let candidate = snapshots::candidate(
+                &snapshot,
+                size(&snapshot.path, world),
+                world.awake,
+                world.now,
+            );
             offers.push(Offer {
                 candidate,
                 action: Action::Entry {
@@ -280,6 +323,26 @@ fn offer_snapshots(
     }
 }
 
+/// What git staged in the repository whose git directory is `repo`, once
+/// no git works on it. Each goes whole, on the next pass, however young:
+/// git removes them as it exits, so one still there with no git at work
+/// is one a killed git left, and waiting on its age only keeps it.
+fn offer_git(repo: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(repo) else { return };
+    if git::busy(&git::places(repo), world.processes, world.uid) {
+        return;
+    }
+    let root = repo.join("objects");
+    for path in git::temporaries(repo) {
+        let size = size(&path, world);
+        offers.push(Offer {
+            candidate: git::candidate(path, size),
+            action: Action::Entry { root: root.clone() },
+            device,
+        });
+    }
+}
+
 /// The quest workspaces in `path`, judged by their quests' READMEs in `quests`.
 fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
@@ -288,7 +351,7 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
         .filter(workspaces::over)
     {
         let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);
-        let size = size(&workspace.path);
+        let size = size(&workspace.path, world);
         if let Some(candidate) =
             workspaces::candidate(&workspace, written, size, world.awake, world.now)
         {
@@ -315,8 +378,9 @@ fn offer_temp(path: &Path, world: &World, offers: &mut Vec<Offer>) {
         .filter(|(name, _)| name == "TMPDIR")
         .map(|(_, value)| PathBuf::from(value))
         .collect();
-    for entry in temp::leftovers(temp::survey(path), world.uid, &tmpdirs) {
-        let candidate = temp::candidate(&entry, world.awake, world.now);
+    let boot = world.boot.wall;
+    for entry in temp::leftovers(temp::survey(path), world.uid, &tmpdirs, boot) {
+        let candidate = temp::candidate(&entry, world.awake, world.now, boot);
         offers.push(Offer {
             candidate,
             action: Action::Entry {
@@ -362,7 +426,7 @@ fn offer_nix_builds(path: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
     for build in nix_builds::find(path) {
         if nix_builds::orphaned(&build, world.processes, world.boot) {
-            let size = size(&build.snapshot.path);
+            let size = size(&build.snapshot.path, world);
             let candidate = nix_builds::candidate(&build, size, world.awake, world.now);
             offers.push(Offer {
                 candidate,
@@ -464,10 +528,10 @@ fn trees_under(
         let frees = match kind {
             Kind::Target => crate::reclaim::KEEP
                 .iter()
-                .fold(size(&tree.path), |left, kept| {
+                .fold(size(&tree.path, world), |left, kept| {
                     left.saturating_sub(whole(&tree.path.join(kept)))
                 }),
-            Kind::Install => size(&tree.path),
+            Kind::Install => size(&tree.path, world),
         };
         if kind == Kind::Target && frees == 0 {
             continue;
@@ -504,7 +568,7 @@ fn trees_under(
                         .awake
                         .since(variant.last_used.min(world.now), world.now)
                         .max(0.0),
-                    size: size(&variant.path),
+                    size: size(&variant.path, world),
                     occupied: false,
                     spent: false,
                     checkout: checkout.map(Path::to_owned),
@@ -560,6 +624,20 @@ pub(crate) fn named(path: &Path, source: &str) -> PathBuf {
     PathBuf::from(named)
 }
 
+/// Whether any of the files a producer watches changed after `ran`, the
+/// wall second it last ran; never, when it hasn't run, since it's due
+/// anyway. A file that can't be read hasn't changed.
+pub fn changed_since(watch: &[PathBuf], ran: Option<f64>) -> bool {
+    let Some(ran) = ran else { return false };
+    watch.iter().any(|path| {
+        fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+            .is_some_and(|at| at.as_secs_f64() > ran)
+    })
+}
+
 /// The awake time since a source's command last ran, or forever.
 fn since_ran(world: &World, source: &str) -> f64 {
     world.ran.get(source).map_or(f64::INFINITY, |&at| {
@@ -581,11 +659,18 @@ fn resolved(root: &Path) -> PathBuf {
     fs::canonicalize(root).unwrap_or_else(|_| root.to_owned())
 }
 
+/// What an entry holds, less what the survey has counted already.
+fn size(path: &Path, world: &World) -> u64 {
+    measured(path, &mut world.counted.borrow_mut())
+}
+
 /// What an entry holds: a directory's allocated size beneath it, a file's
-/// own, nothing when it can't be read.
-fn size(path: &Path) -> u64 {
+/// own, nothing when it can't be read, less what's in `counted`.
+fn measured(path: &Path, counted: &mut Counted) -> u64 {
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.is_dir() => Dir::open(path).and_then(|dir| dir.size()).unwrap_or(0),
+        Ok(meta) if meta.is_dir() => Dir::open(path)
+            .and_then(|dir| dir.size_counted(counted))
+            .unwrap_or(0),
         Ok(meta) => meta.blocks() * 512,
         Err(_) => 0,
     }
@@ -593,10 +678,12 @@ fn size(path: &Path) -> u64 {
 
 /// What an entry takes beneath the directory holding it: itself too, as a
 /// directory's own blocks count among its parent's, where a filesystem
-/// gives a directory any.
+/// gives a directory any. It's measured alone, as what a reclaim keeps
+/// holds all it holds, whatever else shares it.
 fn whole(path: &Path) -> u64 {
+    let mut counted = Counted::default();
     match fs::symlink_metadata(path) {
-        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + size(path),
-        _ => size(path),
+        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + measured(path, &mut counted),
+        _ => measured(path, &mut counted),
     }
 }

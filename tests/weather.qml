@@ -9,11 +9,11 @@
 // say when it's raining now, might, or won't; the weather's one word asks
 // it, here or anywhere, and an old word doesn't; and with lookups off it
 // answers nothing.
-// Here is where the laptop is once whereabouts has said, its forecast asked
-// by its position with no geocoder and said by it, ahead of the place set
-// and the time zone; then the place set, ahead of the time zone; and the
-// footer says which. The laptop's file is written beside the shell by the
-// check, and a file of another version is no laptop.
+// Here is where the laptop is once Location has said, its forecast asked
+// by its position with no geocoder and said by its town, or by its
+// position while the town is unknown, ahead of the place set and the time
+// zone; then the place set, ahead of the time zone; and the footer says
+// which.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -87,11 +87,12 @@ ShellRoot {
         settings: ({ name: "weather", units: "metric", zone: "America/Toronto", lookups: true })
     }
 
-    // A laptop whereabouts has found, ahead of a place set.
+    // A laptop Location has found, ahead of a place set.
     Launcher.Weather {
         id: travelling
 
-        whereabouts: `${Quickshell.env("XDG_RUNTIME_DIR")}/laptop.json`
+        laptop: ({ v: 2, latitude: 10.123, longitude: -20.456, accuracy: 3000,
+            when: 1790000000, place: null, zone: null })
         settings: ({ name: "weather", units: "metric", zone: "America/Toronto", place: "Lima",
             lookups: true })
     }
@@ -100,6 +101,7 @@ ShellRoot {
     Launcher.Weather {
         id: settled
 
+        laptop: null
         settings: ({ name: "weather", units: "metric", zone: "America/Toronto", place: "Lima",
             lookups: true })
     }
@@ -111,19 +113,8 @@ ShellRoot {
     }
 
     // Quickshell hears Qt.exit only once the shell has loaded, so the cases
-    // run just after, and once the laptop's file is read, which a FileView
-    // does apart from the shell's start.
-    readonly property bool read: travelling.laptop !== null
-    property bool started: false
-    onReadChanged: begin()
-    Component.onCompleted: Qt.callLater(root.begin)
-
-    function begin() {
-        if (!read || started)
-            return;
-        started = true;
-        Qt.callLater(root.cases);
-    }
+    // run just after.
+    Component.onCompleted: Qt.callLater(root.cases)
 
     function cases() {
         let status = 0;
@@ -169,17 +160,13 @@ ShellRoot {
             rain.graph.shape === "spark" && rain.graph.values.length === 12
                 && rain.graph.values[0] === 0.1 && rain.graph.values[3] === 0.9,
             JSON.stringify(rain.graph));
-        // Return steps in rather than copy a table, as the right arrow
-        // does: the launcher, stood in for, is asked to enter the rain, and
-        // what it lists there, at the top or a step down, is the hours.
-        let entered = null;
-        weather.launcher = { enter: row => { entered = row; } };
-        rain.run();
-        weather.launcher = null;
-        expect("rain steps in", rain.verb === "more" && entered === rain, rain.verb);
-        const hours = entered.verbs();
-        expect("a step down, the same hours", names(entered.targets()) === names(hours),
-            names(entered.targets()));
+        // Return copies when it next rains, as asked alone, and the right
+        // arrow steps into the hours, the same at the top or a step down
+        // (Joel, 2026-10-26: a row showing a value copies it, everywhere).
+        expect("rain copies", rain.verb === "copy" && rain.figure === true, rain.verb);
+        const hours = rain.verbs();
+        expect("a step down, the same hours", names(rain.targets()) === names(hours),
+            names(rain.targets()));
         expect("the next twelve hours, from this one",
             hours.length === 12 && hours[0].name === "13:00" && hours[11].name === "00:00",
             names(hours));
@@ -188,7 +175,8 @@ ShellRoot {
         expect("an hour's bar",
             hours[3].graph.shape === "bar" && hours[3].graph.values.length === 1
                 && hours[3].graph.values[0] === 0.9, JSON.stringify(hours[3].graph));
-        expect("an hour is a figure, copying nothing", hours[2].verb === "close", hours[2].verb);
+        expect("an hour is a figure, copying what it shows", hours[2].verb === "copy",
+            hours[2].verb);
 
         // The rain asked for itself, by its one word.
         for (const typed of ["rain", "Rain", "rain?"]) {
@@ -203,7 +191,7 @@ ShellRoot {
 
         // Elsewhere, with its own clock and its own rain.
         const tokyo = weather.answer("weather in tokyo");
-        expect("the time there", tokyo.rows[0].name === "Now, 22:45 Saturday there", tokyo.rows[0].name);
+        expect("the time there", tokyo.rows[0].name === "Now There, 22:45 Saturday", tokyo.rows[0].name);
         expect("its own rain", tokyo.rows[1].side === "none in the next 12 hours", tokyo.rows[1].side);
         expect("where it is", tokyo.note === "Tokyo, Japan \u00b7 Open-Meteo", tokyo.note);
         expect("its hours run into tomorrow",
@@ -252,9 +240,11 @@ ShellRoot {
         const set = settled.answer("weather");
         expect("the place set", set.note === "Lima, from the place you set \u00b7 Open-Meteo",
             set.note);
-        expect("a file of another version is no laptop",
-            weather.fixOf('{"v":2,"latitude":1,"longitude":2}') === null
-                && weather.fixOf('{"v":1,"latitude":"1","longitude":2}') === null
-                && weather.fixOf("{\"v\":1,") === null, "it was read");
+        // Once its town is known, the laptop's here is said by it.
+        travelling.laptop = Object.assign({}, travelling.laptop, { place: "Lighthouse, Ontario" });
+        expect("the laptop's town",
+            travelling.answer("weather").note
+                === "Lighthouse, Ontario, from where the laptop is \u00b7 Open-Meteo",
+            travelling.answer("weather").note);
     }
 }

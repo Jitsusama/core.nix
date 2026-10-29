@@ -54,6 +54,9 @@ pub enum Goal {
     Upkeep,
     /// Free space back to the target.
     Reach,
+    /// What Joel asked cleared: everything given, as a critically full
+    /// disk's windows take it, whatever free space says.
+    Clear,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -144,17 +147,17 @@ pub fn pass(
         band = thresholds.band(&before, band);
         report.band = report.band.max(band);
         let remaining = match goal {
-            Goal::Upkeep => None,
+            Goal::Upkeep | Goal::Clear => None,
             Goal::Reach if before.free >= thresholds.target => {
                 report.end = End::Reached;
                 return report;
             }
             Goal::Reach => Some(thresholds.target - before.free),
         };
-        let windows = if goal == Goal::Upkeep {
-            Band::Healthy
-        } else {
-            report.band
+        let windows = match goal {
+            Goal::Upkeep => Band::Healthy,
+            Goal::Clear => Band::Critical,
+            Goal::Reach => report.band,
         };
         let left: Vec<usize> = (0..candidates.len()).filter(|&i| !taken[i]).collect();
         let offered: Vec<Candidate> = left.iter().map(|&i| candidates[i].clone()).collect();

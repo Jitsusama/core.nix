@@ -1,6 +1,7 @@
-// The screenshots folder as swayimg's gallery, found by typing, newest
-// first and selected, for a screenshot taken a while ago. The newest one
-// just taken is GIMP's row at home; this is for going back through the rest.
+// The screenshots folder as swayimg's gallery, found by typing or in
+// Capture, newest first and selected, for a screenshot taken a while ago.
+// The newest one just taken is GIMP's row beside it; this is for going
+// back through the rest.
 // It's offered only while there's a picture to look at, since an empty
 // folder would open nothing.
 import qs
@@ -19,8 +20,8 @@ Provider {
 
     readonly property var looking: thing({
         key: "swayimg:screenshots",
-        verb: "open",
-        name: "Look through the screenshots",
+        verb: Words.verb("swayimg:screenshots"),
+        name: Words.name("swayimg:screenshots"),
         keywords: "pictures images gallery screenshot",
         glyph: programGlyph("swayimg"),
         hue: "action",

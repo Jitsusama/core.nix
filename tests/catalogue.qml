@@ -5,7 +5,8 @@
 // this file and runs `qml -platform offscreen catalogue.qml`. Each case is
 // a promise pi-ask's tool leans on: a place opens and an action is done,
 // one that ends something is only offered, and what's only a figure, a
-// copy or a command's start isn't listed at all.
+// copy or a command's start isn't listed at all. A step into a row, as the
+// right arrow and the catalogue both show it, leads with Return's own act.
 import QtQuick
 import "Catalogue.js" as Catalogue
 
@@ -93,6 +94,66 @@ QtObject {
             ask: "what to say?", side: "listening" }, "a", []), { id: "a", kind: "action",
             words: "Talk", in: "", disruptive: false, says: "listening",
             args: [{ name: "words", words: "what to say?" }] });
+        // A step into a row leads with what Return does, unless it's there.
+        const names = rows => rows.map(row => row.name).join(", ");
+        let opened = 0;
+        const notice = { name: "Build done", verb: "open", glyph: "n", run: () => {
+            opened += 1;
+        }, verbs: opens };
+        const offers = [{ name: "Copy", verb: "copy", run: does },
+            { name: "Forget", verb: "forget", run: does }];
+        const led = Catalogue.leading(notice, offers);
+        expect("Return's act leads what it left out", names(led), "Open, Copy, Forget");
+        led[0].run();
+        expect("and does what Return does", opened, 1);
+        expect("as an act of its own", [led[0].key, led[0].verb, led[0].hue],
+            ["return:open", "open", "action"]);
+        // The list draws its chord and what's beside it, as a provider's.
+        expect("drawn as any row is", [led[0].chord.length, led[0].side, led[0].what],
+            [0, "", ""]);
+        expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "switch", run: does,
+            verbs: opens }, [{ name: "Switch", verb: "switch", run: does }])), "Switch");
+        // One already inside, named as it's done, is moved first, not doubled.
+        const joined = { name: "Lantern", verb: "disconnect", run: does, verbs: opens };
+        expect("found by its name", names(Catalogue.leading(joined, [{ name: "Sign in to it",
+            verb: "open", run: does }, { name: "Disconnect it", run: does }])),
+            "Disconnect it, Sign in to it");
+        // A copy is never first, and always last, after what can be done
+        // and what's only said (docs/design.md's Return rule).
+        expect("a copy last, found by how its name starts", names(Catalogue.leading({
+            name: "Quarry", verb: "copy", run: does, verbs: opens }, [{ name: "Play it",
+            run: does }, { name: "Copy what it said", run: does }, { name: "Said", figure: true,
+            run: does }])), "Play it, Said, Copy what it said");
+        expect("not a figure copying its own value", names(Catalogue.leading({ name: "Disk",
+            verb: "copy", run: does, verbs: opens }, [{ name: "Space", verb: "copy",
+            run: does }, { name: "Busy", verb: "copy", run: does }])), "Space, Busy, Copy");
+        expect("a value holding only facts copies last", names(Catalogue.leading({
+            name: "Battery", verb: "copy", run: does, verbs: opens, targets: opens },
+            [{ name: "Charger", figure: true, run: does }])), "Charger, Copy");
+        expect("read without what it's done to", names(Catalogue.leading({ name: "Radio",
+            verb: "turn off", run: does, verbs: opens }, [{ name: "Turn it off", run: does }])),
+            "Turn it off");
+        expect("not for a row that only steps in", names(Catalogue.leading({ name: "Space",
+            verb: "more", run: does, verbs: opens }, offers)), "Copy, Forget");
+        expect("nor for one holding rows, its Return their step", names(Catalogue.leading({
+            name: "See It", verb: "see", run: does, verbs: opens, targets: opens }, offers)),
+            "Copy, Forget");
+        expect("not for one that asks first", names(Catalogue.leading({ name: "Reboot",
+            verb: "reboot", confirm: true, run: does, verbs: opens }, offers)), "Copy, Forget");
+        expect("not for one holding nothing", Catalogue.leading(notice, []).length, 0);
+        // Every row has a Return act.
+        expect("a row that steps in acts", Catalogue.acts({ name: "Power", category: {} }), true);
+        expect("a value that copies acts", Catalogue.acts({ name: "Load", side: "34%",
+            figure: true, verb: "copy", run: does }), true);
+        expect("a value with nothing to copy doesn't", Catalogue.acts({ name: "Load", side: "",
+            figure: true, verb: "close", run: does }), false);
+        expect("nor one that does nothing", Catalogue.acts({ name: "Idle" }), false);
+        expect("one still being read isn't held against it", Catalogue.acts({ name: "Load",
+            side: "\u2026", figure: true, verb: "close", run: does }), true);
+        expect("a window's Close acts", Catalogue.acts({ name: "Close", verb: "close",
+            run: does }), true);
+        expect("the long lists are named", ["emoji", "notices"].map(Catalogue.long),
+            [true, false]);
         Qt.exit(failed === 0 ? 0 : 1);
     }
 }

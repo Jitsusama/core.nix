@@ -155,7 +155,7 @@ QtObject {
         const dictating = (rowsOf.desktop ?? []).filter(row => row.does
             === "Dictate into the focused window, or stop and type it");
         expect("the Copilot key in Super+D's row", dictating.map(row => [row.chord, row.also]),
-            [["Super+D", ["Super+Shift+XF86TouchpadOff"]]]);
+            [["Super+D", ["Super+Shift+F23"]]]);
         expect("elsewhere, a row of its own", KeyGroups.merged("neovim", [
             { chord: "Space g c Return", does: "Commit", keys: "space g c return", when: "" },
             { chord: "c c", does: "Commit", keys: "c c", when: "in git's status" }
@@ -372,7 +372,9 @@ QtObject {
         // The window the launcher opened over puts its program's layers
         // first: kitty's the terminal's, Neovim's or pi's before it when its
         // title says one runs there, as Neovim's titlestring and pi's own
-        // title do, and anything else only the desktop's.
+        // title do; Chrome's, and a window it opens for one site, the
+        // browser's; Slack's, 1Password's, GIMP's, Inkscape's and Spotify's
+        // their own; and anything else only the desktop's.
         const programs = [
             ["kitty", "\u{1F4DD} notes.md", ["neovim", "terminal", "desktop"]],
             ["kitty", "nvim notes.md", ["neovim", "terminal", "desktop"]],
@@ -383,7 +385,18 @@ QtObject {
             ["kitty", "~/src/vim-config", ["terminal", "desktop"]],
             ["kitty", "~/src/core.nix", ["terminal", "desktop"]],
             ["kitty", "pipewire", ["terminal", "desktop"]],
-            ["google-chrome", "\u{1F4DD} notes.md", ["desktop"]],
+            ["kitty", "btop", ["btop", "terminal", "desktop"]],
+            ["kitty", "btop --help", ["terminal", "desktop"]],
+            ["kitty", "~/src/btop", ["terminal", "desktop"]],
+            ["virt-manager", "\u{1F4DD} notes.md", ["desktop"]],
+            ["google-chrome", "\u{1F4DD} notes.md", ["chrome", "desktop"]],
+            ["chrome-mail.google.com__-Default", "Inbox", ["chrome", "desktop"]],
+            ["chrome", "", ["desktop"]],
+            ["slack", "general (Channel) - Slack", ["slack", "desktop"]],
+            ["com.onepassword.OnePassword", "1Password", ["onepassword", "desktop"]],
+            ["gimp", "GNU Image Manipulation Program", ["gimp", "desktop"]],
+            ["org.inkscape.Inkscape", "drawing.svg - Inkscape", ["inkscape", "desktop"]],
+            ["spotify", "Spotify Premium", ["spotify", "desktop"]],
             ["swayimg", "holiday.jpg", ["swayimg", "desktop"]],
             ["", "", ["desktop"]]
         ];

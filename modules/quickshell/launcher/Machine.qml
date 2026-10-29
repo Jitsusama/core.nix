@@ -13,9 +13,6 @@
 //   system where no guard watches, then how fast the disk is Reading and
 //   Writing, how Busy it is, its Latency, Temperature, Health and Model.
 // - "uptime": how long the machine has been up.
-// - "queue" or "what's running": the heavy work the machine's queue runs and
-//   holds, each job a row going to its session's window, from what the
-//   harness writes (Jobs.qml).
 //
 // A part has its own words too, "disk speed" or "ram type", which answer
 // it alone. The words that ask each, and every part's name, are the
@@ -37,6 +34,7 @@ import Qt.labs.folderlistmodel
 import Quickshell.Io
 import QtQuick
 import "Heat.js" as Heat
+import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
 
@@ -52,8 +50,7 @@ Provider {
         memory: "machine:memory",
         cpu: "machine:cpu",
         uptime: "machine:uptime",
-        disks: "machine:disk",
-        queue: "jobs"
+        disks: "machine:disk"
     })
     // A part asked for alone, by its own words, as the thing and the
     // part's name.
@@ -94,15 +91,13 @@ Provider {
             return uptime();
         case "disks":
             return disks();
-        case "queue":
-            return queue();
         default:
             return null;
         }
     }
 
     // One part as an answer: its figure as the headline, its own parts a
-    // step in, and Return copying it only where its row would.
+    // step in, and Return copying what it shows, as every value does.
     function alone(kind, name) {
         const whole = told(kind);
         const part = whole ? whole.rows.find(row => row.name === name) : null;
@@ -110,7 +105,7 @@ Provider {
             return null;
         return {
             headline: part.side,
-            copy: part.copied ?? "",
+            copy: part.copied ?? part.side ?? "",
             graph: part.graph,
             glyph: whole.glyph,
             hue: "machine",
@@ -138,8 +133,8 @@ Provider {
 
     // How rows are drawn. A figure says something and Return closes; a leaf
     // worth having, such as a model, copies what it says; a part holding
-    // more (Provider's holderRow) steps in on Return as on the right arrow,
-    // wearing its thing's glyph.
+    // more (Provider's holderRow) copies its value too, the right arrow
+    // stepping into what it holds, and wears its thing's glyph.
     function figure(fields) {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
@@ -500,27 +495,6 @@ Provider {
         }
     }
 
-    // The queue is heard, not read on a clock, so while one of the
-    // machine's answers is shown it's asked again as the harness writes it:
-    // a job finishing while it's shown says so, and one asked before the
-    // file was first heard answers once it is. Asked again while nothing of
-    // the machine's shows, what Joel had typed was searched afresh each
-    // time the queue moved, for nothing. Only something typed can have
-    // asked before the file was heard, so at home it isn't asked at all.
-    property bool queueHeard: false
-
-    Connections {
-        target: Jobs
-
-        function onSaidChanged() {
-            const first = !provider.queueHeard;
-            provider.queueHeard = Jobs.said !== null;
-            if (provider.shown || (first && provider.launcher?.open
-                && provider.launcher.typed !== ""))
-                provider.answered();
-        }
-    }
-
     // The memory.
 
     function memoryRead() {
@@ -729,7 +703,9 @@ Provider {
     // to take", so Joel sees why the disk is still short.
     function guardSays(guard, worst) {
         if (guard.silent)
-            return "the disk guard has stopped saying";
+            return [guard.accountStopped ? "the disk guard stopped"
+                : "the machine's disk guard stopped", guard.context]
+                .filter(part => part !== "").join("; ");
         const said = [worst && worst.band !== "healthy" ? guard.banded(worst.band) : "",
             guard.context].filter(part => part !== "");
         return said.length > 0 ? said.join("; ") : "from the disk guard";
@@ -755,13 +731,15 @@ Provider {
         };
         const each = holder => {
             const disk = guard.holding(holder.path) ?? guard.worst;
-            return figure({
+            return thingRow({
+                key: `machine:disk:holder:${holder.path}`,
                 name: called(holder),
                 side: guard.shown(holder.bytes),
                 graph: disk ? bar(holder.bytes / disk.total) : undefined,
-                note: holder.clearable ? said.clears ?? "" : holder.why ?? "",
+                note: holder.clearing ? said.clearing ?? ""
+                    : holder.clearable && !holder.kept ? said.clears ?? "" : holder.why ?? "",
                 reads: holder.says ?? ""
-            });
+            }, () => holderParts(guard, holder, called(holder)));
         };
         const minutes = Math.max(0, Math.round((Date.now() / 1000 - guard.holdersAt) / 60));
         const biggest = guard.holders[0];
@@ -771,6 +749,84 @@ Provider {
             glyph: chip,
             note: minutes < 1 ? said.now ?? "" : (said.ago ?? "").replace("{minutes}", minutes)
         }, () => guard.holders.map(each));
+    }
+
+    // What can be done to a holder, then what it reads, then Copy the Path
+    // (VKCF3Z's design, the disk guard's acts): open its folder; keep it
+    // from the guard's clearing, a switch that asks Joel why as it's
+    // turned on, where the account's guard measured it, since only that
+    // guard keeps; clear what the guard would take of it now, asking once,
+    // since it can't be taken back; its size and what a clear would take.
+    function holderParts(guard, holder, name) {
+        const act = (id, fields) => (fields.copy ? copyRow : thing)(Object.assign({
+            key: `verb:disk:${id}:${holder.path}`,
+            name: Words.name(`verb:disk:${id}`),
+            verb: Words.verb(`verb:disk:${id}`),
+            glyph: Words.glyph(`verb:disk:${id}`),
+            hue: "action"
+        }, fields));
+        const rows = [act("open", { run: () => Niri.spawn(["xdg-open", holder.path]) })];
+        if (holder.ours) {
+            const kept = holder.kept ?? null;
+            const keeping = {
+                side: kept ? `yes, ${kept.reason}` : "no",
+                stays: true,
+                state: () => guard.told
+            };
+            rows.push(act("keep", kept
+                ? Object.assign(keeping, {
+                    verb: Words.verb("verb:disk:keep", "kept"),
+                    run: () => guard.release(holder.path)
+                })
+                : Object.assign(keeping, {
+                    ask: Words.of("verb:disk:keep").ask ?? "",
+                    chip: name,
+                    given: reason => guard.keep(holder.path, reason)
+                })));
+        }
+        // Only what a clear takes now, never what waits to sit idle, and
+        // never what Joel keeps; gone while the guard clears it, the
+        // holder's note saying so.
+        if (holder.ours && (holder.clears ?? 0) > 0 && !holder.kept && !holder.clearing) {
+            const amount = guard.shown(holder.clears);
+            const sure = () => [thing({
+                key: `verb:disk:clear:sure:${holder.path}`,
+                name: (Words.of("verb:disk:clear").sure ?? "").replace("{amount}", amount)
+                    .replace("{name}", name),
+                verb: Words.verb("verb:disk:clear"),
+                glyph: Words.glyph("verb:disk:clear"),
+                hue: "alert",
+                stays: true,
+                state: () => guard.told,
+                run: () => guard.clear(holder.path)
+            })];
+            rows.push(act("clear", { side: amount, verbs: sure, targets: sure }));
+        }
+        rows.push(figure({
+            key: `machine:disk:holder:size:${holder.path}`,
+            name: named("disk:holder:size"),
+            side: guard.shown(holder.bytes)
+        }));
+        // How much it grew over the last day, as the guard measured it, once
+        // it has measured for an hour; what Joel looks at when something
+        // fills the disk faster than it should.
+        const grew = holder.grew ?? null;
+        if (grew && grew.bytes > 0)
+            rows.push(figure({
+                key: `machine:disk:holder:grew:${holder.path}`,
+                name: named("disk:holder:grew"),
+                side: `${guard.shown(grew.bytes)} in ${Interfaces.lasted(grew.over)}`
+            }));
+        if ((holder.clears ?? 0) > 0)
+            rows.push(figure({
+                key: `machine:disk:holder:clears:${holder.path}`,
+                name: named("disk:holder:clears"),
+                side: guard.shown(holder.clears)
+            }));
+        // An act like any other, though copying is its Return, so it wears
+        // its glyph as acts do rather than standing as a figure.
+        rows.push(act("copy-path", { copy: holder.path, figure: false, plain: false }));
+        return rows;
     }
 
     function diskParts(guard) {
@@ -881,66 +937,6 @@ Provider {
         if (model !== "")
             rows.push(leaf({ name: named("disk:model"), side: model }));
         return rows;
-    }
-
-    // The jobs.
-
-    // How long a job has run, as a clock reads it: minutes, or hours and
-    // minutes.
-    function ran(at) {
-        const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 60000));
-        return minutes === 0 ? "just begun"
-            : minutes < 60 ? `for ${minutes} min`
-            : `for ${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
-    }
-
-    readonly property var kindNames: ({
-        "vm-test": "VM test",
-        "vm-check": "VM check",
-        "benchmark": "benchmark",
-        "build": "build"
-    })
-
-    // The queue: what runs and what waits, each going to the window of the
-    // session it's for, or copying what it is when none is open.
-    function queue() {
-        if (Jobs.said === null)
-            return null;
-        const windowed = job => Sessions.running.find(session => session.presence?.session === job.owner?.session) ?? null;
-        const rows = Jobs.jobs.map(job => {
-            const session = windowed(job);
-            const kind = kindNames[job.kind] ?? job.kind;
-            const waiting = job.state === "waiting";
-            // Its place in line or how long it's run at a glance, its glyph
-            // saying which; since when below, on asking.
-            const fields = {
-                name: job.what,
-                side: waiting ? `${kind} \u00b7 ${Numbers.ordinal(job.place)} in line`
-                    : `${kind} \u00b7 ${ran(job.since)}`,
-                note: `${waiting ? "waiting" : "running"} since ${Qt.formatDateTime(new Date(job.since), "HH:mm")}`,
-                glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"],
-                hue: job.state === "waiting" ? "muted" : "action",
-                plain: true
-            };
-            return session === null ? copyRow(fields) : thing(Object.assign(fields, {
-                verb: Words.verb("verb:job:switch"),
-                later: true,
-                run: () => Niri.act({ FocusWindow: { id: session.window.id } })
-            }));
-        });
-        const room = Jobs.said.machine ?? {};
-        const counted = [Jobs.running.length > 0 ? `${Jobs.running.length} running` : "",
-            Jobs.waiting.length > 0 ? `${Jobs.waiting.length} waiting` : ""].filter(part => part !== "").join(", ");
-        const wasted = Jobs.said.wasted?.today ?? 0;
-        return {
-            headline: counted === "" ? "nothing queued" : counted,
-            live: provider,
-            rows: rows,
-            note: Jobs.silent ? "the queue has stopped saying"
-                : [room.availableGib !== undefined ? `${room.availableGib} GiB to spare` : "",
-                    room.pressure?.cpu !== undefined ? `the processors ${Math.round(room.pressure.cpu)}% held up` : "",
-                    wasted > 0 ? `${wasted} min waited with room today` : ""].filter(part => part !== "").join(" \u00b7 ")
-        };
     }
 
     function uptime() {

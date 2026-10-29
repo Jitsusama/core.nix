@@ -21,7 +21,7 @@
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later, where the ones still here can be answered
-// or let go, and while it's open the corner leaves them to it. A notice
+// or forgotten, and while it's open the corner leaves them to it. A notice
 // offering something to do (Reply, Play it) lists it above its footer with
 // the chord that takes the stack beside it, and its verbs lead with it.
 //
@@ -45,6 +45,7 @@ import QtQuick
 import QtQuick.Effects
 import "Levels.js" as Levels
 import "Stack.js" as Stack
+import "launcher/Notice.js" as Notice
 
 Scope {
     id: root
@@ -64,6 +65,16 @@ Scope {
 
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
+    // The one whose words were just copied, whose footer says so in its
+    // time's place a moment, since the copy gives the keys back and
+    // leaves nothing else to show it happened; -1 for none.
+    property int copied: -1
+
+    Timer {
+        id: copiedFor
+        interval: 2000
+        onTriggered: root.copied = -1
+    }
 
     // Where the notices sit: a step inside the window nearest the top
     // right corner of all those wholly on screen, the rightmost and then
@@ -138,8 +149,37 @@ Scope {
     // narrower each, and how far.
     readonly property int behind: 3
     readonly property int peek: Theme.space.s
-    // The front card's height, which the cards behind it take.
+    // Whether the stack glides as it moves and its edges as they follow a
+    // new front card, rather than jumping: the one line to turn them off.
+    readonly property bool glides: true
+    // The front card's height, and the one the cards behind it take, which
+    // follows it in a glide, so the edges peeking out beneath don't jump
+    // as a card of another size comes to the front. The front card itself
+    // is its own height at once, since its words are drawn whole.
     property real frontHeight: 0
+    property real edgeHeight: frontHeight
+    Behavior on edgeHeight {
+        enabled: root.glides
+        NumberAnimation {
+            duration: Theme.motion.short
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.motion.curve
+        }
+    }
+    // Said while the stack holds the keys, so the desktop test sees the
+    // card hold still as the keys move into, through and out of its acts.
+    // It's said once its bindings settle, since one step changes several
+    // and the height between them is never drawn, and only when it differs
+    // from what was said last.
+    property int stood: 0
+    onFrontHeightChanged: Qt.callLater(stands)
+    function stands() {
+        const standing = Math.round(frontHeight);
+        if (!holding || standing === stood)
+            return;
+        stood = standing;
+        Report.say(`notice stands ${standing}`);
+    }
 
     // Whether the stack holds the keys, which Super+N gives it while there
     // are notices; whether they've stepped into the front one's verbs, as
@@ -159,6 +199,8 @@ Scope {
     }
     onHoldingChanged: {
         stepped = false;
+        stood = 0;
+        Qt.callLater(stands);
         Report.say(holding ? "holds notices" : "lets notices go");
     }
     onSteppedChanged: if (!stepped) Report.say("notice back")
@@ -171,49 +213,111 @@ Scope {
     }
     onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
 
-    // What can be done with the front one besides what Return does, the
-    // same as its past self in the launcher (launcher/PastNotices.qml):
-    // what it offers, copying what it said, letting it go, letting them
-    // all go, and the rest of the notices; each with the key that does it
-    // straight away, where there is one.
+    // What can be done with the front one: the same acts, in the same
+    // order, as its row among the notices in the launcher
+    // (launcher/Notice.js), and then what's done to the whole stack, with
+    // copying what it said last; each named as the vocabulary says it
+    // (launcher/words.json), with the key that does it straight away,
+    // where there is one. Whether it's read and forgetting it change the
+    // stack rather than taking Joel anywhere, so they stay: the keys stay with
+    // the stack, which shows the next. The rest take him out, so they give
+    // the keys back (Joel, 2026-10-26: Return closes only when the act
+    // takes him out of where he is).
     readonly property var verbs: {
         const notification = front;
         if (!notification)
             return [];
+        const window = Notices.senderWindow(notification.appName);
+        const kept = Notices.history.find(notice => notice.id === notification.id) ?? null;
+        const read = kept !== null && kept.read;
+        return Notice.acts({
+            live: true,
+            opens: Notice.opens(notification.actions),
+            offers: Notice.offers(notification.actions)
+        }, { window: window !== null, stack: true })
+            .map(act => root.verb(notification, act, window, read));
+    }
+
+    // One of the front notice's acts, as its card lists it.
+    function verb(notification, act, window, read) {
         const done = run => () => {
             Notices.mark(notification.id, true);
             run();
         };
-        return offers(notification).map(offer => ({
-            glyph: /reply/i.test(offer.text) ? Theme.glyph.reply : Theme.glyph.offer,
-            name: offer.text,
-            chord: [],
-            run: done(() => offer.invoke())
-        })).concat([{
-            glyph: Theme.glyph.copy,
-            name: "Copy what it said",
-            chord: [],
-            run: done(() => {
-                Quickshell.clipboardText = root.said(notification);
-            })
-        }, {
-            glyph: Theme.glyph.dismiss,
-            name: "Let it go",
-            // Keys drawn as the desktop draws them (home.nix, keyFaces),
-            // Backspace by its name, since it has no glyph of its own.
-            chord: [{ text: "Backspace" }],
-            run: () => notification.dismiss()
-        }, {
-            glyph: Theme.glyph.dismiss,
-            name: "Let them all go",
-            chord: [{ text: "\u21e7" }, { text: "Backspace" }],
-            run: () => root.putAway()
-        }, {
-            glyph: Theme.glyph.notifications,
-            name: "All the notices",
-            chord: [{ text: "Tab" }],
-            run: () => root.history()
-        }]);
+        const named = (id, state) => ({
+            glyph: Words.glyph(id, state ?? ""),
+            name: Words.name(id, state ?? ""),
+            chord: []
+        });
+        switch (act.act) {
+        case "open":
+            return Object.assign(named("verb:notice:open"), {
+                chord: [{ text: "\u21b5" }],
+                run: done(() => {
+                    const opening = root.opens(notification);
+                    if (opening)
+                        Notices.open(opening, notification.appName);
+                })
+            });
+        case "offer":
+            return {
+                glyph: /reply/i.test(act.text) ? Theme.glyph.reply : Theme.glyph.offer,
+                name: act.text,
+                chord: [],
+                run: done(() => {
+                    const offer = notification.actions
+                        .find(action => action.identifier === act.identifier) ?? null;
+                    if (offer)
+                        offer.invoke();
+                })
+            };
+        case "goTo": {
+            const entry = DesktopEntries.heuristicLookup(notification.appName);
+            return Object.assign(named("verb:notice:goTo"), {
+                name: Words.name("verb:notice:goTo", "",
+                    { program: entry ? entry.name : notification.appName }),
+                run: done(() => Niri.act({ FocusWindow: { id: window.id } }))
+            });
+        }
+        case "read":
+            // One switch, its name the same either way and what it is at
+            // its side, as in the launcher.
+            return Object.assign(named("verb:notice:read", read ? "read" : ""), {
+                side: read ? "yes" : "no",
+                stays: true,
+                run: () => Notices.mark(notification.id, !read)
+            });
+        case "forget":
+            return Object.assign(named("verb:notice:forget"), {
+                // Keys drawn as the desktop draws them (home.nix, keyFaces),
+                // Backspace by its name, since it has no glyph of its own.
+                chord: [{ text: "Backspace" }],
+                stays: true,
+                run: () => notification.dismiss()
+            });
+        case "forgetAll":
+            return Object.assign(named("verb:notices:forget"), {
+                chord: [{ text: "\u21e7" }, { text: "Backspace" }],
+                stays: true,
+                run: () => root.putAway()
+            });
+        case "all":
+            return Object.assign(named("verb:notices:all"), {
+                // The chord that opens them, pressed again while the stack
+                // holds the keys; Tab only completes (Joel, 2026-10-26).
+                chord: root.reaching,
+                run: () => root.history()
+            });
+        default:
+            // Copying what it said, always last.
+            return Object.assign(named("verb:notice:copy"), {
+                run: done(() => {
+                    Quickshell.clipboardText = root.said(notification);
+                    root.copied = notification.id;
+                    copiedFor.restart();
+                })
+            });
+        }
     }
 
     // What a notice said, as plain text: its summary, and its body without
@@ -234,8 +338,11 @@ Scope {
     }
 
     // The front one done with: the verb chosen, or what it's about, or let
-    // go when it's about nothing to open.
-    function run() {
+    // go when it's about nothing to open. What takes Joel out gives the
+    // keys back, so what he types next reaches the window that came
+    // forward; what only changes the stack keeps them, unless he says to
+    // be done (Ctrl+Return).
+    function run(done) {
         const notification = front;
         if (!notification)
             return;
@@ -244,14 +351,20 @@ Scope {
             stepped = false;
             if (verb)
                 verb.run();
+            if (done || !(verb?.stays ?? false))
+                holding = false;
             return;
         }
         Notices.mark(notification.id, true);
         const offer = opens(notification);
-        if (offer)
-            offer.invoke();
-        else
+        if (offer) {
+            Notices.open(offer, notification.appName);
+            holding = false;
+        } else {
             notification.dismiss();
+            if (done)
+                holding = false;
+        }
     }
 
     // Turns the stack, so the next comes to the front, or the one before.
@@ -265,14 +378,15 @@ Scope {
     // does the front one, the right arrow steps into its verbs, where Up
     // and Down choose one and the left arrow or Escape steps back, and
     // otherwise Up and Down move through the stack. Delete or Backspace
-    // lets it go and with Shift all of them, Tab hands on to the history,
-    // and Escape gives the keys back.
+    // lets it go and with Shift all of them, the chord that opened the
+    // stack hands on to the history (niri's, to `take` below), and Escape
+    // gives the keys back. Tab does nothing, being only for completing.
     function pressed(event) {
         const all = (event.modifiers & Qt.ShiftModifier) !== 0;
         switch (event.key) {
         case Qt.Key_Return:
         case Qt.Key_Enter:
-            run();
+            run((event.modifiers & Qt.ControlModifier) !== 0);
             break;
         case Qt.Key_Right:
             if (!stepped && verbs.length > 0) {
@@ -302,9 +416,6 @@ Scope {
                 putAway();
             else if (front)
                 front.dismiss();
-            break;
-        case Qt.Key_Tab:
-            history();
             break;
         case Qt.Key_Escape:
             if (stepped)
@@ -349,11 +460,11 @@ Scope {
             launcher.into("notices");
     }
 
-    // The chord that opens the notices, as the launcher draws chords.
-    readonly property string reach: {
-        const opener = Shortcuts.actions.find(action => action.opens === "notices");
-        return opener ? opener.chord.map(key => key.text).join(" + ") : "";
-    }
+    // The chord that opens the notices, key by key and as the launcher
+    // draws chords.
+    readonly property var reaching: Shortcuts.actions
+        .find(action => action.opens === "notices")?.chord ?? []
+    readonly property string reach: reaching.map(key => key.text).join(" + ")
 
     function since(then, now) {
         const minutes = Math.floor((now - then) / 60000);
@@ -522,6 +633,7 @@ Scope {
             onYChanged: window.gather()
 
             Behavior on y {
+                enabled: root.glides
                 NumberAnimation {
                     duration: Theme.motion.short
                     easing.type: Easing.BezierSpline
@@ -673,13 +785,14 @@ Scope {
             // The notices, one stack: the front one whole, and behind it
             // the next few as edges, each a step lower and a step narrower,
             // at the front one's height with nothing drawn in them, so its
-            // cloudy surface shows only their frames beneath.
+            // cloudy surface shows only their frames beneath. It reaches the
+            // lower of the front card and the last edge as they glide.
             Item {
                 id: pile
 
                 width: stack.width
-                height: root.shown.length === 0 ? 0
-                    : root.frontHeight + Math.min(root.shown.length - 1, root.behind) * root.peek
+                height: root.shown.length === 0 ? 0 : Math.max(root.frontHeight,
+                    root.edgeHeight + Math.min(root.shown.length - 1, root.behind) * root.peek)
                 visible: root.shown.length > 0
 
                 // Keys reach it while the stack holds them, which niri
@@ -710,7 +823,7 @@ Scope {
                     x: Math.max(rank, 0) * Theme.space.s
                     y: Math.max(rank, 0) * root.peek
                     width: stack.width - 2 * x
-                    height: front ? implicitHeight : root.frontHeight
+                    height: front ? implicitHeight : root.edgeHeight
                     urgent: modelData.urgency === NotificationUrgency.Critical
                     keys: front && root.holding
 
@@ -744,7 +857,7 @@ Scope {
                                 root.order = Stack.forward(root.shown, card.modelData.id);
                             } else if (card.opens) {
                                 Notices.mark(card.modelData.id, true);
-                                card.opens.invoke();
+                                Notices.open(card.opens, card.modelData.appName);
                             } else {
                                 card.modelData.dismiss();
                             }
@@ -803,7 +916,7 @@ Scope {
                             // The default is the card's own click, not one
                             // of these.
                             readonly property var offers: root.offers(card.modelData)
-                            visible: offers.length > 0 && !(card.keys && root.stepped)
+                            visible: offers.length > 0 && !card.keys
 
                             Row {
                                 anchors.bottom: parent.bottom
@@ -869,25 +982,30 @@ Scope {
                             }
                         }
 
-                        // Its verbs, once the right arrow steps into them:
-                        // a launcher row's shape at the card's size, the
-                        // glyph in a column of its own, the name, the key
-                        // that does it straight away on the right, muted,
-                        // and the chosen one filled a step round its words.
+                        // Its verbs, in the offers' place while the stack
+                        // holds the keys, so the right arrow only chooses
+                        // among what's already there and stepping in,
+                        // through and out moves nothing (Joel, 2026-10-26:
+                        // no size jump). A launcher row's shape at the
+                        // card's size: the glyph in a column of its own,
+                        // the name, the key that does it straight away on
+                        // the right, muted, and once stepped in, the chosen
+                        // one filled a step round its words.
                         Column {
                             width: parent.width
                             topPadding: Theme.space.s
-                            visible: card.keys && root.stepped
+                            visible: card.keys
 
                             Repeater {
-                                model: card.keys && root.stepped ? root.verbs : []
+                                model: card.keys ? root.verbs : []
 
                                 Item {
                                     id: verb
 
                                     required property var modelData
                                     required property int index
-                                    readonly property bool chosen: root.chosen === index
+                                    readonly property bool chosen: root.stepped
+                                        && root.chosen === index
 
                                     width: parent.width
                                     height: root.line + Theme.space.xs
@@ -922,6 +1040,20 @@ Scope {
                                         font.weight: verb.chosen ? Font.Medium : Font.Normal
                                     }
 
+                                    // What a switch is, at its right, as a
+                                    // launcher row says it.
+                                    Text {
+                                        anchors.right: chord.left
+                                        anchors.rightMargin: chord.width > 0 ? Theme.space.l : 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: text !== ""
+                                        text: verb.modelData.side ?? ""
+                                        textFormat: Text.PlainText
+                                        color: Theme.muted
+                                        font.family: Theme.mono.family
+                                        font.pointSize: Theme.mono.body
+                                    }
+
                                     Chord {
                                         id: chord
                                         anchors.right: parent.right
@@ -933,6 +1065,7 @@ Scope {
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
+                                            root.stepped = true;
                                             root.chosen = verb.index;
                                             root.run();
                                         }
@@ -940,6 +1073,7 @@ Scope {
                                 }
                             }
                         }
+
 
                         // Where it came from, a step below the message,
                         // and on the right when it came; or while the stack
@@ -984,8 +1118,20 @@ Scope {
                                 readonly property real now: clock.date.getTime()
                                 // How many wait behind it, before when it came.
                                 readonly property int more: root.shown.length - 1
+                                // Its words just copied, said as the
+                                // launcher says a copy as it closes: done,
+                                // in the colour of what went well.
+                                readonly property bool copied: root.copied === card.modelData.id
                                 text: (more > 0 ? `${more} more \u00b7 ` : "")
-                                    + root.since(root.arrived[card.modelData.id] ?? now, now)
+                                    + (copied
+                                        ? `<font color="${Theme.success}">${Theme.glyph.done}`
+                                            + " copied</font>"
+                                        : root.since(root.arrived[card.modelData.id] ?? now, now))
+                                textFormat: Text.StyledText
+                                // Said for the desktop test, which sees it
+                                // say so.
+                                onCopiedChanged: if (copied)
+                                    Report.say(`copied card ${card.modelData.summary}`)
                                 visible: !card.keys
                                 color: Theme.muted
                                 font.family: Theme.mono.family
@@ -1000,8 +1146,11 @@ Scope {
                                 height: root.line
                                 visible: card.keys
                                 size: Theme.mono.body
-                                keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", "back"]]
-                                    : [["\u21b5", card.opens ? "open" : "let go"], ["\u2192", "more"]]
+                                // The arrows by their marks alone, as the
+                                // launcher's foot says them (KeyHints.qml).
+                                keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", ""]]
+                                    : [["\u21b5", Words.verb(card.opens ? "verb:notice:open"
+                                        : "verb:notice:forget")], ["\u2192", ""]]
                             }
                         }
                     }

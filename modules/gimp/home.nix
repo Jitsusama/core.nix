@@ -1,9 +1,11 @@
 # GIMP in the theme. GIMP's own theme draws every widget from a handful of
 # named colours, which gimp.css, a stylesheet GIMP reads after its theme and
-# never writes, redefines from jitsusama.theme's roles. The theme's pigments
+# never writes, redefines from jitsusama.theme's colours. The theme's pigments
 # are a palette beside the ones GIMP ships. Both go in GIMP's settings
-# folder; GIMP owns everything else there, such as gimprc, sessionrc and
-# shortcutsrc, which it rewrites and a link would break.
+# folder, with shortcutsrc, the keys that differ from GIMP's, which the
+# system gimprc keeps GIMP from saving over. GIMP owns everything else
+# there, such as gimprc and sessionrc, which it rewrites and a link would
+# break.
 #
 # GIMP comes with G'MIC's filters and Resynthesizer's healing, and starts
 # with GIMP3_SYSCONFDIR pointing at its own system folder with gimprc
@@ -12,6 +14,8 @@
 #
 # The launcher offers the newest screenshot to edit in GIMP
 # (Screenshot.qml), at home for a couple of minutes after it's taken.
+#
+# The launcher lists GIMP's own keys over its window, as the Picture editor.
 #
 # GIMP's main window opens across the screen's whole width, since at niri's
 # half a column its docks cover the picture; its dialogs still float.
@@ -23,7 +27,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font appearance;
+  inherit (config.jitsusama.theme) colours font appearance;
 
   # GIMP keeps its settings in a folder for each release series.
   series = "3.2";
@@ -35,31 +39,171 @@ let
 
   # The colours GIMP's theme names, in themes/Default/gimp-dark.css and
   # gimp-light.css, and what each means here.
-  colours = {
-    fg-color = roles.text;
-    bg-color = roles.background;
-    border-color = roles.edge;
-    dimmed-fg-color = roles.muted;
-    disabled-fg-color = roles.rule;
-    disabled-button-color = roles.raised;
-    hover-color = roles.raised;
-    widget-bg-color = roles.sunken;
-    selected-color = roles.selection;
-    extreme-bg-color = roles.deepest;
-    extreme-selected-color = roles.raised;
-    strong-border-color = roles.edge;
-    stronger-border-color = roles.rule;
-    edge-border-color = roles.edge;
-    scrollbar-slider-color = roles.muted;
-    scrollbar-trough-color = roles.sunken;
+  named = {
+    fg-color = colours.text;
+    bg-color = colours.background;
+    border-color = colours.edge;
+    dimmed-fg-color = colours.muted;
+    disabled-fg-color = colours.rule;
+    disabled-button-color = colours.raised;
+    hover-color = colours.raised;
+    widget-bg-color = colours.sunken;
+    selected-color = colours.selection;
+    extreme-bg-color = colours.deepest;
+    extreme-selected-color = colours.raised;
+    strong-border-color = colours.edge;
+    stronger-border-color = colours.rule;
+    edge-border-color = colours.edge;
+    scrollbar-slider-color = colours.muted;
+    scrollbar-trough-color = colours.sunken;
   };
 
   stylesheet = ''
-    /* GIMP's colours, from jitsusama.theme's roles. */
-    ${lib.concatLines (lib.mapAttrsToList (name: colour: "@define-color ${name} ${colour};") colours)}
+    /* GIMP's colours, from jitsusama.theme's colours. */
+    ${lib.concatLines (lib.mapAttrsToList (name: colour: "@define-color ${name} ${colour};") named)}
     /* The rulers' marks, drawn faint over the canvas's edge. */
-    @define-color ruler-color alpha(${roles.rule}, 0.3);
+    @define-color ruler-color alpha(${colours.rule}, 0.3);
   '';
+
+  grouped = group: map (key: key // { inherit group; });
+
+  # From GIMP 3.2.6's own defaults: its tools' keys in app/tools and app/paint,
+  # the rest in app/actions, with shortcutsrc's ? beside its own /.
+  keys =
+    grouped "tools" [
+      {
+        chord = "r";
+        does = "Select a rectangle";
+      }
+      {
+        chord = "e";
+        does = "Select an ellipse";
+      }
+      {
+        chord = "f";
+        does = "Select freehand";
+      }
+      {
+        chord = "u";
+        does = "Select a colour's area";
+      }
+      {
+        chord = "m";
+        does = "Move";
+      }
+      {
+        chord = "Shift+c";
+        does = "Crop";
+      }
+      {
+        chord = "Shift+t";
+        does = "Scale, rotate and shear";
+      }
+      {
+        chord = "t";
+        does = "Write on the picture";
+      }
+      {
+        chord = "p";
+        does = "Paint with a brush";
+      }
+      {
+        chord = "Shift+e";
+        does = "Erase";
+      }
+      {
+        chord = "Shift+b";
+        does = "Fill an area of colour";
+      }
+      {
+        chord = "o";
+        does = "Pick a colour from the picture";
+      }
+      {
+        chord = "h";
+        does = "Heal";
+      }
+    ]
+    ++ grouped "view" [
+      {
+        chord = "1";
+        does = "The picture at its own size";
+      }
+      {
+        chord = "Ctrl+Shift+j";
+        does = "The picture to fit the window";
+      }
+      {
+        chord = "Plus";
+        does = "The picture larger";
+      }
+      {
+        chord = "Minus";
+        does = "The picture smaller";
+      }
+      {
+        chord = "Tab";
+        does = "Show or hide the docks";
+      }
+      {
+        chord = "F11";
+        does = "The window on the whole screen";
+      }
+    ]
+    ++ grouped "selection" [
+      {
+        chord = "Ctrl+a";
+        does = "Select everything";
+      }
+      {
+        chord = "Ctrl+Shift+a";
+        does = "Select nothing";
+      }
+      {
+        chord = "Ctrl+i";
+        does = "Select what isn't selected";
+      }
+    ]
+    ++ grouped "layers" [
+      {
+        chord = "Ctrl+Shift+n";
+        does = "A new layer";
+      }
+      {
+        chord = "Ctrl+Shift+d";
+        does = "Duplicate the layer";
+      }
+      {
+        chord = "Ctrl+h";
+        does = "Anchor the floating selection";
+      }
+    ]
+    ++ [
+      {
+        chord = "Ctrl+Shift+v";
+        does = "Paste as a new picture";
+      }
+      {
+        chord = "?";
+        does = "Search GIMP's commands";
+      }
+      {
+        chord = "Ctrl+z";
+        does = "Undo the last change";
+      }
+      {
+        chord = "Ctrl+y";
+        does = "Redo the change undone";
+      }
+      {
+        chord = "Ctrl+s";
+        does = "Save the picture";
+      }
+      {
+        chord = "Ctrl+Shift+e";
+        does = "Export the picture";
+      }
+    ];
 
   gimp = pkgs.gimp3-with-plugins.override {
     plugins = [
@@ -106,12 +250,16 @@ let
 in
 {
   imports = [
+    ../keys/home.nix
     ../theme/home.nix
     niri
     quickshell
   ];
 
   home.packages = [ wrapped ];
+
+  # GIMP's keys, for the launcher to list over its window.
+  jitsusama.keys.gimp = keys;
 
   # The main window is the only one titled this as it opens; by the time a
   # picture is in it, the title names the picture. Maximized in niri keeps
@@ -135,6 +283,12 @@ in
   systemd.user.tmpfiles.rules = [ "d ${screenshots} - - - -" ];
 
   home.file."${folder}/gimp.css".text = stylesheet;
+  # GIMP made one as it first closed, holding only its own keys written out
+  # as comments, so the declared one takes its place.
+  home.file."${folder}/shortcutsrc" = {
+    force = true;
+    source = ./shortcutsrc;
+  };
   home.file."${folder}/palettes/${config.jitsusama.theme.title}.gpl".text =
     import ../theme/palette-file.nix { inherit lib; }
       config.jitsusama.theme;

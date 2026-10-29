@@ -12,8 +12,20 @@
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1 doesn't build
   '';
+  a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
+    the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
+    firmware updater, and leaves the policy alone for any other BootNext or none
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
+  '';
+  a-notice-comes-forward = ''
+    once a notice is opened, its sender's window comes forward, the one used last, unless one of
+    its own is in front already or it has none open
+  '';
+  a-notice-is-one-thing = ''
+    a notice's card and its row among the notices list the same acts in one order, copying last,
+    and a notice gone from the screen keeps none of its sender's
   '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
@@ -23,9 +35,18 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-refused-profile-is-said-once = ''
+    a power profile the daemon refuses is said once as a warning, tried again at each change of the
+    battery without repeating it, and said once it takes
+  '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
+  '';
+  a-session-is-known-by-its-own-record = ''
+    pi's sessions are those whose records name a process running on this boot since when they
+    say, never found by a window's title, each with its window found through the kitty it runs
+    in, and gone once its record or its process is
   '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
@@ -42,6 +63,11 @@
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
   '';
+  an-arrival-is-said-once-each-time = ''
+    what comes true by itself is said once, and nothing of what stood as the shell started; a
+    piece that tells something new is said again, its own earlier notice taken back first and no
+    other's; and one that goes takes back whichever of its notices is up
+  '';
   an-ipc-reply-arrives-whole = ''
     a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
     function that isn't there ends qs with a failure
@@ -55,6 +81,12 @@
   '';
   batteries-leave-time-to-power-off = ''
     UPower powers a laptop off at 5%, before it goes flat
+  '';
+  bluetooth-firmware-reaches-the-disk-prompt-dell-xps-14-da14260 = ''
+    the XPS 14's Bluetooth firmware for the disk prompt is in the machine's firmware
+  '';
+  bluetooth-firmware-reaches-the-disk-prompt-microsoft-surface-laptop-4-1958 = ''
+    the Surface Laptop 4's Bluetooth firmware for the disk prompt is in the machine's firmware
   '';
   bluetooth-keeps-its-power-limits = ''
     the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI
@@ -81,6 +113,15 @@
     visibility and pairing as settings, its traffic as a spark and what it is; and answers how the
     links are doing
   '';
+  bluetooth-seal-keeps-only-what-a-keyboard-needs = ''
+    the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to
+    the TPM under PCR 7, leaves out devices only seen in a scan, seals unchanged pairings once and
+    changed ones again, and takes the keys off once unpaired
+  '';
+  bluetooth-sits-out-hibernation = ''
+    on the XPS 14, a hibernation takes Bluetooth's driver off its chip before the image is written
+    and gives the same chip its driver back after, and a suspend leaves the driver where it is
+  '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
     is a line of text tall
@@ -88,8 +129,15 @@
   booted-generation-stays-installed = ''
     a switch never removes the generation the machine booted
   '';
+  btop-backs-out-on-escape = ''
+    btop's Escape backs out a step, off a process chosen and then out of btop, rather than opening its
+    menu
+  '';
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
+  '';
+  btop-names-its-window = ''
+    btop names its terminal's window btop while it runs, and gives the title back as it quits
   '';
   btrfs-reclaims-its-chunks = ''
     tmpfiles turns Btrfs's reclaim on for data and metadata
@@ -107,6 +155,13 @@
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
+  '';
+  chrome-recent-sites-passes-clippy = ''
+    clippy finds nothing in what reads Chrome's sites for the launcher, or its tests
+  '';
+  chrome-recent-sites-reads-a-history-mid-write = ''
+    Chrome's sites are read whole from a history caught halfway through a write, its last whole
+    write listed, Chrome's files left alone and no copy left behind
   '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
@@ -128,6 +183,10 @@
   '';
   clipboard-history-passes-clippy = ''
     clippy finds nothing in the clipboard history or its tests
+  '';
+  clock-follows-passes-clippy = ''
+    clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
+    or its tests
   '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
@@ -236,6 +295,9 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-program-wears-its-own-mark = ''
+    every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';
@@ -244,6 +306,10 @@
   '';
   example-nixos = ''
     a NixOS workstation with a screen evaluates
+  '';
+  files-are-chosen-with-or-without-the-picker = ''
+    open-with chooses a file in the shell when it answers, and in GTK's portal, given the call as
+    it was asked, when the shell has no picker
   '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
@@ -257,6 +323,9 @@
   gimp-accepts-its-configuration = ''
     GIMP reads its preferences, the theme's palette and colours
   '';
+  gimp-takes-its-shortcuts = ''
+    GIMP's window reads the declared shortcuts and refuses none of them
+  '';
   git-engine-agrees-with-gitstatusd = ''
     git-engine answers as gitstatusd does across a prompt's repository states, counting all and
     stopping at one, under git's monitor too, and as git does where gitstatusd can't read
@@ -267,6 +336,11 @@
   git-settings-stay-writable = ''
     programs write git's settings and the declared ones still win
   '';
+  google-opens-its-links = ''
+    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages,
+    documents included, open in a window of their own, any other link in the browser, and what
+    isn't a link nowhere
+  '';
   google-passes-clippy = ''
     clippy finds nothing in google or its tests
   '';
@@ -274,11 +348,25 @@
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
-    and answers an invitation the shell asks it to, changing only Joel's own answer
+    and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
+    meeting only when Joel holds it, telling every guest, moves one through the calendar Google
+    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest first,
+    each asked for once, with who it went to, its text, never an attachment's, and the name of each
+    file it carries but what its HTML shows inline, marking it read or archiving it when asked,
+    marking it unread again, mail read here wanting Joel again at once, and the documents of each
+    kind he looked at lately, his last first, asking Drive again only every five minutes and
+    keeping them while Drive fails
+  '';
+  google-switches-to-the-new-one = ''
+    a switch restarts google after reloading its units
   '';
   greetd-waits-for-the-gpu = ''
     the XPS 14's greetd starts once the GPU's device unit, tagged by udev, appears, waiting at most
     15 s, rather than for the boot to go idle as elsewhere
+  '';
+  gtk-3-dialogs-ask-the-portal = ''
+    a GTK 3 program's own file dialog never shows, asks the portal instead, and answers with what
+    it chose, or as closed when it's cancelled
   '';
   gtk-speaks-in-the-theme = ''
     GTK's settings, the desktop's dconf and fontconfig's sans-serif all name the theme's sans face
@@ -294,6 +382,16 @@
     tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI
     programs byte for byte as sbsign does, and finds every program it runs
   '';
+  hibernate-unlock-lets-go-only-after-the-disk-asked = ''
+    hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
+    firmware start for a resume through the disk prompt and a wake for none, counts a disk as
+    asking only when every token asks for something typed (a recovery key among them) and names the
+    first that doesn't, and rescues a rolled-back hibernation:
+    said with the lid open, tried once more with it shut, then powered off
+  '';
+  hibernate-unlock-passes-clippy = ''
+    clippy finds nothing in hibernate-unlock or its tests
+  '';
   icon-marks-past-the-basic-plane = ''
     an icon mark past U+FFFF reaches the shell whole
   '';
@@ -303,6 +401,9 @@
   inlyne-reads-in-the-theme = ''
     inlyne draws a sheet and the keys page its settings name on the theme's background, headings in
     the strong text and none of its own colours, and markdown files open in it
+  '';
+  inlyne-says-the-files-it-opens = ''
+    inlyne says each file it's started with to the desktop's list of files opened lately, then runs
   '';
   ipu7-outlives-its-open-files = ''
     the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds
@@ -396,6 +497,19 @@
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
   '';
+  mpv-says-the-files-it-plays = ''
+    mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
+  '';
+  mycelium-links-what-a-machine-names = ''
+    a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
+    as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
+    none only has the program, and one in no realm has no realm set
+  '';
+  mycelium-declares-what-a-machine-says = ''
+    a machine declaring what mycelium's node can't measure (its reach, what a held session
+    outlives, whether work costs money, its taints) has it written where mycelium reads it, in
+    mycelium's words; one declaring nothing has no file
+  '';
   neovim-binds-every-key = ''
     Neovim binds every key keys.nix names and only those, each action provided, in its scope's
     buffer or plugin window, completion and the command line included
@@ -427,6 +541,10 @@
   neovim-knows-the-names-it-writes = ''
     Neovim spell-checks markdown without flagging niri, Quickshell, YubiKey, TPM or monospace, and
     still flags a misspelt word
+  '';
+  neovim-says-the-files-it-opens = ''
+    Neovim says each file it opens to the desktop's list of files opened lately, as each comes into
+    view and going back to one too, and nothing that isn't a file on disk
   '';
   neovim-starts-in-the-theme = ''
     Neovim starts in bamboo, transparent, without a complaint
@@ -479,6 +597,10 @@
   nothing-spells-a-mark = ''
     no module but the theme's spells a mark's code point instead of naming it
   '';
+  now-lists-by-group = ''
+    Now lists what wants Joel first, then what reaches other people, what's playing and the modes
+    left on, by name within each, and a group it doesn't know last
+  '';
   one-niri = ''
     the screens go off through the machine's patched niri, not a second one
   '';
@@ -487,6 +609,10 @@
   '';
   one-ssh-agent = ''
     a workstation with a screen answers SSH with the TPM only
+  '';
+  onepassword-offers-its-quick-acts = ''
+    the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
+    installed 1Password takes
   '';
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
@@ -560,11 +686,14 @@
   '';
   pi-packages-passes-clippy = ''
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
-    through an update and never swap in a build that fails or leaves a native module unbuilt
+    through an update, keep the version before current and the one a live pi says it loaded, and
+    never swap in a build that fails or leaves a native module unbuilt
   '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
-    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac
+    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
+    or end, watched in each package's loaded folder, removes the versions no pi runs, however many
+    pis start or end at once
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
@@ -590,6 +719,13 @@
   '';
   pnpm-keeps-one-store = ''
     pnpm 10 and 12 find an account's one store from what its shells and user manager are given
+  '';
+  processor-telemetry-passes-clippy = ''
+    clippy finds nothing in the processor telemetry reader or its tests
+  '';
+  programs-nobody-starts-stay-unlisted = ''
+    the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
+    reads them, while the programs stay installed
   '';
   qemu-starts-after-its-sockets = ''
     the qemu VM tests run starts once the sockets it connects to are there, and fails naming one
@@ -634,7 +770,8 @@
   '';
   session-backup-stays-in-the-background = ''
     an account naming a folder backs its sessions up hourly in background.slice, catching up on an
-    hour slept through and left running by a switch, and one naming none runs nothing
+    hour slept through, trying a failed run again and left running by a switch, and one naming
+    none runs nothing
   '';
   session-machines-have-a-bridge = ''
     libvirt's bridge helper lets session machines onto virbr0, and its default network starts at
@@ -692,6 +829,9 @@
     the AI spend watch yields to the account, comes back when it fails, and leaves its status behind
     when it stops
   '';
+  spotify-backs-out-on-escape = ''
+    Escape goes back a page in Spotify once nothing is left to close or let go of
+  '';
   spotify-draws-in-the-theme = ''
     Spotify's client is built in the theme's colours and faces
   '';
@@ -707,7 +847,8 @@
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
-    End and Home to the last and first
+    End and Home to the last and first, and the picture it opened with, and none after, is said to
+    the desktop's list of files opened lately
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -806,8 +947,9 @@
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
-    or "when will it rain" answer when it next rains, here or in a place; here is where the laptop
-    is, by its position, ahead of the place set and then the time zone, and the footer says which
+    or "when will it rain" answer when it next rains, here or in a place; here is the location, by
+    its town or else its position, ahead of the place set and then the time zone, and the footer
+    says which
   '';
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
@@ -820,6 +962,11 @@
   the-launcher-catalogues-what-it-does = ''
     the launcher's catalogue tells a place from an action, offers what ends something rather than
     doing it, and lists no figure, copy or command's start
+  '';
+  the-launcher-chooses-files = ''
+    a graphical machine's portal asks the launcher's chooser for a file to open or save, GTK 3
+    programs ask the portal, their own dialogs included, and open-with's description says it
+    answers it
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
@@ -839,6 +986,10 @@
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
+  '';
+  the-launcher-finds-the-queue = ''
+    the launcher's queue names each job in words, running first, says its time against its last
+    run or what it waits for, its quest and memory, and goes to its session or copies its name
   '';
   the-launcher-finds-the-runs = ''
     the launcher lists the day's fleets and councils, running first, with progress or cost and time,
@@ -891,6 +1042,13 @@
     docs/glossary.md replaces, but the other senses and the renames still waiting that
     tests/launcher-shown.py lists, each printed with its word, and the check refuses a stand-in
     vocabulary breaking each of its rules
+  '';
+  the-launcher-shows-the-moment-in-now = ''
+    Now's last rows are the time and the date as the launcher places each anywhere, never a
+    version Now draws, the location, saying its town and when the place keeps another zone than
+    the clock, the weather, placed the same way, read as the launcher opens and kept while it's
+    asked again, then the calendar's own row for the next meeting, and Now counts nothing while
+    only they are there
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
@@ -996,6 +1154,13 @@
     a shutdown with the lid shut keeps the screen's brightness saved while it was open, so the
     next boot doesn't come up dark, and a keyboard's light is saved either way
   '';
+  the-screens-come-back-after-sleep = ''
+    once the machine wakes, swayidle turns back on the screens it turned off before sleep
+  '';
+  the-screens-go-off-before-sleep = ''
+    before every sleep swayidle locks the screen and then turns the screens off, even when the
+    lock is late, which still fails
+  '';
   the-shell-follows-dictation = ''
     the shell follows each dictation state, watches again a service its socket restarts, and tries a
     socket nothing listens on once, never looping
@@ -1018,6 +1183,26 @@
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
+  '';
+  the-shell-reads-the-documents = ''
+    the shell reads the documents from the google program's file, none from a line from before
+    them, knows which Google program opens each kind, and says who owns a document and when Joel
+    last opened it beside its title, with its details for the drawer
+  '';
+  the-shell-reads-the-mail = ''
+    the shell reads the google program's whole state from its file, a line from before mail
+    included, and nothing from half a line; says when mail came in words, and what its row and
+    its details say, the files it carries among them; writes a reply to who sent it, and a mail to
+    everyone else a meeting names; and writes the lines that mark mail read or unread again or
+    archive it
+  '';
+  the-shell-tells-the-next-meeting = ''
+    the shell names as next the meeting about to start or going on, never one over, all day or said
+    no to, says when it is in words, when it's about to start and when it's said as a notice,
+    whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
+    details for the drawer, which may be moved and to what later or typed time, what that clashes
+    with and who's told, writes the lines that answer, cancel and move it, and knows which Meet
+    call a window is and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1053,6 +1238,10 @@
   '';
   timed-work-goes-ahead-of-other-work = ''
     timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it
+  '';
+  timekeeping-passes-clippy = ''
+    clippy finds nothing in timekeeping, which works out the clock's offset and delay as
+    timedatectl does, or its tests
   '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
@@ -1105,6 +1294,12 @@
     CPU and disk, which follows the file as it changes, and one naming none or an unlisted quest
     stays; two quests' work on one CPU shares it four to one by weight, and one alone takes it all
   '';
+  vm-bluetooth-types-at-the-disk-prompt = ''
+    a keyboard paired in the running system is sealed to the TPM under Secure Boot's PCR 7, with its
+    link key nowhere in the ESP; after a restart it types the passphrase at the disk prompt and the
+    disk opens, the laptop's address unchanged; with nothing sealed the pairings are skipped, and a
+    seal that won't open leaves the prompt asking for the passphrase
+  '';
   vm-boot-asks-in-the-theme = ''
     the splash asks for the disk, names a slow job, and lasts a restart to its end; a sign-in
     console greets the account, draws the theme's face, padded, signs in to a shell told it's
@@ -1153,8 +1348,18 @@
     is
   '';
   vm-desktop-launcher-goes-places = ''
-    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, sets
-    the volume, loses no letter typed after its chord, and shows the shortcuts
+    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
+    a meeting about to start by its name, lists it in Now, counts one within the hour down as a
+    want, marked from ten minutes off and said at its reminder and as it starts, shows one further
+    off with who's asked and how each answered, its details beside it, answers its invitation,
+    writes to its guests and copies its call's link, cancels one Joel holds once he's sure, moves
+    one Google lets him change to a time he types once he's sure, and lists its Meet call in Now
+    while it's open, says Google signed out in Now with Return signing in again in pi, counts the
+    mail that wants Joel in Now with Return listing it as Mail does, details and all, opens mail by
+    its subject, keeping one Mail window, replies to it, flips its Read switch both ways and
+    archives it, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
+    its title finds, joins a Meet call by its code after Meet's New Meeting, sets the volume, loses
+    no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1220,9 +1425,14 @@
     with its PIN when the TPM refuses
   '';
   vm-guide-recovers = ''
-    a repair stick finds a machine's disk, opens it with a YubiKey's PIN, mounts it whole, sets
-    which generation boots next, replaces a lost key, reinstalls a boot loader gone from the boot
-    partition, and gives a root shell inside
+    a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
+    without changing it, mounts it whole, sets which generation boots next, replaces a lost key,
+    reinstalls a boot loader gone from the boot partition, and gives a root shell inside
+  '';
+  vm-guide-signs-a-stick-for-two-machines = ''
+    a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under
+    each machine's firmware, which holds only that machine's keys, and firmware holding neither
+    refuses it
   '';
   vm-guide-writes-a-stick = ''
     the guide writes a stick as the person, holding the writer awake, through UDisks2, unmounting
@@ -1232,11 +1442,14 @@
     writer's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
     that key's PIN and signs the stick's boot program with the machine's db key; written again, the
     stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
-    by its passphrase with the key still plugged in
+    by its passphrase with the key still plugged in; the first write is signed for the writer's
+    machine alone, and the second, asked to sign for every machine whose bundle the person keeps,
+    opens another machine's bundle by its passphrase and is signed with both machines' db keys
   '';
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
-    comes back from the image through systemd's initrd as it was, and boots anew after
+    comes back from an lz4 image through systemd's initrd as it was, once the TPM and a PIN typed
+    at its prompt open the disk, lets the lock go for that one prompt, and boots anew after
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
@@ -1249,8 +1462,8 @@
     libvirt's daemon stops at once, its udev thread starved
   '';
   vm-lid-stays-at-the-desk = ''
-    a shut lid suspends with no monitor, keeps running with one plugged in whose screen is off,
-    holding one lock through the card's changes, and suspends once it's unplugged
+    a shut lid sleeps with no monitor, keeps running with one plugged in whose screen is off,
+    holding one lock through the card's changes, and sleeps once it's unplugged
   '';
   vm-loopback-says-who-holds-it = ''
     a loopback camera's file names each program another account holds it with, not its relay's unit
@@ -1272,8 +1485,8 @@
   vm-niri-is-traced-by-its-own = ''
     an account in wheel traces its own niri off the CPU with no password, each sleep said with its
     kernel stack, monotonic time and waker, and a wait in epoll with the file that woke it, with
-    the graphics buffers reclaim backed up, read back and kept counted beside it; nobody else
-    starts it or reads it
+    the graphics buffers reclaim backed up, read back and kept counted beside it, with the most
+    kept at once; nobody else starts it or reads it
   '';
   vm-passkeys-come-from-the-tpm = ''
     passkeys and security keys are made in the TPM, each after a yes
@@ -1300,7 +1513,8 @@
     back
   '';
   vm-secure-boot-installs = ''
-    the whole install works, and the disk opens only for it
+    the whole install works, and the disk opens only for it; shut down with fwupd's firmware
+    update waiting, it frees PCR 0, and the boot after opens with the PIN and locks PCR 0 again
   '';
   vm-speakers-are-tuned = ''
     the XPS 14's speakers hear the tuning, headphones don't
@@ -1322,17 +1536,24 @@
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
     tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls, its
     UDP to Meet's media servers on 443 and Tuple's daemon video, even what it leaves to send as
-    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made again keeps its class; the client's
-    own network isn't slowed; inside a WireGuard tunnel the same classes reach the tunnel's own
-    CAKE; the queues follow the default route, a link unplugged and plugged back in is shaped
-    afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
+    it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made
+    again keeps its class; the client's own network isn't slowed; inside a WireGuard VPN the same
+    classes reach the VPN's own CAKE; the queues follow the default route, a link unplugged and
+    plugged back in is shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's, again once it's plugged back in
   '';
   vm-wifi-joins = ''
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
-    others' routing rules, keeps the card awake on mains power
+    others' routing rules, keeps the card awake on the charger
+  '';
+  waiting-on-you-is-true = ''
+    over the agents' own files, Waiting on You holds now only what Joel can do now, puts what he
+    can't yet or has put off under Later, keeps gone what he marked done, shows an item the
+    orchestrator's queue covers once, keeps nothing of an ended quest and drops nothing by its
+    age, and counts a session's want as his only while its quest has something ready or the
+    question is his
   '';
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
@@ -1379,7 +1600,7 @@
     a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after
     idle, and asks for ECN with its fallback
   '';
-  xdg-open-opens-each-kind-in-its-app = ''
+  xdg-open-opens-each-kind-in-its-program = ''
     xdg-open opens markdown in the editor declared for text, in the terminal named for it, and a
     picture in its viewer
   '';
@@ -1389,6 +1610,22 @@
   zathura-accepts-its-configuration = ''
     zathura opens a page with the account's settings and stays open without a warning, and PDFs open
     in it
+  '';
+  zathura-keys-go-where-they-say = ''
+    zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
+    and the question mark key asks the launcher for the keys
+  '';
+  zathura-says-the-files-it-opens = ''
+    zathura says each document it's started with to the desktop's list of files opened lately, then
+    runs
+  '';
+  zoxide-lists-the-folder-visited-last-first = ''
+    the account's zoxide lists the folder visited last first when asked, though another was visited
+    more often, without writing its database
+  '';
+  zoxide-lists-without-writing = ''
+    the account's zoxide lists its folders, the most visited first, without writing its database,
+    and a visit still writes it
   '';
   zsh-is-the-login-shell = ''
     an account on NixOS logs in to zsh, as one on a Mac does

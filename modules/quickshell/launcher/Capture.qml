@@ -13,7 +13,8 @@
 // viewfinder (modules/camera), and are left out where there's no camera.
 // Each waits for the launcher to be gone, so it's never in the picture.
 // Whether a camera is open, and each camera's parts, are the cameras' own
-// (Cameras.qml).
+// (Cameras.qml). After its own rows come what's done with screenshots once
+// they're taken, the programs' own rows (`lodged`).
 import Quickshell
 import qs
 import QtQuick
@@ -230,7 +231,7 @@ Provider {
     function search(typed) {
         const words = Fuzzy.words(typed);
         const found = [];
-        for (const row of fixed.concat(windows)) {
+        for (const row of fixed.concat(windows, lodged())) {
             const m = matched(row, words);
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
@@ -242,8 +243,11 @@ Provider {
         return { rows: kept.map(f => f.row), grade: finest };
     }
 
+    // What it captures, then the screenshots taken, to edit the newest or
+    // look through them all (collection-order.md), each its own
+    // program's.
     function everything() {
-        return fixed.slice();
+        return fixed.concat(lodged());
     }
 
     function counted() {

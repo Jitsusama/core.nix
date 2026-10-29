@@ -186,15 +186,20 @@ onLinux {
           "spend"
           "pi"
           "notices"
+          "google"
+          "meeting"
           "quiet"
           "disk"
           "lag"
           "awake"
           "wide"
+          "mail"
+          "profile"
           "microphone"
           "capslock"
           "layer"
           "call"
+          "meet"
           "sharing"
           "camera"
           "recording"
@@ -293,11 +298,11 @@ onLinux {
   the-launcher-means-one-thing-a-word =
     let
       home = account graphical;
-      glyphs = pkgs.writeText "glyphs.json" (builtins.toJSON (lib.attrNames home.jitsusama.theme.glyphs));
+      marks = pkgs.writeText "marks.json" (builtins.toJSON (lib.attrNames home.jitsusama.theme.marks));
       words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
-      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${glyphs}
+      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${marks}
       touch $out
     '';
 
@@ -335,8 +340,8 @@ onLinux {
 
   # Shortcuts groups every layer's chords by what each acts on, as
   # tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
-  # binds, Neovim's and pi's among them, in Qt's own engine, each group
-  # named in the account's vocabulary; and steps through them in levels, as
+  # binds, Neovim's, pi's, Chrome's and Slack's among them, in Qt's own
+  # engine, each group named in the account's vocabulary; and steps through them in levels, as
   # tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
   # over the same account's shortcuts, with niri stood in for. The picture
   # viewer is given a key of its own here, one no viewer would use, so its
@@ -349,8 +354,10 @@ onLinux {
         {
           home-manager.users.someone = {
             imports = [
+              self.homeModules.chrome
               self.homeModules.neovim
               self.homeModules.pi
+              self.homeModules.slack
             ];
             jitsusama.keys.swayimg = [
               {
@@ -776,6 +783,10 @@ onLinux {
         readonly property string home: Quickshell.env("HOME")
         readonly property string quests: Quickshell.env("QUESTS")
         property var running: []
+        function isOf(session) { return `window:''${session.window.id}`; }
+        function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
+        property var started: null
+        function start(quest, folder) { started = [quest, folder]; }
       '';
       quests = pkgs.callPackage ./pi-helper.nix {
         name = "pi-quests";
@@ -806,12 +817,70 @@ onLinux {
       touch $out
     '';
 
+  # Now's own rows, last: the time, the date, the location, the weather
+  # read as the launcher opens and the next meeting, whose Return is the
+  # meeting's own (tests/now-moment.qml), with the margin's pieces, the
+  # agents' waiting list, the weather and the calendar stood in. The
+  # location is Location.qml's own, reading the file whereabouts would
+  # write, written here, and a clock whose zone a stand-in timedatectl says
+  # is another than the place's.
+  the-launcher-shows-the-moment-in-now =
+    let
+      facts = singleton "Facts.qml" ''
+        property var all: []
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        property var items: []
+        property var now: []
+        property var later: []
+        property var foremost: null
+        function titled(each) { return each.title; }
+        function identity(each) { return each.title; }
+        function questOf(each) { return ""; }
+        function windowOf(each) { return null; }
+        function settle(each, how) {}
+        function go(each) {}
+      '';
+      # Where an item is done names its session, which needs none here.
+      sessions = singleton "Sessions.qml" ''
+        property var running: []
+      '';
+      timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
+    in
+    pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./Marks.js} Marks.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/WhatsOn.qml} launcher/WhatsOn.qml
+      cp ${./launcher/Now.js} launcher/Now.js
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/now-moment.qml} shell.qml
+      cp ${facts} Facts.qml
+      cp ${waiting} WaitingOnYou.qml
+      cp ${sessions} Sessions.qml
+      cp ${./Location.qml} Location.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PATH=${timedatectl}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      echo '{"v":2,"latitude":43.6748,"longitude":-79.3794,"accuracy":26000,'\
+      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto"}' \
+        > $XDG_RUNTIME_DIR/whereabouts.json
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's weather answers now, its parts and the rain by the hour
   # from one forecast, and the rain's own words answer the next rain
   # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
-  # nothing leaves the sandbox; and here is where the laptop is, from the
-  # file whereabouts would write, written here, ahead of the place set and
-  # the time zone.
+  # nothing leaves the sandbox; and here is where the laptop is, as each
+  # case gives Location's here, ahead of the place set and the time zone.
   the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
     mkdir launcher
     cp ${./Fuzzy.js} Fuzzy.js
@@ -823,10 +892,12 @@ onLinux {
     cp ${./Words.qml} Words.qml
     cp ${./launcher/words.json} launcher/words.json
     cp ${../../tests/weather.qml} shell.qml
+    cp ${singleton "Location.qml" ''
+      property var here: null
+      property string clockZone: ""
+    ''} Location.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     mkdir -m 700 $XDG_RUNTIME_DIR
-    echo '{"v":1,"latitude":10.123,"longitude":-20.456,"accuracy":3000,"when":1790000000}' \
-      > $XDG_RUNTIME_DIR/laptop.json
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
     timeout 60 ${qs} -p shell.qml
@@ -847,6 +918,10 @@ onLinux {
         doCheck = false;
       } (builtins.readFile ../../tests/desktop/stand-in-ask.py);
       niri = singleton "Niri.qml" "function spawn(command) {}";
+      sessions = singleton "Sessions.qml" ''
+        readonly property string home: Quickshell.env("HOME")
+        function tell(words, folder, program) {}
+      '';
     in
     pkgs.runCommandLocal "the-launcher-asks-a-fresh-pi" { } ''
       mkdir -p launcher runtime && chmod 700 runtime
@@ -859,6 +934,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
       cp ${../../tests/ask.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} ASK_BROKEN=${broken} ASK_STAND_IN=${standIn}
@@ -922,6 +998,14 @@ onLinux {
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
         cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+        cp ${singleton "Location.qml" ''
+          property string clockZone: ""
+          property bool clockMoved: false
+          property var moved: null
+          property string movedSaid: ""
+          function city(zone) { return zone; }
+          function putBack() {}
+        ''} Location.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
@@ -951,6 +1035,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Heat.js} launcher/Heat.js
+      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
       cp ${./launcher/Machine.js} launcher/Machine.js
       cp ${./launcher/Machine.qml} launcher/Machine.qml
       cp ${./launcher/Sensors.qml} launcher/Sensors.qml
@@ -1115,6 +1200,12 @@ onLinux {
         property var marked: []
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
+        // A sender's window by its program's id, as Notices finds it, the
+        // desktop's entries aside.
+        function senderWindow(app) {
+          return Object.values(Niri.windows)
+            .find(w => w.app_id.toLowerCase() === app.toLowerCase()) ?? null;
+        }
       '';
       # The tester's player, found by its desktop entry, a radio's, found
       # only by its identity, and one nobody's; the tester's two streams, a
@@ -1207,7 +1298,7 @@ onLinux {
       tester = entry "tester" ''
         Name=Tester
         GenericName=Logbook
-        Exec=tester
+        Exec=tester %U
         Actions=private;new;logbook;
 
         [Desktop Action private]
@@ -1230,19 +1321,32 @@ onLinux {
         Name=Radio
         Exec=radio
       '';
+      browser = entry "browser" ''
+        Name=Browser
+        Exec=browser %U
+      '';
+      # A program whose entry's id isn't its command, as zathura's isn't.
+      viewer = entry "viewer" ''
+        Name=Viewer
+        Exec=viewer %U
+      '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
       mkdir -p launcher share/applications
       cp ${tester} share/applications/tester.desktop
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
+      cp ${browser} share/applications/browser.desktop
+      cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Applications.qml} launcher/Applications.qml
+      cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
+      cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/program-controls.qml} shell.qml
@@ -1254,8 +1358,58 @@ onLinux {
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
+      # What quiet had open lately, as a program keeps it, and the command
+      # that lists it.
+      printf '%s\n' "$HOME/src/core.nix" /etc > $HOME/recent
+      export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
+      # The list programs share, as recent-files prints it: the tester by
+      # its name and by its id, one file twice, one of no program here, and
+      # one the radio was given, which can't open a file itself, and one the
+      # viewer opened, named by its command as recent-files names it.
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\n' \
+        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" \
+        "$HOME/paper.pdf" > $HOME/shared
+      export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
+      # The browser's sites, as chrome-recent-sites prints them, each
+      # reading saying which it is.
+      export SITES_LIST=${pkgs.writeShellScript "sites-list" ''
+        echo . >> "$HOME/sites-read"
+        n=$(wc -l < "$HOME/sites-read")
+        printf 'https://example.org/%s\tPage %s\nhttps://other.example.net/a\tOlder page\n' "$n" "$n"
+      ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # Every program an account lists in the launcher, each desktop entry it
+  # shows, wears a mark of its own in launcher/Provider.qml's table, its
+  # logo or the theme's mark for it, never the program mark the rest share,
+  # and each theme mark it names is one the theme has.
+  every-program-wears-its-own-mark =
+    let
+      home = account graphical;
+      marks = pkgs.writeText "marks" (
+        lib.concatMapStrings (name: "${name}\n") (lib.attrNames home.jitsusama.theme.marks)
+      );
+    in
+    pkgs.runCommandLocal "every-program-wears-its-own-mark" { } ''
+      sed -n '/programGlyphs: Object.assign({/,/settings.glyphs/p' ${./launcher/Provider.qml} > table
+      grep -o '"[^"]*": "' table | cut -d '"' -f 2 > known
+      grep -o '"mark:[^"]*"' table | cut -d : -f 2 | tr -d '"' > named
+      bare=""
+      for entry in ${home.home.path}/share/applications/*.desktop; do
+        if grep -q -x -E '(NoDisplay|Hidden)=true' "$entry"; then continue; fi
+        id=$(basename "$entry" .desktop | tr '[:upper:]' '[:lower:]')
+        grep -q -x -F "$id" known || bare="$bare $id"
+      done
+      if [ -n "$bare" ]; then
+        echo "These programs would wear the program mark every program without one shares:$bare"
+        exit 1
+      fi
+      while read -r mark; do
+        grep -q -x -F "$mark" ${marks} || { echo "No theme mark is named $mark"; exit 1; }
+      done < named
       touch $out
     '';
 
@@ -1275,6 +1429,7 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         readonly property string state: Quickshell.env("PI_STATE")
         property var running: []
+        function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
       '';
       runs = pkgs.callPackage ./pi-helper.nix {
         name = "pi-runs";
@@ -1316,6 +1471,107 @@ onLinux {
       touch $out
     '';
 
+  # The launcher's queue, Agents' place for the machine's heavy work, says
+  # what each job is from the queue pi's harness writes (tests/queue.qml),
+  # with the queue, pi's sessions, niri, Quests and a slice's memory stood
+  # in: names in words, times against the last run, what a waiting job
+  # waits for, and where Return goes.
+  the-launcher-finds-the-queue =
+    let
+      niri = singleton "Niri.qml" ''
+        property var acted: null
+        function act(request) { acted = request; }
+      '';
+      sessions = singleton "Sessions.qml" ''
+        property var running: [{ presence: { session: "s1" }, window: { id: 7 }, address: "QUEUE1" }]
+        function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
+      '';
+      jobs = singleton "Jobs.qml" ''
+        property var said: null
+        readonly property var jobs: said?.jobs ?? []
+        readonly property var running: jobs.filter(job => job.state === "running")
+        readonly property var waiting: jobs.filter(job => job.state === "waiting")
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-queue" { } ''
+      mkdir -p launcher cgroups/work.scope
+      # 5.8 GiB, held by the running job's slice.
+      echo 6227702579 > cgroups/work.scope/memory.current
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Queue.qml} launcher/Queue.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/queue.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      cp ${jobs} Jobs.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export CGROUPS=$PWD/cgroups
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # pi's sessions are known by their own records and the processes those
+  # name, never by a window's title, and each one's window through the
+  # kitty it runs in (tests/sessions.qml), over real processes
+  # tests/sessions-state.sh starts, with niri and kitten stood in.
+  a-session-is-known-by-its-own-record =
+    let
+      # Three windows of the same title, one of kitty 500's and two of 600's.
+      niri = singleton "Niri.qml" ''
+        property var windows: ({
+          "10": { id: 10, pid: 500, title: "\u03c0 - Lighthouse" },
+          "20": { id: 20, pid: 600, title: "\u03c0 - Lighthouse" },
+          "21": { id: 21, pid: 600, title: "\u03c0 - Lighthouse" }
+        })
+        property int revision: 0
+        property var current: null
+        property var acted: null
+        property var spawned: []
+        function act(request) { acted = request; }
+        function spawn(command) { spawned = command; }
+      '';
+      options = singleton "Options.qml" ''
+        readonly property var sounds: ({ wants: "", player: "" })
+      '';
+      quiet = singleton "Quiet.qml" ''
+        property bool on: false
+      '';
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        function mark(id, read) {}
+      '';
+      waiting = singleton "WaitingOnYou.qml" ''
+        readonly property var standing: ({})
+      '';
+    in
+    pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
+      export XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
+      export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
+      cp ${./Sessions.qml} Sessions.qml
+      cp ${./Waiting.js} Waiting.js
+      cp ${waiting} WaitingOnYou.qml
+      cp ${../../tests/sessions.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${options} Options.qml
+      cp ${quiet} Quiet.qml
+      cp ${notices} Notices.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
   # Tuple's place in the launcher leads with what can be done about calls
   # now, as a stand-in for Tuple.qml says it, and its people follow Tuple's
   # contacts through the real
@@ -1334,7 +1590,7 @@ onLinux {
       '';
       # Out of a call, as Tuple.qml would be, which the test changes.
       calls = singleton "Tuple.qml" ''
-        property var controls: [{ key: "tuple:open", verb: "open", name: "Open my Tuple room",
+        property var controls: [{ key: "tuple:open", verb: "open", name: "Open My Tuple Room",
           keywords: "pair call start new", glyph: "o", hue: "action", run: () => {} }]
         property bool calling: false
         property string standing: ""
@@ -1690,6 +1946,91 @@ onLinux {
       touch $out
     '';
 
+  # Once a notice is opened, its sender's window comes forward when it
+  # doesn't by itself, as tests/notice-comes-forward.qml holds Forward.js
+  # to niri's windows.
+  a-notice-comes-forward =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-notice-comes-forward" { } ''
+      cp ${../../tests/notice-comes-forward.qml} notice-comes-forward.qml
+      cp ${./Forward.js} Forward.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice-comes-forward.qml
+      touch $out
+    '';
+
+  # A notice's card and its row in the launcher list the same acts in one
+  # order, as tests/notice.qml holds Notice.js.
+  a-notice-is-one-thing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-notice-is-one-thing" { } ''
+      cp ${../../tests/notice.qml} notice.qml
+      cp ${./launcher/Notice.js} Notice.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice.qml
+      touch $out
+    '';
+
+  # What comes true by itself is said once as a notice, and again only as
+  # it tells something new, its earlier notice taken back first, as
+  # tests/arrivals.qml holds Arrivals.qml to with the facts and the notices
+  # stood in, and notify-send writing down what it's asked to say.
+  an-arrival-is-said-once-each-time =
+    let
+      facts = singleton "Facts.qml" "property var all: []";
+      notices = singleton "Notices.qml" ''
+        property var live: ({})
+        property var history: []
+        property var marked: []
+        function mark(id, read) { marked = marked.concat([id]); }
+      '';
+      options = singleton "Options.qml" "property bool reports: false";
+      report = singleton "Report.qml" "function say(text) {}";
+      notifySend = pkgs.writeShellScriptBin "notify-send" ''
+        printf '%s\n' "$*" >> "$XDG_RUNTIME_DIR/said"
+      '';
+    in
+    pkgs.runCommandLocal "an-arrival-is-said-once-each-time" { } ''
+      cp ${./Arrivals.qml} Arrivals.qml
+      cp ${facts} Facts.qml
+      cp ${notices} Notices.qml
+      cp ${options} Options.qml
+      cp ${report} Report.qml
+      cp ${../../tests/arrivals.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} PATH=${notifySend}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      # Made before the shell starts, so its watch has a file to follow.
+      touch $XDG_RUNTIME_DIR/said
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # Now lists what's on by its groups, what wants Joel first, then by name
+  # within each, as tests/now-groups.qml holds launcher/Now.js to it.
+  now-lists-by-group =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "now-lists-by-group" { } ''
+      cp ${../../tests/now-groups.qml} now-groups.qml
+      cp ${./launcher/Now.js} Now.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml now-groups.qml
+      touch $out
+    '';
+
   # Every glyph in the margin stands the same height on the gap's middle
   # line, however tall its font draws it, and they line up from the corner
   # by how much each asks, in the colour that says so, as tests/marks.qml
@@ -1708,6 +2049,23 @@ onLinux {
       touch $out
     '';
 
+  # Waiting on You holds only what truly waits on Joel, now or later, each
+  # once, and a session's want is his only while it's true, as
+  # tests/waiting-on-you.qml holds Waiting.js to the agents' own files.
+  waiting-on-you-is-true =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "waiting-on-you-is-true" { } ''
+      cp ${../../tests/waiting-on-you.qml} waiting-on-you.qml
+      cp ${./Waiting.js} Waiting.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml waiting-on-you.qml
+      touch $out
+    '';
+
   # Every mark the margin can show is the theme's drawing of it, standing the
   # grid's full height and centred across it as Qt draws it, so a row of
   # them is level and each has the same room either side (tests/drawings.qml).
@@ -1720,7 +2078,7 @@ onLinux {
           lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.overview.pieces
         )
       );
-      drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.glyphs;
+      drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.marks;
       drawings = pkgs.writeText "Drawings.js" ''
         .pragma library
         var marks = ${builtins.toJSON marks};
@@ -1946,6 +2304,16 @@ onLinux {
   # clippy finds nothing in the window recorder, its tests included.
   record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
     pkgs.callPackage ./record-window/package.nix { }
+  );
+
+  # clippy finds nothing in clock-follows, its tests included.
+  clock-follows-passes-clippy = passesClippy "clock-follows-passes-clippy" (
+    pkgs.callPackage ./clock-follows/package.nix { }
+  );
+
+  # clippy finds nothing in timekeeping, its tests included.
+  timekeeping-passes-clippy = passesClippy "timekeeping-passes-clippy" (
+    pkgs.callPackage ./timekeeping/package.nix { }
   );
 
   # clippy finds nothing in whereabouts, its tests included.

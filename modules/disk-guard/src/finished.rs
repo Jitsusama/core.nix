@@ -82,6 +82,23 @@ pub fn read(dir: &Path) -> Option<Checkout> {
     })
 }
 
+/// Whether a checkout holds work not yet committed to what it tracks,
+/// edited or added: work still going on, whatever its head says. Files git
+/// doesn't track are left out, since a build folder is often one. A git
+/// that can't say in time counts as changed, so the checkout is kept.
+pub fn changed(dir: &Path) -> bool {
+    git(
+        dir,
+        &[
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+            "--ignore-submodules",
+        ],
+    )
+    .is_none_or(|out| !out.is_empty())
+}
+
 /// The first predicate for a checkout's remote.
 pub fn predicate_for<'a>(predicates: &'a [Predicate], remote: &str) -> Option<&'a Predicate> {
     predicates

@@ -22,15 +22,19 @@ Piece {
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{
         glyph: Theme.glyph.ringing,
-        name: Quiet.kept ? "End it now" : "Let notices show",
+        name: Quiet.kept ? "End It Now" : "Let Notices Show",
+        stays: true,
         run: () => Quiet.end()
     }].concat(ends !== "" ? [{
-        glyph: Theme.glyph.timed,
-        name: "An hour more",
+        glyph: Words.glyph("verb:on:quiet:more"),
+        name: Words.name("verb:on:quiet:more"),
+        verb: Words.verb("verb:on:quiet:more"),
+        stays: true,
         run: () => Quiet.more(60)
     }] : [], held > 0 ? [{
-        glyph: Theme.glyph.notifications,
-        name: "Show what's held",
+        glyph: Words.glyph("verb:on:quiet:held"),
+        name: Words.name("verb:on:quiet:held"),
+        verb: Words.verb("verb:on:quiet:held"),
         chord: opening.chord,
         run: shell => shell.launcher.into("notices")
     }] : [])

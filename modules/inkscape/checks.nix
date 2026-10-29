@@ -17,7 +17,7 @@ onLinux {
   inkscape-accepts-its-configuration =
     let
       home = account graphical;
-      inherit (home.jitsusama.theme) roles;
+      inherit (home.jitsusama.theme) colours;
       inkscape = lib.findFirst (
         package: lib.getName package == "inkscape-with-extensions"
       ) null home.home.packages;
@@ -52,7 +52,7 @@ onLinux {
         cp ${files."${profile}/ui/user.css".source} profile/ui/user.css
         cp ${files."${profile}/templates/default.svg".source} profile/templates/default.svg
         inkscape --actions='file-new;export-filename:new.svg;export-do' > said 2>&1 || true
-        if ! grep -q 'inkscape:deskcolor="${roles.sunken}"' new.svg; then cat said; exit 1; fi
+        if ! grep -q 'inkscape:deskcolor="${colours.sunken}"' new.svg; then cat said; exit 1; fi
         GI_TYPELIB_PATH=${typelibs} python3 ${parses} profile/ui/user.css
         sed -n -E 's/^ *([^ /*].*[^ ]) *[{,]$/\1/p' profile/ui/user.css > selectors
         while read -r selector; do

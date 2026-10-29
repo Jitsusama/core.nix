@@ -1,6 +1,7 @@
-use disk_guard::finished::{Answers, Checkout, Predicate, ask, read};
+use disk_guard::finished::{Answers, Checkout, Predicate, ask, changed, read};
 use regex_lite::Regex;
 use std::ffi::OsString;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
@@ -72,6 +73,25 @@ fn a_checkout_is_read_with_its_branch_head_and_remote() {
     );
     git(dir.path(), &["checkout", "-q", "--detach"]);
     assert_eq!(read(dir.path()).unwrap().branch, None);
+}
+
+#[test]
+fn a_checkout_with_tracked_work_not_committed_is_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    repository(dir.path());
+    fs::write(dir.path().join("lib.rs"), "one").unwrap();
+    git(dir.path(), &["add", "lib.rs"]);
+    git(dir.path(), &["commit", "-q", "-m", "lib"]);
+    // A build folder git doesn't know of is no one's work.
+    fs::create_dir(dir.path().join("target")).unwrap();
+    fs::write(dir.path().join("target/out"), "").unwrap();
+    assert!(!changed(dir.path()), "as committed");
+    fs::write(dir.path().join("lib.rs"), "two").unwrap();
+    assert!(changed(dir.path()), "edited");
+    git(dir.path(), &["checkout", "-q", "--", "lib.rs"]);
+    fs::write(dir.path().join("new.rs"), "").unwrap();
+    git(dir.path(), &["add", "new.rs"]);
+    assert!(changed(dir.path()), "added");
 }
 
 #[test]

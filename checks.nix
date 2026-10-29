@@ -235,6 +235,11 @@ let
   vmTestsOn = pkgs: {
     # The disk layout and Secure Boot decide whether a machine starts at all.
     vm-secure-boot-installs = import ./tests/vm/guide/secure-boot.nix { inherit self pkgs; };
+    # A keyboard at the disk prompt is the TPM, the boot stub, the initrd's
+    # BlueZ and the kernel's HID together, before any disk is open.
+    vm-bluetooth-types-at-the-disk-prompt = import ./tests/bluetooth-disk-prompt.nix {
+      inherit self pkgs;
+    };
     # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
     # a TPM together, driven by its keys as a person drives it.
     vm-guide-installs = import ./tests/vm/guide/guide-install.nix { inherit self pkgs; };
@@ -245,6 +250,11 @@ let
     # Recovering is a stick, a laid-out disk and its subvolumes together,
     # with nothing of the machine's on the stick.
     vm-guide-recovers = import ./tests/vm/guide/guide-recover.nix { inherit self pkgs; };
+    # Whether firmware boots a program signed by several machines' keys is
+    # the firmware's own to say, and only a running one says it.
+    vm-guide-signs-a-stick-for-two-machines = import ./tests/vm/guide/guide-one-stick.nix {
+      inherit self pkgs;
+    };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.
@@ -419,7 +429,9 @@ let
 
   # Every jitsusama.* option a Linux machine can set, NixOS's and
   # home-manager's, read from the two Linux examples, which between them
-  # import every module Linux has.
+  # import every module Linux has. A hidden option is an old name kept for
+  # the machines still setting it, which nobody reads in the docs, so it
+  # isn't held to the glossary.
   optionNames =
     let
       machines =
@@ -438,7 +450,9 @@ let
       spelled =
         options:
         map (option: lib.showOption (lib.remove "<name>" option.loc)) (
-          lib.collect lib.isOption (options.jitsusama or { })
+          lib.filter (option: option.visible or true != false) (
+            lib.collect lib.isOption (options.jitsusama or { })
+          )
         );
       home = options: options.home-manager.users.type.getSubOptions [ ];
     in
@@ -822,11 +836,13 @@ gather (
     ./hardware/microsoft-surface-laptop-4-1958/checks.nix
     ./modules/backlight/checks.nix
     ./modules/bat/checks.nix
+    ./modules/bluetooth-disk-prompt/checks.nix
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix
     ./modules/btrfs/checks.nix
     ./modules/camera/checks.nix
     ./modules/cargo/checks.nix
+    ./modules/chrome/checks.nix
     ./modules/claude/checks.nix
     ./modules/clippy/checks.nix
     ./modules/console/checks.nix
@@ -848,6 +864,7 @@ gather (
     ./modules/google/checks.nix
     ./modules/gtk/checks.nix
     ./modules/guide/checks.nix
+    ./modules/hibernate/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
@@ -865,6 +882,7 @@ gather (
     ./modules/memory-modules/checks.nix
     ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
+    ./modules/mycelium/checks.nix
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix
     ./modules/nftables/checks.nix
@@ -879,6 +897,7 @@ gather (
     ./modules/plymouth/checks.nix
     ./modules/pnpm/checks.nix
     ./modules/power-profiles-daemon/checks.nix
+    ./modules/processor-telemetry/checks.nix
     ./modules/prompt/checks.nix
     ./modules/qt/checks.nix
     ./modules/quickshell/checks.nix
@@ -898,10 +917,12 @@ gather (
     ./modules/theme/checks.nix
     ./modules/touchpad/checks.nix
     ./modules/tuple/checks.nix
+    ./modules/unlisted/checks.nix
     ./modules/v4l2loopback/checks.nix
     ./modules/wifid/checks.nix
     ./modules/yubikey/checks.nix
     ./modules/zathura/checks.nix
+    ./modules/zoxide/checks.nix
     ./modules/zsh/checks.nix
   ]
 )

@@ -68,6 +68,7 @@ in
     ../../modules/mic-mute-light/nixos.nix
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
+    ../../modules/processor-telemetry/nixos.nix
     ../../modules/touchpad/nixos.nix
     ./camera/camera.nix
     ./kernel/backports.nix
@@ -79,6 +80,13 @@ in
 
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
+
+  # Bluetooth's driver refused a hibernation's power-off on 2026-10-28, and
+  # the laptop stayed on in a bag; the script says why, and when it goes.
+  environment.etc."systemd/system-sleep/bluetooth-sits-out-hibernation".source =
+    pkgs.writeShellScript "bluetooth-sits-out-hibernation" (
+      builtins.readFile ./bluetooth-sits-out-hibernation.sh
+    );
 
   # The devices this laptop always has: every one a driver binds to, and each
   # light, sensor, control and setting those drivers give, so a kernel or
@@ -202,6 +210,16 @@ in
     "usb_storage"
     "uas"
     "sd_mod"
+    # The Bluetooth controller, on PCIe rather than USB, for a paired
+    # keyboard at the disk prompt (bluetooth-disk-prompt).
+    "btintel_pcie"
+  ];
+  # Its firmware and settings, which btintel picks by what the chip answers,
+  # so the module tree can't name them.
+  boot.initrd.extraFirmwarePaths = [
+    "intel/ibt-00a0-01a1-iml.sfi"
+    "intel/ibt-00a0-01a1-pci.sfi"
+    "intel/ibt-00a0-01a1-pci.ddc"
   ];
   # The GPU's driver, with the firmware it asks for, so it takes the screen
   # from the firmware's framebuffer before the disk's PIN is asked for rather
@@ -343,6 +361,18 @@ in
 
   # Dell publishes this laptop's firmware updates through LVFS.
   services.fwupd.enable = true;
+  # The refresh asks polkit, and a switch that changes polkit's settings
+  # restarts it, so a refresh its timer starts in that gap fails and the
+  # switch with it. It tries again a minute later, three times in an hour
+  # at most, so a machine with no network still says so.
+  systemd.services.fwupd-refresh = {
+    serviceConfig = {
+      Restart = "on-failure";
+      RestartSec = "1min";
+    };
+    startLimitIntervalSec = 3600;
+    startLimitBurst = 3;
+  };
 
   # The battery stops charging at 80% and starts again below 75%: a lithium
   # cell ages fastest held near full, and with the starting point that close

@@ -2,11 +2,11 @@
 # watches what logind does. The machine has no monitor, so it reads the
 # graphics card's connectors from a stand-in directory, where a test writes
 # a monitor's connector plugged in or not, then says so as the card would,
-# with a change on the card. Its suspend stands in too, leaving a file for
-# the test to find rather than sleeping. Shut with no monitor, it suspends;
+# with a change on the card. Its sleep stands in too, leaving a file for
+# the test to find and returning at once. Shut with no monitor, it sleeps;
 # shut with a monitor plugged in whose screen is off, which logind doesn't
 # count, it keeps running, holding one lock through the card's changes;
-# and unplugging that monitor with the lid still shut suspends it. The
+# and unplugging that monitor with the lid still shut puts it to sleep. The
 # script is lid-vm-test.py.
 { self, pkgs }:
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
@@ -33,7 +33,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       ];
 
       # logind ignores the lid for a while after it starts and after every
-      # suspend, which would let a lid that should suspend seem held.
+      # sleep, which would let a lid that should sleep seem held.
       services.logind.settings.Login.HoldoffTimeoutSec = "0";
     };
 

@@ -48,6 +48,43 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 # a cell to the left, where the row was before it slid.
 BESIDE_THE_MIDDLE = 2
 
+# How long the same wait lasts before the VM's margin marks it, in seconds,
+# as tests/desktop.nix sets the Lag piece's `lasts`.
+LAG_LASTS = 3600
+
+
+def now_down_to(desktop: Desktop, name: str) -> None:
+    """Open Now with Super+O, and move down to this row from Waiting on You.
+
+    Now opens on what wants Joel or is live, else on Waiting on You, never
+    on a mode left on, since Return turns one off and a habit mustn't.
+    """
+    desktop.machine.send_key("meta_l-o")
+    desktop.whats_on("Waiting on You")
+    desktop.down_to(name)
+
+
+def stays_showing_it_gone(desktop: Desktop, name: str) -> None:
+    """Wait for the launcher to stay open showing a row gone, then close it.
+
+    An act that changes how things stand, rather than taking Joel
+    anywhere, keeps the launcher, and the row it ended stays in its place
+    marked gone, so nothing under it moves.
+    """
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and any(
+                thing["gone"] and thing["reads"].split(" \u00b7 ")[0] == name
+                for thing in shown["things"]
+            )
+        )
+    )
+    desktop.machine.send_key("esc")
+    desktop.machine.wait_until_fails(
+        desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10)
+    )
+
 
 def test_niris_settings_failing_to_load_is_said_until_they_load_again(desktop: Desktop) -> None:
     """Niri's settings failing to load is said until they load again."""
@@ -95,7 +132,16 @@ def test_a_notice_that_came_and_went_is_found_again_in_the_launcher(desktop: Des
     desktop.photograph("launcher-home-missed")
     desktop.type_in("build fin", selecting="the laptop is ready")
     desktop.photograph("launcher-notices")
-    # Nothing sent it that can be gone to, so Return copies what it said.
+    # Nothing sent it that can be gone to, so Return steps in, as the right
+    # arrow does, where copying what it said comes last of its acts, never
+    # first.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][-1:] == ["Copy What It Said"] and shown["rows"][0] != "Copy What It Said"
+        )
+    )
+    desktop.down_to("Copy What It Said")
     machine.send_key("ret")
 
     def told_again(_: bool) -> bool:
@@ -139,42 +185,81 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     log = desktop.shell_said("polish() loop")
     assert "polish() loop" not in log, "a notice's layout never settles"
     # Super+N takes the stack, which waits while it holds the keys.
-    # The newer notice waits behind the older; Down brings it to the
-    # front, the right arrow steps into its verbs, what it offers
-    # first, as a launcher row's are, Down chooses the next and Left
-    # steps back, and Return does the one chosen, with a token to
-    # come forward.
+    # Tab does nothing, being only for completing. The newer notice
+    # waits behind the older; letting the older go keeps the keys and
+    # brings the newer to the front, the right arrow steps into its
+    # verbs, forgetting it first, since Return forgets one with nothing to
+    # open, then what it offers, as a launcher row's are
+    # (launcher/Notice.js), Down chooses the next and Left steps
+    # back, and Return does the one
+    # chosen, with a token to come forward, and gives the keys back.
     desktop.listen()
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
     desktop.photograph("notices-held")
-    machine.send_key("down")
-    with desktop.told("notice verb Play it"):
+    machine.send_key("tab")
+    machine.send_key("backspace")
+    # Held, the card is as tall as its verbs need from the start, so
+    # stepping in, through and out of them moves nothing.
+    desktop.held_still()
+    since = desktop.mark()
+    with desktop.told("notice verb Forget It"):
         machine.send_key("right")
-    with desktop.told("notice verb Copy what it said"):
+    with desktop.told("notice verb Play it"):
         machine.send_key("down")
     desktop.photograph("notices-held-verbs")
     with desktop.told("notice back"):
         machine.send_key("left")
-    with desktop.told("notice verb Play it"):
+    with desktop.told("notice verb Forget It"):
         machine.send_key("right")
-    machine.send_key("ret")
+    with desktop.told("notice verb Play it"):
+        machine.send_key("down")
+    moved = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)} | grep -F 'notice stands'; true"
+    )
+    assert moved.strip() == "", f"the held card changed its height: {moved}"
+    with desktop.told("lets notices go"):
+        machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=timedelta(seconds=15))
     desktop.tokened()
-    # Shift+Backspace lets the rest go, which gives the keys back.
-    with desktop.told("lets notices go"):
-        machine.send_key("shift-backspace")
     machine.wait_until_fails(
         desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=10)
     )
     # The history is kept on disk, the one acted on read and the one
-    # that only arrived still unread.
+    # only let go still unread.
     kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
     machine.wait_until_succeeds(
         desktop.in_session(kept + ' | grep -q \'"summary":"Recording saved"[^}]*"read":true\''),
         timeout=timedelta(seconds=10),
     )
     desktop.as_account(kept + ' | grep -q \'"summary":"Lunch"[^}]*"read":false\'')
+
+
+def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
+    """Copying what a notice said from its card says so, and the clipboard holds it."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    with desktop.told("shows card Build log"):
+        desktop.as_account("notify-send --expire-time=60000 'Build log' 'all green'")
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    # It offers nothing and opens nothing, so forgetting it leads its
+    # verbs, as Return does, then whether it's read, the stack's own, and
+    # copying what it said last (launcher/Notice.js).
+    with desktop.told("notice verb Forget It"):
+        machine.send_key("right")
+    for verb in ["Read", "Forget Them All", "All the Notices", "Copy What It Said"]:
+        with desktop.told(f"notice verb {verb}"):
+            machine.send_key("down")
+    with desktop.told("copied card Build log"):
+        machine.send_key("ret")
+    desktop.photograph("notice-copied")
+    assert desktop.as_account("wl-paste --no-newline") == "Build log\nall green"
+    desktop.as_account("qs ipc call notices putAway")
+    machine.wait_until_fails(
+        desktop.in_session("niri msg layers | grep -q notifications"), timeout=timedelta(seconds=30)
+    )
 
 
 def test_a_click_on_a_notices_action_does_it_and_anywhere_else_puts_it_away(
@@ -237,6 +322,68 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
     desktop.tokened()
 
 
+def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_launcher(
+    desktop: Desktop,
+) -> None:
+    """A notice's right arrow holds what Return does first, on its card and in the launcher."""
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.listen()
+    with desktop.told("shows card Thread with Ana"):
+        desktop.as_account(
+            "notify-send --expire-time=60000 --action=default=Open --action=play='Play it'"
+            " 'Thread with Ana' 'see it' > /tmp/answer 2>&1 < /dev/null &"
+        )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    with desktop.told("notice verb Open"):
+        machine.send_key("right")
+    with desktop.told("notice verb Play it"):
+        machine.send_key("down")
+    with desktop.told("notice back"):
+        machine.send_key("left")
+    # Super+N again hands on to the history, opened on the newest notice's
+    # acts, which hold the same.
+    machine.send_key("meta_l-n")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
+    machine.send_key("ret")
+    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
+
+
+def test_a_notice_opened_brings_its_sender_forward_when_it_stays_behind(
+    desktop: Desktop,
+) -> None:
+    """A notice opened brings its sender forward when it doesn't come by itself.
+
+    notify-send ignores the token it's handed, as Slack and Chrome often do, so its
+    window, a kitty going by the sender's name, only comes if the shell brings it.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
+    desktop.as_account("niri msg action spawn -- kitty --class stand-in-chat --title 'Chat'")
+    machine.wait_until_succeeds(
+        desktop.in_session('niri msg --json windows | grep -qF \'"title":"Chat"\''),
+        timeout=timedelta(seconds=30),
+    )
+    elsewhere = desktop.opened("Elsewhere")
+    with desktop.told("shows card Thread with Kim"):
+        desktop.as_account(
+            "notify-send --app-name=stand-in-chat --expire-time=60000 --action=default=Open"
+            " 'Thread with Kim' 'see it' > /tmp/answer 2>&1 < /dev/null &"
+        )
+    with desktop.told("keys notices"):
+        machine.send_key("meta_l-n")
+    machine.send_key("ret")
+    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
+    retry(
+        lambda _: desktop.window_titled("Chat")["is_focused"],
+        timeout=timedelta(seconds=10),
+    )
+    desktop.close(desktop.window_titled("Chat"))
+    desktop.close(elsewhere)
+
+
 def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop: Desktop,
 ) -> None:
@@ -265,7 +412,14 @@ def test_a_notice_whose_time_is_up_still_does_what_it_offers_from_the_launcher(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("reads") == "Quarry take\nz.mp4"
     )
+    # With nothing to open or go to, what it offers leads; copying what it
+    # said is last.
     desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:1] == ["Play it"] and shown["rows"][-1:] == ["Copy What It Said"]
+        )
+    )
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
     machine.send_key("ret")
     assert desktop.answered() == "play", "a notice whose time was up lost what it offered"
@@ -358,7 +512,10 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.type_in("keep awake")
     desktop.photograph("launcher-keep-awake")
-    machine.send_key("ret")
+    # Keeping it awake changes something, so Return would stay; Ctrl+Return
+    # does it and closes.
+    machine.send_key("ctrl-ret")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(
         f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
@@ -380,6 +537,46 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.type_in("let it sleep")
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+
+
+def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
+    desktop: Desktop,
+) -> None:
+    """The lid is let go when the power goes, though the shell never hears it."""
+    machine = desktop.machine
+    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    # The supplies were told of the rules once udev had settled, so the
+    # mains is a device systemd tracks, as it is after a switch.
+    machine.succeed("systemctl is-active power-supplies-seen.service")
+    machine.succeed("systemctl is-active sys-subsystem-power_supply-mains.device")
+    desktop.as_account("systemctl --user start caffeinate.service caffeinate-lid.service")
+    machine.wait_until_succeeds(
+        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
+    )
+    # The shell frozen stands in for one that missed the power going while
+    # the machine slept, as on 2026-10-28, when a laptop ran flat in a bag.
+    # Frozen rather than stopped, it's the same shell once thawed: one
+    # started again took the moments after it as its first, saying no
+    # notice and showing the lag of its own start, which the subtests after
+    # this one saw.
+    desktop.as_account("systemctl --user freeze quickshell.service")
+    try:
+        desktop.power("off")
+        machine.wait_until_fails(
+            f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
+        )
+        machine.succeed(f"{held} | grep -qw idle")
+    finally:
+        desktop.power("on")
+        desktop.as_account("systemctl --user stop caffeinate.service")
+        desktop.as_account("systemctl --user thaw quickshell.service")
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc call launcher list > /dev/null"),
+            timeout=timedelta(seconds=30),
+        )
 
 
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
@@ -461,12 +658,12 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     with desktop.told("drawn margin"):
         desktop.as_account("systemctl --user start caffeinate.service")
     desktop.reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
-    # Super+O opens What's on at its row, and while it's open the mark its
-    # keys are on wears the accent, nothing grown; closed, it's as it was.
+    # Super+O opens What's on, on Waiting on You, since a mode left on is
+    # never what it opens on; on its row, the mark its keys are on wears
+    # the accent, nothing grown; closed, it's as it was.
     glyph = changed_at_the_top(empty, desktop.settled_screen("margin-awake"))
     since = desktop.mark()
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Keep Awake")
+    now_down_to(desktop, "Keep Awake")
     desktop.reported("sets margin ", margin_points("awake"), since)
     # Settled, as Joel sees it.
     desktop.held_still()
@@ -500,6 +697,8 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # Letting it sleep stays in the launcher, which shows it done.
+    stays_showing_it_gone(desktop, "Keep Awake")
 
 
 def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
@@ -511,7 +710,8 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("do not disturb")
-    machine.send_key("ret")
+    machine.send_key("ctrl-ret")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.wait_for_surface("margin")
     # The shell decides as the notice arrives, so once it says it held
     # one, there's no card to come.
@@ -520,25 +720,22 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     machine.fail(desktop.in_session(NOTICES))
     desktop.photograph("margin-quiet")
     # Its row ends it, and a step in offers the rest, what's held last:
-    # an hour more comes first only when it ends by itself.
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Do Not Disturb")
+    # An Hour More comes first only when it ends by itself.
+    now_down_to(desktop, "Do Not Disturb")
     desktop.step_in()
-    if (desktop.showing()["selected"] or {}).get("name") != "Show what's held":
-        machine.send_key("down")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Show what's held"
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
+    desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-held")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Do Not Disturb")
+    now_down_to(desktop, "Do Not Disturb")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     desktop.as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
+    # Ending it stays in the launcher, which shows it done.
+    stays_showing_it_gone(desktop, "Do Not Disturb")
 
 
 def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop: Desktop) -> None:
@@ -554,6 +751,22 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     desktop.photograph("margin-waiting")
     machine.send_key("meta_l-o")
     desktop.whats_on("Notices")
+    # The time and the date are among Now's own rows, at its top before
+    # what comes and goes, the notices among them, each its own answer as
+    # it's placed anywhere; the VM has no forecast and no calendar, so the
+    # location follows them.
+    things = desktop.showing()["things"]
+    kinds = [thing["is"] for thing in things]
+    at = kinds.index("answer:time")
+    time, today = things[at : at + 2]
+    assert kinds[at + 2] == "on:location", things
+    notices = next(n for n, thing in enumerate(things) if thing["reads"].startswith("Notices"))
+    assert at < notices, things
+    date = machine.succeed("date '+%A %-d %B %Y'").strip()
+    assert time["is"] == "answer:time", time
+    assert re.match(r"Time \u00b7 \d\d:\d\d", time["reads"]), time
+    assert today["is"] == "answer:today", today
+    assert today["reads"].startswith(f"Date \u00b7 {date}"), today
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-from-margin")
@@ -593,11 +806,12 @@ def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Deskto
         f" --after-cursor={shlex.quote(since)}"
     )
     assert not re.search(r"holds margin [^\n]*\blag\b", said), "a moment's wait showed"
-    # A minute of it does, left on, so muted. A run that began a minute
-    # ago is another run, so the last one ends first.
+    # As long as the VM's Lag waits for (tests/desktop.nix's hour) it
+    # does, left on, so muted. A run that began that long ago is another
+    # run, so the last one ends first.
     with desktop.told("heard lag nothing"):
         lag_says("", "", 0)
-    lag_says("memory", "apps", 70)
+    lag_says("memory", "apps", LAG_LASTS + 10)
     desktop.reported("sets margin ", margin_sets(("lag", "leftOn", "muted")), since)
     desktop.photograph("margin-lag")
     # Over, it goes.
@@ -622,12 +836,13 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
         desktop.in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
     )
     desktop.photograph("margin-muted")
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Microphone")
+    now_down_to(desktop, "Microphone")
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    # Unmuting stays in the launcher, which shows it done.
+    stays_showing_it_gone(desktop, "Microphone")
     # Unmuting shows the meter a moment, which the next pictures
     # would hold for as long as the host takes to reach them.
     machine.wait_until_fails(
@@ -661,6 +876,43 @@ def test_dictation_says_what_its_doing_and_when_it_heard_nothing(desktop: Deskto
     desktop.photograph("dictation-still-writing")
     desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
     desktop.photograph("dictation-heard-nothing")
+    machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=10))
+
+
+# The laptop's Copilot key sends Super, Shift and F23 together, which the
+# keyboard's layout reads as F23, and niri's bind for it starts
+# dictation. A stand-in key sends the same, through the kernel as the
+# laptop's does, since QEMU's keyboard has no F23.
+
+
+def test_the_copilot_key_starts_dictation(desktop: Desktop) -> None:
+    """The Copilot key starts dictation."""
+    machine = desktop.machine
+    dictation = "niri msg layers | grep -q dictation"
+    machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=15))
+    machine.succeed(f"systemd-run --unit=copilot-key {desktop.values['copilot_key']}")
+    machine.wait_for_file("/run/copilot-key", timeout=timedelta(seconds=30))
+    # A press before the key is open would be lost, so the test waits until
+    # it is. Here niri runs nested in Cage, which reads the machine's input
+    # devices and hands their keys on to niri, so it's Cage that opens it.
+    node = machine.succeed("cat /run/copilot-key.device").strip()
+    # Its process isn't named cage exactly, so it's found by its command.
+    held = f"find /proc/$(pgrep -o -f bin/cage)/fd -lname {node} | grep -q ."
+    try:
+        machine.wait_until_succeeds(held, timeout=30)
+    except AssertionError:
+        # What udev made of the key says why Cage passed it by.
+        seen = machine.execute(f"udevadm info {node}", check_return=False)[1]
+        pytest.fail(f"Cage never opened the Copilot key; udev says:\n{seen}")
+    since = desktop.mark()
+    machine.succeed("echo press > /run/copilot-key")
+    try:
+        desktop.reported("says dictation listening", lambda rest: rest == "", since)
+    finally:
+        machine.succeed("systemctl stop copilot-key")
+    # It's put back as it was: stopped, it types what it heard, nothing here.
+    desktop.as_account("dictation toggle")
+    desktop.reported("says dictation heard nothing", lambda rest: rest == "", since)
     machine.wait_until_fails(desktop.in_session(dictation), timeout=timedelta(seconds=10))
 
 
@@ -733,6 +985,20 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     # while before the guest comes.
     with desktop.told("drawn margin"):
         desktop.tuple_said("call connected", ago=10)
+    # The call is one place, Calls, leading with what can be done in it;
+    # Desktop lists no second row for it.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("desktop ")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and "Calls" in shown["rows"],
+    )
+    assert "The Call" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    desktop.type_in("calls", selecting="Calls")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Leave the Call" in shown["rows"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     with desktop.told("shows card Someone joined the call"):
         desktop.tuple_said("peer joined call: a guest")
     desktop.photograph("notice-joined")
@@ -746,10 +1012,12 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.photograph("notice-alone")
     # Leaving runs tuple call leave, which starts the stopped daemon,
     # whose new log ends the call. Super+N again opens the history on the
-    # newest notice's offers.
+    # newest notice's offers, Return's own Open first.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the Call"])
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the Call")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=15))
     machine.wait_until_fails(offered.format("leave"), timeout=timedelta(seconds=10))

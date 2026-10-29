@@ -8,8 +8,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 /// The file's shape. The launcher reads a file of this version alone, so
-/// one of another shape draws nothing rather than something wrong.
-const VERSION: u32 = 1;
+/// one of another shape draws nothing rather than something wrong. The
+/// second names the place and its zone.
+const VERSION: u32 = 2;
 
 /// How far, in metres, the laptop has to move before here does. The
 /// weather's models see the land in cells a few kilometres wide, so a
@@ -20,9 +21,10 @@ pub const FAR_ENOUGH: u32 = 5_000;
 /// The Earth's mean radius, in metres, for the distance between two fixes.
 const EARTH: f64 = 6_371_000.0;
 
-/// One position: where, how sure and when. It names no place: GeoClue's
+/// One position: where, how sure and when, and what it's called and the
+/// zone it keeps where they could be asked (named.rs). GeoClue's own
 /// description of a position says which of its sources found it, not
-/// where it is, and the launcher says a position as it is.
+/// where it is, so it's never the name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fix {
     v: u32,
@@ -32,6 +34,17 @@ pub struct Fix {
     pub accuracy: f64,
     /// When it was found, in seconds since the epoch.
     pub when: u64,
+    /// The town and the province it's in, "London, Ontario", or null while
+    /// it couldn't be asked.
+    #[serde(default)]
+    pub place: Option<String>,
+    /// The time zone kept there, "America/Toronto", or null likewise.
+    #[serde(default)]
+    pub zone: Option<String>,
+    /// Whether Joel said where the laptop is himself, rather than GeoClue
+    /// finding it. Left out of the file when it didn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hand: bool,
 }
 
 impl Fix {
@@ -44,8 +57,31 @@ impl Fix {
             longitude,
             accuracy,
             when,
+            place: None,
+            zone: None,
+            hand: false,
         };
         fix.holds().then_some(fix)
+    }
+
+    /// Whether it still lacks its name or its zone, so it's asked again
+    /// when GeoClue next says anything, as it does once a network comes.
+    pub fn unnamed(&self) -> bool {
+        self.place.is_none() || self.zone.is_none()
+    }
+
+    /// The fix with what it's called and its zone, each kept where the new
+    /// asking couldn't say.
+    pub fn named(mut self, place: Option<String>, zone: Option<String>) -> Fix {
+        self.place = place.or(self.place);
+        self.zone = zone.or(self.zone);
+        self
+    }
+
+    /// The fix as Joel said it himself.
+    pub fn by_hand(mut self) -> Fix {
+        self.hand = true;
+        self
     }
 
     /// The fix a file says, or nothing when it's of another version, isn't
@@ -107,24 +143,43 @@ mod tests {
         let text = serde_json::to_string(&fix).unwrap();
         assert_eq!(
             text,
-            r#"{"v":1,"latitude":10.5,"longitude":-20.25,"accuracy":3000.0,"when":1790000000}"#
+            r#"{"v":2,"latitude":10.5,"longitude":-20.25,"accuracy":3000.0,"when":1790000000,"place":null,"zone":null}"#
         );
         assert_eq!(Fix::read(&text), Some(fix));
+        let named = at(10.5, -20.25, 3000.0).named(
+            Some("Lighthouse, Ontario".into()),
+            Some("America/Toronto".into()),
+        );
+        let text = serde_json::to_string(&named).unwrap();
+        assert!(text.ends_with(r#""place":"Lighthouse, Ontario","zone":"America/Toronto"}"#));
+        assert_eq!(Fix::read(&text), Some(named));
+    }
+
+    #[test]
+    fn a_name_asked_again_keeps_what_the_last_asking_found() {
+        let fix = at(1.0, 2.0, 3.0).named(Some("Cove".into()), None);
+        assert!(fix.unnamed());
+        let fix = fix.named(None, Some("America/Halifax".into()));
+        assert_eq!(fix.place.as_deref(), Some("Cove"));
+        assert_eq!(fix.zone.as_deref(), Some("America/Halifax"));
+        assert!(!fix.unnamed());
     }
 
     #[test]
     fn a_file_that_isnt_one_is_no_fix() {
         assert_eq!(Fix::read(""), None);
         assert_eq!(Fix::read(r#"{"v":1,"latitude":1"#), None);
+        // A first version's file, which names no place, is no fix, so a
+        // place is asked for as the program starts.
         assert_eq!(
-            Fix::read(r#"{"v":2,"latitude":1,"longitude":2,"accuracy":3,"when":4}"#),
+            Fix::read(r#"{"v":1,"latitude":1,"longitude":2,"accuracy":3,"when":4}"#),
             None
         );
         assert_eq!(
             Fix::read(r#"{"latitude":1,"longitude":2,"accuracy":3,"when":4}"#),
             None
         );
-        assert!(Fix::read(r#"{"v":1,"latitude":1,"longitude":2,"accuracy":3,"when":4}"#).is_some());
+        assert!(Fix::read(r#"{"v":2,"latitude":1,"longitude":2,"accuracy":3,"when":4}"#).is_some());
     }
 
     #[test]
@@ -151,6 +206,15 @@ mod tests {
     #[test]
     fn the_first_fix_is_always_said() {
         assert!(moved(None, &at(0.0, 0.0, 100_000.0)));
+    }
+
+    #[test]
+    fn a_fix_said_by_hand_says_so_and_one_found_doesnt() {
+        let found = serde_json::to_string(&at(1.0, 2.0, 3.0)).unwrap();
+        assert!(!found.contains("hand"));
+        let said = serde_json::to_string(&at(1.0, 2.0, 3.0).by_hand()).unwrap();
+        assert!(said.ends_with(r#""hand":true}"#));
+        assert!(Fix::read(&said).is_some_and(|fix| fix.hand));
     }
 
     #[test]

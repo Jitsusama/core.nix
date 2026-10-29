@@ -22,28 +22,40 @@ Piece {
     context: [Music.artist, Music.album, Music.revealable ? "" : Music.from]
         .filter(said => said !== "").join(" · ")
     hue: "program"
+    // A song isn't a mode Joel left on, so Now lists it in a group of its
+    // own, between what reaches other people and the modes.
+    group: "playing"
     actions: Music.player === null ? [] : [{
-        glyph: Theme.glyph.pause,
-        name: "Pause",
+        glyph: Words.glyph("verb:on:playing:pause"),
+        name: Words.name("verb:on:playing:pause"),
+        verb: Words.verb("verb:on:playing:pause"),
         chord: chord("toggle"),
+        stays: true,
         run: () => Music.toggle()
     }].concat(Music.player.canGoNext ? [{
-        glyph: Theme.glyph.next,
-        name: "Next track",
+        glyph: Words.glyph("verb:on:playing:next"),
+        name: Words.name("verb:on:playing:next"),
+        verb: Words.verb("verb:on:playing:next"),
         chord: chord("next"),
+        stays: true,
         run: () => Music.next()
     }] : [], Music.player.canGoPrevious ? [{
-        glyph: Theme.glyph.previous,
-        name: "Previous track",
+        glyph: Words.glyph("verb:on:playing:previous"),
+        name: Words.name("verb:on:playing:previous"),
+        verb: Words.verb("verb:on:playing:previous"),
         chord: chord("previous"),
+        stays: true,
         run: () => Music.previous()
     }] : [], Music.revealable ? [{
         glyph: Music.mark,
-        name: `Show ${Music.from}`,
+        name: Words.name("verb:on:playing:show", "", { player: Music.from }),
+        verb: Words.verb("verb:on:playing:show"),
         run: () => Music.reveal(Music.player)
     }] : [], Music.others.map(other => ({
-        glyph: Theme.glyph.pause,
-        name: `Pause ${Music.name(other)} too`,
+        glyph: Words.glyph("verb:on:playing:pauseOther"),
+        name: Words.name("verb:on:playing:pauseOther", "", { player: Music.name(other) }),
+        verb: Words.verb("verb:on:playing:pauseOther"),
+        stays: true,
         run: () => other.pause()
     })))
 }

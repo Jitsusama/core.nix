@@ -200,8 +200,7 @@ Provider {
             name: Words.name("verb:ask:onward"),
             glyph: Words.glyph("verb:ask:onward"),
             hue: "action",
-            run: () => Niri.spawn(["kitty", "--directory", Quickshell.env("HOME"),
-                settings.session ?? "pi", "--", text])
+            run: () => Sessions.tell(text, Sessions.home, settings.session)
         });
     }
 

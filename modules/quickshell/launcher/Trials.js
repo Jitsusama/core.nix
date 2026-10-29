@@ -36,7 +36,9 @@ function felt(drawn) {
 
 // The trial with one more key timed: how long its search took and how long
 // until the frame that drew it, both in milliseconds, and `parts` what the
-// search spent its time on ({ lists, rows, answers }) or null. Each felt key
+// search spent its time on ({ lists, rows, answers }, the rows' time split
+// `within` matching, ordering, making and spots, with how many choices were
+// looked at and found) or null. Each felt key
 // is kept with its parts, the first few of an opening, so what's slow is
 // named by Joel's own use rather than guessed (Joel, 2026-10-25: "i felt a
 // bit of lag btw with the launcher").

@@ -10,7 +10,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     terminal
     font
     space
@@ -20,7 +20,7 @@ let
   # Fills in the placeholder the configuration file leaves for its background.
   withWallpaper = builtins.replaceStrings [ "WALLPAPER_PATH" ] [ wallpaper ];
 
-  colours = names: map (name: terminal.${name}) names;
+  slots = names: map (name: terminal.${name}) names;
 
   # macOS counts 72 points to the inch where Linux counts 96, so the theme's
   # size is a third bigger here to draw the same.
@@ -54,7 +54,7 @@ in
         cursor_fg = terminal.cursor_text;
         selection_bg = terminal.selection_background;
         selection_fg = terminal.selection_foreground;
-        ansi = colours [
+        ansi = slots [
           "black"
           "red"
           "green"
@@ -64,7 +64,7 @@ in
           "cyan"
           "white"
         ];
-        brights = colours [
+        brights = slots [
           "bright_black"
           "bright_red"
           "bright_green"
@@ -76,17 +76,17 @@ in
         ];
         # As kitty's: the tab in view on the accent, the rest quiet.
         tab_bar = {
-          background = roles.deepest;
-          active_tab = tab roles.accent roles.on_accent;
-          inactive_tab = tab roles.sunken roles.muted;
-          inactive_tab_hover = tab roles.raised roles.text;
-          new_tab = tab roles.deepest roles.muted;
-          new_tab_hover = tab roles.raised roles.text;
+          background = colours.deepest;
+          active_tab = tab colours.accent colours.on_accent;
+          inactive_tab = tab colours.sunken colours.muted;
+          inactive_tab_hover = tab colours.raised colours.text;
+          new_tab = tab colours.deepest colours.muted;
+          new_tab_hover = tab colours.raised colours.text;
         };
       };
       frame = {
-        active_titlebar_bg = roles.deepest;
-        inactive_titlebar_bg = roles.deepest;
+        active_titlebar_bg = colours.deepest;
+        inactive_titlebar_bg = colours.deepest;
       };
     }
   }\n";

@@ -11,7 +11,8 @@
 # people coming and going in it are said and Joel can leave from the last
 # one's notice, a ringing call wants him and one not answered is kept as
 # missed, a copied call's link can be joined until something else is
-# copied, the clipboard takes and gives text, a picture opens floating in
+# copied, a meeting on the calendar is found by its name and Return joins
+# its call, the clipboard takes and gives text, a picture opens floating in
 # swayimg and a key takes it to GIMP, a document opens in zathura beside
 # the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # photographs show their colours, to the test and to a person looking, and
@@ -88,6 +89,18 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/stand-in-ask.py);
 
+  # Stands in for the google program, which would ask Google, on its socket
+  # (desktop/stand-in-google.py).
+  standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-google.py);
+
+  # Google's own pages' window, as jitsusama.google.window opens one: what
+  # it was asked to open, written down, since the VM has no browser.
+  googleWindow = pkgs.writeShellScript "google-window" ''
+    echo "$1" > "$XDG_RUNTIME_DIR/google-opened"
+  '';
+
   # Asks the portal to open a file, always asking what with, and writes down
   # its answer (desktop/ask-portal.py).
   askPortal = pkgs.writers.writePython3 "ask-portal" {
@@ -108,6 +121,14 @@ let
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
   } (builtins.readFile ./desktop/touchscreen.py);
+
+  # A stand-in Copilot key, sending Super, Shift and F23 as the laptop's
+  # does, each time it's told through /run/copilot-key
+  # (desktop/copilot-key.py).
+  copilotKey = pkgs.writers.writePython3 "copilot-key" {
+    libraries = [ pkgs.python3Packages.evdev ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/copilot-key.py);
 
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
@@ -150,12 +171,14 @@ let
     '';
   };
 
-  # pi, as the launcher's quests open it: where it started and the quest
-  # it was told to load, written down, since the VM has no pi.
+  # pi, as the launcher opens it: where it started and the quest it was
+  # told to load, then what it was told, a line each, written down, since
+  # the VM has no pi.
   piStandIn = pkgs.writeShellApplication {
     name = "pi";
     text = ''
       echo "$PWD ''${QUEST_WORKFLOW_AUTOLOAD_ID:-}" > "$XDG_RUNTIME_DIR/pi-opened"
+      printf '%s\n' "$@" >> "$XDG_RUNTIME_DIR/pi-opened"
     '';
   };
 in
@@ -441,6 +464,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # the network, and the host's own position would stand in for the
       # test's.
       services.geoclue2.geoProviderUrl = lib.mkForce "http://127.0.0.1:9/v1/geolocate";
+      # A test VM turns timesyncd off, which would leave Time's keeping
+      # unheard, since it's read only where timesyncd runs. It runs here as
+      # on a laptop, asking a server that isn't there, so it makes no
+      # exchange even where the VM reaches the network, and the test
+      # writes one in its stead. The servers are forced, since a list is
+      # otherwise joined to the machine's own pool, which it would reach.
+      services.timesyncd = {
+        enable = lib.mkForce true;
+        servers = lib.mkForce [ "127.0.0.1" ];
+        fallbackServers = [ ];
+      };
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs photograph kitty the same
@@ -450,6 +484,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.
         jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
+        # The VM's disk is the host's, which waits for minutes on end while
+        # other builds share it, so lag-watch's real windows would put the
+        # Lag mark in the margin of every test that reads it. Waiting is
+        # marked only after an hour here, longer than any test runs, and
+        # the test of the mark writes a wait that long itself.
+        jitsusama.quickshell.overview.pieces.lag.lasts = 3600;
         # Something on air lingers in the margin once it goes; a moment is
         # enough to see it, and keeps the test's waits for it to go short.
         jitsusama.quickshell.margin.linger = 2;
@@ -459,6 +499,13 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.quickshell.notices.away = 3600;
         # Dictation's own service would load Whisper in the VM.
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
+        # The google program would ask Google, as an account nobody signed
+        # in to in the VM; the test starts the stand-in when it wants it.
+        systemd.user.services.google.Service.ExecStart = lib.mkForce "${standInGoogle} %t/google.sock";
+        jitsusama.google.window = [
+          "${googleWindow}"
+          "%u"
+        ];
         # The Ask row's model would need the network and an account.
         jitsusama.quickshell.launcher.providers.ask = {
           enable = lib.mkForce true;
@@ -495,6 +542,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         reports
         piStandIn
         pkgs.libnotify
+        # The disk guard's own program, without its daemons, so Disk's Keep
+        # marks a folder kept in the status file the test writes in the
+        # account's guard's place, as the guard itself would.
+        (pkgs.callPackage ../modules/disk-guard/package.nix { })
         # A player that tells the desktop what it plays, as Spotify does.
         (pkgs.mpv.override { scripts = [ pkgs.mpvScripts.mpris ]; })
       ];
@@ -534,12 +585,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   values =
     { nodes, ... }:
     let
-      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) roles font;
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colours font;
 
       # A silent track with a title, an artist and a cover, for a player to
       # play through no sound card at all.
       track = pkgs.runCommandLocal "track.mp3" { nativeBuildInputs = [ pkgs.ffmpeg-headless ]; } ''
-        ffmpeg -loglevel error -f lavfi -i color=c=0x${pkgs.lib.removePrefix "#" roles.program}:s=300x300 \
+        ffmpeg -loglevel error -f lavfi -i color=c=0x${pkgs.lib.removePrefix "#" colours.program}:s=300x300 \
           -frames:v 1 cover.png
         ffmpeg -loglevel error -f lavfi -i anullsrc=r=44100:cl=stereo -i cover.png -t 60 \
           -map 0 -map 1 -c:a libmp3lame -c:v png -disposition:v attached_pic \
@@ -561,6 +612,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             track
             ;
           ask_portal = askPortal;
+          copilot_key = copilotKey;
           tuple_window = tupleWindow;
           inherit (pkgs)
             coreutils
@@ -570,7 +622,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             ;
           ffmpeg_headless = pkgs.ffmpeg-headless;
           fontconfig_bin = pkgs.fontconfig.bin;
-          inherit (roles) accent action sunken;
+          inherit (colours) accent action sunken;
           mono_family = font.mono.family;
           photographs = gallery;
         }

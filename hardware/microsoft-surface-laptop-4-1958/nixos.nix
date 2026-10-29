@@ -10,6 +10,7 @@
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ./sound/microphones.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
@@ -64,6 +65,14 @@
     "surface_hid"
   ];
   boot.kernelModules = [ "kvm-amd" ];
+
+  # The AX200's Bluetooth firmware and settings in the initrd, where a paired
+  # keyboard types at the disk prompt (bluetooth-disk-prompt). btintel picks
+  # the files by what the chip answers, so the module tree can't name them.
+  boot.initrd.extraFirmwarePaths = [
+    "intel/ibt-20-1-3.sfi"
+    "intel/ibt-20-1-3.ddc"
+  ];
 
   # The GPU's driver in the initrd, so it takes the screen from the
   # firmware's framebuffer before the disk's PIN is asked for. Loaded after

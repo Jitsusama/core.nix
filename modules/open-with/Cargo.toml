@@ -1,5 +1,6 @@
-# open-with: the portal's chooser of an app to open something with, asked
-# in the launcher rather than in a dialog of GNOME's (src/main.rs says how).
+# open-with: the portal's choosers of an app to open something with and of
+# files, asked in the launcher rather than in dialogs of GNOME's and GTK's
+# (src/main.rs and src/files.rs say how).
 [package]
 name = "open-with"
 version = "0.1.0"
@@ -8,5 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The desktop's list of files opened lately, read and written as GTK does.
+gio = "0.22"
+glib = { version = "0.22", features = ["v2_76"] }
+serde_json = "1.0"
 tokio = { version = "1.53", features = ["macros", "net", "rt", "sync", "time"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }

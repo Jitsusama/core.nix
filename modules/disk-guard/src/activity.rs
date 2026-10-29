@@ -73,7 +73,7 @@ pub(crate) fn kept(name: &[u8]) -> bool {
 
 /// A program's name, through Nix's wrappers: a binary wrapped as
 /// `.name-wrapped`, and a script, known only by the name it was called by.
-fn names(process: &Process) -> impl Iterator<Item = String> + '_ {
+pub(crate) fn names(process: &Process) -> impl Iterator<Item = String> + '_ {
     let exe = process.exe.as_deref().and_then(Path::file_name);
     let called = process
         .cmdline

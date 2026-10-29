@@ -313,7 +313,7 @@ pub fn entry(
             };
         }
     }
-    let dir = match parent.entry(name) {
+    let dir = match parent.whole_entry(name) {
         Ok(Some(dir)) => dir,
         Ok(None) => return Outcome::Failed("on another filesystem".to_owned()),
         Err(error) => return failed("opening it", error),

@@ -83,7 +83,7 @@ fn listing(json: &str, keep: impl Fn(&str) -> bool) -> String {
 }
 
 fn repair(directory: &Path) -> WriteStick {
-    WriteStick::new(image(directory), None, None)
+    WriteStick::new(image(directory), None, vec![])
 }
 
 fn lsblk(stand_in: &mut StandIn, json: &str) {
@@ -207,7 +207,7 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     let step = WriteStick::new(
         image(&directory),
         Some(guide::writer::Payload::open(&payload).unwrap()),
-        None,
+        vec![],
     );
     let asked = |stand_in: &mut StandIn| match step.observe(stand_in).unwrap() {
         Standing::Needed { asks } => asks,
@@ -407,7 +407,7 @@ fn new_words_chosen_for_a_stick_that_had_a_passphrase_are_shown_for_the_phone() 
             &directory,
             r#"{"machine":"laptop","disk":"/dev/disk/by-id/virtio-root","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":[]}"#,
         )),
-        None,
+        vec![],
     );
     let steps = guide::writer::writing(write, Some(sealed_to_phrase()));
     let [choose, write] = steps.as_slice() else {
@@ -441,7 +441,7 @@ fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
             &directory,
             r#"{"machine":"laptop","disk":"/dev/disk/by-id/virtio-root","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":[]}"#,
         )),
-        None,
+        vec![],
     )
     .keeping_phrase(sealed_to_phrase(), Rc::new(Cell::new(Some(true))));
     let Standing::Needed { asks } = step.observe(&mut stand_in).unwrap() else {

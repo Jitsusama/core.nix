@@ -7,7 +7,12 @@
 // urgent, when it comes to need him now. While the card is up the margin
 // leaves its glyph out (Margin.qml), and the card is never counted missed,
 // since the glyph says it while it holds. What was true as the shell
-// started, or after a restart, isn't news.
+// started, or after a restart, isn't news. One that `withdraws` takes its
+// notice back, read, once it's no longer true, so a meeting's notice
+// doesn't outlast the meeting starting. One that tells something new
+// while it's true (`telling`), as a meeting does at each of its reminders
+// and as it starts, is said again, its earlier notice taken back first, so
+// one of its cards is up at a time.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
@@ -23,8 +28,8 @@ Scope {
     // files and services are read in the first moments, which is no
     // arrival.
     property bool settled: false
-    // What was true at the last change, by mark, with ":now" for what
-    // needed him now.
+    // What was true at the last change, by mark, with what each was
+    // telling and ":now" for what needed him now.
     property var before: []
     // What's come true and is yet to be said.
     property var due: []
@@ -32,31 +37,71 @@ Scope {
     readonly property var arriving: Facts.all
         .filter(fact => fact.piece && fact.piece.arrives && fact.piece.present
             && fact.piece.active)
-    readonly property var standing: arriving
-        .map(fact => fact.entry.mark + (fact.piece.now ? ":now" : ""))
+    readonly property var standing: arriving.map(fact => root.key(fact))
+
+    // How a piece that's true stands: its mark, what it's telling when
+    // it tells anything, and whether it needs him now.
+    function key(fact) {
+        return fact.entry.mark + (fact.piece.telling === "" ? "" : `:${fact.piece.telling}`)
+            + (fact.piece.now ? ":now" : "");
+    }
 
     onStandingChanged: {
         if (settled) {
             for (const fact of arriving) {
-                const key = fact.entry.mark + (fact.piece.now ? ":now" : "");
-                if (!before.includes(key))
-                    due.push(fact.piece);
+                if (!before.includes(root.key(fact)))
+                    due.push(fact);
             }
         }
         before = standing;
         if (due.length > 0)
             Qt.callLater(root.sayDue);
+        withdrawing.restart();
+    }
+
+    // A notice goes, read, a moment after what it said stops being true,
+    // the moment letting a piece's bindings catch up, as they do a moment
+    // after what made it true. Its mark rides on it as a hint.
+    Timer {
+        id: withdrawing
+        interval: 1000
+        onTriggered: {
+            const marks = root.arriving.map(fact => fact.entry.mark);
+            for (const id in Notices.live) {
+                const notice = Notices.live[id];
+                const mark = notice.hints["x-arrival"];
+                if (mark !== undefined && !marks.includes(mark)) {
+                    Notices.mark(notice.id, true);
+                    notice.dismiss();
+                }
+            }
+        }
     }
 
     // A piece's words follow what made it true a moment later, as the
     // rest of its bindings catch up, so it's said once they have, if it's
     // still true.
     function sayDue() {
-        const pieces = due;
+        const facts = due;
         due = [];
-        for (const piece of pieces) {
-            if (piece.active)
-                say(piece);
+        for (const fact of facts) {
+            if (!fact.piece.active)
+                continue;
+            if (fact.piece.telling !== "")
+                takeBack(fact.entry.mark);
+            say(fact.piece, fact.entry.mark);
+        }
+    }
+
+    // Takes back, read, the notice a mark's piece said last, before it's
+    // said anew, found by the mark it carries.
+    function takeBack(mark) {
+        for (const id in Notices.live) {
+            const notice = Notices.live[id];
+            if (notice.hints["x-arrival"] === mark) {
+                Notices.mark(notice.id, true);
+                notice.dismiss();
+            }
         }
     }
 
@@ -72,13 +117,15 @@ Scope {
         }
     }
 
-    // Says a piece as a notice, its actions offered by their place.
-    function say(piece) {
+    // Says a piece as a notice, its actions offered by their place, and
+    // marked as its mark's when it's to be taken back.
+    function say(piece, mark) {
         const actions = piece.actions;
         notice.createObject(root, {
             actions,
             command: ["notify-send", `--app-name=${piece.app}`]
                 .concat(piece.now ? ["--urgency=critical"] : [])
+                .concat(piece.withdraws ? [`--hint=string:x-arrival:${mark}`] : [])
                 .concat(actions.map((action, index) => `--action=${index}=${action.name}`))
                 .concat([piece.hint], piece.context === "" ? [] : [piece.context])
         });

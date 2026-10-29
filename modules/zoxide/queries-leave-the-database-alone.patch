@@ -1,0 +1,25 @@
+Every query sorts the folders, and a sort marked the database changed, so
+`zoxide query` wrote the whole file each time it ran. Whatever watches the
+file for changes, as the launcher's Recent does, then reads it again and
+writes it again, without end. Nothing reads the order a sort leaves on
+disk, since every reader sorts again, so a sort no longer marks it; what
+a query removes still does.
+
+--- a/src/db/mod.rs
++++ b/src/db/mod.rs
+@@ -168,7 +168,6 @@
+ 
+     pub fn sort_by_path(&mut self) {
+         self.with_dirs_mut(|dirs| dirs.sort_unstable_by(|dir1, dir2| dir1.path.cmp(&dir2.path)));
+-        self.with_dirty_mut(|dirty| *dirty = true);
+     }
+ 
+     pub fn sort_by_score(&mut self, now: Epoch) {
+@@ -177,7 +176,6 @@
+                 dir1.score(now).total_cmp(&dir2.score(now))
+             })
+         });
+-        self.with_dirty_mut(|dirty| *dirty = true);
+     }
+ 
+     pub fn dirty(&self) -> bool {

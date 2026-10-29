@@ -99,6 +99,26 @@
         "type": "github"
       }
     },
+    "mycelium": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1793264320,
+        "narHash": "sha256-KC8c0CTIifH2zTISgjTsBMmVjOj/lj4A0/jmtofa+8A=",
+        "owner": "Jitsusama",
+        "repo": "mycelium",
+        "rev": "dce304e114bea50a4c05f90a137975ddbc9a7738",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Jitsusama",
+        "repo": "mycelium",
+        "type": "github"
+      }
+    },
     "neovim-pi": {
       "flake": false,
       "locked": {
@@ -191,6 +211,7 @@
         "home-manager": "home-manager",
         "lanzaboote": "lanzaboote",
         "lufa": "lufa",
+        "mycelium": "mycelium",
         "neovim-pi": "neovim-pi",
         "nix-darwin": "nix-darwin",
         "nixpkgs": "nixpkgs",

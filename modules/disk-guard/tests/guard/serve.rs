@@ -125,8 +125,17 @@ fn guard(root: &Path) -> Guard {
 /// one, which other work fills as the test runs, so at 100% the disk is
 /// critical and has no band past it for a forecast to start a pass for.
 fn guard_at(root: &Path, pressure: &str) -> Guard {
+    guard_from(root, pressure, "")
+}
+
+/// A guard whose disk is always healthy, with the budget `budget`.
+fn guard_over(root: &Path, budget: &str) -> Guard {
+    guard_from(root, "0%", &format!(r#""budget": "{budget}","#))
+}
+
+fn guard_from(root: &Path, pressure: &str, more: &str) -> Guard {
     let config = Config::parse(&format!(
-        r#"{{ "version": 1, "scope": "user", "status_file": true,
+        r#"{{ "version": 1, "scope": "user", "status_file": true, {more}
              "bands": {{ "pressure": "{pressure}", "urgent": "{pressure}", "critical": "{pressure}", "target": "{pressure}" }},
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{ "trash": {{ "kind": "trash", "path": "{0}" }} }} }}"#,
@@ -299,6 +308,70 @@ fn a_disk_below_healthy_has_what_holds_it_measured_on_a_thread_of_its_own() {
     );
 }
 
+/// The status file once its holders are measured, or as it stands when
+/// `within` passes first.
+fn measured(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Value {
+    let mut desk = Fake::default();
+    let deadline = std::time::Instant::now() + within;
+    loop {
+        stepped(guard, 2, &mut desk);
+        let status: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("status.json")).unwrap()).unwrap();
+        if status["holders_at"].is_number() || std::time::Instant::now() > deadline {
+            return status;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_healthy_disk_over_its_budget_has_what_holds_it_measured() {
+    // A disk can be far from filling and still hold far more than anything
+    // there has reason to: 385 GB of a terabyte, against a budget of 250,
+    // with no holder named.
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("kept"), vec![1u8; 64 * 1024]).unwrap();
+    let mut guard = guard_over(dir.path(), "1");
+    let status = measured(&mut guard, dir.path(), Duration::from_secs(20));
+    assert_eq!(status["filesystems"][0]["band"], "healthy", "{status}");
+    assert_eq!(status["holders"][0]["owner"]["name"], "trash", "{status}");
+}
+
+#[test]
+fn each_measurement_goes_in_the_ledger_and_a_holder_says_what_it_grew_since_one_older() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    fs::write(root.join("kept"), vec![1u8; 64 * 1024]).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    let before = format!(
+        r#"[{{ "at": {}, "sizes": {{ "{}": 0 }} }}]"#,
+        now - 7200.0,
+        root.display()
+    );
+    fs::write(root.join(disk_guard::ledger::FILE), before).unwrap();
+    let mut guard = guard_over(&root, "1");
+    let status = measured(&mut guard, &root, Duration::from_secs(20));
+    let grew = &status["holders"][0]["grew"];
+    assert!(grew["bytes"].as_u64().unwrap() >= 64 * 1024, "{status}");
+    assert!(grew["over"].as_f64().unwrap() >= 7200.0, "{status}");
+    let at: Vec<f64> = disk_guard::ledger::load(&root)
+        .iter()
+        .map(|entry| entry.at)
+        .collect();
+    assert_eq!(at.len(), 2, "the older measurement and this one: {at:?}");
+}
+
+#[test]
+fn a_healthy_disk_within_its_budget_measures_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut guard = guard_over(dir.path(), "100%");
+    let status = measured(&mut guard, dir.path(), Duration::from_secs(2));
+    assert!(status["holders_at"].is_null(), "{status}");
+}
+
 #[test]
 fn a_desktop_refusing_the_same_way_is_told_of_once_until_it_hears_again() {
     let mut unheard = Unheard::default();
@@ -383,4 +456,130 @@ fn this_machine_can_be_sensed() {
     let senses = senses(true);
     assert!(senses.saver);
     assert!(senses.pressure.io.some >= 0.0);
+}
+
+#[test]
+fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    // Trashed just now, as a date past now reads, so a healthy disk's
+    // upkeep would keep both a month.
+    for name in ["asked.txt", "other.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2099-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let asked = fs::canonicalize(root.join("files/asked.txt")).unwrap();
+    disk_guard::clears::ask(root, &asked, 1.0).unwrap();
+    assert_eq!(
+        disk_guard::clears::clearing(root),
+        std::slice::from_ref(&asked)
+    );
+    let mut guard = guard_at(root, "0%");
+    stepped(&mut guard, 2, &mut Fake::default());
+    assert!(!asked.exists(), "what was asked for goes");
+    assert!(root.join("files/other.txt").exists(), "nothing else does");
+    assert_eq!(
+        disk_guard::clears::clearing(root),
+        Vec::<std::path::PathBuf>::new(),
+        "the ask ends with its pass"
+    );
+    let journal = fs::read_to_string(root.join("journal.jsonl")).unwrap();
+    assert!(
+        journal.contains("asked.txt") && journal.contains("reclaimed"),
+        "the journal says what went: {journal}"
+    );
+}
+
+#[test]
+fn a_clear_leaves_what_the_other_holders_could_clear_as_it_was() {
+    // A clear surveys only the sources around its folder, so the rest
+    // must keep what the last whole survey said of them.
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    for (trash, name) in [("asked", "asked.txt"), ("spare", "spare.txt")] {
+        let trash = root.join(trash);
+        fs::create_dir_all(trash.join("files")).unwrap();
+        fs::create_dir_all(trash.join("info")).unwrap();
+        fs::write(trash.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2099-01-01T08:00:00\n");
+        fs::write(trash.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user", "status_file": true, "budget": "1",
+             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{ "asked": {{ "kind": "trash", "path": "{0}/asked" }},
+                           "spare": {{ "kind": "trash", "path": "{0}/spare" }} }} }}"#,
+        root.display()
+    ))
+    .unwrap();
+    fs::create_dir_all(root.join("proc")).unwrap();
+    let mut guard = Guard::new(
+        crate::unpaced(config),
+        &Places {
+            state: root.clone(),
+            status: Some(root.join("status.json")),
+            processes: root.join("proc"),
+            system: None,
+            running: Vec::new(),
+        },
+    )
+    .unwrap();
+    let clears = |status: &serde_json::Value| {
+        status["holders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|holder| holder["owner"]["name"] == "spare")
+            .map(|holder| holder["clears"].clone())
+    };
+    let status = measured(&mut guard, &root, Duration::from_secs(20));
+    let before = clears(&status);
+    assert!(
+        before.as_ref().and_then(serde_json::Value::as_u64) > Some(0),
+        "the spare trash can be cleared: {}",
+        status["holders"]
+    );
+    disk_guard::clears::ask(&root, &root.join("asked/files/asked.txt"), 1.0).unwrap();
+    stepped(&mut guard, 2, &mut Fake::default());
+    assert!(
+        !root.join("asked/files/asked.txt").exists(),
+        "what was asked for goes"
+    );
+    assert!(
+        root.join("spare/files/spare.txt").exists(),
+        "nothing else does"
+    );
+    let status: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("status.json")).unwrap()).unwrap();
+    assert_eq!(
+        clears(&status),
+        before,
+        "the spare trash's Clear is as it was"
+    );
+}
+
+#[test]
+fn what_is_kept_is_never_cleared_even_on_a_critically_full_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    for name in ["kept.txt", "spare.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2026-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let kept = fs::canonicalize(root.join("files/kept.txt")).unwrap();
+    disk_guard::keeps::keep(root, &kept, "a copy of the old photos", 1.0).unwrap();
+    let mut guard = guard_at(root, "100%");
+    stepped(&mut guard, 3, &mut Fake::default());
+    assert!(
+        !root.join("files/spare.txt").exists(),
+        "what isn't kept goes"
+    );
+    assert!(kept.exists(), "what is kept stays");
 }
