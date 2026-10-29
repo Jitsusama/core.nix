@@ -949,7 +949,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
         desktop.launcher_until(
-            lambda shown: "Ctrl+\u21b5 and close" in (shown["selected"] or {}).get("told", [])
+            lambda shown: "Ctrl+\u21b5 close" in (shown["selected"] or {}).get("told", [])
         )
         machine.send_key(key)
         machine.wait_until_succeeds(
@@ -1200,7 +1200,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
     told = desktop.showing()["selected"]["told"]
-    assert "\u2192 see all" in told, told
+    assert "\u2192" in told, told
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
