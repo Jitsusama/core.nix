@@ -4,6 +4,8 @@
 //! Usage:
 //!   session-backup run --config FILE [--most N]   send what has settled
 //!   session-backup status --config FILE           what is sent and waiting
+//!   session-backup fetch --config FILE NAME --to PATH
+//!                                                 read one copy back
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -11,10 +13,12 @@ use std::time::SystemTime;
 
 use session_backup::backup;
 use session_backup::config::Config;
+use session_backup::fetch;
 use session_backup::ledger::Ledger;
 use session_backup::names;
 
-const USAGE: &str = "usage: session-backup run --config FILE [--most N] | status --config FILE";
+const USAGE: &str = "usage: session-backup run --config FILE [--most N] | status --config FILE \
+     | fetch --config FILE NAME --to PATH";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -26,6 +30,9 @@ fn main() -> ExitCode {
             Err(_) => Err(USAGE.into()),
         },
         ["status", "--config", file] => status(Path::new(file)),
+        ["fetch", "--config", file, name, "--to", to] => {
+            fetched(Path::new(file), name, Path::new(to))
+        }
         _ => Err(USAGE.into()),
     };
     match done {
@@ -62,6 +69,13 @@ fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
     if let Some(why) = done.busy {
         println!("Drive stayed busy, so the rest wait for the next run: {why}");
     }
+    Ok(())
+}
+
+fn fetched(file: &Path, name: &str, to: &Path) -> Result<(), String> {
+    let config = Config::read(file)?;
+    let bytes = fetch::fetch(&config, name, to)?;
+    println!("fetched {name} to {} ({bytes} bytes)", to.display());
     Ok(())
 }
 

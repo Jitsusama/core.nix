@@ -44,14 +44,15 @@ let
         recipients
         settledHours
         ;
-      inherit (cfg) credentials;
+      inherit (cfg) credentials identities;
     }
   );
-  # The command, told its settings, for the account to ask what's sent.
+  # The command, told its settings, for the account to ask what's sent and
+  # to read a copy back.
   configured = pkgs.writeShellScriptBin "session-backup" ''
     case "''${1:-status}" in
-      run | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} "''${@:2}" ;;
-      *) echo "usage: session-backup [status | run [--most N]]" >&2; exit 2 ;;
+      run | status | fetch) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} "''${@:2}" ;;
+      *) echo "usage: session-backup [status | run [--most N] | fetch NAME --to PATH]" >&2; exit 2 ;;
     esac
   '';
 in
@@ -81,6 +82,16 @@ in
       type = lib.types.str;
       default = "${config.xdg.configHome}/gcloud/application_default_credentials.json";
       defaultText = lib.literalExpression ''"''${config.xdg.configHome}/gcloud/application_default_credentials.json"'';
+    };
+    identities = lib.mkOption {
+      description = ''
+        The age identity files `session-backup fetch` opens a copy with,
+        such as a TPM's made without a PIN. Those a machine doesn't hold are
+        passed over, so one list serves every machine.
+      '';
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression ''[ "''${config.xdg.configHome}/age/tpm.txt" ]'';
     };
     host = lib.mkOption {
       description = "The machine, as each copy's name begins.";

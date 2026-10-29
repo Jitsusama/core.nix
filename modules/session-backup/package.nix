@@ -5,6 +5,7 @@
   makeWrapper,
   age,
   age-plugin-fido2-hmac,
+  age-plugin-tpm,
 }:
 rustPlatform.buildRustPackage {
   pname = "session-backup";
@@ -22,13 +23,15 @@ rustPlatform.buildRustPackage {
   nativeBuildInputs = [ makeWrapper ];
   # The plugins age seals through: age-plugin-tag, which comes with age, for
   # a TPM's age1tag1 recipient, and age-plugin-fido2-hmac for a YubiKey's.
-  # Sealing touches neither key.
+  # Sealing touches neither key. A fetch opens a copy with the machine's
+  # own TPM identity through age-plugin-tpm.
   postInstall = ''
     wrapProgram $out/bin/session-backup \
       --prefix PATH : ${
         lib.makeBinPath [
           age
           age-plugin-fido2-hmac
+          age-plugin-tpm
         ]
       }
   '';

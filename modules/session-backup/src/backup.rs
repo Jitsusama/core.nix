@@ -2,13 +2,13 @@
 //! every old one Drive holds removed from the machine.
 
 use std::fs::{self, File, TryLockError};
-use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
 use crate::drive::{self, Drive, Fault};
 use crate::ledger::Ledger;
 use crate::names::{self, Settled};
+use crate::retry::{again, patiently};
 use crate::seal::{self, Recipients};
 use crate::token::Login;
 
@@ -205,39 +205,6 @@ fn lock(config: &Config) -> Result<Option<File>, String> {
         Ok(()) => Ok(Some(file)),
         Err(TryLockError::WouldBlock) => Ok(None),
         Err(TryLockError::Error(why)) => Err(format!("can't lock {}: {why}", path.display())),
-    }
-}
-
-/// A call made again after each of `waits` while Drive answers it busy.
-fn patiently<T>(
-    waits: &[Duration],
-    mut call: impl FnMut() -> Result<T, Fault>,
-) -> Result<T, Fault> {
-    let mut waits = waits.iter();
-    loop {
-        match call() {
-            Err(Fault::Busy(why)) => match waits.next() {
-                Some(wait) => thread::sleep(*wait),
-                None => return Err(Fault::Busy(why)),
-            },
-            other => return other,
-        }
-    }
-}
-
-/// A call to Drive with a token, made once more with a fresh token when
-/// Drive says the one it had stopped counting.
-fn again<T>(
-    login: &mut Login,
-    agent: &ureq::Agent,
-    call: impl Fn(&str) -> Result<T, Fault>,
-) -> Result<T, Fault> {
-    match call(&login.token(agent).map_err(Fault::Other)?) {
-        Err(Fault::Unauthorized) => {
-            login.forget();
-            call(&login.token(agent).map_err(Fault::Other)?)
-        }
-        other => other,
     }
 }
 
