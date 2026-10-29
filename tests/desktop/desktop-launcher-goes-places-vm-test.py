@@ -1897,7 +1897,7 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
 
 @pytest.mark.usefixtures("google")
 def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: Desktop) -> None:
-    """Docs' Recent lists what Joel opened lately, the same row search finds, and Return opens it."""
+    """Docs' Recent lists what Joel opened lately, as search finds it, and Return opens it."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     opened = "/run/user/1000/google-opened"
@@ -1946,8 +1946,10 @@ def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> Non
     desktop.step_in()
     # New Meeting, its desktop entry's, then Join by Code, Meet's own.
     desktop.launcher_until(
-        lambda shown: {"New Meeting", "Join by Code"} <= set(shown["rows"])
-        and shown["rows"].index("New Meeting") < shown["rows"].index("Join by Code")
+        lambda shown: (
+            {"New Meeting", "Join by Code"} <= set(shown["rows"])
+            and shown["rows"].index("New Meeting") < shown["rows"].index("Join by Code")
+        )
     )
     # A code with neither dashes nor lower case is still Meet's.
     desktop.type_in("join by code", selecting="Join by Code")

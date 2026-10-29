@@ -93,9 +93,7 @@ in
       google-mail = program "Mail" "Mail in the Google account" "https://mail.google.com/";
     }
     // lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
-      google-docs =
-        program "Docs" "Documents in the Google account"
-          "https://docs.google.com/document/";
+      google-docs = program "Docs" "Documents in the Google account" "https://docs.google.com/document/";
       google-sheets =
         program "Sheets" "Spreadsheets in the Google account"
           "https://docs.google.com/spreadsheets/";
