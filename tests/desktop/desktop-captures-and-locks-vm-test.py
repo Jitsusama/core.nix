@@ -19,7 +19,7 @@ import pytest
 from desktop_session import LAUNCHER_OPEN, NOTICES, PICTURE_COLOURS, SIGNING, STARTING, retry
 
 if TYPE_CHECKING:
-    from desktop_session import Desktop
+    from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
 
 # The camera's window, which the viewfinder is.
@@ -30,6 +30,8 @@ KEPT = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
+# Now's row for a recording, and how long it says it has run.
+RECORDING = re.compile(r"Recording \u00b7 (\d+):(\d\d)")
 
 
 @pytest.fixture(scope="module")
@@ -313,7 +315,9 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     camera = Camera(desktop)
     machine = desktop.machine
     state = "/run/user/1000/camera-recording.json"
-    videos = int(machine.succeed(f"ls {camera.videos}/*.mp4 2>/dev/null | wc -l"))
+    # None yet counts as none, as when this runs alone, before the camera
+    # has made one.
+    videos = int(machine.succeed(f"(ls {camera.videos}/*.mp4 2>/dev/null || true) | wc -l"))
 
     def marked(rest: str) -> bool:
         return any(glyph["mark"] == "recording" for glyph in json.loads(rest))
@@ -348,6 +352,43 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"rm {state}")
+
+
+def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) -> None:
+    """A recording first seen running says how long since it began, not since it was seen.
+
+    The shell restarts with every switch, and a recording running through one once started
+    again from nothing. The recording here is a process that has run since the desktop
+    started, named as a camera video's, as the camera's viewfinder names its own.
+    """
+    state = "/run/user/1000/camera-recording.json"
+    recorder = desktop.as_account("pgrep -o -x niri").strip()
+
+    def ran() -> int:
+        return int(desktop.as_account(f"ps -o etimes= -p {recorder}"))
+
+    def length(shown: Json) -> int | None:
+        # A row whose recording ended stays in place, gone, as Now keeps it.
+        found = [RECORDING.match(thing["reads"]) for thing in shown["things"] if not thing["gone"]]
+        each = [one for one in found if one is not None]
+        return int(each[0][1]) * 60 + int(each[0][2]) if each else None
+
+    before = ran()
+    desktop.as_account(
+        f"""echo '{{"pid":{recorder},"stop":"/tmp/stop","file":"/tmp/v.mp4"}}' > {state}"""
+    )
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_until(lambda shown: length(shown) is not None)
+        said = length(desktop.showing())
+        after = ran()
+        assert said is not None
+        assert before - 1 <= said <= after + 1, (before, said, after)
+    finally:
+        desktop.as_account(f"rm -f {state}")
+    desktop.launcher_until(lambda shown: length(shown) is None)
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
 
 
 def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(

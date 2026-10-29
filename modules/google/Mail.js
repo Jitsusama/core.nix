@@ -65,6 +65,8 @@ function details(mail, untitled) {
     const facts = [
         { label: "From", value: sender(mail) },
         { label: "To", value: mail.to ?? "" },
+        // Copied to, as every mail program shows it, and only when someone was.
+        { label: "Cc", value: mail.cc ?? "" },
         { label: "Date", value: dated(mail.at) },
         {
             label: attachments.length === 1 ? "Attachment" : "Attachments",

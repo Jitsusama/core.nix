@@ -480,6 +480,21 @@ def touchscreen(desktop: Desktop) -> Iterator[Touchscreen]:
     machine.succeed("systemctl stop touchscreen")
 
 
+def test_the_screens_warmth_starts_only_when_asked(desktop: Desktop) -> None:
+    """What warms the screen starts only when the backlight daemon asks.
+
+    It warms a built-in panel, and this machine names none, so it's never asked, and never
+    fails where the compositor can't set gamma, as this nested one can't; the session's bus
+    can still start it.
+    """
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active backlight"), timeout=SAYING
+    )
+    desktop.as_account("busctl --user list --activatable | grep -q '^rs.wl-gammarelay '")
+    state = desktop.as_account("systemctl --user show -P ActiveState wl-gammarelay").strip()
+    assert state == "inactive", state
+
+
 def test_swipes_on_the_touchscreen_move_through_the_workspaces_not_the_window(
     desktop: Desktop, touchscreen: Touchscreen
 ) -> None:

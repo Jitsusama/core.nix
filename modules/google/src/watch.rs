@@ -1,9 +1,11 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
 //! asks for the meetings and the mail that wants Joel, and every few
-//! minutes the documents he looked at lately, and says how it all stands; an answer to an invitation, a meeting cancelled or moved, and
-//! mail marked read or archived, are asked the same way, and change what's
-//! held at once.
+//! minutes the documents he looked at lately and how each series of
+//! meetings repeats, and says how it all stands; an answer to an
+//! invitation, a meeting cancelled or moved, and mail marked read or
+//! archived, are asked the same way, and change what's held at once.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use jiff::{Timestamp, Zoned};
@@ -33,12 +35,19 @@ pub struct Watch {
     /// When the documents were last heard, in milliseconds since the
     /// epoch, or none since the account was last gone.
     documented: Option<i64>,
+    /// How each series of meetings repeats, by its id, as its rule's lines
+    /// were last heard, and when.
+    rules: HashMap<String, (Vec<String>, i64)>,
 }
 
 /// How long the documents are kept before Drive is asked again: what Joel
 /// looked at lately moves when he opens one, seldom within minutes, and
 /// it's three asks each time.
 const DOCUMENTS_EVERY: i64 = 5 * 60 * 1000;
+
+/// How long a series' rule is kept before Google is asked again: one
+/// seldom changes, and it's an ask for each series.
+const RULES_EVERY: i64 = DOCUMENTS_EVERY;
 
 impl Watch {
     pub fn new(google: Google, credentials: PathBuf, account: Option<String>) -> Watch {
@@ -51,6 +60,7 @@ impl Watch {
             writable: Vec::new(),
             read: Vec::new(),
             documented: None,
+            rules: HashMap::new(),
         }
     }
 
@@ -73,6 +83,7 @@ impl Watch {
                     }
                 }
                 answer["writable"] = Value::from(self.writable.clone());
+                answer["series"] = self.ruled(&answer, now);
                 self.state.account = Standing::Ready;
                 self.state.meetings = calendar::meetings(&answer, now.time_zone());
                 self.state.heard = Some(now.timestamp().as_millisecond());
@@ -117,6 +128,39 @@ impl Watch {
             }
         }
         &self.state
+    }
+
+    /// The rule each series in the calendar's answer repeats by, by its
+    /// id, asking Google only of one not heard in `RULES_EVERY`. One that
+    /// can't be heard now keeps what was heard of it, and one heard of
+    /// never says nothing, for now; neither costs the meetings anything.
+    fn ruled(&mut self, answer: &Value, now: &Zoned) -> Value {
+        let at = now.timestamp().as_millisecond();
+        let series = calendar::repeating(answer);
+        self.rules.retain(|id, _| series.contains(id));
+        for id in series {
+            if self
+                .rules
+                .get(&id)
+                .is_some_and(|(_, heard)| at - heard < RULES_EVERY)
+            {
+                continue;
+            }
+            match self.asking(now, |google, token| google.recurrence(token, &id)) {
+                Ok(lines) => {
+                    self.rules.insert(id, (lines, at));
+                }
+                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                // Signed out since the meetings were heard: the next look
+                // says so.
+                Err(_) => break,
+            }
+        }
+        self.rules
+            .iter()
+            .map(|(id, (lines, _))| (id.clone(), Value::from(lines.clone())))
+            .collect::<serde_json::Map<_, _>>()
+            .into()
     }
 
     /// Answers the invitation to the meeting `id` as `with`, and holds the

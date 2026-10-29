@@ -596,25 +596,20 @@ Provider {
             .reduce((rows, other) => rows.concat(other[hook](program)), []);
     }
 
-    // One path a program had open lately, as Recent's row. Not named
-    // opened, which is the hook the launcher calls as Programs is stepped
-    // into (Provider.qml).
+    // One path a program had open lately, as Recent's row, made as every
+    // file's and folder's is (Files.qml), with one act of Recent's own
+    // first: a file opens in the program, and a folder, as kitty's are,
+    // gets a new window there. Not named opened, which is the hook the
+    // launcher calls as Programs is stepped into (Provider.qml).
     function lately(entry, source, path) {
-        const home = Quickshell.env("HOME");
-        const shown = path === home ? "~"
-            : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
-        // "~/src/core.nix" is core.nix in ~/src; "/etc" is etc in /.
-        const cut = shown.lastIndexOf("/");
-        const folder = cut < 0 || shown === "/" ? "" : cut === 0 ? "/" : shown.slice(0, cut);
-        // Keyed by the thing, not the program, so one file is one thing
-        // wherever it shows.
-        return thing({
-            key: `${source?.kind ?? "file"}:${path}`,
-            verb: Words.verb("recent:path"),
-            name: cut < 0 || shown === "/" ? shown : shown.slice(cut + 1),
-            glyph: "path",
-            hue: "program",
-            side: folder,
+        const kind = source?.kind === "folder" ? "folder" : "file";
+        const key = kind === "folder" ? "verb:recent:window" : "verb:recent:open";
+        const act = thing({
+            key: `${key}:${path}`,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
             run: () => {
                 if (source === null) {
                     Niri.spawn(/%[fFuU]/.test(entry.execString)
@@ -627,6 +622,7 @@ Provider {
                     .replace("{pid}", String(window?.pid ?? ""))));
             }
         });
+        return kind === "folder" ? Files.folder(path, thing, [act]) : Files.file(path, thing, [act]);
     }
 
     // One site a program visited lately, a line of its source's: the page's

@@ -30,6 +30,17 @@
 //! out in daylight, and left as Joel sets it with its key until the light
 //! moves well away from where he did (follow.rs).
 //!
+//! Where a sensor sees the light's colour, the built-in panel's warmth
+//! follows the room's light part of the way (warmth.rs), set through
+//! wl-gammarelay-rs, which holds niri's gamma for each screen. When that
+//! program starts again, at its own white, the room's warmth is set again.
+//! Joel says whether it follows the room through the session's bus
+//! (switch.rs), and his say is kept in `$XDG_STATE_HOME/backlight/warmth`.
+//! Where the warmth stands, and whether it follows, is written to
+//! `$XDG_RUNTIME_DIR/backlight-warmth` for the shell's Warmth part, once a
+//! sensor sees the light's colour, so the part shows only where it means
+//! something. The daemon's stop leaves `{}` there, which shows no part.
+//!
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
 //! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
@@ -42,6 +53,8 @@ mod light;
 mod monitor;
 mod screen;
 mod steer;
+mod switch;
+mod warmth;
 
 use std::env;
 use std::error::Error;
@@ -52,16 +65,19 @@ use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use tokio::sync::watch;
 use zbus::export::futures_core::Stream;
-use zbus::proxy::PropertyStream;
+use zbus::fdo::DBusProxy;
+use zbus::proxy::{CacheProperties, OwnerChangedStream, PropertyStream};
 use zbus::{Connection, proxy};
 
 use curve::Curve;
 use follow::{Follow, Keys};
 use keyboard::Keyboard;
-use light::{Readings, Sensor};
+use light::{Heard, Readings, Sensor};
 use monitor::Monitors;
 use screen::Screen;
+use warmth::{WHITE, Warmth};
 
 /// The session this daemon runs in, which logind lets set its backlight.
 #[proxy(
@@ -82,6 +98,47 @@ trait Session {
 trait Manager {
     #[zbus(property)]
     fn lid_closed(&self) -> zbus::Result<bool>;
+}
+
+/// wl-gammarelay-rs, which sets every screen's warmth through niri.
+#[proxy(
+    interface = "rs.wl.gammarelay",
+    default_service = "rs.wl-gammarelay",
+    default_path = "/"
+)]
+trait Relay {
+    #[zbus(property)]
+    fn temperature(&self) -> zbus::Result<u16>;
+    #[zbus(property)]
+    fn set_temperature(&self, kelvin: u16) -> zbus::Result<()>;
+}
+
+/// Waits for the screens' warmth to be set by a program that just started,
+/// or forever once the bus stops saying.
+async fn relay_started(owners: &mut Option<Pin<Box<OwnerChangedStream<'_>>>>) -> bool {
+    let Some(stream) = owners else {
+        return std::future::pending().await;
+    };
+    if let Some(owner) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
+        owner.is_some()
+    } else {
+        *owners = None;
+        std::future::pending().await
+    }
+}
+
+/// Waits for Joel to say whether the warmth follows the room, or forever
+/// once nothing can.
+async fn switched(said: &mut Option<watch::Receiver<bool>>) -> bool {
+    let Some(heard) = said else {
+        return std::future::pending().await;
+    };
+    if heard.changed().await.is_ok() {
+        *heard.borrow_and_update()
+    } else {
+        *said = None;
+        std::future::pending().await
+    }
 }
 
 /// Waits for the lid to open or shut, or forever once logind stops saying.
@@ -108,13 +165,19 @@ async fn main() -> ExitCode {
     }
 }
 
-/// The light sensor's readings and the light now, or none when there's no
-/// sensor to hear, which leaves the daemon telling the shell of picks.
-fn listen() -> Option<(Readings, f64)> {
-    let sensor = match Sensor::find(Path::new("/sys/bus/iio/devices"), Path::new("/dev")) {
+/// A light sensor's readings and the reading now, or none when there's no
+/// sensor to hear. Without the light the daemon only tells the shell of
+/// picks, and without the warmth the screens keep their own white. Only the
+/// first look says it found none.
+fn listen(heard: Heard, first: bool) -> Option<(Readings, f64)> {
+    let sensor = match Sensor::find(Path::new("/sys/bus/iio/devices"), Path::new("/dev"), heard) {
         Ok(Some(sensor)) => sensor,
         Ok(None) => {
-            eprintln!("<5>no light sensor to follow");
+            match heard {
+                _ if !first => {}
+                Heard::Light => eprintln!("<5>no light sensor to follow"),
+                Heard::Warmth => eprintln!("<5>no light sensor sees the light's colour yet"),
+            }
             return None;
         }
         Err(error) => {
@@ -131,7 +194,98 @@ fn listen() -> Option<(Readings, f64)> {
     }
 }
 
-/// Waits for the light to change, or forever when there's no sensor.
+/// Each time what sets the screens' warmth starts.
+type Started = Option<Pin<Box<OwnerChangedStream<'static>>>>;
+
+/// What sets the built-in panel's warmth, on the session's bus, with the
+/// warmth it has and its starts heard. Only that panel is warmed, as True
+/// Tone does: the sensor sits beside it, and another screen's white is its
+/// own. None when the panel can't be named or the bus can't be reached.
+async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'static>)>, Started) {
+    let Some(connector) = screen.connector() else {
+        eprintln!("<5>{} names no panel, so no screen is warmed", screen.name);
+        return (None, None);
+    };
+    // wl-gammarelay-rs names each screen's object for its connector, with
+    // a dash turned into an underscore.
+    let path = format!("/outputs/{}", connector.replace('-', "_"));
+    let bus = match Connection::session().await {
+        Ok(bus) => bus,
+        Err(error) => {
+            eprintln!("<4>can't reach the session's bus to warm the screens: {error}");
+            return (None, None);
+        }
+    };
+    // Uncached, since the program may start after the daemon, or again.
+    let built = match RelayProxy::builder(&bus).path(path) {
+        Ok(builder) => builder.cache_properties(CacheProperties::No).build().await,
+        Err(error) => Err(error),
+    };
+    let relay = match built {
+        Ok(relay) => relay,
+        Err(error) => {
+            eprintln!("<4>can't ask for the screens' warmth: {error}");
+            return (None, None);
+        }
+    };
+    // Heard before it's read, so a start between the two isn't missed.
+    let started = relay
+        .inner()
+        .receive_owner_changed()
+        .await
+        .ok()
+        .map(Box::pin);
+    // Read only from a relay already running: asking would start one, which
+    // the bus does on the first warmth set, and one starts at the screen's
+    // own white.
+    let running = match DBusProxy::new(&bus).await {
+        Ok(owners) => owners
+            .name_has_owner(relay.inner().destination().clone())
+            .await
+            .unwrap_or(false),
+        Err(_) => false,
+    };
+    let shown = if running {
+        relay.temperature().await.unwrap_or(WHITE)
+    } else {
+        WHITE
+    };
+    (Some((Warmth::new(shown), relay)), started)
+}
+
+/// The sensor's colour may be set up only after the daemon starts, as at a
+/// switch, so until it's heard it's looked for again with each light.
+fn look_for_warmth(warm: &mut Option<Readings>, backlight: &mut Backlight) {
+    if warm.is_some() || backlight.warmth.is_none() {
+        return;
+    }
+    if let Some((heard, kelvin)) = listen(Heard::Warmth, false) {
+        eprintln!("<6>hears the room's light at {kelvin:.0} K");
+        *warm = Some(heard);
+        backlight.sees = true;
+        backlight.warmed(kelvin);
+    }
+}
+
+/// The keyboard's light and its level, where there is one to set.
+fn keyboard() -> Option<(Keys, Keyboard)> {
+    match Keyboard::find(Path::new("/sys/class/leds")) {
+        Ok(Some(keyboard)) => match keyboard.level() {
+            Ok(level) => Some((Keys::new(level), keyboard)),
+            Err(error) => {
+                eprintln!("<4>can't read {}: {error}", keyboard.name);
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(error) => {
+            eprintln!("<4>can't look for a keyboard light: {error}");
+            None
+        }
+    }
+}
+
+/// Waits for a reading to change, or forever when there's no sensor.
 async fn light(readings: &mut Option<Readings>) -> io::Result<f64> {
     match readings {
         Some(readings) => readings.changed().await,
@@ -185,12 +339,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => (standard, false),
         Err(error) => return Err(error.into()),
     };
+    let switch = kept.join("warmth");
     // Beside the runtime folder's other files rather than in a folder of
     // its own, which the shell could start watching before it existed.
-    let chosen = env::var_os("XDG_RUNTIME_DIR")
+    let runtime = env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
-        .ok_or("XDG_RUNTIME_DIR isn't set")?
-        .join("backlight-chosen");
+        .ok_or("XDG_RUNTIME_DIR isn't set")?;
+    let chosen = runtime.join("backlight-chosen");
+    let note = runtime.join("backlight-warmth");
 
     let bus = Connection::system().await?;
     let session = SessionProxy::new(&bus).await?;
@@ -200,20 +356,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let shut = manager.lid_closed().await?;
     let mut watch = screen.watch()?;
     let seen = screen.brightness()?;
-    let keyboard = match Keyboard::find(Path::new("/sys/class/leds")) {
-        Ok(Some(keyboard)) => match keyboard.level() {
-            Ok(level) => Some((Keys::new(level), keyboard)),
-            Err(error) => {
-                eprintln!("<4>can't read {}: {error}", keyboard.name);
-                None
-            }
-        },
-        Ok(None) => None,
-        Err(error) => {
-            eprintln!("<4>can't look for a keyboard light: {error}");
-            None
-        }
-    };
+    let (warmth, mut started) = relay(&screen).await;
     let mut backlight = Backlight {
         screen,
         session,
@@ -222,14 +365,27 @@ async fn run() -> Result<(), Box<dyn Error>> {
         chosen,
         seen,
         wrote: None,
-        keyboard,
+        keyboard: keyboard(),
+        warmth,
+        switch,
+        note,
+        noted: None,
+        sees: false,
     };
+    // Held for as long as the daemon runs, since it holds the switch's name.
+    let (_switch_bus, mut said) = backlight.serve_switch().await;
+    let (mut warm, room) = listen(Heard::Warmth, true).unzip();
+    backlight.sees = warm.is_some();
     backlight.lid(shut);
     let mut monitors = Monitors::find(backlight.screen.level_of(seen));
-    let (mut readings, now) = listen().unzip();
+    let (mut readings, now) = listen(Heard::Light, true).unzip();
     if let Some(lux) = now {
         eprintln!("<6>hears {lux:.0} lux");
         backlight.heard(lux);
+    }
+    if let (Some(kelvin), Some(_)) = (room, &backlight.warmth) {
+        eprintln!("<6>hears the room's light at {kelvin:.0} K");
+        backlight.warmed(kelvin);
     }
 
     loop {
@@ -242,8 +398,16 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 changed?;
                 backlight.screen_changed()?;
             }
-            lux = light(&mut readings) => backlight.heard(lux?),
+            lux = light(&mut readings) => {
+                backlight.heard(lux?);
+                look_for_warmth(&mut warm, &mut backlight);
+            }
+            kelvin = light(&mut warm) => backlight.warmed(kelvin?),
             shut = lid_moved(&mut lid) => backlight.lid(shut?),
+            follows = switched(&mut said) => backlight.switched(follows),
+            again = relay_started(&mut started) => if again {
+                backlight.relay_started();
+            },
             () = until(wake) => backlight.step().await,
             changed = monitors.changed() => {
                 changed?;
@@ -274,6 +438,16 @@ struct Backlight<'a> {
     wrote: Option<u32>,
     /// The keyboard's light, when there is one, and when it follows the room.
     keyboard: Option<(Keys, Keyboard)>,
+    /// The screens' warmth and what sets it, where a sensor sees colour.
+    warmth: Option<(Warmth, RelayProxy<'a>)>,
+    /// Where Joel's say over the warmth is kept.
+    switch: PathBuf,
+    /// Where the shell is told how the warmth stands, and what it was last
+    /// told: the warmth, and whether it follows the room.
+    note: PathBuf,
+    noted: Option<(u16, bool)>,
+    /// Whether a sensor sees the light's colour.
+    sees: bool,
 }
 
 impl Backlight<'_> {
@@ -287,6 +461,118 @@ impl Backlight<'_> {
         self.keyboard_read();
         if let Some((keys, _)) = &mut self.keyboard {
             keys.heard(lux, Instant::now());
+        }
+        self.warm(|warmth, now| warmth.light(lux, now));
+    }
+
+    /// The room's light changed warmth.
+    fn warmed(&mut self, kelvin: f64) {
+        self.warm(|warmth, now| warmth.room(kelvin, now));
+    }
+
+    /// Serves Joel's say over the warmth, where there's a warmth to set,
+    /// starting from what he last said. Gives the bus it's served on and
+    /// what he says through it.
+    async fn serve_switch(&mut self) -> (Option<Connection>, Option<watch::Receiver<bool>>) {
+        if self.warmth.is_none() {
+            return (None, None);
+        }
+        let follows = match fs::read_to_string(&self.switch) {
+            Ok(text) => switch::says(&text),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+            Err(error) => {
+                eprintln!("<4>can't read {}: {error}", self.switch.display());
+                true
+            }
+        };
+        if !follows {
+            eprintln!("<6>the screen keeps its own white, as Joel said");
+        }
+        self.warm(|warmth, now| warmth.follow_the_room(follows, now));
+        match switch::serve(follows).await {
+            Ok((bus, said)) => (Some(bus), Some(said)),
+            Err(error) => {
+                eprintln!("<4>can't take Joel's say over the screen's warmth: {error}");
+                (None, None)
+            }
+        }
+    }
+
+    /// Joel said whether the warmth follows the room: it's kept, and the
+    /// screen goes to the room's warmth or back to its own white.
+    fn switched(&mut self, follows: bool) {
+        if self
+            .warmth
+            .as_ref()
+            .is_some_and(|(warmth, _)| warmth.follows() == follows)
+        {
+            return;
+        }
+        if follows {
+            eprintln!("<6>the screen's warmth follows the room again, as Joel said");
+        } else {
+            eprintln!("<6>the screen goes back to its own white, as Joel said");
+        }
+        if let Err(error) = write_whole(&self.switch, switch::kept(follows)) {
+            eprintln!("<4>can't keep Joel's say over the warmth: {error}");
+        }
+        self.warm(|warmth, now| warmth.follow_the_room(follows, now));
+    }
+
+    /// Tells the shell how the warmth stands, when that changed, once a
+    /// sensor sees the light's colour.
+    fn say_warmth(&mut self) {
+        let Some((warmth, _)) = &self.warmth else {
+            return;
+        };
+        let stands = (warmth.stands(), warmth.follows());
+        if !self.sees || self.noted == Some(stands) {
+            return;
+        }
+        let (kelvin, follows) = stands;
+        let text = format!("{{\"kelvin\": {kelvin}, \"followsTheRoom\": {follows}}}\n");
+        match write_whole(&self.note, &text) {
+            Ok(()) => self.noted = Some(stands),
+            Err(error) => eprintln!("<4>can't tell the shell the screen's warmth: {error}"),
+        }
+    }
+
+    /// What sets the warmth started again, at its own white.
+    fn relay_started(&mut self) {
+        if self.warmth.is_some() {
+            eprintln!("<6>the screens' warmth started again at {WHITE} K");
+        }
+        self.warm(Warmth::reset);
+    }
+
+    /// Tells the warmth of a change, and says when that starts a glide.
+    fn warm(&mut self, change: impl FnOnce(&mut Warmth, Instant)) {
+        let Some((warmth, _)) = &mut self.warmth else {
+            return;
+        };
+        let idle = warmth.going().is_none();
+        change(warmth, Instant::now());
+        // Going back to white when Joel asked is said where he asked.
+        if let (true, Some(to), true) = (idle, warmth.going(), warmth.follows()) {
+            eprintln!("<6>warms the screens toward {to} K for the room's light");
+        }
+        self.say_warmth();
+    }
+
+    /// Takes the next step of the warmth's glide, once it's due.
+    async fn warmth_step(&mut self, now: Instant) {
+        let Some((warmth, relay)) = &mut self.warmth else {
+            return;
+        };
+        let Some(kelvin) = warmth.step(now) else {
+            return;
+        };
+        match relay.set_temperature(kelvin).await {
+            Ok(()) => warmth.set(kelvin, now),
+            Err(error) => {
+                eprintln!("<4>can't set the screens' warmth: {error}");
+                warmth.abandon();
+            }
         }
     }
 
@@ -345,6 +631,7 @@ impl Backlight<'_> {
         if let Some((keys, _)) = &mut self.keyboard {
             keys.lid(shut);
         }
+        self.warm(|warmth, now| warmth.lid(shut, now));
         if !self.follow.lid(shut) {
             return;
         }
@@ -392,10 +679,11 @@ impl Backlight<'_> {
     /// When to step next (follow.rs).
     fn wake(&self) -> Option<Instant> {
         let keys = self.keyboard.as_ref().and_then(|(keys, _)| keys.wake());
-        match (self.follow.wake(Instant::now()), keys) {
-            (Some(screen), Some(keys)) => Some(screen.min(keys)),
-            (screen, keys) => screen.or(keys),
-        }
+        let warmth = self.warmth.as_ref().and_then(|(warmth, _)| warmth.wake());
+        [self.follow.wake(Instant::now()), keys, warmth]
+            .into_iter()
+            .flatten()
+            .min()
     }
 
     /// Starts the move the light asked for once it's due, and takes the next
@@ -403,6 +691,7 @@ impl Backlight<'_> {
     async fn step(&mut self) {
         let now = Instant::now();
         self.keyboard_step(now).await;
+        self.warmth_step(now).await;
         let from = self.screen.level_of(self.seen);
         if let Some(to) = self.follow.start(from, now) {
             let lux = self.follow.lux().unwrap_or_default();

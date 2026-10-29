@@ -149,6 +149,40 @@ impl Google {
             .map_err(|error| Refused::Unreachable(format!("Google's answer to {what}: {error}")))
     }
 
+    /// The lines a series of meetings on the primary calendar repeats by,
+    /// its `recurrence`, as RFC 5545 writes them (RRULE, EXDATE, RDATE),
+    /// which an occurrence doesn't carry. A series gone since says none.
+    pub fn recurrence(&self, token: &str, series: &str) -> Result<Vec<String>, Refused> {
+        let mut answer = self
+            .agent
+            .get(format!(
+                "{}/calendar/v3/calendars/primary/events/{series}",
+                self.origins.api
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("fields", "recurrence")
+            .call()
+            .map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if status == 404 || status == 410 {
+            return Ok(Vec::new());
+        }
+        if status != 200 {
+            return Err(refused(status, "a series of meetings"));
+        }
+        let body: Value = answer.body_mut().read_json().map_err(|error| {
+            Refused::Unreachable(format!("Google's answer to a series of meetings: {error}"))
+        })?;
+        Ok(body
+            .get("recurrence")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect())
+    }
+
     /// The ids of the mail that wants Joel, newest first.
     pub fn wanting(&self, token: &str) -> Result<Value, Refused> {
         let shown = mail::SHOWN.to_string();

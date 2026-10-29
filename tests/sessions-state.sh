@@ -11,7 +11,9 @@ set -euo pipefail
 
 state=$1
 presence=$state/pi/agentic-harness.pi/mesh-workflow/presence
-mkdir -p "$presence" "$state/bin"
+mkdir -p "$presence" "$state/bin" "$state/mycelium"
+# The realm a machine's node keeps, whose socket isn't there yet.
+echo harbour >"$state/mycelium/realm"
 boot=$(cat /proc/sys/kernel/random/boot_id)
 
 # A process's start in clock ticks: the stat's 22nd field, counted after the

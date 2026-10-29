@@ -24,6 +24,7 @@
 #   jitsusama.mycelium.declares = {
 #     reach = [ "internet" ];
 #     probes.home = "router.lan:53";
+#     probes.office = [ "/run/current-system/sw/bin/test" "-e" "/run/office" ];
 #     taints = [ { key = "person-works"; effect = "prefer_not"; why = "..."; } ];
 #   };
 { mycelium }:
@@ -73,13 +74,20 @@ let
         description = "The networks work on this machine always reaches, wherever it is.";
       };
       probes = lib.mkOption {
-        type = lib.types.attrsOf lib.types.str;
+        type = lib.types.attrsOf (lib.types.either lib.types.str (lib.types.listOf lib.types.str));
         default = { };
         example = {
           home = "router.lan:53";
+          office = [
+            "/run/current-system/sw/bin/test"
+            "-e"
+            "/run/office"
+          ];
         };
-        # The node opens a connection to each every 30 seconds.
-        description = "Networks reached only at times, each by a host:port answering only then.";
+        # The node tries each every 30 seconds, giving it 3 to answer. A
+        # command suits a network an address can't tell apart, such as one
+        # known by its Wi-Fi or a tunnel's link; it runs with no shell.
+        description = "Networks reached at times, each by a host:port or command answering only then.";
       };
       outlives = lib.mkOption {
         type = lib.types.listOf (
@@ -176,7 +184,9 @@ in
       # Where mycelium reads it: XDG_CONFIG_HOME's, or ~/.config's.
       xdg.configFile."mycelium/declared.json".text = builtins.toJSON {
         inherit (cfg.declares) reach outlives taints;
-        probes = lib.mapAttrs (_: connect: { inherit connect; }) cfg.declares.probes;
+        probes = lib.mapAttrs (
+          _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
+        ) cfg.declares.probes;
         costs_money = cfg.declares.costsMoney;
       };
     })

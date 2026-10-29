@@ -414,6 +414,12 @@ ShellRoot {
             same("each by its name, in the order it keeps them", names(lately), "core.nix, etc");
             same("beside the folder it's in", lately.map(row => row.side).join(" "), "~/src /");
             same("Return opens it", lately.map(row => row.verb).join(" "), "open open");
+            same("each made as every folder is, keyed by itself",
+                `${lately[0].component} ${lately[0].key}`, `folder folder:${root.home}/src/core.nix`);
+            same("a folder holds a window there, and Copy the Path last",
+                names(lately[0].verbs()), "New Window Here, Copy the Path");
+            same("Copy the Path copies its whole path", lately[0].verbs()[1].copy,
+                `${root.home}/src/core.nix`);
             lately[0].run();
             same("with none of its windows open, by starting it there",
                 JSON.stringify(Niri.spawned),
@@ -434,7 +440,11 @@ ShellRoot {
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
                 "New Window, New Window Below, Recent, Media, Sound");
-            radio[2].targets()[0].run();
+            const song = radio[2].targets()[0];
+            same("a file made as every file is, opened first and its path copied last",
+                `${song.component} ${song.key} ${names(song.verbs())}`,
+                `file file:${root.home}/song.ogg Open, Copy the Path`);
+            song.run();
             same("a file given to a program that opens none opens as the desktop opens it",
                 JSON.stringify(Niri.spawned), JSON.stringify(["xdg-open", `${root.home}/song.ogg`]));
             same("Media holds only what the player can do", names(radio[3].targets()), "Play");

@@ -41,7 +41,7 @@ use guide::vault;
 use guide::vault::store::{Directory, Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
+const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide github
        guide host IMAGE [--sign-with DIRECTORY]... [--every-machine] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE]]
        guide seal-keys TARGET BUNDLE";
@@ -85,6 +85,7 @@ fn main() -> ExitCode {
             reported(recover())
         }
         ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
+        ["github"] => reported(github()),
         ["host", image, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
@@ -645,12 +646,67 @@ fn installed() -> Result<(), Fault> {
     // No restart: at boot the guide holds the boot back from counting as
     // good, so restarting from here would spend one of a new generation's
     // tries.
-    let next = "From the next start, the disk asks for the YubiKey's PIN, which the TPM takes too. A YubiKey with that PIN, or the recovery key, still opens it whenever the TPM won't.";
+    let next = "From the next start, the disk asks for the YubiKey's PIN, which the TPM takes too. A YubiKey with that PIN, or the recovery key, still opens it whenever the TPM won't. Once you're signed in and online, type guide github in a terminal to add this machine's keys to GitHub.";
     walk.card(
         &mut terminal,
         &format!("{name} is finished"),
         next,
         "sign in",
+    )?;
+    Ok(())
+}
+
+/// The account's keys in the TPM added to GitHub, after a sign-in on the
+/// person's phone. Run as the account, signed in and online, since it's
+/// their GitHub and their gh.
+fn github() -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } == 0 {
+        return Err(Fault::Blocked {
+            step: "github",
+            why: "it adds your own keys to your own GitHub, so run it as yourself, without sudo"
+                .into(),
+        });
+    }
+    let from = |name: &str| {
+        std::env::var(name).map_err(|_| Fault::Blocked {
+            step: "github",
+            why: format!("{name} isn't set, so run it from a terminal in your own session"),
+        })
+    };
+    let account = guide::github::Account {
+        name: from("USER")?,
+        home: from("HOME")?,
+        runtime: from("XDG_RUNTIME_DIR")?,
+        bus: std::env::var("DBUS_SESSION_BUS_ADDRESS").ok(),
+    };
+    let mut machine = System::new(Journal::in_memory(), None);
+    let journey = Journey::new(guide::github::steps(&account))
+        .map_err(|why| Fault::unreadable("GitHub's steps", why))?;
+    let name = machine.read("/etc/hostname")?.map_or_else(
+        || "this machine".into(),
+        |bytes| String::from_utf8_lossy(&bytes).trim().to_string(),
+    );
+    let title = format!("Add {name}'s keys to GitHub");
+    let theme = Theme::built(Terminal::is_console());
+    let mut terminal = Terminal::open()?;
+    let walk = Walk {
+        journey: &journey,
+        here: Place::Installed,
+        name: &title,
+        theme: &theme,
+        log: None,
+        whole: true,
+        done: RefCell::default(),
+    };
+    if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+        return Ok(());
+    }
+    walk.card(
+        &mut terminal,
+        "GitHub has this machine's keys",
+        "From now on it takes this machine's SSH logins, and shows the commits it signs as verified.",
+        "leave",
     )?;
     Ok(())
 }

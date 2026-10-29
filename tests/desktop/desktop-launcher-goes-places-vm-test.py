@@ -127,7 +127,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
             and shown["selected"]["verb"] == "switch"
         )
     )
-    # Each named first, as every part is, then what it says.
+    # Its acts in the order every session keeps them, then what's known of
+    # it, each named first, as every part is, then what it says.
+    assert desktop.showing()["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
+    desktop.down_to("Stop")
     for name, side in [
         ("Quest", r"QEST-20261022-TESTQA"),
         ("Address", r"TESTQA"),
@@ -312,7 +315,7 @@ def into_lighthouse(desktop: Desktop) -> None:
     desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lighthouse")
-    desktop.step_in("ret")
+    desktop.step_in()
     desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
 
 
@@ -323,27 +326,26 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
-    # Listed busy, as its presence says.
+    # A running one is its session, drawn as every session is: its address
+    # and what it's doing beside it, and its Return goes to its window.
     desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lighthouse"
-            and str(shown["selected"]["side"]).startswith("busy")
+            and str(shown["selected"]["side"]).startswith("TESTQA \u00b7 ")
+            and shown["selected"]["verb"] == "switch"
         )
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Found from the root by its name, the right arrow lands inside it, as
-    # Return does, never short of it (Joel, 2026-10-26: Return never goes
-    # further in than the right arrow), so the foot says the two as one.
-    # The left arrow climbs back out the way it came, Lighthouse selected
-    # among the orchestrators, then onto what was typed.
+    # Found from the root by its name, the right arrow goes straight inside
+    # it, though its Return goes to its window, the crumbs saying where it
+    # lives; the left arrow comes back to the search, Lighthouse selected
+    # (VKCF3Z, 2026-10-29: "\u2190 is where you came from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    told = desktop.showing()["selected"]["told"]
-    assert told == ["\u21b5 \u2192"], told
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -354,24 +356,22 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     machine.send_key("left")
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Orchestrators"]
+            shown["held"] == []
+            and shown["typed"] == "lighthouse"
             and (shown["selected"] or {}).get("name") == "Lighthouse"
         )
     )
-    machine.send_key("left")
-    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "lighthouse")
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Return lands inside it the same way, its collection's crumb before
-    # its own.
+    # Inside, its acts come in the order every session keeps them.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
-    machine.send_key("ret")
+    machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
-            and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
+            and shown["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
         )
     )
     # Talk asks for words, which go to its session's inbox as Joel's,
@@ -1549,6 +1549,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     facts = {fact["label"]: fact["value"] for fact in drawer.get("facts", [])}
     assert drawer.get("title") == "Standup", drawer
     assert facts.get("Where") == "Room 4", drawer
+    assert facts.get("Repeats") == "Every weekday", drawer
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
@@ -2519,8 +2520,8 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
         desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
         timeout=dt.timedelta(seconds=10),
     )
-    # Run, it does what its Return does, opening it again where it's
-    # closed (#1069), so the launcher doesn't open on it.
+    # Run, it does what its Return does, going to its window or opening it
+    # again where it's closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
     assert lighthouse["kind"] == "action", lighthouse
     assert ran(lighthouse)["done"]

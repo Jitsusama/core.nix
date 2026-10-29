@@ -98,6 +98,7 @@ mod fixtures {
 pub mod awake;
 pub mod fake;
 pub mod fault;
+pub mod github;
 pub mod host;
 pub mod install;
 pub mod installed;

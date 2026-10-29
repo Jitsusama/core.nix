@@ -33,6 +33,13 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
+def field_key(field: list[Json], mark: str, word: str) -> Json:
+    """Give the field's word for a key, its mark then what it does, failing if it isn't there."""
+    said = [one for one in field if mark in one["text"] and one["text"].endswith(f" {word}")]
+    assert len(said) == 1, (mark, word, field)
+    return said[0]
+
+
 def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: Desktop) -> None:
     """The launcher lists each thing once, for everything Joel types."""
     machine = desktop.machine
@@ -183,7 +190,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
         machine.send_key("esc")
     # Half a word asks its question too: "batt" is the battery, and
-    # Tab finishes the word, its key after the completion in the field.
+    # Tab finishes the word, the field saying so at its right edge.
     # A copy kept from before saying "battery", a later word, never takes
     # the answer's place, as the battery's own copied answer did when it
     # said "on battery".
@@ -201,13 +208,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
     )
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert any("\u21e5" in word["text"] for word in field), field
+    tab = field_key(field, "\u21e5", "complete")
     # The left arrow takes what's typed away only where the field says
-    # so, its mark after the completion's, and the right arrow right
-    # after puts it back, what it took standing in grey with the right
-    # arrow's mark meanwhile. With Ctrl it moves the caret, as in any
-    # field: a letter typed then lands at the start.
-    assert any("\u2190" in word["text"] for word in field), field
+    # so, after Tab's place, and the right arrow right after puts it
+    # back, what it took standing in grey, the field saying so in the
+    # left arrow's place meanwhile. With Ctrl it moves the caret, as in
+    # any field: a letter typed then lands at the start.
+    clear = field_key(field, "\u2190", "clear")
+    # Neither is flush against what's typed: both stand after it, Tab's
+    # first.
+    typed = next(word for word in field if word["text"] == "batt")
+    assert typed["x"] < tab["x"] < clear["x"], field
     machine.send_key("ctrl-left")
     machine.send_chars("x")
     desktop.launcher_until(lambda shown: shown["typed"] == "xbatt")
@@ -216,9 +227,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert any(word["text"].startswith("batt ") and "\u2192" in word["text"] for word in field), (
-        field
-    )
+    # What it took stands in grey where it was typed, as any hint in an
+    # empty field starts where the first letter will.
+    took = next(word for word in field if word["text"] == "batt")
+    assert took["x"] == typed["x"], field
+    # The right arrow is said in the left arrow's place, which holds still,
+    # and Tab's place stays empty, since there's no completion.
+    assert field_key(field, "\u2192", "restore")["x"] == clear["x"], field
+    assert not any("\u21e5" in word["text"] for word in field), field
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -792,6 +808,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
+    # A path this long leaves no room for the field's words for its keys,
+    # so a letter brings the left arrow's key alone, and the path is never
+    # cut to make room for them.
+    machine.send_chars("l")
+    desktop.launcher_until(lambda shown: shown["typed"] == "l")
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    assert not any(word["cut"] for word in field if board in word["text"]), field
+    assert any("\u2190" in word["text"] for word in field), field
+    assert not any(word["text"].endswith(" clear") for word in field), field
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
     desktop.down_to("Light")
@@ -829,6 +856,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert re.search("^after \\d+ ms, \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
     desktop.answer("350 f in c")
+    answer_is_whole(desktop, "176.667 \u00b0C")
     desktop.photograph("launcher-units")
     machine.send_key("esc")
     # The zones come from the list built from tzdata, so this proves it's
@@ -892,6 +920,19 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     log = desktop.shell_said("ERROR", "Error:")
     assert "ERROR" not in log, "an answer raised an error"
     assert "Error:" not in log, "an answer raised an error"
+
+
+def answer_is_whole(desktop: Desktop, answer: str) -> None:
+    """Wait for the answer to come, and check it's drawn whole in the row it held.
+
+    The row says "Ask" until the answer comes, and is kept as it does, so what it then says
+    must not be cut to the room "Ask" took, as the gallery's launcher-units once showed it.
+    """
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == [answer])
+    assert desktop.held_still(), "the launcher never came to rest"
+    words = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"][0]["words"]
+    name = next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == answer)
+    assert not name["cut"], words
 
 
 def guard_says(desktop: Desktop, holders: list[Json]) -> None:
@@ -1324,6 +1365,67 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
         desktop.as_account("systemctl --user start timekeeping")
+
+
+def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: Desktop) -> None:
+    """The screen's warmth follows its Brightness, says how it stands, and Return switches it."""
+    machine = desktop.machine
+    note = "/run/user/1000/backlight-warmth"
+
+    def warmth(said: dict[str, Any]) -> None:
+        """Say how the warmth stands as the backlight daemon does, whole, by a rename."""
+        text = json.dumps(said)
+        desktop.as_account(f"echo '{text}' > {note}.writing && mv {note}.writing {note}")
+
+    def warmth_selected(side: str, verb: str, footer: str) -> Callable[[Json], bool]:
+        """Give a test that the Warmth is selected, standing as said."""
+        return lambda shown: (
+            (shown["selected"] or {}).get("name") == "Warmth"
+            and (
+                shown["selected"]["side"],
+                shown["selected"]["verb"],
+                shown["footer"],
+            )
+            == (side, verb, footer)
+        )
+
+    # The backlight daemon warms nothing here, so its file is said for it.
+    warmth({"kelvin": 5200, "followsTheRoom": True})
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][1:3] == ["Brightness", "Warmth"])
+    desktop.down_to("Warmth")
+    desktop.launcher_until(warmth_selected("on", "off", "5200 K, following the room"))
+    desktop.photograph("launcher-warmth")
+    # Return tells the daemon over the session's bus, which is heard here.
+    desktop.as_account(
+        "systemd-run --user --collect --quiet --unit=warmth-heard -- sh -c "
+        "'busctl --user monitor io.jitsusama.Backlight > /tmp/warmth-heard'"
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active warmth-heard"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "grep -q FollowsTheRoom /tmp/warmth-heard && grep -q 'BOOLEAN false' /tmp/warmth-heard",
+        timeout=dt.timedelta(seconds=10),
+    )
+    # It stays to show the change, which comes as the daemon says it.
+    warmth({"kelvin": 6500, "followsTheRoom": False})
+    desktop.launcher_until(warmth_selected("off", "on", "6500 K, the screen's own white"))
+    # Where nothing warms the screen, the daemon leaves {}, and the Warmth
+    # goes: kept in its place while stepped in, as any part that goes is.
+    warmth({})
+    desktop.launcher_until(
+        lambda shown: all(
+            thing["gone"] for thing in shown["things"] if thing["is"].endswith(":warmth")
+        )
+    )
+    desktop.as_account("systemctl --user stop warmth-heard")
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

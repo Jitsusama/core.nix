@@ -32,6 +32,16 @@
             type = lib.types.bool;
             description = "Whether it asks for a PIN before it's used.";
           };
+          github = lib.mkOption {
+            type = lib.types.nullOr (
+              lib.types.enum [
+                "authentication"
+                "signing"
+              ]
+            );
+            default = null;
+            description = "What `guide github` adds it to GitHub as: a key that signs in, or one that signs commits.";
+          };
         };
       }
     );
@@ -63,6 +73,7 @@
       {
         file = "${config.home.homeDirectory}/.ssh/id_ecdsa";
         pin = true;
+        github = "authentication";
       }
     ];
 

@@ -921,6 +921,7 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         readonly property string home: Quickshell.env("HOME")
         function tell(words, folder, program) {}
+        function talk(address, words) { return true; }
       '';
     in
     pkgs.runCommandLocal "the-launcher-asks-a-fresh-pi" { } ''
@@ -1362,6 +1363,7 @@ onLinux {
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./Words.qml} Words.qml
+      cp ${./Files.qml} Files.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/program-controls.qml} shell.qml
       cp ${niri} Niri.qml
@@ -1579,7 +1581,7 @@ onLinux {
       cp ${quiet} Quiet.qml
       cp ${notices} Notices.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

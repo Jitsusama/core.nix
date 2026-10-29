@@ -1280,9 +1280,11 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    # Found from the root, the right arrow steps into every network with
-    # the Office still selected among them (Joel, 2026-10-26: stepping in
-    # keeps the match), and the left arrow puts back what was typed.
+    # Found from the root, the right arrow goes straight inside the Office,
+    # the networks' crumb above it saying where it lives, and the left
+    # arrow comes back to the search with what was typed (VKCF3Z,
+    # 2026-10-29: "\u2190 is where you came from; the crumbs are where it
+    # lives").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("office", selecting="Office")
@@ -1291,10 +1293,7 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            len(shown["held"]) == 1
-            and shown["typed"] == ""
-            and len(shown["rows"]) > 1
-            and (shown["selected"] or {}).get("name") == "Office"
+            len(shown["held"]) > 1 and shown["path"][-1:] == ["Office"] and shown["typed"] == ""
         )
     )
     machine.send_key("left")
