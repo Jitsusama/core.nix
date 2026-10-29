@@ -500,11 +500,14 @@ Provider {
             count: String(paths.length),
             ask: "which?",
             nested: true,
-            targets: () => provider.recents.of(entry.id).map(path => provider.opened(entry, source, path))
+            targets: () => provider.recents.of(entry.id).map(path => provider.lately(entry, source, path))
         })];
     }
 
-    function opened(entry, source, path) {
+    // One path a program had open lately, as Recent's row. Not named
+    // opened, which is the hook the launcher calls as Programs is stepped
+    // into (Provider.qml).
+    function lately(entry, source, path) {
         const home = Quickshell.env("HOME");
         const shown = path === home ? "~"
             : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;

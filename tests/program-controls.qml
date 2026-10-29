@@ -173,6 +173,8 @@ ShellRoot {
         // were there before the entries were read.
         Niri.revision += 1;
         try {
+            // The launcher says Programs was stepped into, as it does.
+            applications.opened();
             const tester = program("tester").verbs();
             same("acts first, then parts, each where it applies", names(tester),
                 "Switch, New Window, New Window Below, Draft, Private window, "
