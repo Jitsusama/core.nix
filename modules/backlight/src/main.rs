@@ -39,7 +39,7 @@
 //! Where the warmth stands, and whether it follows, is written to
 //! `$XDG_RUNTIME_DIR/backlight-warmth` for the shell's Warmth part, once a
 //! sensor sees the light's colour, so the part shows only where it means
-//! something.
+//! something. The daemon's stop leaves `{}` there, which shows no part.
 //!
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
