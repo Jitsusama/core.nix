@@ -2226,9 +2226,9 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
 /// The paths a source lies under, which say what filesystems it's on.
 fn paths(source: &Source) -> Vec<&Path> {
     match source {
-        Source::Cargo { roots, .. } | Source::Installs { roots, .. } => {
-            roots.iter().map(PathBuf::as_path).collect()
-        }
+        Source::Cargo { roots, .. }
+        | Source::Installs { roots, .. }
+        | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
         Source::Cache { path, .. }
         | Source::Scratch { path, .. }
         | Source::Snapshots { path, .. }

@@ -8,6 +8,7 @@ use crate::band::Band;
 use crate::clock::Awake;
 use crate::config::{CacheProtocol, Config, Source};
 use crate::discover::{self, Checkout, Kind};
+use crate::git;
 use crate::plan::{Candidate, Class};
 use crate::replaced::Uses;
 use crate::snapshots::Boot;
@@ -157,6 +158,11 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 pattern,
                 command,
             } => offer_snapshots(path, pattern, command, world, &mut offers),
+            Source::Git { repos } => {
+                for repo in repos {
+                    offer_git(repo, world, &mut offers);
+                }
+            }
             Source::Workspaces { path, quests, .. } => {
                 offer_workspaces(path, quests, world, &mut offers);
             }
@@ -294,6 +300,26 @@ fn offer_snapshots(
                 device,
             });
         }
+    }
+}
+
+/// What git staged in the repository whose git directory is `repo`, once
+/// no git works on it. Each goes whole, on the next pass, however young:
+/// git removes them as it exits, so one still there with no git at work
+/// is one a killed git left, and waiting on its age only keeps it.
+fn offer_git(repo: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(repo) else { return };
+    if git::busy(&git::places(repo), world.processes, world.uid) {
+        return;
+    }
+    let root = repo.join("objects");
+    for path in git::temporaries(repo) {
+        let size = size(&path, world);
+        offers.push(Offer {
+            candidate: git::candidate(path, size),
+            action: Action::Entry { root: root.clone() },
+            device,
+        });
     }
 }
 

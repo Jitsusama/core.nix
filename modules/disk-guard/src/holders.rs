@@ -100,6 +100,13 @@ pub fn places(config: &Config) -> Vec<Place> {
             Source::Cache { .. } => found.push(whole(Kind::Cache)),
             Source::Podman { .. } => found.push(whole(Kind::Containers)),
             Source::Finished { .. } => {}
+            Source::Git { repos } => found.extend(repos.iter().map(|repo| Place {
+                path: resolved(repo),
+                owner: Owner {
+                    kind: Kind::Other,
+                    name: name.clone(),
+                },
+            })),
             _ => found.push(whole(Kind::Other)),
         }
     }
@@ -137,7 +144,10 @@ fn source_path(source: &Source) -> Option<&Path> {
         | Source::Producer { path, .. }
         | Source::Coredumps { path }
         | Source::NixBuilds { path } => path,
-        Source::Cargo { .. } | Source::Installs { .. } | Source::Finished { .. } => return None,
+        Source::Cargo { .. }
+        | Source::Installs { .. }
+        | Source::Git { .. }
+        | Source::Finished { .. } => return None,
     })
 }
 

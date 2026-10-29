@@ -433,6 +433,49 @@ fn temp_leftovers_trash_and_scratch_are_offered() {
 }
 
 #[test]
+fn what_a_killed_git_left_staged_is_offered_once_no_git_works_there() {
+    // One large repository held 70 folders a fetch stages its packs in, 9.8
+    // GiB, left by fetches killed on the way; git removes them only as it
+    // exits, and never looks for them again.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let git = dir(&home.join("big/git"));
+    let staged = dir(&git.join("objects/tmp_objdir-packfile-uri-x1Yz2W"));
+    file(&staged.join("pack-1.pack"), "a pack");
+    let pack = git.join("objects/pack/tmp_pack_Qw3Er4");
+    file(&pack, "half a pack");
+    file(&git.join("objects/pack/pack-1234.pack"), "a pack");
+    let config = config(&format!(
+        r#""big": {{ "kind": "git", "repos": ["{}"] }}"#,
+        git.display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    let paths: Vec<&Path> = found
+        .iter()
+        .map(|offer| offer.candidate.path.as_path())
+        .collect();
+    assert_eq!(paths, [pack.as_path(), staged.as_path()]);
+    for offer in &found {
+        assert_eq!(offer.candidate.class, Class::GitTemporary);
+        assert_eq!(
+            offer.action,
+            Action::Entry {
+                root: git.join("objects")
+            }
+        );
+    }
+    let fetch = Process {
+        uid: unsafe { libc::geteuid() },
+        exe: Some(PathBuf::from("/nix/store/abc-git/bin/git")),
+        cmdline: vec![OsString::from("git")],
+        cwd: Some(git.clone()),
+        readable: true,
+        ..Default::default()
+    };
+    assert_eq!(offers(&config, &[fetch], &|_| false), []);
+}
+
+#[test]
 fn orphaned_snapshots_and_finished_workspaces_are_offered() {
     let home = tempfile::tempdir().unwrap();
     let home = real(home.path());

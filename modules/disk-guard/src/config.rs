@@ -228,6 +228,9 @@ pub enum Source {
         command: Vec<String>,
         timeout: Span,
     },
+    /// Git repositories, by their git directories, whose temporaries go
+    /// once no git works on them.
+    Git { repos: Vec<PathBuf> },
     /// systemd-coredump's cores.
     Coredumps { path: PathBuf },
     /// Build directories Nix left behind.
@@ -269,6 +272,7 @@ impl Source {
             Source::Podman { .. } => "podman",
             Source::Producer { .. } => "producer",
             Source::Finished { .. } => "finished",
+            Source::Git { .. } => "git",
             Source::Coredumps { .. } => "coredumps",
             Source::NixBuilds { .. } => "nix-builds",
         }
@@ -291,9 +295,9 @@ impl Source {
 
     fn paths(&self) -> Vec<&Path> {
         match self {
-            Source::Cargo { roots, .. } | Source::Installs { roots, .. } => {
-                roots.iter().map(PathBuf::as_path).collect()
-            }
+            Source::Cargo { roots, .. }
+            | Source::Installs { roots, .. }
+            | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
             Source::Workspaces {
                 path,
                 quests,

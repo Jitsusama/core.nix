@@ -20,7 +20,8 @@ or launchd, and [`home.nix`][2] the account's.
   made, goes whole; a mount, a read-only snapshot and a subvolume inside a
   build or a scratch aren't.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
-  oversized logs, Nix's leftover build directories), Nix generations and
+  oversized logs, Nix's leftover build directories, and what a killed git
+  left staged in a repository no git works on now), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,
   caches cheapest to refill first, idle targets and installs, older builds a
   newer one of their crate replaced, and last what is occupied. Waste,
