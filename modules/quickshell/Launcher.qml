@@ -1359,15 +1359,15 @@ Scope {
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
     // step. Tab is said in the field, at its right edge while there's a
-    // completion to take (Prompt.qml), not here: it comes and goes with each letter, so in the
-    // foot it moved the keys or took room from how things stand. The left
-    // arrow is said only where it goes back: that it takes away what's
-    // typed is what any field does, and saying so took room from how things
-    // stand as soon as Joel typed. Shift+Return and the right arrow are said
-    // wherever they work, a step in too (Joel, 2026-10-26: "the foot shows
-    // every key that works on the selection"): the right arrow where `enter`
-    // finds somewhere to go, by what it would ask, never by asking it, since
-    // the foot is said for every row.
+    // completion to take (Prompt.qml), not here: it comes and goes with
+    // each letter, so in the foot it moved the keys or took room from how
+    // things stand. The left arrow is said only where it goes back: that it
+    // takes away what's typed is what any field does, and saying so took
+    // room from how things stand as soon as Joel typed. Shift+Return and
+    // the right arrow are said wherever they work, a step in too (Joel,
+    // 2026-10-26: "the foot shows every key that works on the selection"):
+    // the right arrow where `enter` finds somewhere to go, by what it would
+    // ask, never by asking it, since the foot is said for every row.
     // Whether Return does something and keeps the launcher, as a setting
     // does, rather than going somewhere inside it, as a spot, a row with
     // more inside, one holding rows (its verbs and targets both, as a
