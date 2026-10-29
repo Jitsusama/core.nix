@@ -2275,6 +2275,22 @@ onLinux {
       touch $out
     '';
 
+  # A battery that reports only its charge, as a Bluetooth device's does,
+  # is low and then critical once each, as tests/crossing.qml holds.
+  a-low-charge-is-said-once =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-low-charge-is-said-once" { } ''
+      cp ${../../tests/crossing.qml} crossing.qml
+      cp ${./Crossing.js} Crossing.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml crossing.qml
+      touch $out
+    '';
+
   # A sender kept to a level reaches no further, however urgent it says it
   # is, and each level shows, counts and stays as tests/levels.qml holds.
   a-sender-keeps-to-its-level =

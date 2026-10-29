@@ -24,6 +24,11 @@
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
     settling back to it in at most a fifth of a second at each end, never stepping back
   '';
+  a-low-charge-is-said-once = ''
+    a battery that reports only its charge runs low at its mark and critical at its own, only ever
+    deeper until it charges or rises five points past the low mark, so a charge wavering about a
+    mark is never said twice
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
