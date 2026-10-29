@@ -41,6 +41,10 @@
 import QtQuick
 
 QtObject {
+    // What a source holds of its own, as Slack's holds the reader it asks:
+    // a QtObject has no default property for one to go in.
+    default property list<QtObject> held
+
     // Its settings from Nix, as the option gives them.
     property var settings: ({})
     property var people: []

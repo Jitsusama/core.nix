@@ -11,6 +11,7 @@ guard the test's config, and the build script that waits, are disk-guard.nix's, 
 
 from __future__ import annotations
 
+import re
 import shlex
 from datetime import timedelta
 from itertools import count
@@ -251,6 +252,38 @@ def test_a_target_in_a_subvolume_is_offered_and_one_in_a_read_only_snapshot_isnt
     finally:
         for subvolume in (frozen, clone):
             machine.succeed(f"! test -e {subvolume} || btrfs subvolume delete {subvolume}")
+
+
+# Mebibytes of noise a footprint is asked about, which no compression shrinks.
+NOISE = 8
+# Mebibytes 64 MiB of one repeated word may take once compressed, copy and all.
+TEXT_TAKES_AT_MOST = 16
+
+
+def test_the_machines_guard_says_what_an_accounts_files_take_on_the_disk(account: Account) -> None:
+    """The machine's guard says what an account's files take on the disk, and only its own.
+
+    /home compresses as it writes, so 64 MiB of text takes a few, and a copy made by reference
+    takes nothing more; 8 MiB of noise doesn't compress, so it takes all of its 8. The files
+    are synced first, since Btrfs only gives a write its runs once it lands. A folder of
+    root's, and a link of joel's that leads to one, are never walked for him.
+    """
+    account.machine.wait_until_succeeds("test -S /run/disk-guard/socket")
+    account.run("mkdir -p ~/footprint && yes footprint | head -c 64M > ~/footprint/text")
+    account.run("cp --reflink=always ~/footprint/text ~/footprint/copy")
+    account.run(f"head -c {NOISE}M /dev/urandom > ~/footprint/noise && sync -f ~")
+    try:
+        said = account.run(f"{GUARD} footprint ~/footprint").strip()
+        disk = r"/home/joel/footprint: ([\d.]+) MiB on the disk, for 136\.0 MiB of files\."
+        found = re.fullmatch(disk, said)
+        assert found, said
+        assert NOISE <= float(found[1]) < NOISE + TEXT_TAKES_AT_MOST, said
+        account.run("ln -s /etc ~/to-etc")
+        not_his = ["/etc", "~/to-etc"]
+        refused = account.run(f"{GUARD} footprint {' '.join(not_his)}", succeed=False)
+        assert refused.count("can't be read") == len(not_his), refused
+    finally:
+        account.run("rm -rf ~/footprint ~/to-etc")
 
 
 def test_at_pressure_an_idle_target_goes_and_a_fresh_one_and_a_cache_stay(

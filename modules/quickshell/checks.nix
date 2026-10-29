@@ -236,6 +236,10 @@ onLinux {
         '') files
       )}
       mv quickshell qs
+      # Slack's source for People is installed only where a machine brings
+      # Slack, as no example does, so it's read here as if one had.
+      mkdir -p qs/launcher/people
+      cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
@@ -818,6 +822,57 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       # At home here, so a folder here reads from ~.
       export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # The orchestrators' talks (tests/talks.qml), over 120 inboxes with 120
+  # sessions running, two inboxes holding talks: only those are read, and
+  # focus moving makes no reader again, so the shell's threads, and with
+  # them its file watchers, stay bounded.
+  the-launcher-reads-talks-boundedly =
+    let
+      niri = singleton "Niri.qml" ''
+        property int revision: 0
+        function spawn(command) {}
+        function act(request) {}
+      '';
+      sessions = singleton "Sessions.qml" ''
+        readonly property string home: Quickshell.env("HOME")
+        readonly property string state: Quickshell.env("PWD") + "/state"
+        readonly property string inboxes: state + "/steer"
+        property var running: Array.from({ length: 120 },
+          (_, at) => ({ address: "A" + String(at).padStart(3, "0") }))
+        property var present: ({})
+        function resume(id, quest, folder) {}
+        function start(quest, folder) {}
+      '';
+      delivered = words: ''{"stage":"delivered","at":"2026-10-29T10:00:00Z","text":"${words}"}'';
+    in
+    pkgs.runCommandLocal "the-launcher-reads-talks-boundedly" { } ''
+      mkdir -p launcher state/quest-workflow
+      for at in $(seq -w 0 119); do mkdir -p state/steer/A$at; done
+      mkdir state/steer/A003/replies state/steer/A117/replies
+      echo '${delivered "wrap up the release"}' > state/steer/A003/replies/t-1.jsonl
+      echo '${delivered "check the lights"}' > state/steer/A117/replies/t-2.jsonl
+      echo '{"orchestrators":[{"address":"A003","quest":"QEST-A","title":"A"}]}' \
+        > state/quest-workflow/orchestrators.json
+      echo '{"quests":[]}' > state/quest-workflow/quests.json
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Orchestrators.qml} launcher/Orchestrators.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/talks.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

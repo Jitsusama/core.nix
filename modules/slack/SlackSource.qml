@@ -9,7 +9,6 @@
 // Slack refusing the sign-in stops the asking until the shell starts
 // again; with no sign-in, slack-people asks nothing.
 import qs
-import Quickshell
 import Quickshell.Io
 import QtQuick
 

@@ -22,7 +22,9 @@
 //! on a machine many sessions share; each evaluation's memory goes when it
 //! ends. A commit's derivations never change, so the base's are
 //! kept under `~/.cache/changed-checks`, and only the working tree is
-//! evaluated again. git and nix are the person's own, with their settings,
+//! evaluated again. A run that wants a commit another run is evaluating
+//! waits for it rather than evaluating it too, and a working tree git
+//! calls clean is kept by its commit the same way. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
 //!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
@@ -173,7 +175,16 @@ fn compare(
     }
     eprintln!("comparing {system}'s checks at {short} with the working tree");
     let before = kept(noted)?;
-    let after = derivations(flake, system, "tree", noted)?;
+    // A working tree git calls clean is its commit, whose derivations never
+    // change, so they're kept by it as a base's are, and a run again on the
+    // same commit, or one whose commit is a base kept already, evaluates
+    // nothing.
+    let after = match clean_commit()? {
+        Some(commit) => checks::kept(&checks::keeping(&cache(), &commit, system), || {
+            derivations(flake, system, "tree", noted)
+        })?,
+        None => derivations(flake, system, "tree", noted)?,
+    };
     let comparison = checks::compare(&before, &after);
     let mut named = 0;
     for (kind, names) in comparison.kinds() {
@@ -213,6 +224,16 @@ fn compare(
     } else {
         ExitCode::FAILURE
     })
+}
+
+/// The working tree's commit, when nothing in it differs from the commit
+/// in what Nix reads: no file git tracks, or has been told of, changed.
+fn clean_commit() -> Result<Option<String>, String> {
+    let changed = run("git", &["status", "--porcelain", "--untracked-files=no"])?;
+    if !changed.is_empty() {
+        return Ok(None);
+    }
+    run("git", &["rev-parse", "HEAD"]).map(Some)
 }
 
 /// Each evaluation goes past nix's evaluation cache. Evaluated through

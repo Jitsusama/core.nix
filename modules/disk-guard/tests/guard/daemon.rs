@@ -186,6 +186,7 @@ pub(crate) fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Rec
                         Request::Watching { paths } if collects => Reply::Collects(paths.clone()),
                         Request::Watching { .. } => Reply::Collects(Vec::new()),
                         Request::Collect { .. } => Reply::Collected("reached".to_owned()),
+                        Request::Footprint { paths } => Reply::Footprints(vec![None; paths.len()]),
                     };
                     let _ = telling.send(request);
                     responder.send(&reply);

@@ -27,8 +27,8 @@ TIMED = f"{JOBS}/jobs-timed.slice"
 WORK = f"{JOBS}/jobs-work.slice"
 MIB = 2**20
 # The memory shares the module keeps for apps, and for every slice above them.
-APPS_SHARE = 0.13
-ABOVE_SHARE = 0.16
+APPS_SHARE = 0.20
+ABOVE_SHARE = 0.23
 SESSION_FLOOR = 1536 * MIB
 # The share of memory past which work in jobs is slowed.
 JOBS_HIGH = 0.5

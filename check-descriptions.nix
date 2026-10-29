@@ -687,8 +687,13 @@
   '';
   pi-writes-what-the-last-boot-left = ''
     the launcher's list of the pi sessions the last boot's end took away is written as the account's
-    session starts, in background.slice with the store's node, skipped where the harness isn't
-    installed, and never on a Mac
+    session starts, in background.slice with the store's node and no module-type warning, skipped
+    where the harness isn't installed, and never on a Mac
+  '';
+  pi-notes-windows-on-sessions-elsewhere = ''
+    each minute the harness notes which windows here are joined to a session another machine holds,
+    so the next boot can offer them back, in background.slice with the store's node, skipped where
+    the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -1006,6 +1011,10 @@
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
+  '';
+  the-launcher-reads-talks-boundedly = ''
+    the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
+    moving among 120 sessions makes no reader again, so the shell's threads stay bounded
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
