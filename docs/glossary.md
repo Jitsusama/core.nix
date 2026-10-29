@@ -258,6 +258,7 @@ off.
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
 | VM | a computer run as a program on this one | virtual machine | libvirt, QEMU |
+| Linux builder | a VM on a Mac that builds what Linux machines run, so the Mac's work builds there | | `darwinModules.linux-builder`, `darwin.linux-builder-vz` |
 | container | a program run apart from the machine, with its own files | | Podman |
 
 ## Network
