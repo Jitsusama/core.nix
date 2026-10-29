@@ -14,6 +14,7 @@ use std::time::SystemTime;
 use session_backup::backup;
 use session_backup::config::Config;
 use session_backup::fetch;
+use session_backup::index::Index;
 use session_backup::ledger::Ledger;
 use session_backup::names;
 
@@ -58,6 +59,12 @@ fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
         done.found,
         done.before
     );
+    if done.indexed > 0 {
+        println!("indexed {} logs, their rows sent sealed", done.indexed);
+    }
+    if let Some(why) = done.unread {
+        println!("read no log back from Drive for its row: {why}");
+    }
     if done.removed > 0 {
         println!(
             "removed {} logs Drive holds that were past their {} days here ({} MB)",
@@ -93,5 +100,14 @@ fn status(file: &Path) -> Result<(), String> {
         "{} objects sent; {waiting} settled logs waiting to go",
         ledger.len()
     );
+    if let Some(path) = &config.index {
+        let index = Index::open(path)?;
+        let rows = format!("{}/index/", config.host);
+        let logs = ledger.sent().filter(|(name, _)| !name.starts_with(&rows));
+        let (all, rowless) = logs.fold((0, 0), |(all, rowless), (name, _)| {
+            (all + 1, rowless + usize::from(!index.has(name)))
+        });
+        println!("{rowless} of the {all} logs sent have no row in the index yet");
+    }
     Ok(())
 }

@@ -26,6 +26,10 @@
 //! is in the ledger and Drive still finds it by name; a log Drive no longer
 //! finds is kept as the only copy (backup.rs).
 //!
+//! Each log sent has a row in an index, read from the log as it goes, so
+//! mining can pick the logs it needs without opening every copy; the rows
+//! go to Drive sealed too, an object a run (index.rs).
+//!
 //! What was sent is kept in a ledger, one JSON line per object
 //! (ledger.rs), written as each lands. A run stopped part way carries on
 //! from the ledger, and one stopped between Drive taking an object and the
@@ -45,6 +49,7 @@ pub mod backup;
 pub mod config;
 pub mod drive;
 pub mod fetch;
+pub mod index;
 pub mod ledger;
 pub mod names;
 pub mod retry;

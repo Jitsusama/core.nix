@@ -37,6 +37,11 @@ let
     builtins.toJSON {
       sessions = "${config.home.homeDirectory}/.pi/agent/sessions";
       ledger = "${config.xdg.stateHome}/session-backup/sent.jsonl";
+      # A row for each log sent, which mining reads first (src/index.rs).
+      index = "${config.xdg.stateHome}/session-backup/index.jsonl";
+      # agentic-harness.pi's record of each session, which names its quest;
+      # a session started outside the harness has none, and its row says so.
+      records = "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/sessions";
       inherit (cfg)
         folder
         host
@@ -87,7 +92,10 @@ in
       description = ''
         The age identity files `session-backup fetch` opens a copy with,
         such as a TPM's made without a PIN. Those a machine doesn't hold are
-        passed over, so one list serves every machine.
+        passed over, so one list serves every machine. With one named, each
+        hourly run also reads back up to 100 logs gone from the machine that
+        have no row in the index, for their rows, and removes each copy once
+        read.
       '';
       type = lib.types.listOf lib.types.str;
       default = [ ];

@@ -10,6 +10,9 @@ use serde_json::Value;
 const API: &str = "https://www.googleapis.com";
 /// Where a refresh token is traded for an access token.
 const TOKEN: &str = "https://oauth2.googleapis.com/token";
+/// How many copies of logs gone from the machine a run reads back for
+/// their rows: a few minutes' work, so an hourly run stays short.
+const BACKFILL_PER_RUN: usize = 100;
 /// How long a log goes unwritten before it counts as settled.
 const SETTLED_HOURS: u64 = 48;
 /// How long to wait before each retry of a call Drive was too busy for:
@@ -24,6 +27,14 @@ pub struct Config {
     /// The ledger of what was sent, and beside it the scratch a seal is
     /// written to before it goes.
     pub ledger: PathBuf,
+    /// The index of what each log sent holds, or `None` to send logs
+    /// without one.
+    pub index: Option<PathBuf>,
+    /// The harness's records of its sessions, which name each one's quest.
+    pub records: Option<PathBuf>,
+    /// How many copies of logs gone from the machine a run reads back to
+    /// give them rows.
+    pub backfill: usize,
     /// The Drive folder every object goes in, by its id.
     pub folder: String,
     /// The machine, as its objects are named.
@@ -99,6 +110,13 @@ impl Config {
         Ok(Config {
             sessions: text("sessions")?.into(),
             ledger: text("ledger")?.into(),
+            index: text("index").ok().map(PathBuf::from),
+            records: text("records").ok().map(PathBuf::from),
+            backfill: value
+                .get("backfillPerRun")
+                .and_then(Value::as_u64)
+                .and_then(|most| usize::try_from(most).ok())
+                .unwrap_or(BACKFILL_PER_RUN),
             folder: text("folder")?,
             host: text("host")?,
             recipients,
