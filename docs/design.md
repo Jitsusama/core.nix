@@ -723,7 +723,11 @@ works the same way everywhere.
   stand. Its place there is kept while nothing shows in it, so nothing in
   the field moves as it comes and goes; flush after the completion, a bare
   ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
-  text feels wrong and they are not super obvious what they mean").
+  text feels wrong and they are not super obvious what they mean"). The
+  keys' words take a third of the field, so they're said only while the
+  path, what's typed with its completion and the aside all fit whole
+  beside them; otherwise the keys stand alone, and once a step runs out of
+  room they stay alone until it ends, rather than coming and going.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, so a few letters reach inside a thing from
   anywhere: what can be done to it,

@@ -808,6 +808,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
+    # A path this long leaves no room for the field's words for its keys,
+    # so a letter brings the left arrow's key alone, and the path is never
+    # cut to make room for them.
+    machine.send_chars("l")
+    desktop.launcher_until(lambda shown: shown["typed"] == "l")
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    assert not any(word["cut"] for word in field if board in word["text"]), field
+    assert any("\u2190" in word["text"] for word in field), field
+    assert not any(word["text"].endswith(" clear") for word in field), field
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
     desktop.down_to("Light")

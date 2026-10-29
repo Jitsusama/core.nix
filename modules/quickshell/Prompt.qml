@@ -75,6 +75,7 @@ Item {
 
     // Lets the aside's room go, as a new step starts, keeping what it says now.
     function forget() {
+        crowded = false;
         asideWidest = Math.min(asideText.implicitWidth, asideMost);
     }
 
@@ -93,12 +94,38 @@ Item {
     // moves as they come and go with each letter. They're set at the right
     // edge, past the aside, so neither moves as the aside changes.
     readonly property bool keyed: leftClears
-    readonly property var keyPlaces: keyed ? [chipFace.advanceWidth("\u21e5 complete"),
+    // Their words take a third of the launcher's field, so they're said only
+    // where everything else the field says leaves room for them: the path,
+    // what's typed with its completion, and the aside, each whole. Where
+    // they don't fit, the keys are said alone, since words for keys Joel
+    // learns once never cost him the path or the answer to what he typed.
+    // Once a step has run out of room they stay away until the step ends,
+    // so they go at most once rather than coming and going with letters.
+    readonly property var keysWorded: [chipFace.advanceWidth("\u21e5 complete"),
         Math.max(chipFace.advanceWidth("\u2190 clear"), chipFace.advanceWidth("\u2192 restore"))]
-        : []
+    readonly property real asideWanted: Math.min(asideText.implicitWidth, width * 0.4)
+    readonly property bool wordsFit: width - 2 * Theme.space.l - glyphWidth - Theme.space.m
+        - pathWanted - Math.max(typingRoom, chipFace.advanceWidth(input.text + ghost))
+        - Theme.space.xl - (asideWanted > 0 ? asideWanted + Theme.space.xl : 0)
+        >= keysWorded[0] + fieldKeys.spacing + keysWorded[1] + Theme.space.xl
+    // Set as the words stop fitting, and let go by forget(), as a step ends.
+    property bool crowded: false
+    onWordsFitChanged: {
+        if (!wordsFit && keyed)
+            crowded = true;
+    }
+    readonly property bool worded: wordsFit && !crowded
+    readonly property var keyPlaces: !keyed ? [] : worded ? keysWorded
+        : [chipFace.advanceWidth("\u21e5"),
+            Math.max(chipFace.advanceWidth("\u2190"), chipFace.advanceWidth("\u2192"))]
     readonly property real keysRoom: keyed
         ? keyPlaces[0] + fieldKeys.spacing + keyPlaces[1] + Theme.space.xl : 0
     readonly property bool typed: input.text !== "" && !secret
+
+    // A key's word, where there's room for the words.
+    function keyWord(word: string): string {
+        return worded ? word : "";
+    }
 
     // Return, or Shift+Return, which asks for it below the focused window,
     // or Ctrl+Return, which does it and closes whatever it is.
@@ -146,9 +173,11 @@ Item {
         visible: prompt.keyed
         widths: prompt.keyPlaces
         endsRight: true
-        keys: [prompt.typed && prompt.ghost !== "" ? ["\u21e5", "complete"] : ["", ""],
-            prompt.typed ? ["\u2190", "clear"]
-            : input.text === "" && prompt.cleared !== "" ? ["\u2192", "restore"] : ["", ""]]
+        keys: [prompt.typed && prompt.ghost !== "" ? ["\u21e5", prompt.keyWord("complete")]
+                : ["", ""],
+            prompt.typed ? ["\u2190", prompt.keyWord("clear")]
+            : input.text === "" && prompt.cleared !== "" ? ["\u2192", prompt.keyWord("restore")]
+            : ["", ""]]
     }
 
     Text {
