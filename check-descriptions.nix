@@ -504,9 +504,9 @@
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';
   mycelium-links-what-a-machine-names = ''
-    a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
-    as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
-    none only has the program, and one in no realm has no realm set
+    a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
+    service on Linux signing in with the agents' key and an agent on a Mac; one naming none runs
+    it dialling nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session

@@ -61,14 +61,15 @@ let
     builtins.fromJSON (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
 in
 {
-  # A workstation that names machines to link with runs the node in its
-  # realm, dialling each one: a user service on Linux, an agent on a Mac. One
-  # that names none only has the program, with its realm set for the far
-  # end of a link, and one in no realm has neither a realm nor a node. On
-  # Linux the node signs in with the agents' key, which asks nothing.
+  # A workstation in a realm runs the node in it, dialling each machine it
+  # names: a user service on Linux, an agent on a Mac. One that names none
+  # runs it dialling nothing, since its node still holds its sessions and
+  # starts what others ask of it, and one in no realm has neither a realm
+  # nor a node. On Linux the node signs in with the agents' key, which asks
+  # nothing.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN, or a machine that names none runs a node anyway."
+      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && linuxAgent == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
@@ -80,7 +81,12 @@ in
           ]
           ++ ssh
         && (mac links).launchd.agents.mycelium.enable
-        && !(answering.systemd.user.services ? mycelium)
+        && lib.hasInfix "--realm personal node" (
+          toString answering.systemd.user.services.mycelium.Service.ExecStart
+        )
+        && !(lib.hasInfix "--ssh" (toString answering.systemd.user.services.mycelium.Service.ExecStart))
+        && (mac { realm = "personal"; }).launchd.agents.mycelium.enable
+        && !(apart.systemd.user.services ? mycelium)
         && answering.home.sessionVariables.MYCELIUM_REALM == "personal"
         && !(apart.home.sessionVariables ? MYCELIUM_REALM)
         && lib.any (package: (package.pname or "") == "mycelium") apart.home.packages
