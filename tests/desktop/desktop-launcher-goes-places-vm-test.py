@@ -2236,6 +2236,8 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
         + "\n".join(said["uncomposed"])
     )
     assert said["composed"] > 0, "the walk found no mail to ask of"
+    # Nor does a mail's or a meeting's drawer only say its row again.
+    assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
 
 
 @pytest.mark.usefixtures("google")
@@ -3006,6 +3008,20 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def repeating(said: Json) -> str:
+    """Say each row the walk found whose drawer would only repeat it, one a line."""
+    # Joel, 2026-10-29: "we should never show the side panel when it is
+    # just repeating the currently selected text". A drawer says more with
+    # a fact, a picture, or words that aren't the row's name, side or note.
+    return "\n".join(
+        drawer["in"]
+        for drawer in cast("list[Json]", said["drawers"])
+        if drawer["facts"] == 0
+        and not drawer["picture"]
+        and all(words in ("", *drawer["row"]) for words in (drawer["title"], drawer["body"]))
+    )
+
+
 def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     """Every row the launcher shows does something on Return."""
     # Joel, 2026-10-26: a row that holds more steps in, a row that only
@@ -3037,6 +3053,9 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     assert skipped == [], "A step doesn't lead with the act Return stepped over:\n" + "\n".join(
         f"{row['in']} \u203a {row['words']}" for row in skipped
     )
+    # And no row's drawer only says the row again (docs/design.md, the
+    # drawer).
+    assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

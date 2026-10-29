@@ -963,9 +963,14 @@ works the same way everywhere.
   history), the same at home, in a search and in every place; an act, a
   switch, a choice or a place has none (Joel, 2026-10-29: "the side
   drawer shows when it's not needed, and only shows in certain
-  places"). Between two things it stays and what it shows changes in
-  place; onto or off one it fades in place once the selection rests, so
-  holding an arrow never flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
+  places"). It opens only when it holds something the row doesn't
+  already say, a fact, a picture or other words; one that would only
+  repeat the selected row is never shown, for any kind (Joel,
+  2026-10-29: "we should never show the side panel when it is just
+  repeating the currently selected text"). Between two rows that both
+  have one it stays and what it shows changes in place; onto or off one
+  it fades in place once the selection rests, so holding an arrow never
+  flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
   while it holds more than fits, since Page Up and Page Down page the
   list. Another program's words are shown plain, never as markup.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies

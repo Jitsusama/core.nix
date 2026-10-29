@@ -787,6 +787,9 @@ Scope {
         // (Joel, 2026-10-28: "enter is supposed to be the default action,
         // but that means that action should be selectable within").
         const skipped = [];
+        // What each row's drawer would show beside the row's own words, so
+        // a check can judge for itself that none only repeats its row.
+        const drawers = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -805,6 +808,17 @@ Scope {
                             + ` (${row.key}, not made as a ${kind})`);
                     else if (row.component)
                         composed += 1;
+                    const drawn = drawerOf(row);
+                    if (drawn)
+                        drawers.push({
+                            in: names.concat([row.name]).join(" \u203a "),
+                            row: [row.name, row.side, row.note]
+                                .map(words => String(words ?? "").trim()),
+                            title: String(drawn.title ?? "").trim(),
+                            body: String(drawn.body ?? "").trim(),
+                            facts: (drawn.facts ?? []).filter(fact => fact).length,
+                            picture: (drawn.picture ?? "") !== ""
+                        });
                     const deeper = depth < actlessDeepest
                         && !(row.opens && Catalogue.long(row.opens));
                     const inside = deeper
@@ -826,7 +840,7 @@ Scope {
         // How many it walked too, so a check that finds none knows it
         // looked.
         return { walked: seen.size, rows: out, ownVersions: own, copyFirst, skipped,
-            uncomposed: loose, composed: composed };
+            uncomposed: loose, composed: composed, drawers };
     }
 
     // Whether Return on a row steps in where the row has an act of its own
@@ -2909,12 +2923,21 @@ Scope {
         if (!row)
             return null;
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
-        if (own)
-            return own;
-        if ((row.picture ?? "") === "" && (row.reads ?? "") === "")
-            return null;
-        return { title: row.name, body: row.reads ?? "", picture: row.picture ?? "",
-            across: row.across ?? 0, down: row.down ?? 0 };
+        const drawer = own ? own : { title: row.name, body: row.reads ?? "",
+            picture: row.picture ?? "", across: row.across ?? 0, down: row.down ?? 0 };
+        return drawerAdds(drawer, row) ? drawer : null;
+    }
+    // Whether a drawer says anything its row doesn't: a fact, a picture, or
+    // words, its title among them, other than the row's own name, side and
+    // note. One that would only repeat the row is never shown, for any kind
+    // (Joel, 2026-10-29: "we should never show the side panel when it is
+    // just repeating the currently selected text").
+    function drawerAdds(drawer, row) {
+        if ((drawer.facts ?? []).some(fact => fact) || (drawer.picture ?? "") !== "")
+            return true;
+        const own = [row.name, row.side, row.note].map(words => String(words ?? "").trim());
+        return [drawer.title, drawer.body].map(words => String(words ?? "").trim())
+            .some(words => words !== "" && !own.includes(words));
     }
     // What the selected row has for the drawer, or null: typed to nothing,
     // nothing is selected, and it has none.
