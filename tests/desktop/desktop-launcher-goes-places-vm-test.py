@@ -1778,8 +1778,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     # is the card continued").
     desktop.launcher_until(
         lambda shown: (
-            (shown.get("drawer") or {}).get("out") is True
-            and shown["drawer"]["title"] == "Standup"
+            (shown.get("drawer") or {}).get("out") is True and shown["drawer"]["title"] == "Standup"
         )
     )
     # Return shows it, a step in named for it, its day and times first,
