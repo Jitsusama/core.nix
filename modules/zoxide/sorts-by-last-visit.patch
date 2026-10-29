@@ -49,8 +49,7 @@ nothing changed, since every reader sorts again.
              options = options.with_exists(true).with_resolve_symlinks(resolve_symlinks);
 --- a/src/db/mod.rs
 +++ b/src/db/mod.rs
-@@ -169,6 +169,10 @@
-     pub fn sort_by_path(&mut self) {
+@@ -170,6 +170,10 @@
          self.with_dirs_mut(|dirs| dirs.sort_unstable_by(|dir1, dir2| dir1.path.cmp(&dir2.path)));
      }
  

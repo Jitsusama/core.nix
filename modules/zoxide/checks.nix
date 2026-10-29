@@ -46,7 +46,7 @@ onLinux {
         export _ZO_DATA_DIR=$PWD/zoxide
         mkdir -p zoxide often lately
         printf '%s|100|1000000000\n%s|1|1000000600\n' $PWD/often $PWD/lately > z
-        zoxide import --from z z
+        _Z_DATA=$PWD/z zoxide import z
         cp zoxide/db.zo before
         ranked=$(zoxide query --list)
         [ "$ranked" = "$PWD/often"$'\n'"$PWD/lately" ] || { echo "zoxide ranked: $ranked"; exit 1; }
