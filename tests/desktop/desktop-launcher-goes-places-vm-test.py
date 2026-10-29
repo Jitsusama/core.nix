@@ -1896,6 +1896,53 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
 
 
 @pytest.mark.usefixtures("google")
+def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
+    desktop: Desktop,
+) -> None:
+    """A person is found by name; inside, the ways to reach them, then what's lately with them."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # Ada holds the stand-in's Standup and wrote Lunch on Friday, so Google
+    # knows her by her address, and she's one person for both.
+    desktop.answer("ada lovelace")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "person:ada@example.com"
+            and (shown["selected"].get("drawer") or {}).get("facts", [{}])[0]
+            == {"label": "Email", "value": "ada@example.com"}
+        )
+    )
+    # Return steps in, never reaching her by itself: Write a Mail first,
+    # her address to copy, then her Recent.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:3] == ["Write a Mail", "ada@example.com", "Recent"]
+    )
+    machine.fail(f"test -s {opened}")
+    desktop.down_to("Recent")
+    desktop.step_in()
+    # The meeting and the mail with her, each its own component's row.
+    desktop.launcher_until(
+        lambda shown: {"Standup", "Lunch on Friday"} <= set(shown["rows"])
+    )
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
+    machine.send_key("up")
+    machine.send_key("up")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail"
+    )
+    machine.send_key("ret")
+    writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(writing)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:
@@ -2305,8 +2352,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
-    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26).
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
+    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26),
+    # and People after Programs (RSCH-20261028-2NK1E5).
+    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
