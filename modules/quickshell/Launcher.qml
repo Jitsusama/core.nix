@@ -2651,10 +2651,16 @@ Scope {
             const inset = item.horizontalAlignment === Qt.AlignRight ? spare
                 : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
             // How wide it's drawn and whether it's cut, so a test can say
-            // where a name is cut held still.
+            // where a name is cut held still. A word in a box that clips it,
+            // as a selected name reading on is, is cut by that box rather
+            // than by an ellipsis, and the box is the room it holds.
+            const clipper = item.parent && item.parent.clip ? item.parent : item;
+            const box = clipper.mapToItem(into, 0, 0);
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
-                cut: item.truncated === true });
+                cut: item.truncated === true
+                    || (clipper !== item && item.implicitWidth > clipper.width),
+                room: { x: Math.round(box.x), width: Math.round(clipper.width) } });
         }
         for (const child of item.children)
             for (const word of wordsIn(child, into))

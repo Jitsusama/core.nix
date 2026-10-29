@@ -2715,7 +2715,9 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     before = name_of(cast("Json", its_row("asks you")))
     assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
     # It goes back to work: "asks you" becomes the shorter "working", and
-    # the title is cut where it was rather than reaching one letter on.
+    # the title is cut where it was rather than reaching one letter on:
+    # its room holds, whether it's cut by an ellipsis or, selected, reads
+    # on inside it.
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
     retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
     after = name_of(cast("Json", its_row("working")))
@@ -2723,7 +2725,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
-    assert (after["x"], after["width"]) == (before["x"], before["width"]), (before, after)
+    assert after["room"] == before["room"], (before, after)
 
 
 # A window closed while Super+Tab shows it stays in its place, gone, until
