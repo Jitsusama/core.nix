@@ -103,17 +103,33 @@ impl File {
     }
 }
 
+/// The builder lent, as Nix is told of it: its machines line, and the
+/// store a whole build may be sent to, if the helper gave one.
+#[derive(Clone, Copy)]
+pub struct Lending<'a> {
+    pub line: &'a str,
+    pub store: Option<&'a str>,
+}
+
 /// The two machines files: `every` for every build, holding only the one
 /// lent, and `with_standing` for a build that names it, holding the
-/// standing builders that answer as well.
+/// standing builders that answer as well; and `store`, the lent builder's
+/// store, for a build sent there whole (`--store`), so only its
+/// derivations cross a slow connection rather than what's built here.
 pub struct Machines {
     every: File,
     with_standing: File,
+    store: File,
     standing: Vec<Standing>,
 }
 
 impl Machines {
-    pub fn new(every: PathBuf, with_standing: PathBuf, standing: Vec<Standing>) -> Self {
+    pub fn new(
+        every: PathBuf,
+        with_standing: PathBuf,
+        store: PathBuf,
+        standing: Vec<Standing>,
+    ) -> Self {
         let file = |path| File {
             path,
             written: None,
@@ -121,14 +137,21 @@ impl Machines {
         Self {
             every: file(every),
             with_standing: file(with_standing),
+            store: file(store),
             standing,
         }
     }
 
     /// Say the one lent to every build, for its big work, and it with the
-    /// standing builders that answer to a build that asks for them.
-    pub fn show(&mut self, lent: Option<&str>) {
-        let lent = lent.map(for_big_work);
+    /// standing builders that answer to a build that asks for them; and its
+    /// store, a line of its own, or nothing.
+    pub fn show(&mut self, lending: Option<Lending>) {
+        self.store.say(
+            lending
+                .and_then(|lending| lending.store)
+                .map_or_else(String::new, |store| format!("{store}\n")),
+        );
+        let lent = lending.map(|lending| for_big_work(lending.line));
         let lent = lent.as_deref();
         let answering = self
             .standing
@@ -208,23 +231,30 @@ mod tests {
         let dir = tempfile::tempdir().expect("a folder");
         let every = dir.path().join("machines");
         let asked = dir.path().join("machines-with-standing");
+        let store = dir.path().join("store");
         let listening = TcpListener::bind("127.0.0.1:0").expect("a port");
         let address = listening.local_addr().expect("its address").to_string();
         let mut machines = Machines::new(
             every.clone(),
             asked.clone(),
+            store.clone(),
             vec![Standing {
                 address,
                 line: "ssh-ng://home".to_owned(),
             }],
         );
         let read = |path| fs::read_to_string(path).expect("read");
-        machines.show(Some("ssh-ng://lent"));
+        machines.show(Some(Lending {
+            line: "ssh-ng://lent",
+            store: Some("ssh-ng://lent?ssh-key=/k"),
+        }));
         assert_eq!(read(&every), "ssh-ng://lent\n");
         assert_eq!(read(&asked), "ssh-ng://home\nssh-ng://lent\n");
+        assert_eq!(read(&store), "ssh-ng://lent?ssh-key=/k\n");
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&asked), "ssh-ng://home\n");
+        assert_eq!(read(&store), "");
         drop(listening);
         machines.show(None);
         assert_eq!(read(&every), "");

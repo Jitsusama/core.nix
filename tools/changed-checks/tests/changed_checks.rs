@@ -121,6 +121,7 @@ impl StandIn {
                 .env("STAND_IN", &self.folder)
                 .env("XDG_CACHE_HOME", self.folder.join("cache"))
                 .env("XDG_STATE_HOME", self.folder.join("state"))
+                .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
                 .spawn()
@@ -196,6 +197,39 @@ fn asked_to_build_it_builds_what_was_added_and_changed_but_the_vm_tests() {
     assert_eq!(runs.len(), 1, "one run logged: {runs:?}");
     assert_eq!(runs[0]["built"]["checks"], 2, "{}", runs[0]);
     assert_eq!(runs[0]["built"]["passed"], true, "{}", runs[0]);
+}
+
+#[test]
+fn it_builds_on_a_lent_builders_store_or_else_asks_for_standing_builders() {
+    let stand_in = StandIn::new("elsewhere");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    let offload = stand_in.path("offload");
+    fs::create_dir_all(&offload).expect("its folder");
+    let repo = stand_in.path("repo");
+    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+    let checks = format!("--no-link --keep-going -L {flake}.new {flake}.a\n");
+
+    fs::write(offload.join("machines-with-standing"), "").expect("written");
+    fs::write(offload.join("store"), "").expect("written");
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let standing = offload.join("machines-with-standing");
+    let asked = format!("--builders @{} ", standing.display());
+    assert_eq!(
+        stand_in.built(),
+        checks.replacen("-L ", &format!("-L {asked}"), 1)
+    );
+
+    fs::write(offload.join("store"), "ssh-ng://lent?compress=true\n").expect("written");
+    fs::remove_file(stand_in.path("built")).expect("cleared");
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let sent = "--eval-store auto --store ssh-ng://lent?compress=true ";
+    assert_eq!(
+        stand_in.built(),
+        checks.replacen("-L ", &format!("-L {sent}"), 1)
+    );
 }
 
 #[test]
