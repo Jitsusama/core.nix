@@ -272,7 +272,8 @@ Provider {
         const window = WaitingOnYou.windowOf(each);
         if (window === null)
             return "";
-        const session = Sessions.running.find(one => one.window.id === window.id);
+        // A session in no window, as one held or elsewhere is, isn't it.
+        const session = Sessions.running.find(one => one.window?.id === window.id);
         return session ? session.title : window.title ?? "";
     }
 

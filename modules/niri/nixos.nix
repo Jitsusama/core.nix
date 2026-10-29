@@ -102,10 +102,18 @@
   # kept with that one module's lines let through: one per context.
   systemd.user.services.niri = {
     overrideStrategy = "asDropin";
-    serviceConfig.ExecStart = [
-      ""
-      "${config.security.wrapperDir}/niri-compositor --session"
-    ];
+    serviceConfig = {
+      ExecStart = [
+        ""
+        "${config.security.wrapperDir}/niri-compositor --session"
+      ];
+      # First inside session.slice with the shell, ahead of the portals and
+      # the bus at their tenth, and its memory held hard: in swap, it read
+      # keys up to 281 ms late (modules/slices). It used 126 MB on 29
+      # October.
+      CPUWeight = 1000;
+      MemoryMin = "256M";
+    };
     environment.RUST_LOG = lib.concatStringsSep "," [
       "niri=debug"
       "smithay::backend::renderer::gles=error"

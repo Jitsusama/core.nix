@@ -58,6 +58,7 @@ let
     "Drawer.qml"
     "Launcher.qml"
     "Choice.qml"
+    "Reading.js"
     "Graph.qml"
     "Chord.qml"
     "Margin.qml"
@@ -661,27 +662,29 @@ let
 
   # A pi session that has come to want Joel, said as a notice from pi
   # (Sessions.qml starts it once a want): its quest and what it wants, and
-  # Return or a click on it goes to the session's window. A notice's action
-  # reaches only a sender still waiting, so this waits until the notice
-  # closes, which the shell does when the want ends, and no more than an
-  # hour, so one a restarted shell forgot can't linger. Its want's key goes
-  # with it as a hint, for the shell to know which notice is whose. niri is
-  # the one the session runs, from the path.
+  # Return or a click on it goes to the session as the launcher's Go To
+  # does, through the shell, so one on another machine is joined here. A
+  # notice's action reaches only a sender still waiting, so this waits
+  # until the notice closes, which the shell does when the want ends, and
+  # no more than an hour, so one a restarted shell forgot can't linger. Its
+  # want's key goes with it as a hint, for the shell to know which notice
+  # is whose. qs finds the shell by the display it draws on.
   piWants = pkgs.writeShellApplication {
     name = "pi-wants-you";
     runtimeInputs = [
       pkgs.coreutils
       pkgs.libnotify
+      pkgs.quickshell
     ];
     text = ''
-      window=$1
+      address=$1
       want=$2
       title=$3
       body=$4
-      action=$(timeout 1h notify-send --app-name=pi --action=default="Go to it" \
+      action=$(timeout 1h notify-send --app-name=pi --action=default="Go To" \
         --hint=string:x-pi-want:"$want" --wait -- "$title" "$body" || true)
       if [ "$action" = default ]; then
-        niri msg action focus-window --id "$window"
+        qs ipc call sessions goTo "$address"
       fi
     '';
   };
@@ -1831,6 +1834,13 @@ in
         # rather than in app.slice beside Chrome and Slack, where a build's
         # pressure reaches them first.
         Slice = "session.slice";
+        # Inside session.slice, first beside the compositor, ahead of the
+        # portals and the bus at their tenth: the launcher is how Joel drives
+        # the machine. Its floor is hard, so a build filling memory never
+        # pushes it to swap; a gibibyte holds the 678 MB it used on 29
+        # October, until the shell's own budget says less.
+        CPUWeight = 1000;
+        MemoryMin = "1G";
         Restart = "on-failure";
         RestartSec = 1;
       };

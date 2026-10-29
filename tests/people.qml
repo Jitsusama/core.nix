@@ -58,7 +58,11 @@ ShellRoot {
         id: people
 
         launcher: launcher
-        settings: ({ name: "people", sources: [{ name: "tuple", order: 10 }] })
+        settings: ({
+            name: "people",
+            sources: [{ name: "tuple", order: 10 }, { name: "pages", order: 20 }],
+            zones: Quickshell.shellPath("zones.jsonl")
+        })
         // Each after the change is done, since a case changes them again.
         onAllChanged: {
             if (root.waiting === "the first standing" && people.all.length > 0)
@@ -218,11 +222,22 @@ ShellRoot {
                 names(hal[0].verbs()) === "Call Them, Favourite", names(hal[0].verbs()));
 
             const steps = open[0].verbs();
-            expect("stepping in, the address last",
-                names(steps) === "Call Them, Favourite, ada@example.com", names(steps));
-            expect("a favourite says so", steps[1].side === "yes" && steps[1].verb === "unstar",
-                `${steps[1].side} ${steps[1].verb}`);
-            expect("their email copies itself", steps[2].verb === "copy", steps[2].verb);
+            expect("stepping in, their page after the ways to reach them, the address last",
+                names(steps) === "Call Them, Open in Pages, Favourite, ada@example.com",
+                names(steps));
+            steps[1].run();
+            expect("their page opens", steps[1].verb === "open" && Niri.spawned.join(" ")
+                === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
+            expect("one with no page has no row for it",
+                !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
+            const facts = open[0].drawer.facts.map(fact => `${fact.label}: ${fact.value}`);
+            expect("a source's facts are theirs, the time there after their zone",
+                facts[1] === "Team: Shell" && facts[2] === "Time Zone: Asia/Kolkata"
+                    && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[3]),
+                facts.join("; "));
+            expect("a favourite says so", steps[2].side === "yes" && steps[2].verb === "unstar",
+                `${steps[2].side} ${steps[2].verb}`);
+            expect("their email copies itself", steps[3].verb === "copy", steps[3].verb);
 
             const making = eli[0].verbs()[1];
             expect("a stranger isn't a favourite", making.name === "Favourite"

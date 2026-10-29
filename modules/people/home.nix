@@ -9,7 +9,12 @@
 # here. A module with a source imports this one, so People is there only
 # where some program knows people.
 { quickshell }:
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   # The sources in the order they're consulted, lowest first, which is the
   # order their acts are listed in and whose name for someone wins.
@@ -69,6 +74,9 @@ in
       source = ./People.qml;
       weight = 0.9;
       sources = map (source: removeAttrs source [ "source" ]) sources;
+      # The time where someone is, for a source that knows their time zone,
+      # told from the same tzdata list the launcher's clocks read.
+      zones = "${import ../quickshell/launcher/zones.nix { inherit lib pkgs; }}";
     };
   };
 }

@@ -114,8 +114,8 @@ fn main() -> ExitCode {
                     Some(Ask::Archive { id }) => watch.tidy(&id, Tidy::Archive, &now),
                     // Said as it starts, so the shell can say so while
                     // Gmail answers, then again once it's done.
-                    Some(Ask::Fetch { id, file, how }) => {
-                        socket.say(watch.fetching(&id, file, how, &now).line());
+                    Some(Ask::Fetch { id, file, how, to }) => {
+                        socket.say(watch.fetching(&id, file, how, to, &now).line());
                         watch.fetch(&places, &now)
                     }
                     Some(Ask::Make {}) => {

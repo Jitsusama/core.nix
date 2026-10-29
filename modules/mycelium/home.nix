@@ -9,6 +9,16 @@
 #   jitsusama.mycelium.realm = "personal";
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
+# A machine may join further realms too, each run by a node of its own,
+# with its own state, mesh, steer inboxes, socket and key, where the harness keeps a realm that isn't the machine's
+# home one. A pi is in one realm, MYCELIUM_REALM, and PI_HOME_REALM tells it
+# which realm keeps the harness's usual folders:
+#
+#   jitsusama.mycelium.alsoJoins.other.links = [ "third-machine" ];
+#
+# Its links sign in with the realm's own key, served by tpm-signing as
+# other-link, which no session's agent reaches.
+#
 # Each link is an SSH destination the machine can already reach without a
 # prompt, its host key pinned. On Linux the node signs in with the agents'
 # key from the TPM (../tpm-signing), which asks nothing, so the far machine
@@ -42,6 +52,32 @@ let
   serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
   name = lib.types.strMatching "[a-z0-9-]+";
+  further = lib.types.submodule (
+    { name, ... }:
+    {
+      options = {
+        links = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "The machines of this realm this machine dials, as `links` names them.";
+        };
+        signsInWith = lib.mkOption {
+          type = lib.types.nullOr (lib.types.strMatching "[a-z0-9-]+");
+          # tpm-signing serves each realm's link key so, apart from the
+          # agents' key every session's agent reaches.
+          default = "${name}-link";
+          defaultText = lib.literalExpression ''"<realm>-link"'';
+          description = ''
+            The socket unit whose agent, at `<name>.sock` in the user's runtime
+            folder, holds the key this realm's links sign in with on Linux, or
+            null for none, so its links can't sign in. Keep it a key no other
+            realm's machines authorize, and out of every session's reach. A
+            Mac's node uses its login session's agent.
+          '';
+        };
+      };
+    }
+  );
   taint = lib.types.submodule {
     options = {
       key = lib.mkOption {
@@ -123,28 +159,97 @@ let
       };
     };
   };
-  node = [
-    (lib.getExe package)
-    "--realm"
-    cfg.realm
-    "node"
-  ]
-  ++ lib.concatMap (machine: [
-    "--ssh"
-    machine
-  ]) cfg.links;
+  # The words that run a realm's node, given what keeps it apart.
+  nodeIn =
+    realm: links: apart:
+    [
+      (lib.getExe package)
+      "--realm"
+      realm
+      "node"
+    ]
+    ++ apart
+    ++ lib.concatMap (machine: [
+      "--ssh"
+      machine
+    ]) links;
+  node = nodeIn cfg.realm cfg.links [ ];
+  # Where the harness and mycelium keep a realm that isn't the home one.
+  apartIn = realm: [
+    "--state"
+    "${config.xdg.stateHome}/mycelium/${realm}"
+    "--mesh"
+    "${config.xdg.stateHome}/pi/agentic-harness.pi/realms/${realm}/mesh-workflow"
+    "--steer"
+    "${config.xdg.stateHome}/pi/agentic-harness.pi/realms/${realm}/steer"
+  ];
+  furtherNodes = lib.mapAttrs (
+    realm: joined: nodeIn realm joined.links (apartIn realm)
+  ) cfg.alsoJoins;
+  linuxNode = description: words: key: {
+    Unit = {
+      Description = description;
+      Wants = lib.optional (key != null) "${key}.socket";
+      After = lib.optional (key != null) "${key}.socket";
+    };
+    Service = {
+      ExecStart = lib.escapeShellArgs words;
+      Environment = lib.optional (key != null) "SSH_AUTH_SOCK=%t/${key}.sock";
+      # The node lets go of the sessions it carried when told to stop,
+      # and redials a dropped link itself, so only its own failure
+      # restarts it.
+      Restart = "on-failure";
+      RestartSec = "5s";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+  macNode = words: log: {
+    enable = true;
+    config = {
+      ProgramArguments = words;
+      # The system's own ssh, which reads the machine's SSH config and
+      # the login session's agent.
+      EnvironmentVariables = {
+        PATH = "/usr/bin:/bin";
+        # What the node starts is driven from another machine, where
+        # nobody can touch this one's sensor, so its commits sign with
+        # the agents' key, even in a held terminal.
+        SIGN_AS = "agent";
+      };
+      RunAtLoad = true;
+      # Started again whenever it stops, but not more than every 30 s.
+      KeepAlive = true;
+      ThrottleInterval = 30;
+      StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/${log}.log";
+    };
+  };
+  describe = realm: "Carries the harness mesh between the machines of the ${realm} realm";
 in
 {
   options.jitsusama.mycelium = {
     realm = lib.mkOption {
-      type = lib.types.nullOr (lib.types.strMatching "[A-Za-z0-9_-]+");
+      type = lib.types.nullOr name;
       default = null;
       example = "personal";
       description = ''
         The realm this machine belongs to, the set of machines whose nodes
         link with nothing crossing between realms, or null for a machine in
         none. A machine keeps the realm it first joined, so changing it later
-        is refused until mycelium's state is cleared.
+        is refused until mycelium's state is cleared. This is its home realm,
+        whose sessions keep the harness's usual folders.
+      '';
+    };
+    alsoJoins = lib.mkOption {
+      type = lib.types.attrsOf further;
+      default = { };
+      example = {
+        other.links = [ "third-machine" ];
+      };
+      description = ''
+        Further realms this machine belongs to, by name, each run by a node
+        of its own, with its own state, mesh, steer inboxes, socket and key,
+        so no session or message crosses between realms. What the machine
+        declares of itself is the same in each.
       '';
     };
     links = lib.mkOption {
@@ -176,11 +281,27 @@ in
           assertion = linking -> cfg.realm != null;
           message = "jitsusama.mycelium.links needs jitsusama.mycelium.realm, the realm they link in.";
         }
+        {
+          assertion = cfg.alsoJoins != { } -> cfg.realm != null;
+          message = "jitsusama.mycelium.alsoJoins needs jitsusama.mycelium.realm, the home realm.";
+        }
+        {
+          assertion = !(cfg.alsoJoins ? ${toString cfg.realm});
+          message = "jitsusama.mycelium.alsoJoins names the home realm, which jitsusama.mycelium.realm already joins.";
+        }
+        {
+          assertion = lib.all (lib.types.strMatching "[a-z0-9-]+").check (lib.attrNames cfg.alsoJoins);
+          message = "jitsusama.mycelium.alsoJoins names a realm in other than lowercase letters, digits and dashes.";
+        }
       ];
       home.packages = [ package ];
     }
     (lib.mkIf (cfg.realm != null) {
-      home.sessionVariables.MYCELIUM_REALM = cfg.realm;
+      home.sessionVariables = {
+        MYCELIUM_REALM = cfg.realm;
+        # A pi started in another realm keeps that realm's folders apart.
+        PI_HOME_REALM = cfg.realm;
+      };
     })
     (lib.mkIf (cfg.declares != null) {
       # Where mycelium reads it: XDG_CONFIG_HOME's, or ~/.config's.
@@ -193,45 +314,23 @@ in
       };
     })
     (lib.mkIf (isLinux && serving) {
-      systemd.user.services.mycelium = {
-        Unit = {
-          Description = "Carries the harness mesh between the machines of the ${cfg.realm} realm";
-          Wants = lib.optional agentsKey "agent-signing.socket";
-          After = lib.optional agentsKey "agent-signing.socket";
-        };
-        Service = {
-          ExecStart = lib.escapeShellArgs node;
-          Environment = lib.optional agentsKey "SSH_AUTH_SOCK=%t/agent-signing.sock";
-          # The node lets go of the sessions it carried when told to stop,
-          # and redials a dropped link itself, so only its own failure
-          # restarts it.
-          Restart = "on-failure";
-          RestartSec = "5s";
-        };
-        Install.WantedBy = [ "default.target" ];
-      };
+      systemd.user.services = {
+        mycelium = linuxNode (describe cfg.realm) node (if agentsKey then "agent-signing" else null);
+      }
+      // lib.mapAttrs' (
+        realm: words:
+        lib.nameValuePair "mycelium-${realm}" (
+          linuxNode (describe realm) words cfg.alsoJoins.${realm}.signsInWith
+        )
+      ) furtherNodes;
     })
     (lib.mkIf (isDarwin && serving) {
-      launchd.agents.mycelium = {
-        enable = true;
-        config = {
-          ProgramArguments = node;
-          # The system's own ssh, which reads the machine's SSH config and
-          # the login session's agent.
-          EnvironmentVariables = {
-            PATH = "/usr/bin:/bin";
-            # What the node starts is driven from another machine, where
-            # nobody can touch this one's sensor, so its commits sign with
-            # the agents' key, even in a held terminal.
-            SIGN_AS = "agent";
-          };
-          RunAtLoad = true;
-          # Started again whenever it stops, but not more than every 30 s.
-          KeepAlive = true;
-          ThrottleInterval = 30;
-          StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/mycelium.log";
-        };
-      };
+      launchd.agents = {
+        mycelium = macNode node "mycelium";
+      }
+      // lib.mapAttrs' (
+        realm: words: lib.nameValuePair "mycelium-${realm}" (macNode words "mycelium-${realm}")
+      ) furtherNodes;
     })
   ];
 }

@@ -44,6 +44,23 @@ Singleton {
     // last asked for, { asked, link, failed }, or null.
     property var meet: ({ granted: false, made: null })
 
+    // The person an address is, as People's row for them, from the
+    // launcher's provider that knows people (People.qml's personOf), so a
+    // mail's sender and a meeting's guests step through to who they are;
+    // null on a machine without People, or for someone no source knows.
+    function personOf(launcher, email) {
+        const people = (launcher?.sources ?? []).find(source => typeof source.personOf
+            === "function");
+        return people ? people.personOf(email) : null;
+    }
+
+    // The launcher's chooser of files (open-with's FileChooser.qml), which
+    // asks where to save, or null on a machine without it.
+    function chooserOf(launcher) {
+        return (launcher?.sources ?? []).find(source => typeof source.chooseToSave
+            === "function") ?? null;
+    }
+
     // How the meeting asked for at `since` stands (Google.js).
     function making(since) {
         return Said.making(meet, since);

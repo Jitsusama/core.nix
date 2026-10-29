@@ -1,0 +1,16 @@
+# chrome-pack-extension packs a folder as a Chrome extension file, signed
+# with a key given, for Chrome to install from a local file (src/main.rs
+# says how).
+[package]
+name = "chrome-pack-extension"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The signature over what's packed, and the public key it's checked with.
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.10"
+# The folder zipped, as a CRX3 holds it.
+zip = { version = "2", default-features = false, features = ["deflate"] }

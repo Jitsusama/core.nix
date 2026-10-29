@@ -125,12 +125,19 @@ let
   # it a timer runs.
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
   restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
+  windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
-    inherit pkgs claude;
+    inherit pkgs claude homeRealm;
+    inherit (config.jitsusama.pi.claude) model realm;
     ownLogin = onClaude;
   };
+
+  # The machine's home realm and the further ones it joins, as mycelium
+  # says them where its module is loaded.
+  homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
+  further = lib.attrNames (lib.attrByPath [ "jitsusama" "mycelium" "alsoJoins" ] { } config);
 
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
@@ -193,6 +200,31 @@ in
     '';
   };
 
+  options.jitsusama.pi.claude.model = lib.mkOption {
+    type = lib.types.str;
+    default = "claude-sonnet-5";
+    example = "claude-opus-5";
+    description = ''
+      The model pi starts on when it runs on Joel's own Claude plan, as
+      the claude-code provider names it: plain pi on a machine whose plan
+      is "claude", and pi-claude everywhere else. A plan's limits are small,
+      so it's a mid-sized model; a larger plan changes only this.
+    '';
+  };
+
+  options.jitsusama.pi.claude.realm = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "personal";
+    description = ''
+      The realm pi-claude's sessions belong to, a further realm this
+      machine joins for Joel's own work (jitsusama.mycelium.alsoJoins), or
+      null to keep them on no mesh. Never the home realm, whose mesh is the
+      work one wherever pi-claude is installed; in the further realm a
+      session keeps its folders apart from the home realm's.
+    '';
+  };
+
   options.jitsusama.pi.ask = {
     plan = lib.mkOption {
       type = lib.types.enum (lib.attrNames quickModels);
@@ -244,6 +276,20 @@ in
   };
 
   config = {
+    assertions = [
+      {
+        # A further realm with a home beside it: with no home realm named,
+        # the harness would take this one for home and write into its folders.
+        assertion =
+          config.jitsusama.pi.claude.realm != null
+          ->
+            homeRealm != null
+            && config.jitsusama.pi.claude.realm != homeRealm
+            && lib.elem config.jitsusama.pi.claude.realm further;
+        message = "jitsusama.pi.claude.realm names no realm of jitsusama.mycelium.alsoJoins.";
+      }
+    ];
+
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
 
     home.packages = lib.optional (!onClaude) piClaude ++ [
@@ -263,7 +309,7 @@ in
       PI_CLAUDE_CODE_COMMAND = lib.getExe claude;
     };
     jitsusama.pi.settings.defaultProvider = lib.mkIf onClaude "claude-code";
-    jitsusama.pi.settings.defaultModel = lib.mkIf onClaude "claude-sonnet-5";
+    jitsusama.pi.settings.defaultModel = lib.mkIf onClaude config.jitsusama.pi.claude.model;
 
     # The harness, and neovim.pi for pi beside Neovim, on every machine,
     # first, since pi loads its packages in order.
@@ -358,10 +404,38 @@ in
       };
       Service = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe pkgs.nodejs} ${restoreFile}";
+        # The harness's package.json names no module type, on purpose: two
+        # of its modules load with require. Node warns about that on every
+        # run, which said nothing at each switch.
+        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${restoreFile}";
         Slice = "background.slice";
       };
       Install.WantedBy = [ "default.target" ];
+    };
+
+    # A session another machine holds runs on through this machine's
+    # power-off, so what the boot takes away is only the window here
+    # joined to it, and only this machine knows it was here. Each minute
+    # the harness notes those windows, from kitty's and the mycelium
+    # node's answers, so the next boot's list can offer them back.
+    systemd.user.services.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Notes the windows joined to sessions other machines hold";
+        ConditionPathExists = windowsElsewhere;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${windowsElsewhere}";
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Notes each minute the windows joined to sessions other machines hold";
+      Timer = {
+        OnCalendar = "minutely";
+        AccuracySec = "10s";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
 
     jitsusama.keys.pi = map (key: {

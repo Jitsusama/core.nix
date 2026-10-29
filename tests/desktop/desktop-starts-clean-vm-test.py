@@ -387,7 +387,7 @@ def test_monospace_is_the_themes_font(desktop: Desktop) -> None:
 
 
 def test_gtk_programs_draw_in_the_themes_colours(desktop: Desktop) -> None:
-    """GTK programs, and the file chooser the portal draws, draw in the theme's colours."""
+    """GTK programs draw in the theme's colours."""
     values = desktop.values
     zenity = f"{values['zenity']}/bin/zenity --text-info --title=libadwaita"
     # Here niri runs in Cage's system service, and the portal refuses the programs it starts
@@ -396,13 +396,6 @@ def test_gtk_programs_draw_in_the_themes_colours(desktop: Desktop) -> None:
     desktop.as_account(f"systemd-run --user --collect {zenity} --filename={values['text']}")
     sunken = values["sunken"].lower()
     assert desktop.commonest_colour_in("libadwaita", "libadwaita", sunken) == sunken
-    # The file chooser Chrome and Slack open, which the GTK portal draws with GTK 3, asked for
-    # the way they ask.
-    desktop.as_account(
-        "busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop"
-        " org.freedesktop.portal.FileChooser OpenFile 'ssa{sv}' \"\" Open 0"
-    )
-    assert desktop.commonest_colour_in("Open", "file-chooser", sunken) == sunken
 
 
 class Touchscreen:

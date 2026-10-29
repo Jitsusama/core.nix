@@ -101,20 +101,41 @@ pub trait Machine {
     /// Where a link leads in the end inside a system mounted at `root`,
     /// whose absolute links mean that system's own paths, not this one's,
     /// as that system names it. Whether anything's there isn't asked.
+    ///
+    /// Each part of the path is followed in turn, since a link partway
+    /// along, such as NixOS's /etc/static, would otherwise be followed by
+    /// this system's kernel into this system's own files.
     fn resolve_inside(&mut self, root: &str, path: &str) -> Result<Option<String>, Fault> {
-        let mut at = path.to_string();
-        for _ in 0..40 {
-            let Some(target) = self.read_link(&at)? else {
-                return Ok(Some(at.strip_prefix(root).unwrap_or(&at).to_string()));
+        let inside = path.strip_prefix(root).unwrap_or(path);
+        // The parts still to follow, the next one last.
+        let mut ahead: Vec<String> = parts(inside).rev().collect();
+        let mut reached: Vec<String> = vec![];
+        let mut links = 0;
+        while let Some(part) = ahead.pop() {
+            match part.as_str() {
+                "." => continue,
+                ".." => {
+                    reached.pop();
+                    continue;
+                }
+                _ => {}
+            }
+            reached.push(part);
+            let Some(target) = self.read_link(&format!("{root}/{}", reached.join("/")))? else {
+                continue;
             };
-            at = if target.starts_with('/') {
-                format!("{root}{target}")
-            } else {
-                let directory = at.rsplit_once('/').map_or("", |(directory, _)| directory);
-                format!("{directory}/{target}")
-            };
+            // A link stands for what it leads to, not for itself.
+            reached.pop();
+            links += 1;
+            if links > 40 {
+                return Err(Fault::unreadable(path, "its links go round in a loop"));
+            }
+            if target.starts_with('/') {
+                reached.clear();
+            }
+            ahead.extend(parts(&target).rev());
         }
-        Err(Fault::unreadable(path, "its links go round in a loop"))
+        Ok(Some(format!("/{}", reached.join("/"))))
     }
 
     /// The stick's vault, its files sealed.
@@ -242,6 +263,13 @@ fn last_line(bytes: &[u8]) -> String {
         .to_string()
 }
 
+/// A path's parts, in order, leaving out the empty ones its slashes make.
+fn parts(path: &str) -> impl DoubleEndedIterator<Item = String> + '_ {
+    path.split('/')
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,6 +301,13 @@ mod tests {
     }
 
     #[test]
+    fn a_link_round_in_a_loop_is_refused() {
+        let mut fake = crate::fake::Fake::new();
+        fake.pointer("/mnt/a", "b").pointer("/mnt/b", "/a");
+        assert!(fake.resolve_inside("/mnt", "/mnt/a/file").is_err());
+    }
+
+    #[test]
     fn a_silent_refusal_says_so() {
         let Err(Fault::Refused { said, .. }) = ran(2, "", "").ok() else {
             panic!("a refusal")
@@ -299,6 +334,22 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("/nix/store/abc-nixos-system-machine")
+        );
+    }
+
+    #[test]
+    fn a_link_partway_along_is_followed_inside_the_system_too() {
+        let mut fake = crate::fake::Fake::new();
+        // As NixOS lays out /etc: the file links into /etc/static, which
+        // is itself a link into the store, back up a folder and down again.
+        fake.pointer("/mnt/etc/hostname", "/etc/static/hostname")
+            .pointer("/mnt/etc/static", "/nix/store/abc-etc/etc")
+            .pointer("/mnt/nix/store/abc-etc/etc/hostname", "../../def-hostname");
+        assert_eq!(
+            fake.resolve_inside("/mnt", "/mnt/etc/hostname")
+                .unwrap()
+                .as_deref(),
+            Some("/nix/store/def-hostname")
         );
     }
 

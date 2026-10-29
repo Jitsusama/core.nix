@@ -9,15 +9,18 @@ pragma ComponentBehavior: Bound
 // gives its whole row, which the Mail place (Messages.qml), Now's mail
 // (NewMail.qml) and search all take as it is, with its acts in one order,
 // Open, Reply, Reply All when it went to others too, Archive, Read (a
-// switch), Attachments while it carries any, and Copy the Link, and its
-// details in the drawer.
+// switch), its sender, People's row stepping through to them when People
+// knows them, Attachments while it carries any, and Copy the Link, and
+// its details in the drawer.
 //
 // Inside Attachments, each file is a row of its own, its kind and size
 // beside it and in the drawer. Return fetches it from Gmail, only then,
 // keeping the launcher while the foot says so, and opens it in the
 // program the desktop opens its kind with, closing the launcher; Save a
-// Copy keeps one in Downloads. A program or a script is only ever saved
-// (VKCF3Z, b077f2d6), its note saying why.
+// Copy asks where in the launcher's own chooser of files, starting in
+// Downloads, and keeps one in Downloads on a machine without it. A
+// program or a script is only ever saved (VKCF3Z, b077f2d6), its note
+// saying why.
 //
 // `open` opens a piece of mail in Mail through google-opens (opens.sh),
 // keeping one Mail window: with Mail open, it brings that window forward,
@@ -147,6 +150,11 @@ Singleton {
         if (Said.replyingAll(mail) !== "")
             listed.push(act("verb:mail:replyAll", () => root.reply(Said.replyingAll(mail))));
         listed.push(tidying(mail, "archive", thing), reading(mail, thing));
+        // Who sent it, their row stepping through to them (VKCF3Z,
+        // 6f0e747b), when People knows them.
+        const sender = Google.personOf(root.launcher, mail.address);
+        if (sender)
+            listed.push(sender);
         if ((mail.attachments ?? []).length > 0)
             listed.push(attaching(mail, thing));
         return listed.concat([linking(mail, thing)]);
@@ -188,7 +196,7 @@ Singleton {
             drawer: Said.carried(file, Words.name(key)),
             stays: true,
             state: () => root.said(mail, at),
-            run: () => root.fetch(mail, at, how),
+            run: () => how === "save" ? root.save(mail, file, at) : root.fetch(mail, at, how),
             verbs: () => root.fileActs(mail, file, at, thing)
         });
     }
@@ -203,7 +211,7 @@ Singleton {
             hue: "action",
             stays: true,
             state: () => root.said(mail, at),
-            run: () => root.fetch(mail, at, how)
+            run: () => how === "save" ? root.save(mail, file, at) : root.fetch(mail, at, how)
         });
         return (file.runs ? [] : [act("open")]).concat([act("save")]);
     }
@@ -214,16 +222,38 @@ Singleton {
         const asked = root.fetching;
         if (asked === null || asked.mail !== id || asked.file !== at)
             return "";
-        return Said.fetchedAs(root.fetched, { id: id }, at, asked.since);
+        const stood = Said.fetchedAs(root.fetched, { id: id }, at, asked.since);
+        return stood === "saved" && asked.to !== "" ? "savedThere" : stood;
     }
 
     function said(mail, at) {
         return Said.fetchedSaid(root.stood(mail.id, at));
     }
 
-    function fetch(mail, at, how) {
-        root.fetching = { mail: mail.id, file: at, how: how, since: Date.now() };
-        Google.ask(Said.fetch(mail, at, how));
+    function fetch(mail, at, how, to = "") {
+        root.fetching = { mail: mail.id, file: at, how: how, to: to, since: Date.now() };
+        Google.ask(Said.fetch(mail, at, how, to));
+    }
+
+    // Save a Copy: where, asked in the launcher's chooser of files
+    // (FileChooser.qml's chooseToSave), which asks before a file there is
+    // replaced, so the path it gives is cleared to write over; picking
+    // nothing saves nothing. Without a chooser, a copy goes to Downloads.
+    function save(mail, file, at) {
+        const chooser = Google.chooserOf(root.launcher);
+        if (chooser === null) {
+            root.fetch(mail, at, "save");
+            return;
+        }
+        const home = Quickshell.env("HOME") ?? "";
+        chooser.chooseToSave({
+            name: file.name,
+            folder: Quickshell.env("XDG_DOWNLOAD_DIR") || `${home}/Downloads`,
+            title: Words.name("verb:attachment:save")
+        }, paths => {
+            if (paths.length > 0)
+                root.fetch(mail, at, "save", paths[0]);
+        });
     }
 
     // Whether it's been marked read: asked here, and no longer held as

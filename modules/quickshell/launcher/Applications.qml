@@ -603,7 +603,7 @@ Provider {
     // launcher calls as Programs is stepped into (Provider.qml).
     function lately(entry, source, path) {
         const kind = source?.kind === "folder" ? "folder" : "file";
-        const key = kind === "folder" ? "verb:recent:window" : "verb:recent:open";
+        const key = kind === "folder" ? "verb:path:folder:window" : "verb:path:file:open";
         const act = thing({
             key: `${key}:${path}`,
             name: Words.name(key),
@@ -674,6 +674,11 @@ Provider {
     // Either way, what's given it to copy comes after everything, as Meet's
     // Copy a New Meeting's Link does, since Copy is last.
     function controls(entry, start, below) {
+        // A program held open as its desktop entries are read again, as on
+        // a switch, keeps the entry that's gone, which has no id or name;
+        // it offers nothing until the step is drawn from the new one.
+        if (entry.id === undefined || entry.name === undefined)
+            return [];
         const looked = {};
         const same = given => provider.names(entry, given, looked);
         const given = givenActs(entry.id);

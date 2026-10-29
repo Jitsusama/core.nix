@@ -583,3 +583,26 @@ fn what_is_kept_is_never_cleared_even_on_a_critically_full_disk() {
     );
     assert!(kept.exists(), "what is kept stays");
 }
+
+#[test]
+fn a_footprint_is_only_of_what_the_asker_reaches() {
+    use std::os::unix::fs::MetadataExt;
+    let dir = tempfile::tempdir().unwrap();
+    let mine = fs::canonicalize(dir.path()).unwrap();
+    let uid = fs::metadata(&mine).unwrap().uid();
+    fs::write(mine.join("file"), b"bytes").unwrap();
+    // A link of the asker's own to what isn't theirs is judged by where it
+    // leads, never by who made the link.
+    std::os::unix::fs::symlink("/", mine.join("root")).unwrap();
+    let asked = [mine.join("file"), mine.join("root")];
+    assert_eq!(
+        disk_guard::serve::footprints(&asked, uid.wrapping_add(1)),
+        [None, None],
+        "another account reaches neither"
+    );
+    assert_eq!(
+        disk_guard::serve::footprints(&asked[1..], uid),
+        [None],
+        "nor does the link's maker reach what it leads to"
+    );
+}

@@ -15,10 +15,10 @@ Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and sayi
 with three unread in the inbox; one marked read or archived is written down too, and taken
 out of the mail that wants him, as Gmail would, and one read and then marked unread again
 wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
-open, kept in google-files beside the socket, or to save, in Downloads, said as fetched as
-the program says it. Joel looked at two documents lately: Ada's Quarterly Plan in Docs, and
-Team Budget in Sheets, on a shared drive. His sign-in grants Meet's scope, so a shell may ask
-for a new Meet meeting, which is made at once as new-abcd-efg.
+open, kept in google-files beside the socket, or to save, where the shell says or else in
+Downloads, said as fetched as the program says it. Joel looked at two documents lately: Ada's
+Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-in grants Meet's
+scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg.
 """
 
 import json
@@ -298,8 +298,10 @@ class Account:
                 if asked["how"] == "open"
                 else Path.home() / "Downloads"
             )
-            folder.mkdir(parents=True, exist_ok=True)
             path = folder / str(file["name"])
+            if asked["how"] == "save" and "to" in asked:
+                path = Path(str(asked["to"]))
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"menu")
         self.fetched = {
             "mail": asked["id"],

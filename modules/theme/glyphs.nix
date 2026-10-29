@@ -1014,6 +1014,21 @@ in
     console = "/";
     means = "a folder";
   };
+  filter = {
+    glyph = nerd "f0233";
+    console = "v";
+    means = "which files a program shows, as it offers them";
+  };
+  option = {
+    glyph = nerd "f1542";
+    console = "~";
+    means = "a choice a program offers about what it opens or saves";
+  };
+  marked = {
+    glyph = nerd "f0e29";
+    console = "+";
+    means = "a file marked to be opened with others, and opening them";
+  };
   recent = {
     glyph = nerd "f02da";
     console = "r";

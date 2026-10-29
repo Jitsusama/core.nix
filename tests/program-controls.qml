@@ -496,6 +496,11 @@ ShellRoot {
                 same(`"${typed}" found as looking whole does`, got, whole(typed));
                 found(typed);
             }
+            // A program held open as its entries are read again keeps the
+            // one that's gone, its id and name with it: it offers nothing,
+            // and doesn't throw.
+            same("a program whose entry is gone offers nothing",
+                applications.controls({}, () => {}, () => {}).length, 0);
             root.waiting = "the recents to change";
             // Held inside a program, as Joel would be, while its list changes.
             launcher.open = true;

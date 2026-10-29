@@ -16,6 +16,10 @@
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
   '';
+  a-long-name-reads-at-one-pace = ''
+    a selected name too long for its row slides at one reading pace, gathering speed from rest and
+    settling back to it in at most a fifth of a second at each end, never stepping back
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -34,6 +38,10 @@
   a-quiet-file-says-nothing = ''
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
+  '';
+  a-realms-link-key-stays-apart = ''
+    a realm's link key is served on its own socket by an agent holding only it, kept outside the
+    folder the account's own agent loads, made with no PIN, and an account naming no realm has none
   '';
   a-refused-profile-is-said-once = ''
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
@@ -155,6 +163,9 @@
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
+  '';
+  chrome-pack-extension-passes-clippy = ''
+    clippy finds nothing in what packs the launcher's Chrome extension, or its tests
   '';
   chrome-recent-sites-passes-clippy = ''
     clippy finds nothing in what reads Chrome's sites for the launcher, or its tests
@@ -510,6 +521,11 @@
     commits with that key; one naming none runs it dialling nothing, and one in no realm has
     neither a realm nor a node
   '';
+  mycelium-keeps-each-realm-apart = ''
+    a machine joining a further realm runs a node of its own for it, with its own state, mesh and
+    steer folders under the harness's per-realm roots and its own link key, apart from the home
+    realm's agents key; its pis are told which realm is home
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints) has it written where mycelium reads it, in
@@ -587,6 +603,17 @@
   '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
+  '';
+  nix-offload-decides-when = ''
+    a builder is asked for only for builds and VM checks held three minutes for room a builder
+    gives, by a queue still writing, within the day's hours and never beside one not yet seen
+    gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
+    only builders it asked for are ever given back; a stop ends at once, leaving its builder
+    for the next start, which prices it to then or its own idle delete; standing builders are
+    named while they answer; and a day's journal sums to its hours and cost, each at its price
+  '';
+  nix-offload-passes-clippy = ''
+    clippy finds nothing in nix-offload or its tests
   '';
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
@@ -687,8 +714,13 @@
   '';
   pi-writes-what-the-last-boot-left = ''
     the launcher's list of the pi sessions the last boot's end took away is written as the account's
-    session starts, in background.slice with the store's node, skipped where the harness isn't
-    installed, and never on a Mac
+    session starts, in background.slice with the store's node and no module-type warning, skipped
+    where the harness isn't installed, and never on a Mac
+  '';
+  pi-notes-windows-on-sessions-elsewhere = ''
+    each minute the harness notes which windows here are joined to a session another machine holds,
+    so the next boot can offer them back, in background.slice with the store's node, skipped where
+    the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -820,9 +852,9 @@
     leftovers after three quiet seconds
   '';
   slack-finds-who-it-knows = ''
-    slack-people says who Slack knows by an email address, and one it knows nobody by, asking each
-    address once with the harness's sign-in and only ever looking up, and asks nobody once Slack
-    refuses the sign-in or with none at all
+    slack-people says who Slack knows by an email address with their time zone, and one it knows
+    nobody by, asking each address once with the harness's sign-in and only ever looking up, and
+    asks nobody once Slack refuses the sign-in or with none at all
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
@@ -918,6 +950,10 @@
     the console takes the account's terminal colours in its own order, whatever the theme, and a
     machine with no account keeps the kernel's
   '';
+  the-desktop-comes-first-in-its-session = ''
+    niri and the shell sit first in session.slice, at ten times its other units' CPU weight,
+    each with a hard memory floor that session.slice's own covers with a gibibyte to spare
+  '';
   the-desktop-draws-letters-unhinted = ''
     the graphical account's desktop settings tell GTK and Chrome to draw letters unhinted, as macOS
     does
@@ -990,6 +1026,10 @@
     programs ask the portal, their own dialogs included, and open-with's description says it
     answers it
   '';
+  the-launcher-chooses-files-as-asked = ''
+    the launcher chooses the files a program opens or saves in the folder it asks for, the files
+    opened lately first, then its folders and files, then its filters, and answers what was picked
+  '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
   '';
@@ -1003,11 +1043,17 @@
   '';
   the-launcher-finds-the-people = ''
     People with Tuple as its source lists favourites and those called lately, finds anyone as they
-    stand, calls, joins and favours them, steps in before calling, and never starts a stopped Tuple
+    stand, calls, joins and favours them, steps in before calling, lists a source's page for them
+    after the ways to reach them with its facts in the drawer and the time where they are, and
+    never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
+  '';
+  the-launcher-reads-talks-boundedly = ''
+    the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
+    moving among 120 sessions makes no reader again, so the shell's threads stay bounded
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -1344,6 +1390,11 @@
     with two screens of different sizes, the splash's ask shows whole on both, its bottom left
     corner on the smaller one included
   '';
+  vm-chrome-installs-the-open-tabs-extension = ''
+    Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
+    Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
+    disabling it
+  '';
   vm-checks-go-first = ''
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,
     memory and pids; a build's qemu goes from idle to normal at nice -10, every thread and a later
@@ -1395,8 +1446,8 @@
     saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
     its title finds, joins a Meet call by its code after Meet's New Meeting and copies a new
     meeting's link last, finds a person by name with the ways to reach them, their next meeting,
-    their Recent and their address last, sets the volume, loses no letter typed after its chord, and
-    shows the shortcuts
+    their Recent and their address last, and steps to them from a meeting's guests and a mail's
+    sender, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1463,8 +1514,9 @@
   '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
-    without changing it, mounts it whole, sets which generation boots next, replaces a lost key,
-    reinstalls a boot loader gone from the ESP, and gives a root shell inside
+    without changing it, mounts it whole, copies its home folders onto a USB drive without their
+    caches, sets which generation boots next, replaces a lost key, reinstalls a boot loader gone
+    from the ESP, and gives a root shell inside
   '';
   vm-guide-signs-a-stick-for-two-machines = ''
     a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under
@@ -1632,6 +1684,10 @@
   '';
   work-yields-to-what-the-person-works-in = ''
     jobs is idle beside app.slice, pi finds it, and a window's scope is not idle
+  '';
+  wrappers-run-once-a-boot = ''
+    a machine with measured boot keeps the SUID wrappers' unit active once it's run, so measured
+    boot's wait for sysinit.target can't run it past its start limit
   '';
   writes-go-out-sooner = ''
     a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after

@@ -548,10 +548,20 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     """Agents resumes a closed orchestrator where it left off, from one row and a choice."""
     machine = desktop.machine
     opened = "$XDG_RUNTIME_DIR/pi-opened"
-    # Lighthouse orchestrates a quest, and no session runs it; its quest's
-    # last session ran in ~/lighthouse, as pi's file for it says.
+    # Lighthouse orchestrates a quest, and no session runs it; the quest
+    # index names the session to resume, which ran in ~/lighthouse, as
+    # pi's file for it says, never the index's sessions, which can hold
+    # one long dead.
     lighthouse_listed(desktop)
-    index = {"quests": [{"id": "QEST-20261022-TESTQA", "sessions": ["01a1-lighthouse"]}]}
+    index = {
+        "quests": [
+            {
+                "id": "QEST-20261022-TESTQA",
+                "sessions": ["01a0-long-dead"],
+                "resume": {"id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"},
+            }
+        ]
+    }
     record = {"type": "session", "id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"}
     sessions = "~/.pi/agent/sessions/--home-jitsusama-lighthouse--"
     kept = f"{sessions}/2026-10-28T20-00-00-000Z_01a1-lighthouse.jsonl"
@@ -1011,6 +1021,52 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
         desktop.in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
         timeout=dt.timedelta(seconds=10),
     )
+
+
+def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(desktop: Desktop) -> None:
+    """Letters typed in a list scrolled down leave the selection drawn on its selected row.
+
+    Rows coming or going above a scrolled list move where the list's rows start, and the
+    selection drawn from the top stayed where its row had been, under another.
+    """
+    machine = desktop.machine
+    windows = [desktop.opened(f"Fill {at:02}") for at in range(1, 13)]
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("fill")
+    desktop.launcher_until(
+        lambda shown: {f"Fill {at:02}" for at in range(1, 13)} <= set(shown["rows"])
+    )
+    drift = []
+    typed = "fill"
+    # Each a letter added or taken away, so rows above the selection go or
+    # come back.
+    for change in [" 1", "", " 0", " ", " 1"]:
+        # Down to the last row, so the list is scrolled.
+        shown = desktop.showing()
+        below = len(shown["rows"]) - 1 - shown["rows"].index(shown["selected"]["name"])
+        for _ in range(below):
+            machine.send_key("down")
+        desktop.launcher_until(lambda shown: shown["selected"]["name"] == shown["rows"][-1])
+        wanted = f"fill{change}"
+        while not wanted.startswith(typed):
+            machine.send_key("backspace")
+            typed = typed[:-1]
+        machine.send_chars(wanted[len(typed) :])
+        typed = wanted
+        desktop.launcher_until(
+            lambda shown: (
+                shown["typed"] == typed  # noqa: B023
+                and (shown["selected"] or {"settled": True})["settled"]
+            )
+        )
+        selection = laid_out(desktop)["selection"]
+        if selection and selection["y"] != selection["row"]:
+            drift.append((typed, selection))
+    assert not drift, f"the selection was drawn off its row: {drift}"
+    launcher_closed(desktop)
+    for window in windows:
+        desktop.close(window)
 
 
 def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
@@ -2031,10 +2087,19 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.answer("lunch on friday")
     desktop.launcher_until(lunch_in_full)
     desktop.step_in()
+    # Its sender, Ada, after Read: People's row for her.
     desktop.launcher_until(
         lambda shown: (
             shown["rows"]
-            == ["Open in Mail", "Reply", "Archive", "Read", "Attachments", "Copy the Link"]
+            == [
+                "Open in Mail",
+                "Reply",
+                "Archive",
+                "Read",
+                "Ada Lovelace",
+                "Attachments",
+                "Copy the Link",
+            ]
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
@@ -2117,7 +2182,7 @@ def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: 
 def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     desktop: Desktop,
 ) -> None:
-    """A file mail carries is fetched only on Return, to open, closing, or to save in Downloads."""
+    """A file mail carries is fetched only on Return, to open, closing, or to save where picked."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
@@ -2147,15 +2212,40 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     machine.send_key("ret")
     machine.wait_until_succeeds(f"test -f {kept}", timeout=dt.timedelta(seconds=30))
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Save a Copy keeps one in Downloads, the launcher staying to say so.
-    into_the_menu()
-    desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
-    desktop.down_to("Save a Copy")
+
+    def save_a_copy() -> None:
+        """Press Save a Copy on the menu, and wait for the picker, in Downloads, naming it."""
+        into_the_menu()
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
+        desktop.down_to("Save a Copy")
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["path"] == ["Save a Copy", "~/Downloads"]
+                and (shown["selected"] or {}).get("name") == "menu.pdf"
+            ),
+            timeout=dt.timedelta(seconds=30),
+        )
+
+    # Save a Copy asks where in the launcher's own picker, starting in
+    # Downloads with the file's name; Escape picks nothing and saves nothing.
+    save_a_copy()
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.fail(f"grep -qs save {asked}")
+    machine.fail(f"test -e {saved}")
+    # Return saves it where the picker stands, and the launcher closes.
+    save_a_copy()
     machine.send_key("ret")
+    line = json.dumps(
+        {"fetch": {"id": "lunch", "file": 0, "how": "save", "to": saved}},
+        separators=(",", ":"),
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
     machine.wait_until_succeeds(f"test -f {saved}", timeout=dt.timedelta(seconds=30))
-    desktop.launcher_until(lambda shown: shown["footer"] == "saved in Downloads")
-    desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -2234,6 +2324,44 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     )
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
+    desktop: Desktop,
+) -> None:
+    """A meeting's Guests and a mail's sender are People's rows, each stepping in to the person."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # Standup is Ada's, and Grace is asked: Guests holds both, before
+    # Attachments, Ada first as she holds it.
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Guests" in shown["rows"])
+    rows = desktop.showing()["rows"]
+    assert rows.index("Guests") + 1 == rows.index("Attachments"), rows
+    desktop.down_to("Guests")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Grace Hopper"])
+    assert desktop.showing()["things"][1]["is"] == "person:grace@example.com"
+    desktop.down_to("Grace Hopper")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Write a Mail"])
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Lunch on Friday's sender is Ada, whose row steps in to her.
+    desktop.answer("lunch on friday")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lunch on Friday")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Ada Lovelace" in shown["rows"])
+    desktop.down_to("Ada Lovelace")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["Write a Mail", "Standup", "Recent", "ada@example.com"]
+    )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
@@ -3804,6 +3932,34 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
             timeout=dt.timedelta(seconds=10),
         )
         desktop.launcher_until(lambda shown: not shown["open"])
+    finally:
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
+def test_a_wants_notice_goes_to_the_session_through_the_shell(desktop: Desktop) -> None:
+    """A want's notice, taken by Super+N, goes to the session as the launcher's Go To does.
+
+    Its Return asks the shell, which finds the session by its address, so one on another
+    machine is joined from here the same way.
+    """
+    machine = desktop.machine
+    desktop.pi_session()
+    desktop.as_account(
+        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
+    )
+    since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    question = {"kind": "question", "since": since, "said": "Which way now?"}
+    try:
+        with desktop.told("shows card A quest of its own & whole asks you"):
+            desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+        with desktop.told("keys notices"):
+            machine.send_key("meta_l-n")
+        with desktop.told("lets notices go"):
+            machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
+            timeout=dt.timedelta(seconds=10),
+        )
     finally:
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 

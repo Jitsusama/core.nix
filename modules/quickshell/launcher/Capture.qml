@@ -256,21 +256,26 @@ Provider {
         }
     }
 
-    // Capture's Recent, where anything was taken: a part stepped into, as a
-    // program's Recent is (Applications.qml).
-    readonly property var recent: taken.length === 0 ? [] : [entering(member({
+    // Capture's Recent: a part stepped into, as a program's Recent is
+    // (Applications.qml). It always stands, saying none while nothing's
+    // taken, since a row that came once the first capture was read would
+    // go below the rows already drawn (Steady.kept), after the screenshot's
+    // own rows rather than before them.
+    readonly property var recent: [entering(member({
             key: "capture:recent",
             name: Words.name("capture:recent"),
             glyph: Words.glyph("capture:recent"),
             hue: "program",
-            count: String(taken.length),
-            ask: "which?"
+            count: taken.length === 0 ? String((Words.of("capture:recent").said ?? {}).none ?? "")
+                : String(taken.length),
+            ask: "which?",
+            empty: Words.of("capture:recent").empty
         }), () => provider.taken.map(path => provider.takenRow(path)))]
 
     // One thing taken: Return opens it in its program, the picture viewer
     // or mpv, and a picture is shown in the drawer.
     function takenRow(path) {
-        const key = "verb:recent:open";
+        const key = "verb:path:file:open";
         const act = thing({
             key: `${key}:${path}`,
             name: Words.name(key),

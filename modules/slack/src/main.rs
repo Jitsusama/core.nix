@@ -4,8 +4,8 @@
 //! (SlackSource.qml): the shell writes an address a line on standard
 //! input, as Joel steps into someone, and hears one JSON line back for
 //! each (lib.rs's `Found`): their id in Slack and its workspace, which
-//! open them there, and their name, or no id for an address Slack knows
-//! nobody by. Each address is asked about once while it runs, and once
+//! open them there, their name and their time zone, or no id for an
+//! address Slack knows nobody by. Each address is asked about once while it runs, and once
 //! Slack refuses the sign-in, the line `{"signedOut":true}` is said and
 //! nobody more is asked about. With no sign-in in CREDENTIALS, the
 //! harness's file, it says nothing and asks nothing. ORIGIN is Slack's,

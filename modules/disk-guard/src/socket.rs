@@ -23,6 +23,10 @@ pub const ASK_EVERY: Duration = Duration::from_millis(500);
 /// asker meets by asking again once `ASK_EVERY` has passed.
 pub const TOO_SOON: &str = "too soon: ask at most twice a second";
 
+/// The refusal of a footprint asked for while another is walked, which an
+/// asker meets by asking again once that one has had time to end.
+pub const WALKING: &str = "another footprint is being walked: ask again soon";
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Request {
@@ -35,6 +39,9 @@ pub enum Request {
     /// The garbage on the filesystem holding `path`, taken as a pass in
     /// `band` would take it. Answered once that pass ends.
     Collect { path: PathBuf, band: Band },
+    /// What the asker's files under each of these paths take on the disk,
+    /// which only root can read. Answered once every walk ends.
+    Footprint { paths: Vec<PathBuf> },
 }
 
 impl Request {
@@ -43,6 +50,7 @@ impl Request {
             Request::Processes { .. } => "processes",
             Request::Watching { .. } => "watching",
             Request::Collect { .. } => "collect",
+            Request::Footprint { .. } => "footprint",
         }
     }
 }
@@ -55,6 +63,9 @@ pub enum Reply {
     Collects(Vec<PathBuf>),
     /// How the collecting pass ended.
     Collected(String),
+    /// The bytes on the disk under each path asked about, in order: None
+    /// where the asker doesn't own it, or it isn't on Btrfs or is gone.
+    Footprints(Vec<Option<u64>>),
     Error(String),
 }
 

@@ -1,10 +1,11 @@
 // Slack as one of People's sources (PersonSource.qml): Open in Slack for
 // anyone Slack knows by one of their addresses, in the harness's Slack
 // sign-in's workspace. It knows nobody by itself, since a workspace has
-// thousands, so it adds no one to People and lists nobody; it only asks
-// slack-people, a reader that never sends anything, about a person once
-// Joel steps into them, and their act appears as Slack answers, the place
-// told it changed.
+// thousands; it only asks slack-people, a reader that never sends
+// anything, about a person once Joel steps into them, and their act
+// appears as Slack answers, the place told it changed. Whoever Slack
+// found it then knows, with their time zone as a fact, which People
+// follows with the time there.
 // Slack refusing the sign-in stops the asking until the shell starts
 // again; with no sign-in, slack-people asks nothing.
 import qs
@@ -14,11 +15,17 @@ import QtQuick
 PersonSource {
     id: source
 
-    // What Slack said of each address asked about: { id, team, name },
-    // with no id for one Slack knows nobody by.
+    // What Slack said of each address asked about: { id, team, name,
+    // zone }, with no id for one Slack knows nobody by.
     property var known: ({})
     // The addresses asked about and not yet answered.
     property var asking: ({})
+
+    people: Object.values(known).filter(said => said.id).map(said => ({
+        emails: [said.email],
+        name: said.name,
+        facts: said.zone ? [{ label: "Time Zone", value: said.zone, zone: true }] : []
+    }))
 
     function acts(person, provider) {
         const found = person.emails.map(email => known[email]).find(said => said && said.id);
@@ -45,7 +52,11 @@ PersonSource {
             return;
         if (!reader.running)
             reader.running = true;
-        asking = Object.assign({}, asking, Object.fromEntries(fresh.map(email => [email, true])));
+        // Qt's JavaScript has no Object.fromEntries.
+        const asked = Object.assign({}, asking);
+        for (const email of fresh)
+            asked[email] = true;
+        asking = asked;
         for (const email of fresh)
             reader.write(`${email}\n`);
     }

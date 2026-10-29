@@ -168,6 +168,7 @@
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
         lag-watch = ./modules/lag-watch/home.nix;
+        link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
@@ -175,6 +176,7 @@
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
+        nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         onepassword = ./modules/onepassword/home.nix;
         open-with = ./modules/open-with/home.nix;
@@ -247,6 +249,7 @@
         bluetooth-links = ./modules/bluetooth-links/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
+        chrome = ./modules/chrome/nixos.nix;
         console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
         creative-pebble-x-plus = ./modules/creative-pebble-x-plus/nixos.nix;
@@ -286,6 +289,7 @@
         niri = ./modules/niri/nixos.nix;
         niri-off-cpu = ./modules/niri-off-cpu/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;
+        nix-offload = ./modules/nix-offload/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
         open-with = ./modules/open-with/nixos.nix;

@@ -42,9 +42,12 @@ Singleton {
 
     // Each session running: its window or null, its address, its quest's
     // title as its README gives it or its record's label does, its folder,
-    // its record, the kitty window it runs in or null, and the id its
-    // holder keeps it by or null. The one whose window was used last
-    // first, then those with none.
+    // its record, the kitty window it runs in or null, the id its holder
+    // keeps it by or null, the machine it runs on and whether that's this
+    // one, the words that attach it from here or null, whether its
+    // machine can be reached, and when it last changed. This machine's
+    // first, the one whose window was used last first, then those with
+    // none; then those elsewhere, the one that changed last first.
     readonly property var running: {
         Niri.revision;
         const when = window => {
@@ -63,9 +66,15 @@ Singleton {
                 folder: label.folder,
                 presence: presence,
                 kitty: record.kitty,
-                held: record.held
+                held: record.held,
+                machine: record.machine ?? machine,
+                here: record.here ?? true,
+                attach: record.attach ?? null,
+                reachable: record.reachable ?? true,
+                changed: record.changed ?? 0
             };
-        }).sort((a, b) => when(b.window) - when(a.window));
+        }).sort((a, b) => Number(b.here) - Number(a.here)
+            || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
     }
     readonly property int working: running.filter(session => session.presence.busy).length
     // Those waiting on Joel, as each says while it does: { kind, since,
@@ -126,11 +135,28 @@ Singleton {
     // Reopens a session that closed, where it left off: pi told the
     // session, in the folder it ran in, which its file's first line says,
     // as the harness restores one. With no file to say it, a session is
-    // started afresh on the quest instead, in `folder`.
+    // started afresh on the quest instead, in `folder`. A session's folder
+    // can be gone by now, a tree since given back, and kitty given a
+    // missing folder opens in the home folder without a word, where pi
+    // starts a new session apart from the old one (Joel's Aquifer
+    // orchestrator, 2026-10-29). So the folder is looked for first; when
+    // it's gone, the quest starts afresh in `folder` if that's there, and
+    // `gone(cwd, startedIn)` is told either way, `startedIn` empty when
+    // nothing could be opened, so the caller says so.
     readonly property string sessionFiles: `${home}/.pi/agent/sessions`
 
-    function resume(id, quest, folder) {
-        resumer.asked = { id: id, quest: quest, folder: folder };
+    // One at a time, in the order asked, so a second asked before the
+    // first's file is read waits rather than taking its place.
+    property var resuming: []
+    function resume(id, quest, folder, gone) {
+        resuming = resuming.concat([{ id: id, quest: quest, folder: folder, gone: gone }]);
+        resumeNext();
+    }
+    function resumeNext() {
+        if (resumer.running || resumer.asked !== null || resuming.length === 0)
+            return;
+        resumer.asked = resuming[0];
+        resuming = resuming.slice(1);
         resumer.running = true;
     }
 
@@ -139,8 +165,14 @@ Singleton {
         property var asked: null
         command: ["sh", "-c", 'for f in "$1"/*/*_"$2".jsonl; do head -n 1 "$f"; break; done',
             "resume", root.sessionFiles, asked?.id ?? ""]
+        onRunningChanged: Qt.callLater(root.resumeNext)
         stdout: StdioCollector {
-            onStreamFinished: root.resumed(resumer.asked, text)
+            onStreamFinished: {
+                const one = resumer.asked;
+                resumer.asked = null;
+                root.resumed(one, text);
+                Qt.callLater(root.resumeNext);
+            }
         }
     }
 
@@ -151,11 +183,63 @@ Singleton {
         } catch (error) {
             cwd = "";
         }
-        if (cwd === "") {
-            start(asked.quest, asked.folder);
+        lookFor([cwd, asked.folder], there => {
+            if (there[0]) {
+                reopened(asked.id, cwd);
+                return;
+            }
+            if (there[1])
+                start(asked.quest, asked.folder);
+            if (cwd !== "" || !there[1])
+                asked.gone?.(cwd, there[1] ? asked.folder : "");
+        });
+    }
+
+    // Whether each folder is there, told to `then` as a list of yes or no
+    // in the same order. Asks made while one look runs wait for the next,
+    // so Reopen Them All looks for every folder in one go.
+    property var looking: []
+    function lookFor(folders, then) {
+        looking = looking.concat([{ folders: folders, then: then }]);
+        look();
+    }
+    // Only once the last look has ended and been told, whichever of the
+    // two Quickshell says first.
+    function look() {
+        if (looker.running || looker.asks.length > 0 || looking.length === 0)
             return;
+        looker.asks = looking;
+        looking = [];
+        looker.command = ["sh", "-c",
+            'for d; do if [ -n "$d" ] && [ -d "$d" ]; then echo y; else echo n; fi; done',
+            "look"].concat(looker.asks.reduce((all, ask) => all.concat(ask.folders), []));
+        looker.running = true;
+    }
+    function looked(asks, text) {
+        const said = text.split("\n");
+        let at = 0;
+        for (const ask of asks) {
+            const there = ask.folders.map((_, nth) => said[at + nth] === "y");
+            at += ask.folders.length;
+            ask.then(there);
         }
-        reopened(asked.id, cwd);
+        looker.asks = [];
+        Qt.callLater(look);
+    }
+    Process {
+        id: looker
+        property var asks: []
+        onRunningChanged: Qt.callLater(root.look)
+        stdout: StdioCollector {
+            onStreamFinished: root.looked(looker.asks, text)
+        }
+    }
+
+    // Says, as a notice of the desktop's own, why a session didn't open as
+    // asked, in the words the caller gives.
+    function sayUnopened(title, body) {
+        Niri.spawn(["notify-send", "--app-name=Sessions", "--", title, body]);
+        Report.say(`unopened ${title}: ${body}`);
     }
 
     // Opens a closed session again where it left off, in a window of its
@@ -196,11 +280,19 @@ Singleton {
         }
         if (read === null || read.v !== 1 || !Array.isArray(read.sessions))
             return { boot: "", sessions: [] };
+        // One held on another machine is joined again by its words, given
+        // as an argv (the harness's #872); its folder is only where the
+        // window opens here, and may be unknown.
+        const elsewhere = one => typeof one.machine === "string" && one.machine !== ""
+            && typeof one.address === "string" && Array.isArray(one.attach)
+            && one.attach.length > 0 && one.attach.every(word => typeof word === "string")
+            && typeof one.cwd === "string" && (one.cwd === "" || one.cwd.startsWith("/"));
         return {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
                 && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
-                && typeof one.cwd === "string" && one.cwd.startsWith("/"))
+                && (one.machine === undefined
+                    ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
     }
 
@@ -224,8 +316,46 @@ Singleton {
     readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
         && restoring.boot !== bootId && restoring.boot !== putOff ? restoring.sessions : []
 
-    function reopen(lost) {
-        reopened(lost.id, lost.cwd);
+    // One of them, in its own folder only: when that's gone, nothing is
+    // opened, and `gone(cwd)` is told so the caller says so, since there's
+    // no quest here to start afresh.
+    function reopen(lost, gone) {
+        if (lost.machine !== undefined) {
+            rejoin(lost);
+            return;
+        }
+        lookFor([lost.cwd], there => {
+            if (there[0])
+                reopened(lost.id, lost.cwd);
+            else
+                gone?.(lost.cwd, "");
+        });
+    }
+
+    // A window the last boot had joined to a session another machine
+    // holds is joined again by its words, in its folder here when that's
+    // still there, or gone to if a window here has joined it since, never
+    // opened twice.
+    function rejoin(lost) {
+        const joined = running.find(one => !one.here && one.address === lost.address
+            && (one.window || one.kitty));
+        if (joined) {
+            goTo(joined);
+            return;
+        }
+        const joining = `${lost.machine}:${lost.address}`;
+        if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [joining]: Date.now() });
+        const open = there => {
+            Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"]
+                .concat(there ? ["--directory", lost.cwd] : [], lost.attach));
+            Report.say(`joined session ${lost.address} on ${lost.machine} again`);
+        };
+        if (lost.cwd === "")
+            open(false);
+        else
+            lookFor([lost.cwd], there => open(there[0]));
     }
 
     function putOffLastBoot() {
@@ -239,6 +369,10 @@ Singleton {
     // window of a session (Joel: "seeing multiples of the same thing
     // gives me executive dysfunction").
     function goTo(session) {
+        if (!session.here && !session.window && !session.kitty) {
+            joinElsewhere(session);
+            return;
+        }
         if (session.window)
             Niri.act({ FocusWindow: { id: session.window.id } });
         else if (session.kitty)
@@ -246,6 +380,28 @@ Singleton {
                 "--match", `id:${session.kitty.window}`]);
         else if (session.held)
             attach(session.held);
+    }
+
+    // Joins a session held on another machine in a new window here, by
+    // the words its node gives for it, run as given (Jitsusama/mycelium:
+    // `ssh -t -- <machine> mycelium ... attach <id>`), and only once: the
+    // node names the window it joins, which Go To then goes to. With no
+    // words, as when it isn't held or its machine is out of reach, nothing
+    // opens, and the caller is told why.
+    signal unjoined(var session)
+    function joinElsewhere(session) {
+        const words = session.attach;
+        const joining = `${session.machine}:${session.address}`;
+        if (!words || (Array.isArray(words) && words.length === 0)) {
+            unjoined(session);
+            return;
+        }
+        if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [joining]: Date.now() });
+        const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"].concat(command));
+        Report.say(`joined session ${session.address} on ${session.machine}`);
     }
 
     // Attaches what is held as `id` in a new window of the sessions' kitty.
@@ -378,13 +534,68 @@ Singleton {
     // Leaves a steer in a session's inbox, under a name it skips until it's
     // whole: `{ text, id }` talks to it, `{ act }` pauses, resumes or stops
     // it.
+    // A session on another machine is told through the realm's node,
+    // which carries it over the link to that machine's inbox; one here is
+    // told by its file alone, so it never waits on the node.
     function steer(address, fields) {
         const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
         const body = JSON.stringify(Object.assign({ at: new Date().toISOString(), from: "joel" },
             fields));
+        const upper = String(address).toUpperCase();
+        const session = running.find(one => String(one.address).toUpperCase() === upper);
+        if (session && !session.here) {
+            steering = steering.concat([{ session: session, body: body }]);
+            steerNext();
+            return;
+        }
         Niri.spawn(["sh", "-c",
             'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
             "steer", `${inboxes}/${String(address).toUpperCase()}`, name, body]);
+    }
+
+    // The steers waiting for the node, in turn, since one process answers
+    // one at a time; one it refuses, or that never reaches the node, is
+    // said by `unsteered` with the node's reason, or none.
+    property var steering: []
+    signal unsteered(var session, string why)
+    function steerNext() {
+        if (steerer.running || steerer.asked !== null || steering.length === 0)
+            return;
+        const next = steering[0];
+        steering = steering.slice(1);
+        steerer.asked = next;
+        steerer.command = ["sh", "-c", 'printf %s "$3" | mycelium --realm "$1" steer "$2"',
+            "steer", realm, String(next.session.address).toUpperCase(), next.body];
+        steerer.running = true;
+    }
+    function steered(asked, text) {
+        let answer = null;
+        try {
+            answer = JSON.parse(text.trim().split("\n").pop() ?? "");
+        } catch (error) {
+            answer = null;
+        }
+        if (answer?.Ok?.Steered) {
+            Report.say(`steered ${asked.session.address} on ${answer.Ok.Steered.machine}`);
+            return;
+        }
+        const why = typeof answer?.Err === "string" ? answer.Err : "";
+        Report.say(`unsteered ${asked.session.address}: ${why}`);
+        unsteered(asked.session, why);
+    }
+    Process {
+        id: steerer
+        property var asked: null
+        onRunningChanged: Qt.callLater(root.steerNext)
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const one = steerer.asked;
+                steerer.asked = null;
+                if (one)
+                    root.steered(one, text);
+                Qt.callLater(root.steerNext);
+            }
+        }
     }
 
     // Talks to a session: the words go with an id, so the session writes
@@ -417,7 +628,9 @@ Singleton {
     }
 
     // A want new to this shell is said once as a notice from pi, whose
-    // Return goes to the session's window (pi-wants-you, home.nix), unless
+    // Return goes to the session as Go To does, back through `sessions`
+    // below, so one on another machine is joined from here (pi-wants-you,
+    // home.nix), unless
     // Joel is in that window already, and one that stood before the shell
     // began isn't, since the margin's mark says it. Each is known by its
     // session, when it began and what it said, and kept known: a presence
@@ -441,7 +654,7 @@ Singleton {
             const window = session.window ? String(session.window.id) : "";
             if (window === String(Niri.current) || (since < began))
                 continue;
-            Niri.spawn(["pi-wants-you", window, known,
+            Niri.spawn(["pi-wants-you", session.address, known,
                 `${session.title} ${wanted(session.presence.wants)}`,
                 plain(session.presence.wants.said ?? "")]);
             // Softly, and never while notices are held.
@@ -467,6 +680,20 @@ Singleton {
                     notice.dismiss();
                 }
             }
+        }
+    }
+
+    // Go To for what's outside the shell, as a want's notice: the session
+    // by an address it answers to, if it still runs.
+    IpcHandler {
+        target: "sessions"
+
+        function goTo(address: string): void {
+            const upper = address.toUpperCase();
+            const session = root.running.find(one => (one.presence?.addresses ?? [one.address])
+                .some(each => String(each).toUpperCase() === upper));
+            if (session)
+                root.goTo(session);
         }
     }
 
@@ -510,6 +737,15 @@ Singleton {
         printErrors: false
     }
     readonly property string bootId: boot.text().trim()
+    // When this boot began, in milliseconds since the epoch, read once.
+    FileView {
+        id: uptime
+        path: "/proc/uptime"
+        blockLoading: true
+        printErrors: false
+    }
+    readonly property real bootedAt: Date.now()
+        - Number(uptime.text().split(" ")[0] || 0) * 1000
 
     // A process's own files, read when asked.
     FileView {
@@ -575,19 +811,38 @@ Singleton {
     function relive() {
         const next = [];
         // A node from before it passed records on says too little to show.
-        if (node !== null && Object.values(node).every(session => session.presence)) {
+        if (!fromFolder) {
             for (const id of Object.keys(node).sort()) {
                 const session = node[id];
                 const presence = session.presence;
-                const running = session.state === "busy" || session.state === "idle";
+                const state = String(session.state ?? "").toLowerCase();
+                const out = state === "unreachable";
+                const running = state === "busy" || state === "idle" || out;
                 const kitty = kittyOfWindow(session.window);
-                if (session.machine === machine && running
-                        && presence && (presence.addresses ?? []).length > 0)
+                const here = (session.machine ?? machine) === machine;
+                const changed = Date.parse(session.at ?? "") || 0;
+                if (!running || !presence || (presence.addresses ?? []).length === 0)
+                    continue;
+                // One elsewhere the node last heard of before this boot is
+                // long gone, so a machine away for days leaves nothing.
+                if (here)
                     next.push({
                         file: id,
                         presence: presence,
                         kitty: session.held ? kitty : kitty ?? kittyOf(presence),
                         held: session.held ?? null
+                    });
+                else if (changed >= bootedAt)
+                    next.push({
+                        file: id,
+                        presence: presence,
+                        kitty: kitty,
+                        held: null,
+                        machine: String(session.machine),
+                        here: false,
+                        attach: out ? null : session.attach ?? null,
+                        reachable: !out,
+                        changed: changed
                     });
             }
         } else {
@@ -815,6 +1070,12 @@ Singleton {
     // refused one), as when a switch restarts the node and the shell asks
     // before it listens; then Now read the folder until the shell restarted.
     property bool linking: true
+    // A watch always carries the sessions; the groups it names are those
+    // whose messages it carries too, as one pattern of group names
+    // (mycelium's Pattern), and the shell wants none of them, so it names
+    // a group nobody is in. Every pattern names some group, so none hears
+    // nothing at all.
+    readonly property string unheard: "quickshell.sessions-alone"
     LazyLoader {
         active: root.linking && root.nodePath !== ""
 
@@ -824,7 +1085,7 @@ Singleton {
             connected: true
             onConnectionStateChanged: {
                 if (mycelium.connected) {
-                    mycelium.write('{"Watch":{"groups":[],"recent":0}}\n');
+                    mycelium.write(`${JSON.stringify({ Watch: { groups: root.unheard, recent: 0 } })}\n`);
                     mycelium.flush();
                     return;
                 }
@@ -866,6 +1127,11 @@ Singleton {
         } else if (event.SessionChanged) {
             next = Object.assign({}, node ?? {});
             next[event.SessionChanged.session.id] = event.SessionChanged.session;
+        } else if (typeof event.Err === "string") {
+            // A watch refused leaves the folder read, which works but
+            // costs a watcher a session, so it's said where it's seen.
+            Report.say(`the node refused the watch: ${event.Err}`);
+            return;
         } else if (event.SessionForgotten) {
             next = Object.assign({}, node ?? {});
             delete next[event.SessionForgotten.id];
@@ -883,14 +1149,24 @@ Singleton {
         nameFilters: ["*.json"]
     }
 
+    // Each record is read from its file, watched, only while the folder is
+    // where sessions are known from: while the node answers, it carries
+    // every record itself, so a watcher per session would only cost the
+    // shell a file each (the 2026-10-29 crash came of readers per
+    // session). A node lost makes them once, as many as there are records.
+    readonly property bool fromFolder: node === null
+        || !Object.values(node).every(session => session.presence)
     Instantiator {
-        model: presences
+        model: root.fromFolder ? presences : null
         // A session that ends takes its file with it, and its state goes too.
         onObjectRemoved: (index, object) => root.forget(object.path)
 
         FileView {
             required property string filePath
             path: filePath
+            // Read as it's made, so a node lost leaves no moment with no
+            // sessions.
+            blockLoading: true
             watchChanges: true
             printErrors: false
             onFileChanged: reload()

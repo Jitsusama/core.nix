@@ -80,6 +80,16 @@ in
         free, so it grows towards this.
       '';
     };
+    nixDaemon = lib.mkOption {
+      type = lib.types.str;
+      default = "systems.determinate.nix-daemon";
+      description = ''
+        The launchd label of the Nix daemon the machine's own installer runs.
+        Nix reads its settings only as it starts, so it's restarted when the
+        builder's line changes, and only then, since a restart ends the builds
+        it's running.
+      '';
+    };
   };
 
   config = {
@@ -87,7 +97,24 @@ in
       mkdir -p ${home}
     '';
 
+    # After /etc is written: restart Nix only when the line it reads differs
+    # from the one it was last restarted for.
+    system.activationScripts.postActivation.text = lib.mkAfter ''
+      read=$(/usr/bin/shasum -a 256 /etc/nix/linux-builder.conf | /usr/bin/cut -d' ' -f1)
+      if [ "$read" != "$(/bin/cat ${home}/read-by-nix 2>/dev/null)" ] &&
+        /bin/launchctl print system/${cfg.nixDaemon} >/dev/null 2>&1; then
+        echo "restarting ${cfg.nixDaemon}, so it reads the Linux builder's line" >&2
+        /bin/launchctl kickstart -k system/${cfg.nixDaemon} && echo "$read" > ${home}/read-by-nix
+      fi
+    '';
+
     launchd.daemons.linux-builder-vz = {
+      # The VM trusts the certificates the host's NIX_SSL_CERT_FILE names, and
+      # none without it, so the guest could fetch nothing from a cache. It's
+      # the machine's own bundle, as nix-darwin's nix.linux-builder gives it.
+      environment = lib.optionalAttrs (config.environment.variables ? NIX_SSL_CERT_FILE) {
+        inherit (config.environment.variables) NIX_SSL_CERT_FILE;
+      };
       # It shares certificates with the VM through TMPDIR, which macOS empties
       # of files three days unread, so it gets one of its own.
       script = ''

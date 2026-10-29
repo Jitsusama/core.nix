@@ -126,6 +126,15 @@ or launchd, and [`home.nix`][2] the account's.
   when the moment ends. An account's guard on the same filesystem asks it to
   collect rather than collecting itself; with no system daemon answering, it
   collects with `nix store gc --max` from urgent.
+- **Footprint.** A file's size and blocks are what it holds once read; on a
+  compressed disk it can take a third of that or less, as Go's build cache
+  does. Only root can read what each run of a file takes, from the extent
+  items in the filesystem's tree, so `disk-guard footprint PATH...` asks the
+  system daemon. It answers only for paths the asker owns or lies beneath,
+  resolved first and then opened refusing any link, and walks them without
+  following a link or leaving their subvolume, one walk at a time and at
+  most two million entries. Each run counts once, but a run shared with a
+  file outside the paths counts too, so what clearing frees can be less.
 - **Status.** Each daemon keeps a status file, the account's in its
   runtime directory and the system's in `/run/disk-guard`, which the
   desktop and `disk-guard status` read. A thread of its own writes it
@@ -211,6 +220,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/ledger.rs`           | what held each disk over two days, and what grew         |
 | `src/clears.rs`           | the folders Joel asked cleared now                       |
 | `src/anchor.rs`           | removal that never leaves its root                       |
+| `src/footprint.rs`        | what files take on a compressed disk, read as root       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
 | `src/procargs.rs`, `pmset.rs` | what macOS says, parsed where Linux's tests reach it |

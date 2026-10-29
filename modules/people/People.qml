@@ -12,15 +12,18 @@
 // when a source says, and their address below. Return steps in, as the
 // right arrow does, never calling by itself: inside, every way this
 // machine reaches them, in the sources' order (calling before mail before
-// chat), their next meeting, their Recent, the things lately with them,
-// whether they're a favourite, then each address to copy, last as every
-// Copy is. Each thing is drawn by its own row, so a mail is Mail's row
-// and a meeting the meeting's. Their details, every address and each
-// source's facts, are in the drawer beside the row.
+// chat), their page in each source that keeps one, their next meeting,
+// their Recent, the things lately with them, whether they're a favourite,
+// then each address to copy, last as every Copy is. Each thing is drawn
+// by its own row, so a mail is Mail's row and a meeting the meeting's.
+// Their details, every address and each source's facts, are in the
+// drawer beside the row.
 import qs
+import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Person.js" as Person
+import "Zones.js" as Zones
 
 Provider {
     id: provider
@@ -96,7 +99,7 @@ Provider {
             hue: "person",
             side: stood.said,
             note: person.name === person.email ? "" : person.email,
-            drawer: Person.details(person),
+            drawer: Person.details(person, zone => provider.there(zone)),
             nested: true,
             later: true,
             verb: "more",
@@ -118,6 +121,32 @@ Provider {
         });
     }
 
+    // tzdata's zones, as Clocks reads them (Zones.js), read once when a
+    // person's time zone is first shown, and never watched, since the list
+    // is built with the shell.
+    property var zones: null
+
+    // The time in a zone by tzdata's name, as now, and how far it is from
+    // here: "14:05, 5 h ahead", or "" for a zone the list doesn't know.
+    function there(id) {
+        if (zones === null)
+            zones = settings.zones ? Zones.prepare(read(zonesFile)) : { zones: {}, named: {} };
+        const zone = zones.zones[id];
+        if (!zone)
+            return "";
+        const now = Date.now();
+        const [minutes] = Zones.standing(zone, Math.floor(now / 1000));
+        const here = -new Date(now).getTimezoneOffset();
+        return `${Zones.clock(new Date(now + minutes * 60000))}, ${Zones.apart(minutes - here)}`;
+    }
+
+    FileView {
+        id: zonesFile
+        path: provider.settings.zones ?? ""
+        blockLoading: true
+        printErrors: false
+    }
+
     // Every source's acts for them, in the one order.
     function acts(person) {
         return Person.acts(sources.map(source => source.acts(person, provider)));
@@ -133,7 +162,27 @@ Provider {
             side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
-        return acts(person).concat(next(person), recent(person), favourite(person), addresses);
+        return acts(person).concat(pages(person), next(person), recent(person),
+            favourite(person), addresses);
+    }
+
+    // Their page in each source that keeps one and knows them, in the
+    // sources' order, each Open in that source: a look that leaves them as
+    // they are, so after the ways to reach them and before what's with
+    // them (VKCF3Z, a91b2722). It opens in the browser, closing the
+    // launcher.
+    function pages(person) {
+        return sources.map(source => ({ source: source, link: source.page(person) }))
+            .filter(each => each.link !== "" && each.source.called !== "")
+            .map(each => thing({
+                key: `verb:person:page:${each.source.settings.name}`,
+                name: Words.name("verb:person:page", "", { source: each.source.called }),
+                verb: Words.verb("verb:person:page"),
+                glyph: Words.glyph("verb:person:page"),
+                hue: "action",
+                later: true,
+                run: () => Niri.spawn(["xdg-open", each.link])
+            }));
     }
 
     // Whether they're a favourite, a switch, from the first source that
@@ -141,6 +190,27 @@ Provider {
     function favourite(person) {
         const kept = sources.map(source => source.favourite(person, provider)).find(Boolean);
         return kept ? [kept] : [];
+    }
+
+    // Everyone by each of their addresses, lowercased, joined again only
+    // when who's known is.
+    readonly property var byEmail: {
+        const by = {};
+        for (const person of persons) {
+            for (const email of person.emails)
+                by[email.toLowerCase()] = person;
+        }
+        return by;
+    }
+
+    // The person an address is, as their one row, for a thing that names
+    // them, as a mail's sender or a meeting's guests (Mail.qml,
+    // Calendar.qml): null when no source knows them, so nothing is listed
+    // that can't step in. Asked of any provider holding `personOf`, so a
+    // machine without People lists no one.
+    function personOf(email) {
+        const person = byEmail[String(email ?? "").trim().toLowerCase()];
+        return person ? made(person, standOf(person)) : null;
     }
 
     // Their next meeting, drawn as a meeting is everywhere, the soonest any
