@@ -8,15 +8,17 @@
 // launcher, so a meeting he only wants to look at is never joined. The
 // right arrow lists Join the Meeting when it has a call, See It, then,
 // for an invitation, Answer Yes, Answer Maybe and Answer No, which keep
-// the launcher, its foot saying the answer once Google has it, and for
-// one Joel holds, Cancel the Meeting, which asks once, since Google mails
-// everyone asked. Seeing it
-// says its day and times, where, his answer, its call, who holds it, who
-// else is asked and how each answered, and what it's about, each copied
-// by Return, and opens it in Calendar. Each row says when the meeting is at the right and its times
-// below, with his answer to an invitation; its names and words are the
-// vocabulary's (calendar:*, Words.qml). `next` is the next meeting's row,
-// which Now's Today row shows.
+// the launcher, its foot saying the answer once Google has it; for one
+// Google lets him change, Move the Meeting, to a later time or one typed
+// there, which asks once, naming who Google tells; and for one Joel
+// holds, Cancel the Meeting, which asks once, since Google mails everyone
+// asked. Seeing it says its day and times, where, his answer, its call,
+// who holds it, who else is asked and how each answered, and what it's
+// about, each copied by Return, and opens it in Calendar. Each row says
+// when the meeting is at the right and its times below, with his answer
+// to an invitation; its names and words are the vocabulary's (calendar:*,
+// Words.qml). `next` is the next meeting's row, which Now's Today row
+// shows.
 import qs
 import QtQuick
 
@@ -79,9 +81,63 @@ Provider {
         if (Calendar.invited(meeting))
             for (const said of ["yes", "maybe", "no"])
                 rows.push(answering(meeting, said));
+        if (Calendar.movable(meeting))
+            rows.push(moving(meeting));
         if (meeting.holds)
             rows.push(cancelling(meeting));
         return rows;
+    }
+
+    // Move the Meeting steps in to the later times it offers, each saying
+    // its day and times and the meeting it would clash with, and to one
+    // typed there, which Launcher.qml asks for (`typed`) and lists first.
+    // Return on a time steps in to a row naming who Google tells, and a
+    // second Return moves it, keeping the launcher, as Cancel does.
+    function moving(meeting) {
+        const key = "verb:calendar:move";
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            targets: () => Calendar.later(meeting)
+                .map(time => provider.movingTo(meeting, time.name, time.start, time.end)),
+            typed: letters => {
+                const time = Calendar.typed(letters, meeting);
+                return time === null ? [] : [provider.movingTo(meeting,
+                    Calendar.dated({ start: time.start, end: time.end, allDay: false }),
+                    time.start, time.end)];
+            }
+        });
+    }
+
+    // A time to move a meeting to, keyed by when it starts, so the row
+    // holds still as more is typed.
+    function movingTo(meeting, name, start, end) {
+        const key = "verb:calendar:move";
+        const dated = Calendar.dated({ start: start, end: end, allDay: false });
+        const clash = Calendar.clashes(meeting, start, end);
+        return thing({
+            key: `calendar:move:${new Date(start).toISOString()}`,
+            name: name,
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            side: clash === null ? "" : `clashes with ${clash.title
+                || Words.name("calendar:meeting", "untitled")}`,
+            // A typed time is named by its day and times already.
+            note: name === dated ? "" : dated,
+            targets: () => [thing({
+                key: `${key}:sure`,
+                name: `${Words.of(key).sure} to ${dated}, ${Calendar.tellingOfChanges(meeting)}`,
+                verb: Words.verb(key),
+                glyph: Words.glyph(key),
+                hue: "alert",
+                stays: true,
+                run: () => Calendar.move(meeting, start, end)
+            })]
+        });
     }
 
     // Cancel asks once, as Quit does (Applications.qml): Return steps in

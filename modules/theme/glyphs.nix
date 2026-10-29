@@ -1089,6 +1089,13 @@ in
     console = "x";
     means = "cancelling a meeting Joel holds, for everyone asked";
   };
+  # A calendar page with an arrow onward, for a meeting taken to a later
+  # time.
+  moveMeeting = {
+    glyph = nerd "f1135";
+    console = ">";
+    means = "moving a meeting to another time, for everyone on it";
+  };
   # Answering an invitation, each a calendar marked as the answer is, so
   # the three read as one choice.
   going = {

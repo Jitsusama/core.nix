@@ -2128,11 +2128,14 @@ Scope {
             // choices of a part that offers them (a display's Scale), so
             // what's typed reaches them without a step in: "scale 150".
             // Found by name or by what it holds, in the top level's tiers.
+            // A step that makes rows of what's typed (`typed`), as Move the
+            // Meeting makes a time, lists them first.
             else if (words.length === 0)
                 found = offered.slice();
             else
-                found = within(offered.reduce((all, row) => all.concat([row],
-                    row.offers && row.verbs ? row.verbs() : []), []), letters);
+                found = (held[held.length - 1].row.typed?.(letters) ?? [])
+                    .concat(within(offered.reduce((all, row) => all.concat([row],
+                        row.offers && row.verbs ? row.verbs() : []), []), letters));
             found = found.concat(stillActed(found));
             answer = null;
             // Searched again only to say what's there now, it keeps the

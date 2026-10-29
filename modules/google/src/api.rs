@@ -322,4 +322,106 @@ impl Google {
             status => Err(refused(status, "cancelling a meeting")),
         }
     }
+
+    /// The ids of the calendars Joel may change events on, every page of
+    /// his calendar list: those he owns or was given writer access to.
+    pub fn writable(&self, token: &str) -> Result<Vec<String>, Refused> {
+        let mut ids = Vec::new();
+        let mut page: Option<String> = None;
+        loop {
+            let mut query = vec![
+                ("minAccessRole", "writer"),
+                ("fields", "items(id),nextPageToken"),
+            ];
+            if let Some(page) = &page {
+                query.push(("pageToken", page));
+            }
+            let answer = self.get(
+                token,
+                "/calendar/v3/users/me/calendarList",
+                &query,
+                "the calendars",
+            )?;
+            ids.extend(
+                answer
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|calendar| calendar.get("id").and_then(Value::as_str))
+                    .map(str::to_owned),
+            );
+            page = answer
+                .get("nextPageToken")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            if page.is_none() {
+                return Ok(ids);
+            }
+        }
+    }
+
+    /// Moves the meeting `id`, one occurrence of a repeating one, on the
+    /// calendar `through`, to run from `start` to `end`, and Google mails
+    /// everyone on it the new time, as when it's moved in Google Calendar.
+    /// Only its times change, given as instants; its time zone and all
+    /// else stay as they were.
+    pub fn reschedule(
+        &self,
+        token: &str,
+        through: &str,
+        id: &str,
+        start: Timestamp,
+        end: Timestamp,
+    ) -> Result<(), Refused> {
+        let written = self
+            .agent
+            .patch(format!(
+                "{}/calendar/v3/calendars/{}/events/{id}",
+                self.origins.api,
+                segment(through)
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("sendUpdates", "all")
+            .query("fields", "id")
+            .send_json(serde_json::json!({
+                "start": { "dateTime": start.to_string() },
+                "end": { "dateTime": end.to_string() },
+            }))
+            .map_err(|error| unreachable(&error))?;
+        let status = written.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "moving a meeting"));
+        }
+        Ok(())
+    }
+}
+
+/// A calendar's id as one part of a path: an address, or a group's, with
+/// anything but its letters, digits and `@.-_` written as `%XX`, so an id
+/// holding a `#` or a `/` stays one part.
+fn segment(id: &str) -> String {
+    id.bytes()
+        .map(|byte| match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'@' | b'.' | b'-' | b'_' => {
+                char::from(byte).to_string()
+            }
+            _ => format!("%{byte:02X}"),
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_calendar_id_stays_one_part_of_a_path() {
+        assert_eq!(segment("joel@example.com"), "joel@example.com");
+        assert_eq!(
+            segment("en.canadian#holiday@group.v.calendar.google.com"),
+            "en.canadian%23holiday@group.v.calendar.google.com"
+        );
+        assert_eq!(segment("a/b c"), "a%2Fb%20c");
+    }
 }

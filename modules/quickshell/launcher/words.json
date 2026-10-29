@@ -3950,6 +3950,14 @@
       "sure": "Cancel It Now"
     },
     {
+      "id": "verb:calendar:move",
+      "in": "calendar:meeting",
+      "name": "Move the Meeting",
+      "verb": "move",
+      "glyph": "moveMeeting",
+      "sure": "Move It"
+    },
+    {
       "id": "verb:calendar:yes",
       "in": "calendar:meeting",
       "name": "Answer Yes",
