@@ -1199,6 +1199,8 @@ onLinux {
         property var marked: []
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
+        // No sender has a window open here, so Return on a notice reads it.
+        function senderWindow(app) { return null; }
       '';
       # The tester's player, found by its desktop entry, a radio's, found
       # only by its identity, and one nobody's; the tester's two streams, a
@@ -1328,6 +1330,7 @@ onLinux {
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
+      cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/program-controls.qml} shell.qml
