@@ -228,6 +228,8 @@ def test_boot_program_is_signed_with_the_machines_db_key(written: QemuMachine) -
     """The stick's boot program is signed with the machine's db key, from its bundle."""
     written.succeed("mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
     written.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
+    # Not the desktop's too: a stick is signed for another machine only when asked.
+    written.fail("sbverify --cert /var/lib/guide/desktop-db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
     written.succeed("umount /run/esp")
 
 
@@ -236,11 +238,20 @@ def rewritten(written: QemuMachine, passphrase: str, values: dict[str, Any]) -> 
     """Write the stick over again, keeping the passphrase its vault has."""
     type_in(written, "")
     written.wait_until_fails("pgrep -u alice -f 'guide host'")
+    # By now alice keeps a real bundle for the desktop, newer than the old
+    # stick's, as a host keeps one gathered off another machine's stick.
+    written.succeed(
+        "install -o alice -m 0600 /var/lib/guide/desktop-rescue-bundle.json"
+        " /home/alice/.local/state/guide/rescue/desktop-rescue-bundle.json"
+    )
     type_in(written, "write-the-stick-again")
     # Its passphrase opens it as well, tried before the key that's still
     # plugged in, so none of the key's PIN tries is spent.
     on_screen(written, r"type\s+its\s+PIN")
     type_in(written, values["bundlePassphrase"])
+    # Then the desktop's, for the stick to be signed for it too.
+    on_screen(written, r'named\s+"Desktop\s+Rescue\s+Phrase"')
+    type_in(written, values["desktopPassphrase"])
     # Whether to keep it comes first, as a step of its own, then the stick.
     on_screen(written, "has its passphrase already")
     # Keeping it is the first choice, and taken with Return.
@@ -259,3 +270,11 @@ def test_a_stick_written_again_keeps_its_passphrase(rewritten: QemuMachine) -> N
     # ones, and wrote only once they opened the old vault's key.
     verified = rewritten.succeed("sfdisk --verify /dev/sda")
     assert "No errors detected" in verified, verified
+
+
+def test_a_stick_written_for_every_machine_is_signed_for_each(rewritten: QemuMachine) -> None:
+    """Written for every machine, the stick's boot program is signed with each one's db key."""
+    rewritten.succeed("udevadm settle && mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
+    for certificate in ["/var/lib/sbctl/keys/db/db.pem", "/var/lib/guide/desktop-db.pem"]:
+        rewritten.succeed(f"sbverify --cert {certificate} /run/esp/EFI/BOOT/BOOTX64.EFI")
+    rewritten.succeed("umount /run/esp")
