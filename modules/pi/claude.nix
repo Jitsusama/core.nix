@@ -3,10 +3,11 @@
 # lists models it can't reach. pi itself is whichever is on the PATH, so this
 # follows the pi Joel runs everywhere else. On a machine whose only Claude
 # login is the plan's (ownLogin), it reads Claude Code's own login rather than
-# one kept apart.
+# one kept apart. It starts on `model` unless given one.
 {
   pkgs,
   claude,
+  model ? "claude-sonnet-5",
   ownLogin ? false,
 }:
 pkgs.writeShellApplication {
@@ -16,6 +17,7 @@ pkgs.writeShellApplication {
     CLAUDE = pkgs.lib.getExe claude;
     PROVIDER = import ./claude-provider.nix { inherit pkgs; };
     OWN_LOGIN = if ownLogin then "1" else "";
+    PLAN_MODEL = model;
   };
   text = builtins.readFile ./claude.sh;
 }

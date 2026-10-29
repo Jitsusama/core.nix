@@ -234,6 +234,7 @@
   # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
   # is the one it drives, and there is no pi-claude beside it. The Ask row
   # follows, on the machine's own login. A work machine has none of this.
+  # The plan's model is said once, so naming another moves both pis to it.
   pi-runs-on-the-machines-plan =
     let
       onClaude = account (
@@ -242,6 +243,18 @@
         }
       );
       onPi = account workstation;
+      onAnother = account (
+        workstation.extendModules {
+          modules = [
+            {
+              home-manager.users.someone.jitsusama.pi = {
+                plan = "claude";
+                claude.model = "a-model";
+              };
+            }
+          ];
+        }
+      );
       names = home: map lib.getName home.home.packages;
       provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
     in
@@ -251,6 +264,7 @@
         builtins.pathExists "${provider}/index.ts"
         && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
         && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
+        && onAnother.jitsusama.pi.settings.defaultModel == "a-model"
         && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
         && !(lib.elem "pi-claude" (names onClaude))
         && onClaude.jitsusama.pi.ask.plan == "claude"

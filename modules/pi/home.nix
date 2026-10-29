@@ -130,6 +130,7 @@ let
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
     inherit pkgs claude;
+    inherit (config.jitsusama.pi.claude) model;
     ownLogin = onClaude;
   };
 
@@ -191,6 +192,18 @@ in
       machine has them, or "claude" for Joel's own Claude plan through
       Claude Code's login on the machine, never its extra usage. On "claude"
       plain `pi` is all there is: there is no pi-claude beside it.
+    '';
+  };
+
+  options.jitsusama.pi.claude.model = lib.mkOption {
+    type = lib.types.str;
+    default = "claude-sonnet-5";
+    example = "claude-opus-5";
+    description = ''
+      The model pi starts on when it runs on Joel's own Claude plan, as
+      the claude-code provider names it: plain pi on a machine whose plan
+      is "claude", and pi-claude everywhere else. A plan's limits are small,
+      so it's a mid-sized model; a larger plan changes only this.
     '';
   };
 
@@ -264,7 +277,7 @@ in
       PI_CLAUDE_CODE_COMMAND = lib.getExe claude;
     };
     jitsusama.pi.settings.defaultProvider = lib.mkIf onClaude "claude-code";
-    jitsusama.pi.settings.defaultModel = lib.mkIf onClaude "claude-sonnet-5";
+    jitsusama.pi.settings.defaultModel = lib.mkIf onClaude config.jitsusama.pi.claude.model;
 
     # The harness, and neovim.pi for pi beside Neovim, on every machine,
     # first, since pi loads its packages in order.
