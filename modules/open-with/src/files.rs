@@ -15,8 +15,9 @@
 //!
 //! The shell is held to what was asked: a path must be whole, one must be
 //! picked where several may not, and a filter or option must be one offered.
-//! A shell with no file-chooser function refuses the call, and the request
-//! goes to GTK's portal instead, so a program still gets a dialog.
+//! Every file is chosen in the launcher, never in another dialog (Joel,
+//! 2026-10-26), so a shell that can't be asked, as while it restarts, leaves
+//! the program with nothing chosen, and the journal says why.
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -24,15 +25,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{Value as Json, json};
+use zbus::interface;
 use zbus::object_server::ObjectServer;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
-use zbus::{Connection, interface};
 
-use crate::{Ended, NEITHER, PATH, PICKED, REFUSED, Shell, Target, text};
-
-/// GTK's portal, which answers when the shell can't be asked.
-const GTK: &str = "org.freedesktop.impl.portal.desktop.gtk";
-const INTERFACE: &str = "org.freedesktop.impl.portal.FileChooser";
+use crate::{Ended, NEITHER, PICKED, REFUSED, Shell, Target, text};
 
 /// The shell's chooser of files, whose answer has room for a great many
 /// paths.
@@ -55,14 +52,6 @@ enum Mode {
 }
 
 impl Mode {
-    fn method(self) -> &'static str {
-        match self {
-            Mode::Open => "OpenFile",
-            Mode::Save => "SaveFile",
-            Mode::SaveFiles => "SaveFiles",
-        }
-    }
-
     fn named(self) -> &'static str {
         match self {
             Mode::Open => "open",
@@ -247,34 +236,6 @@ fn results(picked: Picked) -> HashMap<String, OwnedValue> {
     results
 }
 
-/// The same request, asked of GTK's portal.
-async fn forward(
-    connection: &Connection,
-    mode: Mode,
-    asking: (&OwnedObjectPath, &str, &str, &str),
-    options: &HashMap<String, OwnedValue>,
-) -> (u32, HashMap<String, OwnedValue>) {
-    let (handle, app_id, parent_window, title) = asking;
-    let reply = connection
-        .call_method(
-            Some(GTK),
-            PATH,
-            Some(INTERFACE),
-            mode.method(),
-            &(handle, app_id, parent_window, title, options),
-        )
-        .await
-        .and_then(|reply| {
-            reply
-                .body()
-                .deserialize::<(u32, HashMap<String, OwnedValue>)>()
-        });
-    reply.unwrap_or_else(|error| {
-        eprintln!("<3>open-with: GTK's portal can't choose the file either: {error}");
-        (NEITHER, HashMap::new())
-    })
-}
-
 pub(crate) struct Files {
     shell: Arc<Shell>,
 }
@@ -284,20 +245,14 @@ impl Files {
         Files { shell }
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the portal's own arguments, passed on whole"
-    )]
     async fn choose(
         &self,
         mode: Mode,
         handle: OwnedObjectPath,
         app_id: String,
-        parent_window: String,
         title: String,
         options: HashMap<String, OwnedValue>,
         server: &ObjectServer,
-        connection: &Connection,
     ) -> (u32, HashMap<String, OwnedValue>) {
         let asked = Asked::new(mode, &options);
         let words = vec![asked.request(&title, &options).to_string()];
@@ -306,13 +261,7 @@ impl Files {
             .ask(&FILE_CHOOSER, &handle, server, Vec::new(), words, None)
             .await;
         if ended == Ended::Unasked {
-            let asking = (
-                &handle,
-                app_id.as_str(),
-                parent_window.as_str(),
-                title.as_str(),
-            );
-            return forward(connection, mode, asking, &options).await;
+            eprintln!("<3>open-with: the launcher couldn't be asked, so {app_id} chose no file");
         }
         let (code, picked) = asked.response(&ended);
         (code, picked.map(results).unwrap_or_default())
@@ -321,10 +270,6 @@ impl Files {
 
 #[interface(name = "org.freedesktop.impl.portal.FileChooser")]
 impl Files {
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the portal's call, as its interface gives it"
-    )]
     #[zbus(out_args("response", "results"))]
     async fn open_file(
         &self,
@@ -334,25 +279,13 @@ impl Files {
         title: String,
         options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &ObjectServer,
-        #[zbus(connection)] connection: &Connection,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        self.choose(
-            Mode::Open,
-            handle,
-            app_id,
-            parent_window,
-            title,
-            options,
-            server,
-            connection,
-        )
-        .await
+        // The shell asks over its own window, whichever program asked.
+        let _ = parent_window;
+        self.choose(Mode::Open, handle, app_id, title, options, server)
+            .await
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the portal's call, as its interface gives it"
-    )]
     #[zbus(out_args("response", "results"))]
     async fn save_file(
         &self,
@@ -362,25 +295,12 @@ impl Files {
         title: String,
         options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &ObjectServer,
-        #[zbus(connection)] connection: &Connection,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        self.choose(
-            Mode::Save,
-            handle,
-            app_id,
-            parent_window,
-            title,
-            options,
-            server,
-            connection,
-        )
-        .await
+        let _ = parent_window;
+        self.choose(Mode::Save, handle, app_id, title, options, server)
+            .await
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the portal's call, as its interface gives it"
-    )]
     #[zbus(out_args("response", "results"))]
     async fn save_files(
         &self,
@@ -390,19 +310,10 @@ impl Files {
         title: String,
         options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &ObjectServer,
-        #[zbus(connection)] connection: &Connection,
     ) -> (u32, HashMap<String, OwnedValue>) {
-        self.choose(
-            Mode::SaveFiles,
-            handle,
-            app_id,
-            parent_window,
-            title,
-            options,
-            server,
-            connection,
-        )
-        .await
+        let _ = parent_window;
+        self.choose(Mode::SaveFiles, handle, app_id, title, options, server)
+            .await
     }
 }
 
