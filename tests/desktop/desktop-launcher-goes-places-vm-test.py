@@ -1484,6 +1484,14 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
+    # Inside Now, its details slide out in the drawer beside the card.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Design Review"
+            and shown["drawer"]["out"] is True
+        )
+    )
+    desktop.photograph("launcher-meeting-drawer")
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
     machine.wait_until_succeeds(
@@ -1519,12 +1527,10 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
-    desktop.launcher_until(
-        lambda shown: (
-            (shown.get("drawer") or {}).get("title") == "Standup" and shown["drawer"]["out"] is True
-        )
-    )
-    desktop.photograph("launcher-meeting-drawer")
+    # Found by a search typed at home, the drawer stays in: it slides only
+    # as Joel steps in or out (docs/design.md, "The drawer is the card
+    # continued").
+    assert (desktop.showing().get("drawer") or {}).get("out") is False, desktop.showing()
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")
