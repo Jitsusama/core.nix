@@ -115,6 +115,27 @@
       "name": "Quest"
     },
     {
+      "id": "agents:start",
+      "in": "agents",
+      "name": "Start a Session",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
+      "id": "agents:start:quest",
+      "in": "agents:start",
+      "name": "On a Quest",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
+      "id": "agents:start:orchestrator",
+      "in": "agents:start",
+      "name": "As an Orchestrator",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
       "id": "agents:address",
       "in": "agents",
       "name": "Address",
@@ -4293,13 +4314,6 @@
       "name": "Stop",
       "verb": "stop",
       "glyph": "stopped"
-    },
-    {
-      "id": "verb:orchestrator:start",
-      "in": "orchestrators",
-      "name": "Start a Session",
-      "verb": "start",
-      "glyph": "agent"
     },
     {
       "id": "verb:quest:switch",

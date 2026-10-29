@@ -77,6 +77,67 @@ Singleton {
         .filter(session => session.window)
         .map(session => session.window.id).join(" ")
 
+    // Starts a session on a quest, in `folder`, as the harness's own spawn
+    // does: in the kitty that holds the sessions, through a login shell,
+    // so the session has the account's whole environment, with the quest
+    // loaded as it starts. Quests, Orchestrators and Agents' Start a
+    // Session all start one this way, so a session started anywhere is the
+    // same.
+    // pi run without a login shell can't reach its model, and exits at
+    // once, so a window started that way blinked and went (Joel,
+    // 2026-10-28).
+    function start(quest, folder) {
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", folder,
+            "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "zsh", "-lic", "exec pi"]);
+        Report.say(`started a session on ${quest}`);
+    }
+
+    // Starts a session told `words` as it opens, as Google's sign-in is
+    // "/google-auth" and Ask's carried question its own, in `folder`,
+    // through a login shell for the same reason. The words go as the
+    // shell's $0, so nothing in them is read as the shell's own.
+    function tell(words, folder, program) {
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", folder,
+            "zsh", "-lic", `exec ${program ?? "pi"} -- "$0"`, words]);
+    }
+
+    // Reopens a session that closed, where it left off: pi told the
+    // session, in the folder it ran in, which its file's first line says,
+    // as the harness restores one. With no file to say it, a session is
+    // started afresh on the quest instead, in `folder`.
+    readonly property string sessionFiles: `${home}/.pi/agent/sessions`
+
+    function resume(id, quest, folder) {
+        resumer.asked = { id: id, quest: quest, folder: folder };
+        resumer.running = true;
+    }
+
+    Process {
+        id: resumer
+        property var asked: null
+        command: ["sh", "-c", 'for f in "$1"/*/*_"$2".jsonl; do head -n 1 "$f"; break; done',
+            "resume", root.sessionFiles, asked?.id ?? ""]
+        stdout: StdioCollector {
+            onStreamFinished: root.resumed(resumer.asked, text)
+        }
+    }
+
+    function resumed(asked, text) {
+        let cwd = "";
+        try {
+            cwd = JSON.parse(text.trim()).cwd ?? "";
+        } catch (error) {
+            cwd = "";
+        }
+        if (cwd === "") {
+            start(asked.quest, asked.folder);
+            return;
+        }
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd,
+            "zsh", "-lic", `exec pi --session ${asked.id}`]);
+        Report.say(`resumed session ${asked.id}`);
+    }
+
     // Go to a session: its window, or, when niri's isn't known, kitty's,
     // which kitty raises if niri lets it.
     function goTo(session) {

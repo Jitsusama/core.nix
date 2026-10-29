@@ -785,6 +785,8 @@ onLinux {
         property var running: []
         function isOf(session) { return `window:''${session.window.id}`; }
         function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
+        property var started: null
+        function start(quest, folder) { started = [quest, folder]; }
       '';
       quests = pkgs.callPackage ./pi-helper.nix {
         name = "pi-quests";
@@ -916,6 +918,10 @@ onLinux {
         doCheck = false;
       } (builtins.readFile ../../tests/desktop/stand-in-ask.py);
       niri = singleton "Niri.qml" "function spawn(command) {}";
+      sessions = singleton "Sessions.qml" ''
+        readonly property string home: Quickshell.env("HOME")
+        function tell(words, folder, program) {}
+      '';
     in
     pkgs.runCommandLocal "the-launcher-asks-a-fresh-pi" { } ''
       mkdir -p launcher runtime && chmod 700 runtime
@@ -928,6 +934,7 @@ onLinux {
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
       cp ${../../tests/ask.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$PWD/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} ASK_BROKEN=${broken} ASK_STAND_IN=${standIn}

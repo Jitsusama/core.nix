@@ -1609,8 +1609,11 @@ Scope {
         // In Now, what waits on Joel leads, named by the first of it, since
         // it's the one thing there only he can move; the rest follow by name.
         const lead = source.foremost ?? "";
+        // A row folded into a place, as Agents' Start a Session is, does
+        // something there rather than being one of what it holds, so home
+        // never names it.
         const names = source.everything()
-            .filter(one => lead === "" || one.key !== "on:waitingOnYou")
+            .filter(one => (lead === "" || one.key !== "on:waitingOnYou") && one.folded !== true)
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
         const fitted = names.length === 0 ? ""

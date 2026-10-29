@@ -38,8 +38,10 @@ Provider {
 
     // As the harness wrote them, or none before it has.
     property var listed: []
-    // Where each quest starts a session, as the quest index says.
+    // Where each quest starts a session, and the last session it had, as
+    // the quest index says.
     property var starts: ({})
+    property var lastSessions: ({})
 
     readonly property string harness: Sessions.state
     readonly property string inboxes: `${harness}/steer`
@@ -84,7 +86,7 @@ Provider {
 
     function made(one, stands) {
         const presence = Sessions.present[one.address] ?? null;
-        return member({
+        const row = member({
             key: `orchestrator:${one.address}`,
             verb: "open",
             name: one.short || one.title || one.address,
@@ -95,6 +97,13 @@ Provider {
             stands: stands,
             verbs: () => provider.verbs(one, stands)
         });
+        // A closed one resumes on Return, its Resume leading the step in.
+        if (stands === "off")
+            Object.assign(row, {
+                verb: Words.verb("verb:orchestrator:resume"),
+                run: () => provider.start(one)
+            });
+        return row;
     }
 
     function act(id, fields) {
@@ -109,7 +118,7 @@ Provider {
 
     function verbs(one, stands) {
         if (stands === "off")
-            return [act("start", { run: () => provider.start(one) })];
+            return [act("resume", { run: () => provider.start(one) })];
         const session = sessionOf(one.address);
         const rows = [act("talk", {
             ask: Words.of("verb:orchestrator:talk").ask ?? "",
@@ -253,11 +262,35 @@ Provider {
             "steer", `${inboxes}/${one.address.toUpperCase()}`, name, body]);
     }
 
-    // A session on its quest, in the folder the quest index says a new one
+    // Each orchestrator not running as a row whose Return starts its
+    // session, for Agents' Start a Session, named as its own row is.
+    readonly property var startable: {
+        Sessions.present;
+        return listed.filter(one => standing(Sessions.present[one.address] ?? null) === "off")
+            .map(one => thing({
+                key: `orchestrator:start:${one.address}`,
+                verb: Words.verb("verb:orchestrator:resume"),
+                name: one.short || one.title || one.address,
+                glyph: Theme.glyph.agent,
+                hue: "program",
+                note: one.title ?? "",
+                run: () => provider.start(one)
+            }));
+    }
+
+    // A closed orchestrator resumed where it left off: its quest's last
+    // session, in the folder that session ran in (Joel, 2026-10-28: "i
+    // want to be able to easily restart an orchestrator that is closed,
+    // continuing from where it left off"); one with no session yet is
+    // started on its quest, in the folder the quest index says a new one
     // starts in, never the quest's own.
     function start(one) {
-        Niri.spawn(["kitty", "--directory", starts[one.quest] ?? Sessions.home, "env",
-            `QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`, "pi"]);
+        const folder = starts[one.quest] ?? Sessions.home;
+        const last = lastSessions[one.quest];
+        if (last)
+            Sessions.resume(last, one.quest, folder);
+        else
+            Sessions.start(one.quest, folder);
     }
 
     function everything() {
@@ -361,12 +394,18 @@ Provider {
         onLoaded: {
             try {
                 const out = {};
-                for (const quest of JSON.parse(text()).quests ?? [])
+                const last = {};
+                for (const quest of JSON.parse(text()).quests ?? []) {
                     if (quest.start)
                         out[quest.id] = quest.start;
+                    if ((quest.sessions ?? []).length > 0)
+                        last[quest.id] = quest.sessions[quest.sessions.length - 1];
+                }
                 provider.starts = out;
+                provider.lastSessions = last;
             } catch (e) {
                 provider.starts = {};
+                provider.lastSessions = {};
             }
         }
     }

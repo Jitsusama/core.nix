@@ -539,6 +539,66 @@ def test_the_launcher_finds_pis_quests_going_to_the_session_on_one_and_opening_p
     desktop.as_account(f"rm -rf {another} ~/hallway $XDG_RUNTIME_DIR/pi-opened")
 
 
+def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
+    desktop: Desktop,
+) -> None:
+    """Agents resumes a closed orchestrator where it left off, from one row and a choice."""
+    machine = desktop.machine
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    # Lighthouse orchestrates a quest, and no session runs it; its quest's
+    # last session ran in ~/lighthouse, as pi's file for it says.
+    lighthouse_listed(desktop)
+    index = {"quests": [{"id": "QEST-20261022-TESTQA", "sessions": ["01a1-lighthouse"]}]}
+    record = {"type": "session", "id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"}
+    sessions = "~/.pi/agent/sessions/--home-jitsusama-lighthouse--"
+    kept = f"{sessions}/2026-10-28T20-00-00-000Z_01a1-lighthouse.jsonl"
+    desktop.as_account(
+        f"rm -f {PI_PRESENCE}/testqa.json {opened} && mkdir -p {sessions} ~/lighthouse"
+        f" && echo '{json.dumps(record)}' > {kept}"
+        f" && echo '{json.dumps(index)}' > {HARNESS}/quest-workflow/quests.json"
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
+    )
+    # The sessions come first, then starting one, then Agents' places.
+    desktop.down_to("Start a Session")
+    desktop.photograph("launcher-agents-start")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["On a Quest", "As an Orchestrator"])
+    desktop.photograph("launcher-agents-start-which")
+    desktop.down_to("As an Orchestrator")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Lighthouse"])
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
+    desktop.photograph("launcher-agents-start-orchestrator")
+    # Return reopens its last session where it ran, as the harness
+    # restores one, through a login shell so pi can reach its model.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/lighthouse " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01a1-lighthouse"], said
+    # Resuming one takes Joel to it, so the launcher closes.
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # Its own row under Orchestrators says the same, Resume its Return.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("lighthouse", selecting="Lighthouse")
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 resume"], desktop.showing()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(
+        f"rm -rf {opened} {sessions} ~/lighthouse {HARNESS}/quest-workflow/orchestrators.json"
+        f" {HARNESS}/quest-workflow/quests.json"
+    )
+
+
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(
     desktop: Desktop,
 ) -> None:

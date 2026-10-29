@@ -151,8 +151,46 @@ Provider {
         return { rows: kept.map(f => f.row), grade: grade };
     }
 
+    // Starting a session, Agents' own last row, after the sessions running
+    // (Joel, 2026-10-28: "i'm also not able to start an orchestrator agent
+    // session from the launcher ... it is also a bit non-intuitive"): one
+    // row, then a choice of a session on a quest or one as an
+    // orchestrator, each listing what it can start, the quests' and the
+    // orchestrators' own rows, whose Return starts it. Found by its name
+    // from anywhere, and folded, so home names the sessions, never it.
+    function source(name) {
+        return (provider.launcher?.sources ?? []).find(one => one.settings.name === name) ?? null;
+    }
+
+    readonly property var start: {
+        const quests = () => (source("quests")?.everything() ?? [])
+            .filter(row => row.unfinished && row.verb !== "switch");
+        const orchestrators = () => source("orchestrators")?.startable ?? [];
+        const choice = (id, note, rows) => thingRow({
+            key: `agents:start:${id}`,
+            name: Words.name(`agents:start:${id}`),
+            note: note,
+            glyph: Theme.glyph.agent,
+            hue: "action"
+        }, rows);
+        return Object.assign(thingRow({
+            key: "agents:start",
+            name: Words.name("agents:start"),
+            glyph: Theme.glyph.agent,
+            hue: "action"
+        }, () => [
+            choice("quest", "a session working on one of your quests", quests),
+            choice("orchestrator", "a session that runs a quest and the quests under it",
+                orchestrators)
+        ]), {
+            folded: true
+        });
+    }
+
+    things: [start]
+
     function everything() {
-        return all.slice();
+        return all.concat([start]);
     }
 
     function counted() {
