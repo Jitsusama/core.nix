@@ -101,10 +101,37 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open)
+            if (provider.launcher.open) {
                 provider.reweather();
+                provider.retime();
+            }
         }
     }
+
+    // The time and the date as the launcher places them, read rather than
+    // bound: the launcher's answers are made from every provider's rows,
+    // Now's among them, so a binding here would read itself back (a loop
+    // Quickshell warns of as it starts). Read as the clock turns a minute,
+    // as the launcher opens, and once the shell has started.
+    property var timeRow: null
+    property var dateRow: null
+
+    function retime() {
+        const placed = id => provider.launcher?.resolved?.(id) ?? null;
+        timeRow = placed("time");
+        dateRow = placed("today");
+    }
+
+    Connections {
+        target: clock
+
+        function onDateChanged() {
+            Qt.callLater(provider.retime);
+        }
+    }
+
+    Component.onCompleted: Qt.callLater(retime)
+    onLauncherChanged: Qt.callLater(retime)
 
     Connections {
         target: provider.weatherSource
@@ -169,9 +196,7 @@ Provider {
 
     // Made again as the clock turns a minute, so the time says it.
     readonly property var moment: {
-        clock.date;
-        const placed = id => provider.launcher?.resolved?.(id) ?? null;
-        const rows = [placed("time"), placed("today"), location];
+        const rows = [timeRow, dateRow, location];
         if (weather)
             rows.push(weather);
         if (meeting)
