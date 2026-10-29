@@ -625,7 +625,9 @@
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
     for the next start, which prices it to then or its own idle delete; standing builders are
     named while they answer, and only to builds that ask for them, never in the file every
-    build reads; and a day's journal sums to its hours and cost, each at its price
+    build reads; a day's journal sums to its hours and cost, each at its price; and `there`
+    sends a flake's build to the lent builder as one command, returning its status and
+    journalling what ssh sent, or builds here, saying so, when none stands or none answers
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
