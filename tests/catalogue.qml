@@ -118,13 +118,12 @@ QtObject {
         expect("found by its name", names(Catalogue.leading(joined, [{ name: "Sign in to it",
             verb: "open", run: does }, { name: "Disconnect it", run: does }])),
             "Disconnect it, Sign in to it");
-        // A copy is never first: it comes after what can be done, before
-        // what's only said, and last where nothing inside does anything
-        // (Joel, 2026-10-28).
-        expect("a copy after the acts, found by how its name starts", names(Catalogue.leading({
+        // A copy is never first, and always last, after what can be done
+        // and what's only said (docs/design.md's Return rule).
+        expect("a copy last, found by how its name starts", names(Catalogue.leading({
             name: "Quarry", verb: "copy", run: does, verbs: opens }, [{ name: "Play it",
             run: does }, { name: "Copy what it said", run: does }, { name: "Said", figure: true,
-            run: does }])), "Play it, Copy what it said, Said");
+            run: does }])), "Play it, Said, Copy what it said");
         expect("not a figure copying its own value", names(Catalogue.leading({ name: "Disk",
             verb: "copy", run: does, verbs: opens }, [{ name: "Space", verb: "copy",
             run: does }, { name: "Busy", verb: "copy", run: does }])), "Space, Busy, Copy");
