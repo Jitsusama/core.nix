@@ -21,9 +21,10 @@
 //!   firmware's start counts as a restart, not a reset; a wake from sleep
 //!   moves neither.
 //! - Every disk can only be opened with something typed: each TPM token
-//!   asks for a PIN, each FIDO2 token for its PIN, and any other way in is a
-//!   password. A disk the TPM opens alone would let anyone through, and
-//!   with no disk named nothing is let go.
+//!   asks for a PIN, each FIDO2 token for its PIN, a recovery key is typed,
+//!   and a keyslot with no token is a password. Any other token keeps the
+//!   lock, and the log names it. A disk the TPM opens alone would let anyone
+//!   through, and with no disk named nothing is let go.
 //!
 //! It asks `tpm2_readclock` for the counts, `cryptsetup` for each disk's
 //! tokens and `loginctl` to let the locks go, each from `PATH`. Anything it
@@ -142,17 +143,23 @@ fn writes_an_image(action: &str) -> bool {
     )
 }
 
-/// Whether every token in a disk's LUKS2 header, as `cryptsetup luksDump
-/// --dump-json-metadata` prints it, needs something typed. A keyslot with
-/// no token is a password.
-fn only_typed(header: &Value) -> bool {
+/// The first token in a disk's LUKS2 header, as `cryptsetup luksDump
+/// --dump-json-metadata` prints it, that opens the disk with nothing typed,
+/// or nothing when every one asks. A keyslot with no token is a password,
+/// and a recovery key is typed like one.
+fn unasked(header: &Value) -> Option<String> {
     let Some(tokens) = header["tokens"].as_object() else {
-        return false;
+        return Some("its header lists no tokens".to_owned());
     };
-    tokens.values().all(|token| match token["type"].as_str() {
-        Some("systemd-tpm2") => token["tpm2-pin"] == true,
-        Some("systemd-fido2") => token["fido2-clientPin-required"] == true,
-        _ => false,
+    tokens.iter().find_map(|(slot, token)| {
+        let kind = token["type"].as_str().unwrap_or("no type");
+        let asks = match kind {
+            "systemd-tpm2" => token["tpm2-pin"] == true,
+            "systemd-fido2" => token["fido2-clientPin-required"] == true,
+            "systemd-recovery" => true,
+            _ => false,
+        };
+        (!asks).then(|| format!("token {slot} ({kind}) opens it unasked"))
     })
 }
 
@@ -169,10 +176,15 @@ fn starts() -> Option<Starts> {
     Starts::parse(&said("tpm2_readclock", &[])?)
 }
 
-fn disk_is_typed(disk: &str) -> bool {
-    said("cryptsetup", &["luksDump", "--dump-json-metadata", disk])
-        .and_then(|json| serde_json::from_str(&json).ok())
-        .is_some_and(|header| only_typed(&header))
+/// Why a disk could open without the prompt asking for anything, or
+/// nothing when it couldn't.
+fn disk_unasked(disk: &str) -> Option<String> {
+    let header = said("cryptsetup", &["luksDump", "--dump-json-metadata", disk])
+        .and_then(|json| serde_json::from_str::<Value>(&json).ok());
+    match header {
+        Some(header) => unasked(&header),
+        None => Some("its header couldn't be read".to_owned()),
+    }
 }
 
 /// Before an image is written, keep the TPM's counts. Before a sleep that
@@ -217,8 +229,15 @@ fn after(action: &str, disks: &[String]) {
         return;
     }
     let _ = fs::remove_file(TRIED_AGAIN);
-    if disks.is_empty() || !disks.iter().all(|disk| disk_is_typed(disk)) {
-        eprintln!("hibernate-unlock: a disk opens without a typed secret; the lock stays");
+    if disks.is_empty() {
+        eprintln!("hibernate-unlock: no disk asked at the prompt; the lock stays");
+        return;
+    }
+    if let Some((disk, why)) = disks
+        .iter()
+        .find_map(|disk| disk_unasked(disk).map(|why| (disk, why)))
+    {
+        eprintln!("hibernate-unlock: {disk}: {why}; the lock stays");
         return;
     }
     match said("loginctl", &["unlock-sessions"]) {
@@ -427,13 +446,17 @@ mod tests {
 
     #[test]
     fn a_disk_whose_tokens_all_ask_is_typed() {
+        // The three the guide enrols, the recovery key's as its installed
+        // header in modules/guide/fixtures/qemu-canokey has it.
         let header = json!({"tokens": {
             "0": {"type": "systemd-tpm2", "tpm2-pin": true},
-            "1": {"type": "systemd-fido2", "fido2-clientPin-required": true}
+            "1": {"type": "systemd-fido2", "fido2-clientPin-required": true},
+            "2": {"type": "systemd-recovery", "keyslots": ["3"]}
         }});
-        assert!(only_typed(&header));
-        assert!(
-            only_typed(&json!({"tokens": {}})),
+        assert_eq!(unasked(&header), None);
+        assert_eq!(
+            unasked(&json!({"tokens": {}})),
+            None,
             "a password alone is typed"
         );
     }
@@ -446,10 +469,17 @@ mod tests {
             json!({"type": "systemd-fido2", "fido2-clientPin-required": false}),
             json!({"type": "systemd-pkcs11"}),
         ] {
+            let kind = token["type"].as_str().unwrap_or_default().to_owned();
             let header =
                 json!({"tokens": {"0": {"type": "systemd-tpm2", "tpm2-pin": true}, "1": token}});
-            assert!(!only_typed(&header), "{token}");
+            assert_eq!(
+                unasked(&header),
+                Some(format!("token 1 ({kind}) opens it unasked")),
+            );
         }
-        assert!(!only_typed(&json!({})), "a header it can't read");
+        assert_eq!(
+            unasked(&json!({})),
+            Some("its header lists no tokens".to_owned())
+        );
     }
 }
