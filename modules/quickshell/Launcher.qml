@@ -2306,8 +2306,9 @@ Scope {
     }
 
     onCurrentChanged: {
+        list.pick(list.settled);
         if (current >= 0)
-            list.positionViewAtIndex(current, ListView.Contain);
+            list.reveal(current);
     }
 
     // The rest of the selected name from where what's typed starts a word in
@@ -2988,6 +2989,109 @@ Scope {
                             boundsBehavior: Flickable.StopAtBounds
                             model: root.matches
 
+                            // The launcher's one motion is the selection
+                            // moving to its row, the list scrolling with it
+                            // on the same timing, the theme's medium on its
+                            // curve (the launcher audit's finding 33, Joel's
+                            // yes on 2026-10-26: it jumped, and the list
+                            // snapped a row at a time). Only a move among the
+                            // same rows glides: rows made afresh, by a letter,
+                            // a step or a refresh, are a new list, and its
+                            // selection is where it is at once, so typing
+                            // never glides. Everything else stays instant.
+                            property bool settled: false
+                            readonly property var shown: root.matches
+                            onShownChanged: {
+                                list.settled = false;
+                                // A glide under way ends where it was going,
+                                // never stopped short.
+                                scrolling.complete();
+                                list.pick(false);
+                                Qt.callLater(() => list.settled = true);
+                            }
+
+                            // Where the selection is drawn, set by pick
+                            // rather than bound, so a glide under way gives
+                            // way at once to rows made afresh.
+                            property real pickY: 0
+
+                            function pick(glide) {
+                                const to = list.rowTop(root.current) + list.rowHeight(root.current)
+                                    - Theme.space.xxxl;
+                                picking.stop();
+                                if (glide && to !== list.pickY) {
+                                    Report.say(`glides ${Math.round(list.pickY)} to ${Math.round(to)}`);
+                                    picking.to = to;
+                                    picking.start();
+                                } else
+                                    list.pickY = to;
+                            }
+
+                            NumberAnimation {
+                                id: picking
+                                target: list
+                                property: "pickY"
+                                duration: Theme.motion.medium
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.motion.curve
+                            }
+
+                            // Where a row's own place starts and ends in the
+                            // list, its gap above it included.
+                            function rowTop(at) {
+                                let top = 0;
+                                for (let each = 0; each < at && each < root.matches.length; each += 1)
+                                    top += Theme.space.xxxl + (root.matches[each].gap ? list.apart : 0);
+                                return top;
+                            }
+
+                            function rowHeight(at) {
+                                return Theme.space.xxxl + (root.matches[at]?.gap ? list.apart : 0);
+                            }
+
+                            // Scrolls just far enough to show the row, as
+                            // positionViewAtIndex's Contain does, gliding
+                            // there when the selection glides.
+                            function reveal(at) {
+                                if (!list.settled) {
+                                    list.positionViewAtIndex(at, ListView.Contain);
+                                    return;
+                                }
+                                // From where a glide under way is going, so a
+                                // second key while it runs goes on from there.
+                                const from = scrolling.running ? scrolling.to : list.contentY;
+                                const top = list.originY + list.rowTop(at);
+                                const bottom = top + list.rowHeight(at);
+                                const to = top < from ? top
+                                    : bottom > from + list.height ? bottom - list.height : from;
+                                if (to === from)
+                                    return;
+                                scrolling.stop();
+                                scrolling.to = to;
+                                scrolling.start();
+                            }
+
+                            NumberAnimation {
+                                id: scrolling
+                                target: list
+                                property: "contentY"
+                                duration: Theme.motion.medium
+                                easing.type: Easing.BezierSpline
+                                easing.bezierCurve: Theme.motion.curve
+                            }
+
+                            // The selection itself, under the rows, which
+                            // draw no fill of their own here (Choice's fills).
+                            Rectangle {
+                                z: -1
+                                width: list.width
+                                height: Theme.space.xxxl
+                                y: list.pickY
+                                visible: root.current >= 0 && root.current < root.matches.length
+                                radius: Theme.inner
+                                color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                            }
+
                             delegate: Item {
                                 id: entry
 
@@ -3017,6 +3121,7 @@ Scope {
                                 Choice {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
+                                    fills: false
                                     glyph: entry.own || entry.sort !== "act"
                                         ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
                                     // A colour's swatch wears the colour itself.
