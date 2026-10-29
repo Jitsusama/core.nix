@@ -2512,8 +2512,8 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     def its_row(says: str) -> Json | None:
         """Give the long session's row as it's drawn, once its right says this."""
         laid = laid_out(desktop)
-        row = next((row for row in laid["rows"] if "TESTQC" in " ".join(row["reads"])), None)
-        return row if row and says in " ".join(row["reads"]) else None
+        row = next((row for row in laid["rows"] if "TESTQC" in row["reads"]), None)
+        return row if row and says in row["reads"] else None
 
     def name_of(row: Json) -> Json:
         return max(row["words"], key=lambda word: len(word["text"]))
