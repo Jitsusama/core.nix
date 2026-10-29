@@ -15,6 +15,10 @@
 # monitor says of itself (src/facts.rs) is kept in $XDG_RUNTIME_DIR/desk
 # for the launcher's Displays facts, which desk-facts adds to its own
 # (../desk-facts).
+# Where a sensor sees the light's colour, the built-in panel's warmth
+# follows the room part of the way (src/warmth.rs), through
+# wl-gammarelay-rs, which holds niri's gamma for each screen and takes its
+# warmth over the session's bus. It's the daemon's own, so it comes with it.
 {
   config,
   lib,
@@ -78,11 +82,32 @@ in
     '';
   };
 
-  config.systemd.user.services.backlight = {
+  config.systemd.user.services.wl-gammarelay = {
     Unit = {
-      Description = "Sets the screen's brightness for the light";
+      Description = "Sets the screens' warmth for the backlight daemon";
       PartOf = [ "graphical-session.target" ];
       After = [ "graphical-session.target" ];
+    };
+    Service = {
+      # Started once it holds its name, so the daemon finds it there.
+      Type = "dbus";
+      BusName = "rs.wl-gammarelay";
+      ExecStart = lib.getExe pkgs.wl-gammarelay-rs;
+      Restart = "on-failure";
+      RestartSec = 1;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  config.systemd.user.services.backlight = {
+    Unit = {
+      Description = "Sets the screen's brightness and warmth for the light";
+      PartOf = [ "graphical-session.target" ];
+      After = [
+        "graphical-session.target"
+        "wl-gammarelay.service"
+      ];
+      Wants = [ "wl-gammarelay.service" ];
     };
     Service = {
       ExecStart = "${lib.getExe package} ${standard}";
