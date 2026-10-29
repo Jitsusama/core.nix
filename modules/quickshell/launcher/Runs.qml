@@ -140,7 +140,7 @@ Provider {
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.prepare(`${run.id} ${run.kind} ${run.cwd}`))
+            get: () => also ?? (also = Fuzzy.kept(`${run.id} ${run.kind} ${run.cwd}`))
         });
         return row;
     }

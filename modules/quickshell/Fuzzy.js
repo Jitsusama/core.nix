@@ -92,6 +92,33 @@ function letters(ws) {
     return mask;
 }
 
+// The letters a text's words start with, as `letters` says letters: where
+// a word typed may begin to match (align), so one whose first letter isn't
+// among them can't, and is passed over before anything is made ready. Its
+// closed-up form starts words only where the text does, so it's the same.
+function starts(text) {
+    const source = String(text);
+    let mask = 0;
+    let before = white;
+    for (let j = 0; j < source.length; j++) {
+        const c = source[j];
+        const kind = kindOf(c);
+        if (bonusFor(before, kind) > 0) {
+            const l = c.toLowerCase();
+            mask |= bitOf((l.length === 1 ? l : c).charCodeAt(0));
+        }
+        before = kind;
+    }
+    return mask;
+}
+
+// Whether each word typed starts with a letter some word of the text does.
+function begins(mask, ws) {
+    for (const w of ws)
+        if ((mask & bitOf(w.charCodeAt(0))) === 0) return false;
+    return true;
+}
+
 // A letter or a digit, either side of a hyphen that joins a word.
 const JOINED = /[a-z0-9\u00c0-\u024f]/i;
 
@@ -107,6 +134,7 @@ function prepare(text) {
     const codes = new Uint16Array(n);
     let folded = "";
     let mask = 0;
+    let first = 0;
     let before = white;
     for (let j = 0; j < n; j++) {
         const c = source[j];
@@ -118,9 +146,29 @@ function prepare(text) {
         folded += f;
         codes[j] = f.charCodeAt(0);
         mask |= bitOf(codes[j]);
+        if (bonus[j] > 0) first |= bitOf(codes[j]);
     }
-    return Object.assign({ text: source, folded: folded, codes: codes, bonus: bonus, mask: mask },
-        closedUp(source, folded, bonus));
+    return Object.assign({ text: source, folded: folded, codes: codes, bonus: bonus, mask: mask,
+        starts: first }, closedUp(source, folded, bonus));
+}
+
+// Texts already made ready, by their text, so a row made again as its list
+// changes, as Quests' are whenever a quest is written, finds its name ready
+// rather than making it again on the next key. Kept to the most a desktop
+// shows and its people's names and emails, and forgotten whole past that.
+const KEPT = 20000;
+const keptItems = new Map();
+
+// The text made ready to match, once while it reads the same.
+function kept(text) {
+    const key = String(text);
+    let item = keptItems.get(key);
+    if (item === undefined) {
+        if (keptItems.size >= KEPT) keptItems.clear();
+        item = prepare(key);
+        keptItems.set(key, item);
+    }
+    return item;
 }
 
 // The text with each hyphen inside a word taken out, its letters' places in
@@ -237,7 +285,7 @@ function match(item, query, wantPositions) {
     const ws = Array.isArray(query) ? query : words(query);
     if (!wantPositions) {
         const need = letters(ws);
-        if ((item.mask & need) !== need) return missed;
+        if ((item.mask & need) !== need || !begins(item.starts, ws)) return missed;
     }
     let total = 0;
     const marks = wantPositions ? [] : null;

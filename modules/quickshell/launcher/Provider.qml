@@ -243,7 +243,7 @@ Scope {
         let prepared = null;
         Object.defineProperty(made, "prepared", {
             enumerable: true,
-            get: () => prepared ?? (prepared = Fuzzy.prepare(made.name))
+            get: () => prepared ?? (prepared = Fuzzy.kept(made.name))
         });
         return made;
     }
