@@ -235,6 +235,7 @@ off.
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
+| offload builder | a builder elsewhere lent to the machine while its queue holds builds back, and given back once idle | remote builder | `nix-offload` |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |
 | chosen | of a setting's choices, the one it's at, whoever picked it: Joel, the charger or a profile | | |

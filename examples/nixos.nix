@@ -7,6 +7,7 @@ nixpkgs.lib.nixosSystem {
   modules = [
     core.nixosModules.workstation
     core.nixosModules.graphical
+    core.nixosModules.nix-offload
     (
       { lib, pkgs, ... }:
       {
@@ -22,8 +23,18 @@ nixpkgs.lib.nixosSystem {
         };
 
         users.users.joel.isNormalUser = true;
+        jitsusama.nix-offload.account = "joel";
         home-manager.users.joel = {
           home.stateVersion = "26.05";
+
+          # A builder lent while the machine queue holds builds back, made and
+          # given back by a helper of the machine's own.
+          imports = [ core.homeModules.nix-offload ];
+          jitsusama.nix-offload = {
+            helper = pkgs.writeShellScript "offload-helper" "exit 1";
+            prefix = "example-offload-";
+            rate = "0.68";
+          };
 
           # Setting one of core's options, the way a machine is meant to
           # change what core expects to vary.
