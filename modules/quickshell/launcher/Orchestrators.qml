@@ -6,17 +6,16 @@
 // those listening, those busy, those paused and those not running, each
 // saying so beside its name, as its session's presence says.
 //
-// Return or the right arrow steps into one, to what can be done to it:
-// Talk, which asks for words in the field and leaves them in its session's
-// steer inbox, as the person's own message; Open its window; Pause or
-// Resume; and Stop, which ends the run in progress and leaves it
-// listening. One not running offers Start a session on its quest instead.
-// What's written is a file renamed into the inbox, so its session takes it
-// whole; nothing waits on it here, and nothing is read for a key.
+// One running is its session, drawn as every session is (Agents.qml,
+// SessionRow.js): Return goes to its window, and stepping in gives its acts,
+// Talk, Pause or Resume and Stop, each left in its steer inbox
+// (Sessions.qml), then what's known of it. One not running resumes where
+// it left off instead.
 //
-// After its actions come the talks Joel has had with it, newest first, as
-// its session writes what became of each (the harness's talk files, one a
-// talk, under the inbox's replies): his words, and beside them how it went,
+// After those come the talks Joel has had with a session, newest first, as
+// it writes what became of each (the harness's talk files, one a talk,
+// under the inbox's replies), read here for every session running and
+// every orchestrator listed: his words, and beside them how it went,
 // in one word that changes in place (delivered, reading, replying,
 // replied, not delivered). The right arrow reads one: his words, how it
 // went, and the reply below. The newest 20 are read, and watched while the
@@ -45,7 +44,7 @@ Provider {
     property var lastSessions: ({})
 
     readonly property string harness: Sessions.state
-    readonly property string inboxes: `${harness}/steer`
+    readonly property string inboxes: Sessions.inboxes
 
     // How each stands, in the order they're listed: what only Joel can
     // move first (collection-order.md under the launcher's quest).
@@ -85,8 +84,26 @@ Provider {
         return `${words[stands] ?? stands}${step}`;
     }
 
+    // Another provider, by its name, as Agents finds its own.
+    function source(name) {
+        return (provider.launcher?.sources ?? []).find(other => other.settings.name === name)
+            ?? null;
+    }
+
     function made(one, stands) {
         const presence = Sessions.present[one.address] ?? null;
+        // A running one is its session, the one row a session is wherever
+        // it shows (SessionRow.js): its acts, its drawer and what's inside are
+        // Agents' own, under the orchestrator's name.
+        const session = stands === "off" ? null : sessionOf(one.address);
+        const own = session ? source("agents")?.made(session) ?? null : null;
+        if (own)
+            return Object.assign(own, {
+                key: `orchestrator:${one.address}`,
+                name: one.short || one.title || one.address,
+                glyph: Theme.glyph[stands === "waiting" ? "waitsOnJoel" : "agent"],
+                stands: stands
+            });
         const row = member({
             key: `orchestrator:${one.address}`,
             verb: "open",
@@ -117,24 +134,13 @@ Provider {
         }, fields));
     }
 
+    // A closed one's only act is to resume it; a running one's are its
+    // session's, as made() gives them, and one whose session isn't found
+    // yet offers its talks alone.
     function verbs(one, stands) {
         if (stands === "off")
             return [act("resume", { run: () => provider.start(one) })];
-        const session = sessionOf(one.address);
-        const rows = [act("talk", {
-            ask: Words.of("verb:orchestrator:talk").ask ?? "",
-            chip: one.short || one.address,
-            state: () => provider.told,
-            given: words => provider.talk(one, words)
-        })];
-        if (session)
-            rows.push(act("open", { run: () => Sessions.goTo(session) }));
-        rows.push(stands === "paused"
-            ? act("resume", { run: () => provider.steer(one, { act: "resume" }) })
-            : act("pause", { run: () => provider.steer(one, { act: "pause" }) }));
-        if (stands === "busy")
-            rows.push(act("stop", { run: () => provider.steer(one, { act: "stop" }) }));
-        return rows.concat(talksOf(one.address));
+        return talksOf(one.address);
     }
 
     // Each talk with an orchestrator, by its address, newest first, as
@@ -198,7 +204,10 @@ Provider {
         return talk.stage === "reading" && talk.after !== "" ? `${words}, ${talk.after}` : words;
     }
 
-    function talksOf(address) {
+    // A session's talks, by its address in either case, as Agents' rows and
+    // an orchestrator's show them.
+    function talksOf(asked) {
+        const address = String(asked).toUpperCase();
         return (talks[address] ?? []).filter(talk => talk.words !== "").map(talk => thing({
             key: `talk:${address}:${talk.id}`,
             verb: "read",
@@ -218,7 +227,7 @@ Provider {
     // A talk read: his words, how it went, and what came of it, each a row
     // Return copies, the reply below the rows.
     function talkRows(address, id) {
-        const talk = (talks[address] ?? []).find(one => one.id === id);
+        const talk = (talks[String(address).toUpperCase()] ?? []).find(one => one.id === id);
         if (!talk)
             return [];
         const row = (key, side, copy) => copyRow({
@@ -236,31 +245,16 @@ Provider {
         ].filter(one => one !== null);
     }
 
-    // What the foot says once words have gone.
-    property string told: ""
     // How many times the launcher has opened, so the talks are listed
     // again each time.
     property int looked: 0
 
-    function talk(one, words) {
-        const text = words.trim();
-        if (text === "")
-            return;
-        // An id opens a talk its session writes what became of.
-        steer(one, { text: text, id: `talk-${Date.now()}` });
-        told = (Words.of("orchestrators").said ?? {}).sent?.replace("{name}", one.short
-            || one.address) ?? "";
-    }
-
-    // Leaves a steer in its session's inbox, under a name it skips until
-    // it's whole.
-    function steer(one, fields) {
-        const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
-        const body = JSON.stringify(Object.assign({ at: new Date().toISOString(), from: "joel" },
-            fields));
-        Niri.spawn(["sh", "-c",
-            'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
-            "steer", `${inboxes}/${one.address.toUpperCase()}`, name, body]);
+    // Whose talks are read: every orchestrator listed and every session
+    // running, each once.
+    readonly property var talking: {
+        const all = listed.map(one => String(one.address ?? "").toUpperCase())
+            .concat(Sessions.running.map(session => String(session.address).toUpperCase()));
+        return all.filter((address, at) => address !== "" && all.indexOf(address) === at);
     }
 
     // Each orchestrator not running as a row whose Return starts its
@@ -317,13 +311,13 @@ Provider {
     // Each orchestrator's talks: its replies folder listed, and its newest
     // files read and watched.
     Instantiator {
-        model: provider.listed
+        model: provider.talking
 
         delegate: Scope {
             id: inbox
 
             required property var modelData
-            readonly property string address: String(modelData.address ?? "").toUpperCase()
+            readonly property string address: String(modelData)
             property var newest: []
 
             FolderListModel {

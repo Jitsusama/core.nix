@@ -183,7 +183,7 @@ Provider {
             hue: "action",
             stays: true,
             run: () => {
-                source.talk(one, carried(question, answered));
+                Sessions.talk(one.address, carried(question, answered));
                 launcher.goTo({ trail: ["collection:agents", "collection:orchestrators", row.key],
                     spot: "" });
             }
