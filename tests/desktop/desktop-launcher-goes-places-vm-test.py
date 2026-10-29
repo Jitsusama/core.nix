@@ -3808,6 +3808,34 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 
 
+def test_a_wants_notice_goes_to_the_session_through_the_shell(desktop: Desktop) -> None:
+    """A want's notice, taken by Super+N, goes to the session as the launcher's Go To does.
+
+    Its Return asks the shell, which finds the session by its address, so one on another
+    machine is joined from here the same way.
+    """
+    machine = desktop.machine
+    desktop.pi_session()
+    desktop.as_account(
+        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
+    )
+    since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    question = {"kind": "question", "since": since, "said": "Which way now?"}
+    try:
+        with desktop.told("shows card A quest of its own & whole asks you"):
+            desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+        with desktop.told("keys notices"):
+            machine.send_key("meta_l-n")
+        with desktop.told("lets notices go"):
+            machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
+            timeout=dt.timedelta(seconds=10),
+        )
+    finally:
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:
     """A waiting notice goes, read, once its item can't be done now any more."""
     machine = desktop.machine

@@ -507,7 +507,9 @@ Singleton {
     }
 
     // A want new to this shell is said once as a notice from pi, whose
-    // Return goes to the session's window (pi-wants-you, home.nix), unless
+    // Return goes to the session as Go To does, back through `sessions`
+    // below, so one on another machine is joined from here (pi-wants-you,
+    // home.nix), unless
     // Joel is in that window already, and one that stood before the shell
     // began isn't, since the margin's mark says it. Each is known by its
     // session, when it began and what it said, and kept known: a presence
@@ -531,7 +533,7 @@ Singleton {
             const window = session.window ? String(session.window.id) : "";
             if (window === String(Niri.current) || (since < began))
                 continue;
-            Niri.spawn(["pi-wants-you", window, known,
+            Niri.spawn(["pi-wants-you", session.address, known,
                 `${session.title} ${wanted(session.presence.wants)}`,
                 plain(session.presence.wants.said ?? "")]);
             // Softly, and never while notices are held.
@@ -557,6 +559,20 @@ Singleton {
                     notice.dismiss();
                 }
             }
+        }
+    }
+
+    // Go To for what's outside the shell, as a want's notice: the session
+    // by an address it answers to, if it still runs.
+    IpcHandler {
+        target: "sessions"
+
+        function goTo(address: string): void {
+            const upper = address.toUpperCase();
+            const session = root.running.find(one => (one.presence?.addresses ?? [one.address])
+                .some(each => String(each).toUpperCase() === upper));
+            if (session)
+                root.goTo(session);
         }
     }
 
