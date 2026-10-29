@@ -314,8 +314,9 @@
     programs write git's settings and the declared ones still win
   '';
   google-opens-its-links = ''
-    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages open
-    in a window of their own, any other link in the browser, and what isn't a link nowhere
+    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages,
+    documents included, open in a window of their own, any other link in the browser, and what
+    isn't a link nowhere
   '';
   google-passes-clippy = ''
     clippy finds nothing in google or its tests
