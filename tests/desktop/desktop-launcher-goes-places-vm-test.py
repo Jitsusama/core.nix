@@ -2212,6 +2212,7 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     machine.send_key("ret")
     machine.wait_until_succeeds(f"test -f {kept}", timeout=dt.timedelta(seconds=30))
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
     def save_a_copy() -> None:
         """Press Save a Copy on the menu, and wait for the picker, in Downloads, naming it."""
         into_the_menu()
