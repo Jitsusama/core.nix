@@ -766,6 +766,14 @@
     shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and
     leftovers after three quiet seconds
   '';
+  slack-finds-who-it-knows = ''
+    slack-people says who Slack knows by an email address, and one it knows nobody by, asking each
+    address once with the harness's sign-in and only ever looking up, and asks nobody once Slack
+    refuses the sign-in or with none at all
+  '';
+  slack-passes-clippy = ''
+    clippy finds nothing in slack-people or its tests
+  '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';

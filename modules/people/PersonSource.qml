@@ -23,7 +23,9 @@
 // it reaches them, and `recent` the things it has with them lately, each
 // drawn by that thing's own row (Mail.row, Calendar.row), never one of
 // its own. `woken` is asked each time the launcher opens, for a source
-// that only follows what it knows while someone might look.
+// that only follows what it knows while someone might look. A source
+// that learns its acts for someone only once asked, as Slack's looks
+// them up, says `learned`, so a person Joel is inside is made again.
 import QtQuick
 
 QtObject {
@@ -31,6 +33,8 @@ QtObject {
     property var settings: ({})
     property var people: []
     property var stands: ({})
+
+    signal learned
 
     function acts(person, provider) {
         return [];

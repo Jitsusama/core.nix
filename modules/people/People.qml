@@ -41,7 +41,11 @@ Provider {
                 console.error(`People's ${listed.name} couldn't load: ${file.errorString()}`);
                 continue;
             }
-            made.push(file.createObject(provider, { settings: listed }));
+            const source = file.createObject(provider, { settings: listed });
+            // Someone's acts learned later, as Slack's are, make the person
+            // Joel is inside again, found by a search or listed.
+            source.learned.connect(() => provider.changed());
+            made.push(source);
         }
         sources = made;
     }

@@ -903,6 +903,7 @@ gather (
     ./modules/session-backup/checks.nix
     ./modules/shaper/checks.nix
     ./modules/signing/checks.nix
+    ./modules/slack/checks.nix
     ./modules/slices/checks.nix
     ./modules/spend-watch/checks.nix
     ./modules/sudo/checks.nix
