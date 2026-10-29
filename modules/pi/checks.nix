@@ -190,10 +190,34 @@
           homeRealm = "home";
         }
       );
+      # An account naming pi-claude's realm, with or without joining it.
+      naming =
+        joins:
+        account (
+          workstation.extendModules {
+            modules = [
+              {
+                home-manager.users.someone.jitsusama = {
+                  mycelium.realm = "home";
+                  mycelium.alsoJoins = lib.optionalAttrs joins { other = { }; };
+                  pi.claude.realm = "other";
+                };
+              }
+            ];
+          }
+        );
+      refused =
+        home:
+        lib.any (
+          check: !check.assertion && lib.hasInfix "jitsusama.pi.claude.realm" check.message
+        ) home.assertions;
     in
     assert lib.assertMsg (lib.any (
       package: lib.getName package == "pi-claude"
     ) home.home.packages) "An account with pi doesn't get pi-claude.";
+    assert lib.assertMsg (
+      refused (naming false) && !refused (naming true)
+    ) "pi-claude's realm isn't held to a further realm the machine joins.";
     pkgs.runCommandLocal "pi-claude-keeps-to-the-plan" { } ''
       ${lib.getExe pkgs.bash} ${../../tests/pi-claude-keeps-to-the-plan.sh} ${program} \
         ${lib.getExe claude} ${onOwnLogin} ${inOther}
