@@ -374,6 +374,16 @@ accepts, and the driver logs "Applying Bluetooth SAR Rev2" and "PPAG-BT:
 Enabled (Mode 3)" as it sends them. What the limits change in range wasn't
 measured: nothing here can measure transmit power.
 
+### Bluetooth's Wake
+
+The Bluetooth controller is on PCI (`8086:e476`, `btintel_pcie`), and its
+wakeup was off: the driver answers the kernel's question of whether it may
+wake the machine with `device_may_wakeup()`, and nothing ever says it may.
+So a paired mouse or keyboard couldn't wake the laptop from s2idle, though
+BlueZ allows both to. The bluetooth module turns that wakeup on for every
+PCI controller of Bluetooth's class, `0x0d1100`, as it does for USB ones.
+A wake by one has yet to be watched.
+
 ### The Speaker Tuning
 
 Dell voices the speakers with a Waves tuning of its own, on top of the
