@@ -273,6 +273,9 @@ pub struct Direction {
     thin_most: f64,
     thin_least: f64,
     thin_last: Option<f64>,
+    /// The best and the peak it had when the call now running began, which
+    /// it has again once the call ends.
+    before_call: Option<(u64, u64)>,
 }
 
 /// The share of the most a thin direction has carried that it must still
@@ -302,11 +305,39 @@ impl Direction {
             thin_most: 0.0,
             thin_least: f64::INFINITY,
             thin_last: None,
+            before_call: None,
         }
     }
 
     fn set(&mut self, rate: f64) {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
+    }
+
+    /// A call or a screen share begins: what it learns of the connection
+    /// is for its length.
+    fn call_began(&mut self) {
+        self.before_call = Some((self.best, self.peak));
+    }
+
+    /// The call ends, and what was cut for it goes with it. Joel chose the
+    /// call over the rate only while it runs: through one, the air's late
+    /// pings beside requests that came and went took a download from 50
+    /// Mbit/s to 9, and with the best it had learned there, a busy
+    /// download had climbed back only to 36 a minute after. So the best
+    /// and the peak are what they were before it, or more, and a rate
+    /// under the floor they give is back at the floor, as a cut outside a
+    /// call would leave it.
+    fn call_ended(&mut self, s: &Settings) {
+        let Some((best, peak)) = self.before_call.take() else {
+            return;
+        };
+        self.best = self.best.max(best);
+        self.peak = self.peak.max(peak);
+        let floor = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+        self.held = self.held.max(floor);
+        if self.rate < floor {
+            self.set(float(floor));
+        }
     }
 
     /// Holds this direction under a new most the link carries, as when a
@@ -456,9 +487,9 @@ impl Direction {
     /// carried, is over the connection. Busy against so high a rate it
     /// never is, so the floor's own rule above never comes of it. At a
     /// hotel on 27 October the floor held a download at 47.5 Mbit/s while
-    /// the connection carried
-    /// about 10, and its queue built in the router, where nothing is
-    /// sorted, so every session's requests waited behind Nix's fetches.
+    /// the connection carried about 10, and its queue built in the router,
+    /// where nothing is sorted, so every session's requests waited behind
+    /// Nix's fetches.
     /// The queue came and went there, built for about a second at a time
     /// with about two and a half between, and the download carried the
     /// same tenth of a megabit in every spell.
@@ -466,8 +497,8 @@ impl Direction {
     /// A queue built for `floored_s` in all, its spells each within
     /// `thin_gap_s` of the last, is the connection's own, not the air's,
     /// and while it builds the connection carries no more than came
-    /// through. So the
-    /// held rate comes down to a cut under the most that did, and the rate
+    /// through. So the held rate comes down to a cut under the most that
+    /// did, and the rate
     /// under that by as much as the queue is deep, as a cut's does. The
     /// best comes down so the floor sits at that rate: a floor at the held
     /// rate let the next cut put the rate back there, and a queue of
@@ -477,13 +508,27 @@ impl Direction {
     /// back on the way, so one for pings the air made late costs a climb.
     /// Only a direction carrying under half its rate counts, and only
     /// while it carries about the same from step to step, as a full
-    /// connection does: on Wi-Fi the air makes pings late a second of every three
-    /// while a direction carries more than that, or carries what comes
-    /// and goes, and the floor is there so that no cut comes of it. A
-    /// spell held back here says the connection isn't thin; one carrying
-    /// under the least it may be held to says nothing of the connection.
-    /// Gives whether it cut.
-    fn thin(&mut self, s: &Settings, now: f64, carried: f64, held_here: bool, drain: f64) -> bool {
+    /// connection does: on Wi-Fi the air makes pings late a second of
+    /// every three while a direction carries more than that, or carries
+    /// what comes and goes, and the floor is there so that no cut comes of
+    /// it. While real-time traffic flows, though, Joel chose the call over
+    /// the rate, and a connection shared with others is never steady: at a
+    /// hotel on 28 October the download's share swung by half from spell
+    /// to spell while the floor held it at 130 Mbit/s on a connection
+    /// carrying about 50. Then any thin spell counts, and a cut for the
+    /// air's pings costs the call nothing and the rate a climb. A spell
+    /// held back here says the connection isn't thin; one carrying under
+    /// the least it may be held to says nothing of the connection. Gives
+    /// whether it cut.
+    fn thin(
+        &mut self,
+        s: &Settings,
+        now: f64,
+        carried: f64,
+        held_here: bool,
+        drain: f64,
+        live: bool,
+    ) -> bool {
         if s.least_of_best <= 0.0 || carried < float(self.bounds.min) {
             return false;
         }
@@ -491,7 +536,8 @@ impl Direction {
         let thin =
             !held_here && carried < float(self.rate) * s.loaded && whole(carried * s.cut) < least;
         let gone = self.thin_last.is_some_and(|at| now - at > s.thin_gap_s);
-        let steady = carried >= self.thin_most * STEADY && carried * STEADY <= self.thin_least;
+        let steady =
+            live || carried >= self.thin_most * STEADY && carried * STEADY <= self.thin_least;
         if !thin || gone || !steady {
             self.thin_for = 0.0;
             self.thin_most = 0.0;
@@ -591,6 +637,8 @@ pub struct Controller {
     /// When a download last arrived faster than its rate while the
     /// connection built a queue.
     held_at: Option<f64>,
+    /// Whether real-time traffic flowed at the last step.
+    was_live: bool,
 }
 
 /// One step's climb, from a direction's rate and what it held.
@@ -633,6 +681,7 @@ impl Controller {
             cut_alone: None,
             cut_in_spell: [false; 2],
             held_at: None,
+            was_live: false,
         }
     }
 
@@ -692,9 +741,25 @@ impl Controller {
         all
     }
 
+    /// Tells each direction when a call or a screen share begins or ends.
+    fn follow_calls(&mut self) {
+        if self.live == self.was_live {
+            return;
+        }
+        for dir in [&mut self.up, &mut self.down] {
+            if self.live {
+                dir.call_began();
+            } else {
+                dir.call_ended(&self.settings);
+            }
+        }
+        self.was_live = self.live;
+    }
+
     /// One step, given what each direction carried since the last, in
     /// kbit/s, at `now` seconds. Returns what it decided.
     pub fn step(&mut self, now: f64, sent: f64, received: f64) -> State {
+        self.follow_calls();
         let mut s = self.settings.clone();
         if self.live {
             s.least_of_best = s.least_of_best.min(s.least_of_best_live);
@@ -761,7 +826,7 @@ impl Controller {
                 .enumerate()
             {
                 dir.pinned(&s, now, carried, filling[i]);
-                cuts[i] |= dir.thin(&s, now, carried, held_here[i], drain);
+                cuts[i] |= dir.thin(&s, now, carried, held_here[i], drain, self.live);
             }
             if cuts[0] || cuts[1] {
                 self.cut_in_spell[0] |= cuts[0];
@@ -1377,6 +1442,85 @@ mod tests {
         assert!(live < 30.0, "{live} ms while live, against {held}");
         // It gives up little of the connection for it.
         assert!(rate >= 8_800, "{rate}");
+    }
+
+    /// Downloads into a hotel's connection of about 40 Mbit/s shared with
+    /// other guests, so what reaches this machine swings between 25 and 55
+    /// from moment to moment, under a best of 137.3 whose floor is far
+    /// over it, while the agents' requests keep the upload at two thirds
+    /// of its rate. The router's queue holds a tenth of a second, as the
+    /// hotel's did on 28 October. Gives the share of the last minute its
+    /// queue stood over 30 ms, and the most the download was held to in
+    /// it. No rate keeps that queue away: one under every dip would leave
+    /// half the connection unused.
+    fn a_shared_connection(live: bool) -> (f64, u64) {
+        let mut c = wi_fi(13_900);
+        c.live = live;
+        c.down.best = 137_300;
+        c.down.peak = 137_300;
+        c.down.held = 130_400;
+        c.down.rate = 130_400;
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut queue_kbit, mut most) = (0.0_f64, 0.0_f64, 0);
+        let (mut steps, mut queued) = (0_u32, 0_u32);
+        while at < 240.0 {
+            let share = 40_000.0 + 15_000.0 * (at * 1.7).sin() * (at * 0.23).cos();
+            let offered = float(c.down.rate) * 1.05;
+            queue_kbit = (queue_kbit + (offered - share) * 0.2).clamp(0.0, share * 0.1);
+            let received = if queue_kbit > 0.0 { share } else { offered };
+            let delay = queue_kbit / share * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            c.step(at, 9_000.0, received);
+            if at > 180.0 {
+                steps += 1;
+                queued += u32::from(delay > 30.0);
+                most = most.max(c.down.rate);
+            }
+        }
+        (f64::from(queued) / f64::from(steps), most)
+    }
+
+    #[test]
+    fn while_real_time_flows_a_shared_connection_s_download_is_followed_down() {
+        // At a hotel on 28 October a download held at 130.4 Mbit/s filled
+        // a connection carrying about 50, its share swinging by half as
+        // the other guests' came and went, and the pings past the router
+        // went from 30 ms to 95 at their slowest twentieth. A call's
+        // packets wait behind that queue, and none of it is sorted here.
+        // Outside a call the floor keeps the download's whole rate, as
+        // Joel chose, and the queue stands.
+        let (held, _) = a_shared_connection(false);
+        let (live, most) = a_shared_connection(true);
+        assert!(held > 0.9, "queued {held} of the minute at the floor");
+        assert!(live < 0.5, "queued {live} of the minute while live");
+        assert!(most <= 60_000, "{most}");
+    }
+
+    #[test]
+    fn a_download_cut_in_a_call_for_the_air_s_pings_comes_back_after_it() {
+        // Through a call, pings late for the air's sake a second of every
+        // three while requests come and go may follow the download down.
+        // Once the call ends and a download fills a quiet connection, its
+        // rate comes back.
+        let mut c = wi_fi(10_000);
+        c.live = true;
+        pings(&mut c, 20.0, 6);
+        let mut at = 0.0_f64;
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            let asked = 6_000.0 + 5_000.0 * (at * 0.9).sin();
+            c.step(at, 500.0, asked);
+        }
+        c.live = false;
+        while at < 240.0 {
+            pings(&mut c, 20.0, 3);
+            at += 0.2;
+            c.step(at, 500.0, float(c.down.rate));
+        }
+        assert!(c.down.rate >= 47_500, "{}", c.down.rate);
     }
 
     #[test]
