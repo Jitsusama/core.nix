@@ -315,7 +315,9 @@ def test_a_camera_video_shows_as_recording_and_captures_stop_recording_stops_it(
     camera = Camera(desktop)
     machine = desktop.machine
     state = "/run/user/1000/camera-recording.json"
-    videos = int(machine.succeed(f"ls {camera.videos}/*.mp4 2>/dev/null | wc -l"))
+    # None yet counts as none, as when this runs alone, before the camera
+    # has made one.
+    videos = int(machine.succeed(f"(ls {camera.videos}/*.mp4 2>/dev/null || true) | wc -l"))
 
     def marked(rest: str) -> bool:
         return any(glyph["mark"] == "recording" for glyph in json.loads(rest))
@@ -366,7 +368,8 @@ def test_a_recording_already_running_says_how_long_it_has_run(desktop: Desktop) 
         return int(desktop.as_account(f"ps -o etimes= -p {recorder}"))
 
     def length(shown: Json) -> int | None:
-        found = [RECORDING.match(thing["reads"]) for thing in shown["things"]]
+        # A row whose recording ended stays in place, gone, as Now keeps it.
+        found = [RECORDING.match(thing["reads"]) for thing in shown["things"] if not thing["gone"]]
         each = [one for one in found if one is not None]
         return int(each[0][1]) * 60 + int(each[0][2]) if each else None
 
