@@ -74,6 +74,8 @@ function details(mail, untitled) {
 
 // A reply is said to be one by its subject, as mail clients write it.
 const REPLIED = /^re:/i;
+// Gmail, where a new message is written in a window of its own.
+const COMPOSE = "https://mail.google.com/mail/u/0/";
 
 // Where a reply to it is written: a new message in Mail to who sent it,
 // its subject marked a reply once, as Gmail's own link to compose takes
@@ -83,8 +85,9 @@ function replying(mail) {
         return "";
     }
     const subject = REPLIED.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
-    return "https://mail.google.com/mail/u/0/?view=cm&fs=1"
-        + `&to=${encodeURIComponent(mail.address)}&su=${encodeURIComponent(subject)}`;
+    const asked = [["view", "cm"], ["fs", "1"], ["to", mail.address], ["su", subject]];
+    return `${COMPOSE}?${asked.map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+        .join("&")}`;
 }
 
 // The line that asks the program to mark mail read, or to archive it.
