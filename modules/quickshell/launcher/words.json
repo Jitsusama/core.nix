@@ -4722,6 +4722,25 @@
       "glyph": "option"
     },
     {
+      "id": "file-chooser:marked",
+      "in": "path:file",
+      "name": "Marked",
+      "verb": "mark",
+      "glyph": "marked",
+      "states": {
+        "marked": {
+          "verb": "unmark"
+        }
+      }
+    },
+    {
+      "id": "verb:file-chooser:marked",
+      "in": "path:folder",
+      "name": "Open the Marked",
+      "verb": "open",
+      "glyph": "marked"
+    },
+    {
       "id": "verb:float",
       "in": "windows",
       "name": "Float",

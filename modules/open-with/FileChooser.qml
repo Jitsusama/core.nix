@@ -11,7 +11,10 @@
 // each drawn as every file and folder is (Files.qml); then the program's
 // filters and its choices, apart again. What's hidden shows once a "." is
 // typed. Opening, Return on a file picks it, by the program's own word for
-// it; asked for a folder, each folder leads with Open This Folder. Saving,
+// it; where several may be opened, Return marks it instead, and Open the
+// Marked, leading every folder from the start, opens every file marked,
+// wherever each was; asked for a folder, each folder leads with Open This
+// Folder, one folder picked though the program could take several. Saving,
 // each folder leads with the name the program gave, and what's typed names
 // it instead; a name already there steps in to Replace It, the one ask.
 // Escape, or closing the launcher, picks nothing.
@@ -59,6 +62,10 @@ Provider {
     property var picked: ({})
     // The files opened lately, newest first, each once.
     property var lately: []
+    // Where several files may be opened at once, each file is a switch,
+    // Marked, and these are the ones marked, in the order they were.
+    readonly property bool several: request.multiple === true && mode === "open" && !folders
+    property var marked: []
     // Each kind of file by how it's named, and the kinds each is one of.
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
@@ -127,7 +134,8 @@ Provider {
         // A file the name given is already, which it leads with, isn't
         // listed again below.
         const naming = saving && path !== "/" ? savingRow(path, request.name ?? "") : null;
-        return apart([(naming ? [naming] : []).concat(path === start ? recent(path) : []),
+        return apart([several ? [markedLead()] : [],
+            (naming ? [naming] : []).concat(path === start ? recent(path) : []),
             own.filter(row => row.key !== naming?.key), options()]);
     }
 
@@ -183,11 +191,73 @@ Provider {
         return keys.length > 0 ? keys[keys.length - 1].slice("folder:".length) : "";
     }
 
-    // A file's row: opened by Return, or, saving, stepped into to Replace It.
+    // A file's row: opened by Return, or, saving, stepped into to Replace It,
+    // or, where several may be opened, marked by Return.
     function fileRow(path) {
         if (saving)
             return Files.file(path, thing, [act("verb:file-chooser:replace", path, [path])], () => []);
+        if (several)
+            return markingRow(path);
         return Files.file(path, thing, [act("verb:path:file:open", path, [path])]);
+    }
+
+    // A file where several may be opened: Return flips its Marked, the
+    // launcher staying, as Muted is flipped (Sound.qml), and the row wears
+    // the mark while it's marked; inside, Marked, then Open for it alone,
+    // then Copy the Path. How it stands is read as it's drawn, so the row
+    // says what Return just did without being made again (VKCF3Z,
+    // 2026-10-29).
+    function markingRow(path) {
+        const is = () => provider.marked.includes(path);
+        const flip = () => {
+            provider.marked = is() ? provider.marked.filter(each => each !== path)
+                : provider.marked.concat([path]);
+            provider.changed();
+        };
+        const verb = () => Words.verb("file-chooser:marked", is() ? "marked" : "");
+        const marking = thing({
+            key: `file-chooser:marked:${path}`,
+            name: Words.name("file-chooser:marked"),
+            glyph: Words.glyph("file-chooser:marked"),
+            hue: "action",
+            stays: true,
+            run: flip
+        });
+        Object.defineProperties(marking, {
+            verb: { enumerable: true, get: verb },
+            side: { enumerable: true, get: () => is() ? "yes" : "no" }
+        });
+        const row = Files.file(path, thing, [marking, act("verb:path:file:open", path, [path])]);
+        row.stays = true;
+        Object.defineProperties(row, {
+            verb: { enumerable: true, get: verb },
+            glyph: {
+                enumerable: true,
+                get: () => Words.glyph(is() ? "file-chooser:marked" : "path:file")
+            }
+        });
+        return row;
+    }
+
+    // The lead where several may be opened, there from the start so nothing
+    // slides when the first is marked: it says how many are, and Return
+    // opens them, or, with none, opens nothing and says why.
+    function markedLead() {
+        const count = marked.length;
+        return thing({
+            key: "file-chooser:marked",
+            name: accept !== "" ? `${accept} the Marked` : Words.name("verb:file-chooser:marked"),
+            verb: word("verb:file-chooser:marked"),
+            glyph: Words.glyph("verb:file-chooser:marked"),
+            hue: "action",
+            side: count === 0 ? "none" : `${count}`,
+            note: count === 0 ? "Nothing is marked yet: Return on a file marks it." : "",
+            stays: count === 0,
+            run: () => {
+                if (provider.marked.length > 0)
+                    provider.pick(provider.marked.slice());
+            }
+        });
     }
 
     function act(id, path, paths) {
@@ -434,6 +504,7 @@ Provider {
         shown = asking.reply;
         filterAt = -1;
         picked = {};
+        marked = [];
         stepped = [];
         lately = [];
         listing.running = (settings.recent ?? []).length > 0;

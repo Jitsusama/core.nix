@@ -1024,6 +1024,11 @@ in
     console = "~";
     means = "a choice a program offers about what it opens or saves";
   };
+  marked = {
+    glyph = nerd "f0e29";
+    console = "+";
+    means = "a file marked to be opened with others, and opening them";
+  };
   recent = {
     glyph = nerd "f02da";
     console = "r";
