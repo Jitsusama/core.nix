@@ -892,6 +892,7 @@ gather (
     ./modules/nftables/checks.nix
     ./modules/niri/checks.nix
     ./modules/nix-daemon/checks.nix
+    ./modules/nix-offload/checks.nix
     ./modules/onepassword/checks.nix
     ./modules/open-with/checks.nix
     ./modules/panel/checks.nix

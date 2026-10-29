@@ -588,6 +588,14 @@
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
   '';
+  nix-offload-decides-when = ''
+    a builder is asked for only for builds and VM checks held three minutes for room a builder
+    gives, its host is found from its line and its use from ssh, and a day's journal sums to its
+    hours and cost
+  '';
+  nix-offload-passes-clippy = ''
+    clippy finds nothing in nix-offload or its tests
+  '';
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
   '';
