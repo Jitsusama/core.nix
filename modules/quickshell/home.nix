@@ -1748,7 +1748,14 @@ in
       Install.WantedBy = [ "graphical-session.target" ];
     };
     systemd.user.services.clock-follows = lib.mkIf followsTheLaptop {
-      Unit.Description = "Moves the clock's zone to where the laptop is";
+      Unit = {
+        Description = "Moves the clock's zone to where the laptop is";
+        # Each run reads only the latest fix, so a burst of them is never
+        # too many. Five within ten seconds, systemd's limit, would fail
+        # the run and its path unit with it, and the clock would follow
+        # the laptop no more until the next login.
+        StartLimitIntervalSec = 0;
+      };
       Service = {
         Type = "oneshot";
         StateDirectory = "clock-follows";
