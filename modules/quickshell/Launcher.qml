@@ -93,9 +93,11 @@ Scope {
             });
             source.answered.connect(() => root.reanswer(source));
             source.changed.connect(() => root.refreshed(source));
+            source.thingsChanged.connect(root.stale);
             made.push(source);
         }
         sources = made;
+        freshen();
     }
 
     // What the first provider to answer makes of what's typed, or null.
@@ -443,10 +445,46 @@ Scope {
     // A desktop action another row stands for (Provider.qml's draws) is
     // found only as that row.
     readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
-    readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
-        .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
-        .concat(collections.map(named), categories)
-        .map(withSynonyms)
+    // Every source's things, then each collection and category, as one
+    // list: what the search finds from, and what keyed, partsOfRows and
+    // namedAs are made of. It's joined by hand rather than bound, since a
+    // binding subscribes to everything it reads however deep, and every
+    // source's things and each collection's note read live state (the
+    // machine queue, Niri's focus, the sessions): bound, it was made
+    // again whole on each of those with the launcher closed, two thirds
+    // of the shell's idle processor (2026-10-29). A change marks it
+    // stale; it's joined again as the launcher opens, before anything
+    // asks the catalogue from outside, and while open once the changes
+    // settle, in one pass, so home, stepping in and a refresh in place
+    // always read it whole.
+    property var choices: []
+    property bool choicesStale: true
+    // How many times it's been joined, for the check that a closed
+    // launcher joins nothing.
+    property int choicesJoined: 0
+    function stale() {
+        choicesStale = true;
+        if (open)
+            Qt.callLater(freshen);
+    }
+    function freshen() {
+        if (!choicesStale)
+            return;
+        choicesStale = false;
+        const out = [];
+        for (const source of sources) {
+            for (const row of source.things) {
+                if (!(row.key.startsWith("action:") && standIns.includes(row.name)))
+                    out.push(withSynonyms(row));
+            }
+        }
+        for (const source of collections)
+            out.push(withSynonyms(named(source)));
+        for (const row of categories)
+            out.push(withSynonyms(row));
+        choicesJoined += 1;
+        choices = out;
+    }
     readonly property var collections: sources.filter(source => source.collection)
 
     // Each row by its key, and the rows that are parts of another (`of`
@@ -631,6 +669,7 @@ Scope {
     readonly property string catalogueStep: "\u203a"
 
     function catalogue() {
+        freshen();
         const out = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
@@ -819,6 +858,7 @@ Scope {
     // ready, selected, for Joel's own Return. Said in the journal too, as
     // the launcher's picks are.
     function catalogueRun(id, words) {
+        freshen();
         const path = catalogued(id);
         if (path === null)
             return { error: `the launcher has nothing called ${id}` };
@@ -2070,12 +2110,18 @@ Scope {
     // each source heard is made again once, in the order heard.
     property var refreshing: []
     function refreshed(source) {
+        // A collection's note is read as the corpus is joined, so a source
+        // saying it changed marks it stale even when its things are the
+        // same.
+        choicesStale = true;
         if (refreshing.includes(source))
             return;
         refreshing = refreshing.concat([source]);
         Qt.callLater(refreshDue);
     }
     function refreshDue() {
+        if (open)
+            freshen();
         const due = refreshing;
         refreshing = [];
         for (const source of due)
@@ -2731,6 +2777,12 @@ Scope {
             return JSON.stringify(root.actless());
         }
 
+        // How many times the search's rows have been joined, for the check
+        // that a closed launcher makes nothing of what changes.
+        function joined(): string {
+            return String(root.choicesJoined);
+        }
+
         // How many frames the card has drawn since this was first asked,
         // for the check that a launcher left still draws nothing.
         function frames(): string {
@@ -2885,6 +2937,8 @@ Scope {
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
+                // What's said below its name, a collection's note.
+                note: row.note ?? "",
                 // The whole words drawn below the rows for it, if any.
                 reads: row.reads ?? "",
                 // What the drawer beside the rows shows of it, if anything.
@@ -2967,6 +3021,7 @@ Scope {
 
     onOpenChanged: {
         if (open) {
+            freshen();
             trials.opened();
             partingLater.stop();
             fading = false;
@@ -3007,6 +3062,7 @@ Scope {
         interval: 500
         onTriggered: {
             if (!root.open) {
+                root.freshen();
                 root.spots = root.spotsFrom();
                 root.spotsMade = true;
             }

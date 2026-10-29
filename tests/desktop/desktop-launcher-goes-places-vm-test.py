@@ -54,6 +54,45 @@ def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Des
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) -> None:
+    """Rewrite the machine queue's file while the launcher is closed, and see nothing rejoined.
+
+    On a busy machine the file is rewritten about twice a second, and the search's rows,
+    which read Queue's note, were made again whole on each write with the launcher closed:
+    two thirds of the shell's idle processor on 2026-10-29. Opened, the note says the
+    last write, so every write was heard, and the rows were joined only as it opened.
+    """
+    machine = desktop.machine
+    before = int(desktop.as_account("qs ipc call launcher joined"))
+    lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
+    for gib in range(11, 21):
+        lined["heartbeat"] = float(gib)
+        lined["machine"] = {"availableGib": gib}
+        desktop.as_account(
+            f"mkdir -p $XDG_RUNTIME_DIR/jobs && echo '{json.dumps(lined)}'"
+            " > $XDG_RUNTIME_DIR/jobs/.q && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+        )
+    try:
+        desktop.answer("queue")
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Queue"
+                and shown["selected"]["note"].startswith("20 GiB to spare")
+            )
+        )
+        # Once as it opened, once as Agents made its rows on opening, and one
+        # to spare for anything else the desktop changed meanwhile; made
+        # again on each write, it would be ten more.
+        joined = int(desktop.as_account("qs ipc call launcher joined")) - before
+        assert joined <= 3, f"the closed launcher joined its rows {joined} times"
+    finally:
+        machine.send_key("esc")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+        desktop.as_account("rm -f $XDG_RUNTIME_DIR/jobs/queue.json")
+
+
 # One walk, as its subtest was: each step starts where the last left it.
 def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  # noqa: PLR0915
     desktop: Desktop,
