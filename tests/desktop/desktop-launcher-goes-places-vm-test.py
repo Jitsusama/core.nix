@@ -336,12 +336,20 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Found from the root by its name, the right arrow lands inside it.
-    # The left arrow climbs back out the way it came, Lighthouse selected
-    # among the orchestrators, then onto what was typed.
+    # Found from the root by its name, it acts on Return, as any session
+    # found does, so the right arrow goes in a level at a time: among the
+    # orchestrators, Lighthouse selected, then inside it. The left arrow
+    # climbs back out the way it came, then onto what was typed.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
+    machine.send_key("right")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Orchestrators"]
+            and (shown["selected"] or {}).get("name") == "Lighthouse"
+        )
+    )
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -364,6 +372,8 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
+    machine.send_key("right")
+    desktop.launcher_until(lambda shown: shown["path"] == ["Orchestrators"])
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (

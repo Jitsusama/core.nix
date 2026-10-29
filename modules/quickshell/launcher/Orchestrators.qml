@@ -250,12 +250,17 @@ Provider {
     property int looked: 0
 
     // Whose talks are read: every orchestrator listed and every session
-    // running, each once.
-    readonly property var talking: {
-        const all = listed.map(one => String(one.address ?? "").toUpperCase())
+    // running, each once. Said as one line first, which changes only when
+    // who it is does: the sessions running are made again as any window
+    // changes, and a new list each time would make every inbox's readers
+    // again before their files had loaded.
+    readonly property string talkingSaid: {
+        const addresses = listed.map(one => String(one.address ?? "").toUpperCase())
             .concat(Sessions.running.map(session => String(session.address).toUpperCase()));
-        return all.filter((address, at) => address !== "" && all.indexOf(address) === at);
+        return addresses.filter((address, at) => address !== "" && addresses.indexOf(address)
+            === at).join(" ");
     }
+    readonly property var talking: talkingSaid === "" ? [] : talkingSaid.split(" ")
 
     // Each orchestrator not running as a row whose Return starts its
     // session, for Agents' Start a Session, named as its own row is.
