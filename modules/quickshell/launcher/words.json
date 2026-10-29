@@ -3937,6 +3937,20 @@
       "glyph": "joinCall"
     },
     {
+      "id": "verb:calendar:write",
+      "in": "calendar:meeting",
+      "name": "Write to the Guests",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:calendar:link",
+      "in": "calendar:meeting",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
       "id": "verb:calendar:open",
       "in": "calendar:meeting",
       "name": "Open in Calendar",

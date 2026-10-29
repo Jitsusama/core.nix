@@ -77,17 +77,33 @@ const REPLIED = /^re:/i;
 // Gmail, where a new message is written in a window of its own.
 const COMPOSE = "https://mail.google.com/mail/u/0/";
 
-// Where a reply to it is written: a new message in Mail to who sent it,
-// its subject marked a reply once, as Gmail's own link to compose takes
-// them. Nothing when it gives no address to reply to.
-function replying(mail) {
-    if ((mail.address ?? "") === "") {
+// Where a new message to these addresses is written, with this subject,
+// as Gmail's own link to compose takes them: each address once, joined
+// as Gmail joins them. Nothing when there's nobody to write to.
+function writing(to, subject) {
+    const addresses = [...new Set(to.filter(address => (address ?? "") !== ""))];
+    if (addresses.length === 0) {
         return "";
     }
-    const subject = REPLIED.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
-    const asked = [["view", "cm"], ["fs", "1"], ["to", mail.address], ["su", subject]];
+    const asked = [["view", "cm"], ["fs", "1"], ["to", addresses.join(",")], ["su", subject]];
     return `${COMPOSE}?${asked.map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
         .join("&")}`;
+}
+
+// Where a reply to it is written: a new message in Mail to who sent it,
+// its subject marked a reply once. Nothing when it gives no address to
+// reply to.
+function replying(mail) {
+    const subject = REPLIED.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
+    return writing([mail.address], subject);
+}
+
+// Where a mail to everyone else a meeting names is written, its holder
+// and each guest with an address, about the meeting by its title. Joel
+// isn't among them (src/calendar.rs leaves him out), and nor is a room.
+function toTheGuests(meeting) {
+    const guests = (meeting.guests ?? []).map(guest => guest.email);
+    return writing([meeting.organizer?.email].concat(guests), meeting.title ?? "");
 }
 
 // The line that asks the program to mark mail read or unread again, or to

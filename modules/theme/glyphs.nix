@@ -1126,6 +1126,11 @@ in
       "M10 0A2 2 0 0 1 10 4A2 2 0 0 1 10 0Z"
     ];
   };
+  writeMail = {
+    glyph = nerd "f0ee3";
+    console = "w";
+    means = "writing a new mail to someone, in Mail's own window";
+  };
   readMail = {
     glyph = nerd "f0ab1";
     console = "o";

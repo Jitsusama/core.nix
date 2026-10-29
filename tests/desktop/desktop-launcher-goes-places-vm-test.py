@@ -1513,6 +1513,46 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
+def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Desktop) -> None:
+    """A meeting writes to everyone else it names after joining, and copies its link last."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Writing to them comes straight after joining, and copying is last.
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
+    rows = desktop.showing()["rows"]
+    assert rows[rows.index("Join the Meeting") + 1] == "Write to the Guests", rows
+    desktop.down_to("Copy the Link")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "its call")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session('[ "$(wl-paste --no-newline)" = "https://meet.google.com/abc-defg-hij" ]'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Write to the Guests writes to Ada, who holds it, and Grace, asked,
+    # about the meeting by its title, in Mail's window.
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Write to the Guests" in shown["rows"])
+    desktop.down_to("Write to the Guests")
+    machine.send_key("ret")
+    writing = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+        "&to=ada%40example.com%2Cgrace%40example.com&su=Standup"
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(writing)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def now_rows(desktop: Desktop) -> Json:
     """Open the launcher on Now, and give what it shows once it holds Now's rows."""
     desktop.answer("now")

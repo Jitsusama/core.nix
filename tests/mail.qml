@@ -124,6 +124,22 @@ QtObject {
             Mail.replying(Object.assign({}, lunch, { subject: "RE: Lunch" })),
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com&su=RE%3A%20Lunch");
         check("no reply with no address", Mail.replying({ address: "", subject: "Lunch" }), "");
+        // Write to the Guests: its holder and every guest with an address,
+        // each once, about the meeting.
+        check("a mail to a meeting's guests", Mail.toTheGuests({
+            title: "Standup",
+            organizer: { name: "Ada Lovelace", email: "ada@example.com" },
+            guests: [{ name: "Grace Hopper", email: "grace@example.com" },
+                { name: "Room 4" }, { name: "Ada", email: "ada@example.com" }]
+        }), "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+            + "&to=ada%40example.com%2Cgrace%40example.com&su=Standup");
+        check("a mail to the guests of one Joel holds", Mail.toTheGuests({
+            title: "Design Review", organizer: null,
+            guests: [{ name: "Grace Hopper", email: "grace@example.com" }]
+        }), "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=grace%40example.com"
+            + "&su=Design%20Review");
+        check("no mail for a meeting with nobody else",
+            Mail.toTheGuests({ title: "Focus", organizer: null, guests: [] }), "");
 
         // Which windows are Mail's, as Chrome names them.
         const listed = [

@@ -20,6 +20,7 @@ import qs
 import Quickshell
 import QtQuick
 import "Calendar.js" as Said
+import "Mail.js" as Written
 
 Singleton {
     id: root
@@ -197,13 +198,16 @@ Singleton {
         return meeting.title !== "" ? meeting.title : Words.name("calendar:meeting", "untitled");
     }
 
-    // Its acts, in the one order every surface lists them: Join the
-    // Meeting when it has a call, See It, then, for an invitation, Answer
+    // Its acts, in the one order every surface lists them (VKCF3Z's
+    // design, RSCH-20261028-2NK1E5): Join the Meeting when it has a call,
+    // Write to the Guests when anyone else is asked, See It, then, for an
+    // invitation, Answer
     // Yes, Answer Maybe and Answer No, which keep the launcher, its foot
     // saying the answer once Google has it; for one Google lets him
     // change, Move the Meeting, to a later time or one typed there, which
     // asks once, naming who Google tells; and for one Joel holds, Cancel
-    // the Meeting, which asks once, since Google mails everyone asked.
+    // the Meeting, which asks once, since Google mails everyone asked; and
+    // last, as copying always is, Copy the Link.
     function acts(meeting, provider) {
         const rows = [];
         if (meeting.link)
@@ -216,6 +220,17 @@ Singleton {
                 later: true,
                 run: () => root.join(meeting)
             }));
+        const writing = Written.toTheGuests(meeting);
+        if (writing !== "")
+            rows.push(provider.thing({
+                key: "verb:calendar:write",
+                name: Words.name("verb:calendar:write"),
+                verb: Words.verb("verb:calendar:write"),
+                glyph: Words.glyph("verb:calendar:write"),
+                hue: "action",
+                later: true,
+                run: () => Niri.spawn(["google-opens", writing])
+            }));
         rows.push(root.seeing(meeting, provider));
         if (root.invited(meeting))
             for (const said of ["yes", "maybe", "no"])
@@ -224,7 +239,29 @@ Singleton {
             rows.push(root.moving(meeting, provider));
         if (meeting.holds)
             rows.push(root.cancelling(meeting, provider));
+        if (meeting.link || meeting.page)
+            rows.push(root.linking(meeting, provider));
         return rows;
+    }
+
+    // Copy the Link copies its call's link, what others join it by, or,
+    // for a meeting with no call, its page in Google Calendar; the side
+    // says which, as See It's facts do.
+    function linking(meeting, provider) {
+        const key = "verb:calendar:link";
+        const link = meeting.link || meeting.page;
+        return provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            side: meeting.link ? "its call" : "its page",
+            hue: "action",
+            now: true,
+            run: () => {
+                Quickshell.clipboardText = link;
+            }
+        });
     }
 
     // Move the Meeting steps in to the later times it offers, each saying
