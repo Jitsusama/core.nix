@@ -108,9 +108,15 @@ fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
         .collect()
 }
 
+/// Ada as the program says her, her zone with her.
+const ADA: &str = concat!(
+    r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
+    r#""zone":"Europe/London"}"#
+);
+
 fn slack(line: &str) -> String {
     if line.contains("email=ada%40example.com") {
-        r#"{"ok": true, "user": {"id": "U1", "team_id": "T1",
+        r#"{"ok": true, "user": {"id": "U1", "team_id": "T1", "tz": "Europe/London",
             "profile": {"real_name": "Ada Lovelace"}}}"#
             .into()
     } else {
@@ -130,9 +136,9 @@ fn each_address_is_asked_once_with_the_harness_sign_in_and_said_a_line() {
     assert_eq!(
         said,
         [
-            r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace"}"#,
-            r#"{"email":"nobody@example.com","id":null,"team":"T1","name":""}"#,
-            r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace"}"#,
+            ADA,
+            r#"{"email":"nobody@example.com","id":null,"team":"T1","name":"","zone":""}"#,
+            ADA,
         ]
     );
     let heard = stand_in.heard();

@@ -1768,14 +1768,19 @@ onLinux {
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../people/People.qml} launcher/People.qml
       cp ${../people/Person.js} launcher/Person.js
+      cp ${./launcher/Zones.js} launcher/Zones.js
+      cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../people/PersonSource.qml} PersonSource.qml
       cp ${../tuple/TupleSource.qml} launcher/people/tuple.qml
+      cp ${../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      # Here is UTC, so how far a zone is from here is known.
+      export TZ=UTC
       export FOLLOWED=${followed} STOP_TUPLE=${stop} PATH=${helper}/bin:${tuple}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork,unlink-close=0 /dev/null &

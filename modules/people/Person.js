@@ -88,7 +88,9 @@ function take(person, from, known, emails) {
     }
     for (const fact of known.facts ?? []) {
         if (fact.value && !person.facts.some(had => had.label === fact.label)) {
-            person.facts.push({ label: fact.label, value: fact.value });
+            person.facts.push(fact.zone
+                ? { label: fact.label, value: fact.value, zone: true }
+                : { label: fact.label, value: fact.value });
         }
     }
     person.recent = person.recent || Boolean(known.recent);
@@ -167,15 +169,25 @@ function ordered(persons, standOf, now) {
 }
 
 // Their details, as the launcher's drawer shows them beside their row:
-// their name, every address they have, and each fact a source gave.
-function details(person) {
+// their name, every address they have, and each fact a source gave. A
+// fact that's their time zone, by tzdata's name (`zone`), is followed by
+// the time there, as `there` tells it for that zone, when it can.
+function details(person, there = () => "") {
     const addresses = person.emails.length === 0 ? [] : [{
         label: person.emails.length === 1 ? "Email" : "Emails",
         value: person.emails.join(", ")
     }];
+    const facts = [];
+    for (const fact of person.facts) {
+        facts.push({ label: fact.label, value: fact.value });
+        const now = fact.zone ? there(fact.value) : "";
+        if (now !== "") {
+            facts.push({ label: "Time There", value: now });
+        }
+    }
     return {
         title: person.name,
-        facts: addresses.concat(person.facts),
+        facts: addresses.concat(facts),
         body: ""
     };
 }
