@@ -54,8 +54,15 @@
 # while the machine slept kept it held, and a laptop left running in a bag
 # ran flat (2026-10-28). systemd hears every change the kernel says,
 # including one said as the machine wakes.
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 let
+  mainsRules = ''
+    SUBSYSTEM=="power_supply", ATTR{type}=="Mains", TAG+="systemd", \
+      ENV{SYSTEMD_ALIAS}+="/sys/subsystem/power_supply/mains"
+    SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}!="1", \
+      ENV{SYSTEMD_READY}="0"
+  '';
+
   # The standard library alone, so it builds with rustc and no crates.
   keyboardLights = pkgs.runCommandCC "keyboard-lights" { nativeBuildInputs = [ pkgs.rustc ]; } ''
     mkdir -p $out/bin
@@ -85,12 +92,31 @@ in
 
   security.pam.services.quickshell = { };
 
-  services.udev.extraRules = ''
-    SUBSYSTEM=="power_supply", ATTR{type}=="Mains", TAG+="systemd", \
-      ENV{SYSTEMD_ALIAS}+="/sys/subsystem/power_supply/mains"
-    SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}!="1", \
-      ENV{SYSTEMD_READY}="0"
-  '';
+  services.udev.extraRules = mainsRules;
+
+  # A switch reloads udev's rules but says nothing to the devices already
+  # there, so the mains supply kept its record from before the rules and
+  # systemd never saw it, leaving Keep Awake unable to hold the lid until
+  # the charger was unplugged once (2026-10-28). The supplies are told
+  # again whenever the rules change, and at each boot once udev has told
+  # every device, as a change, which the rules read as they would a real
+  # one.
+  systemd.services.power-supplies-seen = {
+    description = "Tells udev's power supply rules of the supplies already there";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "systemd-udev-trigger.service" ];
+    restartTriggers = [ mainsRules ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = lib.escapeShellArgs [
+        (lib.getExe' pkgs.systemd "udevadm")
+        "trigger"
+        "--action=change"
+        "--subsystem-match=power_supply"
+      ];
+    };
+  };
 
   services.geoclue2 = {
     enable = true;
