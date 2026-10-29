@@ -260,13 +260,16 @@ def test_everything_the_machine_mounts_is_under_mnt(opened: QemuMachine) -> None
 
 def test_home_folders_are_copied_onto_a_drive(copied: QemuMachine) -> None:
     """The home folders are on the drive, named for the machine, its caches left behind."""
-    assert "can come out" in copied.succeed("cat /run/guide/copied")
+    record = copied.succeed("cat /run/guide/copied")
+    assert "can come out" in record, record
     # Unmounted by the guide, so it can come out whole.
     copied.fail("findmnt /run/guide/copy")
     drive = copied.succeed("lsblk -nrpo PATH,FSTYPE | awk '$2 == \"exfat\" {print $1}'").strip()
+    assert "its exfat partition" in record, f"copied onto another drive than {drive}: {record}"
     copied.succeed(f"mkdir -p /run/drive && mount -o ro {drive} /run/drive")
     folder = "/run/drive/machine home folders/alice"
-    assert copied.succeed(f"cat '{folder}/notes/today.txt'").strip() == "kept"
+    kept = copied.execute(f"cat '{folder}/notes/today.txt'")[1].strip()
+    assert kept == "kept", copied.succeed("find /run/drive -maxdepth 3") + record
     copied.fail(f"test -e '{folder}/.cache'")
     copied.succeed("umount /run/drive")
 
