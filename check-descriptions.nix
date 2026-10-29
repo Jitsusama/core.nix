@@ -623,7 +623,8 @@
     and it's named as being made until it stands or won't; it's given back once idle, at the
     deadline or once gone, with a wait after a failure;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
-    for the next start, which prices it to then or its own idle delete; standing builders are
+    for the next start, which takes it back before the deadline, keeping its price and idle
+    time, or gives it back, priced to then or its own idle delete; standing builders are
     named while they answer, and only to builds that ask for them, never in the file every
     build reads; a day's journal sums to its hours and cost, each at its price; and `there`
     sends a flake's build to the lent builder as one command, returning its status and
