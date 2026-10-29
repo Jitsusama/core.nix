@@ -939,6 +939,62 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
     )
 
 
+def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
+    """A name too long for its row slides to show its end while selected, and only it moves."""
+    machine = desktop.machine
+    title = (
+        "Edgewise notes, and a title that runs on well past the edge of the launcher row"
+        " as the title of a web page often does"
+    )
+    long = desktop.opened(title)
+    short = desktop.opened("Edgewise")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("edgewise")
+    desktop.launcher_until(lambda shown: {title, "Edgewise"} <= set(shown["rows"]))
+    desktop.down_to(title)
+
+    def selected_words() -> list[Json]:
+        """Give the words the selected row draws, with where each is."""
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return next(row["words"] for row in laid["rows"] if row["selected"])
+
+    def named(words: list[Json], name: str = title) -> Json:
+        # A row not selected draws its name with the letters typed brought
+        # forward, as styled text, so its tags are set aside.
+        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == name)
+
+    # Where every name starts, read from the short one, which never moves:
+    # the long one may already be on its way, selected as the rows came.
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    start = next(
+        named(row["words"], "Edgewise")["x"]
+        for row in laid["rows"]
+        if row["reads"].startswith("Edgewise \u00b7")
+    )
+    first = selected_words()
+    rest = sorted((word["text"], word["x"]) for word in first if word["text"] != title)
+
+    def slid(_: bool) -> bool:
+        words = selected_words()
+        # Whatever else the row says holds still while its name moves.
+        others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
+        assert others == rest, words
+        return int(named(words)["x"]) < int(start)
+
+    retry(slid, timeout=dt.timedelta(seconds=30))
+    # Given up by the selection, it's back at its start at once.
+    machine.send_key("up" if desktop.showing()["rows"].index(title) > 0 else "down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    row = next(row for row in laid["rows"] if row["reads"].startswith(title))
+    assert named(row["words"])["x"] == start, row
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close(long)
+    desktop.close(short)
+
+
 # Super+Tab opens the launcher on every other window, the one used last
 # first, so Return goes back to it, and a few letters find any other,
 # among two dozen as easily as among two, with nothing held down. The
@@ -2680,7 +2736,9 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     before = name_of(cast("Json", its_row("asks you")))
     assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
     # It goes back to work: "asks you" becomes the shorter "working", and
-    # the title is cut where it was rather than reaching one letter on.
+    # the title is cut where it was rather than reaching one letter on:
+    # its room holds, whether it's cut by an ellipsis or, selected, reads
+    # on inside it.
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
     retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
     after = name_of(cast("Json", its_row("working")))
@@ -2688,7 +2746,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
-    assert (after["x"], after["width"]) == (before["x"], before["width"]), (before, after)
+    assert after["room"] == before["room"], (before, after)
 
 
 # A window closed while Super+Tab shows it stays in its place, gone, until
