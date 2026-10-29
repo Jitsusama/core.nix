@@ -489,6 +489,10 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
+        # Return steps in, as on every device, its use first, so Return
+        # twice plays sound through it.
+        desktop.step_in("ret")
+        desktop.launcher_until(sound_selected("Play Sound Through It"))
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
