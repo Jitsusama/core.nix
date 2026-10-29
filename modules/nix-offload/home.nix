@@ -39,7 +39,10 @@ in
     rate = lib.mkOption {
       type = lib.types.strMatching "[0-9]+(\\.[0-9]{1,3})?";
       default = "0";
-      description = "A builder's price an hour, in dollars, for the day's line.";
+      description = ''
+        A builder's price an hour, in dollars, for the day's line, where the
+        helper says none for what it made (`price DOLLARS` before its line).
+      '';
     };
     firstStart = lib.mkOption {
       type = time;
