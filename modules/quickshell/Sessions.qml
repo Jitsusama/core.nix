@@ -42,9 +42,12 @@ Singleton {
 
     // Each session running: its window or null, its address, its quest's
     // title as its README gives it or its record's label does, its folder,
-    // its record, the kitty window it runs in or null, and the id its
-    // holder keeps it by or null. The one whose window was used last
-    // first, then those with none.
+    // its record, the kitty window it runs in or null, the id its holder
+    // keeps it by or null, the machine it runs on and whether that's this
+    // one, the words that attach it from here or null, whether its
+    // machine can be reached, and when it last changed. This machine's
+    // first, the one whose window was used last first, then those with
+    // none; then those elsewhere, the one that changed last first.
     readonly property var running: {
         Niri.revision;
         const when = window => {
@@ -63,9 +66,15 @@ Singleton {
                 folder: label.folder,
                 presence: presence,
                 kitty: record.kitty,
-                held: record.held
+                held: record.held,
+                machine: record.machine ?? machine,
+                here: record.here ?? true,
+                attach: record.attach ?? null,
+                reachable: record.reachable ?? true,
+                changed: record.changed ?? 0
             };
-        }).sort((a, b) => when(b.window) - when(a.window));
+        }).sort((a, b) => Number(b.here) - Number(a.here)
+            || (a.here ? when(b.window) - when(a.window) : b.changed - a.changed));
     }
     readonly property int working: running.filter(session => session.presence.busy).length
     // Those waiting on Joel, as each says while it does: { kind, since,
@@ -239,6 +248,10 @@ Singleton {
     // window of a session (Joel: "seeing multiples of the same thing
     // gives me executive dysfunction").
     function goTo(session) {
+        if (!session.here && !session.window && !session.kitty) {
+            joinElsewhere(session);
+            return;
+        }
         if (session.window)
             Niri.act({ FocusWindow: { id: session.window.id } });
         else if (session.kitty)
@@ -246,6 +259,28 @@ Singleton {
                 "--match", `id:${session.kitty.window}`]);
         else if (session.held)
             attach(session.held);
+    }
+
+    // Joins a session held on another machine in a new window here, by
+    // the words its node gives for it, run as given (Jitsusama/mycelium:
+    // `ssh -t -- <machine> mycelium ... attach <id>`), and only once: the
+    // node names the window it joins, which Go To then goes to. With no
+    // words, as when it isn't held or its machine is out of reach, nothing
+    // opens, and the caller is told why.
+    signal unjoined(var session)
+    function joinElsewhere(session) {
+        const words = session.attach;
+        const joining = `${session.machine}:${session.address}`;
+        if (!words || (Array.isArray(words) && words.length === 0)) {
+            unjoined(session);
+            return;
+        }
+        if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [joining]: Date.now() });
+        const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"].concat(command));
+        Report.say(`joined session ${session.address} on ${session.machine}`);
     }
 
     // Attaches what is held as `id` in a new window of the sessions' kitty.
@@ -378,13 +413,68 @@ Singleton {
     // Leaves a steer in a session's inbox, under a name it skips until it's
     // whole: `{ text, id }` talks to it, `{ act }` pauses, resumes or stops
     // it.
+    // A session on another machine is told through the realm's node,
+    // which carries it over the link to that machine's inbox; one here is
+    // told by its file alone, so it never waits on the node.
     function steer(address, fields) {
         const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
         const body = JSON.stringify(Object.assign({ at: new Date().toISOString(), from: "joel" },
             fields));
+        const upper = String(address).toUpperCase();
+        const session = running.find(one => String(one.address).toUpperCase() === upper);
+        if (session && !session.here) {
+            steering = steering.concat([{ session: session, body: body }]);
+            steerNext();
+            return;
+        }
         Niri.spawn(["sh", "-c",
             'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
             "steer", `${inboxes}/${String(address).toUpperCase()}`, name, body]);
+    }
+
+    // The steers waiting for the node, in turn, since one process answers
+    // one at a time; one it refuses, or that never reaches the node, is
+    // said by `unsteered` with the node's reason, or none.
+    property var steering: []
+    signal unsteered(var session, string why)
+    function steerNext() {
+        if (steerer.running || steerer.asked !== null || steering.length === 0)
+            return;
+        const next = steering[0];
+        steering = steering.slice(1);
+        steerer.asked = next;
+        steerer.command = ["sh", "-c", 'printf %s "$3" | mycelium --realm "$1" steer "$2"',
+            "steer", realm, String(next.session.address).toUpperCase(), next.body];
+        steerer.running = true;
+    }
+    function steered(asked, text) {
+        let answer = null;
+        try {
+            answer = JSON.parse(text.trim().split("\n").pop() ?? "");
+        } catch (error) {
+            answer = null;
+        }
+        if (answer?.Ok?.Steered) {
+            Report.say(`steered ${asked.session.address} on ${answer.Ok.Steered.machine}`);
+            return;
+        }
+        const why = typeof answer?.Err === "string" ? answer.Err : "";
+        Report.say(`unsteered ${asked.session.address}: ${why}`);
+        unsteered(asked.session, why);
+    }
+    Process {
+        id: steerer
+        property var asked: null
+        onRunningChanged: Qt.callLater(root.steerNext)
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const one = steerer.asked;
+                steerer.asked = null;
+                if (one)
+                    root.steered(one, text);
+                Qt.callLater(root.steerNext);
+            }
+        }
     }
 
     // Talks to a session: the words go with an id, so the session writes
@@ -510,6 +600,15 @@ Singleton {
         printErrors: false
     }
     readonly property string bootId: boot.text().trim()
+    // When this boot began, in milliseconds since the epoch, read once.
+    FileView {
+        id: uptime
+        path: "/proc/uptime"
+        blockLoading: true
+        printErrors: false
+    }
+    readonly property real bootedAt: Date.now()
+        - Number(uptime.text().split(" ")[0] || 0) * 1000
 
     // A process's own files, read when asked.
     FileView {
@@ -579,15 +678,34 @@ Singleton {
             for (const id of Object.keys(node).sort()) {
                 const session = node[id];
                 const presence = session.presence;
-                const running = session.state === "busy" || session.state === "idle";
+                const state = String(session.state ?? "").toLowerCase();
+                const out = state === "unreachable";
+                const running = state === "busy" || state === "idle" || out;
                 const kitty = kittyOfWindow(session.window);
-                if (session.machine === machine && running
-                        && presence && (presence.addresses ?? []).length > 0)
+                const here = (session.machine ?? machine) === machine;
+                const changed = Date.parse(session.at ?? "") || 0;
+                if (!running || !presence || (presence.addresses ?? []).length === 0)
+                    continue;
+                // One elsewhere the node last heard of before this boot is
+                // long gone, so a machine away for days leaves nothing.
+                if (here)
                     next.push({
                         file: id,
                         presence: presence,
                         kitty: session.held ? kitty : kitty ?? kittyOf(presence),
                         held: session.held ?? null
+                    });
+                else if (changed >= bootedAt)
+                    next.push({
+                        file: id,
+                        presence: presence,
+                        kitty: kitty,
+                        held: null,
+                        machine: String(session.machine),
+                        here: false,
+                        attach: out ? null : session.attach ?? null,
+                        reachable: !out,
+                        changed: changed
                     });
             }
         } else {
