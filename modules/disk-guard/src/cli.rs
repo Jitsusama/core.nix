@@ -639,6 +639,31 @@ fn clear(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
 /// How long a footprint may take the machine's guard to walk.
 const FOOTPRINT_TIMEOUT: Duration = Duration::from_mins(5);
 
+/// Asks the machine's guard for a footprint, asking again while it says
+/// another of the account's asks came a moment ago, or another footprint
+/// is being walked, until the walk's time is up.
+fn asked_again(
+    socket: &Path,
+    request: &crate::socket::Request,
+) -> io::Result<crate::socket::Reply> {
+    let until = std::time::Instant::now() + FOOTPRINT_TIMEOUT;
+    loop {
+        match crate::socket::ask(socket, request, FOOTPRINT_TIMEOUT) {
+            Err(error) if std::time::Instant::now() < until => {
+                let why = error.to_string();
+                if why == crate::socket::TOO_SOON {
+                    std::thread::sleep(crate::socket::ASK_EVERY);
+                } else if why == crate::socket::WALKING {
+                    std::thread::sleep(Duration::from_secs(1));
+                } else {
+                    return Err(error);
+                }
+            }
+            answered => return answered,
+        }
+    }
+}
+
 /// Says what the files under each of `paths` take on the disk, as the
 /// machine's guard reads it, beside what they hold once read.
 fn footprint(env: &Env, paths: &[PathBuf], out: &mut dyn Write) -> Done {
@@ -660,11 +685,10 @@ fn footprint(env: &Env, paths: &[PathBuf], out: &mut dyn Write) -> Done {
         };
         (code, format!("asking the machine's guard: {error}"))
     };
-    let found =
-        match crate::socket::ask(&env.system_socket, &request, FOOTPRINT_TIMEOUT).map_err(asked)? {
-            crate::socket::Reply::Footprints(found) if found.len() == paths.len() => found,
-            other => return Err((REFUSED, format!("the machine's guard answered {other:?}"))),
-        };
+    let found = match asked_again(&env.system_socket, &request).map_err(asked)? {
+        crate::socket::Reply::Footprints(found) if found.len() == paths.len() => found,
+        other => return Err((REFUSED, format!("the machine's guard answered {other:?}"))),
+    };
     let mut code = FINE;
     for (path, disk) in paths.iter().zip(found) {
         let files = size(crate::footprint::files(path));

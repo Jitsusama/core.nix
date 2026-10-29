@@ -678,3 +678,28 @@ fn a_footprint_says_what_the_disk_holds_beside_what_the_files_do() {
         )
     );
 }
+
+#[test]
+fn a_footprint_asked_too_soon_is_asked_again() {
+    use disk_guard::socket::{Reply, Server, TOO_SOON};
+    let (machine, _short) = with_short_socket();
+    let mut server = Server::bind(&machine.env.system_socket, Duration::ZERO).unwrap();
+    std::thread::spawn(move || {
+        // The account asked a moment ago, as a guard's plan beside its
+        // daemon does, so the first ask is refused and the next answered.
+        let mut replies = [
+            Reply::Error(TOO_SOON.to_owned()),
+            Reply::Footprints(vec![Some(4096)]),
+        ]
+        .into_iter();
+        for _ in 0..2 {
+            let reply = replies.next().unwrap();
+            server
+                .serve(&mut |_, _, responder| responder.send(&reply))
+                .unwrap();
+        }
+    });
+    let (code, out, err) = machine.run(&format!("footprint {}", machine.root.display()));
+    assert_eq!((code, err.as_str()), (0, ""), "{out}");
+    assert!(out.contains("4.0 KiB on the disk"), "{out}");
+}
