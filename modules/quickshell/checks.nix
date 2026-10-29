@@ -236,6 +236,10 @@ onLinux {
         '') files
       )}
       mv quickshell qs
+      # Slack's source for People is installed only where a machine brings
+      # Slack, as no example does, so it's read here as if one had.
+      mkdir -p qs/launcher/people
+      cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
