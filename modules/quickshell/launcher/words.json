@@ -3261,7 +3261,6 @@
     {
       "id": "people",
       "name": "People",
-      "term": "Programs/person",
       "noun": "people",
       "glyph": "people",
       "ask": "who?",

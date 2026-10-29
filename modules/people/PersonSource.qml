@@ -25,7 +25,8 @@
 // its own. `woken` is asked each time the launcher opens, for a source
 // that only follows what it knows while someone might look. A source
 // that learns its acts for someone only once asked, as Slack's looks
-// them up, says `learned`, so a person Joel is inside is made again.
+// them up, tells its `place` (People.qml's provider) it changed, so a
+// person Joel is inside is made again.
 import QtQuick
 
 QtObject {
@@ -33,8 +34,8 @@ QtObject {
     property var settings: ({})
     property var people: []
     property var stands: ({})
-
-    signal learned
+    // The People place it's a source of, given as it's made.
+    property var place: null
 
     function acts(person, provider) {
         return [];

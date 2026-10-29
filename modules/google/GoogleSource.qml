@@ -9,12 +9,11 @@
 // ask for, so who's known is only who's met or written.
 import qs
 import QtQuick
-import "Google.js" as Said
 
 PersonSource {
     id: source
 
-    people: Said.people(Calendar.meetings, Mail.mail)
+    people: Google.people(Calendar.meetings, Mail.mail)
 
     function acts(person, provider) {
         const address = person.emails[0] ?? "";
@@ -35,8 +34,8 @@ PersonSource {
 
     function recent(person, provider) {
         const meetings = Calendar.meetings.filter(meeting => meeting.end > Calendar.now
-            && Said.withThem(meeting, person.emails)).map(meeting => Calendar.row(meeting, provider));
-        const mail = Mail.mail.filter(one => Said.withThem(one, person.emails))
+            && Google.withThem(meeting, person.emails)).map(meeting => Calendar.row(meeting, provider));
+        const mail = Mail.mail.filter(one => Google.withThem(one, person.emails))
             .map(one => Mail.row(one, provider.thing));
         return meetings.concat(mail);
     }

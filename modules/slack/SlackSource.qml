@@ -3,7 +3,8 @@
 // sign-in's workspace. It knows nobody by itself, since a workspace has
 // thousands, so it adds no one to People and lists nobody; it only asks
 // slack-people, a reader that never sends anything, about a person once
-// Joel steps into them, and their act appears as Slack answers (learned).
+// Joel steps into them, and their act appears as Slack answers, the place
+// told it changed.
 // Slack refusing the sign-in stops the asking until the shell starts
 // again; with no sign-in, slack-people asks nothing.
 import qs
@@ -67,7 +68,7 @@ PersonSource {
         const left = Object.assign({}, asking);
         delete left[said.email];
         asking = left;
-        learned();
+        place?.changed();
     }
 
     Process {
