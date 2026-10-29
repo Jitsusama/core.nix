@@ -127,7 +127,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
             and shown["selected"]["verb"] == "switch"
         )
     )
-    # Each named first, as every part is, then what it says.
+    # Its acts in the order every session keeps them, then what's known of
+    # it, each named first, as every part is, then what it says.
+    assert desktop.showing()["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
+    desktop.down_to("Stop")
     for name, side in [
         ("Quest", r"QEST-20261022-TESTQA"),
         ("Address", r"TESTQA"),
@@ -323,14 +326,14 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
-    # A running one is its session, drawn as every session is: working, as
-    # its presence says, and its Return goes to its window.
+    # A running one is its session, drawn as every session is: its address
+    # and what it's doing beside it, and its Return goes to its window.
     desktop.as_account("qs ipc call launcher collection orchestrators")
     desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lighthouse"
-            and "working" in str(shown["selected"]["side"])
+            and str(shown["selected"]["side"]).startswith("TESTQA \u00b7 ")
             and shown["selected"]["verb"] == "switch"
         )
     )
@@ -2468,8 +2471,8 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
         desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
         timeout=dt.timedelta(seconds=10),
     )
-    # Run, it does what its Return does, opening it again where it's
-    # closed (#1069), so the launcher doesn't open on it.
+    # Run, it does what its Return does, going to its window or opening it
+    # again where it's closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
     assert lighthouse["kind"] == "action", lighthouse
     assert ran(lighthouse)["done"]

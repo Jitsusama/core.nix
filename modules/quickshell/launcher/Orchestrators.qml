@@ -97,12 +97,16 @@ Provider {
         // Agents' own, under the orchestrator's name.
         const session = stands === "off" ? null : sessionOf(one.address);
         const own = session ? source("agents")?.made(session) ?? null : null;
+        // Its talks with Joel follow what the session holds, as only an
+        // orchestrator's inbox keeps them.
+        const inside = own?.verbs ?? null;
         if (own)
             return Object.assign(own, {
                 key: `orchestrator:${one.address}`,
                 name: one.short || one.title || one.address,
                 glyph: Theme.glyph[stands === "waiting" ? "waitsOnJoel" : "agent"],
-                stands: stands
+                stands: stands,
+                verbs: () => (inside ? inside() : []).concat(provider.talksOf(one.address))
             });
         const row = member({
             key: `orchestrator:${one.address}`,
