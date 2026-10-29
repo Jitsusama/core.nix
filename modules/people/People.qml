@@ -138,19 +138,26 @@ Provider {
         const had = () => sources.reduce((rows, source) => rows.concat(source.recent(person,
             provider)), []);
         const count = had().length;
-        return count === 0 ? [] : [thing({
+        if (count === 0)
+            return [];
+        // Its rows are both what it holds and what it steps into, as a
+        // meeting's See It's are, so it steps in at any level: inside
+        // People, where a row's insides are its verbs, and inside a
+        // person found from the top, where they're its targets.
+        const row = thing({
             key: "person:recent",
             name: Words.name("person:recent"),
             verb: Words.verb("person:recent"),
             glyph: Words.glyph("person:recent"),
             hue: "person",
             count: String(count),
-            // Stepped into as a program's Recent is: its rows are the
-            // targets it asks which of.
-            ask: "which?",
             nested: true,
-            targets: had
-        })];
+            stays: true,
+            verbs: had,
+            targets: had,
+            run: () => provider.launcher?.enter(row)
+        });
+        return [row];
     }
 
     // Inside the place, what's typed finds anyone, as at the top.
