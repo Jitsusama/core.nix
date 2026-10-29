@@ -69,7 +69,6 @@
         &&
           where.marks == {
             branch = marks.branch.glyph;
-            unsaved = marks.unsaved.glyph;
             unpushed = marks.unpushed.glyph;
             more = marks.more.glyph;
             complete = marks.complete.glyph;
