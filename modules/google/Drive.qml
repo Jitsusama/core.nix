@@ -116,7 +116,6 @@ Singleton {
             return [];
         root.chooser = chooser;
         root.provider = provider;
-        root.opened = Date.now();
         root.shown = {};
         root.asked = {};
         return [chooser.folder({
@@ -131,16 +130,15 @@ Singleton {
     // The picker last opened, and the provider its document rows are made by.
     property var chooser: null
     property var provider: null
-    // When it opened, so a listing asked before then isn't taken for one
-    // asked since.
-    property double opened: 0
     // What each folder listed since it opened, by its id: { files } or
     // { failed }. The program keeps only the last listing, and the
     // launcher asks each held step again whenever one comes, so the folders
     // above the one stepped into answer from here rather than asking Drive
     // again.
     property var shown: ({})
-    // The folders asked for since it opened, each asked once.
+    // The folders asked for since it opened, each asked once: when it was
+    // asked while its listing is awaited, so one from before isn't taken
+    // for it, then false.
     property var asked: ({})
     // The files fetched for the picker that it still waits on, each
     // { file, since, done, failed }.
@@ -165,7 +163,7 @@ Singleton {
     // last arguments it was given.
     function listing(folder) {
         if (!(folder in root.asked)) {
-            root.asked[folder] = true;
+            root.asked[folder] = Date.now();
             Qt.callLater(() => Google.list(folder));
         }
         return root.shown[folder] ?? null;
@@ -213,19 +211,24 @@ Singleton {
         Google.download(file, "pick", "");
     }
 
-    // Each listing asked since the picker opened is kept as it comes, and
-    // the picker told, so it asks its steps again; each fetch it waits on
-    // is settled once the program says where the file is or why not, after
-    // this change, since the picker may close the launcher on it.
+    // Each folder awaited is kept once the program lists it, from among
+    // the folders it listed lately, so two asked together are each had,
+    // and the picker told, so it asks its steps again; each fetch it waits
+    // on is settled once the program says where the file is or why not,
+    // after this change, since the picker may close the launcher on it.
     function heard() {
-        const listed = Google.drive.listed;
-        if (root.chooser !== null && listed && listed.asked >= root.opened
-                && root.asked[listed.folder] === true) {
-            root.shown[listed.folder] = listed.failed ? { failed: listed.failed }
-                : { files: listed.files };
-            root.asked[listed.folder] = false;
-            Qt.callLater(root.chooser.changed);
+        let came = false;
+        for (const [folder, since] of Object.entries(root.asked)) {
+            const listed = since === false ? null : Google.listing(folder, since);
+            if (listed !== null) {
+                root.shown[folder] = listed.failed ? { failed: listed.failed }
+                    : { files: listed.files };
+                root.asked[folder] = false;
+                came = true;
+            }
         }
+        if (came && root.chooser !== null)
+            Qt.callLater(root.chooser.changed);
         const waiting = [];
         for (const each of root.fetches) {
             const stands = Google.account === "ready" ? Google.downloading(each.file, each.since)
