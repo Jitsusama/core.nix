@@ -1,11 +1,15 @@
 //! One run: every settled log not yet in the ledger, sealed and sent, then
-//! every old one Drive holds removed from the machine.
+//! the index's rows for the logs that have none, then every old one Drive
+//! holds removed from the machine.
 
 use std::fs::{self, File, TryLockError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
+use serde_json::Value;
+
 use crate::drive::{self, Drive, Fault};
+use crate::index::{self, Index};
 use crate::ledger::Ledger;
 use crate::names::{self, Settled};
 use crate::retry::{again, patiently};
@@ -28,6 +32,8 @@ pub struct Done {
     pub busy: Option<String>,
     /// Another run held the lock, so this one sent nothing.
     pub held: bool,
+    /// Logs given a row in the index, sent sealed as one object.
+    pub indexed: usize,
     /// Logs removed from the machine, since Drive holds them and they are
     /// older than the settings keep them for.
     pub removed: usize,
@@ -41,6 +47,10 @@ pub struct Done {
 /// there without failing, saying so in `busy`. Any other refusal fails
 /// the run at that log, since what stops one, such as the login, stops
 /// the rest. Either way the next run carries on from there.
+///
+/// Then, when the settings name an index and Drive wasn't busy, every log
+/// the ledger names that has no row yet, those sent before there was an
+/// index among them, gets one, and the rows go as one sealed object.
 ///
 /// Then, when the settings say how long to keep a log and Drive wasn't
 /// busy, each log last written longer ago than that is removed from the
@@ -73,11 +83,21 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
             })
             .collect()
     });
+    let mut index = config.index.as_deref().map(Index::open).transpose()?;
+    let unindexed = |ledger: &Ledger, index: &Index| -> Vec<&Settled> {
+        settled
+            .iter()
+            .filter(|log| ledger.has(&log.name) && !index.has(&log.name))
+            .collect()
+    };
     let mut done = Done {
         before: settled.len() - waiting.len(),
         ..Done::default()
     };
-    if waiting.is_empty() && old.is_empty() {
+    let backlog = index
+        .as_ref()
+        .is_some_and(|index| !unindexed(&ledger, index).is_empty());
+    if waiting.is_empty() && old.is_empty() && !backlog {
         return Ok(done);
     }
     let mut login = Login::read(&config.credentials, &config.token)?;
@@ -140,10 +160,82 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
             }
         }
     }
+    if done.busy.is_none()
+        && let Some(index) = index.as_mut()
+    {
+        let rows: Vec<Value> = unindexed(&ledger, &*index)
+            .into_iter()
+            // A log gone or unreadable since it was listed has no row to
+            // give; a later run reads it again if it is back.
+            .filter_map(|log| index::row(log, config.records.as_deref()).ok())
+            .collect();
+        if !rows.is_empty() {
+            let sending = Sending {
+                drive: &drive,
+                agent: &agent,
+                retries: &config.retries,
+                recipients: &recipients,
+                scratch: &scratch,
+            };
+            let name = format!("{}/index/{}.jsonl.zst.age", config.host, names::stamp(seconds(now)));
+            send_rows(&rows, &name, &sending, &mut login, &mut ledger, index, &mut done)?;
+        }
+    }
     if done.busy.is_none() {
         remove_held(&old, &drive, &mut login, &agent, &config.retries, &mut done)?;
     }
     Ok(done)
+}
+
+/// What sending one more object takes.
+struct Sending<'a> {
+    drive: &'a Drive<'a>,
+    agent: &'a ureq::Agent,
+    retries: &'a [Duration],
+    recipients: &'a Recipients,
+    scratch: &'a std::path::Path,
+}
+
+/// Send `rows` sealed as `name`, then keep them in the index and the
+/// object in the ledger. Drive busy through every retry leaves the rows
+/// for the next run, saying so in `busy`; a copy that landed even so is
+/// one more object holding the same rows, which mining reads as one.
+fn send_rows(
+    rows: &[Value],
+    name: &str,
+    sending: &Sending<'_>,
+    login: &mut Login,
+    ledger: &mut Ledger,
+    index: &mut Index,
+    done: &mut Done,
+) -> Result<(), String> {
+    let plain = sending.scratch.with_extension("rows");
+    let text: String = rows.iter().map(|row| format!("{row}\n")).collect();
+    fs::write(&plain, text).map_err(|why| format!("can't write {}: {why}", plain.display()))?;
+    let sealed = seal::seal(&plain, sending.scratch, sending.recipients);
+    let _ = fs::remove_file(&plain);
+    let bytes = sealed?;
+    let at = seconds(SystemTime::now());
+    let sent = patiently(sending.retries, || {
+        again(login, sending.agent, |token| {
+            sending.drive.create(token, name, sending.scratch, bytes)
+        })
+    });
+    // The sealed copy is scratch whether it went or not.
+    let _ = fs::remove_file(sending.scratch);
+    match sent {
+        Err(Fault::Busy(why)) => {
+            done.busy = Some(why);
+            Ok(())
+        }
+        Err(fault) => Err(fault.to_string()),
+        Ok(id) => {
+            ledger.record(name, &id, bytes, at)?;
+            index.keep(rows)?;
+            done.indexed = rows.len();
+            Ok(())
+        }
+    }
 }
 
 /// Remove each of `old` from the machine that Drive still finds by name and

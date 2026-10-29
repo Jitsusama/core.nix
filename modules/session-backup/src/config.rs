@@ -24,6 +24,11 @@ pub struct Config {
     /// The ledger of what was sent, and beside it the scratch a seal is
     /// written to before it goes.
     pub ledger: PathBuf,
+    /// The index of what each log sent holds, or `None` to send logs
+    /// without one.
+    pub index: Option<PathBuf>,
+    /// The harness's records of its sessions, which name each one's quest.
+    pub records: Option<PathBuf>,
     /// The Drive folder every object goes in, by its id.
     pub folder: String,
     /// The machine, as its objects are named.
@@ -99,6 +104,8 @@ impl Config {
         Ok(Config {
             sessions: text("sessions")?.into(),
             ledger: text("ledger")?.into(),
+            index: text("index").ok().map(PathBuf::from),
+            records: text("records").ok().map(PathBuf::from),
             folder: text("folder")?,
             host: text("host")?,
             recipients,

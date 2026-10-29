@@ -58,6 +58,9 @@ fn run(file: &Path, most: Option<usize>) -> Result<(), String> {
         done.found,
         done.before
     );
+    if done.indexed > 0 {
+        println!("indexed {} logs, their rows sent sealed", done.indexed);
+    }
     if done.removed > 0 {
         println!(
             "removed {} logs Drive holds that were past their {} days here ({} MB)",
