@@ -50,12 +50,15 @@ onLinux {
   # The arrows go to the previous and the next picture, and Home and End to
   # the first and the last, pressed as a keyboard presses them, with the
   # account's settings: swayimg's own arrows only move a picture larger
-  # than its window, which is how Joel was left unable to go on.
+  # than its window, which is how Joel was left unable to go on. The
+  # picture it opened with, and only that one, is said to the desktop's
+  # list of files opened lately, through recent-files, stood in here.
   swayimg-moves-by-its-keys =
     let
       home = account graphical;
       files = home.xdg.configFile;
       fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      recent-files = pkgs.writeShellScriptBin "recent-files" ''echo "$*" >> "$SAID"'';
     in
     pkgs.runCommandLocal "swayimg-moves-by-its-keys"
       {
@@ -65,10 +68,11 @@ onLinux {
           pkgs.cage
           pkgs.inotify-tools
           pkgs.wtype
+          recent-files
         ];
       }
       ''
-        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run SAID=$PWD/said-files
         export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
         export WLR_LIBINPUT_NO_DEVICES=1
         mkdir -p config/swayimg run

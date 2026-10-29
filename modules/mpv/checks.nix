@@ -44,4 +44,41 @@ onLinux {
       if grep -i 'error\|unknown\|not found\|invalid' said; then exit 1; fi
       touch $out
     '';
+
+  # mpv says each file it plays to the desktop's list of files opened
+  # lately, through recent-files where the desktop has it, stood in here,
+  # as it was given: a stream too, which recent-files passes over.
+  mpv-says-the-files-it-plays =
+    let
+      home = account graphical;
+      mpv = lib.findFirst (package: lib.hasPrefix "mpv" (lib.getName package)) null home.home.packages;
+      # It keeps what it was asked, so a call it refuses reads as it was.
+      recent-files = pkgs.writeShellScriptBin "recent-files" ''
+        [ "$1 $2" = "add mpv" ] || { echo "recent-files $*" >> "$SAID"; exit 1; }
+        shift 2
+        printf '%s\n' "$@" >> "$SAID"
+      '';
+      stream = "av://lavfi:testsrc=duration=1:size=64x64";
+    in
+    pkgs.runCommandLocal "mpv-says-the-files-it-plays"
+      {
+        nativeBuildInputs = [
+          mpv
+          recent-files
+          pkgs.ffmpeg-headless
+        ];
+      }
+      ''
+        export HOME=$PWD SAID=$PWD/said FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        mkdir -p mpv/scripts
+        cp ${home.xdg.configFile."mpv/scripts/recent-files.lua".source} mpv/scripts/recent-files.lua
+        for clip in one two; do
+          ffmpeg -loglevel error -f lavfi -i testsrc=duration=1:size=64x64 $clip.mkv
+        done
+        mpv --config-dir=$PWD/mpv --vo=null --ao=null --force-window=no --keep-open=no \
+          --frames=2 one.mkv '${stream}' two.mkv > played 2>&1 || { cat played; exit 1; }
+        told=$( [ -e said ] && tr '\n' ' ' < said || echo 'nothing said')
+        [ "$told" = "one.mkv ${stream} two.mkv " ] || { echo "mpv said: $told"; exit 1; }
+        touch $out
+      '';
 }

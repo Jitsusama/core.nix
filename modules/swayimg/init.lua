@@ -173,9 +173,28 @@ local function list(mode)
   swayimg.text.visible = true
 end
 
+-- The picture it was opened with is said to the desktop's list of files
+-- opened lately (open-with's recent-files, where the desktop has it), so
+-- swayimg's Recent in the launcher lists it. The pictures stepped through
+-- after it aren't, as GNOME's viewers leave them, or a folder looked
+-- through would fill Recent.
+local opened_said = false
+
+local function say_opened()
+  local image = swayimg.viewer.get_image()
+  if opened_said or not image then
+    return
+  end
+  opened_said = true
+  os.execute('command -v recent-files >/dev/null && recent-files add swayimg ' .. quoted(image.path) .. ' &')
+end
+
 for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do
   mode.on_image_change(function()
     shown(mode)
+    if mode == swayimg.viewer then
+      say_opened()
+    end
   end)
 end
 

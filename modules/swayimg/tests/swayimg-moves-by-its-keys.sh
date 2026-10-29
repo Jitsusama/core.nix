@@ -58,4 +58,12 @@ until_shown a.ppm "Home"
 
 wtype q
 wait "$viewer"
+
+# The picture it opened with was said to the desktop's list of files opened
+# lately, once, and none it was moved to after.
+told=$(if [ -e "$SAID" ]; then tr '\n' ' ' < "$SAID"; else echo 'nothing said'; fi)
+if [ "$told" != "add swayimg $PWD/a.ppm " ]; then
+  echo "swayimg said: $told"
+  exit 1
+fi
 touch moved

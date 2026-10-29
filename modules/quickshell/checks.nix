@@ -1324,6 +1324,11 @@ onLinux {
         Name=Browser
         Exec=browser %U
       '';
+      # A program whose entry's id isn't its command, as zathura's isn't.
+      viewer = entry "viewer" ''
+        Name=Viewer
+        Exec=viewer %U
+      '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
       mkdir -p launcher share/applications
@@ -1331,6 +1336,7 @@ onLinux {
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
       cp ${browser} share/applications/browser.desktop
+      cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -1357,9 +1363,11 @@ onLinux {
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
       # The list programs share, as recent-files prints it: the tester by
       # its name and by its id, one file twice, one of no program here, and
-      # one the radio was given, which can't open a file itself.
-      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\n' \
-        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" > $HOME/shared
+      # one the radio was given, which can't open a file itself, and one the
+      # viewer opened, named by its command as recent-files names it.
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\n' \
+        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" \
+        "$HOME/paper.pdf" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       # The browser's sites, as chrome-recent-sites prints them, each
       # reading saying which it is.
