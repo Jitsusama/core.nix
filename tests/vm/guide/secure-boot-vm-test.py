@@ -289,6 +289,50 @@ def test_generation_that_never_boots_is_passed_over(
     )
 
 
+FREED = "fwupd has a firmware update waiting"
+
+
+def policy_pcrs(machine: QemuMachine) -> list[int]:
+    """Give the PCRs the TPM's policy covers."""
+    policy = json.loads(machine.succeed("cat /var/lib/systemd/pcrlock.json"))
+    return sorted({value["pcr"] for value in policy["pcrValues"]})
+
+
+@pytest.fixture(scope="module")
+def updated(fallen_back: QemuMachine, values: dict[str, Any]) -> QemuMachine:
+    """Restart with BootNext on fwupd's entry, as fwupd leaves it with an update waiting."""
+    machine = fallen_back
+    # No boot so far had an update waiting, so none freed PCR 0.
+    machine.fail(f"journalctl -o cat -u tpm-follows-a-firmware-update --grep '{FREED}'")
+    # Named as fwupd names its own, and starting the signed systemd-boot
+    # rather than fwupd's program, so the restart boots the machine.
+    part = machine.succeed("lsblk -no PARTN /dev/disk/by-partlabel/system-boot").strip()
+    machine.succeed(
+        f"efibootmgr --create --disk /dev/vda --part {part} --label 'Linux Firmware Updater'"
+        " --loader '\\EFI\\systemd\\systemd-bootx64.efi'"
+    )
+    # Boot0004* Linux Firmware Updater<tab>HD(...)
+    listed = machine.succeed("efibootmgr").splitlines()
+    number = next(line[4:8] for line in listed if "* Linux Firmware Updater\t" in line)
+    machine.succeed(f"efibootmgr --bootnext {number}")
+    machine.reboot()
+    unlock(machine, values["pin"])
+    machine.wait_for_unit("multi-user.target")
+    machine.succeed(f"efibootmgr --bootnum {number} --delete-bootnum")
+    return machine
+
+
+def test_a_firmware_update_frees_pcr_0_until_the_next_boot(updated: QemuMachine) -> None:
+    """Shut down with a firmware update waiting, PCR 0 leaves the policy, and comes back."""
+    said = updated.succeed("journalctl -b -1 -o cat -u tpm-follows-a-firmware-update")
+    print(said)
+    assert FREED in said, said
+    # Opened with the PIN alone, then locked to this boot's firmware again.
+    print(updated.succeed("journalctl -b -o cat -u systemd-cryptsetup@system.service"))
+    updated.wait_for_unit("systemd-pcrlock-make-policy.service")
+    assert policy_pcrs(updated) == [0, 4, 7], policy_pcrs(updated)
+
+
 # Last, since the PCR it changes stays changed until the next boot, and
 # after every boot the others ask for.
 def test_tpm_refuses_once_a_measured_pcr_changes(
