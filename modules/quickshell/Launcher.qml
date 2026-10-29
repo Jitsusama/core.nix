@@ -3103,13 +3103,21 @@ Scope {
                             // what each is: those the same at the start and
                             // the end stay, and only those between are drawn
                             // afresh. Says whether they were all the same.
-                            function keep(keys) {
+                            // The rows go in between the removing and the
+                            // adding, so no kept row ever reads past the end
+                            // of the rows it reads: the removing leaves none
+                            // past the old ones' end, and the new ones reach
+                            // as far as what's left and what's added.
+                            function keep(rows) {
+                                const keys = rows.map(row => root.steadyId(row));
                                 let start = 0;
                                 while (start < rowsKept.count && start < keys.length
                                     && rowsKept.get(start).key === keys[start])
                                     start += 1;
-                                if (start === rowsKept.count && start === keys.length)
+                                if (start === rowsKept.count && start === keys.length) {
+                                    list.rows = rows;
                                     return true;
+                                }
                                 let was = rowsKept.count;
                                 let now = keys.length;
                                 while (was > start && now > start
@@ -3119,6 +3127,7 @@ Scope {
                                 }
                                 if (was > start)
                                     rowsKept.remove(start, was - start);
+                                list.rows = rows;
                                 for (let at = start; at < now; at += 1)
                                     rowsKept.insert(at, { key: keys[at] });
                                 return false;
@@ -3137,12 +3146,11 @@ Scope {
                             property bool settled: false
                             readonly property var shown: root.matches
                             property string typedWas: ""
-                            // The rows as the kept ones read them, set once
-                            // they're in line, so none reads past the end.
+                            // The rows as the kept ones read them, set by
+                            // keep partway through, so none reads past the end.
                             property var rows: []
                             onShownChanged: {
-                                const same = list.keep(root.matches.map(row => root.steadyId(row)));
-                                list.rows = root.matches;
+                                const same = list.keep(root.matches);
                                 // The same rows read again leave a glide under
                                 // way; a letter typed never glides, even onto
                                 // the same rows.
