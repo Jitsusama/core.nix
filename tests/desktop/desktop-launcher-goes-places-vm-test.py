@@ -1507,7 +1507,14 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.answer("now")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
-    desktop.type_in("time", selecting="Time")
+    # Now opens on the meeting, below the time.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
+    rows = cast("list[str]", desktop.showing()["rows"])
+    for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
+        machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
+        )
     desktop.launcher_until(
         lambda shown: (
             (shown.get("drawer") or {}).get("title") == "Time"

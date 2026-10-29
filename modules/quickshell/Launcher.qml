@@ -2749,7 +2749,9 @@ Scope {
         return !!row.drawer || (row.picture ?? "") !== "" || (row.reads ?? "") !== "";
     }
     property bool levelHasDrawer: false
-    readonly property bool drawerOut: open && held.length > 0 && levelHasDrawer
+    // Typed to nothing, it goes in rather than stay out empty or keep the
+    // last row's details.
+    readonly property bool drawerOut: open && held.length > 0 && levelHasDrawer && !!selected
     // A row with nothing more to show, in a level where the drawer is out,
     // shows its own name alone (VKCF3Z): never the last row's details, never
     // an empty slide-in, and never its note, which the foot already says.
