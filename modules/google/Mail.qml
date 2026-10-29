@@ -8,8 +8,9 @@ pragma ComponentBehavior: Bound
 // A piece of mail is one thing wherever the launcher shows it: `row`
 // gives its whole row, which the Mail place (Messages.qml), Now's mail
 // (NewMail.qml) and search all take as it is, with its acts in one order,
-// Open, Reply, Archive, Read (a switch), Attachments while it carries
-// any, and Copy the Link, and its details in the drawer.
+// Open, Reply, Reply All when it went to others too, Archive, Read (a
+// switch), Attachments while it carries any, and Copy the Link, and its
+// details in the drawer.
 //
 // Inside Attachments, each file is a row of its own, its kind and size
 // beside it and in the drawer. Return fetches it from Gmail, only then,
@@ -142,7 +143,9 @@ Singleton {
         });
         const listed = [act("verb:mail:open", () => root.open(mail))];
         if (Said.replying(mail) !== "")
-            listed.push(act("verb:mail:reply", () => root.reply(mail)));
+            listed.push(act("verb:mail:reply", () => root.reply(Said.replying(mail))));
+        if (Said.replyingAll(mail) !== "")
+            listed.push(act("verb:mail:replyAll", () => root.reply(Said.replyingAll(mail))));
         listed.push(tidying(mail, "archive", thing), reading(mail, thing));
         if ((mail.attachments ?? []).length > 0)
             listed.push(attaching(mail, thing));
@@ -288,8 +291,7 @@ Singleton {
 
     // A reply is written in a Mail window of its own, beside the mail it
     // answers, so neither closes the other.
-    function reply(mail) {
-        const link = Said.replying(mail);
+    function reply(link) {
         if (link !== "")
             Niri.spawn(["google-opens", link]);
     }

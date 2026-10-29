@@ -176,6 +176,16 @@ QtObject {
             Mail.replying(Object.assign({}, lunch, { subject: "RE: Lunch" })),
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com&su=RE%3A%20Lunch");
         check("no reply with no address", Mail.replying({ address: "", subject: "Lunch" }), "");
+        // Reply All: to who sent it, copied to everyone else, each once.
+        check("a reply to all, copied to the others", Mail.replyingAll(Object.assign({}, lunch,
+            { others: ["grace@example.com", "alan@example.com", "grace@example.com"] })),
+            "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
+                + "&cc=grace%40example.com%2Calan%40example.com"
+                + "&su=Re%3A%20Lunch%20%26%20a%20walk%3F");
+        check("no reply to all when it went to nobody else", [lunch,
+            Object.assign({}, lunch, { others: [] }),
+            { address: "", subject: "Lunch", others: ["grace@example.com"] }]
+            .map(Mail.replyingAll), ["", "", ""]);
         // Write to the Guests: its holder and every guest with an address,
         // each once, about the meeting.
         check("a mail to a meeting's guests", Mail.toTheGuests({
