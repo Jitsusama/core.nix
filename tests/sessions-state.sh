@@ -55,13 +55,18 @@ echo "$live" >"$state/live.pid"
 
 # What the last boot's end took away, as the harness keeps it: one whole,
 # one whose folder is gone since, one with no folder and one whose id a
-# shell would read.
+# shell would read; and two windows joined to sessions another machine
+# holds, one by its words as an argv and one by a line a shell would read.
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
   {"id":"s-given-back","address":"GIVENB","title":"Given Back","cwd":"/given-back","lostAt":1},
   {"id":"s-nowhere","address":"NOWHRE","title":"Nowhere","lostAt":1},
-  {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1}
+  {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1},
+  {"id":"s-far","address":"FARAWY","title":"Far","cwd":"/tmp","lostAt":"",
+   "machine":"lighthouse","attach":["ssh","-t","lighthouse","mycelium","attach","s-far"]},
+  {"id":"s-said","address":"SAIDSO","title":"Said","cwd":"/tmp","lostAt":"",
+   "machine":"lighthouse","attach":"ssh lighthouse mycelium attach s-said"}
 ]}
 EOF
 echo "$other" >"$state/other.pid"

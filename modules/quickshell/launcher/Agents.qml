@@ -306,7 +306,8 @@ Provider {
         const closed = one => thing({
             key: `agents:last-boot:${one.id}`,
             name: String(one.title || one.address || one.id),
-            side: homely(one.cwd),
+            // One held elsewhere says where, as a session there does.
+            side: one.machine !== undefined ? provider.elsewhere("on", one) : homely(one.cwd),
             verb: Words.verb("verb:agents:last-boot:one"),
             glyph: Theme.glyph.agent,
             hue: "program",

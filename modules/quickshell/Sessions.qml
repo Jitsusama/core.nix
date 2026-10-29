@@ -280,11 +280,19 @@ Singleton {
         }
         if (read === null || read.v !== 1 || !Array.isArray(read.sessions))
             return { boot: "", sessions: [] };
+        // One held on another machine is joined again by its words, given
+        // as an argv (the harness's #872); its folder is only where the
+        // window opens here, and may be unknown.
+        const elsewhere = one => typeof one.machine === "string" && one.machine !== ""
+            && typeof one.address === "string" && Array.isArray(one.attach)
+            && one.attach.length > 0 && one.attach.every(word => typeof word === "string")
+            && typeof one.cwd === "string" && (one.cwd === "" || one.cwd.startsWith("/"));
         return {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
                 && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
-                && typeof one.cwd === "string" && one.cwd.startsWith("/"))
+                && (one.machine === undefined
+                    ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
     }
 
@@ -312,12 +320,42 @@ Singleton {
     // opened, and `gone(cwd)` is told so the caller says so, since there's
     // no quest here to start afresh.
     function reopen(lost, gone) {
+        if (lost.machine !== undefined) {
+            rejoin(lost);
+            return;
+        }
         lookFor([lost.cwd], there => {
             if (there[0])
                 reopened(lost.id, lost.cwd);
             else
                 gone?.(lost.cwd, "");
         });
+    }
+
+    // A window the last boot had joined to a session another machine
+    // holds is joined again by its words, in its folder here when that's
+    // still there, or gone to if a window here has joined it since, never
+    // opened twice.
+    function rejoin(lost) {
+        const joined = running.find(one => !one.here && one.address === lost.address
+            && (one.window || one.kitty));
+        if (joined) {
+            goTo(joined);
+            return;
+        }
+        const joining = `${lost.machine}:${lost.address}`;
+        if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [joining]: Date.now() });
+        const open = there => {
+            Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"]
+                .concat(there ? ["--directory", lost.cwd] : [], lost.attach));
+            Report.say(`joined session ${lost.address} on ${lost.machine} again`);
+        };
+        if (lost.cwd === "")
+            open(false);
+        else
+            lookFor([lost.cwd], there => open(there[0]));
     }
 
     function putOffLastBoot() {

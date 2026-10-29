@@ -9,8 +9,9 @@ pragma ComponentBehavior: Bound
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
 // ends, takes its session with it. What an earlier boot's end took away
-// is offered whole, reopened held in its own folder, until put off; a
-// closed session resumes in its own folder, and one whose folder is gone
+// is offered whole, reopened held in its own folder, until put off, and a
+// window it had joined to a session another machine holds is joined again
+// by its words, once; a closed session resumes in its own folder, and one whose folder is gone
 // opens nowhere but its quest's start folder, never the home folder. A
 // machine's node that isn't listening as the shell starts, as when a
 // switch restarts it, is watched once it listens, however long after.
@@ -134,9 +135,11 @@ ShellRoot {
     // the quest's start folder, or nowhere when it has none.
     function lastBoot() {
         expect("only the whole ones of another boot",
-            Sessions.lastBoot.map(one => one.id).join(" ") === "s-before s-given-back",
+            Sessions.lastBoot.map(one => one.id).join(" ") === "s-before s-given-back s-far",
             JSON.stringify(Sessions.lastBoot));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
+        // One held elsewhere is joined again once, however often asked.
+        Sessions.reopen(Sessions.lastBoot[2], told("s-far"));
         Sessions.resume("s-kept", "QEST-KEPT", "/tmp", told("s-kept"));
         Sessions.resume("s-gone", "QEST-GONE", root.state, told("s-gone"));
         Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
@@ -145,7 +148,7 @@ ShellRoot {
     readonly property string kitty: "kitty -1 --instance-group pi-sessions --directory"
     function reopening() {
         const kitties = Niri.spawns.filter(command => command.startsWith("kitty "));
-        if (kitties.length < 3 || unopened.length < 3)
+        if (kitties.length < 4 || unopened.length < 3)
             return;
         // Held as every start is, by the realm's node where there is one.
         const opened = command => kitties.some(one => one.startsWith(command[0])
@@ -158,7 +161,10 @@ ShellRoot {
         expect("its folder gone, its quest started afresh in the quest's",
             opened([`${kitty} ${state} env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-GONE zsh -lic `, " pi"]),
             kitties.join("\n"));
-        expect("three opened, none in the home folder nor a gone one", kitties.length === 3
+        expect("one held elsewhere joined again by its words, in its folder here",
+            kitties.includes(`${kitty} /tmp ssh -t lighthouse mycelium attach s-far`),
+            kitties.join("\n"));
+        expect("four opened, none in the home folder nor a gone one", kitties.length === 4
             && !kitties.some(one => one.includes(`--directory ${Quickshell.env("HOME")} `)
                 || one.includes("given-back") || one.includes("QEST-NONE")),
             kitties.join("\n"));
