@@ -357,16 +357,17 @@ function radio(text) {
     };
 }
 
-// How long something's lasted, in days, hours and minutes, the largest two.
+// How long something's lasted, in days, hours and minutes, the largest two,
+// leaving out the smaller when it's none: "20 h", not "20 h 0 min".
 function lasted(seconds) {
     const days = Math.floor(seconds / DAY);
     const hours = Math.floor((seconds % DAY) / HOUR);
     const minutes = Math.floor((seconds % HOUR) / MINUTE);
     if (days > 0) {
-        return `${days} d ${hours} h`;
+        return hours > 0 ? `${days} d ${hours} h` : `${days} d`;
     }
     if (hours > 0) {
-        return `${hours} h ${minutes} min`;
+        return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
     }
     return minutes > 0 ? `${minutes} min` : "under a minute";
 }
