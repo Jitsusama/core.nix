@@ -45,13 +45,14 @@ Provider {
 
     // As the harness wrote them, or none before it has.
     property var listed: []
-    // Where each quest starts a session, and the last session it had, as
-    // the quest index says. Not named `starts`, which the launcher asks a
-    // source for as the function saying which row it opens on.
+    // Where each quest starts a session, as the quest index says. Not
+    // named `starts`, which the launcher asks a source for as the function
+    // saying which row it opens on.
     property var startFolders: ({})
-    property var lastSessions: ({})
-    // The session the harness names to resume each quest by, its most
-    // recently active whose folder is still there, where it names one.
+    // The session the quest index names to resume each quest by: its
+    // newest that was last on that quest, named only while its folder is
+    // there. Never the index's `sessions`, which can hold one long dead
+    // whose pid was used again (Joel's Aquifer orchestrator, 2026-10-29).
     property var resumable: ({})
 
     readonly property string harness: Sessions.state
@@ -322,7 +323,7 @@ Provider {
     }
 
     // A closed orchestrator resumed where it left off: the session the
-    // quest index names to resume, else its quest's last, in the folder
+    // quest index names to resume, in the folder
     // that session ran in (Joel, 2026-10-28: "i want to be able to easily
     // restart an orchestrator that is closed, continuing from where it
     // left off"); one with no session yet is started on its quest, in the
@@ -330,7 +331,7 @@ Provider {
     // own. When the session's folder is gone, it starts afresh in that
     // start folder, never the home folder, and a notice says so.
     function start(one) {
-        const last = resumable[one.quest] ?? lastSessions[one.quest];
+        const last = resumable[one.quest];
         if (!last) {
             Sessions.start(one.quest, startFolders[one.quest] ?? Sessions.home);
             return;
@@ -464,22 +465,17 @@ Provider {
         onLoaded: {
             try {
                 const out = {};
-                const last = {};
                 const resumes = {};
                 for (const quest of JSON.parse(text()).quests ?? []) {
                     if (quest.start)
                         out[quest.id] = quest.start;
-                    if ((quest.sessions ?? []).length > 0)
-                        last[quest.id] = quest.sessions[quest.sessions.length - 1];
                     if (typeof quest.resume?.id === "string")
                         resumes[quest.id] = quest.resume.id;
                 }
                 provider.startFolders = out;
-                provider.lastSessions = last;
                 provider.resumable = resumes;
             } catch (e) {
                 provider.startFolders = {};
-                provider.lastSessions = {};
                 provider.resumable = {};
             }
         }
