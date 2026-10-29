@@ -155,7 +155,7 @@ Provider {
             name: Words.name(session ? "verb:quest:switch" : "verb:quest:open"),
             glyph: Words.glyph(session ? "verb:quest:switch" : "verb:quest:open"),
             hue: "action",
-            note: choosing ? "here" : "",
+            note: choosing ? "this machine" : "",
             later: true,
             verbs: choosing ? () => provider.machines(quest) : null,
             run: () => provider.go(quest)
@@ -174,7 +174,8 @@ Provider {
     // where its Return starts one, then each other machine the realm
     // links, then Wherever It Fits, which the node places. One that can't
     // take a session now stays in its place, dimmed, its note saying why,
-    // and does nothing.
+    // and does nothing: a gone row says no key and its Return runs
+    // nothing (Launcher.qml's keysFor and run), though it keeps its run.
     function machines(quest) {
         const on = one => thing({
             key: `quest:${quest.id}:start:${one.name}`,

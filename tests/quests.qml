@@ -139,7 +139,8 @@ ShellRoot {
             ];
             Sessions.fits = "alpha";
             const start = prompt.verbs()[0];
-            expect("Start a Session says where Return starts one", start.note === "here", start.note);
+            expect("Start a Session says where Return starts one", start.note === "this machine",
+                start.note);
             const machines = start.verbs();
             expect("stepping into the machines, this one first, Wherever It Fits last",
                 names(machines) === "alpha, beta, Wherever It Fits", names(machines));

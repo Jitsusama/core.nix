@@ -116,7 +116,8 @@ Singleton {
     // every session unheld, which is said as it's read rather than silently.
     onRealmChanged: {
         if (realm !== "" && !holds)
-            console.log(`sessions: the realm file says "${realm}", which names no realm, so sessions start unheld`);
+            console.log(`sessions: the realm file says "${realm}", which names no realm, `
+                + "so sessions start unheld");
     }
     function held(command) {
         return holds ? `exec mycelium --realm ${realm} hold -- ${command}` : `exec ${command}`;
