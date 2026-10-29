@@ -215,6 +215,21 @@ driven on; the installed machine's steps come later.
   key file with a description, as ssh-tpm-keygen writes, so the guide
   takes its halves out itself (`observe::keyfile`). Any other refusal
   is a fault, and a key under another parent is taken as it stands.
+- **The keys on GitHub.** `guide github`, run as the account once it's
+  signed in and online (the installed guide runs at boot, before any
+  network), adds each key its modules mark with `github` in
+  `jitsusama.tpmKeys`, titled by the machine's name and the key's label,
+  or TPM for the login key (`src/github.rs`). It runs GitHub's device
+  sign-in itself with curl and gh's own OAuth app, so its screen says
+  where to type the code; the forms go on curl's standard input, never
+  its command line. Asking for the code and answering it are two steps,
+  so observing never touches the network, and the code waits in the
+  account's runtime folder until it's used or runs out. An answer not
+  approved yet blocks, and Return asks again, since a step has no sleep.
+  The token goes to `gh auth login --with-token` on its standard input,
+  so gh's git credential helper has it. A key whose type and key GitHub
+  already lists is left as it is. No VM has a GitHub, so only the unit
+  tests and a real machine prove it.
 - **The spares on the YubiKeys.** Then the installed guide keeps the
   login key's spare, a resident ed25519-sk key, on each YubiKey the
   stick enrolled, for the one account with
@@ -396,6 +411,7 @@ driven on; the installed machine's steps come later.
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
 | `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
+| `src/github.rs`       | an account's keys in the TPM added to GitHub after a sign-in on the phone |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a reinstall stick carries for one machine            |
@@ -410,6 +426,7 @@ driven on; the installed machine's steps come later.
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
 | `../../tests/vm/guide/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN, then written again for every machine whose bundle the person keeps |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
+| `tests/github.rs`     | the sign-in's code and token kept off command lines, and only missing keys added |
 | `../../tests/vm/guide/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
 | `../../tests/vm/guide/guide-one-stick.nix` | a stick signed for two machines, booted enforcing by each one's firmware and refused by a third's |
 | `../../tests/vm/guide/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
