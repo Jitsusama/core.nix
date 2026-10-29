@@ -27,6 +27,10 @@
 //! calls clean is kept by its commit the same way. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
 //!
+//! While nix-offload lends a builder, a build is sent to it as a command
+//! naming a commit origin has, and the builder fetches that commit,
+//! evaluates the checks and builds them itself (`there.rs` says why).
+//!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
 //! (`runs.rs` says what it holds).
@@ -34,9 +38,9 @@
 mod checks;
 mod pressure;
 mod runs;
+mod there;
 
 use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Instant;
@@ -204,13 +208,28 @@ fn compare(
         return Ok(ExitCode::SUCCESS);
     }
     let began = Instant::now();
+    if let Some(builder) = there::lent(&offload_dir()) {
+        match published() {
+            Ok(fetched) => {
+                let sent = builder.build(&fetched, system, &targets, &cache())?;
+                noted.built(targets.len(), began.elapsed(), sent.passed);
+                noted.lent(sent.bytes);
+                return Ok(if sent.passed {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                });
+            }
+            Err(why) => eprintln!("changed-checks: building here, since {why}"),
+        }
+    }
     // Each check is built from the derivation just evaluated, so no
     // evaluator runs beside the builds: one holds its whole heap until its
     // last build ends, 1.4 to 4 GiB through a VM test. A derivation the
     // store has collected since is built from the flake, as before.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
-        .args(where_to_build())
+        .args(standing())
         .args(
             targets
                 .iter()
@@ -237,32 +256,14 @@ fn offload_dir() -> PathBuf {
     env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from("/run/nix-offload"), PathBuf::from)
 }
 
-/// Where the checks are built. While a builder is lent, they're sent to
-/// its store whole: evaluated here, with only their derivations and
-/// sources crossing, and every input built or fetched there. The build
-/// hook's way would build their inputs here and copy them up, and the
-/// connection's upload can be slow. Otherwise they're built here, with the
-/// standing builders asked for where the machine has them. Those are
-/// never offered to every build, since they may be machines only public
-/// code may reach; core.nix's checks are public code with public inputs
-/// alone, which `stands-alone` holds, so they may go there.
-fn where_to_build() -> Vec<String> {
-    let dir = offload_dir();
-    let with_standing = dir.join("machines-with-standing");
-    let store = fs::read_to_string(dir.join("store")).unwrap_or_default();
-    if let Some(store) = store
-        .lines()
-        .next()
-        .filter(|store| !store.trim().is_empty())
-    {
-        eprintln!("changed-checks: building on the lent builder, {store}");
-        vec![
-            "--eval-store".to_owned(),
-            "auto".to_owned(),
-            "--store".to_owned(),
-            store.trim().to_owned(),
-        ]
-    } else if with_standing.exists() {
+/// What a build here asks for: the standing builders, where the machine
+/// has them. Those are never offered to every build, since they may be
+/// machines only public code may reach; core.nix's checks are public code
+/// with public inputs alone, which `stands-alone` holds, so they may go
+/// there.
+fn standing() -> Vec<String> {
+    let with_standing = offload_dir().join("machines-with-standing");
+    if with_standing.exists() {
         vec![
             "--builders".to_owned(),
             format!("@{}", with_standing.display()),
@@ -270,6 +271,27 @@ fn where_to_build() -> Vec<String> {
     } else {
         Vec::new()
     }
+}
+
+/// The flake a builder can fetch the working tree from by itself: its
+/// commit, from origin, when the tree is that commit and origin has it.
+/// Otherwise why not, since then only this machine has what's built.
+fn published() -> Result<String, String> {
+    let Some(commit) = clean_commit()? else {
+        return Err("the working tree differs from its commit".to_owned());
+    };
+    let short = commit.get(..12).unwrap_or(&commit);
+    let on = run(
+        "git",
+        &["branch", "-r", "--contains", &commit, "--list", "origin/*"],
+    )?;
+    if on.is_empty() {
+        return Err(format!(
+            "origin doesn't have {short}; push it to build there"
+        ));
+    }
+    let url = run("git", &["remote", "get-url", "origin"])?;
+    Ok(there::fetched(&url, &commit))
 }
 
 /// The working tree's commit, when nothing in it differs from the commit

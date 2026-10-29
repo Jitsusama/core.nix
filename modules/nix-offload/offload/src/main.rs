@@ -37,8 +37,9 @@
 //!   it, and stays running while it's there, holding the way to it. Before
 //!   that line it may print `price DOLLARS`, the hour's price of what it
 //!   made, since a fallback machine can cost more than `--rate`, and
-//!   `store URI`, the builder's store as this account reaches it, for a
-//!   build sent there whole, written to /run/nix-offload/store. It
+//!   `store URI`, the builder's store as this account reaches it, written
+//!   to /run/nix-offload/store, whose host, key and host key a build sent
+//!   there as a command is reached by. It
 //!   ends once the builder goes on its own, and gives the way up when told
 //!   to end (SIGTERM, to its whole process group). The seconds are counted
 //!   here, in the zone TZ names, so the helper needs no time zones of its
@@ -83,8 +84,8 @@ const MACHINES: &str = "/run/nix-offload/machines";
 /// `--builders @` it: never every build, since they may be machines only
 /// some work may reach.
 const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
-/// Where a build sent whole to the lent builder (`--store`) reads its
-/// store's URI, while one stands.
+/// Where a build sent to the lent builder as a command reads how to reach
+/// it, as its store's URI, while one stands.
 const STORE: &str = "/run/nix-offload/store";
 /// Where the machine queue reads the builder being made, to hold the
 /// builds it could take until Nix can see it.

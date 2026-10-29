@@ -163,6 +163,7 @@
   changed-checks-names-what-moved = ''
     changed-checks names a check added, changed, removed or broken by its derivation, fails on a
     broken one, builds those added and changed when asked, leaving out the VM tests with --no-vm,
+    sends a commit origin has to a lent builder to build by itself and anything else builds here,
     and evaluates a commit's checks once
   '';
   changed-checks-passes-clippy = ''
