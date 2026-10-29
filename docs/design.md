@@ -577,9 +577,9 @@ works the same way everywhere.
   called Caffeinate." so the new name is learned as it's used. A word
   may mean its own thing in another context, the crumbs saying which. A
   set is a plural noun ("Windows", "Quests"); an act is short, in
-  Title Case, saying what it does ("Lock", "Keep Awake", "Power
-  Saver", "Wi-Fi Off", "New Window", "Bring Here"), a switch saying what
-  it will do now. Implementation names are never shown or typed. An
+  Title Case, saying what it does ("Lock", "New Window", "Bring
+  Here"), and a switch is named for what it is ("Keep Awake", "Read"),
+  never for what it will do next. Implementation names are never shown or typed. An
   answer is asked by its term, or a part's name after its thing's
   ("battery health"). A word finds one thing at each strength (a name
   typed whole, an answer's question), or the vocabulary lists it as meant
@@ -596,13 +596,15 @@ works the same way everywhere.
   from anywhere by its own name. A program holds what controls it, the
   same for every program and each only while it applies, made as it's
   stepped into: first what can be done (Switch to the Window Used Last,
-  New Window, New Window Below, its other windows by title, its desktop
-  entry's own actions such as Chrome's New Incognito Window, and Quit,
-  asked once since a window may hold unsaved work), then Media while it
-  has a player (Play or Pause, Next, Previous, and what's playing), Sound
-  while it has a stream open (Mute or Unmute, Louder, Quieter, and its
-  volume as a bar), its Notifications, newest first, and any part of its
-  own, such as the theme. Next, Previous, Louder and Quieter keep the
+  New Window, New Window Below, and its desktop entry's own actions such
+  as Chrome's New Incognito Window), then its Recent, what it had open
+  lately, newest first, each the thing it is (a file, a folder, a site),
+  then its other windows by title, its Notifications, newest first, its
+  Shortcuts, any part of its own, such as the theme, and Quit, asked once
+  since a window may hold unsaved work. Media while it has a player
+  (Play or Pause, Next, Previous, and what's playing) and Sound while it
+  has a stream open (Mute or Unmute, Louder, Quieter, and its volume as a
+  bar) come last, since they come and go. Next, Previous, Louder and Quieter keep the
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.
   A setting is a part saying how it's set, its choices a step in, so a
@@ -616,6 +618,23 @@ works the same way everywhere.
   filled, so the left arrow climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
   Only what a thing reads or holds is found so, never what it does.
+- **Acts in one order.** Every kind of thing lists what's inside it in
+  the same order, so three anchors are all there is to learn: the top row
+  does it, what ends it comes near the bottom, and Copy is last. Between
+  them, what leaves the thing as it is comes before what changes it,
+  then who and where it's with (a mail's sender, a window's program),
+  then its parts, settings before readings; then what ends it (Quit,
+  Stop, Forget, Close), each asking once when it can't be taken back,
+  saying what it ends; then Copy. A switch is one row that keeps its name
+  as it flips, its note saying how it stands (Keep Awake, "on, lid shut
+  too"; a notice's Read, "no"), and a setting's two states are never
+  a place holding both. Return flips it and the launcher stays; one that
+  would cut off something in use asks once first ("Turn Bluetooth Off,
+  Disconnecting the Keychron"). A choice is said by its value alone
+  ("100%", "60 Hz", "Upright"), the setting it's for named in the path
+  above it, the one in use saying so. Rows that come and go, such as
+  Media, sit at the end of their group. A check walks every row to hold
+  the order.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,
@@ -634,17 +653,19 @@ works the same way everywhere.
   field, out at the top, to finish there. A command is the one row
   written as it's typed, in lowercase; every other row's name, and every
   step of the path, is in Title Case as the glossary sets it, and what an
-  empty list says is a sentence. The-launcher-means-one-thing-a-word holds the vocabulary to
-  it.
+  empty list says is a sentence, above the one act that fills it where
+  there is one ("No sessions running.", then Start a Session).
+  The-launcher-means-one-thing-a-word holds the vocabulary to it.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
   as rows come and go, and the list keeps the height it opened at, so the
   foot never jumps. Only what he types orders a list by rank: a list that
   changes while he looks at it (the agents starting and stopping work, a
   window renamed) refreshes in place, each row saying what it says now in
-  the order it's shown, a new one at the end and one gone taken out, the
-  selection on the same row, or where it was when that row went, and the
-  list scrolled where it was. A category held, as Agents in "ai", refreshes
+  the order it's shown, a new one at the end and one gone staying, dimmed
+  and saying so, until the list is opened again, so no row slides up
+  under the keys; the selection stays on the same row, and the list
+  scrolled where it was. A category held, as Agents in "ai", refreshes
   the same way. A collection says it changed only when what its rows show
   did, not each time what they're made from moves.
 - **Home is a few places.** With nothing typed, the launcher shows Now,
@@ -653,15 +674,20 @@ works the same way everywhere.
   seven rows in a card of eight, so home's shape never changes. Disk is a
   place in Machine, beside Processor, Memory and Heat, with Lag after it,
   since what slowed the desktop is one of them, and a disk filling
-  fast shows in Now. Now lists what wants Joel, then what reaches other
-  people, what's playing and the modes left on, by name within each, and
-  last its own rows: the time, the date, the weather and the next
-  meeting, with no Today to step into. Each says what it holds after its name,
-  muted, by its members' own names in the place's own order (Desktop:
-  "This Window, Windows, Screens, Light"), as many whole as fit, so a glance
-  reminds Joel what there is. Inside a place, things come by importance
-  and relation, never A to Z, and a typed command comes last in the place
-  whose answer it gives (Network's "ip ⟨address or network⟩").
+  fast shows in Now. Now's top never changes: Waiting on You first,
+  always, saying how many wait now and later or that nothing does, a
+  session that wants Joel among them, drawn as the session; then its own
+  rows, always there in this order: the time, the date, the location,
+  the weather and the next meeting, with no Today to step into. Below
+  them, only while true, come what else wants Joel (unread mail, missed
+  notices, a low battery), what reaches other people, what's playing and
+  the modes left on, by name within each. Each place says what it holds
+  after its name, muted, by its members' own names in the place's own
+  order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
+  as fit, so a glance reminds Joel what there is; a place that measures
+  something says how it stands instead, as Processor says "99% busy".
+  Inside a place, things come by importance and relation, never A to Z,
+  and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
 - **Tab only completes.** It takes the grey completion the field shows, and
   does nothing while none shows. Its key, ⇥, follows the completion in the
@@ -695,13 +721,25 @@ works the same way everywhere.
   into the field, one that opens a collection into it, the right arrow
   goes there too, said with Return's word: ↵ → go. A step in lists
   what Return does first, where the row's own list left it out, so the
-  right arrow never hides the act Return would have done. Every row has
-  a Return act: it steps in, does a thing, or copies the value it shows,
-  and a check walks every row to hold it. A row showing a value copies it
-  on Return wherever it shows, at the top or inside, even one holding
-  more, which the right arrow steps into: "rain" asked alone and Rain
-  inside the weather work the same. A thing (a device, a network, a
-  program) and a setting step in on Return, as the right arrow does. Return closes the launcher only
+  right arrow never hides the act Return would have done (Joel,
+  2026-10-28: "enter is supposed to be the default action, but that means
+  that action should be selectable within"). Every row has a Return act,
+  the same wherever the row shows, and a check walks every row to hold
+  it. A thing with one obvious act that does no harm does it: a program
+  or a window is gone to, a mail or a file opens, a network connects, a
+  closed orchestrator carries on where it left off. Anything else steps
+  in on Return, as the right arrow does, its likeliest act first inside,
+  so Return twice does it: a person, a quest, a device, a setting, a
+  place. Return never calls someone or starts something new by itself. A
+  meeting joins on Return only from ten minutes before it starts, and
+  before then steps in, Join first, so Joel is never made to join early
+  (2026-10-26: "they force me to join, and what if I want to cancel");
+  the foot says which. A value copies on Return only where it holds
+  nothing more; one holding more, as the battery's answer or the
+  weather's Rain, steps in, copying it a row inside: "rain" asked alone
+  and Rain inside the weather work the same. Copy is never the first row
+  of a step, unless it's the only one, and is always the last. Return
+  closes the launcher only
   when its act takes Joel out of it: to a window, a program or a file, a
   call, or something copied to paste. An act that changes something (the
   volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
@@ -761,14 +799,14 @@ works the same way everywhere.
   words, "disk speed", "ram type" or "ping". A rate is the difference between two reads, read again
   once a second while it's shown and never for a key, and the footer says
   whether it's just now or since last asked. A figure copies what it
-  shows as Return comes, one holding more as well, its parts a step in by
-  the right arrow, and one still being read copies nothing. The start of one of those words, three letters
+  shows on Return when it holds nothing more, one holding more steps in,
+  and one still being read copies nothing. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
-  it, and so does the theme's nearest pigment. Return copies it, Tab puts
-  a sum in place of the question, and the right arrow steps into an
-  answer's parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
+  it, and so does the theme's nearest pigment. Return copies a sum, Tab puts
+  it in place of the question, and Return or the right arrow steps into
+  an answer with parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
   40", is an answer that does: Return sets it. The field's end says where
   an answer came from.
   Nothing leaves the machine unless the question needs the network, never
@@ -804,8 +842,29 @@ works the same way everywhere.
   that a password manager marks secret. A copy's glyph says what it is:
   several lines, a link, an address, a path and a number each wear their
   own, plain text the clipboard's, and a picture a picture's. A picture's
-  row is named by its size, and the picture itself shows below the rows
+  row is named by its size, and the picture itself shows in the drawer
   while it's selected, in its own shape with a part's corners.
+- **The drawer is the card continued** (Joel, 2026-10-28: "it should come
+  out of the right side like a drawer, making sure it never passes the
+  bound of the screen"). What a row has to show beyond its line (a
+  picture, a notice's whole words, a mail, a meeting's details) slides
+  out of the card's right side, a floating surface like the card, top
+  aligned and as tall as it: its title in strong type, its facts as a
+  name and a figure, a fact still being read a fixed placeholder, then
+  its words, then its picture. The card's room and the drawer's are
+  worked out for the screen as the launcher opens, the card centred
+  unless the screen is too narrow for the drawer beside it, so the card
+  never moves and never changes size for what's selected. It's out
+  inside a place while any of its rows has one, so it slides only as
+  Joel steps in or out, and never for a search typed at home; stepping
+  between two places that both have one, it stays, and what it shows
+  changes in place. Ctrl+Up and Ctrl+Down scroll it, said in the foot
+  while it holds more than fits, since Page Up and Page Down page the
+  list. Another program's words are shown plain, never as markup.
+- **Ctrl+C copies the selected row.** Any row with a Copy inside copies
+  it with Ctrl+C from wherever it's listed, without stepping in, as
+  Ctrl+C copies everywhere else on the desktop; while text is selected
+  in the field, it copies that text instead.
 - **A notice gone is not lost.** Every notice of the session stays in the
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
@@ -835,8 +894,8 @@ works the same way everywhere.
 - **Awake on purpose.** Keep Awake, in the launcher, stops the machine
   sleeping so work left running goes on, and with power it keeps running
   with the lid shut. Without power the lid is let go, since a laptop shut in
-  a bag on its battery would cook. While it holds, Let It Sleep comes after
-  the focused window at home, and the margin's mark says so.
+  a bag on its battery would cook. While it holds, Keep Awake shows in Now,
+  saying it's on, and the margin's mark says so.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.
