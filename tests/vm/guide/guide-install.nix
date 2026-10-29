@@ -31,7 +31,7 @@ let
   bundlePassphrase = "the-bundles-own-passphrase";
 
   canokeys = import ./canokeys.nix { inherit pkgs; };
-  inherit (canokeys) qemu setPin;
+  inherit (canokeys) qemu;
   keys = canokeys.keys [
     "nano"
     "fivec"
@@ -43,18 +43,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   globalTimeout = 60 * 60;
   qemu.package = qemu;
 
-  # The stick's system, built as a test node so the driver can reach its
-  # shell, and never started itself: the machine boots its image from USB.
-  nodes.stick = {
-    imports = [ self.nixosModules.guide-stick ];
-    virtualisation = {
-      fileSystems = lib.mkVMOverride { };
-      directBoot.enable = false;
-      mountHostNixStore = false;
-      useEFIBoot = true;
-    };
-    environment.systemPackages = [ setPin ];
-  };
+  nodes.stick = import ./stick.nix { inherit self pkgs; };
 
   # The machine, as its own repository would describe it.
   nodes.machine =

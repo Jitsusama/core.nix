@@ -19,15 +19,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
 
   # The stick's system, built as a test node so the driver can reach its
   # shell, and never started itself: the machine boots its image from USB.
-  nodes.stick = {
-    imports = [ self.nixosModules.guide-stick ];
-    virtualisation = {
-      fileSystems = lib.mkVMOverride { };
-      directBoot.enable = false;
-      mountHostNixStore = false;
-      useEFIBoot = true;
-    };
-  };
+  nodes.stick = import ./stick.nix { inherit self pkgs; };
 
   # The machine the stick boots on, whose own system never starts.
   nodes.machine = {
