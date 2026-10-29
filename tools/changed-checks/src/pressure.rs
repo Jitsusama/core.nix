@@ -68,7 +68,7 @@ mod tests {
     use super::*;
 
     const CALM: &str = "some avg10=1.25 avg60=0.40 avg300=0.10 total=12\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=3\n";
-    // As optimus read at 12:23 on 29 October, while the launcher stalled.
+    // As a workstation read at 12:23 on 29 October, while the launcher stalled.
     const PRESSED: &str = "some avg10=25.10 avg60=18.02 avg300=6.44 total=98123\nfull avg10=15.03 avg60=9.11 avg300=3.20 total=50123\n";
 
     #[test]

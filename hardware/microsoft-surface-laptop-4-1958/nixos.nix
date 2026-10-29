@@ -83,14 +83,15 @@
   # The firmware's Time and Alarm Device registers as rtc0 ahead of the
   # CMOS clock, but every read of it fails with an I/O error, so the kernel
   # set no time at boot and each boot started at systemd's fallback date
-  # until NTP answered. Without it the CMOS clock, which the kernel keeps
-  # in step once NTP answers, is rtc0. docs/hardware.md has what was seen.
+  # until NTP answered. Without it the CMOS clock is rtc0, which the kernel
+  # keeps in step while NTP answers. docs/hardware.md has what was seen.
   boot.blacklistedKernelModules = [ "acpi_tad" ];
 
-  # The CMOS clock loses the time at power-off, and the kernel sets the
-  # system's time from rtc0 when it registers. Loaded late by udev, it set a
-  # cold start back to 2025 after systemd had moved the time forward to its
-  # last saved one. Loaded in the initrd, it sets the time before systemd's
+  # The firmware sets the CMOS clock back to a day in 2025 at every
+  # restart, warm or cold, whatever the kernel wrote to it, and the kernel
+  # sets the system's time from rtc0 when it registers. Loaded late by udev,
+  # it set each boot back to 2025 after systemd had moved the time forward
+  # to its last saved one. Loaded in the initrd, it sets the time before systemd's
   # own advance, so the time only moves forward from there.
   boot.initrd.kernelModules = [ "rtc_cmos" ];
 

@@ -35,6 +35,34 @@
       "A slice above session.slice or app.slice lacks its hard memory floor, so they have none."
       (lib.all (floor: floor != null) floors && lib.all (floor: floor == lib.head parents) parents);
 
+  # The compositor and the shell are how Joel drives the machine, so inside
+  # session.slice they come first and keep hard floors of their own. A floor
+  # inside one that doesn't cover them protects only part of each, and the
+  # portals and the bus take what's left of it, so session.slice's must hold
+  # both with a gibibyte to spare for the rest.
+  the-desktop-comes-first-in-its-session =
+    let
+      inherit (graphical.config) systemd home-manager;
+      mib =
+        size:
+        if lib.hasSuffix "G" size then
+          lib.toInt (lib.removeSuffix "G" size) * 1024
+        else
+          lib.toInt (lib.removeSuffix "M" size);
+      niri = systemd.user.services.niri.serviceConfig;
+      shell = home-manager.users.someone.systemd.user.services.quickshell.Service;
+      first = unit: (unit.CPUWeight or 100) == 1000;
+    in
+    holds "the-desktop-comes-first-in-its-session"
+      "niri or the shell isn't first in session.slice, or its floor doesn't cover theirs."
+      (
+        first niri
+        && first shell
+        &&
+          mib systemd.user.slices.session.sliceConfig.MemoryMin
+          >= mib niri.MemoryMin + mib shell.MemoryMin + 1024
+      );
+
   # Work in jobs swaps its own memory past half of it, rather than pushing
   # out what an app reaches for next, and is only ever slowed there: a hard
   # limit would end an evaluation that a slow one lets finish.

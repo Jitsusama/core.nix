@@ -1834,6 +1834,13 @@ in
         # rather than in app.slice beside Chrome and Slack, where a build's
         # pressure reaches them first.
         Slice = "session.slice";
+        # Inside session.slice, first beside the compositor, ahead of the
+        # portals and the bus at their tenth: the launcher is how Joel drives
+        # the machine. Its floor is hard, so a build filling memory never
+        # pushes it to swap; a gibibyte holds the 678 MB it used on 29
+        # October, until the shell's own budget says less.
+        CPUWeight = 1000;
+        MemoryMin = "1G";
         Restart = "on-failure";
         RestartSec = 1;
       };
