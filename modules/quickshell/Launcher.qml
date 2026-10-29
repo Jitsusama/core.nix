@@ -2267,6 +2267,11 @@ Scope {
                         row.offers && row.verbs ? row.verbs() : []), []), letters));
             found = found.concat(stillActed(found));
             answer = null;
+            // Whether the drawer is out is the level's, read from all of
+            // it as it's stepped into, so narrowing it by typing never
+            // slides the drawer in or out.
+            if (words.length === 0)
+                levelHasDrawer = found.some(row => hasDrawer(row));
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
@@ -2740,10 +2745,16 @@ Scope {
         return { title: row.name, body: row.reads ?? "", picture: row.picture ?? "",
             across: row.across ?? 0, down: row.down ?? 0 };
     }
-    readonly property bool drawerOut: open && held.length > 0 && matches.some(row => !!row.drawer
-        || (row.picture ?? "") !== "" || (row.reads ?? "") !== "")
+    function hasDrawer(row) {
+        return !!row.drawer || (row.picture ?? "") !== "" || (row.reads ?? "") !== "";
+    }
+    property bool levelHasDrawer: false
+    readonly property bool drawerOut: open && held.length > 0 && levelHasDrawer
+    // A row with nothing more to show, in a level where the drawer is out,
+    // shows its own name alone (VKCF3Z): never the last row's details, never
+    // an empty slide-in, and never its note, which the foot already says.
     readonly property var drawerShows: !drawerOut || !selected ? null
-        : drawerOf(selected) ?? { title: selected.name, body: selected.note ?? "" }
+        : drawerOf(selected) ?? { title: selected.name }
 
     // The drawer's room beside the card, and where the card sits (VKCF3Z's
     // ruling, after Joel's "never passes the bound of the screen and
@@ -2813,11 +2824,14 @@ Scope {
             keysAt: Math.round(foot.returnAt),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
-            // The drawer: whether it's out, what it's titled, whether it
-            // holds more than fits, and where it and the card sit.
+            // The drawer: whether it's out, what it's titled and says,
+            // whether it holds more than fits, and where it and the card sit.
             drawer: {
                 out: root.drawerOut,
                 title: root.drawerShows?.title ?? "",
+                facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
+                    .map(fact => fact.label ?? ""),
+                body: root.drawerShows?.body ?? "",
                 more: drawerCard.more,
                 scrolled: Math.round(drawerCard.scrolled),
                 cardAt: Math.round(card.mapToGlobal(0, 0).x),

@@ -1499,6 +1499,23 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         timeout=dt.timedelta(seconds=30),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # In Now, where the drawer is out, a row with nothing more to show
+    # shows its name alone, never another row's details nor its own note,
+    # which the foot says.
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    desktop.type_in("time", selecting="Time")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Time"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"] == []
+            and shown["drawer"]["body"] == ""
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 @pytest.mark.usefixtures("google")
