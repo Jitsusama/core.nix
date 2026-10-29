@@ -3,7 +3,8 @@
 # /run/nix-offload/machines at each build, the account's nix-offload
 # (home.nix) writes it, and the queue reads it to count the builder's room.
 # The file is empty while nothing is lent, so Nix never waits on a builder
-# that isn't there.
+# that isn't there. Standing builders are in machines-with-standing alone,
+# which only a build that names it reads.
 #
 # Root reaches the builder with a key of its own, made once here and never
 # held in a Nix value; where the builder is, and how root's ssh gets there,
@@ -57,6 +58,7 @@
     systemd.tmpfiles.rules = [
       "d /run/nix-offload 0755 ${config.jitsusama.nix-offload.account} - -"
       "f /run/nix-offload/machines 0644 ${config.jitsusama.nix-offload.account} - -"
+      "f /run/nix-offload/machines-with-standing 0644 ${config.jitsusama.nix-offload.account} - -"
     ];
 
     # After /etc, which /etc/nix belongs to.

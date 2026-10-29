@@ -613,7 +613,8 @@
     gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
     for the next start, which prices it to then or its own idle delete; standing builders are
-    named while they answer; and a day's journal sums to its hours and cost, each at its price
+    named while they answer, and only to builds that ask for them, never in the file every
+    build reads; and a day's journal sums to its hours and cost, each at its price
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests

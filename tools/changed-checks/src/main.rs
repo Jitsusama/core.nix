@@ -209,6 +209,7 @@ fn compare(
     // store has collected since is built from the flake, as before.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
+        .args(standing_builders())
         .args(
             targets
                 .iter()
@@ -225,6 +226,22 @@ fn compare(
     } else {
         ExitCode::FAILURE
     })
+}
+
+/// Where nix-offload names the machine's standing builders beside any lent
+/// one, for a build that asks for them.
+const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
+
+/// The standing builders, asked for where the machine has them. They're
+/// never offered to every build, since they may be machines only public
+/// code may reach; core.nix's checks are public code with public inputs
+/// alone, which `stands-alone` holds, so they may go there.
+fn standing_builders() -> Vec<String> {
+    if Path::new(WITH_STANDING).exists() {
+        vec!["--builders".to_owned(), format!("@{WITH_STANDING}")]
+    } else {
+        Vec::new()
+    }
 }
 
 /// The working tree's commit, when nothing in it differs from the commit
