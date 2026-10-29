@@ -113,6 +113,8 @@ pub struct World<'a> {
     pub finished: &'a mut dyn FnMut(&Path) -> bool,
     /// When each source's command last ran, in wall seconds, by name.
     pub ran: &'a BTreeMap<String, f64>,
+    /// What each producer's watch said when it last ran, by name.
+    pub said: &'a BTreeMap<String, u64>,
     /// When each build's artifacts were last opened, as far as the watch
     /// on their `deps` has seen.
     pub uses: &'a Uses,
@@ -200,7 +202,11 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 timeout,
             } => {
                 let Some(device) = device(path) else { continue };
-                let idle = if changed_since(watch, world.ran.get(name).copied()) {
+                let idle = if changed(
+                    watch,
+                    world.ran.get(name).copied(),
+                    world.said.get(name).copied(),
+                ) {
                     f64::INFINITY
                 } else {
                     since_ran(world, name)
@@ -627,7 +633,71 @@ pub(crate) fn named(path: &Path, source: &str) -> PathBuf {
 /// Whether any of the files a producer watches changed after `ran`, the
 /// wall second it last ran; never, when it hasn't run, since it's due
 /// anyway. A file that can't be read hasn't changed.
-pub fn changed_since(watch: &[PathBuf], ran: Option<f64>) -> bool {
+/// Whether what a producer watches says something new since it ran:
+/// against what it said then, where that was noted, or else whether any
+/// of it was written since. Writing alone isn't news: a janitor that
+/// rewrites its marker and its links each time it looks, finding nothing
+/// new, set off a walk of every source every ten minutes on 29 October.
+pub fn changed(watch: &[PathBuf], ran: Option<f64>, said_then: Option<u64>) -> bool {
+    if watch.is_empty() {
+        return false;
+    }
+    match said_then {
+        Some(then) => said(watch) != then,
+        None => written_since(watch, ran),
+    }
+}
+
+/// How many levels below a watched folder are read.
+const WATCH_DEPTH: usize = 3;
+
+/// How much of a watched file is read.
+const WATCH_BYTES: u64 = 64 << 10;
+
+/// What `watch` says now, as one number: each link's target, the start
+/// of each file and its length, and each folder's names and links
+/// `WATCH_DEPTH` levels down, so the same written again says the same.
+pub fn said(watch: &[PathBuf]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    for path in watch {
+        path.hash(&mut hasher);
+        say(path, WATCH_DEPTH, &mut hasher);
+    }
+    hasher.finish()
+}
+
+fn say(path: &Path, depth: usize, hasher: &mut impl std::hash::Hasher) {
+    use std::hash::Hash;
+    use std::io::Read;
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        "gone".hash(hasher);
+        return;
+    };
+    if meta.is_symlink() {
+        fs::read_link(path).ok().hash(hasher);
+    } else if meta.is_dir() {
+        let mut names: Vec<_> = fs::read_dir(path)
+            .map(|entries| entries.flatten().map(|entry| entry.file_name()).collect())
+            .unwrap_or_default();
+        names.sort();
+        for name in names {
+            name.hash(hasher);
+            if depth > 0 {
+                say(&path.join(&name), depth - 1, hasher);
+            }
+        }
+    } else {
+        meta.len().hash(hasher);
+        let mut start = Vec::new();
+        let _ =
+            fs::File::open(path).and_then(|file| file.take(WATCH_BYTES).read_to_end(&mut start));
+        start.hash(hasher);
+    }
+}
+
+/// Whether any of `watch` was written since `ran`.
+fn written_since(watch: &[PathBuf], ran: Option<f64>) -> bool {
     let Some(ran) = ran else { return false };
     watch.iter().any(|path| {
         fs::metadata(path)

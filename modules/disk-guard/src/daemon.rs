@@ -1321,9 +1321,11 @@ impl Guard {
             .sources
             .iter()
             .any(|(name, source)| match source {
-                Source::Producer { watch, .. } => {
-                    crate::survey::changed_since(watch, self.memory.ran.get(name).copied())
-                }
+                Source::Producer { watch, .. } => crate::survey::changed(
+                    watch,
+                    self.memory.ran.get(name).copied(),
+                    self.memory.said.get(name).copied(),
+                ),
                 _ => false,
             });
         let ended = watched
@@ -1851,6 +1853,7 @@ impl Guard {
             now: tick.wall,
             finished: &mut finished,
             ran: &self.memory.ran,
+            said: &self.memory.said,
             uses: &uses,
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
@@ -1999,6 +2002,13 @@ impl Guard {
             match offered.map(|offer| &offer.action) {
                 Some(Action::Run { source, .. }) => {
                     self.memory.ran.insert(source.clone(), wall);
+                    if let Some(Source::Producer { watch, .. }) = self.config.sources.get(source)
+                        && !watch.is_empty()
+                    {
+                        self.memory
+                            .said
+                            .insert(source.clone(), crate::survey::said(watch));
+                    }
                 }
                 // What they kept is garbage now, which no listing holds.
                 Some(Action::Expire { .. }) if *outcome == Outcome::Reclaimed => {

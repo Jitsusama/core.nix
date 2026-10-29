@@ -32,9 +32,13 @@ or launchd, and [`home.nix`][2] the account's.
   machine, since a workstation that's always busy would otherwise never
   be tidied. It comes at once, too, when an owner ends: the guard looks
   each minute, and a tree newly spent, a new boot, a guard with new
-  rules or a file a producer watches changing since it last ran makes
-  upkeep due, so what an owner leaves never waits hours for the routine.
-  A producer whose watched file changed runs in that upkeep whatever its
+  rules or a path a producer watches saying something new since it last
+  ran makes upkeep due, so what an owner leaves never waits hours for the
+  routine. What a path says is a link's target, a file's length and
+  start, and a folder's names three levels down, not when it was
+  written, since a tool that rewrites its links unchanged each round
+  would otherwise set off a walk of every source each time. A producer
+  whose watched path said something new runs in that upkeep whatever its
   schedule, as a cache gaining a version ends an older one's use. Upkeep
   that kept something only the system daemon could have vouched for,
   while it couldn't be asked, as when a switch restarts both daemons,
