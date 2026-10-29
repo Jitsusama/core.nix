@@ -468,10 +468,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # unheard, since it's read only where timesyncd runs. It runs here as
       # on a laptop, asking a server that isn't there, so it makes no
       # exchange even where the VM reaches the network, and the test
-      # writes one in its stead.
+      # writes one in its stead. The servers are forced, since a list is
+      # otherwise joined to the machine's own pool, which it would reach.
       services.timesyncd = {
         enable = lib.mkForce true;
-        servers = [ "127.0.0.1" ];
+        servers = lib.mkForce [ "127.0.0.1" ];
         fallbackServers = [ ];
       };
       home-manager.users.${account} = {
