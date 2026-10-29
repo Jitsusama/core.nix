@@ -3105,6 +3105,20 @@
       "verb": "set"
     },
     {
+      "id": "displays:warmth",
+      "in": "displays",
+      "name": "Warmth",
+      "verb": "turn off",
+      "answers": [
+        "screen warmth"
+      ],
+      "states": {
+        "off": {
+          "verb": "turn on"
+        }
+      }
+    },
+    {
       "id": "displays:room",
       "in": "displays",
       "name": "Room Light",

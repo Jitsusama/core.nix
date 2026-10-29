@@ -640,6 +640,13 @@ in
     console = ".";
     means = "turning the screen's brightness down";
   };
+  # White balance under a bulb, since the screen's white leans toward the
+  # room's light as a camera's does.
+  warmth = {
+    glyph = nerd "f05a6";
+    console = "~";
+    means = "the screen's warmth, leaning toward the room's light";
+  };
   lamp = {
     glyph = nerd "f095f";
     console = "*";

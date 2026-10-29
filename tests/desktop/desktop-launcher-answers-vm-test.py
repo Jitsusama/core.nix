@@ -1326,6 +1326,66 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         desktop.as_account("systemctl --user start timekeeping")
 
 
+def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: Desktop) -> None:
+    """The screen's warmth follows its Brightness, says how it stands, and Return switches it."""
+    machine = desktop.machine
+    note = "/run/user/1000/backlight-warmth"
+
+    def warmth(said: dict[str, Any]) -> None:
+        """Say how the warmth stands as the backlight daemon does, whole, by a rename."""
+        text = json.dumps(said)
+        desktop.as_account(f"echo '{text}' > {note}.writing && mv {note}.writing {note}")
+
+    def warmth_selected(side: str, verb: str, footer: str) -> Callable[[Json], bool]:
+        """Give a test that the Warmth is selected, standing as said."""
+        return lambda shown: (
+            (shown["selected"] or {}).get("name") == "Warmth"
+            and (
+                shown["selected"]["side"],
+                shown["selected"]["verb"],
+                shown["footer"],
+            )
+            == (side, verb, footer)
+        )
+
+    # The backlight daemon warms nothing here, so its file is said for it.
+    warmth({"kelvin": 5200, "followsTheRoom": True})
+    desktop.as_account("qs ipc call launcher collection displays")
+    desktop.launcher_ready()
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][1:3] == ["Brightness", "Warmth"])
+    desktop.down_to("Warmth")
+    desktop.launcher_until(warmth_selected("on", "off", "5200 K, following the room"))
+    # Return tells the daemon over the session's bus, which is heard here.
+    desktop.as_account(
+        "systemd-run --user --collect --quiet --unit=warmth-heard -- sh -c "
+        "'busctl --user monitor io.jitsusama.Backlight > /tmp/warmth-heard'"
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active warmth-heard"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "grep -q FollowsTheRoom /tmp/warmth-heard && grep -q 'BOOLEAN false' /tmp/warmth-heard",
+        timeout=dt.timedelta(seconds=10),
+    )
+    # It stays to show the change, which comes as the daemon says it.
+    warmth({"kelvin": 6500, "followsTheRoom": False})
+    desktop.launcher_until(warmth_selected("off", "on", "6500 K, the screen's own white"))
+    # Where nothing warms the screen, the daemon leaves {}, and the Warmth
+    # goes: kept in its place while stepped in, as any part that goes is.
+    warmth({})
+    desktop.launcher_until(
+        lambda shown: all(
+            thing["gone"] for thing in shown["things"] if thing["is"].endswith(":warmth")
+        )
+    )
+    desktop.as_account("systemctl --user stop warmth-heard")
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+
+
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
     """The launcher finds emoji in their own place, and only there."""
     machine = desktop.machine
