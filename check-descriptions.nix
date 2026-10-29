@@ -165,6 +165,10 @@
   clipboard-history-passes-clippy = ''
     clippy finds nothing in the clipboard history or its tests
   '';
+  clock-follows-passes-clippy = ''
+    clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
+    or its tests
+  '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
   '';

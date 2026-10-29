@@ -155,6 +155,8 @@ Provider {
     // position, and how sure it is. Inside, the position, how it was
     // found, and the time zone the clock keeps, saying so where the place
     // keeps another. Found by typing its name too, since Now is its home.
+    // The clock following it into another zone is Time's to say, with Put
+    // It Back (Clocks.qml), since the zone is the clock's.
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";

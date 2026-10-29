@@ -38,7 +38,9 @@ Provider {
         const glyph = Theme.glyph.date;
         const day = Zones.dayOfYear(now);
         const days = new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365;
-        const zone = settings.zone ?? "";
+        // The clock's own zone, which follows the laptop, before the one
+        // the machine was built with.
+        const zone = Location.clockZone || (settings.zone ?? "");
         const two = n => String(n).padStart(2, "0");
         const row = (id, side, note) => copyRow({ name: Words.name(`today:${id}`), side: side,
             note: note, glyph: glyph });

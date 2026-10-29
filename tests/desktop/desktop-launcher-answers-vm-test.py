@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -950,9 +951,10 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # And once the file goes, here is nowhere again, and the location is
-    # said to be unknown rather than guessed.
-    desktop.as_account(f"rm {fix}")
+    # And once the file says nowhere, here is nowhere again, and the
+    # location is said to be unknown rather than guessed. It's never
+    # removed, since the shell can't see a removed file come back.
+    desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
     asked(nowhere)
     desktop.answer("location")
     desktop.launcher_until(
@@ -963,6 +965,70 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
+    """The clock follows the laptop into another zone, says so in Time, and is put back."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    zone = "timedatectl show --property=Timezone --value"
+    began = machine.succeed(zone).strip()
+    ran = "systemctl --user show clock-follows.service"
+    ran += " --property=InactiveEnterTimestampMonotonic --value"
+
+    def found(where: str, accuracy: int, place: str) -> None:
+        """Write where the laptop is, as whereabouts does, and wait for the clock to read it."""
+        before = desktop.as_account(ran).strip()
+        said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": accuracy,
+                "when": int(time.time()), "place": place, "zone": where}  # fmt: skip
+        desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+        machine.wait_until_succeeds(
+            desktop.in_session(f'test "$({ran})" != {shlex.quote(before)}'),
+            timeout=dt.timedelta(seconds=30),
+        )
+
+    def keeps(where: str) -> None:
+        """Wait until the clock keeps this zone."""
+        machine.wait_until_succeeds(f'test "$({zone})" = {where}', timeout=dt.timedelta(seconds=30))
+
+    try:
+        # Found by Wi-Fi, to within 300 m, in another zone: the clock moves,
+        # and the time here says so, the zone being the clock's.
+        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        keeps("America/Edmonton")
+        desktop.answer("time")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["footer"] == "clock moved to Edmonton time, as the laptop is in Lighthouse"
+            )
+        )
+        desktop.step_in()
+        # Put It Back leads what can be done; Copy, which isn't an act on
+        # the clock, may stand before or after it.
+        desktop.launcher_until(
+            lambda shown: [row for row in shown["rows"] if row != "Copy"][:1] == ["Put It Back"]
+        )
+        desktop.down_to("Put It Back")
+        assert desktop.showing()["selected"]["side"] == began.split("/")[-1].replace("_", " ")
+        # Put back, it's held where it was while the laptop stays there.
+        machine.send_key("ret")
+        keeps(began)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        assert machine.succeed(zone).strip() == began
+        # Somewhere else lets it go, and the clock follows again.
+        found("America/Vancouver", 300, "Harbour, British Columbia")
+        keeps("America/Vancouver")
+        # Found only from the network's address, tens of kilometres wide,
+        # as through WARP, it never moves the clock.
+        found("Asia/Tokyo", 26000, "Shibuya, Tokyo")
+        assert machine.succeed(zone).strip() == "America/Vancouver"
+    finally:
+        machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
+        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.as_account("rm -rf ~/.local/state/clock-follows")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

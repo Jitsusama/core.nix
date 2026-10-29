@@ -568,6 +568,8 @@ let
   # runs only while the weather may ask the network, since it has GeoClue
   # ask BeaconDB, and where the machine runs GeoClue (nixos.nix).
   whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
+  clockFollows = pkgs.callPackage ./clock-follows/package.nix { };
+  timedatectl = lib.getExe' pkgs.systemd "timedatectl";
   followsTheLaptop =
     (launcher.providers.weather.enable or false)
     && (launcher.providers.weather.lookups or launcher.lookups)
@@ -1745,6 +1747,33 @@ in
         RestartSec = 60;
       };
       Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    # The clock's zone follows where the laptop is (clock-follows/), asked
+    # each time whereabouts writes it and never otherwise: a path unit
+    # watches the file and starts the one run. What it did is kept in its
+    # state folder for Now to say (Location.qml), and Put It Back starts
+    # its other run, from the launcher.
+    systemd.user.paths.clock-follows = lib.mkIf followsTheLaptop {
+      Unit.Description = "Watches where the laptop is, for the clock's zone";
+      Path.PathChanged = "%t/whereabouts.json";
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+    systemd.user.services.clock-follows = lib.mkIf followsTheLaptop {
+      Unit.Description = "Moves the clock's zone to where the laptop is";
+      Service = {
+        Type = "oneshot";
+        StateDirectory = "clock-follows";
+        ExecStart = "${lib.getExe clockFollows} follow %t/whereabouts.json %S/clock-follows ${timedatectl}";
+      };
+    };
+    systemd.user.services.clock-put-back = lib.mkIf followsTheLaptop {
+      Unit.Description = "Puts the clock's zone back where it was before it followed the laptop";
+      Service = {
+        Type = "oneshot";
+        StateDirectory = "clock-follows";
+        ExecStart = "${lib.getExe clockFollows} put-back %S/clock-follows ${timedatectl}";
+      };
     };
 
     # Keeping awake, from the launcher (Caffeinate.qml): one service holds

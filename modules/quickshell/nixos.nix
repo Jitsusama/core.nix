@@ -119,6 +119,16 @@ in
     };
   };
 
+  # The clock's zone follows where the laptop is (home.nix's
+  # clock-follows), set through timedated, which asks polkit. An
+  # administrator could already set it with their password, and a zone
+  # changes only how the time is shown, never the time itself, so letting
+  # wheel set it without one gives nothing more away. A machine that fixes
+  # its zone in its configuration (`time.timeZone`) keeps it: timedated
+  # refuses to change a zone the system owns.
+  security.polkit.enable = true;
+  security.polkit.extraConfig = builtins.readFile ./set-timezone.rules;
+
   services.geoclue2 = {
     enable = true;
     geoProviderUrl = "https://api.beacondb.net/v1/geolocate";

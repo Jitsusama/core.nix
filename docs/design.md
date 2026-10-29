@@ -778,7 +778,13 @@ works the same way everywhere.
   and the day after, Rain saying when it next rains ("from 15:00, 70%")
   beside the next twelve hours' chance, and holding those hours, each its
   chance and how much; "rain", "umbrella" or "when will it rain", here or
-  in a place, answers with the next rain, its hours a step in. So is the
+  in a place, answers with the next rain, its hours a step in. The time
+  here is the clock's, which follows the laptop into another zone once a
+  Wi-Fi fix says it's there to within ten kilometres, never for a fix from
+  the network's address alone; the time then says so ("clock moved to
+  Edmonton time, as the laptop is in Lighthouse"), and Put It Back leads
+  what's inside, holding the zone it kept until the laptop is somewhere
+  else. So is the
   machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
