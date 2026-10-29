@@ -153,7 +153,7 @@ Provider {
                     id: window.id,
                     program: entry ? entry.id : (window.app_id ?? ""),
                     owner: Fuzzy.prepare(program),
-                    verb: "switch",
+                    verb: "go",
                     name: title,
                     glyph: provider.glyphOf(window, entry),
                     hue: "program",

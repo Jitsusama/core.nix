@@ -957,6 +957,11 @@ in
     console = "<";
     means = "replying to a message, from its notice or its row";
   };
+  replyAll = {
+    glyph = nerd "f045b";
+    console = "<";
+    means = "replying to everyone a mail went to or was copied to";
+  };
   offer = {
     glyph = nerd "f0ce0";
     console = ">";

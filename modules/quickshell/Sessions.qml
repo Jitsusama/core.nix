@@ -148,9 +148,82 @@ Singleton {
             start(asked.quest, asked.folder);
             return;
         }
+        reopened(asked.id, cwd);
+    }
+
+    // Opens a closed session again where it left off, in a window of its
+    // own in `cwd`, held as every start is.
+    function reopened(id, cwd) {
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd,
-            "zsh", "-lic", held(`pi --session ${asked.id}`)]);
-        Report.say(`resumed session ${asked.id}`);
+            "zsh", "-lic", held(`pi --session ${id}`)]);
+        Report.say(`resumed session ${id}`);
+    }
+
+    // The sessions the last boot's end took away, to reopen after a cold
+    // boot (Joel, 2026-10-26: one act brings back every session live at
+    // shutdown, each in its own window and folder, never one from before
+    // that boot). The harness keeps them in restore.json (its #866),
+    // rewritten whole as each pi starts and ends, with the boot they ran
+    // in, so a reopened one leaves the list within seconds. Only another
+    // boot's are offered, and only until Joel puts that boot off. This
+    // boot is `bootId`, as the records are read by.
+    readonly property var restoring: restoreOf(restoreFile.text())
+    FileView {
+        id: restoreFile
+        path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/pi/restore.json`
+        blockLoading: true
+        printErrors: false
+        // Written by rename and never removed, so it's seen each time.
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    // What the file says, keeping only the sessions it names whole: an id
+    // safe to hand pi's command line and a folder to open in.
+    function restoreOf(text) {
+        let read = null;
+        try {
+            read = JSON.parse(text);
+        } catch (error) {
+            read = null;
+        }
+        if (read === null || read.v !== 1 || !Array.isArray(read.sessions))
+            return { boot: "", sessions: [] };
+        return {
+            boot: typeof read.boot === "string" ? read.boot : "",
+            sessions: read.sessions.filter(one => one !== null && typeof one === "object"
+                && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
+                && typeof one.cwd === "string" && one.cwd.startsWith("/"))
+        };
+    }
+
+    // The boot Joel said Not Now to, kept by the shell, so its sessions
+    // stay put off however often the shell starts on this boot. Putting
+    // one off says so at once, as its file is written behind.
+    property string putOff: {
+        try {
+            return String(JSON.parse(putOffFile.text()).boot ?? "");
+        } catch (error) {
+            return "";
+        }
+    }
+    FileView {
+        id: putOffFile
+        path: Quickshell.statePath("last-boot-put-off.json")
+        blockLoading: true
+        printErrors: false
+    }
+
+    readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
+        && restoring.boot !== bootId && restoring.boot !== putOff ? restoring.sessions : []
+
+    function reopen(lost) {
+        reopened(lost.id, lost.cwd);
+    }
+
+    function putOffLastBoot() {
+        putOff = restoring.boot;
+        putOffFile.setText(JSON.stringify({ boot: putOff }));
     }
 
     // Go to a session: its window, or, when niri's isn't known, kitty's,

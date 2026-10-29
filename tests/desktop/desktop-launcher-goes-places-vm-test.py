@@ -123,13 +123,12 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Switch"
-            and shown["selected"]["verb"] == "switch"
+            (shown["selected"] or {}).get("name") == "Go To" and shown["selected"]["verb"] == "go"
         )
     )
     # Its acts in the order every session keeps them, then what's known of
     # it, each named first, as every part is, then what it says.
-    assert desktop.showing()["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
+    assert desktop.showing()["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
     desktop.down_to("Stop")
     for name, side in [
         ("Quest", r"QEST-20261022-TESTQA"),
@@ -334,7 +333,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lighthouse"
             and str(shown["selected"]["side"]).startswith("TESTQA \u00b7 ")
-            and shown["selected"]["verb"] == "switch"
+            and shown["selected"]["verb"] == "go"
         )
     )
     machine.send_key("esc")
@@ -371,7 +370,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
-            and shown["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
+            and shown["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
         )
     )
     # Talk asks for words, which go to its session's inbox as Joel's,
@@ -603,6 +602,70 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     )
 
 
+def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:
+    """Agents reopens what the last boot's end took away, Return twice, or puts it off."""
+    machine = desktop.machine
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    # The harness kept one session live as an earlier boot ended.
+    lost = {
+        "v": 1,
+        "boot": "an-earlier-boot",
+        "sessions": [
+            {
+                "id": "01b2-harbour",
+                "address": "HARBOR",
+                "title": "Harbour",
+                "cwd": "/home/jitsusama/harbour",
+                "lostAt": 1,
+            },
+        ],
+    }
+    desktop.as_account(f"rm -f {opened} && mkdir -p ~/harbour")
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    # Its row comes after the sessions running, its count beside it.
+    desktop.launcher_until(lambda shown: "Reopen Last Boot's Sessions" in shown["rows"])
+    desktop.down_to("Reopen Last Boot's Sessions")
+    assert desktop.showing()["selected"]["side"] == "1 session", desktop.showing()
+    # Return steps in, all of them first, so Return twice reopens them.
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
+    desktop.photograph("launcher-agents-last-boot")
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/harbour " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01b2-harbour"], said
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # Put off, it's gone for this boot, as no harness here drops it.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
+    desktop.down_to("Not Now")
+    machine.send_key("ret")
+    # Nothing is left to reopen, so the launcher closes.
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
+    )
+    assert "Reopen Last Boot's Sessions" not in desktop.showing()["rows"], desktop.showing()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm -rf {opened} ~/harbour")
+
+
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(
     desktop: Desktop,
 ) -> None:
@@ -667,7 +730,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     desktop.photograph("launcher-runs")
     # Stepped into, its members after the way to its session.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Switch")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
@@ -1226,7 +1289,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
-    assert "Switch" not in rows, rows
+    assert "Go To" not in rows, rows
     assert "Bring Here" not in rows, rows
     # Full width makes its column the screen's width, as niri says.
     before = desktop.window_titled("Notes for Tuesday")
@@ -2018,6 +2081,31 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
     link = (
         "https://mail.google.com/mail/u/0/?view=cm&fs=1"
         "&to=ada%40example.com&su=Re%3A%20Lunch%20on%20Friday"
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: Desktop) -> None:
+    """Reply All, after Reply on mail that went to others too, copies them; Lunch went to Joel."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("quarterly numbers")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:numbers")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["Open in Mail", "Reply", "Reply All", "Archive"]
+    )
+    desktop.down_to("Reply All")
+    machine.send_key("ret")
+    link = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+        "&to=grace%40example.com&cc=ada%40example.com&su=Re%3A%20Quarterly%20Numbers"
     )
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
@@ -3366,9 +3454,7 @@ def readme(desktop: Desktop, quest: str, status: str) -> None:
 def going_to(desktop: Desktop) -> None:
     """Step into the waiting item selected with Return, and go to its window with Return."""
     desktop.machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Go to ")
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     desktop.machine.send_key("ret")
 
 
@@ -3571,6 +3657,15 @@ def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
         )
     finally:
         desktop.as_account(f"rm -f {queue}")
+        # Its notice goes a moment after its item does; until then the
+        # margin holds it, and Now would open on it in the next subtest.
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                " | grep -o 'report\\[holds margin [^]]*' | tail -n 1 | grep -qvw waiting"
+            ),
+            timeout=dt.timedelta(seconds=10),
+        )
 
 
 def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:

@@ -15,7 +15,7 @@
 //
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
-// first (Switch, New window, New window below, its other windows by title,
+// first (Go To, New window, New window below, its other windows by title,
 // its desktop entry's own actions, Recent where it keeps what it had open
 // lately, its Shortcuts where it has keys of its own, Quit), then its parts (Media while it
 // has a player, Sound while it plays or records, Notifications while the
@@ -136,7 +136,7 @@ Provider {
         return provider.tidy(window.title ?? "", entry.name) || entry.name;
     }
 
-    // Its windows but the one used last, which Switch already goes to, as
+    // Its windows but the one used last, which Go To already goes to, as
     // rows Return goes to, each by its own title, saying where it is as the
     // Windows collection does: nothing on the workspace in front, and a
     // column when two are titled alike. Each holds what Windows' row for it
@@ -155,7 +155,7 @@ Provider {
             return thing({
                 key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
                 is: `window:${window.id}`,
-                verb: "switch",
+                verb: "go",
                 name: titled(window, entry),
                 glyph: programGlyph(entry.id),
                 hue: "program",
@@ -741,7 +741,7 @@ Provider {
             // the row is read, never kept.
             const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
             Object.defineProperties(row, {
-                verb: { enumerable: true, get: () => latest() ? "switch" : "start" },
+                verb: { enumerable: true, get: () => latest() ? "go" : "start" },
                 count: { enumerable: true, get: () => provider.windowCount(entry) },
                 // The layer of its own keys it holds as Shortcuts, so the
                 // layer, named as the program is, isn't listed beside it

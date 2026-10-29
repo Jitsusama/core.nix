@@ -1567,6 +1567,7 @@ onLinux {
       waiting = singleton "WaitingOnYou.qml" ''
         readonly property var standing: ({})
       '';
+      report = singleton "Report.qml" "function say(text) {}";
     in
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
       export XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
@@ -1575,6 +1576,7 @@ onLinux {
       cp ${./Sessions.qml} Sessions.qml
       cp ${./Waiting.js} Waiting.js
       cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
       cp ${../../tests/sessions.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${options} Options.qml

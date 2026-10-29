@@ -37,7 +37,7 @@ QtObject {
         expect("a collection", Catalogue.kindOf({ opens: "windows", verbs: opens }), "place");
         expect("a part holding more", Catalogue.kindOf({ verb: "more", run: does, verbs: opens }),
             "place");
-        expect("a thing that's done and holds more", Catalogue.kindOf({ verb: "switch",
+        expect("a thing that's done and holds more", Catalogue.kindOf({ verb: "go",
             run: does, verbs: opens }), "action");
         expect("an action", Catalogue.kindOf({ verb: "set", run: does }), "action");
         expect("one that takes words", Catalogue.kindOf({ verb: "say", given: does,
@@ -48,7 +48,7 @@ QtObject {
         for (const verb of ["close", "quit", "leave", "lock", "sleep", "off", "turn off", "forget",
             "disconnect", "share", "stop"])
             expect(`${verb} ends something`, Catalogue.disruptive({ verb: verb }), true);
-        for (const verb of ["open", "set", "brighter", "louder", "mute", "switch", "use", "pause"])
+        for (const verb of ["open", "set", "brighter", "louder", "mute", "go", "use", "pause"])
             expect(`${verb} is done at once`, Catalogue.disruptive({ verb: verb }), false);
         // What's listed.
         expect("a figure isn't", Catalogue.listed({ name: "Health", figure: true, run: does }),
@@ -111,8 +111,8 @@ QtObject {
         // The list draws its chord and what's beside it, as a provider's.
         expect("drawn as any row is", [led[0].chord.length, led[0].side, led[0].what],
             [0, "", ""]);
-        expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "switch", run: does,
-            verbs: opens }, [{ name: "Switch", verb: "switch", run: does }])), "Switch");
+        expect("never twice", names(Catalogue.leading({ name: "Slack", verb: "go", run: does,
+            verbs: opens }, [{ name: "Go To", verb: "go", run: does }])), "Go To");
         // One already inside, named as it's done, is moved first, not doubled.
         const joined = { name: "Lantern", verb: "disconnect", run: does, verbs: opens };
         expect("found by its name", names(Catalogue.leading(joined, [{ name: "Sign in to it",

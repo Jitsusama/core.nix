@@ -51,6 +51,16 @@ record ended ENDED3 "$ended" "$boot" 1 ''
 record old OLD004 "$live" another-boot "$(ticks "$live")" ''
 record reused REUSE5 "$live" "$boot" "$(($(ticks "$live") + 1))" ''
 echo "$live" >"$state/live.pid"
+
+# What the last boot's end took away, as the harness keeps it: one whole,
+# one with no folder and one whose id a shell would read.
+cat >"$state/pi/restore.json" <<'EOF'
+{"v":1,"boot":"an-earlier-boot","sessions":[
+  {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
+  {"id":"s-nowhere","address":"NOWHRE","title":"Nowhere","lostAt":1},
+  {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1}
+]}
+EOF
 echo "$other" >"$state/other.pid"
 
 # kitty 600 has two windows, the session's the second.

@@ -600,8 +600,13 @@ works the same way everywhere.
   ("battery health"). A word finds one thing at each strength (a name
   typed whole, an answer's question), or the vocabulary lists it as meant
   to find several ("pair" is a call and a Bluetooth device), and a check
-  fails on any other. Return's word in the footer is one: the act's own verb (switch,
+  fails on any other. Return's word in the footer is one: the act's own verb (go,
   start, lock, mute, close, copy, set, off), a turn by the way it goes.
+  Going to anything already open, a window, a program, a session or a
+  notice's program, is Go To, its name never changing shape, with where
+  it goes at its side ("Go To · Slack"); Open only starts what's closed.
+  A quest's Go To Its Session is the one that names where, as it pairs
+  with Start a Session.
   Ending the session asks once more, saying what it closes ("Reboot now,
   closing 14 windows").
 - **Things hold their parts.** A thing is one place for all of it, and
@@ -611,7 +616,7 @@ works the same way everywhere.
   "slack" is Slack and "slack theme" the theme. A part is still found
   from anywhere by its own name. A program holds what controls it, the
   same for every program and each only while it applies, made as it's
-  stepped into: first what can be done (Switch to the Window Used Last,
+  stepped into: first what can be done (Go To the window used last,
   New Window, New Window Below, and its desktop entry's own actions such
   as Chrome's New Incognito Window), then its Recent, what it had open
   lately, newest first, each the thing it is (a file, a folder, a site),

@@ -2,7 +2,7 @@
 // Applications.qml) through Quickshell itself, over desktop entries written
 // beside this, with niri, the desktop's shortcuts, the notices' history and
 // what's playing (launcher/Playing.qml) stood in. A running program with a
-// player, a stream and notices holds, in order, Switch to the window used
+// player, a stream and notices holds, in order, Go To the window used
 // last, New window, New window below, its desktop entry's own actions (one
 // shortened, one left to New window), Recent, its other window by title,
 // Notices, Quit, then Media and Sound, each doing what it says: Quit asks once
@@ -307,7 +307,7 @@ ShellRoot {
             applications.opened();
             const tester = program("tester").verbs();
             same("in the program's order, each part where it applies", names(tester),
-                "Switch, New Window, New Window Below, Private window, Open the logbook, "
+                "Go To, New Window, New Window Below, Private window, Open the logbook, "
                 + "Recent, Draft, Notices, Quit, Media, Sound");
             const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
             const files = shared.targets();
@@ -329,9 +329,9 @@ ShellRoot {
             expect("and Return steps in, starting nothing", launcher.entered === pair
                 && JSON.stringify(Niri.spawned) === spawnedBefore, JSON.stringify(Niri.spawned));
             same("one closed still starts", program("radio").verb, "start");
-            same("Switch names the window used last", switching.side, "Logbook");
+            same("Go To names the window used last", switching.side, "Logbook");
             switching.run();
-            same("Switch goes to it", acted(), '[{"FocusWindow":{"id":11}}]');
+            same("Go To goes to it", acted(), '[{"FocusWindow":{"id":11}}]');
             same("the other window says where it is", draft.side, "workspace 2");
             same("an action is run", `${secret.verb} ${logbook.verb}`, "run run");
             expect("its full name still finds it", secret.keywords !== null, secret.keywords);
