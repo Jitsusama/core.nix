@@ -1090,12 +1090,17 @@ second once NTP had answered, since the kernel writes it to keep it in step.
 The module keeps `acpi_tad` from loading, so the CMOS clock is rtc0 and the
 kernel sets the time from it at boot.
 
-It doesn't hold the time across a power-off. At a cold start on 2026-10-26
-it read 2025-05-13, though it had the right time while on. Loaded late by
-udev, it then set the system's time back to that date, after systemd had
-moved it forward to the last time it saved. The module loads it in the
-initrd, so its date comes first, systemd's advance overrides it, and NTP
-puts the time right from there.
+It doesn't hold the time across any restart: the firmware puts its own date
+back. At a cold start on 2026-10-26 it read 2025-05-13, though it had the
+right time while on. On 2026-10-29 three boots, a warm restart and a
+watchdog reset among them, each read 2025-05-16 at boot, though it read the
+true time to the second while running, 49 minutes after NTP answered.
+Loaded late by udev, it then set the system's time back to that date, after
+systemd had moved it forward to the last time it saved. The module loads it
+in the initrd, so its date comes first, systemd's advance overrides it, and
+NTP puts the time right from there, within seconds of the network coming
+up. Until then the clock reads the last time systemd saved, so a boot after
+a long time off starts that far behind.
 
 ### The Graphics Driver
 
