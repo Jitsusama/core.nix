@@ -659,12 +659,12 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     machine.fail(desktop.in_session(NOTICES))
     desktop.photograph("margin-quiet")
     # Its row ends it, and a step in offers the rest, what's held last:
-    # an hour more comes first only when it ends by itself.
+    # An Hour More comes first only when it ends by itself.
     machine.send_key("meta_l-o")
     desktop.whats_on("Do Not Disturb")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show what's held"])
-    desktop.type_in("show", selecting="Show what's held")
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
+    desktop.type_in("show", selecting="Show What's Held")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     desktop.photograph("launcher-held")

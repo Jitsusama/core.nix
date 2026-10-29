@@ -41,11 +41,13 @@ Piece {
     context: reach === "signIn" ? card.signIn : ""
     actions: (reach === "signIn" ? [{
         glyph: Theme.glyph.wireless,
-        name: `Sign in to ${card.network}`,
+        name: Words.name("wifi:sign-in", "", { network: card.network }),
+        verb: Words.verb("wifi:sign-in"),
         run: () => SignIn.open()
     }] : []).concat(card === null ? [] : [{
-        glyph: Theme.glyph.retry,
-        name: "Check it again",
+        glyph: Words.glyph("verb:on:network:check"),
+        name: Words.name("verb:on:network:check"),
+        verb: Words.verb("verb:on:network:check"),
         stays: true,
         run: () => Wifi.check()
     }])
