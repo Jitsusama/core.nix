@@ -26,9 +26,9 @@
 //! or stands in it (inuse/); what a pi runs is what it says it loaded
 //! (loaded.rs), or what it maps when it says nothing. The version
 //! `current` left last stays too, for a reload just made or a step back.
-//! `prune` removes them alone, whenever a pi starts or ends. A build that
+//! `sweep` removes them alone, whenever a pi starts or ends. A build that
 //! fails its check is removed and `current` is left alone; the next run
-//! tries again. One update or prune runs at a time for each package, under
+//! tries again. One update or sweep runs at a time for each package, under
 //! a lock beside its versions.
 //!
 //! Versions were first kept in `releases/`, a word that names giving a

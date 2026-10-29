@@ -14,7 +14,7 @@
 #
 # A version goes once no pi runs it, keeping `current` and the version
 # before it. A pi says which version it loaded in the package's `loaded/`
-# folder, and each change there starts `pi-packages prune`, which removes
+# folder, and each change there starts `pi-packages sweep`, which removes
 # what no pi runs any more, so a version goes with its last pi.
 {
   config,
@@ -62,8 +62,8 @@ let
   # The command, told its settings, for the account to run.
   configured = pkgs.writeShellScriptBin "pi-packages" ''
     case "''${1:-status}" in
-      update | prune | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
-      *) echo "usage: pi-packages [status | update | prune]" >&2; exit 2 ;;
+      update | sweep | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
+      *) echo "usage: pi-packages [status | update | sweep]" >&2; exit 2 ;;
     esac
   '';
 in
@@ -163,18 +163,18 @@ in
 
     # A pi starting, reloading or ending changes what it says it loaded,
     # and a version no pi runs any more goes then, not at the next update.
-    systemd.user.services.pi-packages-prune = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    systemd.user.services.pi-packages-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
         Description = "Removes the versions of pi's packages that no pi runs";
         X-RestartIfChanged = false;
       };
       Service = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe package} prune --config ${configFile}";
+        ExecStart = "${lib.getExe package} sweep --config ${configFile}";
         Slice = "background.slice";
       };
     };
-    systemd.user.paths.pi-packages-prune = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    systemd.user.paths.pi-packages-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit.Description = "Watches what each pi says it loaded of its packages";
       Path = {
         PathChanged = loadedDirs;
@@ -197,12 +197,12 @@ in
         LowPriorityIO = true;
       };
     };
-    launchd.agents.pi-packages-prune = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
+    launchd.agents.pi-packages-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
       enable = true;
       config = {
         ProgramArguments = [
           (lib.getExe package)
-          "prune"
+          "sweep"
           "--config"
           "${configFile}"
         ];

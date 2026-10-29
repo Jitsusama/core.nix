@@ -71,7 +71,7 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
             Err(why) => Done::Failed { commit, why },
         }
     };
-    let removed = version::prune(&place)?;
+    let removed = version::sweep(&place)?;
     Ok(Outcome {
         done,
         removed,
@@ -84,14 +84,14 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
 /// it. A package an update holds is left to it, since its update removes
 /// too: `None`.
 #[must_use]
-pub fn prune(config: &Config) -> Vec<(Package, Result<Option<usize>, String>)> {
+pub fn sweep(config: &Config) -> Vec<(Package, Result<Option<usize>, String>)> {
     config
         .packages
         .iter()
         .map(|package| {
             let place = Place::of(config, package);
             let removed = hold(&place).and_then(|held| match held {
-                Some(_held) => version::prune(&place).map(Some),
+                Some(_held) => version::sweep(&place).map(Some),
                 None => Ok(None),
             });
             (package.clone(), removed)

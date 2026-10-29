@@ -172,10 +172,10 @@ impl Fixture {
     }
 
     /// Remove what nothing uses, as a pi starting or ending has it done.
-    fn prune(&self) -> usize {
-        let mut pruned = run::prune(&self.config);
-        let (_, removed) = pruned.pop().expect("the package");
-        removed.expect("a prune").expect("not held")
+    fn sweep(&self) -> usize {
+        let mut swept = run::sweep(&self.config);
+        let (_, removed) = swept.pop().expect("the package");
+        removed.expect("a sweep").expect("not held")
     }
 
     /// The versions there are, by commit.
@@ -301,7 +301,7 @@ fn a_live_session_keeps_its_version_through_an_update() {
     assert!(old.exists(), "the version the session runs was removed");
 
     drop(live);
-    assert_eq!(fixture.prune(), 1);
+    assert_eq!(fixture.sweep(), 1);
     assert!(!old.exists(), "a version nothing uses was kept");
 }
 
@@ -314,7 +314,7 @@ fn the_version_before_current_is_kept_and_no_other() {
     fixture.advance("second");
     let second = place.current_commit().expect("a commit");
 
-    assert_eq!(fixture.prune(), 0, "the version before current went");
+    assert_eq!(fixture.sweep(), 0, "the version before current went");
     let third = fixture.advance("third");
 
     assert_eq!(third.removed, 1, "{third:?}");
@@ -342,7 +342,7 @@ fn a_version_a_live_pi_says_it_loaded_is_kept_until_it_ends() {
     assert!(file.exists(), "a live pi's file was removed");
 
     drop(pi);
-    assert_eq!(fixture.prune(), 1);
+    assert_eq!(fixture.sweep(), 1);
     assert!(!old.exists(), "a version no pi runs was kept");
     assert!(!file.exists(), "an ended pi's file was kept");
 }
@@ -399,7 +399,7 @@ fn a_version_in_the_former_folder_goes_once_nothing_uses_it() {
     assert!(former.exists(), "a version a session runs was removed");
 
     drop(live);
-    assert_eq!(fixture.prune(), 1);
+    assert_eq!(fixture.sweep(), 1);
     assert!(
         !place.former_versions().exists(),
         "the former folder was kept"

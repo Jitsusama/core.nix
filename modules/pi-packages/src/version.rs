@@ -334,7 +334,7 @@ fn retire(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> {
 /// # Errors
 ///
 /// Says which version could not be read or removed.
-pub fn prune(place: &Place) -> Result<usize, String> {
+pub fn sweep(place: &Place) -> Result<usize, String> {
     // By where `current` leads rather than its commit's name, since one
     // commit can sit in both folders.
     let current = fs::canonicalize(place.current()).ok();

@@ -3,7 +3,7 @@
 //!
 //! Usage:
 //!   pi-packages update --config FILE   bring every package to its branch
-//!   pi-packages prune --config FILE    remove the versions no pi runs
+//!   pi-packages sweep --config FILE    remove the versions no pi runs
 //!   pi-packages status --config FILE   where each package's current is
 
 use std::path::Path;
@@ -15,7 +15,7 @@ use pi_packages::run::{self, Done};
 use pi_packages::version::Place;
 
 const USAGE: &str =
-    "usage: pi-packages update --config FILE | prune --config FILE | status --config FILE";
+    "usage: pi-packages update --config FILE | sweep --config FILE | status --config FILE";
 
 /// Characters of a commit worth showing.
 const SHORT: usize = 8;
@@ -25,7 +25,7 @@ fn main() -> ExitCode {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     let done = match words.as_slice() {
         ["update", "--config", file] => update(Path::new(file)),
-        ["prune", "--config", file] => prune(Path::new(file)),
+        ["sweep", "--config", file] => sweep(Path::new(file)),
         ["status", "--config", file] => status(Path::new(file)),
         _ => Err(USAGE.into()),
     };
@@ -94,10 +94,10 @@ fn update(file: &Path) -> Result<(), String> {
     }
 }
 
-fn prune(file: &Path) -> Result<(), String> {
+fn sweep(file: &Path) -> Result<(), String> {
     let config = Config::read(file)?;
     let mut failed = Vec::new();
-    for (package, removed) in run::prune(&config) {
+    for (package, removed) in run::sweep(&config) {
         let name = package.key.display();
         match removed {
             Ok(Some(0)) => {}
