@@ -1,6 +1,6 @@
-# Joel's kernel: the stable 7.2 series as nixpkgs pins it, built with Clang
-# and ThinLTO for one CPU, with the BORE scheduler and the settings in
-# settings.nix. docs/kernel.md explains each choice, and how to move to a new
+# Joel's kernel: the 7.3 series, from kernel.org until nixpkgs has it, built
+# with Clang and ThinLTO for one CPU, with the BORE scheduler and the settings
+# in settings.nix. docs/kernel.md explains each choice, and how to move to a new
 # series.
 #
 # Import this with nixpkgs rather than calling it with callPackage, so the
@@ -37,11 +37,12 @@ let
   cpuFlags = writeText "kernel-cpu-flags" "-march=${cpu} -mtune=${cpu}";
 
   # The newest stable release, until nixpkgs's pin reaches it. It applies
-  # only while nixpkgs's is older, so it never holds the kernel back.
-  # docs/kernel.md says why this release.
+  # only while nixpkgs's is older, so it never holds the kernel back. The
+  # pinned nixpkgs has no 7.3 package yet, so it's built from 7.2's, whose
+  # build is the same. docs/kernel.md says why this release.
   stable = {
-    version = "7.2.12";
-    hash = "sha256-uxhGio3Il4qgDKpkRudT97baP+5Wtrfzixb5QwugLU8=";
+    version = "7.3";
+    hash = "sha256-hzY8JPEOBjIes2J2VSEJTpRHH2v/i84taz5A858ASVM=";
   };
 in
 linux_7_2.override {
@@ -49,7 +50,8 @@ linux_7_2.override {
 
   argsOverride = lib.optionalAttrs (lib.versionOlder linux_7_2.version stable.version) {
     inherit (stable) version;
-    modDirVersion = stable.version;
+    # A first release, such as 7.3, puts its modules under 7.3.0.
+    modDirVersion = lib.versions.pad 3 stable.version;
     src = fetchurl {
       url = "mirror://kernel/linux/kernel/v7.x/linux-${stable.version}.tar.xz";
       inherit (stable) hash;
@@ -84,8 +86,8 @@ linux_7_2.override {
       name = "bore";
       patch = fetchpatch {
         name = "bore.patch";
-        url = "https://raw.githubusercontent.com/firelzrd/bore-scheduler/1e2f57ad74e8b8b1d315c03b7abd8d74e40448b4/patches/stable/0001-linux7.2-rc1-bore-7.0.0.patch";
-        hash = "sha256-6Qi12PX/YH9/PFfEbVexENJXo0uJeIulIYCwullqZqU=";
+        url = "https://raw.githubusercontent.com/firelzrd/bore-scheduler/1e2f57ad74e8b8b1d315c03b7abd8d74e40448b4/patches/stable/0001-linux7.3-rc2-bore-7.0.0.patch";
+        hash = "sha256-InVLknDvy4C144bGV2MVw4PKOKXq2gJfcSc2vTnohqE=";
       };
     }
     {

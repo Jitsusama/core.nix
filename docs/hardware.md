@@ -64,7 +64,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 
 ### The CVS Patch
 
-Intel's CVS bridge sits between the camera and the image processor. Its 7.2 driver claims
+Intel's CVS bridge sits between the camera and the image processor. Its driver claims
 a GPIO it only reads an interrupt from, and on this laptop that pin is the one
 all four amplifiers read their speaker ID from. With the driver loaded, none
 of the amplifiers bind and there's no sound card:
@@ -132,41 +132,35 @@ held the SMBus driver for 450 ms at every boot and left the bus busy.
 `spd-skips-soldered-memory.patch`, written here, has DMI keep each memory
 device's form factor and the SPD probe skip soldered memory.
 
-### Mainline's Fixes 7.2 Lacks
+### What 7.3 Brings
 
-Mainline's fixes since 7.2, for the drivers this laptop runs, were read
-against 7.2.11. Most were in 7.2.11 already under other subjects; two that
-matter here weren't, and a third, mainline's 86c8360c97f6, came with 7.2.12:
+7.3 holds every fix this laptop took onto 7.2 ahead of it: the 18 patches
+of 87 mainline commits that were `kernel/backports/`, picked from every
+commit between 7.2 and 7.3 touching a driver this laptop binds or could
+bind, and four of `kernel/local/` that came from mainline. Each was checked
+by its commits' ancestry against v7.3, not by whether its patch applies.
+The one commit of the 87 that 7.3 lacks, a8af929e9d75, fixes the security
+engine's Kconfig dependencies on other architectures, which x86 never
+needed.
 
-- `dm-crypt-status-after-last-reference.patch`, mainline's 148845aa1921.
+The four from `kernel/local/`:
+
+- `dm-crypt-status-after-last-reference`, mainline's 148845aa1921.
   `crypt_dec_pending` read a request's error before dropping its reference,
   so a completion that set the error in between was missed, and a failed
   read or write on the encrypted disk completed as a success.
-- `cs35l56-suspend-before-attach.patch`, mainline's fbf2c660bac8 backported
-  to 7.2's names. Suspending an amplifier before it first attached returned
-  early, skipping `pm_runtime_force_suspend`, while resume always runs
+- `cs35l56-suspend-before-attach`, mainline's fbf2c660bac8. Suspending an
+  amplifier before it first attached returned early, skipping
+  `pm_runtime_force_suspend`, while resume always runs
   `pm_runtime_force_resume`, so its runtime power count went out of balance.
-- 7.2.12's OT25 DAI. 7.2.11 took 4b7f393a01f8, which moves each
-  amplifier's feedback capture to the OT25 DAI on SoundWire's DP4, without
-  the commit that adds the DAI. The machine driver then named a DAI no
-  amplifier registered, and the sound card never bound; core carried the
-  commit as a patch until 7.2.12.
+- `bluetooth-sar-rev2`, mainline's ad28b52441bc, which reads a revision 2
+  SAR table.
+- `ipu-bridge-hm1092`, which gives the IR camera's sensor its link
+  frequencies.
 
-Once a stable release takes one, its patch no longer applies and the kernel
-build stops, which is the sign to drop it.
+And those that were `kernel/backports/`, by the names they had:
 
-### 7.3's Fixes, Taken Early
-
-7.3 adds and fixes a good deal for this laptop's parts, and none of it is
-tagged for 7.2's stable releases. Rather than wait for the kernel to move,
-`kernel/backports.nix` carries what matters here: 18 patches in
-`kernel/backports/`, 87 mainline commits, each patch naming its commits in
-order. They were picked from every commit between 7.2 and 7.3 touching a
-driver this laptop binds or could bind, and apply to 7.2.12 after the
-kernel's own patches with no offset or fuzz. One, the Thunderbolt fix, had
-a hunk moved onto 7.2's context, which its header says.
-
-| Patch                           | What it gives                                       |
+| Was                             | What it gives                                       |
 | ------------------------------- | --------------------------------------------------- |
 | `xe-flips-in-the-vrr-window`    | flips on time with variable refresh always on       |
 | `xe-real-vtotal`                | the real vertical total, which USB-C monitors need  |
@@ -194,12 +188,9 @@ which no rule here matches on. `iwlwifi-core-107` loads
 `iwlwifi-sc-a0-wh-b0-c107`, which linux-firmware has shipped since 20260916;
 without that file the driver falls back to 106. `issei` binds the security
 engine at `00:18.0` (`8086:e45d`), the device Dell's `issei.sys` drives, with
-`INTEL_SSEI` and `INTEL_SSEI_HW_HECI` built as modules; it gives
-`/dev/issei0` and the engine's firmware version in `/sys/class/issei`, and
-nothing in userspace talks to it yet.
-
-An assertion fails once the kernel is 7.3, which has them all, and the way
-through is to drop `kernel/backports.nix` and its directory.
+`INTEL_SSEI` and `INTEL_SSEI_HW_HECI` built as modules, which the laptop's
+`nixos.nix` asks for; it gives `/dev/issei0` and the engine's firmware
+version in `/sys/class/issei`, and nothing in userspace talks to it yet.
 
 ### linux-next's Fixes, Taken Early
 
@@ -362,8 +353,8 @@ setting, `IntelUefiCnvBtPpagSupport`, on for the EU and China. Linux's
 firmware doesn't have, and 7.2 rejects a revision 2 SAR table wherever it
 comes from. So Bluetooth ran on the controller's own defaults, with neither.
 
-`bluetooth-sar-rev2.patch` is mainline's ad28b52441bc from 7.3, which reads
-revision 2. `bluetooth-uefi-power-tables.patch`, written here, reads the two
+7.3 reads revision 2, by mainline's ad28b52441bc.
+`bluetooth-uefi-power-tables.patch`, written here, reads the two
 variables when ACPI has no table and sends them as the ACPI path does. Only a
 revision 2 SAR table is read that way, the one layout known to be given
 there. This chip, Scorpius Peak with Whale Peak 2, is one the revision 2 code
@@ -405,7 +396,7 @@ by hand and hears the tuning.
 
 ### The Camera
 
-The OV08X40 sits behind the CVS bridge, which Linux 7.2 puts between the sensor
+The OV08X40 sits behind the CVS bridge, which Linux puts between the sensor
 and the image processor. [`camera.nix`][11] turns on nixpkgs's `hardware.ipu7`, which brings
 the image processor's module and firmware, and swaps in Intel's camera software
 from its main branch, which knows the bridge. A patch routes this sensor's graph
@@ -704,7 +695,7 @@ base block, so the Intel driver never offers variable refresh.
 `panel-variable-refresh.patch`, written here, reads the panel's native range
 from that block when the base block has none. On its own it changes nothing
 a person sees: the compositor still decides. In
-7.2 the Intel driver turns the panel's self refresh off while variable
+7.2 and 7.3 the Intel driver turns the panel's self refresh off while variable
 refresh is on, though the hardware can keep both, so it's worth turning on
 only while
 a video or game is showing, as niri's on-demand setting does, rather than
@@ -1003,7 +994,7 @@ upstream as it is and the override can then come out.
 
 ### Left Out on Purpose
 
-- **`fred=on`.** Omarchy sets it, but 7.2 turns FRED on by default wherever
+- **`fred=on`.** Omarchy sets it, but the kernel turns FRED on by default wherever
   the CPU has it.
 - **`rtc_cmos.use_acpi_alarm=1`.** Omarchy sets it for suspend-then-hibernate,
   but the kernel already uses the ACPI alarm on any Intel machine with firmware

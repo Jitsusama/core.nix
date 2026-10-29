@@ -1,15 +1,13 @@
 # The XPS 14's kernel patches applied in this order, after the camera's
-# (../camera/camera.nix) and before the backports and next: the ones written
-# here, and four taken from elsewhere that wait to be filed by where they
-# stand upstream (cvs-wake-irq into next/; dm-crypt-status-after-last-reference,
-# cs35l56-suspend-before-attach and bluetooth-sar-rev2 into backports/) at the
-# stack's next regeneration, since filing them reorders the patches. The
-# camera's list holds four more that wait the same way, which kernel/README
+# (../camera/camera.nix) and before next: the ones written here, and
+# cvs-wake-irq, taken from elsewhere, which waits to be filed into next/ at
+# the stack's next regeneration, since filing it reorders the patches. The
+# camera's list holds three more that wait the same way, which kernel/README
 # names.
 { lib, pkgs, ... }:
 {
-  # After the camera's own, which take the default place, and before the
-  # backports (lib.mkAfter) and next (1600), as the stack was made.
+  # After the camera's own, which take the default place, and before next
+  # (1600), as the stack was made.
   boot.kernelPatches = lib.mkOrder 1100 [
     {
       # Without it the camera's CVS bridge holds the pin all four amplifiers
@@ -71,32 +69,12 @@
       patch = ./local/spd-skips-soldered-memory.patch;
     }
     {
-      # The encrypted disk could report a failed read or write as a success
-      # when two completions raced. Mainline's fix, which 7.2's stable
-      # releases have yet to take.
-      name = "dm-crypt-status-after-last-reference";
-      patch = ./local/dm-crypt-status-after-last-reference.patch;
-    }
-    {
-      # This chip's Bluetooth power limits come as a revision 2 table, which
-      # 7.2 rejects. Mainline's support for it, from 7.3.
-      name = "bluetooth-sar-rev2";
-      patch = ./local/bluetooth-sar-rev2.patch;
-    }
-    {
       # The firmware gives Bluetooth's power limits and antenna gain setting
       # only as UEFI variables, not in ACPI where the kernel looks, so
       # Bluetooth ran without them. Written here; the patch says why. It
-      # needs the revision 2 patch before it.
+      # reads them as the revision 2 table 7.3 takes.
       name = "bluetooth-uefi-power-tables";
       patch = ./local/bluetooth-uefi-power-tables.patch;
-    }
-    {
-      # A suspend before an amplifier first attaches skipped a step its
-      # resume always undoes, unbalancing its power management. Mainline's
-      # fix, backported to 7.2's names.
-      name = "cs35l56-suspend-before-attach";
-      patch = ./local/cs35l56-suspend-before-attach.patch;
     }
     {
       # Dell's driver offers quiet and the SoC slider low-power, so the legacy
