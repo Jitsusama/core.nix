@@ -255,10 +255,10 @@ function meetCall(appId) {
 const MEET_CODE = /^([a-z]{3})-?([a-z]{4})-?([a-z]{3})$/;
 const SPACES = /\s+/g;
 
-function meetCode(typed) {
-    const plain = String(typed ?? "").trim().toLowerCase().replace(SPACES, "");
-    const found = MEET_CODE.exec(MEET_LINK.exec(plain)?.[1] ?? plain);
-    return found ? `${found[1]}-${found[2]}-${found[3]}` : "";
+function meetCode(given) {
+    const plain = String(given ?? "").trim().toLowerCase().replace(SPACES, "");
+    const parts = MEET_CODE.exec(MEET_LINK.exec(plain)?.[1] ?? plain);
+    return parts ? `${parts[1]}-${parts[2]}-${parts[3]}` : "";
 }
 
 // The meeting whose call has that code, or null for one nobody asked

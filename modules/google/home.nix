@@ -101,13 +101,12 @@ in
         program "Slides" "Presentations in the Google account"
           "https://docs.google.com/presentation/";
       google-drive = program "Drive" "Files in the Google account" "https://drive.google.com/";
-      google-meet = program "Meet" "Video calls in the Google account" "https://meet.google.com/";
-    }
-    // {
-      # A new meeting, opened in Meet's window, where its link is copied.
-      google-meet.actions.new = {
-        name = "New Meeting";
-        exec = "${lib.getExe opens} https://meet.google.com/new";
+      google-meet = program "Meet" "Video calls in the Google account" "https://meet.google.com/" // {
+        # A new meeting, opened in Meet's window, where its link is copied.
+        actions.new = {
+          name = "New Meeting";
+          exec = "${lib.getExe opens} https://meet.google.com/new";
+        };
       };
     };
 
