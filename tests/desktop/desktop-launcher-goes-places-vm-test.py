@@ -430,13 +430,12 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.answer("what is a fjord?")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
-    # A step in leads with Return's own Copy, then talking it over with
-    # Lighthouse comes before asking in a session of its own.
+    # A step in leads with talking it over with Lighthouse, before asking
+    # in a session of its own, and the copy comes after them.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a Session"]
+        lambda shown: shown["rows"][:3] == ["Talk to Lighthouse", "Ask in a Session", "Copy"]
     )
-    machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
@@ -2314,6 +2313,18 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
     )
+    # The battery's figure holds more, so Return steps into it, as the right
+    # arrow does, rather than copying and closing, and its copy is listed
+    # last inside (Joel, 2026-10-28).
+    desktop.down_to("Battery")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["path"] == ["Machine", "Power", "Battery"]
+            and shown["rows"][-1:] == ["Copy"]
+        )
+    )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Found by its name from the top, it opens where it lives, and the
@@ -2536,6 +2547,20 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     # weather are, shows as that row wherever it's listed, never as a
     # version a surface drew itself (Joel, 2026-10-28).
     assert said["ownVersions"] == [], "\n".join(said["ownVersions"])
+    # And no step leads with a copy where it holds more, as docs/design.md's
+    # Return rule has it: "Copy is never the first row of a step, unless
+    # it's the only one, and is always the last".
+    copy_first = cast("list[Json]", said["copyFirst"])
+    assert copy_first == [], "Copy leads a step, though it comes last:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in copy_first
+    )
+    # And a row whose Return steps in over an act of its own leads the step
+    # with that act, as docs/design.md's Return rule has it: "its likeliest
+    # act first inside, so Return twice does it".
+    skipped = cast("list[Json]", said["skipped"])
+    assert skipped == [], "A step doesn't lead with the act Return stepped over:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in skipped
+    )
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

@@ -364,9 +364,9 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
-    # Return's own Copy, then the camera.
+    # The camera, then the copy.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Built-In Camera"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Built-In Camera", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.answer("built-in camera")
@@ -384,7 +384,8 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "In Use")
     desktop.step_in()
-    assert desktop.showing()["rows"] == ["chrome"]
+    # Copying what it says comes last, since nothing inside does anything.
+    assert desktop.showing()["rows"] == ["chrome", "Copy"]
     machine.send_key("left")
     desktop.launcher_until(lambda shown: len(shown["held"]) == 1)
     machine.send_key("left")
