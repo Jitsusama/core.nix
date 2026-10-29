@@ -112,6 +112,12 @@ Singleton {
     // running and Go To attaches it again; or run as it is on a machine in
     // no realm. Every start goes through here, so each is held the same.
     readonly property bool holds: /^[A-Za-z0-9._-]+$/.test(realm)
+    // A realm file naming no realm, as a hand edit could leave it, starts
+    // every session unheld, which is said as it's read rather than silently.
+    onRealmChanged: {
+        if (realm !== "" && !holds)
+            console.log(`sessions: the realm file says "${realm}", which names no realm, so sessions start unheld`);
+    }
     function held(command) {
         return holds ? `exec mycelium --realm ${realm} hold -- ${command}` : `exec ${command}`;
     }
@@ -253,6 +259,114 @@ Singleton {
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions",
             "zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"', realm, id]);
         Report.say(`attached session ${id}`);
+    }
+
+    // Where a session may start: each machine the realm's node places work
+    // on, this one first and the rest by name, so none moves as reach comes
+    // and goes, each saying why it can't take one now, or which condition
+    // it would rather not start one under; and `fits`, the machine
+    // Wherever It Fits starts it on. All of it from one placement asked of
+    // the node with nothing needed, again each time the launcher opens,
+    // since a machine's state changes as it goes (Jitsusama/mycelium's
+    // `place`). On a machine in no realm it holds nothing, and on one whose
+    // node links no other it holds this one alone, so Start a Session has
+    // no step there.
+    property var places: []
+    property string fits: ""
+    readonly property bool choosesMachine: places.length > 1
+    function lookAround() {
+        if (holds && !placing.running)
+            placing.running = true;
+    }
+    Process {
+        id: placing
+        command: ["mycelium", "--realm", root.realm, "place"]
+        stdout: StdioCollector {
+            onStreamFinished: root.placed(text)
+        }
+    }
+    function placed(text) {
+        let placement;
+        try {
+            placement = JSON.parse(text)?.Ok?.Placement;
+        } catch (error) {
+            return;
+        }
+        if (!placement)
+            return;
+        const chosen = placement.placed?.machine ?? "";
+        const misses = placement.placed?.passed ?? placement.pending?.misses
+            ?? placement.refused?.misses ?? [];
+        const all = (chosen !== "" ? [{ machine: chosen, because: [] }] : []).concat(misses);
+        const next = all.map(one => ({
+            name: String(one.machine),
+            cannot: (one.because ?? []).map(cannot).filter(why => why !== "")[0] ?? "",
+            rather: (one.because ?? []).map(because => because?.rather_not?.why ?? "")
+                .filter(why => why !== "")[0] ?? ""
+        })).sort((a, b) => Number(b.name === machine) - Number(a.name === machine)
+            || a.name.localeCompare(b.name));
+        const said = JSON.stringify([next, chosen]);
+        if (said === placesSaid)
+            return;
+        placesSaid = said;
+        places = next;
+        fits = chosen;
+    }
+    property string placesSaid: ""
+
+    // Why a machine can't take a session now, as a placement says it, or
+    // nothing where it can: out of reach, or a taint of its own refusing.
+    function cannot(because) {
+        if (because === "unreachable")
+            return "out of reach";
+        if (because?.refuses)
+            return because.refuses.why ?? because.refuses.key ?? "";
+        if (because?.lacks)
+            return "it isn't what the work needs";
+        return "";
+    }
+
+    // Starts a session on a quest on `on`, a machine of the realm: here as
+    // start() does, or through the node, which starts it held there and
+    // answers the words that join it, run in a new window of the sessions'
+    // kitty. With `on` empty the node places it, as Wherever It Fits does.
+    // The folder is the quest's, found at the same place under the home of
+    // the machine it starts on, or that machine's home.
+    function startOn(on, quest, folder) {
+        if (on === machine) {
+            start(quest, folder);
+            return;
+        }
+        if (!holds || starting.running)
+            return;
+        starting.asked = { on: on, quest: quest };
+        starting.command = ["mycelium", "--realm", realm, "start"]
+            .concat(on !== "" ? ["--need", `machine=${on}`] : [])
+            .concat(["--folder", folder, "--", "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "pi"]);
+        starting.running = true;
+    }
+    Process {
+        id: starting
+        property var asked: null
+        stdout: StdioCollector {
+            onStreamFinished: root.started(starting.asked, text)
+        }
+    }
+    function started(asked, text) {
+        let answer;
+        try {
+            answer = JSON.parse(text);
+        } catch (error) {
+            answer = null;
+        }
+        const begun = answer?.Ok?.Started;
+        if (!begun || !Array.isArray(begun.attach)) {
+            const why = typeof answer?.Err === "string" ? answer.Err : "its node didn't answer";
+            Report.say(`couldn't start a session on ${asked.quest}: ${why}`);
+            return;
+        }
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"].concat(begun.attach));
+        Report.say(`started a session on ${asked.quest} on ${begun.machine}`);
     }
 
     // Where each session on the mesh takes words and acts from, by its
