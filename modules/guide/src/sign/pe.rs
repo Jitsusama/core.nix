@@ -1,8 +1,12 @@
-//! A 64-bit EFI program as Authenticode sees it: what its signature
-//! covers, and the program with a signature added. Laid out as sbsign lays
+//! A 64-bit EFI program as Authenticode sees it: what its signatures
+//! cover, and the program with a signature added. Laid out as sbsign lays
 //! it out, which every machine here already boots: the program padded to
 //! eight bytes, then the certificate table padded to eight, then the PE
-//! checksum recomputed over the whole.
+//! checksum recomputed over the whole. A table may hold several
+//! signatures end to end, each padded to eight, as UEFI reads them: it
+//! boots a program when any one is by a key its db holds, and the digest
+//! each covers leaves the table out, so one is added without touching the
+//! others.
 
 use crate::Fault;
 
@@ -44,8 +48,9 @@ fn padded(length: usize) -> usize {
 }
 
 /// A program whose sections lie end to end after its headers, as ukify and
-/// systemd lay theirs out, with no signature: one it had at its end, as
-/// sbsign and this signer put it, is taken off, so it can be signed again.
+/// systemd lay theirs out, with no signature: those it had at its end, as
+/// sbsign and this signer put them, are taken off and kept apart, so it
+/// can be signed again, alone or beside them.
 #[derive(Debug)]
 pub struct Program {
     /// The program, padded with zeros to eight bytes.
@@ -54,6 +59,24 @@ pub struct Program {
     checksum: usize,
     /// Where the certificate table's directory entry is, also left out.
     table: usize,
+    /// The certificate table's entries it had, each whole and unpadded.
+    signatures: Vec<Vec<u8>>,
+}
+
+/// The entries of a certificate table, each whole and unpadded, or why
+/// they don't fill it.
+fn entries(table: &[u8]) -> Result<Vec<Vec<u8>>, Fault> {
+    let mut entries = vec![];
+    let mut at = 0;
+    while at < table.len() {
+        let length = u32_at(table, at)? as usize;
+        if length < 8 || at + length > table.len() {
+            return Err(refused("its signatures don't fill their table"));
+        }
+        entries.push(table[at..at + length].to_vec());
+        at += padded(length);
+    }
+    Ok(entries)
 }
 
 impl Program {
@@ -81,12 +104,14 @@ impl Program {
             u32_at(&bytes, table)? as usize,
             u32_at(&bytes, table + 4)? as usize,
         );
+        let mut signatures = vec![];
         if (start, length) != (0, 0) {
             // Past the headers, which hold the table's own entry, and
             // ending where the program does.
             if start < headers.max(table + 8) || start.checked_add(length) != Some(bytes.len()) {
                 return Err(refused("its signature isn't at its end"));
             }
+            signatures = entries(&bytes[start..])?;
             bytes.truncate(start);
             bytes[table..table + 8].fill(0);
         }
@@ -119,7 +144,13 @@ impl Program {
             bytes,
             checksum: optional + 64,
             table,
+            signatures,
         })
+    }
+
+    /// The signatures it carried, each a certificate table entry whole.
+    pub fn signatures(&self) -> &[Vec<u8>] {
+        &self.signatures
     }
 
     /// What the signature covers: everything but the checksum and the
@@ -132,15 +163,32 @@ impl Program {
         ]
     }
 
-    /// The program with this PKCS #7 signature in its certificate table.
-    pub fn signed(mut self, signature: &[u8]) -> Vec<u8> {
-        let length = 8 + signature.len();
-        let mut certificates = Vec::with_capacity(padded(length));
-        certificates.extend(dword(length).to_le_bytes());
-        certificates.extend(REVISION_2.to_le_bytes());
-        certificates.extend(PKCS_SIGNED_DATA.to_le_bytes());
-        certificates.extend(signature);
-        certificates.resize(padded(length), 0);
+    /// The program with this PKCS #7 signature its certificate table's
+    /// only one.
+    pub fn signed(self, signature: &[u8]) -> Vec<u8> {
+        self.with_table(vec![entry(signature)])
+    }
+
+    /// The program with this PKCS #7 signature after those it carried that
+    /// `keep` keeps.
+    pub fn signed_beside(mut self, signature: &[u8], keep: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        let mut table: Vec<Vec<u8>> = std::mem::take(&mut self.signatures)
+            .into_iter()
+            .filter(|kept| keep(kept))
+            .collect();
+        table.push(entry(signature));
+        self.with_table(table)
+    }
+
+    /// The program with these entries, end to end, as its certificate
+    /// table.
+    fn with_table(mut self, table: Vec<Vec<u8>>) -> Vec<u8> {
+        let mut certificates = vec![];
+        for entry in table {
+            let length = entry.len();
+            certificates.extend(entry);
+            certificates.resize(certificates.len() + padded(length) - length, 0);
+        }
 
         let start = dword(self.bytes.len());
         self.bytes[self.table..self.table + 4].copy_from_slice(&start.to_le_bytes());
@@ -151,6 +199,17 @@ impl Program {
         self.bytes[self.checksum..self.checksum + 4].copy_from_slice(&sum.to_le_bytes());
         self.bytes
     }
+}
+
+/// A certificate table entry holding this PKCS #7 signature, unpadded.
+fn entry(signature: &[u8]) -> Vec<u8> {
+    let length = 8 + signature.len();
+    let mut entry = Vec::with_capacity(length);
+    entry.extend(dword(length).to_le_bytes());
+    entry.extend(REVISION_2.to_le_bytes());
+    entry.extend(PKCS_SIGNED_DATA.to_le_bytes());
+    entry.extend(signature);
+    entry
 }
 
 /// The certificate table a program carries at its end, as sbsign and this
@@ -257,6 +316,60 @@ mod tests {
         let signed = Program::parse(bytes.clone()).unwrap().signed(&[1; 8]);
         let again = Program::parse(signed).unwrap();
         assert_eq!(again.covered(), Program::parse(bytes).unwrap().covered());
+    }
+
+    #[test]
+    fn a_signature_beside_another_follows_it_each_in_whole_eights() {
+        let bytes = program(0x400, 0);
+        let once = Program::parse(bytes.clone()).unwrap().signed(&[0xab; 13]);
+        let twice = Program::parse(once.clone())
+            .unwrap()
+            .signed_beside(&[0xcd; 5], |_| true);
+        assert_eq!(twice.len(), bytes.len() + 24 + 16);
+        assert_eq!(twice[bytes.len()..bytes.len() + 24], once[bytes.len()..]);
+        assert_eq!(
+            &twice[bytes.len() + 24..bytes.len() + 32],
+            [13, 0, 0, 0, 0x00, 0x02, 0x02, 0x00]
+        );
+        let table = 0x98 + 112 + 32;
+        assert_eq!(u32_at(&twice, table + 4).unwrap(), 40);
+        assert_eq!(
+            checksum(&twice, 0x98 + 64),
+            u32_at(&twice, 0x98 + 64).unwrap()
+        );
+        let again = Program::parse(twice).unwrap();
+        assert_eq!(again.covered(), Program::parse(bytes).unwrap().covered());
+        assert_eq!(again.signatures().len(), 2);
+        assert_eq!(again.signatures()[1][8..], [0xcd; 5]);
+    }
+
+    #[test]
+    fn a_signature_beside_others_drops_those_not_kept_and_signed_alone_drops_all() {
+        let once = Program::parse(program(0x400, 0))
+            .unwrap()
+            .signed(&[0xab; 13]);
+        let replaced = Program::parse(once.clone())
+            .unwrap()
+            .signed_beside(&[0xcd; 5], |entry| entry[8] != 0xab);
+        let parsed = Program::parse(replaced).unwrap();
+        assert_eq!(parsed.signatures().len(), 1);
+        assert_eq!(parsed.signatures()[0][8..], [0xcd; 5]);
+        let twice = Program::parse(once)
+            .unwrap()
+            .signed_beside(&[0xcd; 5], |_| true);
+        let alone = Program::parse(twice).unwrap().signed(&[0xef; 8]);
+        assert_eq!(Program::parse(alone).unwrap().signatures().len(), 1);
+    }
+
+    #[test]
+    fn a_table_its_entries_dont_fill_is_refused() {
+        let mut signed = Program::parse(program(0x400, 0)).unwrap().signed(&[1; 8]);
+        let end = signed.len();
+        // The entry says it runs past the table's end.
+        signed[end - 16..end - 12].copy_from_slice(&40u32.to_le_bytes());
+        assert!(
+            matches!(Program::parse(signed), Err(Fault::Unreadable { why, .. }) if why == "its signatures don't fill their table")
+        );
     }
 
     #[test]
