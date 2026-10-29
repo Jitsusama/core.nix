@@ -4213,6 +4213,13 @@
       "glyph": "reply"
     },
     {
+      "id": "verb:mail:replyAll",
+      "in": "mail:message",
+      "name": "Reply All",
+      "verb": "reply",
+      "glyph": "replyAll"
+    },
+    {
       "id": "verb:mail:read",
       "in": "mail:message",
       "name": "Read",

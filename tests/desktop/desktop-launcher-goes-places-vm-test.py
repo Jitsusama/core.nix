@@ -2089,6 +2089,31 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
 
 
 @pytest.mark.usefixtures("google")
+def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: Desktop) -> None:
+    """Reply All, after Reply on mail that went to others too, copies them; Lunch went to Joel."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("quarterly numbers")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:numbers")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["Open in Mail", "Reply", "Reply All", "Archive"]
+    )
+    desktop.down_to("Reply All")
+    machine.send_key("ret")
+    link = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+        "&to=grace%40example.com&cc=ada%40example.com&su=Re%3A%20Quarterly%20Numbers"
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     desktop: Desktop,
 ) -> None:

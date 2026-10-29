@@ -54,6 +54,10 @@ pub struct Mail {
     pub to: String,
     /// Who it was copied to, the same way, empty when nobody was.
     pub cc: String,
+    /// Everyone else it went to or was copied to, by address, once each:
+    /// whom a reply to all copies. Joel, whom Gmail delivered it to, and
+    /// its sender, whom the reply goes to, aren't among them.
+    pub others: Vec<String>,
     pub subject: String,
     /// When it came, in milliseconds since the epoch.
     pub at: i64,
@@ -184,6 +188,10 @@ pub fn read(answer: &Value) -> Option<Mail> {
         address: address(header("From")),
         to: named(header("To")),
         cc: named(header("Cc")),
+        others: others(
+            &[header("To"), header("Cc")],
+            &[header("Delivered-To"), header("From")],
+        ),
         subject: header("Subject").trim().to_owned(),
         // Gmail writes when it came as a string of milliseconds.
         at: answer
@@ -258,8 +266,6 @@ pub fn address(from: &str) -> String {
     }
 }
 
-/// The people a header lists, split at its commas but not those inside a
-/// quoted name, as "Lovelace, Ada" is.
 /// Everyone an address header names, each by name when it gives one.
 fn named(header: &str) -> String {
     split(header)
@@ -269,6 +275,27 @@ fn named(header: &str) -> String {
         .join(", ")
 }
 
+/// The addresses these headers name, in order and once each, but those
+/// the others name, matched as mail matches them, whatever their case.
+fn others(headers: &[&str], but: &[&str]) -> Vec<String> {
+    let mut seen: Vec<String> = but
+        .iter()
+        .map(|header| address(header).to_ascii_lowercase())
+        .collect();
+    let mut others = Vec::new();
+    for one in headers.iter().flat_map(|header| split(header)) {
+        let address = address(&one);
+        let known = address.to_ascii_lowercase();
+        if !address.is_empty() && !seen.contains(&known) {
+            seen.push(known);
+            others.push(address);
+        }
+    }
+    others
+}
+
+/// The people a header lists, split at its commas but not those inside a
+/// quoted name, as "Lovelace, Ada" is.
 fn split(header: &str) -> Vec<String> {
     let mut people = Vec::new();
     let (mut one, mut quoted) = (String::new(), false);
@@ -425,6 +452,7 @@ mod tests {
                 address: "ada@example.com".into(),
                 to: String::new(),
                 cc: String::new(),
+                others: Vec::new(),
                 subject: "Lunch?".into(),
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
@@ -464,6 +492,30 @@ mod tests {
             {"name": "CC", "value": "Grace Hopper <grace@example.com>, ada@example.com"}
         ]}});
         assert_eq!(read(&answer).unwrap().cc, "Grace Hopper, ada@example.com");
+    }
+
+    #[test]
+    fn mail_says_whom_a_reply_to_all_copies_but_joel_and_its_sender() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {"headers": [
+            {"name": "Delivered-To", "value": "joel@example.com"},
+            {"name": "From", "value": "Ada Lovelace <ada@example.com>"},
+            {"name": "To", "value": "\"Gerber, Joel\" <Joel@Example.com>, grace@example.com"},
+            {"name": "Cc", "value": "Ada <ADA@example.com>, Alan Turing <alan@example.com>, \
+                grace@example.com, Undisclosed recipients:;"}
+        ]}});
+        assert_eq!(
+            read(&answer).unwrap().others,
+            ["grace@example.com", "alan@example.com"]
+        );
+        let alone = json!({"id": "m", "threadId": "t", "payload": {"headers": [
+            {"name": "Delivered-To", "value": "joel@example.com"},
+            {"name": "From", "value": "ada@example.com"},
+            {"name": "To", "value": "Joel <joel@example.com>"}
+        ]}});
+        assert!(
+            read(&alone).unwrap().others.is_empty(),
+            "a mail to Joel alone has others"
+        );
     }
 
     #[test]
