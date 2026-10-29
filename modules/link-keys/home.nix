@@ -13,8 +13,8 @@
 # <realm> link" -f ~/.local/share/links/<realm>/<realm>-link` with an empty
 # PIN makes it.
 #
-# A realm whose node signs in with the agents' key, as the one Shopify's
-# machines share does, needs no key here.
+# A realm whose node signs in with the agents' key, as an employer's realm
+# shared with its own machines may, needs no key here.
 {
   config,
   lib,
