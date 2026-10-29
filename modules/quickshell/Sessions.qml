@@ -182,6 +182,33 @@ Singleton {
         Report.say(`attached session ${id}`);
     }
 
+    // Where each session on the mesh takes words and acts from, by its
+    // address: the harness's steer inbox, which every session reads, an
+    // orchestrator or not (mesh-workflow's steer()).
+    readonly property string inboxes: `${state}/steer`
+
+    // Leaves a steer in a session's inbox, under a name it skips until it's
+    // whole: `{ text, id }` talks to it, `{ act }` pauses, resumes or stops
+    // it.
+    function steer(address, fields) {
+        const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
+        const body = JSON.stringify(Object.assign({ at: new Date().toISOString(), from: "joel" },
+            fields));
+        Niri.spawn(["sh", "-c",
+            'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
+            "steer", `${inboxes}/${String(address).toUpperCase()}`, name, body]);
+    }
+
+    // Talks to a session: the words go with an id, so the session writes
+    // what became of them where the launcher reads its talks.
+    function talk(address, words) {
+        const text = words.trim();
+        if (text === "")
+            return false;
+        steer(address, { text: text, id: `talk-${Date.now()}` });
+        return true;
+    }
+
     // What a session is, for the launcher to keep one row of it: its window,
     // which the windows and its quest also find, or else itself.
     function isOf(session) {

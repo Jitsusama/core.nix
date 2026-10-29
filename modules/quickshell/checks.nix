@@ -921,6 +921,7 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         readonly property string home: Quickshell.env("HOME")
         function tell(words, folder, program) {}
+        function talk(address, words) { return true; }
       '';
     in
     pkgs.runCommandLocal "the-launcher-asks-a-fresh-pi" { } ''
