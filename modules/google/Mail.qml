@@ -5,6 +5,11 @@ pragma ComponentBehavior: Bound
 // program keeps it (src/mail.rs) and Google.qml reads it, with how many in
 // the inbox are unread. With no account there's none, and nothing shows.
 //
+// A piece of mail is one thing wherever the launcher shows it: `row`
+// gives its whole row, which the Mail place (Messages.qml), Now's mail
+// (NewMail.qml) and search all take as it is, with its acts in one order,
+// Open, Reply, Archive and Mark As Read, and its details in the drawer.
+//
 // `open` opens a piece of mail in Mail through google-opens (opens.sh),
 // keeping one Mail window: with Mail open, it brings that window forward,
 // so the new one opens beside it, and closes it once the new one shows.
@@ -18,7 +23,7 @@ import "Mail.js" as Said
 Singleton {
     id: root
 
-    // Each { id, from, subject, at, page }.
+    // Each { id, from, address, to, subject, at, page, body }.
     readonly property var mail: Google.mail
     // How many in the inbox are unread, or null until Gmail says.
     readonly property var unread: Google.unread
@@ -67,6 +72,74 @@ Singleton {
     // asked; nothing while it still wants him.
     function became(mail, how) {
         return !held(mail.id) && asked[mail.id] === how ? Said.tidied(how) : "";
+    }
+
+    // A piece of mail's row, made with the launcher's `thing` of the
+    // surface showing it, so every surface shows the same one: its subject,
+    // who it's from and when, and its details beside it. Return opens it in
+    // Mail; the right arrow lists every act.
+    function row(mail, thing) {
+        return thing({
+            key: `mail:${mail.id}`,
+            what: "mail",
+            component: "mail",
+            of: "program:google-mail",
+            part: titled(mail),
+            name: titled(mail),
+            verb: Words.verb("verb:mail:open"),
+            glyph: Words.glyph("mail:message"),
+            hue: "program",
+            side: Said.beside(mail, Calendar.now),
+            drawer: Said.details(mail, Words.name("mail:message", "untitled")),
+            later: true,
+            run: () => root.open(mail),
+            verbs: () => root.acts(mail, thing)
+        });
+    }
+
+    function titled(mail) {
+        return mail.subject !== "" ? mail.subject : Words.name("mail:message", "untitled");
+    }
+
+    // Its acts, in the one order every surface lists them.
+    function acts(mail, thing) {
+        const act = (key, run) => thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            later: true,
+            run: run
+        });
+        const listed = [act("verb:mail:open", () => root.open(mail))];
+        if (Said.replying(mail) !== "")
+            listed.push(act("verb:mail:reply", () => root.reply(mail)));
+        return listed.concat([tidying(mail, "archive", thing), tidying(mail, "read", thing)]);
+    }
+
+    // Archiving it or marking it read keeps the launcher, since he's going
+    // through what wants him, and the foot says what became of it.
+    function tidying(mail, how, thing) {
+        const key = `verb:mail:${how}`;
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            stays: true,
+            state: () => root.became(mail, how),
+            run: () => root.tidy(mail, how)
+        });
+    }
+
+    // A reply is written in a Mail window of its own, beside the mail it
+    // answers, so neither closes the other.
+    function reply(mail) {
+        const link = Said.replying(mail);
+        if (link !== "")
+            Niri.spawn(["google-opens", link]);
     }
 
     function open(mail) {

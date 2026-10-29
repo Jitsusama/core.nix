@@ -357,6 +357,10 @@ Provider {
             stays: action.stays ?? false,
             run: () => action.run(provider.shell)
         }));
+        // A piece standing for things of the launcher's own, such as the
+        // mail that wants Joel, lists them on Return, each the row it is
+        // everywhere else, and its own acts after them (Piece.qml's rows).
+        const holding = piece.rows ? () => piece.rows(thing).concat(actions) : null;
         return member({
             key: `on:${fact.entry.mark}`,
             is: provider.same[fact.entry.mark] ?? `on:${fact.entry.mark}`,
@@ -369,12 +373,13 @@ Provider {
             note: piece.context,
             glyph: Theme.glyph[piece.markGlyph || fact.entry.mark],
             hue: Marks.tone(piece),
-            plain: actions.length === 0,
-            stays: actions.length > 0 && actions[0].stays,
+            plain: !holding && actions.length === 0,
+            stays: !holding && actions.length > 0 && actions[0].stays,
             // Return's act leads the right arrow, then the rest, so every
-            // act is there.
-            verbs: actions.length > 1 ? () => actions : null,
-            run: () => {
+            // act is there; a piece standing for things holds them instead,
+            // and with no act of its own, Return steps in to them too.
+            verbs: holding ?? (actions.length > 1 ? () => actions : null),
+            run: holding ? null : () => {
                 if (actions.length > 0)
                     actions[0].run();
             }

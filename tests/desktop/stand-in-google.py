@@ -10,7 +10,8 @@ his own, and Standup on Ada's calendar, which she shares with him. An answer a s
 written down in google-asked beside the socket, for the test to read, and taken as Google would
 take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
 that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
-Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read or
+Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
+with three unread in the inbox; one marked read or
 archived is written down too, and taken out of the mail that wants him, as Gmail would.
 """
 
@@ -95,16 +96,22 @@ class Account:
             {
                 "id": "lunch",
                 "from": "Ada Lovelace",
+                "address": "ada@example.com",
+                "to": "Joel Gerber",
                 "subject": "Lunch on Friday",
                 "at": now - 2 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/lunch",
+                "body": "Shall we try the place on the corner?\n\nAda",
             },
             {
                 "id": "numbers",
                 "from": "Grace Hopper",
+                "address": "grace@example.com",
+                "to": "Joel Gerber, Ada Lovelace",
                 "subject": "Quarterly Numbers",
                 "at": now - 5 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/numbers",
+                "body": "The numbers are in the sheet.",
             },
         ]
         self.unread = 3

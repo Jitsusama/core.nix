@@ -326,8 +326,9 @@
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
     meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, and tells it the mail that wants Joel,
-    newest first, each asked for once, marking it read or archiving it when asked
+    lets him change it on, telling everyone asked, and tells it the mail that wants Joel, newest
+    first, each asked for once, with who it went to and its text, never an attachment's, marking
+    it read or archiving it when asked
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1131,8 +1132,9 @@
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
-    included, and nothing from half a line; says when mail came in words; and writes the lines
-    that mark mail read or archive it
+    included, and nothing from half a line; says when mail came in words, and what its row and
+    its details say; writes a reply to who sent it; and writes the lines that mark mail read or
+    archive it
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1283,15 +1285,15 @@
   '';
   vm-desktop-launcher-goes-places = ''
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
-    a meeting about to start by its name, says it in Now's Today, counts one within the hour down
-    as a want, marked from ten minutes off and said at its reminder and as it starts, shows one
-    further off with who's asked and how each answered, answers its
-    invitation, cancels one Joel holds once he's sure, moves one Google lets him change to a
-    time he types once he's sure, and lists its Meet call in Now while it's
-    open, says Google signed out in Now with Return signing in again in pi, counts the mail that
-    wants Joel in Now with Return showing it, opens mail by its subject, keeping one Mail window,
-    marks it read and archives it, sets the volume, loses no letter typed after its chord, and
-    shows the shortcuts
+    a meeting about to start by its name, lists it in Now, counts one within the hour down as a
+    want, marked from ten minutes off and said at its reminder and as it starts, shows one further
+    off with who's asked and how each answered, answers its invitation, cancels one Joel holds
+    once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
+    its Meet call in Now while it's open, says Google signed out in Now with Return signing in
+    again in pi, counts the mail that wants Joel in Now with Return listing it as Mail does,
+    details and all, opens mail by its subject, keeping one Mail window, replies to it, marks it
+    read and archives it, sets the volume, loses no letter typed after its chord, and shows the
+    shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

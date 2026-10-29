@@ -2,17 +2,24 @@
 //! by Gmail, newest first, as many as the shell would list.
 //!
 //! Gmail lists only ids, so each one is asked for once, for who sent it,
-//! its subject and when it came; what was asked is kept between looks
-//! (watch.rs), so a quiet inbox costs one list a minute.
+//! who it went to, its subject, when it came and its text; what was asked
+//! is kept between looks (watch.rs), so a quiet inbox costs one list a
+//! minute.
 
 use serde::Serialize;
 use serde_json::Value;
+
+use crate::calendar;
 
 /// What mail wants Joel, as Gmail's search writes it.
 pub const WANTS: &str = "in:inbox is:unread is:important";
 
 /// How many the shell is told of, at most.
 pub const SHOWN: usize = 20;
+
+/// How much of a body is kept: enough to read in the launcher's drawer,
+/// never a whole thread quoted below it.
+pub const BODY_MOST: usize = 4000;
 
 /// What Joel does with a piece of mail that wants him, each taking one of
 /// Gmail's labels off it, after which it wants him no more.
@@ -41,11 +48,18 @@ pub struct Mail {
     pub id: String,
     /// Who sent it, by name when the sender gives one.
     pub from: String,
+    /// The address it came from, which a reply goes to.
+    pub address: String,
+    /// Who it went to, each by name when the header gives one.
+    pub to: String,
     pub subject: String,
     /// When it came, in milliseconds since the epoch.
     pub at: i64,
     /// Its conversation in Gmail.
     pub page: String,
+    /// What it says, as plain text: its plain part, or its HTML part as
+    /// text when it has no plain one, at most `BODY_MOST` characters.
+    pub body: String,
 }
 
 /// The ids of the mail a search answered with, in its order.
@@ -60,8 +74,8 @@ pub fn listed(answer: &Value) -> Vec<String> {
         .collect()
 }
 
-/// One piece of mail, from Gmail's answer with its metadata, or none when
-/// the answer isn't one.
+/// One piece of mail, from Gmail's answer with the whole message, or none
+/// when the answer isn't one.
 pub fn read(answer: &Value) -> Option<Mail> {
     let id = answer.get("id").and_then(Value::as_str)?;
     let thread = answer.get("threadId").and_then(Value::as_str)?;
@@ -83,6 +97,12 @@ pub fn read(answer: &Value) -> Option<Mail> {
     Some(Mail {
         id: id.to_owned(),
         from: sender(header("From")),
+        address: address(header("From")),
+        to: split(header("To"))
+            .iter()
+            .map(|one| sender(one))
+            .collect::<Vec<_>>()
+            .join(", "),
         subject: header("Subject").trim().to_owned(),
         // Gmail writes when it came as a string of milliseconds.
         at: answer
@@ -91,7 +111,122 @@ pub fn read(answer: &Value) -> Option<Mail> {
             .and_then(|at| at.parse().ok())
             .unwrap_or(0),
         page: format!("https://mail.google.com/mail/u/0/#inbox/{thread}"),
+        body: answer.get("payload").map(body).unwrap_or_default(),
     })
+}
+
+/// The address a From header names, or nothing when it names none.
+pub fn address(from: &str) -> String {
+    let from = from.trim();
+    match from.rsplit_once('<') {
+        Some((_, address)) => address.trim_end_matches('>').trim().to_owned(),
+        None if from.contains('@') => from.to_owned(),
+        None => String::new(),
+    }
+}
+
+/// The people a header lists, split at its commas but not those inside a
+/// quoted name, as "Lovelace, Ada" is.
+fn split(header: &str) -> Vec<String> {
+    let mut people = Vec::new();
+    let (mut one, mut quoted) = (String::new(), false);
+    for c in header.chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                one.push(c);
+            }
+            ',' if !quoted => people.push(std::mem::take(&mut one)),
+            _ => one.push(c),
+        }
+    }
+    people.push(one);
+    people
+        .into_iter()
+        .map(|one| one.trim().to_owned())
+        .filter(|one| !one.is_empty())
+        .collect()
+}
+
+/// A message's text: its first plain part, found depth first, or else its
+/// first HTML part as text; never an attachment's.
+fn body(payload: &Value) -> String {
+    let mut parts = Vec::new();
+    gather(payload, &mut parts);
+    let of = |kind: &str| {
+        parts
+            .iter()
+            .find(|(mime, _)| mime.eq_ignore_ascii_case(kind))
+            .map(|(_, text)| text.as_str())
+    };
+    if let Some(text) = of("text/plain") {
+        return calendar::clipped(folded(text), BODY_MOST);
+    }
+    of("text/html")
+        .map(calendar::plain)
+        .map_or_else(String::new, |text| calendar::clipped(text, BODY_MOST))
+}
+
+/// Each part that holds text of its own, in order, with its kind.
+fn gather(part: &Value, into: &mut Vec<(String, String)>) {
+    let text = |field: &str| part.get(field).and_then(Value::as_str).unwrap_or("");
+    if !text("filename").is_empty() {
+        return;
+    }
+    if let Some(data) = part.pointer("/body/data").and_then(Value::as_str) {
+        into.push((text("mimeType").to_owned(), decoded(data)));
+    }
+    for inner in part
+        .get("parts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        gather(inner, into);
+    }
+}
+
+/// Plain text as it reads: each line's trailing space gone, and blank
+/// lines run to one.
+fn folded(text: &str) -> String {
+    let mut kept = String::with_capacity(text.len());
+    let mut gap = false;
+    for line in text.lines().map(str::trim_end) {
+        if line.is_empty() {
+            gap = !kept.is_empty();
+            continue;
+        }
+        if !kept.is_empty() {
+            kept.push_str(if gap { "\n\n" } else { "\n" });
+        }
+        kept.push_str(line);
+        gap = false;
+    }
+    kept
+}
+
+/// What Gmail's URL-safe base64 holds, as text, with anything not UTF-8
+/// replaced, and the padding Gmail sometimes leaves off not needed.
+fn decoded(data: &str) -> String {
+    let value = |c: u8| match c {
+        b'A'..=b'Z' => Some(c - b'A'),
+        b'a'..=b'z' => Some(c - b'a' + 26),
+        b'0'..=b'9' => Some(c - b'0' + 52),
+        b'-' | b'+' => Some(62),
+        b'_' | b'/' => Some(63),
+        _ => None,
+    };
+    let mut bytes = Vec::with_capacity(data.len() / 4 * 3);
+    let (mut held, mut bits) = (0u32, 0u32);
+    for six in data.bytes().filter_map(value) {
+        held = (held << 6) | u32::from(six);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            bytes.push(u8::try_from((held >> bits) & 0xff).unwrap_or(0));
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// Who a From header names: the name before the address, unquoted, or the
@@ -139,11 +274,84 @@ mod tests {
             Some(Mail {
                 id: "m1".into(),
                 from: "Lovelace, Ada".into(),
+                address: "ada@example.com".into(),
+                to: String::new(),
                 subject: "Lunch?".into(),
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
+                body: String::new(),
             })
         );
+    }
+
+    /// Gmail's URL-safe base64 of some text, unpadded as it often is.
+    fn encoded(text: &str) -> String {
+        const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut out = String::new();
+        for chunk in text.as_bytes().chunks(3) {
+            let n = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |n, (at, byte)| n | u32::from(*byte) << (16 - 8 * at));
+            for at in 0..=chunk.len() {
+                out.push(char::from(LETTERS[(n >> (18 - 6 * at) & 63) as usize]));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn mail_says_who_it_went_to_each_by_name() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {"headers": [
+            {"name": "To", "value": "\"Gerber, Joel\" <joel@example.com>, grace@example.com"}
+        ]}});
+        assert_eq!(read(&answer).unwrap().to, "Gerber, Joel, grace@example.com");
+    }
+
+    #[test]
+    fn mail_reads_as_its_plain_part_before_its_html_and_never_an_attachment() {
+        let part = |mime: &str, text: &str| {
+            json!({"mimeType": mime,
+            "body": {"data": encoded(text)}})
+        };
+        let answer = json!({"id": "m", "threadId": "t", "payload": {
+        "mimeType": "multipart/mixed", "parts": [
+            {"mimeType": "text/plain", "filename": "notes.txt",
+                "body": {"data": encoded("an attachment")}},
+            {"mimeType": "multipart/alternative", "parts": [
+                part("text/html", "<p>Lunch?</p>"),
+                part("text/plain", "Lunch on Friday?  \r\n\r\n\r\nAda <ada@example.com>\r\n")
+            ]}
+        ]}});
+        assert_eq!(
+            read(&answer).unwrap().body,
+            "Lunch on Friday?\n\nAda <ada@example.com>"
+        );
+    }
+
+    #[test]
+    fn mail_with_only_html_reads_as_its_text() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {
+            "mimeType": "text/html",
+            "body": {"data": encoded("<p>Caf\u{e9} at <b>noon</b>?</p>")}}});
+        assert_eq!(read(&answer).unwrap().body, "Caf\u{e9} at noon?");
+    }
+
+    #[test]
+    fn a_long_body_is_cut_at_a_word() {
+        let long = "word ".repeat(BODY_MOST);
+        let answer = json!({"id": "m", "threadId": "t", "payload": {
+            "mimeType": "text/plain", "body": {"data": encoded(&long)}}});
+        let body = read(&answer).unwrap().body;
+        assert!(body.chars().count() <= BODY_MOST);
+        assert!(body.ends_with("word"), "{}", &body[body.len() - 10..]);
+    }
+
+    #[test]
+    fn a_from_header_gives_its_address() {
+        assert_eq!(address("Ada Lovelace <ada@example.com>"), "ada@example.com");
+        assert_eq!(address("ada@example.com"), "ada@example.com");
+        assert_eq!(address("Ada"), "");
     }
 
     #[test]

@@ -2593,6 +2593,8 @@ Scope {
                 side: row.side ?? "",
                 // The whole words drawn below the rows for it, if any.
                 reads: row.reads ?? "",
+                // What the drawer beside the rows shows of it, if anything.
+                drawer: row.drawer ?? null,
                 // The keys the foot says for it, each a mark and its word.
                 told: root.keysFor(row).map(key => key.join(" ")),
                 settled: !(row === root.headline || row.answered)
