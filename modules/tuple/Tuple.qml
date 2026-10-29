@@ -1,7 +1,7 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 // Tuple's calls, as the shell sees them, for the margin's piece (Call.qml)
-// and the launcher's rows (Calls.qml, People.qml). How the call Joel's in stands comes
+// and the launcher's rows (Calls.qml). How the call Joel's in stands comes
 // from Tuple's own stream of state, as tuple-people says it (people.rs):
 // whether it's connected and since when, who's in it by name, and for
 // Joel and each of them, whether they're muted, sharing their screen or
@@ -97,8 +97,8 @@ Singleton {
 
     // What can be done about Tuple's calls now, most wanted first, each
     // there only when it can be done, as the launcher's rows say them:
-    // found anywhere by name (Calls.qml) and first in Tuple's own place
-    // (People.qml). A ringing call's window, where it's answered, comes
+    // found anywhere by name and as Tuple's own acts in Programs › Tuple
+    // (Calls.qml). A ringing call's window, where it's answered, comes
     // first; in a call, being heard or not, sharing while nothing is
     // shared, and leaving; out of one, opening Joel's room, or joining the
     // call whose link was just copied; and copying his room's link once

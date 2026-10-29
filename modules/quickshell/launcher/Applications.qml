@@ -7,6 +7,12 @@
 // action's words ("open a terminal") and the foot teaches its chord, so
 // the two aren't listed side by side.
 //
+// A program whose desktop entry hides itself, having no window to open, is
+// listed all the same when another provider says it gives it acts
+// (`hiddenPrograms`, Provider.qml), as Calls.qml does for Tuple. Starting it
+// would only start its daemon, so its Return steps in, as a device's does,
+// and inside are only those acts and what follows them, never starting it.
+//
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
 // first (Switch, New window, New window below, its other windows by title,
@@ -566,10 +572,23 @@ Provider {
         return layer ? [Object.assign({}, layer, { name: Words.name("shortcuts") })] : [];
     }
 
+    // The hidden programs other providers give acts to, by id.
+    readonly property var declared: (provider.launcher?.sources ?? [])
+        .filter(other => other !== provider)
+        .reduce((ids, other) => ids.concat(other.hiddenPrograms ?? []), [])
+
+    // Whether a program steps in on Return rather than starting: only one
+    // another provider declares, never one that's simply closed.
+    function stepsIn(entry) {
+        return entry.noDisplay && declared.includes(entry.id);
+    }
+
     // Everything the right arrow holds for a program, as it stands now.
     function controls(entry, start, below) {
         const looked = {};
         const same = given => provider.names(entry, given, looked);
+        if (stepsIn(entry))
+            return givenActs(entry.id).concat(recent(entry), keysOf(entry), notices(same));
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
         const acts = (latest ? [said("verb:program:switch", "", {
@@ -591,7 +610,7 @@ Provider {
     }
 
     things: DesktopEntries.applications.values
-        .filter(entry => !entry.noDisplay)
+        .filter(entry => !entry.noDisplay || provider.declared.includes(entry.id))
         .map(entry => {
             const start = () => Niri.spawn(provider.command(entry));
             const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
@@ -616,6 +635,14 @@ Provider {
                 below: below,
                 verbs: () => provider.controls(entry, start, below)
             });
+            if (provider.stepsIn(entry))
+                return Object.assign(row, {
+                    verb: "more",
+                    stays: true,
+                    nested: true,
+                    run: () => provider.launcher?.enter(row),
+                    targets: row.verbs
+                });
             // Whether it's running, and so what Return does, is asked as
             // the row is read, never kept.
             const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;

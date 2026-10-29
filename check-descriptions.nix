@@ -955,8 +955,8 @@
     choices that run its own command
   '';
   the-launcher-finds-the-people = ''
-    the launcher's Tuple place leads with the room or a call's controls, lists and finds contacts as
-    they stand, calls, joins and favours them, and never starts a stopped Tuple
+    People with Tuple as its source lists favourites and those called lately, finds anyone as they
+    stand, calls, joins and favours them, steps in before calling, and never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in

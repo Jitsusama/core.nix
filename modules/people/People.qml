@@ -5,18 +5,18 @@
 // the files jitsusama.people.sources names, in their order; none is named
 // here.
 //
-// With nothing typed it holds the favourites, then those dealt with
-// lately, then whoever can be reached, then by name (VKCF3Z's design,
-// RSCH-20261028-2NK1E5, waiting on Joel). Typing finds anyone any source
-// knows by name or address, those listed first. Each says how they stand
-// at the right, when a source says, and their address below. Return
-// steps in, as the right arrow does, never calling by itself: inside,
-// every act in the one order, the first way this machine reaches them
-// first (calling before mail before chat), each address to copy, and
-// their Recent, the things lately with them, each drawn by its own row,
-// so a mail is Mail's row and a meeting the meeting's. Their details,
-// every address and each source's facts, are in the drawer beside the
-// row.
+// With nothing typed it holds the favourites, then whoever there's been
+// something with, the last first (VKCF3Z's design, RSCH-20261028-2NK1E5,
+// waiting on Joel). Typing finds anyone any source knows by name or
+// address, those listed first. Each says how they stand at the right,
+// when a source says, and their address below. Return steps in, as the
+// right arrow does, never calling by itself: inside, every way this
+// machine reaches them, in the sources' order (calling before mail before
+// chat), their next meeting, their Recent, the things lately with them,
+// whether they're a favourite, then each address to copy, last as every
+// Copy is. Each thing is drawn by its own row, so a mail is Mail's row
+// and a meeting the meeting's. Their details, every address and each
+// source's facts, are in the drawer beside the row.
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -88,7 +88,7 @@ Provider {
     // so a row made for a search costs no source anything until then.
     function made(person, stood) {
         const row = member({
-            key: `person:${person.email}`,
+            key: `person:${person.key}`,
             component: "person",
             name: person.name,
             person: person,
@@ -124,8 +124,8 @@ Provider {
     }
 
     // What the right arrow lists: every way to reach them, their next
-    // meeting, the things lately with them, then each address to copy,
-    // last as every Copy is.
+    // meeting, the things lately with them, whether they're a favourite,
+    // then each address to copy, last as every Copy is.
     function inside(person) {
         const addresses = person.emails.map((email, at) => copyRow({
             key: `fact:person:email:${at}`,
@@ -133,7 +133,14 @@ Provider {
             side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
-        return acts(person).concat(next(person), recent(person), addresses);
+        return acts(person).concat(next(person), recent(person), favourite(person), addresses);
+    }
+
+    // Whether they're a favourite, a switch, from the first source that
+    // keeps favourites and knows them.
+    function favourite(person) {
+        const kept = sources.map(source => source.favourite(person, provider)).find(Boolean);
+        return kept ? [kept] : [];
     }
 
     // Their next meeting, drawn as a meeting is everywhere, the soonest any

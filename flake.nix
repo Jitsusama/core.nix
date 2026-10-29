@@ -203,7 +203,9 @@
         tpm-signing = ./modules/tpm-signing/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
-        tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
+        tuple = moduleFrom ./modules/tuple/home.nix {
+          inherit (self.homeModules) niri people quickshell;
+        };
         unlisted = ./modules/unlisted/home.nix;
         vivid = ./modules/vivid/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };

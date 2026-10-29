@@ -1,7 +1,7 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
-// Tuple's people, for People's Tuple source (People.qml beside this) and
-// for what Tuple's place says of them: everyone Tuple lists as a contact,
+// Tuple's people, for People's Tuple source (TupleSource.qml beside
+// this): everyone Tuple lists as a contact,
 // as tuple-people says them (people.rs), and how those Tuple knows stand.
 //
 // Tuple's own `contacts follow` says every contact again, over a megabyte

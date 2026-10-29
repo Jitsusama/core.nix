@@ -22,7 +22,6 @@
         "clipboard",
         "capture",
         "session:recording",
-        "calls",
         "emoji",
         "session:quiet"
       ],
@@ -3294,14 +3293,6 @@
       "ask": "which emoji?"
     },
     {
-      "id": "calls",
-      "name": "Calls",
-      "noun": "calls",
-      "glyph": "call",
-      "ask": "who to pair with?",
-      "empty": "Nobody to call yet."
-    },
-    {
       "id": "people",
       "name": "People",
       "noun": "people",
@@ -3358,7 +3349,7 @@
     },
     {
       "id": "tuple",
-      "in": "calls",
+      "in": "applications",
       "name": "The Call"
     },
     {

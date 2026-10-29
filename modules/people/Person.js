@@ -21,11 +21,15 @@ function bare(name) {
 // when they share an address, and a source that knows several addresses
 // for someone joins them all. Each source is { name, people }, in the
 // order they're consulted, and each of its people { emails, name, facts,
-// recent }. Each person is { email, emails, name, facts, recent, from }:
-// their first address, every address, the first real name a source
-// gives (else their address), the facts each source adds under its own
-// label, whether any source has them as someone Joel dealt with lately,
-// and the sources that know them, in order.
+// recent, spans }. Each person is { key, email, emails, name, facts,
+// recent, spans, from }: what they're known by, their first address, every
+// address, the first real name a source gives (else their address), the
+// facts each source adds under its own label, whether any source has them
+// as someone Joel dealt with lately, when each thing with them is, and the
+// sources that know them, in order. Someone a source knows by no address
+// but by an id of its own, as Tuple can call a contact by its id, is a
+// person of that source alone, known as "<source>:<id>", since nothing
+// else could say they're the same; someone known by neither is left out.
 function merged(sources) {
     const byAddress = new Map();
     const persons = [];
@@ -33,6 +37,10 @@ function merged(sources) {
         for (const known of source.people ?? []) {
             const emails = (known.emails ?? []).map(address).filter(email => email !== "");
             if (emails.length === 0) {
+                const id = String(known.id ?? "");
+                if (id !== "") {
+                    take(fresh("", persons, `${source.name}:${id}`), source.name, known, []);
+                }
                 continue;
             }
             const found = [...new Set(emails.map(email => byAddress.get(email)).filter(Boolean))]
@@ -48,9 +56,10 @@ function merged(sources) {
         }
     }
     return persons.filter(person => !person.gone).map(person => ({
+        key: person.key,
         email: person.email,
         emails: person.emails,
-        name: bare(person.name) ? person.email : person.name,
+        name: bare(person.name) ? person.email || person.key : person.name,
         facts: person.facts,
         recent: person.recent,
         spans: person.spans,
@@ -58,9 +67,9 @@ function merged(sources) {
     }));
 }
 
-function fresh(email, persons) {
+function fresh(email, persons, key = email) {
     const person = {
-        email, emails: [], name: "", facts: [], recent: false, spans: [], from: []
+        key, email, emails: [], name: "", facts: [], recent: false, spans: [], from: []
     };
     persons.push(person);
     return person;
@@ -107,15 +116,17 @@ function joined(person, other) {
 }
 
 // How someone stands, from the first source that says, each source's
-// standing being its stands by address: { said, order, favourite }, as
-// Tuple says "available", 0. Nobody says anything of most, who come
-// after everyone who's said to stand anyhow.
+// standing being its stands by address, or by what a person of its own
+// alone is known as: { said, order, favourite }, as Tuple says
+// "available", 0. Nobody says anything of most, who come after everyone
+// who's said to stand anyhow.
 const UNSAID_ORDER = 4;
 const UNSAID = { said: "", order: UNSAID_ORDER, favourite: false, recent: false };
 
 function standing(person, stands) {
+    const known = person.emails.length > 0 ? person.emails : [person.key];
     for (const by of stands) {
-        for (const email of person.emails) {
+        for (const email of known) {
             const stood = by[email];
             if (stood) {
                 return Object.assign({}, UNSAID, stood);
@@ -156,14 +167,15 @@ function ordered(persons, standOf, now) {
 }
 
 // Their details, as the launcher's drawer shows them beside their row:
-// their name, every address, and each fact a source gave.
+// their name, every address they have, and each fact a source gave.
 function details(person) {
+    const addresses = person.emails.length === 0 ? [] : [{
+        label: person.emails.length === 1 ? "Email" : "Emails",
+        value: person.emails.join(", ")
+    }];
     return {
         title: person.name,
-        facts: [{
-            label: person.emails.length === 1 ? "Email" : "Emails",
-            value: person.emails.join(", ")
-        }].concat(person.facts),
+        facts: addresses.concat(person.facts),
         body: ""
     };
 }

@@ -17,16 +17,20 @@
 // listed with nothing typed. Who it knows changes seldom; how they stand
 // (stands) changes often, so it's kept apart, by address: { said, order,
 // favourite, recent }, "available" and 0 for someone who can be reached
-// now. Given a person as People.qml joins them, { email, emails, name,
-// facts, recent, from }, `acts` gives what Joel can do with them through
+// now. Given a person as People.qml joins them, { key, email, emails,
+// name, facts, recent, spans, from }, `acts` gives what Joel can do with them through
 // it, rows made with the People place's provider, `main` on the one way
 // it reaches them; `next` the next thing it has with them, a meeting not
 // yet over, as { at, row }, or null; and `recent` the things it's had
 // with them, each { at, row }, `at` when it was in milliseconds since the
 // epoch, so People lists every source's newest first. Each row is drawn
 // by that thing's own component (Mail.row, Calendar.row), never one of
-// its own. `woken` is asked each time the launcher opens, for a source
-// that only follows what it knows while someone might look. A source
+// its own. `favourite` is the switch saying whether they're a favourite,
+// for a source that keeps favourites, or null. Someone it knows by no
+// address it gives by an `id` of its own instead, a person of its alone,
+// whose stands are keyed "<its name>:<id>", their key. `woken` is asked
+// each time the launcher opens, for a source that only follows what it
+// knows while someone might look. A source
 // that learns its acts for someone only once asked, as Slack's looks
 // them up, tells its `place` (People.qml's provider) it changed, so a
 // person Joel is inside is made again.
@@ -50,6 +54,10 @@ QtObject {
 
     function recent(person, provider) {
         return [];
+    }
+
+    function favourite(person, provider) {
+        return null;
     }
 
     function woken() {

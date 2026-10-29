@@ -123,6 +123,17 @@ QtObject {
         check("one address", Person.details(everyone[2]).facts[0],
             { label: "Email", value: "grace@example.com" });
 
+        // Someone a source knows by no address, only by an id of its own,
+        // is a person of its alone; someone known by neither isn't anyone.
+        const alone = Person.merged([{ name: "tuple", people: [
+            { emails: [], id: 108, name: "Hal" }, { emails: [], name: "Nobody" }] }]);
+        check("one known by an id alone", alone.map(person => [person.key, person.name,
+            person.emails]), [["tuple:108", "Hal", []]]);
+        check("and how they stand, by it", Person.standing(alone[0],
+            [{ "tuple:108": { said: "away", order: 2, favourite: true } }]).said, "away");
+        check("with no address in their details", Person.details(alone[0]).facts, []);
+        check("one with an address is known by it", everyone[2].key, "grace@example.com");
+
         // Acts: the main ways to reach them first, in source order, then the rest.
         check("acts in the one order", Person.acts([
             [{ name: "Call Them", main: true }, { name: "Make Them a Favourite" }],
