@@ -109,8 +109,8 @@ in
   config.jitsusama.keys.terminal = map (key: { inherit (key) chord does; }) keys;
 
   # kitty's Recent in the launcher: the folders zoxide learns as each is
-  # visited, as it ranks them, by how often and how lately, read as its
-  # database changes. Return opens a kitty window there, through the kitty
+  # visited, the one visited last first, as every program's Recent is
+  # ordered, read as its database changes. Return opens a kitty window there, through the kitty
   # behind the window used last while one is open. The launcher watches the
   # list from inside its folder, which zoxide makes only at its first cd, so
   # it's made at sign-in and that cd counts.
@@ -125,6 +125,8 @@ in
       (lib.getExe config.programs.zoxide.package)
       "query"
       "--list"
+      "--sort-by"
+      "last-accessed"
     ];
     open = [
       "kitty"
