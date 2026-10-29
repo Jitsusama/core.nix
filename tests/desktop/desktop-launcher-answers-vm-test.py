@@ -1237,8 +1237,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         # Inside, in the design's order, saying it was set by hand.
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"]
-                == ["Town", "How It Knows", "Set It by Hand", "Find It Again", "Copy"]
+                shown["rows"] == ["Town", "How It Knows", "Set It by Hand", "Find It Again", "Copy"]
             )
         )
         reads = [thing["reads"] for thing in desktop.showing()["things"]]
