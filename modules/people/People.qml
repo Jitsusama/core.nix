@@ -123,7 +123,7 @@ Provider {
         const addresses = person.emails.map((email, at) => copyRow({
             key: `fact:person:email:${at}`,
             name: email,
-            side: Words.name("fact:person:email"),
+            side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
         const lately = sources.reduce((rows, source) => rows.concat(source.recent(person, provider)),
