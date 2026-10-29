@@ -36,6 +36,7 @@ SHOWN = ("name", "noun", "what", "ask", "empty", "said", "sure", "part", "verb",
 
 # Things whose word means something the glossary doesn't replace.
 OTHER_SENSE = {
+    "heat:display-engine": "the processor's part that drives the screens, as Intel names it",
     "power:limit": "a battery's charge limit, not an allowance",
     "shortcuts:neovim:editor:commands": "Neovim's command line, not a connection",
 }

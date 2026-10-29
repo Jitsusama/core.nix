@@ -3,8 +3,10 @@
 //
 // - "cpu", "processor", "cores" or "load": how busy the processors are, and
 //   their Cores (one reading each, oldest core first), which are Maxed, the
-//   Clock, the Temperature (as Heat reads it), the programs Using it, the
-//   Load, the Kinds of core and the Model.
+//   Clock, what Held it Back over the last second and each core held (as
+//   its own telemetry says, ProcessorTelemetry.qml, shown only while
+//   something did), the Temperature (as Heat reads it), the programs Using
+//   it, the Load, the Kinds of core and the Model.
 // - "memory" or "ram": what's Used, the Pressure (how long something waited
 //   for it), the Swap, what's Cached, the programs Using it, and its Type,
 //   as the machine read it at boot.
@@ -394,6 +396,27 @@ Provider {
                 note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
             }));
         }
+        const held = Machine.heldBack(ProcessorTelemetry.reading);
+        if (held && held.cores.length > 0)
+            rows.push(holderRow({
+                name: named("cpu:held-back"),
+                side: percent(held.share),
+                graph: bar(held.share),
+                glyph: chip,
+                note: `by ${Machine.limit(held.by)}, over the last second`
+            }, () => held.cores.map(core => figure({
+                name: named("cpu:held-back-core", { n: core.n }),
+                side: percent(core.share),
+                graph: bar(core.share),
+                note: `by ${Machine.limit(core.by)}`
+            }))));
+        else if (held)
+            rows.push(figure({
+                name: named("cpu:held-back"),
+                side: percent(held.share),
+                graph: bar(held.share),
+                note: `by ${Machine.limit(held.by)}, over the last second`
+            }));
         if (now.heat)
             rows.push(heated("cpu:temperature", now.heat, "processor"));
         const users = programs
@@ -968,6 +991,16 @@ Provider {
         && (launcher.answer?.live === provider
             || launcher.held.some(step => step.row.live === provider)
             || launcher.matches.some(row => row.live === provider))
+
+    // The processor's telemetry is watched while a Processor answer is
+    // listed, shown or stepped into, so what held it back is there once its
+    // parts are opened, and it's read for nothing else Machine answers.
+    // Held Back has no words of its own: asked alone, it would wait on the
+    // reading that only its being shown asks for.
+    readonly property bool watched: shown && [launcher.answer,
+        ...launcher.held.map(step => step.row), ...launcher.matches]
+        .some(row => row?.live === provider && row.title === Words.name(kinds.cpu))
+    onWatchedChanged: ProcessorTelemetry.watching += watched ? 1 : -1
 
     Timer {
         interval: provider.second

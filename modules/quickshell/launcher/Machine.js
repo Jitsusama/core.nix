@@ -2,8 +2,9 @@
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // how busy the processors and each core were between two reads, which kind
 // each core is, how fast a disk read and wrote between two reads, which
-// programs use the processors and the memory, and the memory modules the
-// machine read at boot. Machine.qml reads the files and says the figures.
+// programs use the processors and the memory, what held the processor
+// back as its own telemetry says, and the memory modules the machine read
+// at boot. Machine.qml reads the files and says the figures.
 .pragma library
 
 // A line of /proc/stat counting a processor's time: "cpu" for them all,
@@ -131,6 +132,58 @@ function cpus(text) {
         }
     }
     return listed;
+}
+
+// What held a processor back, as a note says it after "by": the whole
+// processor's limits by the names Intel gives them, and a core cluster's
+// by the kind of limit it was.
+const LIMITS = {
+    pl1: "its power limit, PL1",
+    pl2: "its short power limit, PL2",
+    pl3: "its peak power limit, PL3",
+    platformPl1: "the whole machine's power limit, PL1",
+    platformPl2: "the whole machine's short power limit, PL2",
+    platformPl3: "the whole machine's peak power limit, PL3",
+    prochot: "being told to slow down",
+    regulatorHot: "a regulator running hot",
+    heat: "heat",
+    power: "power",
+    current: "current",
+    other: "something else"
+};
+
+function limit(by) {
+    return LIMITS[by] ?? by;
+}
+
+function strongest(causes) {
+    return (causes ?? []).reduce((a, b) => (a && a.share >= b.share ? a : b), null);
+}
+
+// What held the processor back over the last second, from its telemetry's
+// reading (ProcessorTelemetry.qml), or null while nothing did: the share
+// of that second and the limit that held it most, the whole processor's
+// where one did and else its most held cluster's, and each core held, by
+// its number, with what held its cluster most, as { n, share, by }. A
+// limit under a twentieth isn't said by the reader, so a core missing
+// wasn't held.
+function heldBack(reading) {
+    if (!reading) {
+        return null;
+    }
+    const cores = [];
+    for (const cluster of reading.clusters ?? []) {
+        const most = strongest(cluster.heldBack);
+        if (most) {
+            for (const n of cpus(cluster.cpus)) {
+                cores.push({ n, share: most.share, by: most.by });
+            }
+        }
+    }
+    cores.sort((a, b) => a.n - b.n);
+    const whole = strongest(reading.heldBack);
+    const most = whole ?? strongest(cores);
+    return most ? { share: most.share, by: most.by, whole: whole !== null, cores } : null;
 }
 
 // Each core's kind, by its number, on a processor of more than one kind:

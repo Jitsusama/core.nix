@@ -83,6 +83,7 @@ let
     "OpenBelow.qml"
     "Niri.qml"
     "Wifi.qml"
+    "ProcessorTelemetry.qml"
     "SignIn.qml"
     "Floating.qml"
     "Fuzzy.js"

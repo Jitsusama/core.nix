@@ -472,6 +472,7 @@
         "machine:cpu:cores",
         "machine:cpu:maxed",
         "machine:cpu:clock",
+        "machine:cpu:held-back",
         "machine:cpu:temperature",
         "machine:cpu:using",
         "machine:cpu:load",
@@ -504,6 +505,16 @@
       "answers": [
         "clock speed"
       ]
+    },
+    {
+      "id": "machine:cpu:held-back",
+      "in": "machine:cpu",
+      "name": "Held Back"
+    },
+    {
+      "id": "machine:cpu:held-back-core",
+      "in": "machine:cpu:held-back",
+      "name": "Core {n}"
     },
     {
       "id": "machine:cpu:temperature",
@@ -949,6 +960,26 @@
       "id": "heat:graphics",
       "in": "heat",
       "name": "Graphics"
+    },
+    {
+      "id": "heat:npu",
+      "in": "heat",
+      "name": "NPU"
+    },
+    {
+      "id": "heat:image-processor",
+      "in": "heat",
+      "name": "Image Processor"
+    },
+    {
+      "id": "heat:media-engine",
+      "in": "heat",
+      "name": "Media Engine"
+    },
+    {
+      "id": "heat:display-engine",
+      "in": "heat",
+      "name": "Display Engine"
     },
     {
       "id": "heat:disk",

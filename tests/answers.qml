@@ -753,6 +753,46 @@ QtObject {
             Heat.gives(heatChips, "wifi")], [true, false]);
         machine("a thermal zone by its type", ["x86_pkg_temp", "acpitz", "iwlwifi_1", "SEN1",
             "INT3400 Thermal"].map(Heat.zonePart), ["processor", "board", "wifi", "", ""]);
+        // The processor's telemetry, as its reader says it on the laptop:
+        // the parts Heat lists come after the graphics, each held to the
+        // processor's points, and the rest are left out.
+        const heatOwn = [{ part: "chipset", celsius: 62 }, { part: "npu", celsius: 62 },
+            { part: "display", celsius: 60 }, { part: "imageProcessor", celsius: 63 },
+            { part: "systemAgent", celsius: 65 }, { part: "media", celsius: 59 }];
+        machine("the processor's own parts, after the processor",
+            Heat.gather(heatChips, [], {}, heatOwn).temps.map(p => [p.id, p.value]),
+            [["processor", 83], ["npu", 62], ["image-processor", 63], ["media-engine", 59],
+                ["display-engine", 60], ["disk", 52.85], ["memory", 56], ["battery", 36.9],
+                ["air", 45]]);
+        machine("the processor's own parts, held to its points",
+            Heat.gather(heatChips, [], {}, heatOwn).temps.filter(p => p.id === "npu")
+                .map(p => [p.high, p.crit]), [[100, 100]]);
+        machine("the processor's own parts, with no processor said",
+            Heat.gather([heatChips[4]], [], {}, [{ part: "npu", celsius: 62 }]).temps
+                .map(p => [p.id, p.crit]), [["npu", null], ["battery", null]]);
+        // What held the processor back, as its telemetry says it: the whole
+        // processor's limit first, and each core by its cluster's.
+        const heldReading = {
+            heldBack: [{ by: "pl2", share: 0.4 }, { by: "pl1", share: 1 }],
+            clusters: [{ cpus: "4-5", heldBack: [{ by: "power", share: 0.98 },
+                { by: "heat", share: 0.1 }] }, { cpus: "0", heldBack: [] },
+                { cpus: "2", heldBack: [{ by: "heat", share: 0.5 }] }],
+            npu: []
+        };
+        machine("held back, by the whole processor's limit", Machine.heldBack(heldReading),
+            { share: 1, by: "pl1", whole: true, cores: [{ n: 2, share: 0.5, by: "heat" },
+                { n: 4, share: 0.98, by: "power" }, { n: 5, share: 0.98, by: "power" }] });
+        machine("held back by a cluster alone", Machine.heldBack({ heldBack: [],
+            clusters: [{ cpus: "12-13", heldBack: [{ by: "heat", share: 0.3 }] }] }),
+            { share: 0.3, by: "heat", whole: false, cores: [{ n: 12, share: 0.3, by: "heat" },
+                { n: 13, share: 0.3, by: "heat" }] });
+        machine("held back by nothing", [Machine.heldBack({ heldBack: [], clusters: [
+            { cpus: "0", heldBack: [] }] }), Machine.heldBack(null)], [null, null]);
+        machine("what held it back, as a note says it", ["pl1", "platformPl1", "prochot",
+            "heat", "novel"].map(Machine.limit), ["its power limit, PL1",
+            "the whole machine's power limit, PL1", "being told to slow down", "heat", "novel"]);
+        machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
+            .length, 5);
         machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps
             .map(p => p.nth), [1, 2]);
         machine("a lone disk, unnumbered", heatDisk.nth, 0);
