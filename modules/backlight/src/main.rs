@@ -567,9 +567,12 @@ impl Backlight<'_> {
         let Some(kelvin) = warmth.step(now) else {
             return;
         };
-        if let Err(error) = relay.set_temperature(kelvin).await {
-            eprintln!("<4>can't set the screens' warmth: {error}");
-            warmth.abandon();
+        match relay.set_temperature(kelvin).await {
+            Ok(()) => warmth.set(kelvin, now),
+            Err(error) => {
+                eprintln!("<4>can't set the screens' warmth: {error}");
+                warmth.abandon();
+            }
         }
     }
 

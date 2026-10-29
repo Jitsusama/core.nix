@@ -174,24 +174,29 @@ impl Warmth {
         self.next
     }
 
-    /// The warmth to set now, when a step is due.
-    pub fn step(&mut self, now: Instant) -> Option<u16> {
+    /// The warmth to set now, when a step is due. The screen is at it only
+    /// once [`Warmth::set`] says so, since a set that fails leaves it where
+    /// it was, and the next glide must start from there.
+    pub fn step(&self, now: Instant) -> Option<u16> {
         if self.next? > now {
             return None;
         }
         let aim = self.aim?;
-        let at = if aim > self.shown {
+        Some(if aim > self.shown {
             self.shown.saturating_add(STEP).min(aim)
         } else {
             self.shown.saturating_sub(STEP).max(aim)
-        };
-        self.shown = at;
-        if at == aim {
+        })
+    }
+
+    /// The screen took a step to `kelvin`.
+    pub fn set(&mut self, kelvin: u16, now: Instant) {
+        self.shown = kelvin;
+        if self.aim == Some(kelvin) {
             self.abandon();
         } else {
             self.next = Some(now + EVERY);
         }
-        Some(at)
     }
 }
 
@@ -206,6 +211,7 @@ mod tests {
         while let Some(due) = warmth.wake() {
             at = at.max(due);
             if let Some(kelvin) = warmth.step(at) {
+                warmth.set(kelvin, at);
                 steps.push(kelvin);
             }
         }
@@ -245,8 +251,26 @@ mod tests {
         warmth.light(100.0, now);
         warmth.room(4000.0, now);
         assert_eq!(warmth.step(now), Some(6450));
+        warmth.set(6450, now);
         assert_eq!(warmth.step(now), None, "not yet due");
         assert_eq!(warmth.wake(), Some(now + EVERY));
+    }
+
+    #[test]
+    fn a_step_that_fails_leaves_the_screen_where_it_was() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        assert_eq!(warmth.step(now), Some(6450));
+        warmth.abandon();
+        assert_eq!(warmth.stands(), WHITE, "the note says the warmth it's at");
+        warmth.room(2690.0, now);
+        assert_eq!(
+            glide(&mut warmth, now).first(),
+            Some(&6450),
+            "starts again from white"
+        );
     }
 
     #[test]
@@ -282,6 +306,7 @@ mod tests {
         warmth.light(100.0, now);
         warmth.room(2700.0, now);
         assert_eq!(warmth.step(now), Some(6450));
+        warmth.set(6450, now);
         warmth.room(6500.0, now);
         assert_eq!(glide(&mut warmth, now), vec![6500]);
     }
