@@ -644,3 +644,42 @@ fn logs_past_their_limit_are_offered_to_be_trimmed() {
     );
     assert_eq!(offered.action, Action::Trim { root: logs.clone() });
 }
+
+#[test]
+fn a_clear_surveys_only_the_sources_inside_its_folder_or_holding_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user",
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{
+               "src": {{ "kind": "cargo", "roots": ["{0}/src", "{0}/trees"] }},
+               "trash": {{ "kind": "trash", "path": "{0}/share/Trash" }},
+               "go": {{ "kind": "cache", "path": "{0}/cache/go-build" }},
+               "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
+                            "command": ["/bin/merged"], "timeout": "20s" }} }} }}"#,
+        root.display()
+    ))
+    .unwrap();
+    let names = |folders: &[&str]| -> Vec<String> {
+        let folders: Vec<_> = folders.iter().map(|folder| root.join(folder)).collect();
+        disk_guard::survey::within(&config, &folders)
+            .sources
+            .into_keys()
+            .collect()
+    };
+    assert_eq!(
+        names(&["trees/fix-1/target"]),
+        ["merged", "src"],
+        "a folder under one of a source's roots, and what judges a tree finished"
+    );
+    assert_eq!(
+        names(&["cache"]),
+        ["go", "merged"],
+        "a source inside the folder"
+    );
+    assert_eq!(
+        names(&["share/Trash/files/a.txt", "cache/go-build"]),
+        ["go", "merged", "trash"]
+    );
+}

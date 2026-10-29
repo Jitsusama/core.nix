@@ -176,7 +176,11 @@ or launchd, and [`home.nix`][2] the account's.
   offers inside the folder that `plan::clears` allows, which is what a
   critically full disk would take, less anything occupied and the store's
   garbage, each judged for use again as it goes and paced by the disk's
-  own band. An ask ends with its pass, whatever the pass did, and until
+  own band. That survey reads only the sources lying inside an asked
+  folder or holding one (`survey::within`), so a clear starts in seconds
+  rather than after a walk of every source, and it leaves what the
+  holders say of the rest as the last whole survey found it. An ask ends
+  with its pass, whatever the pass did, and until
   then the holders it touches say `clearing`. A holder's `clears` counts
   the same set, so what a clear offers to free is what it takes, and a
   pass drops what it reclaimed from it at once. The command refuses a
