@@ -31,7 +31,7 @@ Provider {
     // What waits on Joel is found by its words too, since Now is its one
     // home: the rest of what's on each has a place of its own to be found
     // in, which is why the collection adds no row to a search.
-    things: waiting === null ? [] : [waiting]
+    things: (waiting === null ? [] : [waiting]).concat([location])
 
     // What the thing is where the launcher has a row of its own for it, by
     // its mark, so one found in both is listed once (Rank.identity).
@@ -117,6 +117,52 @@ Provider {
         precision: SystemClock.Minutes
     }
 
+    // Where the laptop is, as Location says it, the one place the weather
+    // and everything else that depends on it reads here from (Joel,
+    // 2026-10-28: "a location area in now ... tied to what weather and
+    // any other geo-conscious options pull from"): its town, else its
+    // position, and how sure it is. Inside, the position, how it was
+    // found, and the time zone the clock keeps, saying so where the place
+    // keeps another. Found by typing its name too, since Now is its home.
+    readonly property var location: {
+        const here = Location.here;
+        const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
+        const within = here ? `within ${Math.ceil(here.accuracy / 1000)} km` : "";
+        const side = here ? here.place ?? position : Location.read ? "unknown" : "\u2026";
+        const differs = Location.zoneDiffers;
+        // Said plainly where it's unknown, never guessed.
+        const elsewhere = differs ? `it keeps ${here.zone}, not the clock's ${Location.clockZone}`
+            : "";
+        const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
+            : differs ? elsewhere : `${within}, found through GeoClue`;
+        const inside = () => {
+            const rows = [];
+            if (here)
+                rows.push(copyRow({
+                    key: "location:position",
+                    name: Words.name("location:position"),
+                    side: position,
+                    note: within
+                }));
+            rows.push(copyRow({
+                key: "location:zone",
+                name: Words.name("location:zone"),
+                side: Location.clockZone,
+                note: elsewhere,
+                hue: differs ? "strong" : "voice"
+            }));
+            return rows;
+        };
+        return thingRow({
+            key: "on:location",
+            name: Words.name("location"),
+            side: side,
+            note: note,
+            hue: differs ? "strong" : "voice",
+            glyph: Theme.glyph.location
+        }, inside);
+    }
+
     readonly property var moment: {
         const rows = [copyRow({
             key: "on:time",
@@ -130,7 +176,7 @@ Provider {
             side: Qt.formatDate(clock.date, "dddd d MMMM yyyy"),
             hue: "voice",
             glyph: Theme.glyph.date
-        })];
+        }), location];
         if (weather)
             rows.push(holderRow({
                 key: "on:weather",

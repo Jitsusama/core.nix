@@ -7,10 +7,13 @@
 //! geolocation service the machine names, and says each new position as a
 //! signal, so nothing here asks on a clock.
 //!
-//! Each position far enough from the last one said (fix.rs) is written to
+//! Each position far enough from the last one said (fix.rs) is named, its
+//! town and the zone it keeps asked of the web (named.rs), and written to
 //! the file it's given, a small JSON object replaced whole, which the
-//! launcher watches (launcher/Weather.qml). The file is read back as it
-//! starts, so a restart says nothing new of a laptop that hasn't moved.
+//! launcher watches (Location.qml). The file is read back as it starts, so
+//! a restart says nothing new of a laptop that hasn't moved; one whose
+//! name couldn't be asked, as when it starts before a network does, is
+//! asked again whenever GeoClue next says anything.
 //! Should GeoClue leave the bus, it stops, for systemd to start it again.
 //!
 //! It says in the journal that here moved, and never where to, since the
@@ -18,6 +21,7 @@
 
 mod fix;
 mod geoclue;
+mod named;
 
 use std::error::Error;
 use std::fs;
@@ -28,6 +32,9 @@ use futures_util::StreamExt;
 use zbus::Connection;
 
 use fix::{Fix, moved};
+
+/// How long a here still unnamed waits before its name is asked again.
+const AGAIN: std::time::Duration = std::time::Duration::from_mins(5);
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
@@ -56,21 +63,39 @@ async fn follow(path: &Path) -> Result<(), Box<dyn Error>> {
     // A position GeoClue already had may come before the signal is heard.
     let mut found = geoclue::fix(&bus, client.location().await?).await;
     loop {
-        if let Some(now) = found.take()
-            && moved(last.as_ref(), &now)
-        {
-            now.write(path)?;
-            println!(
-                "<6>here moved, to within {} km",
-                (now.accuracy / 1000.0).ceil()
-            );
-            last = Some(now);
+        if let Some(now) = found.take() {
+            // A new here, or the last one again while it still lacks its
+            // name or its zone.
+            let renamed = if moved(last.as_ref(), &now) {
+                Some(now)
+            } else {
+                last.clone().filter(Fix::unnamed)
+            };
+            if let Some(fix) = renamed {
+                let said = named::name(fix.latitude, fix.longitude).await;
+                let fix = fix.named(said.place, said.zone);
+                fix.write(path)?;
+                if last.as_ref().is_some_and(|was| was.distance(&fix) < 1.0) {
+                    println!("<6>here named");
+                } else {
+                    println!(
+                        "<6>here moved, to within {} km",
+                        (fix.accuracy / 1000.0).ceil()
+                    );
+                }
+                last = Some(fix);
+            }
         }
+        // GeoClue says nothing more of a laptop sitting still, so one still
+        // unnamed, as when the program starts before a network does, is
+        // asked again a few minutes on, and never once it's named.
+        let unnamed = last.as_ref().is_some_and(Fix::unnamed);
         tokio::select! {
             update = updates.next() => match update {
                 Some(update) => found = geoclue::fix(&bus, update.args()?.now().clone()).await,
                 None => return Err("GeoClue's client stopped saying anything".into()),
             },
+            () = tokio::time::sleep(AGAIN), if unnamed => found = last.clone(),
             _ = gone.next() => return Err("GeoClue left the bus".into()),
         }
     }

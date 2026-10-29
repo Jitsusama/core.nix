@@ -1481,6 +1481,21 @@
       ]
     },
     {
+      "id": "location",
+      "in": "on",
+      "name": "Location"
+    },
+    {
+      "id": "location:position",
+      "in": "location",
+      "name": "Position"
+    },
+    {
+      "id": "location:zone",
+      "in": "location",
+      "name": "Zone"
+    },
+    {
       "id": "time:day",
       "in": "time",
       "name": "Date"

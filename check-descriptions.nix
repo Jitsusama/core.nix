@@ -886,8 +886,9 @@
   '';
   the-launcher-answers-the-rain = ''
     the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
-    or "when will it rain" answer when it next rains, here or in a place; here is where the laptop
-    is, by its position, ahead of the place set and then the time zone, and the footer says which
+    or "when will it rain" answer when it next rains, here or in a place; here is the location, by
+    its town or else its position, ahead of the place set and then the time zone, and the footer
+    says which
   '';
   the-launcher-answers-what-is-asked = ''
     sums, bases and bits, addresses, subnets, characters, measures, zones, colours, the machine's
@@ -982,9 +983,10 @@
     vocabulary breaking each of its rules
   '';
   the-launcher-shows-the-moment-in-now = ''
-    Now's last rows are its own: the time, the date, the weather read as the launcher opens and
-    kept while it's asked again, and the next meeting, whose Return is the meeting's own, with no
-    Today row to step into, and Now counts nothing while only they are there
+    Now's last rows are its own: the time, the date, the location, saying its town and when the
+    place keeps another zone than the clock, the weather read as the launcher opens and kept while
+    it's asked again, and the next meeting, whose Return is the meeting's own, with no Today row to
+    step into, and Now counts nothing while only they are there
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
