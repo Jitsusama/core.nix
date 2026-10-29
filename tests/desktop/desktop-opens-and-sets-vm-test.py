@@ -909,7 +909,7 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     )
 
     def kittys() -> list[int]:
-        """The process behind each of kitty's windows, one a window."""
+        """Name the process behind each of kitty's windows, one a window."""
         windows = json.loads(desktop.as_account("niri msg --json windows"))
         return [window["pid"] for window in windows if window["app_id"] == "kitty"]
 
