@@ -505,8 +505,9 @@
   '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
-    service on Linux signing in with the agents' key and an agent on a Mac; one naming none runs
-    it dialling nothing, and one in no realm has neither a realm nor a node
+    service on Linux signing in with the agents' key and an agent on a Mac whose sessions sign
+    commits with that key; one naming none runs it dialling nothing, and one in no realm has
+    neither a realm nor a node
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session

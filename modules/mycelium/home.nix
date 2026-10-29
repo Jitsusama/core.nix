@@ -218,7 +218,13 @@ in
           ProgramArguments = node;
           # The system's own ssh, which reads the machine's SSH config and
           # the login session's agent.
-          EnvironmentVariables.PATH = "/usr/bin:/bin";
+          EnvironmentVariables = {
+            PATH = "/usr/bin:/bin";
+            # What the node starts is driven from another machine, where
+            # nobody can touch this one's sensor, so its commits sign with
+            # the agents' key, even in a held terminal.
+            SIGN_AS = "agent";
+          };
           RunAtLoad = true;
           # Started again whenever it stops, but not more than every 30 s.
           KeepAlive = true;
