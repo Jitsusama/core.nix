@@ -41,8 +41,9 @@ impl Account {
 }
 
 /// What Slack said of an address, as the shell is told it: who it is in
-/// Slack and its workspace, which open them there, and their name; or
-/// that Slack knows nobody by it.
+/// Slack and its workspace, which open them there, their name, and the
+/// time zone their profile keeps, by tzdata's name; or that Slack knows
+/// nobody by it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Found {
     pub email: String,
@@ -50,6 +51,8 @@ pub struct Found {
     pub id: Option<String>,
     pub team: String,
     pub name: String,
+    /// Their zone, as "America/Toronto", or "" when Slack keeps none.
+    pub zone: String,
 }
 
 /// Why Slack said nothing of an address.
@@ -112,6 +115,7 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
         id: None,
         team: team.to_owned(),
         name: String::new(),
+        zone: String::new(),
     };
     if said.get("ok").and_then(Value::as_bool) == Some(true) {
         let user = said.get("user").unwrap_or(&Value::Null);
@@ -132,6 +136,7 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
             id: Some(id.to_owned()),
             team: text("/team_id").unwrap_or(team).to_owned(),
             name: name.to_owned(),
+            zone: text("/tz").unwrap_or_default().to_owned(),
         });
     }
     match said.get("error").and_then(Value::as_str).unwrap_or("") {
@@ -165,7 +170,8 @@ mod tests {
     #[test]
     fn someone_found_is_said_by_their_id_and_real_name() {
         let said = json!({ "ok": true, "user": { "id": "U1", "team_id": "T9",
-            "real_name": "Ada L", "profile": { "real_name": "Ada Lovelace" } } });
+            "real_name": "Ada L", "tz": "Europe/London",
+            "profile": { "real_name": "Ada Lovelace" } } });
         assert_eq!(
             found(&said, "ada@example.com", "T1"),
             Ok(Found {
@@ -173,6 +179,7 @@ mod tests {
                 id: Some("U1".into()),
                 team: "T9".into(),
                 name: "Ada Lovelace".into(),
+                zone: "Europe/London".into(),
             })
         );
     }
@@ -183,6 +190,7 @@ mod tests {
         let nobody = found(&said, "x@example.com", "T1").unwrap();
         assert_eq!(nobody.id, None);
         assert_eq!(nobody.team, "T1");
+        assert_eq!(nobody.zone, "");
     }
 
     #[test]

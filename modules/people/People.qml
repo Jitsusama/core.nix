@@ -19,9 +19,11 @@
 // Their details, every address and each source's facts, are in the
 // drawer beside the row.
 import qs
+import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Person.js" as Person
+import "Zones.js" as Zones
 
 Provider {
     id: provider
@@ -97,7 +99,7 @@ Provider {
             hue: "person",
             side: stood.said,
             note: person.name === person.email ? "" : person.email,
-            drawer: Person.details(person),
+            drawer: Person.details(person, zone => provider.there(zone)),
             nested: true,
             later: true,
             verb: "more",
@@ -117,6 +119,32 @@ Provider {
             named: Fuzzy.letters([person.name.toLowerCase()]),
             mailed: Fuzzy.letters([person.emails.join(" ")])
         });
+    }
+
+    // tzdata's zones, as Clocks reads them (Zones.js), read once when a
+    // person's time zone is first shown, and never watched, since the list
+    // is built with the shell.
+    property var zones: null
+
+    // The time in a zone by tzdata's name, as now, and how far it is from
+    // here: "14:05, 5 h ahead", or "" for a zone the list doesn't know.
+    function there(id) {
+        if (zones === null)
+            zones = settings.zones ? Zones.prepare(read(zonesFile)) : { zones: {}, named: {} };
+        const zone = zones.zones[id];
+        if (!zone)
+            return "";
+        const now = Date.now();
+        const [minutes] = Zones.standing(zone, Math.floor(now / 1000));
+        const here = -new Date(now).getTimezoneOffset();
+        return `${Zones.clock(new Date(now + minutes * 60000))}, ${Zones.apart(minutes - here)}`;
+    }
+
+    FileView {
+        id: zonesFile
+        path: provider.settings.zones ?? ""
+        blockLoading: true
+        printErrors: false
     }
 
     // Every source's acts for them, in the one order.

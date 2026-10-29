@@ -60,7 +60,8 @@ ShellRoot {
         launcher: launcher
         settings: ({
             name: "people",
-            sources: [{ name: "tuple", order: 10 }, { name: "pages", order: 20 }]
+            sources: [{ name: "tuple", order: 10 }, { name: "pages", order: 20 }],
+            zones: Quickshell.shellPath("zones.jsonl")
         })
         // Each after the change is done, since a case changes them again.
         onAllChanged: {
@@ -229,9 +230,11 @@ ShellRoot {
                 === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
             expect("one with no page has no row for it",
                 !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
-            expect("a source's facts are theirs",
-                open[0].drawer.facts.some(fact => fact.label === "Team" && fact.value === "Shell"),
-                JSON.stringify(open[0].drawer));
+            const facts = open[0].drawer.facts.map(fact => `${fact.label}: ${fact.value}`);
+            expect("a source's facts are theirs, the time there after their zone",
+                facts[1] === "Team: Shell" && facts[2] === "Time Zone: Asia/Kolkata"
+                    && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[3]),
+                facts.join("; "));
             expect("a favourite says so", steps[2].side === "yes" && steps[2].verb === "unstar",
                 `${steps[2].side} ${steps[2].verb}`);
             expect("their email copies itself", steps[3].verb === "copy", steps[3].verb);

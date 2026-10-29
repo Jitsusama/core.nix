@@ -820,9 +820,9 @@
     leftovers after three quiet seconds
   '';
   slack-finds-who-it-knows = ''
-    slack-people says who Slack knows by an email address, and one it knows nobody by, asking each
-    address once with the harness's sign-in and only ever looking up, and asks nobody once Slack
-    refuses the sign-in or with none at all
+    slack-people says who Slack knows by an email address with their time zone, and one it knows
+    nobody by, asking each address once with the harness's sign-in and only ever looking up, and
+    asks nobody once Slack refuses the sign-in or with none at all
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
@@ -1000,7 +1000,8 @@
   the-launcher-finds-the-people = ''
     People with Tuple as its source lists favourites and those called lately, finds anyone as they
     stand, calls, joins and favours them, steps in before calling, lists a source's page for them
-    after the ways to reach them with its facts in the drawer, and never starts a stopped Tuple
+    after the ways to reach them with its facts in the drawer and the time where they are, and
+    never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
