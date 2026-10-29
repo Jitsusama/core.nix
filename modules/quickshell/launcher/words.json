@@ -545,6 +545,7 @@
         "containers": "containers",
         "other": "{name}",
         "clears": "some is builds or caches the guard clears once idle",
+        "clearing": "the guard is clearing it now",
         "now": "measured just now",
         "ago": "measured {minutes} min ago"
       }
@@ -578,6 +579,14 @@
           "verb": "release"
         }
       }
+    },
+    {
+      "id": "verb:disk:clear",
+      "in": "machine:disk:filling",
+      "name": "Clear",
+      "verb": "clear",
+      "glyph": "forget",
+      "sure": "Clear {amount} of {name}"
     },
     {
       "id": "verb:disk:copy-path",
