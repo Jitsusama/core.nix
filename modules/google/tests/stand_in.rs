@@ -451,6 +451,42 @@ fn mail_read_or_archived_takes_one_label_and_wants_joel_no_more() {
 }
 
 #[test]
+fn mail_marked_read_then_unread_wants_joel_again_at_once_in_its_place() {
+    let stand_in = StandIn::new(tidied);
+    let path = credentials("unread", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    watch.tidy("new", Tidy::Read, &now());
+    let state = watch.unread("new", &now()).clone();
+    let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+    assert_eq!(held, ["new", "old"]);
+    assert_eq!(state.unread, Some(5));
+    let asked = stand_in
+        .heard()
+        .into_iter()
+        .rfind(|heard| heard.line.starts_with("POST /gmail"))
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&asked.body).unwrap();
+    assert_eq!(body, serde_json::json!({"addLabelIds": ["UNREAD"]}));
+    // Marked unread twice, it's held once.
+    let again = watch.unread("new", &now()).clone();
+    assert_eq!(again.mail.len(), 2);
+    assert_eq!(again.unread, Some(5));
+}
+
+#[test]
+fn mail_archived_isnt_brought_back_by_marking_it_unread() {
+    let stand_in = StandIn::new(tidied);
+    let path = credentials("archived", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    watch.tidy("new", Tidy::Archive, &now());
+    let state = watch.unread("new", &now()).clone();
+    let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+    assert_eq!(held, ["old"]);
+}
+
+#[test]
 fn mail_google_refuses_to_mark_stays_held() {
     let stand_in = StandIn::new(|path, body| {
         if path.starts_with("POST /gmail") {

@@ -30,8 +30,9 @@ onLinux {
   # own answer, and held at once, one Google refuses changing nothing, the
   # mail that wants Joel is told newest first, each asked for once and kept
   # while Gmail fails, mail marked read or archived takes one label off and
-  # wants Joel no more, the shell asks only what's read strictly, and it hears the state on
-  # connecting and each change once. A stand-in on the machine answers for
+  # wants Joel no more, mail read here and marked unread again wants him
+  # again at once, the shell asks only what's read strictly, and it hears
+  # the state on connecting and each change once. A stand-in on the machine answers for
   # Google.
   google-reads-the-calendar = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in google, its tests included.

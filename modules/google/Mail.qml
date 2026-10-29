@@ -8,7 +8,8 @@ pragma ComponentBehavior: Bound
 // A piece of mail is one thing wherever the launcher shows it: `row`
 // gives its whole row, which the Mail place (Messages.qml), Now's mail
 // (NewMail.qml) and search all take as it is, with its acts in one order,
-// Open, Reply, Archive and Mark As Read, and its details in the drawer.
+// Open, Reply, Archive, Read (a switch) and Copy the Link, and its
+// details in the drawer.
 //
 // `open` opens a piece of mail in Mail through google-opens (opens.sh),
 // keeping one Mail window: with Mail open, it brings that window forward,
@@ -69,9 +70,11 @@ Singleton {
     }
 
     // What became of it, "read" or "archived", once it went the way `how`
-    // asked; nothing while it still wants him.
+    // asked, or "unread" once it's back; nothing while it's as it was.
     function became(mail, how) {
-        return !held(mail.id) && asked[mail.id] === how ? Said.tidied(how) : "";
+        if (asked[mail.id] !== how)
+            return "";
+        return (how === "unread") === held(mail.id) ? Said.tidied(how) : "";
     }
 
     // A piece of mail's row, made with the launcher's `thing` of the
@@ -115,7 +118,55 @@ Singleton {
         const listed = [act("verb:mail:open", () => root.open(mail))];
         if (Said.replying(mail) !== "")
             listed.push(act("verb:mail:reply", () => root.reply(mail)));
-        return listed.concat([tidying(mail, "archive", thing), tidying(mail, "read", thing)]);
+        return listed.concat([tidying(mail, "archive", thing), reading(mail, thing),
+            linking(mail, thing)]);
+    }
+
+    // Whether it's been marked read: asked here, and no longer held as
+    // wanting Joel. All the mail held is unread, since that's what wants
+    // him.
+    function isRead(mail) {
+        return asked[mail.id] === "read" && !held(mail.id);
+    }
+
+    // Read is a switch, one row whose name never changes (VKCF3Z's design,
+    // RSCH-20261028-2NK1E5, rule 8): it says yes or no, Return flips it
+    // and keeps the launcher, and the foot says what became of it.
+    function reading(mail, thing) {
+        const key = "verb:mail:read";
+        const row = thing({
+            key: key,
+            name: Words.name(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            stays: true,
+            state: () => root.became(mail, "read") || root.became(mail, "unread"),
+            run: () => root.tidy(mail, root.isRead(mail) ? "unread" : "read")
+        });
+        return Object.defineProperties(row, {
+            side: { enumerable: true, get: () => root.isRead(mail) ? "yes" : "no" },
+            verb: {
+                enumerable: true,
+                get: () => Words.verb(key, root.isRead(mail) ? "read" : "")
+            }
+        });
+    }
+
+    // Copy the Link copies its conversation's link in Gmail, for pasting
+    // where someone else can open it.
+    function linking(mail, thing) {
+        const key = "verb:mail:link";
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            now: true,
+            run: () => {
+                Quickshell.clipboardText = mail.page;
+            }
+        });
     }
 
     // Archiving it or marking it read keeps the launcher, since he's going

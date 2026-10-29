@@ -90,14 +90,16 @@ function replying(mail) {
         .join("&")}`;
 }
 
-// The line that asks the program to mark mail read, or to archive it.
+// The line that asks the program to mark mail read or unread again, or to
+// archive it.
 function tidy(mail, how) {
     return `${JSON.stringify({ [how]: { id: mail.id } })}\n`;
 }
 
 // What's said of mail once it's been marked read or archived, and the
-// program no longer holds it as wanting Joel.
-const TIDIED = { read: "read", archive: "archived" };
+// program no longer holds it as wanting Joel, or marked unread again and
+// held once more.
+const TIDIED = { read: "read", unread: "unread", archive: "archived" };
 
 function tidied(how) {
     return TIDIED[how] ?? "";

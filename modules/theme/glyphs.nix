@@ -1129,7 +1129,7 @@ in
   readMail = {
     glyph = nerd "f0ab1";
     console = "o";
-    means = "marking mail read";
+    means = "whether mail is read, the switch that marks it read or unread";
   };
   archive = {
     glyph = nerd "f1259";

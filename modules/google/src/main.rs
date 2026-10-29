@@ -98,6 +98,7 @@ fn main() -> ExitCode {
                     Some(Ask::Cancel { id }) => watch.cancel(&id, &now),
                     Some(Ask::Move { id, start, end }) => watch.reschedule(&id, start, end, &now),
                     Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),
+                    Some(Ask::Unread { id }) => watch.unread(&id, &now),
                     Some(Ask::Archive { id }) => watch.tidy(&id, Tidy::Archive, &now),
                     None => continue,
                 };

@@ -177,6 +177,18 @@ impl Google {
     /// Takes the label `label` off the mail `id`, as Gmail's own buttons
     /// do: UNREAD to mark it read, INBOX to archive it.
     pub fn unlabel(&self, token: &str, id: &str, label: &str) -> Result<(), Refused> {
+        self.relabel(token, id, "removeLabelIds", label)
+    }
+
+    /// Puts the label `label` on the mail `id`: UNREAD to mark it unread
+    /// again.
+    pub fn label(&self, token: &str, id: &str, label: &str) -> Result<(), Refused> {
+        self.relabel(token, id, "addLabelIds", label)
+    }
+
+    /// Changes one label on the mail `id`, adding or removing it as `how`
+    /// names Gmail's field.
+    fn relabel(&self, token: &str, id: &str, how: &str, label: &str) -> Result<(), Refused> {
         let written = self
             .agent
             .post(format!(
@@ -185,7 +197,7 @@ impl Google {
             ))
             .header("Authorization", &format!("Bearer {token}"))
             .query("fields", "id")
-            .send_json(serde_json::json!({ "removeLabelIds": [label] }))
+            .send_json(serde_json::json!({ how: [label] }))
             .map_err(|error| unreachable(&error))?;
         let status = written.status().as_u16();
         if status != 200 {
