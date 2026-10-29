@@ -1158,8 +1158,8 @@
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and
-    its details say; writes a reply to who sent it; and writes the lines that mark mail read or
-    unread again or archive it
+    its details say; writes a reply to who sent it, and a mail to everyone else a meeting names;
+    and writes the lines that mark mail read or unread again or archive it
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1313,14 +1313,14 @@
     a meeting about to start by its name, lists it in Now, counts one within the hour down as a
     want, marked from ten minutes off and said at its reminder and as it starts, shows one further
     off with who's asked and how each answered, its details beside it, answers its invitation,
-    cancels one Joel holds once he's sure, moves one Google lets him change to a time he types once
-    he's sure, and lists its Meet call in Now while it's open, says Google signed out in Now with
-    Return signing in again in pi, counts the mail that wants Joel in Now with Return listing it
-    as Mail does, details and all, opens mail by its subject, keeping one Mail window, replies to
-    it, flips its Read switch both ways and archives it, lists the documents Joel opened lately in
-    Docs' Recent and opens one, the same row its title finds, joins a Meet call by its code after
-    Meet's New Meeting, sets the volume, loses no letter typed after its chord, and shows the
-    shortcuts
+    writes to its guests and copies its call's link, cancels one Joel holds once he's sure, moves
+    one Google lets him change to a time he types once he's sure, and lists its Meet call in Now
+    while it's open, says Google signed out in Now with Return signing in again in pi, counts the
+    mail that wants Joel in Now with Return listing it as Mail does, details and all, opens mail by
+    its subject, keeping one Mail window, replies to it, flips its Read switch both ways and
+    archives it, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
+    its title finds, joins a Meet call by its code after Meet's New Meeting, sets the volume, loses
+    no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
