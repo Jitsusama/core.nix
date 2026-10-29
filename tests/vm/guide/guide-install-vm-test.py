@@ -6,7 +6,7 @@ the whole of it, as a laptop does, so each state a test starts from is a fixture
 machine one stage further than the fixture it asks for, in the order a person meets them: the
 stick booted, its vault opened, the disk confirmed, each key enrolled, the recovery key kept,
 the install stopped and carried on, the system installed, the machine's first boots, the TPM
-sealed, the account's keys and spares made, the TPM cleared, a stick written on a host, the
+sealed, the account's keys and spares made, the TPM cleared, a stick written by a writer, the
 reinstall from the machine's own stick, and the firmware cleared of its keys. A fixture's work
 is done once a run, so any test runs alone with `-k`, walking only as far as it needs. What a
 screen shows only in passing is checked where it shows, in the fixture that reaches it; what
@@ -51,7 +51,7 @@ VOLUME = "/dev/disk/by-partlabel/system"
 PREFERRED = 2
 
 # Before its keyboard screen, the stick copies its whole system into memory through QEMU's
-# USB stick, which on a host busy with other machines' disks took past five minutes. The test
+# USB stick, which on a machine busy with other machines' disks took past five minutes. The test
 # proves what the screens say and in what order, not how fast.
 COPIED = timedelta(minutes=15)
 # How long a screen may take to come, a step that works to show the next, a key or the stick
@@ -173,10 +173,9 @@ def keep_the_recovery_key(machine: QemuMachine) -> str:
     return words
 
 
-# systemd-cryptsetup asks through libcryptsetup's token plugin first and
-# then its own FIDO2 code, and a key that's not there yet at the first
-# leaves the second asking, so each prompt is answered until the disk
-# opens.
+# systemd-cryptsetup asks for the TPM's PIN and then a YubiKey's, each
+# through its own code, and a key that's not there yet at its prompt
+# leaves it asking, so each prompt is answered until the disk opens.
 def unlock(machine: QemuMachine, secret: str) -> None:
     """Answer the disk's prompts with the secret until it opens."""
     machine.wait_for_console_text("Please enter")
@@ -190,19 +189,45 @@ def unlock(machine: QemuMachine, secret: str) -> None:
     raise RuntimeError(message)
 
 
-def unlock_as_asked(machine: QemuMachine, pin: str) -> str:
-    """Answer each of the disk's prompts with the one PIN, and say which key took it."""
-    asked = r"Please enter (?:LUKS2 token|TPM2|security token) PIN"
+def unlock_as_asked(machine: QemuMachine, tpm_pin: str, key_pin: str) -> str:
+    """Answer each of the disk's prompts with the PIN it names, and say which opened it.
+
+    A security token's prompt takes the key's PIN and the TPM's prompt the
+    TPM's, since a wrong PIN counts towards the TPM's lockout even when its
+    policy would refuse the boot anyway. Neither PIN may reach the other
+    device: the token plugins' prompt, which tries one PIN on every token,
+    would hand the TPM's to a plugged-in key, which three such tries block.
+    """
+    asked = r"Please enter (LUKS2 token|TPM2|security token) PIN"
+    crossed = r"Please enter LUKS2 token PIN|PIN of security token (incorrect|is blocked)"
     since = len(machine.get_console_log())
+    answered = 0
     for _ in range(8):
         machine.wait_for_console_text(f"{asked}|{OPENED}")
         boot = machine.get_console_log()[since:]
+        if found := re.search(crossed, boot):
+            message = f"a PIN reached a device it isn't for: {found.group(0)}"
+            raise RuntimeError(message)
         if re.search(OPENED, boot):
             # systemd asks a YubiKey only once the TPM has refused.
             return "the key" if "Asking FIDO2 token" in boot else "the TPM"
-        machine.send_console(pin + "\n")
-    message = "the disk never opened with the one PIN"
+        prompts_now = re.findall(asked, boot)
+        if len(prompts_now) > answered:
+            answered = len(prompts_now)
+            pin = key_pin if prompts_now[-1] == "security token" else tpm_pin
+            machine.send_console(pin + "\n")
+    message = "the disk never opened with the TPM's PIN or the key's"
     raise RuntimeError(message)
+
+
+def seal_tpm(machine: QemuMachine, values: dict[str, Any]) -> None:
+    """Open the disk with a key's PIN for the guide, and give the TPM its own PIN, twice."""
+    on_screen(machine, "Type your YubiKey's PIN, which opens the disk this once")
+    enter(machine, values["pin"])
+    on_screen(machine, "Type your account password, or another PIN you'll remember")
+    enter(machine, values["tpmPin"])
+    on_screen(machine, "the TPM's new PIN again")
+    enter(machine, values["tpmPin"])
 
 
 def prompts(boot: str) -> list[str]:
@@ -474,7 +499,7 @@ def first_boot(shut_down: QemuMachine, rig: Rig, values: dict[str, Any]) -> Qemu
 
 @pytest.fixture(scope="module")
 def tpm_sealed(first_boot: QemuMachine, values: dict[str, Any]) -> QemuMachine:
-    """Let a YubiKey open the disk for the guide to seal it to the TPM, with the one PIN."""
+    """Let a YubiKey open the disk for the guide to seal it to the TPM, with its own PIN."""
     machine = first_boot
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     # The units still starting don't write across it.
@@ -494,8 +519,7 @@ def tpm_sealed(first_boot: QemuMachine, values: dict[str, Any]) -> QemuMachine:
     )
     assert "scribbled" not in screen(machine), screen(machine)
     enter(machine, "")
-    on_screen(machine, "which the TPM takes too")
-    enter(machine, values["pin"])
+    seal_tpm(machine, values)
     # Sealed, the guide goes on to the account's keys.
     on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
     return machine
@@ -556,7 +580,7 @@ def restarted(signed_in: QemuMachine, values: dict[str, Any]) -> str:
     machine = signed_in
     before = len(machine.get_console_log())
     machine.reboot()
-    unlock(machine, values["pin"])
+    unlock(machine, values["tpmPin"])
     machine.connect()
     machine.wait_for_unit("multi-user.target")
     # With nothing to do, the guide showed nothing and left.
@@ -594,8 +618,7 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     machine.connect()
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
-    on_screen(machine, "which the TPM takes too")
-    enter(machine, pin)
+    seal_tpm(machine, values)
     # The TPM refuses the keys it sealed before, so the guide makes them
     # again, saying why.
     on_screen(machine, "a PIN for alice's new SSH keys", timeout=STEP)
@@ -616,15 +639,16 @@ def cleared(signed_in: QemuMachine, restarted: str, rig: Rig, values: dict[str, 
     machine.wait_for_unit("getty@tty1.service")
     since = len(machine.get_console_log())
     machine.reboot()
-    unlock(machine, pin)
+    # Sealed again, the TPM opens the disk with its own PIN.
+    unlock(machine, values["tpmPin"])
     machine.connect()
     machine.wait_for_unit("multi-user.target")
     return Cleared(nano, before, machine.get_console_log()[since:])
 
 
 @dataclass(frozen=True)
-class HostStick:
-    """The rescue bundle the install sealed, as a host carried it onto a stick, and its owner."""
+class WriterStick:
+    """The rescue bundle the install sealed, as a writer carried it onto a stick, and its owner."""
 
     owner: str
     installed: dict[str, Any]
@@ -632,13 +656,13 @@ class HostStick:
 
 
 @pytest.fixture(scope="module")
-def host_stick(
+def writer_stick(
     signed_in: QemuMachine,
     cleared: Cleared,
     recovery_key: str,
     values: dict[str, Any],
-) -> Generator[HostStick]:
-    """Write a stick on the host from the install's bundle, boot it, then shut down."""
+) -> Generator[WriterStick]:
+    """Write a stick on the writer from the install's bundle, boot it, then shut down."""
     del cleared
     machine, payload = signed_in, values["payload"]
     # The bundle the install made, taken off as alice can, sealed.
@@ -660,7 +684,7 @@ def host_stick(
     own = json.loads(machine.succeed("cat /root/rescue.json"))
     with (
         tempfile.TemporaryDirectory() as folder,
-        tempfile.NamedTemporaryFile(suffix=".qcow2") as written_on_host,
+        tempfile.NamedTemporaryFile(suffix=".qcow2") as written_on_writer,
     ):
         bundle = Path(folder) / "rescue.json"
         bundle.write_bytes(sealed)
@@ -677,19 +701,19 @@ def host_stick(
             input=(values["passphrase"] + "\n" + recovery_key + "\n").encode(),
             check=True,
         )
-        overlay(values["qemuImg"], written_on_host.name, "-b", str(again), "-F", "raw")
+        overlay(values["qemuImg"], written_on_writer.name, "-b", str(again), "-F", "raw")
         machine.shutdown()
-        os.environ["STICK_IMAGE"] = written_on_host.name
+        os.environ["STICK_IMAGE"] = written_on_writer.name
         # The firmware, enforcing the machine's keys, boots it.
         machine.start(allow_reboot=True)
         on_screen(machine, "A machine is already here")
         machine.shutdown()
-        yield HostStick(owner, installed, own)
+        yield WriterStick(owner, installed, own)
 
 
 @pytest.fixture(scope="module")
 def reinstalled(
-    signed_in: QemuMachine, host_stick: HostStick, rig: Rig, values: dict[str, Any]
+    signed_in: QemuMachine, writer_stick: WriterStick, rig: Rig, values: dict[str, Any]
 ) -> dict[str, Any]:
     """Reinstall from the install's own stick, and give the bundle the reinstall sealed."""
     machine, pin, password = signed_in, values["pin"], values["password"]
@@ -720,7 +744,7 @@ def reinstalled(
     on_screen(machine, "the same password again")
     enter(machine, password)
     on_screen(machine, "shut down", timeout=STEP)
-    machine.succeed(f"grep -qx {host_stick.owner} /mnt/var/lib/sbctl/GUID")
+    machine.succeed(f"grep -qx {writer_stick.owner} /mnt/var/lib/sbctl/GUID")
     remade: dict[str, Any] = json.loads(
         machine.succeed("cat /mnt/var/lib/guide/rescue-bundle.json")
     )
@@ -766,8 +790,7 @@ def policy_freed(reinstalled_boot: QemuMachine, values: dict[str, Any]) -> list[
     machine.connect()
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
-    on_screen(machine, "which the TPM takes too")
-    enter(machine, values["pin"])
+    seal_tpm(machine, values)
     # Sealed, and freed before the guide asks for the account's keys.
     on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
     return before
@@ -775,7 +798,7 @@ def policy_freed(reinstalled_boot: QemuMachine, values: dict[str, Any]) -> list[
 
 @dataclass(frozen=True)
 class Refused:
-    """How the restart refused with an unsigned program on the ESP, and the TPM's count."""
+    """How the restart refused an unsigned program on the boot partition, and the TPM's count."""
 
     said: str
     lockouts: int
@@ -789,10 +812,10 @@ UNSIGNED = "/boot/EFI/Linux/unsigned.efi"
 def firmware_cleared(
     reinstalled_boot: QemuMachine, policy_freed: list[int], values: dict[str, Any]
 ) -> Refused:
-    """Clear the firmware's keys with an unsigned program on the ESP, and boot."""
+    """Clear the firmware's keys with an unsigned program on the boot partition, and boot."""
     del policy_freed
     machine = reinstalled_boot
-    # A program the firmware would start, left unsigned on the ESP, which
+    # A program the firmware would start, left unsigned on the boot partition, which
     # would leave the machine unable to start once the keys enforce.
     machine.succeed(
         f"cp /run/current-system/systemd/lib/systemd/boot/efi/systemd-bootx64.efi {UNSIGNED}"
@@ -805,14 +828,14 @@ def firmware_cleared(
     machine.efi_vars_path.unlink()
     machine.start(allow_reboot=True)
     # Without Secure Boot the TPM's policy doesn't hold, so it refuses
-    # the PIN for the boot, and a YubiKey opens the disk with the same
-    # one, so neither counts a wrong try.
-    assert unlock_as_asked(machine, values["pin"]) == "the key"
+    # the boot without counting a wrong try, and a YubiKey opens the
+    # disk with its own PIN.
+    assert unlock_as_asked(machine, values["tpmPin"], values["pin"]) == "the key"
     machine.connect()
     # lanzaboote readies the keys again, from the machine's own, and
     # fails only at predicting the TPM's policy, which systemd-pcrlock
     # won't rewrite from a boot that policy doesn't cover. The restart
-    # goes by what's on the ESP instead, and finds the unsigned program.
+    # goes by what's on the boot partition instead, and finds the unsigned program.
     machine.wait_until_succeeds(
         "systemctl show -P Result secure-boot-enrol-restart | grep -qx exit-code",
         timeout=STEP,
@@ -833,11 +856,11 @@ def keys_back(
 ) -> QemuMachine:
     """Take the unsigned program away, and restart for the keys to be enrolled again."""
     del firmware_cleared
-    machine, pin = reinstalled_boot, values["pin"]
+    machine, pin, tpm_pin = reinstalled_boot, values["pin"], values["tpmPin"]
     machine.succeed(f"rm {UNSIGNED}")
     machine.reboot()
     rebooted = len(machine.get_console_log())
-    assert unlock_as_asked(machine, pin) == "the key"
+    assert unlock_as_asked(machine, tpm_pin, pin) == "the key"
     machine.wait_for_console_text("Custom Secure Boot keys successfully enrolled")
     # A boot that restarted itself may have greeted the driver first, and
     # the driver takes the first greeting it reads for the boot it's in.
@@ -845,7 +868,7 @@ def keys_back(
     # Enforcing with the same keys, the TPM's policy, which the boot
     # without them couldn't rewrite, holds again, and its PIN alone opens
     # the disk.
-    assert unlock_as_asked(machine, pin) == "the TPM"
+    assert unlock_as_asked(machine, tpm_pin, pin) == "the TPM"
     machine.connect()
     if greeted:
         machine.connected = False
@@ -1042,8 +1065,10 @@ def test_after_the_restart_the_tpm_opens_the_disk(signed_in: QemuMachine, restar
     assert signed_in.succeed("systemctl show -P Result guide-installed").strip() == "success"
     # One prompt, and the TPM opened the disk: systemd asks a YubiKey
     # only once the TPM has refused.
-    assert prompts(restarted) == ["Please enter LUKS2 token PIN:"], prompts(restarted)
+    assert prompts(restarted) == ["Please enter TPM2 PIN:"], prompts(restarted)
     assert "Asking FIDO2 token" not in restarted
+    # The YubiKeys are enrolled, so the initrd turned the token plugins off.
+    signed_in.succeed("grep -qx SYSTEMD_CRYPTSETUP_USE_TOKEN_MODULE=0 /run/cryptsetup-keyed/system")
 
 
 def console_session(machine: QemuMachine) -> str | None:
@@ -1107,30 +1132,30 @@ def test_cleared_tpm_is_sealed_again(
         token for token in header(machine)["tokens"].values() if token["type"] == "systemd-tpm2"
     ]
     assert len(sealed) == 1, sealed
-    assert prompts(cleared.boot) == ["Please enter LUKS2 token PIN:"], prompts(cleared.boot)
+    assert prompts(cleared.boot) == ["Please enter TPM2 PIN:"], prompts(cleared.boot)
     assert "Asking FIDO2 token" not in cleared.boot
 
 
-def test_stick_carrying_the_machines_keys_is_written_on_a_host(host_stick: HostStick) -> None:
-    """A stick carrying the machine's own Secure Boot keys is written on a host."""
-    assert host_stick.installed["owner"] == host_stick.owner
-    own, installed = host_stick.own, host_stick.installed
+def test_a_writer_writes_a_stick_carrying_the_machines_keys(writer_stick: WriterStick) -> None:
+    """A writer writes a stick carrying the machine's own Secure Boot keys."""
+    assert writer_stick.installed["owner"] == writer_stick.owner
+    own, installed = writer_stick.own, writer_stick.installed
     assert (own["owner"], own["db"]) == (installed["owner"], installed["db"])
     # Named as the phone keeps it, after the machine.
     assert 'named "Machine Rescue Phrase"' in own["opened_by"][-1], own["opened_by"]
 
 
 def test_machines_own_stick_reinstalls_with_the_keys_put_back(
-    host_stick: HostStick, reinstalled: dict[str, Any]
+    writer_stick: WriterStick, reinstalled: dict[str, Any]
 ) -> None:
     """The install's own stick boots, enforcing, and reinstalls with the keys put back."""
     # A new bundle for the same keys, sealed to the new recovery key.
-    assert reinstalled["db"] == host_stick.installed["db"]
-    assert reinstalled["to_passphrase"] != host_stick.installed["to_passphrase"]
+    assert reinstalled["db"] == writer_stick.installed["db"]
+    assert reinstalled["to_passphrase"] != writer_stick.installed["to_passphrase"]
 
 
 def test_reinstalled_machine_enforces_with_the_same_keys(
-    reinstalled_boot: QemuMachine, host_stick: HostStick
+    reinstalled_boot: QemuMachine, writer_stick: WriterStick
 ) -> None:
     """The reinstalled machine enforces with the same keys, the firmware never visited."""
     machine = reinstalled_boot
@@ -1141,7 +1166,7 @@ def test_reinstalled_machine_enforces_with_the_same_keys(
     machine.succeed("journalctl -b -u prepare-sb-auto-enroll | grep -q 'unmet condition'")
     machine.succeed("test ! -e /boot/loader/keys/auto")
     assert "Secure Boot: enabled (user)" in machine.succeed("bootctl status")
-    assert host_stick.owner in machine.succeed("sbctl status")
+    assert writer_stick.owner in machine.succeed("sbctl status")
 
 
 def test_reinstalled_machines_guide_frees_the_first_installs_policy(
@@ -1159,7 +1184,7 @@ def test_reinstalled_machines_guide_frees_the_first_installs_policy(
 def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     keys_back: QemuMachine,
     firmware_cleared: Refused,
-    host_stick: HostStick,
+    writer_stick: WriterStick,
     values: dict[str, Any],
 ) -> None:
     """A firmware cleared of its keys gets them back once the machine's are all signed."""
@@ -1175,7 +1200,7 @@ def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     # The guide finds the TPM still sealed, and goes on to the keys.
     on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
     assert "Secure Boot: enabled (user)" in machine.succeed("bootctl status")
-    assert host_stick.owner in machine.succeed("sbctl status")
+    assert writer_stick.owner in machine.succeed("sbctl status")
     # And the files it enrolled from go, so a later clearing can't have
     # them enrolled again behind the person's back.
     machine.wait_until_succeeds("test ! -e /boot/loader/keys/auto")

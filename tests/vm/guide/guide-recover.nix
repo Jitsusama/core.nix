@@ -1,9 +1,10 @@
 # A machine recovered from a repair stick, its data left in place: the
 # stick, written by the guide with nothing of the machine's on it, boots
 # into the guide, which finds the machine's disk by core's layout, opens it
-# with a YubiKey's PIN, mounts every subvolume and the ESP, copies the home
-# folders onto a USB drive, sets which generation boots next, replaces a
-# lost YubiKey, and hands over a root shell inside the installed system. The machine's disk is one disko's
+# with a YubiKey's PIN, mounts every subvolume and the boot partition,
+# copies the home folders onto a USB drive, sets which generation boots
+# next, replaces a lost YubiKey, and hands over a root shell inside the
+# installed system. The machine's disk is one disko's
 # image builder laid out and installed, as vm-secure-boot-installs builds
 # its own; its two YubiKeys are enrolled from the stick before the guide
 # starts, as a machine's own install leaves them. The tests are
@@ -111,7 +112,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       };
     };
 
-  # The driver runs on the host, so what the tests need from Nix, the
+  # The driver runs outside the virtual machines, so what the tests need from Nix, the
   # images to put overlays on, the tool to make them, the keys' state files
   # and the secrets to type, reaches them as their values fixture rather
   # than on the machine's path.

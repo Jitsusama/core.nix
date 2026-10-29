@@ -34,8 +34,8 @@ in
     let
       linux = account workstation;
       mac = account macWorkstation;
-      # What a layer that only lists the signers is given, with no hardware's
-      # module to say how to sign.
+      # What a machine repository's own modules that only list the signers
+      # are given, with no hardware's module to say how to sign.
       listing = account (bareNixos [
         {
           home-manager.sharedModules = [

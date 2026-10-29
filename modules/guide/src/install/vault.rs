@@ -73,7 +73,7 @@ impl Step for CheckKeyboard {
 /// out to try one. The seven words open it the same way on every machine.
 pub struct OpenVault;
 
-/// The passphrase as the person knows it: where the host had them keep
+/// The passphrase as the person knows it: where the writer had them keep
 /// it, under the name it gave.
 fn passphrase() -> String {
     format!(
@@ -142,7 +142,7 @@ impl Step for OpenVault {
             });
         };
         let sealed_to_passphrase = sealed(machine, vault::KEY_PASSPHRASE)?;
-        // A host makes the passphrase as words, read as the words they say;
+        // A writer makes the passphrase as words, read as the words they say;
         // one chosen by hand, for a test, is taken as typed.
         let by_passphrase = match VaultKey::open_with_passphrase(&sealed_to_passphrase, typed) {
             Err(_) if crate::words::typed(typed.expose()) != typed.expose() => {

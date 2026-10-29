@@ -1,6 +1,6 @@
 //! The machine a step observes and acts on: the programs it runs, the
 //! files it reads and writes, and the journal of what can't be observed.
-//! The real one is `system::System`; tests give steps `fake::Fake`.
+//! The real one is `system::System`; tests give steps `stand_in::StandIn`.
 
 use std::io::Write;
 
@@ -302,9 +302,9 @@ mod tests {
 
     #[test]
     fn a_link_round_in_a_loop_is_refused() {
-        let mut fake = crate::fake::Fake::new();
-        fake.pointer("/mnt/a", "b").pointer("/mnt/b", "/a");
-        assert!(fake.resolve_inside("/mnt", "/mnt/a/file").is_err());
+        let mut stand_in = crate::stand_in::StandIn::new();
+        stand_in.pointer("/mnt/a", "b").pointer("/mnt/b", "/a");
+        assert!(stand_in.resolve_inside("/mnt", "/mnt/a/file").is_err());
     }
 
     #[test]
@@ -317,10 +317,11 @@ mod tests {
 
     #[test]
     fn a_profile_is_followed_inside_the_system_it_belongs_to() {
-        let mut fake = crate::fake::Fake::new();
+        let mut stand_in = crate::stand_in::StandIn::new();
         // An absolute link to another link, which only the installed
         // system's root holds.
-        fake.pointer("/mnt/nix/var/nix/profiles/system", "system-1-link")
+        stand_in
+            .pointer("/mnt/nix/var/nix/profiles/system", "system-1-link")
             .pointer(
                 "/mnt/nix/var/nix/profiles/system-1-link",
                 "/nix/var/nix/gcroots/booted",
@@ -330,7 +331,8 @@ mod tests {
                 "/nix/store/abc-nixos-system-machine",
             );
         assert_eq!(
-            fake.resolve_inside("/mnt", "/mnt/nix/var/nix/profiles/system")
+            stand_in
+                .resolve_inside("/mnt", "/mnt/nix/var/nix/profiles/system")
                 .unwrap()
                 .as_deref(),
             Some("/nix/store/abc-nixos-system-machine")
@@ -339,14 +341,16 @@ mod tests {
 
     #[test]
     fn a_link_partway_along_is_followed_inside_the_system_too() {
-        let mut fake = crate::fake::Fake::new();
+        let mut stand_in = crate::stand_in::StandIn::new();
         // As NixOS lays out /etc: the file links into /etc/static, which
         // is itself a link into the store, back up a folder and down again.
-        fake.pointer("/mnt/etc/hostname", "/etc/static/hostname")
+        stand_in
+            .pointer("/mnt/etc/hostname", "/etc/static/hostname")
             .pointer("/mnt/etc/static", "/nix/store/abc-etc/etc")
             .pointer("/mnt/nix/store/abc-etc/etc/hostname", "../../def-hostname");
         assert_eq!(
-            fake.resolve_inside("/mnt", "/mnt/etc/hostname")
+            stand_in
+                .resolve_inside("/mnt", "/mnt/etc/hostname")
                 .unwrap()
                 .as_deref(),
             Some("/nix/store/def-hostname")

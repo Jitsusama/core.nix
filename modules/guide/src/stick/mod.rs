@@ -1,4 +1,4 @@
-//! Writing the stick: the image core builds (the ESP, the verity hashes and
+//! Writing the stick: the image core builds (the boot partition, the verity hashes and
 //! the store), then the vault in the rest of the stick, then a partition
 //! table for the stick's own size, and reading all of it back.
 //!
@@ -138,26 +138,26 @@ pub fn write(
 
     // Signed before anything is written, so a key that won't sign leaves
     // the stick as it was.
-    let mut signed_esps = vec![];
+    let mut signed_boot_partitions = vec![];
     if !signers.is_empty() {
         for partition in image.partitions() {
             if partition.kind == EFI_SYSTEM {
                 let length = in_memory(partition.bytes())
                     .map_err(|why| Fault::unreadable("the stick's image", why))?;
-                let mut esp = vec![0u8; length];
+                let mut boot_partition = vec![0u8; length];
                 image
                     .file
                     .seek(SeekFrom::Start(partition.offset()))
-                    .and_then(|_| image.file.read_exact(&mut esp))
+                    .and_then(|_| image.file.read_exact(&mut boot_partition))
                     .map_err(|why| Fault::unreadable("the stick's image", why))?;
-                sign_esp(&mut esp, signers)?;
-                signed_esps.push((partition.slot, esp));
+                sign_boot_partition(&mut boot_partition, signers)?;
+                signed_boot_partitions.push((partition.slot, boot_partition));
             }
         }
-        if signed_esps.is_empty() {
+        if signed_boot_partitions.is_empty() {
             return Err(Fault::unreadable(
                 "the stick's image",
-                "it has no EFI system partition to sign",
+                "it has no boot partition to sign",
             ));
         }
     }
@@ -186,17 +186,19 @@ pub fn write(
             Partition::new(disk, partition.offset(), partition.bytes()).map_err(unwritten)?,
             meter,
         );
-        let hash =
-            if let Some((_, esp)) = signed_esps.iter().find(|(slot, _)| *slot == partition.slot) {
-                copy_hashed(&mut &esp[..], &mut region, partition.bytes())
-            } else {
-                image
-                    .file
-                    .seek(SeekFrom::Start(partition.offset()))
-                    .map_err(|why| Fault::unreadable("the stick's image", why))?;
-                copy_hashed(&mut image.file, &mut region, partition.bytes())
-            }
-            .map_err(unwritten)?;
+        let hash = if let Some((_, boot_partition)) = signed_boot_partitions
+            .iter()
+            .find(|(slot, _)| *slot == partition.slot)
+        {
+            copy_hashed(&mut &boot_partition[..], &mut region, partition.bytes())
+        } else {
+            image
+                .file
+                .seek(SeekFrom::Start(partition.offset()))
+                .map_err(|why| Fault::unreadable("the stick's image", why))?;
+            copy_hashed(&mut image.file, &mut region, partition.bytes())
+        }
+        .map_err(unwritten)?;
         region.flush().map_err(unwritten)?;
         copied.push((partition, hash));
     }
@@ -234,7 +236,7 @@ pub fn write(
 /// Where firmware looks for a removable disk's boot program.
 const BOOT_PROGRAM: &str = "EFI/BOOT/BOOTX64.EFI";
 
-/// Signs the boot program in an EFI system partition held in memory, the
+/// Signs the boot program in a boot partition held in memory, the
 /// one file there firmware boots on its own, so nothing else that lands on
 /// a stick's partition is ever signed with a machine's key. It's signed by
 /// each of the signers, and by no other unless all of them had signed it
@@ -242,18 +244,20 @@ const BOOT_PROGRAM: &str = "EFI/BOOT/BOOTX64.EFI";
 /// as it is now is left alone, and says nothing changed. fatfs
 /// rewrites a file in place without the directory entries it gets wrong
 /// when it makes one.
-fn sign_esp(esp: &mut [u8], signers: &[Signer]) -> Result<bool, Fault> {
-    let unsigned = |why: io::Error| Fault::unreadable("the stick's EFI system partition", why);
-    let filesystem =
-        fatfs::FileSystem::new(io::Cursor::new(esp), crate::vault::store::fat_options())
-            .map_err(unsigned)?;
+fn sign_boot_partition(boot_partition: &mut [u8], signers: &[Signer]) -> Result<bool, Fault> {
+    let unsigned = |why: io::Error| Fault::unreadable("the stick's boot partition", why);
+    let filesystem = fatfs::FileSystem::new(
+        io::Cursor::new(boot_partition),
+        crate::vault::store::fat_options(),
+    )
+    .map_err(unsigned)?;
     {
         let mut file = filesystem
             .root_dir()
             .open_file(BOOT_PROGRAM)
             .map_err(|why| match why.kind() {
                 io::ErrorKind::NotFound => {
-                    Fault::unreadable("the stick's EFI system partition", "it has no boot program")
+                    Fault::unreadable("the stick's boot partition", "it has no boot program")
                 }
                 _ => unsigned(why),
             })?;
@@ -281,44 +285,48 @@ fn sign_esp(esp: &mut [u8], signers: &[Signer]) -> Result<bool, Fault> {
     Ok(true)
 }
 
-/// Signs the boot program in the EFI system partition `esp`, a stick's
+/// Signs the boot program in the boot partition `boot_partition`, a stick's
 /// own on a disk, in place of whatever signed it before: read whole,
 /// signed in memory, then only the blocks that changed written back, so a
 /// stick that stops part way loses as little as can be, and read back.
 /// One this signer signed already, as a reinstall from a machine's own
 /// stick finds it, is never written to at all.
-pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
+pub fn sign_in_place(boot_partition: &mut File, signer: &Signer) -> Result<(), Fault> {
     let unwritten = |why: io::Error| Fault::Unkept {
-        path: "the stick's EFI system partition".into(),
+        path: "the stick's boot partition".into(),
         why: why.to_string(),
     };
-    let bytes = esp.seek(SeekFrom::End(0)).map_err(unwritten)?;
+    let bytes = boot_partition.seek(SeekFrom::End(0)).map_err(unwritten)?;
     let mut was = vec![0u8; in_memory(bytes).map_err(unwritten)?];
-    Partition::new(esp, 0, bytes)
+    Partition::new(boot_partition, 0, bytes)
         .and_then(|mut region| region.read_exact(&mut was))
         .map_err(unwritten)?;
-    let mut signed_esp = was.clone();
-    if !sign_esp(&mut signed_esp, std::slice::from_ref(signer))? {
+    let mut signed_boot_partition = was.clone();
+    if !sign_boot_partition(&mut signed_boot_partition, std::slice::from_ref(signer))? {
         return Ok(());
     }
     let block = blocks::BLOCK_LENGTH;
-    for (at, (new, old)) in signed_esp.chunks(block).zip(was.chunks(block)).enumerate() {
+    for (at, (new, old)) in signed_boot_partition
+        .chunks(block)
+        .zip(was.chunks(block))
+        .enumerate()
+    {
         if new != old {
-            Partition::new(esp, (at * block) as u64, new.len() as u64)
+            Partition::new(boot_partition, (at * block) as u64, new.len() as u64)
                 .and_then(|mut region| region.write_all(new).and_then(|()| region.flush()))
                 .map_err(unwritten)?;
         }
     }
-    esp.sync_all().map_err(unwritten)?;
-    drop_cache(esp)?;
+    boot_partition.sync_all().map_err(unwritten)?;
+    drop_cache(boot_partition)?;
     let mut back = vec![0u8; in_memory(bytes).map_err(unwritten)?];
-    Partition::new(esp, 0, bytes)
+    Partition::new(boot_partition, 0, bytes)
         .and_then(|mut region| region.read_exact(&mut back))
         .map_err(unwritten)?;
-    if back != signed_esp {
+    if back != signed_boot_partition {
         return Err(Fault::Unproven {
             step: "sign-the-stick",
-            standing: "the stick's EFI system partition isn't what was written".into(),
+            standing: "the stick's boot partition isn't what was written".into(),
         });
     }
     Ok(())

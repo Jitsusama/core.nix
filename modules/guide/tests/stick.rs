@@ -1,6 +1,6 @@
 //! Writing a whole stick into an image file, judged by the tools a person
 //! would reach for: sfdisk reads its partition table, fsck.fat its vault
-//! and its EFI system partition, sbverify its boot program, and the vault
+//! and its boot partition, sbverify its boot program, and the vault
 //! opens with its key. They come from the package's check inputs or the
 //! dev shell's, with systemd's EFI programs in `GUIDE_TEST_EFI`.
 
@@ -53,21 +53,21 @@ fn boot_program() -> PathBuf {
     .join("systemd-bootx64.efi")
 }
 
-/// A 1 MiB EFI system partition, made as repart makes the stick's, holding
+/// A 1 MiB boot partition, made as repart makes the stick's, holding
 /// this program where firmware boots a removable disk from.
-fn make_esp(directory: &Path, program: Option<&Path>) -> Vec<u8> {
-    let esp = directory.join("esp.fat");
-    let _ = fs::remove_file(&esp);
+fn make_boot_partition(directory: &Path, program: Option<&Path>) -> Vec<u8> {
+    let boot_partition = directory.join("boot.fat");
+    let _ = fs::remove_file(&boot_partition);
     run(
         "mkfs.fat",
-        &["-C".as_ref(), esp.as_os_str(), "1024".as_ref()],
+        &["-C".as_ref(), boot_partition.as_os_str(), "1024".as_ref()],
     );
     if let Some(program) = program {
         run(
             "mmd",
             &[
                 "-i".as_ref(),
-                esp.as_os_str(),
+                boot_partition.as_os_str(),
                 "::EFI".as_ref(),
                 "::EFI/BOOT".as_ref(),
             ],
@@ -76,16 +76,16 @@ fn make_esp(directory: &Path, program: Option<&Path>) -> Vec<u8> {
             "mcopy",
             &[
                 "-i".as_ref(),
-                esp.as_os_str(),
+                boot_partition.as_os_str(),
                 program.as_os_str(),
                 "::EFI/BOOT/BOOTX64.EFI".as_ref(),
             ],
         );
     }
-    fs::read(esp).unwrap()
+    fs::read(boot_partition).unwrap()
 }
 
-/// An image laid out as core's is: an ESP holding this boot program, then
+/// An image laid out as core's is: a boot partition holding this boot program, then
 /// verity hashes and a store each filled with bytes of its own, in an
 /// 8 MiB file with its tables.
 fn make_image(directory: &Path, program: Option<&Path>) -> PathBuf {
@@ -121,8 +121,8 @@ fn make_image(directory: &Path, program: Option<&Path>) -> PathBuf {
             *byte = fill ^ n.to_le_bytes()[0];
         }
     }
-    let esp = make_esp(directory, program);
-    bytes[index(2048 * SECTOR)..index(4096 * SECTOR)].copy_from_slice(&esp);
+    let boot_partition = make_boot_partition(directory, program);
+    bytes[index(2048 * SECTOR)..index(4096 * SECTOR)].copy_from_slice(&boot_partition);
     for (at, rendered) in table.render(sectors) {
         let at = index(at);
         bytes[at..at + rendered.len()].copy_from_slice(&rendered);
@@ -170,7 +170,7 @@ fn manifest() -> Manifest {
     Manifest {
         format: 1,
         machine: "a laptop".into(),
-        opened_by: vec!["the Nano".into()],
+        opened_by: vec!["the stick's passphrase".into()],
     }
 }
 
@@ -318,15 +318,15 @@ fn the_images_partitions_are_copied_byte_for_byte() {
     assert_eq!(table.slots[..3], original.slots[..3]);
 }
 
-/// The boot program an EFI system partition holds, copied out.
-fn boot_program_in(directory: &Path, esp: &Path) -> PathBuf {
+/// The boot program a boot partition holds, copied out.
+fn boot_program_in(directory: &Path, boot_partition: &Path) -> PathBuf {
     let program = directory.join("BOOTX64.EFI");
     let _ = fs::remove_file(&program);
     run(
         "mcopy",
         &[
             "-i".as_ref(),
-            esp.as_os_str(),
+            boot_partition.as_os_str(),
             "::EFI/BOOT/BOOTX64.EFI".as_ref(),
             program.as_os_str(),
         ],
@@ -337,18 +337,22 @@ fn boot_program_in(directory: &Path, esp: &Path) -> PathBuf {
 #[test]
 fn a_sticks_own_boot_program_is_signed_again_in_place_by_the_machines_key() {
     let directory = Scratch::new("signed-in-place");
-    let esp = directory.join("esp-in-place.fat");
-    fs::write(&esp, make_esp(&directory, Some(&boot_program()))).unwrap();
+    let boot_partition = directory.join("boot-in-place.fat");
+    fs::write(
+        &boot_partition,
+        make_boot_partition(&directory, Some(&boot_program())),
+    )
+    .unwrap();
     let first = db_key(&directory.join("first"));
     let second = db_key(&directory.join("second"));
 
     // Unsigned as the image made it, then signed by one machine's key and
     // again by another's, as a stick is once an install has the keys.
     for keys in [&first, &second] {
-        stick::sign_in_place(&mut open(&esp), &Signer::open(keys).unwrap()).unwrap();
+        stick::sign_in_place(&mut open(&boot_partition), &Signer::open(keys).unwrap()).unwrap();
     }
-    run("fsck.fat", &["-n".as_ref(), esp.as_os_str()]);
-    let program = boot_program_in(&directory, &esp);
+    run("fsck.fat", &["-n".as_ref(), boot_partition.as_os_str()]);
+    let program = boot_program_in(&directory, &boot_partition);
     let verify = |keys: &Path| {
         try_run(
             "sbverify",
@@ -367,11 +371,11 @@ fn a_sticks_own_boot_program_is_signed_again_in_place_by_the_machines_key() {
     // The same key again, as a reinstall from the machine's own stick
     // finds it, writes nothing, a second on so a new signature would
     // differ.
-    let before = fs::read(&esp).unwrap();
+    let before = fs::read(&boot_partition).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    stick::sign_in_place(&mut open(&esp), &Signer::open(&second).unwrap()).unwrap();
+    stick::sign_in_place(&mut open(&boot_partition), &Signer::open(&second).unwrap()).unwrap();
     assert!(
-        fs::read(&esp).unwrap() == before,
+        fs::read(&boot_partition).unwrap() == before,
         "the partition was written"
     );
 }
@@ -379,27 +383,31 @@ fn a_sticks_own_boot_program_is_signed_again_in_place_by_the_machines_key() {
 #[test]
 fn only_the_boot_program_firmware_boots_is_signed_in_place() {
     let directory = Scratch::new("signed-in-place-only");
-    let esp = directory.join("esp-in-place.fat");
-    fs::write(&esp, make_esp(&directory, Some(&boot_program()))).unwrap();
+    let boot_partition = directory.join("boot-in-place.fat");
+    fs::write(
+        &boot_partition,
+        make_boot_partition(&directory, Some(&boot_program())),
+    )
+    .unwrap();
     // Another program, as anyone who could write the stick's partition
     // might leave beside the one firmware boots.
     run(
         "mcopy",
         &[
             "-i".as_ref(),
-            esp.as_os_str(),
+            boot_partition.as_os_str(),
             boot_program().as_os_str(),
             "::EFI/BOOT/OTHER.EFI".as_ref(),
         ],
     );
     let keys = db_key(&directory.join("keys"));
-    stick::sign_in_place(&mut open(&esp), &Signer::open(&keys).unwrap()).unwrap();
+    stick::sign_in_place(&mut open(&boot_partition), &Signer::open(&keys).unwrap()).unwrap();
     let other = directory.join("OTHER.EFI");
     run(
         "mcopy",
         &[
             "-i".as_ref(),
-            esp.as_os_str(),
+            boot_partition.as_os_str(),
             "::EFI/BOOT/OTHER.EFI".as_ref(),
             other.as_os_str(),
         ],
@@ -416,7 +424,7 @@ fn only_the_boot_program_firmware_boots_is_signed_in_place() {
         .status
         .success()
     };
-    assert!(verify(&boot_program_in(&directory, &esp)));
+    assert!(verify(&boot_program_in(&directory, &boot_partition)));
     assert!(!verify(&other), "the other program was signed");
 }
 
@@ -441,20 +449,20 @@ fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
     .unwrap();
     stick::verify(&written, &mut disk, &Meter::new(), |_| Ok(())).unwrap();
 
-    let esp = image
+    let boot_partition = image
         .partitions()
         .into_iter()
         .find(|partition| partition.name == "esp")
         .unwrap();
-    let esp_copy = directory.join("esp-written.fat");
-    copy_out(&mut disk, &esp, &esp_copy);
-    run("fsck.fat", &["-n".as_ref(), esp_copy.as_os_str()]);
+    let boot_copy = directory.join("boot-written.fat");
+    copy_out(&mut disk, &boot_partition, &boot_copy);
+    run("fsck.fat", &["-n".as_ref(), boot_copy.as_os_str()]);
     let program = directory.join("BOOTX64.EFI");
     run(
         "mcopy",
         &[
             "-i".as_ref(),
-            esp_copy.as_os_str(),
+            boot_copy.as_os_str(),
             "::EFI/BOOT/BOOTX64.EFI".as_ref(),
             program.as_os_str(),
         ],
@@ -494,20 +502,20 @@ fn a_stick_signed_for_two_machines_verifies_with_each_ones_db_key() {
     .unwrap();
     stick::verify(&written, &mut disk, &Meter::new(), |_| Ok(())).unwrap();
 
-    let esp = image
+    let boot_partition = image
         .partitions()
         .into_iter()
         .find(|partition| partition.name == "esp")
         .unwrap();
-    let esp_copy = directory.join("esp-written.fat");
-    copy_out(&mut disk, &esp, &esp_copy);
-    run("fsck.fat", &["-n".as_ref(), esp_copy.as_os_str()]);
+    let boot_copy = directory.join("boot-written.fat");
+    copy_out(&mut disk, &boot_partition, &boot_copy);
+    run("fsck.fat", &["-n".as_ref(), boot_copy.as_os_str()]);
     let program = directory.join("BOOTX64.EFI");
     run(
         "mcopy",
         &[
             "-i".as_ref(),
-            esp_copy.as_os_str(),
+            boot_copy.as_os_str(),
             "::EFI/BOOT/BOOTX64.EFI".as_ref(),
             program.as_os_str(),
         ],
@@ -668,13 +676,13 @@ fn a_stick_too_small_is_refused_with_nothing_written() {
 }
 
 #[test]
-fn the_passphrase_opens_a_vault_on_the_stick_when_no_yubikey_will() {
+fn the_passphrase_opens_a_vault_on_the_stick() {
     let directory = Scratch::new("passphrase");
     let mut image = image(&directory);
     let path = stick_file(&directory, 100 << 20);
     let mut disk = open(&path);
     let key = VaultKey::generate();
-    let passphrase = Secret::new("a long recovery passphrase".into());
+    let passphrase = Secret::new("the stick's own passphrase".into());
     let sealed = key.seal_with_passphrase(&passphrase, Some(10)).unwrap();
     let written = stick::write(
         &mut image,

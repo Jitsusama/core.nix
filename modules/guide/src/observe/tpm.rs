@@ -244,17 +244,17 @@ impl Properties {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::Fake;
+    use crate::stand_in::StandIn;
 
     #[test]
     fn the_surfaces_tpm_has_counted_nothing_and_guards_its_lockout() {
-        let mut fake = Fake::new();
-        fake.prints(
+        let mut stand_in = StandIn::new();
+        stand_in.prints(
             Tool::Tpm2Getcap,
             &["-T", "device:/dev/tpmrm0", "properties-variable"],
             surface!("tpm2-properties-variable.txt"),
         );
-        let lockout = Lockout::observe(&mut fake).unwrap();
+        let lockout = Lockout::observe(&mut stand_in).unwrap();
         assert_eq!(
             lockout,
             Lockout {

@@ -1520,23 +1520,23 @@
     screen, installs a machine from its stick: two keys and a recovery key of seven words, shown
     alone for a phone and typed back, an install whose memory a restart took carried on through a
     key it enrolled, Secure Boot enforcing with its keys, its firmware enrolling them before the
-    disk first asks; then seals the disk to the TPM with a PIN, which opens it at
-    the next boot, leaving one systemd-pcrlock policy; makes the account's TPM keys under one PIN
-    and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
+    disk first asks; then seals the disk to the TPM with a PIN of its own, typed twice and never
+    the YubiKeys', which opens it at the next boot, leaving one systemd-pcrlock policy; makes the
+    account's TPM keys under one PIN and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
     opens with a YubiKey, seals again, makes the keys it lost again and downloads a lost spare; a
-    host writes a stick from the rescue bundle the install sealed to the recovery key, which the
+    writer writes a stick from the rescue bundle the install sealed to the recovery key, which the
     firmware boots while enforcing; then the install's own stick, which it made the machine's by
     carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
     machine with the same keys, whose guide frees the first install's policy; and a firmware cleared
     of its keys gets them back from the machine's next boot, not while a program it would start is
-    unsigned, and the TPM alone opens the disk once they're enrolled, the TPM and the YubiKeys
-    sharing one PIN so no boot costs either a try
+    unsigned, and the TPM alone opens the disk with its own PIN once they're enrolled, a YubiKey
+    with its PIN when the TPM refuses
   '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
     without changing it, mounts it whole, copies its home folders onto a USB drive without their
     caches, sets which generation boots next, replaces a lost key, reinstalls a boot loader gone
-    from the ESP, and gives a root shell inside
+    from the boot partition, and gives a root shell inside
   '';
   vm-guide-signs-a-stick-for-two-machines = ''
     a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under
@@ -1544,14 +1544,14 @@
     refuses it
   '';
   vm-guide-writes-a-stick = ''
-    the guide writes a stick as the person, holding the host awake, through UDisks2, unmounting what
-    was mounted from it, its passphrase seven words shown alone for a phone and typed back,
+    the guide writes a stick as the person, holding the writer awake, through UDisks2, unmounting
+    what was mounted from it, its passphrase seven words shown alone for a phone and typed back,
     another's words refused, the old stick's rescue bundles read from its vault mounted only for
-    reading and the host's own kept for the person and carried onto the new stick, which is the
-    host's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
+    reading and the writer's own kept for the person and carried onto the new stick, which is the
+    writer's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
     that key's PIN and signs the stick's boot program with the machine's db key; written again, the
     stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
-    by its passphrase with the key still plugged in; the first write is signed for the host's
+    by its passphrase with the key still plugged in; the first write is signed for the writer's
     machine alone, and the second, asked to sign for every machine whose bundle the person keeps,
     opens another machine's bundle by its passphrase and is signed with both machines' db keys
   '';
@@ -1671,7 +1671,7 @@
   what-vm-tests-share-does-what-it-says = ''
     the helpers VM tests share run a command as the account asked, with its runtime folder and
     bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the
-    host is as it starts, from as long as it says to four times that, describing the machine when
+    writer is as it starts, from as long as it says to four times that, describing the machine when
     one fails; a VM test written for pytest gets the driver's machines as fixtures, each test is a
     subtest named by its docstring, a failure fails it with pytest's account of why, and the
     driver ends as a failed subtest ends it

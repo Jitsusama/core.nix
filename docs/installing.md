@@ -190,9 +190,10 @@ sudo systemd-cryptenroll --fido2-device=auto $disk
 sudo systemd-cryptenroll --recovery-key $disk
 ```
 
-The first asks for the passphrase and a new PIN: give it the YubiKeys' PIN, so
-one PIN opens the disk whichever key takes it. The second asks for that PIN
-and a touch. The third prints a recovery key: keep it somewhere off this
+The first asks for the passphrase and a new PIN: give it one of the TPM's own
+that you'll remember at every start, such as your account password, which can
+change later without changing it. The second asks for the YubiKey's PIN and a
+touch. The third prints a recovery key: keep it somewhere off this
 machine, and check it opens the disk:
 
 ```sh
@@ -282,12 +283,18 @@ machine's name and signing or agents. The YubiKey's spare still goes by hand.
 
 ## When the TPM Refuses
 
-At boot, systemd asks for one PIN and tries it on each key in turn, the TPM
-first. When the TPM won't release the key, the same PIN goes to the YubiKey:
-touch it when it blinks. The TPM and the YubiKeys share one PIN for this, since
-a TPM refusing the boot costs no try, while a PIN one of them doesn't know
-costs a try on each it reaches, at every boot the TPM refuses. systemd may ask
-again, as "TPM2 PIN" or "security token PIN"; the answer is the same PIN.
+At boot, systemd asks for each device's PIN on its own, the TPM first. Each
+prompt names which PIN it wants: "TPM2 PIN" takes the TPM's, asked once, and
+when the TPM won't release the key, "security token PIN" follows for the
+YubiKey's, then a touch when it blinks. A TPM refusing the boot costs no try.
+On a disk with a YubiKey enrolled, the disk module turns off
+systemd-cryptsetup's token plugins in the initrd, since their prompt, "LUKS2
+token PIN", tries one PIN on every token: it would hand the TPM's PIN to a
+plugged-in YubiKey, and three such tries block it. A disk with none keeps
+them, since without them systemd would never ask for its passphrase. A
+YubiKey's PIN typed where the TPM's is asked costs the TPM a try, which counts
+towards its lockout even on a boot its policy refuses. The recovery key is the
+seven words exactly as the guide showed them, lowercase and one space apart.
 The recovery key is tried only once the YubiKey is unplugged or blocked, so
 typed while it is plugged in it opens nothing; to use it, unplug the YubiKey.
 A wrong PIN costs a try on both: the TPM locks itself after 32 and forgives

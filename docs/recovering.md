@@ -37,11 +37,10 @@ guide wrote can recover a machine; only the machine's own can install it.
 
 ## The Disk Asks Again After the PIN
 
-The TPM didn't release its key, so the prompt has moved on to the YubiKey.
-Type the YubiKey's PIN and touch it, and the disk opens. On a machine the
-guide installed that's the same PIN: the guide seals the TPM with the
-YubiKeys' PIN, so a plugged-in YubiKey is tried with what was typed and
-only asks for a touch. [When the TPM
+The TPM didn't release its key. A prompt for the "TPM2 PIN" still wants the
+TPM's PIN; one for the "security token PIN" has moved on to the YubiKey.
+Type the YubiKey's PIN there and touch it, and the disk opens. On a machine the
+guide installed that's a PIN of its own, not the TPM's. [When the TPM
 Refuses][2] says why that happens and how to seal the disk to the TPM again.
 Anything it doesn't name means the laptop didn't boot what it should: find
 out why before typing the recovery key.
@@ -159,8 +158,8 @@ The TPM's keys were files on the old disk, so the first boot makes new ones:
 the login key and both signing keys. GitHub still holds the old public
 keys until they're replaced:
 
-1. Delete the old `<account>@<host>` SSH key and the two signing keys
-   (`<account>@<host> signing` and `<account>@<host> agents`) from GitHub,
+1. Delete the old `<account>@<machine>` SSH key and the two signing keys
+   (`<account>@<machine> signing` and `<account>@<machine> agents`) from GitHub,
    and add the new ones.
 2. Put the new signing keys in the machine repository's
    `jitsusama.signing.allowedSigners` in place of the old.
@@ -179,7 +178,7 @@ Taken while asleep or locked rather than off, the disk is already open and
 only the lock screen stands in the way. So revoke what it holds at once, from
 another machine, either way:
 
-1. On GitHub, delete the laptop's `<account>@<host>` SSH key and both of its
+1. On GitHub, delete the laptop's `<account>@<machine>` SSH key and both of its
    signing keys. Leave the spare of any YubiKey still held.
 2. Take its signing keys out of `jitsusama.signing.allowedSigners`, so
    nothing it signs from now on counts as Joel's.

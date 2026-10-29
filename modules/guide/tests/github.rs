@@ -2,9 +2,9 @@
 //! command line, and each key an account's modules send to GitHub added
 //! once, as the kind they say, titled as they say.
 
-use guide::fake::Fake;
 use guide::github::{Account, AddKeys, AskForCode, SignIn};
 use guide::installed::FACTS;
+use guide::stand_in::StandIn;
 use guide::{Answers, Ask, Fault, Program, Standing, Step, Tool};
 
 const HELD: &str = "/run/user/1000/guide-github-code.json";
@@ -34,9 +34,9 @@ fn curl(url: &str) -> Vec<&str> {
 }
 
 /// A machine where gh is signed in or isn't.
-fn signed_in(yes: bool) -> Fake {
-    let mut fake = Fake::new();
-    fake.answers(
+fn signed_in(yes: bool) -> StandIn {
+    let mut stand_in = StandIn::new();
+    stand_in.answers(
         Program::Tool(Tool::Gh),
         STATUS,
         i32::from(!yes),
@@ -47,15 +47,15 @@ fn signed_in(yes: bool) -> Fake {
             "You are not logged into any GitHub hosts."
         },
     );
-    fake
+    stand_in
 }
 
 const CODE: &str = r#"{"device_code":"the-device-code","user_code":"WDJB-MJHT","verification_uri":"https://github.com/login/device","expires_at":4102444800}"#;
 
 #[test]
 fn the_code_github_gives_is_shown_with_where_to_type_it() {
-    let mut fake = signed_in(false);
-    fake.no_file(HELD).answers(
+    let mut stand_in = signed_in(false);
+    stand_in.no_file(HELD).answers(
         Program::Tool(Tool::Curl),
         &curl("https://github.com/login/device/code"),
         0,
@@ -63,16 +63,16 @@ fn the_code_github_gives_is_shown_with_where_to_type_it() {
         "",
     );
     assert!(matches!(
-        AskForCode { account: alice() }.observe(&mut fake),
+        AskForCode { account: alice() }.observe(&mut stand_in),
         Ok(Standing::Needed { .. })
     ));
     AskForCode { account: alice() }
-        .run(&mut fake, &Answers::new())
+        .run(&mut stand_in, &Answers::new())
         .unwrap();
-    let held = String::from_utf8_lossy(fake.holds(HELD).unwrap()).into_owned();
+    let held = String::from_utf8_lossy(stand_in.holds(HELD).unwrap()).into_owned();
     assert!(held.contains("WDJB-MJHT"), "{held}");
 
-    let Ok(Standing::Needed { asks }) = SignIn { account: alice() }.observe(&mut fake) else {
+    let Ok(Standing::Needed { asks }) = SignIn { account: alice() }.observe(&mut stand_in) else {
         panic!("not asked")
     };
     let [Ask::Act { what, .. }] = asks.as_slice() else {
@@ -84,16 +84,17 @@ fn the_code_github_gives_is_shown_with_where_to_type_it() {
     );
     // The form went on curl's standard input, never its command line.
     assert!(
-        !fake.calls.iter().any(|call| call.contains("client_id")),
+        !stand_in.calls.iter().any(|call| call.contains("client_id")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
 }
 
 #[test]
 fn the_token_github_hands_out_goes_to_gh_on_its_standard_input() {
-    let mut fake = signed_in(false);
-    fake.file(HELD, CODE.as_bytes())
+    let mut stand_in = signed_in(false);
+    stand_in
+        .file(HELD, CODE.as_bytes())
         .answers(
             Program::Tool(Tool::Curl),
             &curl("https://github.com/login/oauth/access_token"),
@@ -115,42 +116,43 @@ fn the_token_github_hands_out_goes_to_gh_on_its_standard_input() {
             "",
         );
     SignIn { account: alice() }
-        .run(&mut fake, &Answers::new())
+        .run(&mut stand_in, &Answers::new())
         .unwrap();
     assert!(
-        fake.secrets
+        stand_in
+            .secrets
             .iter()
             .any(|(to, secret)| to == "stdin" && secret == "gho_the-token\n"),
         "{:?}",
-        fake.secrets
+        stand_in.secrets
     );
     assert!(
-        !fake
+        !stand_in
             .calls
             .iter()
             .any(|call| call.contains("gho_the-token") || call.contains("the-device-code")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
-    assert_eq!(fake.holds(HELD), None);
+    assert_eq!(stand_in.holds(HELD), None);
 }
 
 #[test]
 fn a_code_not_approved_yet_is_kept_to_try_again() {
-    let mut fake = signed_in(false);
-    fake.file(HELD, CODE.as_bytes()).answers(
+    let mut stand_in = signed_in(false);
+    stand_in.file(HELD, CODE.as_bytes()).answers(
         Program::Tool(Tool::Curl),
         &curl("https://github.com/login/oauth/access_token"),
         0,
         r#"{"error":"authorization_pending"}"#,
         "",
     );
-    let refused = SignIn { account: alice() }.run(&mut fake, &Answers::new());
+    let refused = SignIn { account: alice() }.run(&mut stand_in, &Answers::new());
     assert!(
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("hasn't been told yet")),
         "{refused:?}"
     );
-    assert_eq!(fake.holds(HELD), Some(CODE.as_bytes()));
+    assert_eq!(stand_in.holds(HELD), Some(CODE.as_bytes()));
 }
 
 const FACTS_JSON: &str = r#"{
@@ -170,8 +172,9 @@ const FACTS_JSON: &str = r#"{
 
 #[test]
 fn only_the_keys_github_lacks_are_added_as_their_modules_say() {
-    let mut fake = signed_in(true);
-    fake.file(FACTS, FACTS_JSON.as_bytes())
+    let mut stand_in = signed_in(true);
+    stand_in
+        .file(FACTS, FACTS_JSON.as_bytes())
         .file(
             "/home/alice/.ssh/id_ecdsa.pub",
             b"ecdsa-sha2-nistp256 AAAAlogin alice@machine\n",
@@ -202,7 +205,7 @@ fn only_the_keys_github_lacks_are_added_as_their_modules_say() {
         ),
         ("/home/alice/.ssh/agent-signing.pub", "machine agents"),
     ] {
-        fake.prints(
+        stand_in.prints(
             Tool::Gh,
             &[
                 "ssh-key", "add", file, "--title", title, "--type", "signing",
@@ -212,11 +215,11 @@ fn only_the_keys_github_lacks_are_added_as_their_modules_say() {
     }
     let adding = AddKeys { account: alice() };
     assert!(matches!(
-        adding.observe(&mut fake),
+        adding.observe(&mut stand_in),
         Ok(Standing::Needed { .. })
     ));
-    adding.run(&mut fake, &Answers::new()).unwrap();
-    let added: Vec<&String> = fake
+    adding.run(&mut stand_in, &Answers::new()).unwrap();
+    let added: Vec<&String> = stand_in
         .calls
         .iter()
         .filter(|call| call.contains("ssh-key add"))
@@ -230,12 +233,13 @@ fn only_the_keys_github_lacks_are_added_as_their_modules_say() {
 
 #[test]
 fn a_machine_with_no_key_for_github_has_nothing_to_add() {
-    let mut fake = signed_in(false);
-    fake.file(
+    let mut stand_in = signed_in(false);
+    stand_in.file(
         FACTS,
         br#"{"disk_name": "system", "keys": [{"account": "alice", "file": "/home/alice/.ssh/id_ecdsa", "comment": "alice@machine", "pin": true}]}"#,
     );
-    let Ok(Standing::Done { evidence }) = AddKeys { account: alice() }.observe(&mut fake) else {
+    let Ok(Standing::Done { evidence }) = AddKeys { account: alice() }.observe(&mut stand_in)
+    else {
         panic!("not done")
     };
     assert_eq!(evidence, "no key here goes to GitHub");

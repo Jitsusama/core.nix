@@ -3,9 +3,9 @@
 //! keygen's environment, never an argument, nothing made over half a
 //! key that's there already, and a key a cleared TPM refuses made again.
 
-use guide::fake::Fake;
 use guide::installed::FACTS;
 use guide::installed::keys::{ASKPASS, MakeKeys};
+use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Program, Secret, Standing, Step, Tool};
 
 const LOGIN: &str = "/home/alice/.ssh/id_ecdsa";
@@ -15,9 +15,9 @@ const SIGNING: &str = "/home/alice/.local/share/signing/alice-signing";
 /// The machine as core's guide module describes it, with alice's three
 /// keys: her login key and her own signing key asking for a PIN, and the
 /// agents' signing key asking for none.
-fn machine() -> Fake {
-    let mut fake = Fake::new();
-    fake.file(
+fn machine() -> StandIn {
+    let mut stand_in = StandIn::new();
+    stand_in.file(
         FACTS,
         format!(
             r#"{{"disk_name":"system","keys":[
@@ -28,7 +28,7 @@ fn machine() -> Fake {
         )
         .as_bytes(),
     );
-    fake
+    stand_in
 }
 
 fn keygen() -> &'static str {
@@ -44,10 +44,10 @@ fn mkdir() -> &'static str {
 }
 
 /// None of `files`' halves is on the disk.
-fn without(fake: &mut Fake, files: &[&str]) {
+fn without(stand_in: &mut StandIn, files: &[&str]) {
     for file in files {
-        fake.no_file(&format!("{file}.tpm"));
-        fake.no_file(&format!("{file}.pub"));
+        stand_in.no_file(&format!("{file}.tpm"));
+        stand_in.no_file(&format!("{file}.pub"));
     }
 }
 
@@ -94,30 +94,30 @@ const LOAD: &[&str] = &[
 
 /// The TPM's storage key made, and each key loaded in turn, the TPM
 /// taking those in `taken` and refusing the rest as a cleared TPM does.
-fn tpm_loads(fake: &mut Fake, taken: &[bool]) {
-    fake.prints(Tool::Tpm2Createprimary, STORAGE_KEY, "name: 000b\n");
+fn tpm_loads(stand_in: &mut StandIn, taken: &[bool]) {
+    stand_in.prints(Tool::Tpm2Createprimary, STORAGE_KEY, "name: 000b\n");
     for &taken in taken {
         let program = Program::Tool(Tool::Tpm2Load);
         if taken {
-            fake.answers(program, LOAD, 0, "name: 000b\n", "");
+            stand_in.answers(program, LOAD, 0, "name: 000b\n", "");
         } else {
-            fake.answers(program, LOAD, 1, "", NOT_ITS_SEED);
+            stand_in.answers(program, LOAD, 1, "", NOT_ITS_SEED);
         }
     }
 }
 
 /// Both of `file`'s halves, the public one what `--print-pubkey` reads
 /// from the private one when `matching`.
-fn whole(fake: &mut Fake, file: &str, matching: bool) {
+fn whole(stand_in: &mut StandIn, file: &str, matching: bool) {
     let public = format!("ecdsa-sha2-nistp256 AAAA{file} alice@machine\n");
-    fake.file(&format!("{file}.tpm"), KEY);
-    fake.file(&format!("{file}.pub"), public.as_bytes());
+    stand_in.file(&format!("{file}.tpm"), KEY);
+    stand_in.file(&format!("{file}.pub"), public.as_bytes());
     let read = if matching {
         public
     } else {
         "ecdsa-sha2-nistp256 AAAAsomething-else alice@machine\n".into()
     };
-    fake.prints(
+    stand_in.prints(
         Tool::SshTpmKeygen,
         &["--print-pubkey", &format!("{file}.tpm")],
         &read,
@@ -132,14 +132,14 @@ fn answers(pin: &str, again: &str) -> Answers {
 }
 
 /// What making `file` as alice runs, in order: its folder, then the key.
-fn makes(fake: &mut Fake, file: &str, comment: &str) {
+fn makes(stand_in: &mut StandIn, file: &str, comment: &str) {
     let folder = file.rsplit_once('/').unwrap().0;
-    fake.prints(
+    stand_in.prints(
         Tool::Runuser,
         &["-u", "alice", "--", mkdir(), "-p", "-m", "700", folder],
         "",
     );
-    fake.prints(
+    stand_in.prints(
         Tool::Runuser,
         &["-u", "alice", "--", keygen(), "-C", comment, "-f", file],
         "Your identification has been saved\n",
@@ -148,9 +148,9 @@ fn makes(fake: &mut Fake, file: &str, comment: &str) {
 
 #[test]
 fn every_missing_key_is_made_as_its_account_the_pin_only_in_its_environment() {
-    let mut fake = machine();
-    without(&mut fake, &[LOGIN, SIGNING, AGENTS]);
-    let Standing::Needed { asks } = MakeKeys.observe(&mut fake).unwrap() else {
+    let mut stand_in = machine();
+    without(&mut stand_in, &[LOGIN, SIGNING, AGENTS]);
+    let Standing::Needed { asks } = MakeKeys.observe(&mut stand_in).unwrap() else {
         panic!("alice's keys are still to make")
     };
     let ids: Vec<&str> = asks.iter().map(Ask::id).collect();
@@ -160,25 +160,27 @@ fn every_missing_key_is_made_as_its_account_the_pin_only_in_its_environment() {
     };
     assert!(name.contains("alice's SSH keys"), "{name}");
 
-    makes(&mut fake, LOGIN, "alice@machine");
-    makes(&mut fake, SIGNING, "alice@machine signing");
-    makes(&mut fake, AGENTS, "alice@machine agents");
-    MakeKeys.run(&mut fake, &answers("2468", "2468")).unwrap();
+    makes(&mut stand_in, LOGIN, "alice@machine");
+    makes(&mut stand_in, SIGNING, "alice@machine signing");
+    makes(&mut stand_in, AGENTS, "alice@machine agents");
+    MakeKeys
+        .run(&mut stand_in, &answers("2468", "2468"))
+        .unwrap();
 
-    let made: Vec<&String> = fake
+    let made: Vec<&String> = stand_in
         .calls
         .iter()
         .filter(|call| call.contains(" -f "))
         .collect();
-    assert_eq!(made.len(), 3, "{:#?}", fake.calls);
+    assert_eq!(made.len(), 3, "{:#?}", stand_in.calls);
     for call in &made {
         assert!(call.starts_with("runuser -u alice -- "), "{call}");
         assert!(call.ends_with(&format!("[{ASKPASS}]")), "{call}");
         assert!(!call.contains("(as root)"), "{call}");
     }
-    assert!(fake.calls.iter().all(|call| !call.contains("2468")));
+    assert!(stand_in.calls.iter().all(|call| !call.contains("2468")));
     // The two with a PIN get it; the agents' key gets none.
-    let given: Vec<(&str, &str)> = fake
+    let given: Vec<(&str, &str)> = stand_in
         .secrets
         .iter()
         .map(|(place, secret)| (place.as_str(), secret.as_str()))
@@ -188,33 +190,43 @@ fn every_missing_key_is_made_as_its_account_the_pin_only_in_its_environment() {
 
 #[test]
 fn pins_that_differ_make_nothing() {
-    let mut fake = machine();
-    without(&mut fake, &[LOGIN, SIGNING, AGENTS]);
-    let refused = MakeKeys.run(&mut fake, &answers("2468", "2469"));
+    let mut stand_in = machine();
+    without(&mut stand_in, &[LOGIN, SIGNING, AGENTS]);
+    let refused = MakeKeys.run(&mut stand_in, &answers("2468", "2469"));
     assert!(matches!(refused, Err(Fault::Blocked { .. })), "{refused:?}");
-    assert!(fake.calls.iter().all(|call| !call.starts_with("runuser")));
+    assert!(
+        stand_in
+            .calls
+            .iter()
+            .all(|call| !call.starts_with("runuser"))
+    );
 }
 
 #[test]
 fn a_pin_its_askpass_would_trim_makes_nothing() {
-    let mut fake = machine();
-    without(&mut fake, &[LOGIN, SIGNING, AGENTS]);
-    let refused = MakeKeys.run(&mut fake, &answers(" 2468", " 2468"));
+    let mut stand_in = machine();
+    without(&mut stand_in, &[LOGIN, SIGNING, AGENTS]);
+    let refused = MakeKeys.run(&mut stand_in, &answers(" 2468", " 2468"));
     let Err(Fault::Blocked { why, .. }) = refused else {
         panic!("a PIN starting with a space is refused: {refused:?}")
     };
     assert!(why.contains("space"), "{why}");
-    assert!(fake.calls.iter().all(|call| !call.starts_with("runuser")));
+    assert!(
+        stand_in
+            .calls
+            .iter()
+            .all(|call| !call.starts_with("runuser"))
+    );
 }
 
 #[test]
 fn keys_whose_halves_match_are_done_and_nothing_is_asked() {
-    let mut fake = machine();
-    tpm_loads(&mut fake, &[true]);
-    whole(&mut fake, LOGIN, true);
-    whole(&mut fake, SIGNING, true);
-    whole(&mut fake, AGENTS, true);
-    let Standing::Done { evidence } = MakeKeys.observe(&mut fake).unwrap() else {
+    let mut stand_in = machine();
+    tpm_loads(&mut stand_in, &[true]);
+    whole(&mut stand_in, LOGIN, true);
+    whole(&mut stand_in, SIGNING, true);
+    whole(&mut stand_in, AGENTS, true);
+    let Standing::Done { evidence } = MakeKeys.observe(&mut stand_in).unwrap() else {
         panic!("alice's keys are made")
     };
     assert!(evidence.contains("id_ecdsa"), "{evidence}");
@@ -223,49 +235,54 @@ fn keys_whose_halves_match_are_done_and_nothing_is_asked() {
 
 #[test]
 fn only_a_key_without_a_pin_to_make_asks_for_nothing() {
-    let mut fake = machine();
-    tpm_loads(&mut fake, &[true]);
-    whole(&mut fake, LOGIN, true);
-    whole(&mut fake, SIGNING, true);
-    without(&mut fake, &[AGENTS]);
-    let Standing::Needed { asks } = MakeKeys.observe(&mut fake).unwrap() else {
+    let mut stand_in = machine();
+    tpm_loads(&mut stand_in, &[true]);
+    whole(&mut stand_in, LOGIN, true);
+    whole(&mut stand_in, SIGNING, true);
+    without(&mut stand_in, &[AGENTS]);
+    let Standing::Needed { asks } = MakeKeys.observe(&mut stand_in).unwrap() else {
         panic!("the agents' key is still to make")
     };
     assert!(asks.is_empty(), "{asks:?}");
-    makes(&mut fake, AGENTS, "alice@machine agents");
-    MakeKeys.run(&mut fake, &Answers::new()).unwrap();
-    assert_eq!(fake.secrets, [(ASKPASS.to_string(), String::new())]);
+    makes(&mut stand_in, AGENTS, "alice@machine agents");
+    MakeKeys.run(&mut stand_in, &Answers::new()).unwrap();
+    assert_eq!(stand_in.secrets, [(ASKPASS.to_string(), String::new())]);
 }
 
 #[test]
 fn half_a_key_blocks_rather_than_being_made_over() {
     for half in [".tpm", ".pub"] {
-        let mut fake = machine();
-        tpm_loads(&mut fake, &[true]);
-        whole(&mut fake, LOGIN, true);
-        whole(&mut fake, SIGNING, true);
-        without(&mut fake, &[AGENTS]);
-        fake.file(&format!("{AGENTS}{half}"), b"left from before");
+        let mut stand_in = machine();
+        tpm_loads(&mut stand_in, &[true]);
+        whole(&mut stand_in, LOGIN, true);
+        whole(&mut stand_in, SIGNING, true);
+        without(&mut stand_in, &[AGENTS]);
+        stand_in.file(&format!("{AGENTS}{half}"), b"left from before");
         assert!(
             matches!(
-                MakeKeys.observe(&mut fake).unwrap(),
+                MakeKeys.observe(&mut stand_in).unwrap(),
                 Standing::Blocked { .. }
             ),
             "{half}"
         );
-        let refused = MakeKeys.run(&mut fake, &Answers::new());
+        let refused = MakeKeys.run(&mut stand_in, &Answers::new());
         assert!(matches!(refused, Err(Fault::Blocked { .. })), "{half}");
-        assert!(fake.calls.iter().all(|call| !call.starts_with("runuser")));
+        assert!(
+            stand_in
+                .calls
+                .iter()
+                .all(|call| !call.starts_with("runuser"))
+        );
     }
 }
 
 #[test]
 fn a_public_half_that_isnt_the_keys_blocks() {
-    let mut fake = machine();
-    whole(&mut fake, LOGIN, false);
-    whole(&mut fake, SIGNING, true);
-    whole(&mut fake, AGENTS, true);
-    let Standing::Blocked { why, .. } = MakeKeys.observe(&mut fake).unwrap() else {
+    let mut stand_in = machine();
+    whole(&mut stand_in, LOGIN, false);
+    whole(&mut stand_in, SIGNING, true);
+    whole(&mut stand_in, AGENTS, true);
+    let Standing::Blocked { why, .. } = MakeKeys.observe(&mut stand_in).unwrap() else {
         panic!("a public half that isn't the key's blocks")
     };
     assert!(why.contains("isn't the public half"), "{why}");
@@ -273,24 +290,24 @@ fn a_public_half_that_isnt_the_keys_blocks() {
 
 #[test]
 fn a_machine_whose_accounts_keep_no_keys_has_nothing_to_make() {
-    let mut fake = Fake::new();
-    fake.file(FACTS, br#"{"disk_name":"system"}"#);
+    let mut stand_in = StandIn::new();
+    stand_in.file(FACTS, br#"{"disk_name":"system"}"#);
     assert!(matches!(
-        MakeKeys.observe(&mut fake).unwrap(),
+        MakeKeys.observe(&mut stand_in).unwrap(),
         Standing::Done { .. }
     ));
 }
 
 #[test]
 fn a_key_the_cleared_tpm_refuses_is_made_again_in_place_of_the_old() {
-    let mut fake = machine();
-    whole(&mut fake, LOGIN, true);
-    whole(&mut fake, SIGNING, true);
-    whole(&mut fake, AGENTS, true);
+    let mut stand_in = machine();
+    whole(&mut stand_in, LOGIN, true);
+    whole(&mut stand_in, SIGNING, true);
+    whole(&mut stand_in, AGENTS, true);
     // Her signing key was made before the TPM was cleared; the others
     // since. Each look loads all three in turn.
-    tpm_loads(&mut fake, &[true, false, true, true, false, true]);
-    let Standing::Needed { asks } = MakeKeys.observe(&mut fake).unwrap() else {
+    tpm_loads(&mut stand_in, &[true, false, true, true, false, true]);
+    let Standing::Needed { asks } = MakeKeys.observe(&mut stand_in).unwrap() else {
         panic!("the signing key is to make again")
     };
     let Ask::Secret { name, .. } = &asks[0] else {
@@ -299,39 +316,41 @@ fn a_key_the_cleared_tpm_refuses_is_made_again_in_place_of_the_old() {
     assert!(name.contains("alice's new SSH keys"), "{name}");
     assert!(name.contains("the TPM was cleared"), "{name}");
 
-    makes(&mut fake, SIGNING, "alice@machine signing");
-    MakeKeys.run(&mut fake, &answers("2468", "2468")).unwrap();
-    let made: Vec<&String> = fake
+    makes(&mut stand_in, SIGNING, "alice@machine signing");
+    MakeKeys
+        .run(&mut stand_in, &answers("2468", "2468"))
+        .unwrap();
+    let made: Vec<&String> = stand_in
         .calls
         .iter()
         .filter(|call| call.contains(" -f "))
         .collect();
-    assert_eq!(made.len(), 1, "{:#?}", fake.calls);
+    assert_eq!(made.len(), 1, "{:#?}", stand_in.calls);
     assert!(made[0].contains(SIGNING), "{}", made[0]);
     // Both old halves go first, since ssh-tpm-keygen asks before making
     // one over them.
-    let at = |wanted: &str| fake.calls.iter().position(|call| call == wanted);
-    let keygen = fake
+    let at = |wanted: &str| stand_in.calls.iter().position(|call| call == wanted);
+    let keygen = stand_in
         .calls
         .iter()
         .position(|call| call.contains(" -f "))
         .unwrap();
     for half in [".tpm", ".pub"] {
         let removed = at(&format!("removing {SIGNING}{half}")).expect(half);
-        assert!(removed < keygen, "{:#?}", fake.calls);
+        assert!(removed < keygen, "{:#?}", stand_in.calls);
     }
     assert!(at(&format!("removing {LOGIN}.tpm")).is_none());
 }
 
 #[test]
 fn the_tpm_makes_its_storage_key_once_a_look_and_nothing_loaded_stays() {
-    let mut fake = machine();
-    whole(&mut fake, LOGIN, true);
-    whole(&mut fake, SIGNING, true);
-    whole(&mut fake, AGENTS, true);
-    tpm_loads(&mut fake, &[true]);
-    MakeKeys.observe(&mut fake).unwrap();
-    let tpm: Vec<&String> = fake
+    let mut stand_in = machine();
+    whole(&mut stand_in, LOGIN, true);
+    whole(&mut stand_in, SIGNING, true);
+    whole(&mut stand_in, AGENTS, true);
+    tpm_loads(&mut stand_in, &[true]);
+    MakeKeys.observe(&mut stand_in).unwrap();
+    let tpm: Vec<&String> = stand_in
         .calls
         .iter()
         .filter(|call| call.starts_with("tpm2_"))
@@ -342,32 +361,33 @@ fn the_tpm_makes_its_storage_key_once_a_look_and_nothing_loaded_stays() {
         tpm.iter().all(|call| call.ends_with("(as root)")),
         "{tpm:#?}"
     );
-    assert!(fake.holds("/run/guide/tpm-key/public").is_none());
-    assert!(fake.holds("/run/guide/tpm-key/private").is_none());
+    assert!(stand_in.holds("/run/guide/tpm-key/public").is_none());
+    assert!(stand_in.holds("/run/guide/tpm-key/private").is_none());
     assert_eq!(
-        fake.calls.last().map(String::as_str),
+        stand_in.calls.last().map(String::as_str),
         Some("removing /run/guide/tpm-key and all it holds")
     );
 }
 
 #[test]
 fn a_tpm_refusing_for_another_reason_is_a_fault_and_nothing_is_made_again() {
-    let mut fake = machine();
-    whole(&mut fake, LOGIN, true);
-    whole(&mut fake, SIGNING, true);
-    whole(&mut fake, AGENTS, true);
-    fake.prints(Tool::Tpm2Createprimary, STORAGE_KEY, "");
-    fake.answers(
+    let mut stand_in = machine();
+    whole(&mut stand_in, LOGIN, true);
+    whole(&mut stand_in, SIGNING, true);
+    whole(&mut stand_in, AGENTS, true);
+    stand_in.prints(Tool::Tpm2Createprimary, STORAGE_KEY, "");
+    stand_in.answers(
         Program::Tool(Tool::Tpm2Load),
         LOAD,
         1,
         "",
         "ERROR:esys:src/tss2-esys/api/Esys_Load.c:110:Esys_Load() Esys Finish ErrorCode (0x00000902)\nERROR: Esys_Load(0x902) - tpm:warn(2.0): out of memory for object contexts\n",
     );
-    let refused = MakeKeys.observe(&mut fake);
+    let refused = MakeKeys.observe(&mut stand_in);
     assert!(matches!(refused, Err(Fault::Refused { .. })), "{refused:?}");
     assert!(
-        fake.calls
+        stand_in
+            .calls
             .iter()
             .all(|call| !call.starts_with("removing /home"))
     );

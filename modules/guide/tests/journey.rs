@@ -1,4 +1,4 @@
-//! The journey's promises, each with toy steps on a fake machine: what
+//! The journey's promises, each with toy steps on a stand-in machine: what
 //! comes next is found by observing; a step is done only when observing
 //! again says so; nothing runs without everything it asks for; and a step
 //! already done never runs again.
@@ -6,7 +6,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use guide::fake::Fake;
+use guide::stand_in::StandIn;
 use guide::{
     Answer, Answers, Ask, Fault, Journey, Machine, Next, Place, Secret, Standing, Step, Tool,
 };
@@ -110,7 +110,7 @@ fn journey(steps: Vec<Box<dyn Step>>) -> Journey {
 fn a_step_that_says_it_worked_but_didnt_is_unproven() {
     let mut liar = note("liar", Place::Stick);
     liar.lies = true;
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     let result = Journey::attempt(&liar, &mut machine, &Answers::new());
     assert!(
         matches!(&result, Err(Fault::Unproven { step: "liar", .. })),
@@ -122,7 +122,7 @@ fn a_step_that_says_it_worked_but_didnt_is_unproven() {
 #[test]
 fn a_step_is_done_with_what_shows_it() {
     let step = note("format", Place::Stick);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     assert_eq!(
         Journey::attempt(&step, &mut machine, &Answers::new()),
         Ok("the journal has it".into())
@@ -132,7 +132,7 @@ fn a_step_is_done_with_what_shows_it() {
 #[test]
 fn a_step_already_done_never_runs_again() {
     let step = note("format", Place::Stick);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     machine.journal().record("format", "noted").unwrap();
     assert!(Journey::attempt(&step, &mut machine, &Answers::new()).is_ok());
     assert_eq!(step.runs.get(), 0);
@@ -151,7 +151,7 @@ fn nothing_runs_without_everything_it_asks_for() {
             what: "plug in the Nano".into(),
         },
     ];
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     let mut answers = Answers::new();
     answers.give("pin", Answer::Secret(Secret::new("123456".into())));
     assert_eq!(
@@ -170,11 +170,11 @@ fn nothing_runs_without_everything_it_asks_for() {
 #[test]
 fn next_is_the_first_step_here_not_done() {
     let journey = journey(vec![
-        Box::new(note("write", Place::Host)),
+        Box::new(note("write", Place::Writer)),
         Box::new(note("format", Place::Stick)),
         Box::new(note("install", Place::Stick)),
     ]);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     machine.journal().record("format", "noted").unwrap();
     let Next::Run { step, .. } = journey.next(Place::Stick, &mut machine).unwrap() else {
         panic!("a step to run")
@@ -184,13 +184,13 @@ fn next_is_the_first_step_here_not_done() {
 
 #[test]
 fn steps_behind_the_journey_are_never_observed() {
-    // The host's step isn't done, but the stick can't see the host, so it
+    // The writer's step isn't done, but the stick can't see the writer, so it
     // mustn't hold the stick's steps back.
     let journey = journey(vec![
-        Box::new(note("write", Place::Host)),
+        Box::new(note("write", Place::Writer)),
         Box::new(note("format", Place::Stick)),
     ]);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     let Next::Run { step, .. } = journey.next(Place::Stick, &mut machine).unwrap() else {
         panic!("a step to run")
     };
@@ -203,7 +203,7 @@ fn when_everything_here_is_done_it_says_where_to_go() {
         Box::new(note("format", Place::Stick)),
         Box::new(note("seal", Place::Installed)),
     ]);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     machine.journal().record("format", "noted").unwrap();
     let Next::Elsewhere { step } = journey.next(Place::Stick, &mut machine).unwrap() else {
         panic!("elsewhere")
@@ -225,7 +225,7 @@ fn the_guide_starting_again_finds_the_same_next_step() {
         Box::new(note("format", Place::Stick)),
         Box::new(note("install", Place::Stick)),
     ]);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     let Next::Run { step, .. } = journey.next(Place::Stick, &mut machine).unwrap() else {
         panic!("a step to run")
     };
@@ -240,7 +240,7 @@ fn the_guide_starting_again_finds_the_same_next_step() {
 #[test]
 fn a_blocked_step_says_why_and_what_to_do() {
     let journey = journey(vec![Box::new(ReadsTheTpm)]);
-    let mut machine = Fake::new();
+    let mut machine = StandIn::new();
     let listing =
         include_str!("../fixtures/microsoft-surface-laptop-4-1958/tpm2-properties-variable.txt")
             .replace(

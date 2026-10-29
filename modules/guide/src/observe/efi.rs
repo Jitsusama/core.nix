@@ -153,8 +153,8 @@ impl SecureBoot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::Fake;
     use crate::fixtures;
+    use crate::stand_in::StandIn;
 
     fn path(name: &str) -> String {
         format!("/sys/firmware/efi/efivars/{name}-{GLOBAL}")
@@ -162,13 +162,13 @@ mod tests {
 
     #[test]
     fn the_xps_enforces_in_deployed_mode() {
-        let mut fake = Fake::new();
+        let mut stand_in = StandIn::new();
         for name in ["SecureBoot", "SetupMode", "AuditMode", "DeployedMode"] {
             let bytes = std::fs::read(format!("{}/efivar-{name}-{GLOBAL}", fixtures::XPS)).unwrap();
-            fake.file(&path(name), &bytes);
+            stand_in.file(&path(name), &bytes);
         }
         assert_eq!(
-            SecureBoot::observe(&mut fake).unwrap(),
+            SecureBoot::observe(&mut stand_in).unwrap(),
             Some(SecureBoot {
                 enforcing: true,
                 mode: Mode::Deployed
@@ -178,16 +178,17 @@ mod tests {
 
     #[test]
     fn the_surface_enforces_in_user_mode_with_no_later_variables() {
-        let mut fake = Fake::new();
+        let mut stand_in = StandIn::new();
         for name in ["SecureBoot", "SetupMode"] {
             let bytes =
                 std::fs::read(format!("{}/efivar-{name}-{GLOBAL}", fixtures::SURFACE)).unwrap();
-            fake.file(&path(name), &bytes);
+            stand_in.file(&path(name), &bytes);
         }
-        fake.no_file(&path("AuditMode"))
+        stand_in
+            .no_file(&path("AuditMode"))
             .no_file(&path("DeployedMode"));
         assert_eq!(
-            SecureBoot::observe(&mut fake).unwrap(),
+            SecureBoot::observe(&mut stand_in).unwrap(),
             Some(SecureBoot {
                 enforcing: true,
                 mode: Mode::User
@@ -217,11 +218,11 @@ mod tests {
 
     #[test]
     fn a_machine_without_the_variables_has_no_secure_boot() {
-        let mut fake = Fake::new();
+        let mut stand_in = StandIn::new();
         for name in ["SecureBoot", "SetupMode", "AuditMode", "DeployedMode"] {
-            fake.no_file(&path(name));
+            stand_in.no_file(&path(name));
         }
-        assert_eq!(SecureBoot::observe(&mut fake).unwrap(), None);
+        assert_eq!(SecureBoot::observe(&mut stand_in).unwrap(), None);
     }
 
     #[test]

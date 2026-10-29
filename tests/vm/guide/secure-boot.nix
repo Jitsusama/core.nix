@@ -42,7 +42,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     services.fwupd.enable = true;
   };
 
-  # The driver runs on the host, so what the tests need from Nix, the image
+  # The driver runs outside the virtual machines, so what the tests need from Nix, the image
   # to boot, the tool to put an overlay on it, the systems to install and the
   # secrets to type, reaches them as their values fixture rather than on the
   # machine's path.

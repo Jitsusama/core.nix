@@ -1,4 +1,4 @@
-# What a reinstall stick carries for one machine, built from its NixOS
+# What a stick carries for one machine, built from its NixOS
 # configuration, for `guide write-stick --install` to seal into the stick's
 # vault: what to install (target.json, src/install/mod.rs's Target), the
 # layout disko writes for its disk, run on the stick with the stick's own

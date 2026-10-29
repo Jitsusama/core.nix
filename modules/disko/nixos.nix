@@ -6,9 +6,29 @@
 # disks attached at once, such as a machine's drive and a stick it was
 # installed from, need names of their own.
 { disko }:
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.jitsusama.disk;
+  initrdSystemd = config.boot.initrd.systemd.package;
+
+  # Where the initrd says, for each volume in its crypttab that a YubiKey
+  # opens, that systemd-cryptsetup should leave its token plugins alone.
+  keyed = "/run/cryptsetup-keyed";
+  findKeyed = pkgs.writeShellScript "cryptsetup-find-keyed" ''
+    while read -r name device _; do
+      case "$name" in "" | "#"*) continue ;; esac
+      slots=$(${initrdSystemd}/bin/systemd-cryptenroll "$device") || continue
+      if [[ $slots =~ (^|[[:space:]])fido2([[:space:]]|$) ]]; then
+        ${pkgs.coreutils}/bin/mkdir -p ${keyed}
+        echo SYSTEMD_CRYPTSETUP_USE_TOKEN_MODULE=0 > "${keyed}/$name"
+      fi
+    done < /etc/crypttab
+  '';
 
   # Light compression, no access-time writes, and discards in the background
   # rather than on every delete.
@@ -66,6 +86,33 @@ in
     enable = true;
     interval = "monthly";
     fileSystems = [ "/" ];
+  };
+
+  # The TPM and the YubiKeys each have a PIN of their own, so each PIN must
+  # reach only its own device. systemd's first pass through libcryptsetup's
+  # token plugins asks once ("LUKS2 token PIN") and tries what's typed on
+  # every token. When the TPM refuses a start with a YubiKey plugged in,
+  # the TPM's PIN goes to the key as well, is asked for again as wrong, and
+  # three tries block the key. Without the plugins, systemd asks "TPM2 PIN"
+  # for the TPM alone, once, then "security token PIN" for the key alone,
+  # through its own TPM2 and FIDO2 support, as it does when it's built
+  # without them.
+  #
+  # That support takes fido2-device=auto to mean a YubiKey is enrolled, and
+  # on a disk with none it stops rather than asking for the passphrase
+  # (systemd 261's cryptsetup.c treats acquire_fido2_key_auto's ENXIO as
+  # fatal, where the plugin falls back). So the plugins go only for a disk
+  # whose header lists a YubiKey, read as the volume is opened. A disk with
+  # none has no key for the TPM's PIN to reach, and keeps the plugins and
+  # their passphrase prompt. Should the reading fail, nothing is written and
+  # the disk opens as it would with the plugins.
+  config.boot.initrd.systemd.storePaths = [ findKeyed ];
+  config.boot.initrd.systemd.services."systemd-cryptsetup@" = {
+    overrideStrategy = "asDropin";
+    serviceConfig = {
+      ExecStartPre = [ "-${findKeyed}" ];
+      EnvironmentFile = [ "-${keyed}/%I" ];
+    };
   };
 
   config.disko.devices.disk.main = {

@@ -3,12 +3,12 @@
 //! internal disk and never on the stick, and nothing found on a blank one.
 
 use guide::Machine;
-use guide::fake::Fake;
 use guide::recover::copy::{COPIED, CopyHome};
 use guide::recover::{
     AlreadyThere, BootGeneration, CHECKED, CheckSystem, FindMachine, MountSystem, OpenDisk,
     STOPPED, STOPPED_EARLY, already_there, the_machine,
 };
+use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -21,10 +21,10 @@ macro_rules! fixture {
     };
 }
 
-fn lsblk(json: &str) -> Fake {
-    let mut fake = Fake::new();
-    fake.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
-    fake
+fn lsblk(json: &str) -> StandIn {
+    let mut stand_in = StandIn::new();
+    stand_in.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
+    stand_in
 }
 
 const RECOVERY_KEY: &str = "seven words read off the phone to open it";
@@ -32,14 +32,14 @@ const RECOVERY_KEY: &str = "seven words read off the phone to open it";
 /// The machine's disk, whatever's typed tried first as its recovery key,
 /// which takes it or doesn't, and this one key plugged in: a canokey, or
 /// the XPS 14's virtual key, which can't be the person's.
-fn shut_disk(recovery_takes_it: bool, key: &str) -> Fake {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
+fn shut_disk(recovery_takes_it: bool, key: &str) -> StandIn {
+    let mut stand_in = lsblk(fixture!("lsblk-laid-out.json"));
     let (status, said) = if recovery_takes_it {
         (0, "")
     } else {
         (2, "No key available with this passphrase.")
     };
-    fake.answers(
+    stand_in.answers(
         Program::Tool(Tool::Cryptsetup),
         &[
             "open",
@@ -62,9 +62,12 @@ fn shut_disk(recovery_takes_it: bool, key: &str) -> Fake {
         _ => (fixture!("fido2-token-L.txt"), fixture!("fido2-token-I.txt")),
     };
     let path = listed.split(':').next().unwrap().to_string();
-    fake.prints(Tool::Fido2Token, &["-L"], listed)
-        .prints(Tool::Fido2Token, &["-I", &path], info);
-    fake
+    stand_in.prints(Tool::Fido2Token, &["-L"], listed).prints(
+        Tool::Fido2Token,
+        &["-I", &path],
+        info,
+    );
+    stand_in
 }
 
 fn secret(typed: &str) -> Answers {
@@ -74,32 +77,35 @@ fn secret(typed: &str) -> Answers {
     answers
 }
 
-fn asked_the_key(fake: &Fake) -> bool {
-    fake.calls.iter().any(|call| call.contains("--token-only"))
+fn asked_the_key(stand_in: &StandIn) -> bool {
+    stand_in
+        .calls
+        .iter()
+        .any(|call| call.contains("--token-only"))
 }
 
 #[test]
 fn the_recovery_key_typed_with_a_key_plugged_in_opens_the_disk_without_the_key() {
-    let mut fake = shut_disk(true, "canokey");
-    OpenDisk.run(&mut fake, &secret(RECOVERY_KEY)).unwrap();
-    assert!(!asked_the_key(&fake), "{:#?}", fake.calls);
+    let mut stand_in = shut_disk(true, "canokey");
+    OpenDisk.run(&mut stand_in, &secret(RECOVERY_KEY)).unwrap();
+    assert!(!asked_the_key(&stand_in), "{:#?}", stand_in.calls);
 }
 
 #[test]
 fn a_laptops_virtual_key_is_never_asked_for_a_pin() {
-    let mut fake = shut_disk(false, "linux-id");
-    let refused = OpenDisk.run(&mut fake, &secret("123456"));
+    let mut stand_in = shut_disk(false, "linux-id");
+    let refused = OpenDisk.run(&mut stand_in, &secret("123456"));
     assert!(
         matches!(&refused, Err(Fault::Refused { status: 2, .. })),
         "{refused:?}"
     );
-    assert!(!asked_the_key(&fake), "{:#?}", fake.calls);
+    assert!(!asked_the_key(&stand_in), "{:#?}", stand_in.calls);
 }
 
 #[test]
 fn the_machine_is_the_internal_disk_with_cores_layout() {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
-    let found = the_machine(&mut fake)
+    let mut stand_in = lsblk(fixture!("lsblk-laid-out.json"));
+    let found = the_machine(&mut stand_in)
         .unwrap()
         .map_err(|standing| format!("{standing:?}"))
         .unwrap();
@@ -120,15 +126,16 @@ const BOOT_COPY: &str = "/run/guide/boot/guide/install-journal";
 
 /// The laid-out disk, its boot partition mounting read-only and holding
 /// this copy of an install's journal, or none.
-fn laid_out_holding(copy: Option<&str>) -> Fake {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
-    fake.prints(Tool::Mount, BOOT_MOUNT, "")
+fn laid_out_holding(copy: Option<&str>) -> StandIn {
+    let mut stand_in = lsblk(fixture!("lsblk-laid-out.json"));
+    stand_in
+        .prints(Tool::Mount, BOOT_MOUNT, "")
         .prints(Tool::Umount, &["/run/guide/boot"], "");
     match copy {
-        Some(text) => fake.file(BOOT_COPY, text.as_bytes()),
-        None => fake.no_file(BOOT_COPY),
+        Some(text) => stand_in.file(BOOT_COPY, text.as_bytes()),
+        None => stand_in.no_file(BOOT_COPY),
     };
-    fake
+    stand_in
 }
 
 fn line(step: &str, fact: &str) -> String {
@@ -144,8 +151,8 @@ fn machine_question(there: Option<AlreadyThere>) -> String {
 
 #[test]
 fn a_machines_stick_asks_before_installing_over_a_machine() {
-    let mut fake = laid_out_holding(None);
-    let question = machine_question(already_there(&mut fake, "laptop").unwrap());
+    let mut stand_in = laid_out_holding(None);
+    let question = machine_question(already_there(&mut stand_in, "laptop").unwrap());
     assert!(question.contains("serial root"), "{question}");
     assert!(
         question.contains("install laptop on it again"),
@@ -153,11 +160,12 @@ fn a_machines_stick_asks_before_installing_over_a_machine() {
     );
     // The boot partition was let go again, having changed nothing.
     assert!(
-        fake.calls
+        stand_in
+            .calls
             .iter()
             .any(|call| call == "umount /run/guide/boot"),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
 }
 
@@ -169,12 +177,12 @@ fn an_install_of_this_machine_stopped_part_way_is_offered_to_carry_on() {
         line("enrol-nano", "opened:abc"),
     ]
     .concat();
-    let mut fake = laid_out_holding(Some(&copy));
+    let mut stand_in = laid_out_holding(Some(&copy));
     let Some(AlreadyThere::Stopped {
         question,
         disk,
         facts,
-    }) = already_there(&mut fake, "laptop").unwrap()
+    }) = already_there(&mut stand_in, "laptop").unwrap()
     else {
         panic!("a stopped install")
     };
@@ -194,8 +202,9 @@ fn an_install_stopped_before_any_key_was_enrolled_is_offered_only_to_start_again
         line("lay-out-disk", "laptop"),
     ]
     .concat();
-    let mut fake = laid_out_holding(Some(&copy));
-    let Some(AlreadyThere::StoppedEarly { question }) = already_there(&mut fake, "laptop").unwrap()
+    let mut stand_in = laid_out_holding(Some(&copy));
+    let Some(AlreadyThere::StoppedEarly { question }) =
+        already_there(&mut stand_in, "laptop").unwrap()
     else {
         panic!("a stopped install nothing can open")
     };
@@ -211,43 +220,46 @@ fn an_install_stopped_before_any_key_was_enrolled_is_offered_only_to_start_again
 #[test]
 fn an_install_stopped_for_another_machine_is_a_machine_to_install_over() {
     let copy = line("lay-out-disk", "desktop");
-    let mut fake = laid_out_holding(Some(&copy));
-    machine_question(already_there(&mut fake, "laptop").unwrap());
+    let mut stand_in = laid_out_holding(Some(&copy));
+    machine_question(already_there(&mut stand_in, "laptop").unwrap());
 }
 
 #[test]
 fn a_boot_partition_that_wont_mount_is_a_machine_to_install_over() {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
-    fake.refuses(Tool::Mount, BOOT_MOUNT, 32, "wrong fs type");
-    machine_question(already_there(&mut fake, "laptop").unwrap());
+    let mut stand_in = lsblk(fixture!("lsblk-laid-out.json"));
+    stand_in.refuses(Tool::Mount, BOOT_MOUNT, 32, "wrong fs type");
+    machine_question(already_there(&mut stand_in, "laptop").unwrap());
 }
 
 #[test]
 fn a_blank_disk_is_installed_on_without_asking() {
-    let mut fake = lsblk(fixture!("lsblk-blank.json"));
-    assert_eq!(already_there(&mut fake, "laptop").unwrap(), None);
+    let mut stand_in = lsblk(fixture!("lsblk-blank.json"));
+    assert_eq!(already_there(&mut stand_in, "laptop").unwrap(), None);
 }
 
 #[test]
 fn an_install_confirmed_this_boot_is_not_asked_about_again() {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
-    fake.journal().record("confirm-disk", "/dev/vda").unwrap();
-    assert_eq!(already_there(&mut fake, "laptop").unwrap(), None);
+    let mut stand_in = lsblk(fixture!("lsblk-laid-out.json"));
+    stand_in
+        .journal()
+        .record("confirm-disk", "/dev/vda")
+        .unwrap();
+    assert_eq!(already_there(&mut stand_in, "laptop").unwrap(), None);
 }
 
 #[test]
 fn a_blank_disk_holds_no_machine() {
-    let mut fake = lsblk(fixture!("lsblk-blank.json"));
+    let mut stand_in = lsblk(fixture!("lsblk-blank.json"));
     assert!(matches!(
-        FindMachine.observe(&mut fake).unwrap(),
+        FindMachine.observe(&mut stand_in).unwrap(),
         Standing::Blocked { .. }
     ));
 }
 
 #[test]
 fn the_machine_is_shown_before_anything_is_asked() {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
-    let Standing::Needed { asks } = FindMachine.observe(&mut fake).unwrap() else {
+    let mut stand_in = lsblk(fixture!("lsblk-laid-out.json"));
+    let Standing::Needed { asks } = FindMachine.observe(&mut stand_in).unwrap() else {
         panic!("the machine is still to be shown")
     };
     assert!(
@@ -281,15 +293,16 @@ fn a_generation_chosen_boots_next_and_nothing_is_removed() {
         "/fixtures/microsoft-surface-laptop-4-1958/bootctl-list.json"
     ));
     let chosen = "nixos-generation-14-6nxexgjjuzafv5ivu5pnki6sdotgw7kicz2l2pt3ebpfh2crqqjq.efi";
-    let mut fake = Fake::new();
+    let mut stand_in = StandIn::new();
     // As observed here, then before running, then as run reads it, then after.
-    fake.prints(Tool::Bootctl, LIST, surface)
+    stand_in
+        .prints(Tool::Bootctl, LIST, surface)
         .prints(Tool::Bootctl, LIST, surface)
         .prints(Tool::Bootctl, LIST, surface)
         .prints(Tool::Bootctl, LIST, &defaulting(chosen))
         .no_file(DEFAULT);
 
-    let Standing::Needed { asks } = BootGeneration.observe(&mut fake).unwrap() else {
+    let Standing::Needed { asks } = BootGeneration.observe(&mut stand_in).unwrap() else {
         panic!("a generation is still to choose")
     };
     let [Ask::Choose { choices, .. }] = asks.as_slice() else {
@@ -306,19 +319,19 @@ fn a_generation_chosen_boots_next_and_nothing_is_removed() {
 
     let mut answers = Answers::new();
     answers.give("generation", Answer::Chosen(1));
-    Journey::attempt(&BootGeneration, &mut fake, &answers).unwrap();
+    Journey::attempt(&BootGeneration, &mut stand_in, &answers).unwrap();
     // As bootctl set-default writes it: the attributes, then the id in
     // UTF-16 with its terminator.
     let mut expected = vec![0x07, 0, 0, 0];
     expected.extend(chosen.encode_utf16().chain([0]).flat_map(u16::to_le_bytes));
-    assert_eq!(fake.holds(DEFAULT), Some(expected.as_slice()));
+    assert_eq!(stand_in.holds(DEFAULT), Some(expected.as_slice()));
     assert!(
-        !fake
+        !stand_in
             .calls
             .iter()
             .any(|call| call.contains("unlink") || call.contains("remove")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
 }
 
@@ -328,7 +341,7 @@ const CHECK: &[&str] = &["check", "--readonly", "/dev/mapper/system"];
 /// opened it finds it (the fixture was read after an install, still
 /// mounted), its filesystem checked with the status and words `btrfs
 /// check` gives, and every mount it's given taken.
-fn checked(status: i32, said: &str) -> Fake {
+fn checked(status: i32, said: &str) -> StandIn {
     let unmounted = ["boot", "var/log", "swap", "nix", "home", ""].iter().fold(
         fixture!("lsblk-laid-out.json").to_string(),
         |json, at| {
@@ -337,8 +350,9 @@ fn checked(status: i32, said: &str) -> Fake {
         },
     );
     assert!(!unmounted.contains("/mnt"), "{unmounted}");
-    let mut fake = lsblk(&unmounted);
-    fake.no_file(CHECKED)
+    let mut stand_in = lsblk(&unmounted);
+    stand_in
+        .no_file(CHECKED)
         .answers(Program::Tool(Tool::Btrfs), CHECK, status, "", said);
     for (subvolume, at) in [
         ("@", ""),
@@ -348,14 +362,14 @@ fn checked(status: i32, said: &str) -> Fake {
     ] {
         for mode in ["compress=zstd:1,noatime,discard=async", "ro,rescue=all"] {
             let options = format!("subvol={subvolume},{mode},X-mount.mkdir");
-            fake.prints(
+            stand_in.prints(
                 Tool::Mount,
                 &["-o", &options, "/dev/mapper/system", &format!("/mnt{at}")],
                 "",
             );
         }
     }
-    fake.prints(
+    stand_in.prints(
         Tool::Mount,
         &[
             "-o",
@@ -365,11 +379,12 @@ fn checked(status: i32, said: &str) -> Fake {
         ],
         "",
     );
-    fake
+    stand_in
 }
 
-fn mounts(fake: &Fake) -> Vec<&String> {
-    fake.calls
+fn mounts(stand_in: &StandIn) -> Vec<&String> {
+    stand_in
+        .calls
         .iter()
         .filter(|call| call.contains("subvol="))
         .collect()
@@ -377,21 +392,21 @@ fn mounts(fake: &Fake) -> Vec<&String> {
 
 #[test]
 fn a_filesystem_is_checked_before_anything_mounts_it() {
-    let mut fake = checked(0, "");
-    let standing = CheckSystem.observe(&mut fake);
+    let mut stand_in = checked(0, "");
+    let standing = CheckSystem.observe(&mut stand_in);
     assert!(
         matches!(standing, Ok(Standing::Needed { .. })),
         "{standing:?}"
     );
-    Journey::attempt(&CheckSystem, &mut fake, &Answers::new()).unwrap();
-    assert_eq!(fake.holds(CHECKED), Some(b"clean".as_slice()));
-    let Standing::Done { evidence } = CheckSystem.observe(&mut fake).unwrap() else {
+    Journey::attempt(&CheckSystem, &mut stand_in, &Answers::new()).unwrap();
+    assert_eq!(stand_in.holds(CHECKED), Some(b"clean".as_slice()));
+    let Standing::Done { evidence } = CheckSystem.observe(&mut stand_in).unwrap() else {
         panic!("not done")
     };
     assert_eq!(evidence, "its filesystem has no errors");
 
-    MountSystem.run(&mut fake, &Answers::new()).unwrap();
-    let mounts = mounts(&fake);
+    MountSystem.run(&mut stand_in, &Answers::new()).unwrap();
+    let mounts = mounts(&stand_in);
     assert_eq!(mounts.len(), 4, "{mounts:#?}");
     assert!(
         mounts.iter().all(|call| call.contains("compress=zstd:1")),
@@ -402,10 +417,10 @@ fn a_filesystem_is_checked_before_anything_mounts_it() {
 #[test]
 fn a_filesystem_with_errors_is_mounted_only_to_read() {
     let said = "ERROR: errors found in fs roots";
-    let mut fake = checked(1, said);
-    Journey::attempt(&CheckSystem, &mut fake, &Answers::new()).unwrap();
-    assert_eq!(fake.holds(CHECKED), Some(said.as_bytes()));
-    let Standing::Done { evidence } = CheckSystem.observe(&mut fake).unwrap() else {
+    let mut stand_in = checked(1, said);
+    Journey::attempt(&CheckSystem, &mut stand_in, &Answers::new()).unwrap();
+    assert_eq!(stand_in.holds(CHECKED), Some(said.as_bytes()));
+    let Standing::Done { evidence } = CheckSystem.observe(&mut stand_in).unwrap() else {
         panic!("not done")
     };
     assert!(
@@ -413,8 +428,8 @@ fn a_filesystem_with_errors_is_mounted_only_to_read() {
         "{evidence}"
     );
 
-    MountSystem.run(&mut fake, &Answers::new()).unwrap();
-    let mounts = mounts(&fake);
+    MountSystem.run(&mut stand_in, &Answers::new()).unwrap();
+    let mounts = mounts(&stand_in);
     assert_eq!(mounts.len(), 4, "{mounts:#?}");
     assert!(
         mounts
@@ -442,16 +457,18 @@ const HOME_FOLDERS: &str = "machine home folders";
 
 /// The VM's opened and mounted machine, its repair stick plugged in,
 /// beside these drives, the machine naming itself `machine`.
-fn with_drives(drives: &[serde_json::Value]) -> Fake {
+fn with_drives(drives: &[serde_json::Value]) -> StandIn {
     let mut listing: serde_json::Value =
         serde_json::from_str(fixture!("lsblk-laid-out.json")).unwrap();
     listing["blockdevices"]
         .as_array_mut()
         .unwrap()
         .extend(drives.iter().cloned());
-    let mut fake = lsblk(&listing.to_string());
-    fake.no_file(COPIED).file("/mnt/etc/hostname", b"machine\n");
-    fake
+    let mut stand_in = lsblk(&listing.to_string());
+    stand_in
+        .no_file(COPIED)
+        .file("/mnt/etc/hostname", b"machine\n");
+    stand_in
 }
 
 const DU: &[&str] = &["--summarize", "--bytes", "--exclude=.cache", "/mnt/home/"];
@@ -467,24 +484,25 @@ const RSYNC: &[&str] = &[
 
 /// A drive with `free` bytes left, chosen for home folders of `needed`
 /// bytes, which rsync copies finishing with `status`.
-fn copying(needed: u64, free: u64, status: i32, said: &str) -> Fake {
-    let mut fake = with_drives(&[usb_drive("sdb", Some("exfat"))]);
-    fake.prints(
-        Tool::Mount,
-        &["-o", "X-mount.mkdir", "/dev/sdb1", "/run/guide/copy"],
-        "",
-    )
-    .answers(
-        Program::Tool(Tool::Du),
-        DU,
-        1,
-        &format!("{needed}\t/mnt/home/\n"),
-        "du: cannot read directory '/mnt/home/alice/broken': Input/output error",
-    )
-    .prints(Tool::Df, DF, &format!("Avail\n{free}\n"))
-    .answers(Program::Tool(Tool::Rsync), RSYNC, status, "", said)
-    .prints(Tool::Umount, &["/run/guide/copy"], "");
-    fake
+fn copying(needed: u64, free: u64, status: i32, said: &str) -> StandIn {
+    let mut stand_in = with_drives(&[usb_drive("sdb", Some("exfat"))]);
+    stand_in
+        .prints(
+            Tool::Mount,
+            &["-o", "X-mount.mkdir", "/dev/sdb1", "/run/guide/copy"],
+            "",
+        )
+        .answers(
+            Program::Tool(Tool::Du),
+            DU,
+            1,
+            &format!("{needed}\t/mnt/home/\n"),
+            "du: cannot read directory '/mnt/home/alice/broken': Input/output error",
+        )
+        .prints(Tool::Df, DF, &format!("Avail\n{free}\n"))
+        .answers(Program::Tool(Tool::Rsync), RSYNC, status, "", said)
+        .prints(Tool::Umount, &["/run/guide/copy"], "");
+    stand_in
 }
 
 fn chosen(at: usize) -> Answers {
@@ -495,12 +513,12 @@ fn chosen(at: usize) -> Answers {
 
 #[test]
 fn a_drive_is_chosen_from_those_plugged_in_never_the_stick() {
-    let mut fake = with_drives(&[
+    let mut stand_in = with_drives(&[
         usb_drive("sdb", Some("exfat")),
         usb_drive("sdc", None),
         usb_drive("sdd", Some("crypto_LUKS")),
     ]);
-    let Ok(Standing::Needed { asks }) = CopyHome.observe(&mut fake) else {
+    let Ok(Standing::Needed { asks }) = CopyHome.observe(&mut stand_in) else {
         panic!("not asked")
     };
     let [
@@ -521,8 +539,8 @@ fn a_drive_is_chosen_from_those_plugged_in_never_the_stick() {
 
 #[test]
 fn with_no_drive_plugged_in_it_says_to_plug_one_in() {
-    let mut fake = with_drives(&[]);
-    let standing = CopyHome.observe(&mut fake);
+    let mut stand_in = with_drives(&[]);
+    let standing = CopyHome.observe(&mut stand_in);
     assert!(
         matches!(&standing, Ok(Standing::Blocked { remedy, .. }) if remedy.contains("plug in a USB drive")),
         "{standing:?}"
@@ -531,9 +549,9 @@ fn with_no_drive_plugged_in_it_says_to_plug_one_in() {
 
 #[test]
 fn the_home_folders_are_copied_leaving_caches_and_the_drive_unmounted() {
-    let mut fake = copying(3_000_000_000, 50_000_000_000, 0, "");
-    CopyHome.run(&mut fake, &chosen(0)).unwrap();
-    let order: Vec<&str> = fake
+    let mut stand_in = copying(3_000_000_000, 50_000_000_000, 0, "");
+    CopyHome.run(&mut stand_in, &chosen(0)).unwrap();
+    let order: Vec<&str> = stand_in
         .calls
         .iter()
         .filter_map(|call| call.split_whitespace().next())
@@ -543,9 +561,9 @@ fn the_home_folders_are_copied_leaving_caches_and_the_drive_unmounted() {
         order,
         ["mount", "du", "df", "rsync", "umount"],
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
-    let Ok(Standing::Done { evidence }) = CopyHome.observe(&mut fake) else {
+    let Ok(Standing::Done { evidence }) = CopyHome.observe(&mut stand_in) else {
         panic!("not done")
     };
     assert!(
@@ -557,45 +575,45 @@ fn the_home_folders_are_copied_leaving_caches_and_the_drive_unmounted() {
 
 #[test]
 fn a_drive_too_small_copies_nothing() {
-    let mut fake = copying(5_000_000_000, 1_000_000_000, 0, "");
-    let refused = CopyHome.run(&mut fake, &chosen(0));
+    let mut stand_in = copying(5_000_000_000, 1_000_000_000, 0, "");
+    let refused = CopyHome.run(&mut stand_in, &chosen(0));
     assert!(
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("need 5 GB") && why.contains("1 GB free")),
         "{refused:?}"
     );
     assert!(
-        !fake.calls.iter().any(|call| call.starts_with("rsync")),
+        !stand_in.calls.iter().any(|call| call.starts_with("rsync")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
-    assert!(fake.calls.iter().any(|call| call.starts_with("umount")));
-    assert_eq!(fake.holds(COPIED), None);
+    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
+    assert_eq!(stand_in.holds(COPIED), None);
 }
 
 #[test]
 fn what_rsync_could_not_read_is_kept_beside_the_copy() {
     let said =
         "rsync: [sender] read errors mapping \"/mnt/home/alice/notes\": Input/output error (5)";
-    let mut fake = copying(3_000_000_000, 50_000_000_000, 23, said);
-    CopyHome.run(&mut fake, &chosen(0)).unwrap();
+    let mut stand_in = copying(3_000_000_000, 50_000_000_000, 23, said);
+    CopyHome.run(&mut stand_in, &chosen(0)).unwrap();
     assert_eq!(
-        fake.holds("/run/guide/copy/machine home folders, not copied.txt"),
+        stand_in.holds("/run/guide/copy/machine home folders, not copied.txt"),
         Some(said.as_bytes())
     );
-    let evidence = String::from_utf8_lossy(fake.holds(COPIED).unwrap()).into_owned();
+    let evidence = String::from_utf8_lossy(stand_in.holds(COPIED).unwrap()).into_owned();
     assert!(evidence.contains("couldn't be read"), "{evidence}");
 }
 
 #[test]
 fn a_copy_rsync_gives_up_on_is_no_copy() {
-    let mut fake = copying(
+    let mut stand_in = copying(
         3_000_000_000,
         50_000_000_000,
         11,
         "rsync: write failed: No space left on device (28)",
     );
-    let refused = CopyHome.run(&mut fake, &chosen(0));
+    let refused = CopyHome.run(&mut stand_in, &chosen(0));
     assert!(refused.is_err(), "{refused:?}");
-    assert!(fake.calls.iter().any(|call| call.starts_with("umount")));
-    assert_eq!(fake.holds(COPIED), None);
+    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
+    assert_eq!(stand_in.holds(COPIED), None);
 }

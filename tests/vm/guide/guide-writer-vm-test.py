@@ -1,13 +1,13 @@
-"""A stick written on a Linux host by the guide, as the person signed in there and not root.
+"""A stick written on Linux by the guide, as the person signed in there and not root.
 
-guide-host.nix, beside this, runs this through pytest inside the driver
+guide-writer.nix, beside this, runs this through pytest inside the driver
 (tests/lib/vm_pytest.py), and its opening comment says what the test proves. The guide's screens
 come one after another, so each state a test starts from is a fixture that walks the guide one
-screen further than the fixture it asks for: the used stick mounted, the host's bundle opened,
+screen further than the fixture it asks for: the used stick mounted, the writer's bundle opened,
 the stick named, its passphrase typed back, the stick written, then written again keeping it. A
 fixture's work is done once a run, so any test runs alone with `-k`, walking only as far as it
 needs. What the tests need from Nix, the used stick and the tool to put an overlay on it, the
-old stick's bundle and the passphrase of the host's own, are guide-host.nix's, given as the
+old stick's bundle and the passphrase of the writer's own, are guide-writer.nix's, given as the
 `values` fixture.
 """
 
@@ -32,51 +32,51 @@ if TYPE_CHECKING:
 # How many words the guide makes the stick's passphrase of.
 PASSPHRASE_WORDS = 7
 # How long a screen of the guide may take to come, and the write with its read back, which
-# took 14 minutes on a host busy with other machines' disks.
+# took 14 minutes on a machine busy with other machines' disks.
 SCREEN = timedelta(seconds=120)
 WRITTEN = timedelta(minutes=30)
 # Another's words, refused when typed back.
 OTHER = "abacus abdomen abdominal abide abiding ability ablaze"
 
 
-def screen(host: QemuMachine) -> str:
+def screen(writer: QemuMachine) -> str:
     """Give what the guide shows on the first console."""
-    return host.get_tty_text("1")
+    return writer.get_tty_text("1")
 
 
-def on_screen(host: QemuMachine, pattern: str, timeout: timedelta = SCREEN) -> None:
+def on_screen(writer: QemuMachine, pattern: str, timeout: timedelta = SCREEN) -> None:
     """Wait until the guide's screen matches the pattern, failing at once if the guide stopped."""
 
     def shown(_: bool) -> bool:
         """Say whether the screen matches the pattern, or fail if the guide stopped."""
-        text = screen(host)
+        text = screen(writer)
         if re.search(r"(?i)(try again|look again)", text):
             message = "the guide stopped:\n" + text
             raise RuntimeError(message)
         return re.search("(?i)" + pattern, text) is not None
 
-    with host.nested(f"waiting for {pattern} on the guide's screen"):
+    with writer.nested(f"waiting for {pattern} on the guide's screen"):
         try:
             retry(shown, timeout=timeout)
         except Exception:
-            # What the host was at when the wait ran out: the screen, the
+            # What the writer was at when the wait ran out: the screen, the
             # guide's own log, and the journal's last.
-            print("SCREEN\n" + screen(host))
-            print("LOG\n" + host.execute("tail -n 60 /home/alice/.local/state/guide/log")[1])
-            print("JOURNAL\n" + host.execute("journalctl -b -n 80 -o cat")[1])
+            print("SCREEN\n" + screen(writer))
+            print("LOG\n" + writer.execute("tail -n 60 /home/alice/.local/state/guide/log")[1])
+            print("JOURNAL\n" + writer.execute("journalctl -b -n 80 -o cat")[1])
             raise
 
 
-def type_in(host: QemuMachine, text: str) -> None:
+def type_in(writer: QemuMachine, text: str) -> None:
     """Type the text at the guide, and Return."""
-    host.send_chars(text + "\n")
+    writer.send_chars(text + "\n")
 
 
 @pytest.fixture(scope="module")
 def overlay(values: dict[str, Any]) -> Generator[str]:
-    """Give the overlay the host writes to, the used stick in the store beneath it.
+    """Give the overlay the writer writes to, the used stick in the store beneath it.
 
-    guide-host.nix plugs it in as the host's stick, so it's made before the host starts.
+    guide-writer.nix plugs it in as the writer's stick, so it's made before the writer starts.
     """
     with tempfile.NamedTemporaryFile(suffix=".qcow2") as stick:
         # qemu-img and the used stick are Nix's own store paths, so nothing untrusted
@@ -91,29 +91,31 @@ def overlay(values: dict[str, Any]) -> Generator[str]:
 
 
 @pytest.fixture(scope="module")
-def host(machines: dict[str, BaseMachine], overlay: str) -> QemuMachine:
-    """Give the host booted, its stick plugged in."""
+def writer(machines: dict[str, BaseMachine], overlay: str) -> QemuMachine:
+    """Give the writer booted, its stick plugged in."""
     del overlay
-    booted = cast("QemuMachine", machines["host"])
+    booted = cast("QemuMachine", machines["writer"])
     booted.wait_for_unit("multi-user.target")
     return booted
 
 
 @pytest.fixture(scope="module")
-def mounted(host: QemuMachine) -> QemuMachine:
+def mounted(writer: QemuMachine) -> QemuMachine:
     """Mount the used stick's first partition as the desktop does, for alice."""
-    host.succeed("udevadm settle")
+    writer.succeed("udevadm settle")
     # udisks lets only someone signed in at the machine mount a stick, and
     # takes alice for someone at another seat until her sign-in on the
     # first console is open, which multi-user.target doesn't wait for.
-    host.wait_until_succeeds('test "$(loginctl show-user alice --property=State --value)" = active')
-    host.succeed("su alice -c 'udisksctl mount --block-device /dev/sda1'")
-    return host
+    writer.wait_until_succeeds(
+        'test "$(loginctl show-user alice --property=State --value)" = active'
+    )
+    writer.succeed("su alice -c 'udisksctl mount --block-device /dev/sda1'")
+    return writer
 
 
 @pytest.fixture(scope="module")
 def bundle_opened(mounted: QemuMachine, values: dict[str, Any]) -> QemuMachine:
-    """Open the bundle the host keeps for the machine with its passphrase."""
+    """Open the bundle the writer keeps for the machine with its passphrase."""
     on_screen(mounted, "Write laptop's stick")
     # Sealed to the key too, so its PIN opens it, the key touched by
     # itself as a canokey is.
@@ -166,8 +168,8 @@ def test_used_stick_has_a_partition_the_desktop_mounted(mounted: QemuMachine) ->
     mounted.succeed("findmnt /dev/sda1")
 
 
-def test_hosts_bundle_opens_with_its_keys_pin(bundle_opened: QemuMachine) -> None:
-    """The bundle the host keeps for the machine, sealed to a real key, opens with its PIN."""
+def test_writers_bundle_opens_with_its_keys_pin(bundle_opened: QemuMachine) -> None:
+    """The bundle the writer keeps for the machine, sealed to a real key, opens with its PIN."""
     on_screen(bundle_opened, "is the stick to write")
 
 
@@ -204,7 +206,7 @@ def test_stick_is_written_as_the_person_and_read_back(written: QemuMachine) -> N
 
 
 def test_bundles_are_kept_and_carried_on(written: QemuMachine, values: dict[str, Any]) -> None:
-    """The old stick's bundles and the host's own are kept, and carried on."""
+    """The old stick's bundles and the writer's own are kept, and carried on."""
     written.succeed("udevadm settle && mkdir -p /run/vault && mount -o ro /dev/sda4 /run/vault")
     kept = "/home/alice/.local/state/guide/rescue"
     for owner, bundle in [
@@ -226,11 +228,11 @@ def test_bundles_are_kept_and_carried_on(written: QemuMachine, values: dict[str,
 
 def test_boot_program_is_signed_with_the_machines_db_key(written: QemuMachine) -> None:
     """The stick's boot program is signed with the machine's db key, from its bundle."""
-    written.succeed("mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
-    written.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
+    written.succeed("mkdir -p /run/boot && mount -o ro /dev/sda1 /run/boot")
+    written.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/boot/EFI/BOOT/BOOTX64.EFI")
     # Not the desktop's too: a stick is signed for another machine only when asked.
-    written.fail("sbverify --cert /var/lib/guide/desktop-db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
-    written.succeed("umount /run/esp")
+    written.fail("sbverify --cert /var/lib/guide/desktop-db.pem /run/boot/EFI/BOOT/BOOTX64.EFI")
+    written.succeed("umount /run/boot")
 
 
 @pytest.fixture(scope="module")
@@ -239,7 +241,7 @@ def rewritten(written: QemuMachine, passphrase: str, values: dict[str, Any]) -> 
     type_in(written, "")
     written.wait_until_fails("pgrep -u alice -f 'guide host'")
     # By now alice keeps a real bundle for the desktop, newer than the old
-    # stick's, as a host keeps one gathered off another machine's stick.
+    # stick's, as a writer keeps one gathered off another machine's stick.
     written.succeed(
         "install -o alice -m 0600 /var/lib/guide/desktop-rescue-bundle.json"
         " /home/alice/.local/state/guide/rescue/desktop-rescue-bundle.json"
@@ -274,7 +276,7 @@ def test_a_stick_written_again_keeps_its_passphrase(rewritten: QemuMachine) -> N
 
 def test_a_stick_written_for_every_machine_is_signed_for_each(rewritten: QemuMachine) -> None:
     """Written for every machine, the stick's boot program is signed with each one's db key."""
-    rewritten.succeed("udevadm settle && mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
+    rewritten.succeed("udevadm settle && mkdir -p /run/boot && mount -o ro /dev/sda1 /run/boot")
     for certificate in ["/var/lib/sbctl/keys/db/db.pem", "/var/lib/guide/desktop-db.pem"]:
-        rewritten.succeed(f"sbverify --cert {certificate} /run/esp/EFI/BOOT/BOOTX64.EFI")
-    rewritten.succeed("umount /run/esp")
+        rewritten.succeed(f"sbverify --cert {certificate} /run/boot/EFI/BOOT/BOOTX64.EFI")
+    rewritten.succeed("umount /run/boot")

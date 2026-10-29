@@ -5,6 +5,9 @@ Each directory is one machine of the hardware core describes, captured on
 it. The parsers' tests read these, so a tool
 that changes what it prints fails a test rather than a person's install.
 
+- `dell-xps-14-da14260/`: a Dell XPS 14, model DA14260.
+- `microsoft-surface-laptop-4-1958/`: a Surface Laptop 4, model 1958.
+
 | File                           | Command                                           |
 | ------------------------------ | ------------------------------------------------- |
 | `bootctl-list.json`            | `bootctl list --json=short`, as root              |
@@ -41,7 +44,7 @@ stick `/dev/sda`.
 
 ## In a TPM Simulator
 
-`tpm-simulator/ssh-tpm-keygen.tpm` and its `.pub` are a key ssh-tpm-keygen
+`tpm-simulator/` holds `ssh-tpm-keygen.tpm` and its `.pub`, a key ssh-tpm-keygen
 0.9.0 made in go-tpm-tools' simulator (`SSH_TPM_AGENT_SWTPM=1`), with no
 PIN and the comment `alice@machine`, on 2026-10-24: a TSS2 private key file
 as a real machine's, made by no machine's TPM.

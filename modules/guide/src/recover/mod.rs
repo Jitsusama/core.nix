@@ -425,7 +425,7 @@ impl Step for CheckSystem {
     }
 }
 
-/// Everything the machine mounts, mounted under /mnt, its ESP too.
+/// Everything the machine mounts, mounted under /mnt, its boot partition too.
 pub struct MountSystem;
 
 impl Step for MountSystem {
@@ -496,14 +496,14 @@ impl Step for MountSystem {
             }
         }
         if !mounted.contains(&format!("{ROOT}/boot")) {
-            let esp = format!("/dev/disk/by-partlabel/{}-boot", found.name);
+            let boot_partition = format!("/dev/disk/by-partlabel/{}-boot", found.name);
             machine
                 .run(
                     Tool::Mount,
                     &[
                         "-o",
                         "umask=0077,X-mount.mkdir",
-                        &esp,
+                        &boot_partition,
                         &format!("{ROOT}/boot"),
                     ],
                 )?
@@ -532,13 +532,13 @@ pub const REPAIRS: &[&str] = &[
     "Restart",
 ];
 
-/// The boot loader the machine installs, which a damaged ESP lacks.
+/// The boot loader the machine installs, which a damaged boot partition lacks.
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
 
-/// The boot loader and the generations' boot files written to the ESP
+/// The boot loader and the generations' boot files written to the boot partition
 /// again by the installed system itself, as it writes them whenever it
 /// switches, so lanzaboote signs them with the machine's own keys on its
-/// disk. For an ESP that was wiped, damaged or filled.
+/// disk. For a boot partition that was wiped, damaged or filled.
 pub struct InstallBootLoader;
 
 impl Step for InstallBootLoader {
@@ -842,12 +842,12 @@ impl Step for ReplaceLostKey {
     }
 }
 
-/// Where the machine's ESP is mounted.
-const ESP: &str = "/mnt/boot";
+/// Where the machine's boot partition is mounted.
+const BOOT_PARTITION: &str = "/mnt/boot";
 
-/// The generations on the machine's ESP, newest first.
+/// The generations on the machine's boot partition, newest first.
 fn generations(machine: &mut dyn Machine) -> Result<Vec<crate::observe::entries::Entry>, Fault> {
-    let mut found: Vec<_> = crate::observe::entries::list_at(machine, ESP)?
+    let mut found: Vec<_> = crate::observe::entries::list_at(machine, BOOT_PARTITION)?
         .into_iter()
         .filter(|entry| entry.generation.is_some())
         .collect();
@@ -867,7 +867,7 @@ fn utf16(text: &str) -> Vec<u8> {
         .collect()
 }
 
-/// The generation the machine boots next, chosen from those on its ESP,
+/// The generation the machine boots next, chosen from those on its boot partition,
 /// for a machine whose newest won't start. Nothing is removed: the
 /// firmware's boot default is set, as `bootctl set-default` sets it but
 /// from a stick, where bootctl refuses since systemd-boot didn't boot it,
@@ -906,7 +906,7 @@ impl Step for BootGeneration {
         }
         if found.is_empty() {
             return Ok(Standing::Blocked {
-                why: "the machine's ESP holds no generation to boot".into(),
+                why: "the machine's boot partition holds no generation to boot".into(),
                 remedy: "open a root shell inside it and install its boot loader again".into(),
             });
         }
@@ -938,7 +938,7 @@ impl Step for BootGeneration {
         let found = generations(machine)?;
         let entry = found.get(*at).ok_or(Fault::Blocked {
             step: self.id(),
-            why: "that generation isn't on the ESP any more".into(),
+            why: "that generation isn't on the boot partition any more".into(),
         })?;
         machine.set_efi_variable(ENTRY_DEFAULT, &utf16(&entry.id))?;
         machine.journal().record(self.id(), &entry.id)

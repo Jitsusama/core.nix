@@ -13,11 +13,11 @@ use std::process::Command;
 use common::Scratch;
 use zeroize::Zeroizing;
 
-use guide::fake::Fake;
 use guide::install::Target;
 use guide::rescue::{
     Bundle, KEYS, Keys, OpenRescueBundle, RECOVERY_KEY, SBCTL, SealKeys, rescue_passphrase,
 };
+use guide::stand_in::StandIn;
 use guide::{Answer, Answers, Ask, Fault, Secret, Standing, Step, Tool};
 
 const OWNER: &str = "22f0175f-c166-49d2-96ab-c61575cddac5";
@@ -156,38 +156,38 @@ fn keys_missing_any_of_sbctls_files_are_refused() {
     assert!(Keys::new(files).is_err());
 }
 
-fn fake_holding(files: &BTreeMap<String, Zeroizing<Vec<u8>>>) -> Fake {
-    let mut fake = Fake::new();
+fn stand_in_holding(files: &BTreeMap<String, Zeroizing<Vec<u8>>>) -> StandIn {
+    let mut stand_in = StandIn::new();
     for (name, bytes) in files {
         let path = format!("{SBCTL}/{name}");
-        fake.prints(Tool::Cat, &[&path], std::str::from_utf8(bytes).unwrap());
+        stand_in.prints(Tool::Cat, &[&path], std::str::from_utf8(bytes).unwrap());
     }
-    fake
+    stand_in
 }
 
 #[test]
 fn the_machines_keys_are_each_read_as_root() {
     let files = files("bundle-read");
-    let mut fake = fake_holding(&files);
-    let keys = Keys::read(&mut fake).unwrap();
+    let mut stand_in = stand_in_holding(&files);
+    let keys = Keys::read(&mut stand_in).unwrap();
     assert_eq!(keys, Keys::new(files).unwrap());
     let expected: Vec<String> = KEYS
         .iter()
         .map(|name| format!("cat {SBCTL}/{name} (as root)"))
         .collect();
-    assert_eq!(fake.calls, expected);
+    assert_eq!(stand_in.calls, expected);
 }
 
 #[test]
 fn a_machine_with_no_keys_of_its_own_is_told_so() {
-    let mut fake = Fake::new();
-    fake.refuses(
+    let mut stand_in = StandIn::new();
+    stand_in.refuses(
         Tool::Cat,
         &[&format!("{SBCTL}/GUID")],
         1,
         "cat: /var/lib/sbctl/GUID: No such file or directory",
     );
-    let refused = Keys::read(&mut fake);
+    let refused = Keys::read(&mut stand_in);
     assert!(
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("no Secure Boot keys")),
         "{refused:?}"
@@ -204,11 +204,11 @@ fn typed(passphrase: &str) -> Answers {
 #[test]
 fn the_bundle_is_written_privately_and_then_done() {
     let files = files("bundle-step");
-    let mut fake = fake_holding(&files);
+    let mut stand_in = stand_in_holding(&files);
     let path = "/home/alice/laptop-rescue.json";
-    fake.no_file(path);
+    stand_in.no_file(path);
     let step = SealKeys::new(target("laptop"), PathBuf::from(path));
-    let standing = step.observe(&mut fake).unwrap();
+    let standing = step.observe(&mut stand_in).unwrap();
     let Standing::Needed { asks } = &standing else {
         panic!("{standing:?}");
     };
@@ -222,35 +222,36 @@ fn the_bundle_is_written_privately_and_then_done() {
 
     // Words that aren't these write nothing.
     let other = "abacus abdomen abdominal abide abiding ability ablaze";
-    assert!(step.run(&mut fake, &typed(other)).is_err());
-    assert!(fake.holds(path).is_none());
+    assert!(step.run(&mut stand_in, &typed(other)).is_err());
+    assert!(stand_in.holds(path).is_none());
 
     // Typed back with capitals, they're the same words, and those shown
     // are those the bundle opens with.
-    step.run(&mut fake, &typed(&words.to_uppercase())).unwrap();
-    let written = fake.holds(path).expect("the bundle").to_vec();
+    step.run(&mut stand_in, &typed(&words.to_uppercase()))
+        .unwrap();
+    let written = stand_in.holds(path).expect("the bundle").to_vec();
     let opened = Bundle::read(&written)
         .unwrap()
         .open_with_passphrase(&Secret::new(words))
         .unwrap();
     assert_eq!(opened, Keys::new(files).unwrap());
-    let standing = step.observe(&mut fake).unwrap();
+    let standing = step.observe(&mut stand_in).unwrap();
     assert!(
         matches!(&standing, Standing::Done { evidence } if evidence.contains("named \"Laptop Rescue Phrase\"")),
         "{standing:?}"
     );
     // No secret of the keys went into the log of what ran.
-    assert!(fake.secrets.is_empty(), "{:?}", fake.secrets);
+    assert!(stand_in.secrets.is_empty(), "{:?}", stand_in.secrets);
 }
 
 #[test]
 fn a_bundle_of_old_keys_is_made_again() {
     let old = Keys::new(files("bundle-old")).unwrap();
-    let mut fake = fake_holding(&files("bundle-new"));
+    let mut stand_in = stand_in_holding(&files("bundle-new"));
     let path = "/home/alice/laptop-rescue.json";
-    fake.file(path, &sealed(&old));
+    stand_in.file(path, &sealed(&old));
     let step = SealKeys::new(target("laptop"), PathBuf::from(path));
-    let standing = step.observe(&mut fake).unwrap();
+    let standing = step.observe(&mut stand_in).unwrap();
     assert!(matches!(&standing, Standing::Needed { .. }), "{standing:?}");
 }
 
@@ -277,7 +278,7 @@ fn a_bundle_says_which_passphrase_opens_it() {
         bundle,
         opened: std::rc::Rc::default(),
     };
-    let standing = step.observe(&mut Fake::new()).unwrap();
+    let standing = step.observe(&mut StandIn::new()).unwrap();
     assert!(
         matches!(&standing, Standing::Needed { asks } if matches!(asks.as_slice(), [Ask::Secret { name, .. }] if name.starts_with(RECOVERY_KEY))),
         "{standing:?}"
@@ -299,7 +300,7 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
         bundle,
         opened: std::rc::Rc::clone(&opened),
     };
-    let mut fake = Fake::new();
+    let mut stand_in = StandIn::new();
     let canokey = |file: &str| {
         std::fs::read_to_string(format!(
             "{}/fixtures/qemu-canokey/{file}",
@@ -307,7 +308,8 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
         ))
         .unwrap()
     };
-    fake.prints(Tool::Fido2Token, &["-L"], &canokey("fido2-token-L.txt"))
+    stand_in
+        .prints(Tool::Fido2Token, &["-L"], &canokey("fido2-token-L.txt"))
         .prints(
             Tool::Fido2Token,
             &["-I", "/dev/hidraw1"],
@@ -320,16 +322,17 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
         answers
     };
 
-    let refused = step.run(&mut fake, &typed("123456"));
+    let refused = step.run(&mut stand_in, &typed("123456"));
     assert!(
         matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with(&format!("that isn't {}, and ", rescue_passphrase("laptop")))),
         "{refused:?}"
     );
-    step.run(&mut fake, &typed(passphrase().expose())).unwrap();
+    step.run(&mut stand_in, &typed(passphrase().expose()))
+        .unwrap();
     assert_eq!(opened.borrow().as_ref(), Some(&keys));
     // Said as done, it opens with the guide's words, not the machine's
     // name, which the screen would capitalise.
-    let standing = step.observe(&mut fake).unwrap();
+    let standing = step.observe(&mut stand_in).unwrap();
     assert!(
         matches!(&standing, Standing::Done { evidence } if evidence.starts_with("the Secure Boot keys of ")),
         "{standing:?}"
@@ -337,15 +340,15 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
 }
 
 #[test]
-fn a_bundle_with_no_yubikey_opens_on_the_host_with_its_passphrase() {
-    let keys = Keys::new(files("bundle-host")).unwrap();
+fn a_bundle_with_no_yubikey_opens_on_the_writer_with_its_passphrase() {
+    let keys = Keys::new(files("bundle-writer")).unwrap();
     let opened = std::rc::Rc::new(std::cell::RefCell::new(None));
     let step = OpenRescueBundle {
         bundle: Bundle::read(&sealed(&keys)).unwrap(),
         opened: std::rc::Rc::clone(&opened),
     };
-    let mut fake = Fake::new();
-    let standing = step.observe(&mut fake).unwrap();
+    let mut stand_in = StandIn::new();
+    let standing = step.observe(&mut stand_in).unwrap();
     // No key to plug in is asked for when none can open it.
     assert!(
         matches!(&standing, Standing::Needed { asks } if matches!(asks.as_slice(), [Ask::Secret { .. }])),
@@ -353,11 +356,11 @@ fn a_bundle_with_no_yubikey_opens_on_the_host_with_its_passphrase() {
     );
     let mut answers = Answers::new();
     answers.give("passphrase", Answer::Secret(passphrase()));
-    step.run(&mut fake, &answers).unwrap();
+    step.run(&mut stand_in, &answers).unwrap();
     assert_eq!(opened.borrow().as_ref(), Some(&keys));
-    assert!(fake.calls.is_empty(), "{:?}", fake.calls);
+    assert!(stand_in.calls.is_empty(), "{:?}", stand_in.calls);
     assert!(matches!(
-        step.observe(&mut fake).unwrap(),
+        step.observe(&mut stand_in).unwrap(),
         Standing::Done { .. }
     ));
 }

@@ -6,7 +6,7 @@
 //! opened exclusively. Reading what an old stick carries needs no
 //! password: its partition is mounted only for reading, which polkit lets
 //! the person at the machine do, as it doesn't for opening the disk.
-//! Nothing else on a host ever needs root.
+//! Nothing else on a writer ever needs root.
 
 use std::fs::File;
 use std::path::Path;

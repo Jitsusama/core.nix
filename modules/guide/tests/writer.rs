@@ -1,4 +1,4 @@
-//! Writing a stick on a host, held against what lsblk printed in the
+//! Writing a stick, held against what lsblk printed in the
 //! guide's VM (fixtures/qemu-canokey/), whose stick is `/dev/sda` on USB:
 //! only ever the one stick plugged in, what's mounted from it handed over
 //! to be unmounted, and a stick that sfdisk reads back whole.
@@ -13,12 +13,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 
-use guide::fake::Fake;
-use guide::host::carried::{self, Carried};
-use guide::host::{ChoosePhrase, GatherBundles, WriteStick};
 use guide::rescue::Bundle;
+use guide::stand_in::StandIn;
 use guide::stick::gpt::{SECTOR, Table};
 use guide::vault::store::Directory;
+use guide::writer::carried::{self, Carried};
+use guide::writer::{ChoosePhrase, GatherBundles, WriteStick};
 use guide::{Answer, Answers, Ask, Fault, Journey, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -86,19 +86,19 @@ fn repair(directory: &Path) -> WriteStick {
     WriteStick::new(image(directory), None, vec![])
 }
 
-fn lsblk(fake: &mut Fake, json: &str) {
-    fake.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
+fn lsblk(stand_in: &mut StandIn, json: &str) {
+    stand_in.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
 }
 
 #[test]
 fn with_no_stick_plugged_in_it_waits_for_one() {
     let directory = Scratch::new("none");
-    let mut fake = Fake::new();
+    let mut stand_in = StandIn::new();
     lsblk(
-        &mut fake,
+        &mut stand_in,
         &listing(fixture!("lsblk-blank.json"), |name| name != "sda"),
     );
-    let standing = repair(&directory).observe(&mut fake).unwrap();
+    let standing = repair(&directory).observe(&mut stand_in).unwrap();
     assert!(
         matches!(&standing, Standing::Blocked { why, .. } if why.contains("no stick")),
         "{standing:?}"
@@ -118,21 +118,24 @@ fn two_sticks_plugged_in_are_both_named_and_neither_is_written() {
     second["name"] = "sdb".into();
     second["path"] = "/dev/sdb".into();
     devices.push(second);
-    let mut fake = Fake::new();
-    lsblk(&mut fake, &value.to_string());
+    let mut stand_in = StandIn::new();
+    lsblk(&mut stand_in, &value.to_string());
     let step = repair(&directory);
-    let standing = step.observe(&mut fake).unwrap();
+    let standing = step.observe(&mut stand_in).unwrap();
     assert!(
         matches!(&standing, Standing::Blocked { why, .. } if why.starts_with("2 removable disks")),
         "{standing:?}"
     );
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
-    assert!(step.run(&mut fake, &answers).is_err());
+    assert!(step.run(&mut stand_in, &answers).is_err());
     assert!(
-        !fake.calls.iter().any(|call| call.starts_with("opening")),
+        !stand_in
+            .calls
+            .iter()
+            .any(|call| call.starts_with("opening")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
 }
 
@@ -140,13 +143,13 @@ fn two_sticks_plugged_in_are_both_named_and_neither_is_written() {
 fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() {
     let directory = Scratch::new("written");
     let stick = stick_file(&directory);
-    let mut fake = Fake::new();
+    let mut stand_in = StandIn::new();
     // The stick's own partitions are mounted here, as the VM's booted
     // stick has them.
-    lsblk(&mut fake, fixture!("lsblk-laid-out.json"));
-    fake.disk("/dev/sda", &stick);
+    lsblk(&mut stand_in, fixture!("lsblk-laid-out.json"));
+    stand_in.disk("/dev/sda", &stick);
     let step = repair(&directory);
-    let Standing::Needed { asks } = step.observe(&mut fake).unwrap() else {
+    let Standing::Needed { asks } = step.observe(&mut stand_in).unwrap() else {
         panic!("the stick is still to write")
     };
     assert_eq!(
@@ -156,12 +159,12 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
     );
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
-    Journey::attempt(&step, &mut fake, &answers).unwrap();
+    Journey::attempt(&step, &mut stand_in, &answers).unwrap();
     // The screen was told what the write was doing, last reading it back.
-    let said = guide::Machine::meter(&mut fake).said();
+    let said = guide::Machine::meter(&mut stand_in).said();
     assert!(said.starts_with("Reading it back to check it: "), "{said}");
 
-    let opened = fake
+    let opened = stand_in
         .calls
         .iter()
         .find(|call| call.starts_with("opening /dev/sda"))
@@ -180,7 +183,7 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
         "{verified:?}"
     );
     assert!(matches!(
-        step.observe(&mut fake).unwrap(),
+        step.observe(&mut stand_in).unwrap(),
         Standing::Done { .. }
     ));
 }
@@ -188,9 +191,9 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
 #[test]
 fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     let directory = Scratch::new("passphrases");
-    let mut fake = Fake::new();
-    lsblk(&mut fake, fixture!("lsblk-blank.json"));
-    fake.disk("/dev/sda", &stick_file(&directory));
+    let mut stand_in = StandIn::new();
+    lsblk(&mut stand_in, fixture!("lsblk-blank.json"));
+    stand_in.disk("/dev/sda", &stick_file(&directory));
     // A payload of nothing but its target, which is all this reads first.
     let payload = directory.join("payload");
     fs::create_dir_all(payload.join("cache")).unwrap();
@@ -203,14 +206,14 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     fs::write(payload.join("mount.sh"), "").unwrap();
     let step = WriteStick::new(
         image(&directory),
-        Some(guide::host::Payload::open(&payload).unwrap()),
+        Some(guide::writer::Payload::open(&payload).unwrap()),
         vec![],
     );
-    let asked = |fake: &mut Fake| match step.observe(fake).unwrap() {
+    let asked = |stand_in: &mut StandIn| match step.observe(stand_in).unwrap() {
         Standing::Needed { asks } => asks,
         standing => panic!("{standing:?}"),
     };
-    let asks = asked(&mut fake);
+    let asks = asked(&mut stand_in);
     let [
         Ask::Confirm {
             verb: "write it", ..
@@ -231,7 +234,7 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     // Looked at again, it's the same words, or the phone would keep
     // words the vault isn't sealed to.
     assert!(matches!(
-        asked(&mut fake).as_slice(),
+        asked(&mut stand_in).as_slice(),
         [_, Ask::Show { shown: again, .. }, _] if again == shown
     ));
 
@@ -242,31 +245,34 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
         "passphrase",
         Answer::Typed("abacus abdomen abdominal abide abiding ability ablaze".into()),
     );
-    let refused = step.run(&mut fake, &answers);
+    let refused = step.run(&mut stand_in, &answers);
     assert!(
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("isn't the stick's passphrase")),
         "{refused:?}"
     );
     assert!(
-        !fake.calls.iter().any(|call| call.starts_with("opening")),
+        !stand_in
+            .calls
+            .iter()
+            .any(|call| call.starts_with("opening")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
 }
 
 /// A payload of nothing but its target, which is all the card reads.
-fn payload(directory: &Path, target: &str) -> guide::host::Payload {
+fn payload(directory: &Path, target: &str) -> guide::writer::Payload {
     let payload = directory.join("payload");
     fs::create_dir_all(payload.join("cache")).unwrap();
     fs::write(payload.join("target.json"), target).unwrap();
     fs::write(payload.join("layout.sh"), "").unwrap();
     fs::write(payload.join("mount.sh"), "").unwrap();
-    guide::host::Payload::open(&payload).unwrap()
+    guide::writer::Payload::open(&payload).unwrap()
 }
 
 #[test]
 fn the_last_card_says_how_to_reach_the_machines_firmware() {
-    let directory = Scratch::new("host-card");
+    let directory = Scratch::new("writer-card");
     let surface = payload(
         &directory,
         r#"{"machine":"laptop","disk":"/dev/x","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":["the Nano"],"recipients":["age1fido2-hmac1x"],"start_from_stick":"Hold volume-down, press and release power.","clear_secure_boot_keys":"Hold volume-up; set Secure Boot to None."}"#,
@@ -351,13 +357,13 @@ fn phrase_on_stick(stick: &Path) -> Vec<u8> {
 
 #[test]
 fn a_stick_that_has_a_passphrase_asks_whether_to_keep_it_and_a_new_one_doesnt() {
-    let mut fake = Fake::new();
+    let mut stand_in = StandIn::new();
     let keep = Rc::new(Cell::new(None));
     let choose = ChoosePhrase {
         sealed: Some(sealed_to_phrase()),
         keep: Rc::clone(&keep),
     };
-    let Standing::Needed { asks } = choose.observe(&mut fake).unwrap() else {
+    let Standing::Needed { asks } = choose.observe(&mut stand_in).unwrap() else {
         panic!("the stick's vault has a passphrase")
     };
     let [
@@ -375,7 +381,7 @@ fn a_stick_that_has_a_passphrase_asks_whether_to_keep_it_and_a_new_one_doesnt() 
     assert!(choices[0].starts_with("Keep it"), "{choices:?}");
     let mut answers = Answers::new();
     answers.give("phrase", Answer::Chosen(0));
-    Journey::attempt(&choose, &mut fake, &answers).unwrap();
+    Journey::attempt(&choose, &mut stand_in, &answers).unwrap();
     assert_eq!(keep.get(), Some(true));
 
     // A stick the guide never wrote has no passphrase to keep.
@@ -384,17 +390,17 @@ fn a_stick_that_has_a_passphrase_asks_whether_to_keep_it_and_a_new_one_doesnt() 
         keep: Rc::new(Cell::new(None)),
     };
     assert!(matches!(
-        fresh.observe(&mut fake).unwrap(),
+        fresh.observe(&mut stand_in).unwrap(),
         Standing::Done { evidence } if evidence.contains("new words")
     ));
 }
 
 #[test]
 fn new_words_chosen_for_a_stick_that_had_a_passphrase_are_shown_for_the_phone() {
-    let directory = Scratch::new("host-new-phrase");
-    let mut fake = Fake::new();
-    lsblk(&mut fake, fixture!("lsblk-blank.json"));
-    fake.disk("/dev/sda", &stick_file(&directory));
+    let directory = Scratch::new("writer-new-phrase");
+    let mut stand_in = StandIn::new();
+    lsblk(&mut stand_in, fixture!("lsblk-blank.json"));
+    stand_in.disk("/dev/sda", &stick_file(&directory));
     let write = WriteStick::new(
         image(&directory),
         Some(payload(
@@ -403,14 +409,14 @@ fn new_words_chosen_for_a_stick_that_had_a_passphrase_are_shown_for_the_phone() 
         )),
         vec![],
     );
-    let steps = guide::host::writing(write, Some(sealed_to_phrase()));
+    let steps = guide::writer::writing(write, Some(sealed_to_phrase()));
     let [choose, write] = steps.as_slice() else {
         panic!("asked whether to keep it, then written")
     };
     let mut answers = Answers::new();
     answers.give("phrase", Answer::Chosen(1));
-    Journey::attempt(choose.as_ref(), &mut fake, &answers).unwrap();
-    let Standing::Needed { asks } = write.observe(&mut fake).unwrap() else {
+    Journey::attempt(choose.as_ref(), &mut stand_in, &answers).unwrap();
+    let Standing::Needed { asks } = write.observe(&mut stand_in).unwrap() else {
         panic!("the stick isn't written yet")
     };
     assert!(
@@ -424,11 +430,11 @@ fn new_words_chosen_for_a_stick_that_had_a_passphrase_are_shown_for_the_phone() 
 
 #[test]
 fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
-    let directory = Scratch::new("host-keeps-phrase");
+    let directory = Scratch::new("writer-keeps-phrase");
     let stick = stick_file(&directory);
-    let mut fake = Fake::new();
-    lsblk(&mut fake, fixture!("lsblk-blank.json"));
-    fake.disk("/dev/sda", &stick);
+    let mut stand_in = StandIn::new();
+    lsblk(&mut stand_in, fixture!("lsblk-blank.json"));
+    stand_in.disk("/dev/sda", &stick);
     let step = WriteStick::new(
         image(&directory),
         Some(payload(
@@ -438,7 +444,7 @@ fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
         vec![],
     )
     .keeping_phrase(sealed_to_phrase(), Rc::new(Cell::new(Some(true))));
-    let Standing::Needed { asks } = step.observe(&mut fake).unwrap() else {
+    let Standing::Needed { asks } = step.observe(&mut stand_in).unwrap() else {
         panic!("the stick isn't written yet")
     };
     let [
@@ -463,7 +469,7 @@ fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
         answers
     };
     let refused = step.run(
-        &mut fake,
+        &mut stand_in,
         &typed("abacus abdomen abdominal abide abiding ability"),
     );
     assert!(
@@ -471,15 +477,18 @@ fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
         "{refused:?}"
     );
     assert!(
-        !fake.calls.iter().any(|call| call.starts_with("opening")),
+        !stand_in
+            .calls
+            .iter()
+            .any(|call| call.starts_with("opening")),
         "{:#?}",
-        fake.calls
+        stand_in.calls
     );
 
     // Typed as a phone's Live Text gives it, capitals and all.
     Journey::attempt(
         &step,
-        &mut fake,
+        &mut stand_in,
         &typed("Abacus abdomen  abdominal abide abiding ability ablaze"),
     )
     .unwrap();
@@ -490,7 +499,7 @@ fn a_kept_passphrase_is_proven_against_the_old_vault_and_seals_the_new_one() {
     .unwrap();
 }
 
-/// A bundle as a machine's install seals it, as far as a host reads one
+/// A bundle as a machine's install seals it, as far as a writer reads one
 /// it carries on: which machine's it is, and when it was sealed.
 fn bundle(machine: &str, sealed: Option<u64>) -> Vec<u8> {
     let sealed = sealed
@@ -506,12 +515,12 @@ fn carried(machine: &str, sealed: Option<u64>) -> Carried {
     Carried::read(bundle(machine, sealed), None).unwrap()
 }
 
-/// The host's clock, in seconds since 1970, as the tests have it.
+/// The writer's clock, in seconds since 1970, as the tests have it.
 const NOW: u64 = 1_000_000;
 
 #[test]
-fn a_host_keeps_each_machines_newest_bundle_and_never_an_older_one() {
-    let directory = Scratch::new("host-keeps-newest");
+fn a_writer_keeps_each_machines_newest_bundle_and_never_an_older_one() {
+    let directory = Scratch::new("writer-keeps-newest");
     let mut store = Directory::new(directory.join("rescue"));
     carried::keep(
         &mut store,
@@ -555,8 +564,8 @@ fn a_host_keeps_each_machines_newest_bundle_and_never_an_older_one() {
 }
 
 #[test]
-fn the_hosts_own_machines_bundle_is_kept_over_any_a_stick_carries_for_it() {
-    let directory = Scratch::new("host-keeps-own");
+fn the_writers_own_machines_bundle_is_kept_over_any_a_stick_carries_for_it() {
+    let directory = Scratch::new("writer-keeps-own");
     let mut store = Directory::new(directory.join("rescue"));
     carried::keep(&mut store, None, vec![carried("laptop", Some(500))], NOW).unwrap();
     // Its own, from before bundles said when they were sealed, against a
@@ -585,7 +594,7 @@ fn the_hosts_own_machines_bundle_is_kept_over_any_a_stick_carries_for_it() {
 
 #[test]
 fn a_bundle_said_to_be_sealed_more_than_a_day_ahead_is_never_kept() {
-    let directory = Scratch::new("host-keeps-ahead");
+    let directory = Scratch::new("writer-keeps-ahead");
     let mut store = Directory::new(directory.join("rescue"));
     let kept = carried::keep(
         &mut store,
@@ -602,8 +611,8 @@ fn a_bundle_said_to_be_sealed_more_than_a_day_ahead_is_never_kept() {
 }
 
 #[test]
-fn a_host_keeps_bundles_for_only_so_many_machines_each_named_plainly() {
-    let directory = Scratch::new("host-keeps-few");
+fn a_writer_keeps_bundles_for_only_so_many_machines_each_named_plainly() {
+    let directory = Scratch::new("writer-keeps-few");
     let mut store = Directory::new(directory.join("rescue"));
     let found: Vec<Carried> = (0..carried::MACHINES + 8)
         .map(|n| carried(&format!("machine-{n:02}"), Some(1)))
@@ -625,7 +634,7 @@ fn a_host_keeps_bundles_for_only_so_many_machines_each_named_plainly() {
 }
 
 #[test]
-fn a_stick_for_a_machine_whose_bundle_the_host_keeps_is_signed_from_it_unless_another_is_given() {
+fn a_stick_for_a_machine_whose_bundle_the_writer_keeps_is_signed_from_it_unless_another_is_given() {
     let kept = vec![carried("desktop", Some(3)), carried("laptop", Some(7))];
     let chosen = |given: Option<&str>, machine: Option<&str>| {
         carried::bundle_for(
@@ -642,13 +651,13 @@ fn a_stick_for_a_machine_whose_bundle_the_host_keeps_is_signed_from_it_unless_an
         Some(("laptop".into(), 1))
     );
     assert_eq!(chosen(None, Some("tower")), None);
-    // A repair stick is for no machine, so none of the host's is used.
+    // A repair stick is for no machine, so none of the writer's is used.
     assert_eq!(chosen(None, None), None);
 }
 
 #[test]
 fn a_bundle_kept_under_another_machines_name_or_none_is_left_unread() {
-    let directory = Scratch::new("host-keeps-named");
+    let directory = Scratch::new("writer-keeps-named");
     let root = directory.join("rescue");
     fs::create_dir_all(&root).unwrap();
     fs::write(
@@ -662,53 +671,54 @@ fn a_bundle_kept_under_another_machines_name_or_none_is_left_unread() {
 }
 
 #[test]
-fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
-    let directory = Scratch::new("host-carries");
+fn a_stick_carries_every_bundle_on_and_the_next_writer_keeps_them_off_it() {
+    let directory = Scratch::new("writer-carries");
     let stick = stick_file(&directory);
-    let mut fake = Fake::new();
-    lsblk(&mut fake, fixture!("lsblk-laid-out.json"));
-    fake.disk("/dev/sda", &stick);
+    let mut stand_in = StandIn::new();
+    lsblk(&mut stand_in, fixture!("lsblk-laid-out.json"));
+    stand_in.disk("/dev/sda", &stick);
     let bundles = vec![carried("laptop", Some(7)), carried("desktop", Some(3))];
     let step = repair(&directory).carrying(bundles);
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
     // Only the stick whose bundles were kept is written over.
-    let standing = step.observe(&mut fake).unwrap();
+    let standing = step.observe(&mut stand_in).unwrap();
     assert!(
         matches!(&standing, Standing::Blocked { why, .. } if why.contains("isn't the stick whose rescue bundles were kept")),
         "{standing:?}"
     );
-    fake.no_file(guide::rescue::KEPT);
+    stand_in.no_file(guide::rescue::KEPT);
     Journey::attempt(
-        &GatherBundles::new(directory.join("first-host")),
-        &mut fake,
+        &GatherBundles::new(directory.join("first-writer")),
+        &mut stand_in,
         &Answers::new(),
     )
     .unwrap();
-    Journey::attempt(&step, &mut fake, &answers).unwrap();
+    Journey::attempt(&step, &mut stand_in, &answers).unwrap();
     let on_it = carried::on_stick(&mut File::open(&stick).unwrap());
     assert_eq!(
         on_it,
         vec![carried("desktop", Some(3)), carried("laptop", Some(7))]
     );
 
-    // Another host, about to write over it, keeps them first, and its
+    // Another writer, about to write over it, keeps them first, and its
     // own machine's beside them, the vault mounted as the stick holds it.
     let mounted = directory.join("mounted");
     carried::keep(&mut Directory::new(&mounted), None, on_it, NOW).unwrap();
-    let mut host = Fake::new();
-    lsblk(&mut host, fixture!("lsblk-laid-out.json"));
-    host.mount("/dev/sda4", &mounted)
+    let mut writer = StandIn::new();
+    lsblk(&mut writer, fixture!("lsblk-laid-out.json"));
+    writer
+        .mount("/dev/sda4", &mounted)
         .file(guide::rescue::KEPT, &bundle("tower", Some(9)));
-    let gather = GatherBundles::new(directory.join("host"));
+    let gather = GatherBundles::new(directory.join("writer"));
     assert!(matches!(
-        gather.observe(&mut host).unwrap(),
+        gather.observe(&mut writer).unwrap(),
         Standing::Needed { .. }
     ));
-    Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
+    Journey::attempt(&gather, &mut writer, &Answers::new()).unwrap();
     // Mounted only for reading, which needs no password, and never the
     // disk opened, which would.
-    let mounting: Vec<&String> = host
+    let mounting: Vec<&String> = writer
         .calls
         .iter()
         .filter(|call| call.contains("mounting") || call.starts_with("opening"))
@@ -717,10 +727,10 @@ fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
         mounting,
         ["mounting /dev/sda4 for reading", "unmounting /dev/sda4"],
         "{:#?}",
-        host.calls
+        writer.calls
     );
     assert_eq!(
-        carried::kept(&mut Directory::new(directory.join("host"))),
+        carried::kept(&mut Directory::new(directory.join("writer"))),
         vec![
             carried("desktop", Some(3)),
             carried("laptop", Some(7)),
@@ -728,14 +738,14 @@ fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
         ]
     );
     assert!(matches!(
-        gather.observe(&mut host).unwrap(),
+        gather.observe(&mut writer).unwrap(),
         Standing::Done { .. }
     ));
 }
 
 #[test]
 fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
-    let directory = Scratch::new("host-gathers-mounted");
+    let directory = Scratch::new("writer-gathers-mounted");
     let mounted = directory.join("mounted");
     fs::create_dir_all(&mounted).unwrap();
     fs::write(
@@ -756,21 +766,21 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
             }
         }
     }
-    let mut host = Fake::new();
-    lsblk(&mut host, &seen.to_string());
-    host.no_file(guide::rescue::KEPT);
-    let gather = GatherBundles::new(directory.join("host"));
-    Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
+    let mut writer = StandIn::new();
+    lsblk(&mut writer, &seen.to_string());
+    writer.no_file(guide::rescue::KEPT);
+    let gather = GatherBundles::new(directory.join("writer"));
+    Journey::attempt(&gather, &mut writer, &Answers::new()).unwrap();
     assert!(
-        !host
+        !writer
             .calls
             .iter()
             .any(|call| call.starts_with("opening") || call.contains("mounting")),
         "{:#?}",
-        host.calls
+        writer.calls
     );
     assert_eq!(
-        carried::kept(&mut Directory::new(directory.join("host"))),
+        carried::kept(&mut Directory::new(directory.join("writer"))),
         vec![carried("laptop", Some(4))]
     );
     // The copy of its key the stick's passphrase opens, kept for the
@@ -783,20 +793,20 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
 
 #[test]
 fn a_vault_that_wont_mount_carries_nothing_and_stops_nothing() {
-    let directory = Scratch::new("host-gathers-unread");
-    let mut host = Fake::new();
-    lsblk(&mut host, fixture!("lsblk-laid-out.json"));
+    let directory = Scratch::new("writer-gathers-unread");
+    let mut writer = StandIn::new();
+    lsblk(&mut writer, fixture!("lsblk-laid-out.json"));
     // Nothing scripted for mounting it, so it fails as a vault that
     // isn't one would.
-    host.no_file(guide::rescue::KEPT);
-    let gather = GatherBundles::new(directory.join("host"));
-    Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
+    writer.no_file(guide::rescue::KEPT);
+    let gather = GatherBundles::new(directory.join("writer"));
+    Journey::attempt(&gather, &mut writer, &Answers::new()).unwrap();
     assert_eq!(
-        carried::kept(&mut Directory::new(directory.join("host"))),
+        carried::kept(&mut Directory::new(directory.join("writer"))),
         vec![]
     );
     // Which it says, so the person knows the stick's copies are gone.
-    let standing = gather.observe(&mut host).unwrap();
+    let standing = gather.observe(&mut writer).unwrap();
     assert!(
         matches!(&standing, Standing::Done { evidence } if evidence.contains("its vault couldn't be read")),
         "{standing:?}"

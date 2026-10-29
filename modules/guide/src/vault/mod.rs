@@ -1,4 +1,4 @@
-//! The vault: what a reinstall stick carries for one machine, every byte
+//! The vault: what a stick carries for one machine, every byte
 //! of it age-encrypted under one vault key. The key is sealed to the
 //! stick's passphrase in `key-passphrase.age`, as quest-backup seals a
 //! chain's key; a rescue bundle seals its keys the same way, and to its
@@ -77,8 +77,8 @@ const OBJECT: u64 = 1 << 30;
 pub struct Manifest {
     pub format: u32,
     pub machine: String,
-    /// The YubiKeys `key.age` is sealed to, by the names the person knows
-    /// them by.
+    /// What opens the vault, by the name the person knows it by: the
+    /// stick's passphrase, or nothing for a repair stick's.
     pub opened_by: Vec<String>,
 }
 
@@ -683,7 +683,7 @@ mod tests {
         Manifest {
             format: 1,
             machine: "a laptop".into(),
-            opened_by: vec!["the Nano".into(), "the 5Ci".into()],
+            opened_by: vec!["the stick's passphrase".into()],
         }
     }
 

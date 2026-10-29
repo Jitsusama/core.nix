@@ -1,7 +1,7 @@
 # The stick's own system: a read-only, dm-verity protected store under a
 # root in memory, booting straight into the guide's install on the first
-# console as root. Its UKI is the ESP's removable-disk boot file, which the
-# host writing the stick signs for the machine it's meant for, and its
+# console as root. Its UKI is the boot partition's removable-disk boot file, which the
+# writer signs for the machine it's meant for, and its
 # vault is a partition of its own the guide writes (src/stick/).
 #
 # The keyboard and the network are core's own, so the stick types and joins
@@ -65,7 +65,7 @@ in
     options = [ "mode=0755" ];
   };
 
-  # systemd finds the ESP the stick booted from and mounts it at /boot
+  # systemd finds the boot partition the stick booted from and mounts it at /boot
   # when anything looks there, as sbctl does. Nothing on the stick needs it,
   # since its boot program has already run, and with the stick out for a
   # YubiKey the mount would wait for a disk that isn't there, stopping

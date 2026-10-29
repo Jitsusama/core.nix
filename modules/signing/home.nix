@@ -9,8 +9,8 @@
 # jitsusama.signing.signer, how its ssh-keygen reaches the keys. What's the
 # same lives here: git's settings, the register of allowed signers, and the
 # signing program (sign.sh), which picks a key each time it signs. Imported
-# alone, as a layer that lists the signers does, it signs nothing until
-# hardware's module says how.
+# alone, as a machine repository's modules that list the signers do, it
+# signs nothing until hardware's module says how.
 #
 # When the program's standard input is a terminal and it can open its
 # controlling terminal, a person is at the keyboard and Joel's key signs;
