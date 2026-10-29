@@ -12,7 +12,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
-use google::drive::{DOWNLOADS_KEPT, Is, Unlisted};
+use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
 use google::state::Standing;
@@ -587,7 +587,7 @@ fn a_drive_folder_is_listed_only_when_asked_folders_first_and_what_cant_be_shown
     let stand_in = StandIn::new(folders);
     let path = credentials("folders", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
-    let listed = watch.list("root", &now()).drive.listed.clone().unwrap();
+    let listed = watch.list("root", &now()).drive.listings[0].clone();
     assert_eq!(listed.folder, "root");
     assert_eq!((listed.more, listed.failed), (false, None));
     let names: Vec<(&str, Is, Option<u64>, bool)> = listed
@@ -619,14 +619,34 @@ fn a_drive_folder_is_listed_only_when_asked_folders_first_and_what_cant_be_shown
     );
     assert_eq!(searched.authorization, "Bearer pis");
 
-    let drives = watch.list("drives", &now()).drive.listed.clone().unwrap();
+    // Two asked together are each told, the newest first, as the shell
+    // may read only once both are written.
+    let both = watch.list("drives", &now()).drive.listings.clone();
+    let folders: Vec<&str> = both.iter().map(|each| each.folder.as_str()).collect();
+    assert_eq!(folders, ["drives", "root"]);
+    let drives = &both[0];
     assert_eq!(drives.files.len(), 1);
     assert_eq!(
         (drives.files[0].id.as_str(), drives.files[0].kind),
         ("0Team-1", Is::Folder)
     );
-    let gone = watch.list("nowhere", &now()).drive.listed.clone().unwrap();
+    let gone = watch.list("nowhere", &now()).drive.listings[0].clone();
     assert_eq!((gone.files.len(), gone.failed), (0, Some(Unlisted::Gone)));
+    // A folder asked again is told once, by its newest listing, and only
+    // the last few asked are kept.
+    watch.list("root", &now());
+    for folder in ["dir1", "dir2", "dir3"] {
+        watch.list(folder, &now());
+    }
+    let kept: Vec<String> = watch
+        .list("drives", &now())
+        .drive
+        .listings
+        .iter()
+        .map(|each| each.folder.clone())
+        .collect();
+    assert_eq!(kept, ["drives", "dir3", "dir2", "dir1"]);
+    assert_eq!(kept.len(), LISTINGS_KEPT);
     // A folder no id could name is never asked about.
     let asked = stand_in.heard().len();
     watch.list("x' or '1'='1", &now());

@@ -41,7 +41,7 @@ pub struct State {
     pub fetched: Option<Fetched>,
     /// Making a Meet meeting, as it stands.
     pub meet: Meet,
-    /// The Drive folder last listed, and the files downloaded lately.
+    /// The Drive folders listed and the files downloaded lately.
     pub drive: Drive,
 }
 
@@ -97,7 +97,7 @@ mod tests {
             "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
              \"documents\":[],\"heard\":null,\"fetched\":null,\
              \"meet\":{\"granted\":false,\"made\":null},\
-             \"drive\":{\"listed\":null,\"downloads\":[]}}\n"
+             \"drive\":{\"listings\":[],\"downloads\":[]}}\n"
         );
     }
 }

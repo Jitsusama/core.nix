@@ -380,11 +380,11 @@
     archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
     the documents of each kind he looked at lately, his last first, asking Drive again only every
     five minutes and keeping them while Drive fails, makes a Meet meeting for its link when asked,
-    only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, folders
-    first, a shortcut as what it points at, leaving out what it can't show and never asking of a
-    folder no id names, and downloads a Drive file to open, pick or save, Google's own kinds as
-    their office program's file, never opening one that runs, each download asked lately told,
-    and a file cut short leaving nothing behind
+    only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
+    few asked each told, folders first, a shortcut as what it points at, leaving out what it
+    can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
+    or save, Google's own kinds as their office program's file, never opening one that runs, each
+    download asked lately told, and a file cut short leaving nothing behind
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1282,11 +1282,12 @@
   the-shell-reads-the-documents = ''
     the shell reads the documents from the google program's file, none from a line from before
     them, knows which Google program opens each kind, and says who owns a document and when Joel
-    last opened it beside its title, with its details for the drawer; reads the Drive folder last
-    listed and the downloads, writes the lines that list a folder and download a file, a save alone
-    saying where, and says how the newest download asked stands; and says a Drive file in the
-    picker by its size and when it changed, or what Google's own kind comes as, picked by that
-    name and kind, adopting its document row, with why a file or a folder couldn't be had
+    last opened it beside its title, with its details for the drawer; reads the Drive folders
+    listed and the downloads, finding each folder asked together, writes the lines that list a
+    folder and download a file, a save alone saying where, and says how the newest download asked
+    stands; and says a Drive file in the picker by its size and when it changed, or what Google's
+    own kind comes as, picked by that name and kind, adopting its document row, with why a file or
+    a folder couldn't be had
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail

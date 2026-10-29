@@ -423,8 +423,9 @@ impl Watch {
     }
 
     /// Lists what the Drive folder `folder` holds, as the shell named it,
-    /// or why it couldn't be. Drive failing leaves the rest held as it
-    /// stood.
+    /// or why it couldn't be, first among the `LISTINGS_KEPT` folders
+    /// asked lately, its own last listing replaced. Drive failing leaves
+    /// the rest held as it stood.
     pub fn list(&mut self, folder: &str, now: &Zoned) -> &State {
         let Some(named) = Folder::named(folder) else {
             return &self.state;
@@ -446,13 +447,19 @@ impl Watch {
                 (Vec::new(), false, Some(Unlisted::Unreachable))
             }
         };
-        self.state.drive.listed = Some(Listed {
-            folder: folder.to_owned(),
-            asked: now.timestamp().as_millisecond(),
-            files,
-            more,
-            failed,
-        });
+        let listings = &mut self.state.drive.listings;
+        listings.retain(|listed| listed.folder != folder);
+        listings.insert(
+            0,
+            Listed {
+                folder: folder.to_owned(),
+                asked: now.timestamp().as_millisecond(),
+                files,
+                more,
+                failed,
+            },
+        );
+        listings.truncate(drive::LISTINGS_KEPT);
         &self.state
     }
 
