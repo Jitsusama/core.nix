@@ -44,18 +44,23 @@ PersonSource {
         return [provider.thing({
             key: busy ? "verb:person:join" : "verb:person:call",
             name: Words.name(busy ? "verb:person:join" : "verb:person:call"),
-            verb: busy ? "join" : "call",
+            verb: Words.verb(busy ? "verb:person:join" : "verb:person:call"),
             side: TuplePeople.how(stood).said,
-            glyph: busy ? Theme.glyph.joinCall : Theme.glyph.call,
+            glyph: Words.glyph(busy ? "verb:person:join" : "verb:person:call"),
             hue: "action",
             main: true,
             later: true,
             run: () => TuplePeople.pair(known)
         }), provider.thing({
+            // A switch, one row whose name never changes: it says yes or no,
+            // and Return flips it, keeping the launcher.
             key: "verb:person:favourite",
-            name: Words.name("verb:person:favourite", favourite ? "favourite" : ""),
-            glyph: favourite ? Theme.glyph.notFavourite : Theme.glyph.favourite,
+            name: Words.name("verb:person:favourite"),
+            verb: Words.verb("verb:person:favourite", favourite ? "favourite" : ""),
+            side: favourite ? "yes" : "no",
+            glyph: Words.glyph("verb:person:favourite"),
             hue: "action",
+            stays: true,
             run: () => TuplePeople.favour(known, !favourite)
         })];
     }

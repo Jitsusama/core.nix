@@ -55,7 +55,7 @@ ShellRoot {
         id: people
 
         launcher: launcher
-        settings: ({ name: "people" })
+        settings: ({ name: "calls" })
         // Each after the change is done, since a case changes them again.
         onAllChanged: {
             if (root.waiting === "the first standing" && people.all.length > 0)

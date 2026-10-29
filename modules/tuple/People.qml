@@ -35,7 +35,7 @@ Provider {
 
     // Named Calls (Words.qml): the program's name finds it but never
     // names it.
-    collection: Words.collection("people", {
+    collection: Words.collection("calls", {
         ask: Tuple.calling ? "what to do in the call?" : "who to pair with?"
     })
 

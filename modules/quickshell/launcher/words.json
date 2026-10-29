@@ -3,6 +3,7 @@
     "on",
     "agents",
     "applications",
+    "people",
     "desktop",
     "computer",
     "network",
@@ -21,7 +22,7 @@
         "clipboard",
         "capture",
         "session:recording",
-        "people",
+        "calls",
         "emoji",
         "session:quiet"
       ],
@@ -3250,16 +3251,72 @@
       "ask": "which emoji?"
     },
     {
-      "id": "people",
+      "id": "calls",
       "name": "Calls",
-      "noun": "people",
-      "glyph": "people",
+      "noun": "calls",
+      "glyph": "call",
       "ask": "who to pair with?",
       "empty": "Nobody to call yet."
     },
     {
-      "id": "tuple",
+      "id": "people",
+      "name": "People",
+      "term": "Programs/person",
+      "noun": "people",
+      "glyph": "people",
+      "ask": "who?",
+      "empty": "Nobody you've met or written lately."
+    },
+    {
+      "id": "verb:person:call",
       "in": "people",
+      "name": "Call Them",
+      "verb": "call",
+      "glyph": "call"
+    },
+    {
+      "id": "verb:person:join",
+      "in": "people",
+      "name": "Join Their Call",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:person:mail",
+      "in": "people",
+      "name": "Write a Mail",
+      "verb": "write",
+      "glyph": "mail"
+    },
+    {
+      "id": "verb:person:slack",
+      "in": "people",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:person:favourite",
+      "in": "people",
+      "name": "Favourite",
+      "verb": "star",
+      "glyph": "favourite",
+      "states": {
+        "favourite": {
+          "verb": "unstar"
+        }
+      }
+    },
+    {
+      "id": "person:recent",
+      "in": "people",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
+    },
+    {
+      "id": "tuple",
+      "in": "calls",
       "name": "The Call"
     },
     {

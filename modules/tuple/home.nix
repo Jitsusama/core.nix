@@ -135,7 +135,7 @@ in
     };
     # Tuple's place: what can be done about calls now, then the people to
     # call or join, found by name or email.
-    launcher.providers.people = {
+    launcher.providers.calls = {
       order = 46;
       source = ./People.qml;
       weight = 0.9;

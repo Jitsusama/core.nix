@@ -142,9 +142,9 @@ Provider {
         const count = had().length;
         return count === 0 ? [] : [thing({
             key: "person:recent",
-            name: "Recent",
-            verb: "more",
-            glyph: Theme.glyph.recent,
+            name: Words.name("person:recent"),
+            verb: Words.verb("person:recent"),
+            glyph: Words.glyph("person:recent"),
             hue: "person",
             count: String(count),
             nested: true,

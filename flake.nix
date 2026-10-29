@@ -155,7 +155,9 @@
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
-        google = moduleFrom ./modules/google/home.nix { inherit (self.homeModules) quickshell; };
+        google = moduleFrom ./modules/google/home.nix {
+          inherit (self.homeModules) people quickshell;
+        };
         gtk = ./modules/gtk/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
@@ -179,6 +181,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         pi = ./modules/pi/home.nix;
+        people = moduleFrom ./modules/people/home.nix { inherit (self.homeModules) quickshell; };
         pi-packages = ./modules/pi-packages/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
@@ -189,7 +192,7 @@
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;
-        slack = ./modules/slack/home.nix;
+        slack = moduleFrom ./modules/slack/home.nix { inherit (self.homeModules) people; };
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
