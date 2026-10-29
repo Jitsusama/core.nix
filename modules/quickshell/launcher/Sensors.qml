@@ -1,6 +1,8 @@
+pragma Singleton
 // The kernel's hwmon chips and the readings each has, for the launcher's
 // Heat and Machine, so the processor's and the disk's temperatures are read
-// one way and said the same in both. The chips are listed once by Qt as
+// one way and said the same in both. Both ask this one, so the chips are
+// listed and what never changes is read once for the shell, not once each. The chips are listed once by Qt as
 // the shell starts, and the readings each has by one listing of them all,
 // made again only when the chips change, never a reader per chip, since
 // each would be a thread and a watcher of its own over folders that don't
@@ -21,7 +23,7 @@ import Quickshell.Io
 import QtQuick
 import "Machine.js" as Machine
 
-Scope {
+Singleton {
     id: sensors
 
     function said(file) {
