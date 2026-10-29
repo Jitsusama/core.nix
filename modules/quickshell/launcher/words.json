@@ -1767,42 +1767,110 @@
     {
       "id": "time:server",
       "in": "time",
-      "name": "Server"
+      "name": "Server",
+      "said": {
+        "nothing": "no, nothing keeps the time",
+        "no": "no",
+        "yes": "yes",
+        "stratum": "stratum {stratum}",
+        "asOfLastPoll": "as of the last poll",
+        "between": "between {least} and {most}",
+        "running": "running",
+        "system": "configured",
+        "link": "from the network",
+        "runtime": "set while running",
+        "fallback": "fallback"
+      }
     },
     {
-      "id": "time:offset",
-      "in": "time",
-      "name": "Offset"
+      "id": "time:server:name",
+      "in": "time:server",
+      "name": "Name"
     },
     {
-      "id": "time:delay",
-      "in": "time",
-      "name": "Delay"
+      "id": "time:server:address",
+      "in": "time:server",
+      "name": "Address"
     },
     {
-      "id": "time:jitter",
-      "in": "time",
-      "name": "Jitter"
-    },
-    {
-      "id": "time:stratum",
-      "in": "time",
+      "id": "time:server:stratum",
+      "in": "time:server",
       "name": "Stratum"
     },
     {
-      "id": "time:reference",
-      "in": "time",
+      "id": "time:server:reference",
+      "in": "time:server",
       "name": "Reference"
     },
     {
-      "id": "time:poll",
-      "in": "time",
+      "id": "time:server:offset",
+      "in": "time:server",
+      "name": "Offset"
+    },
+    {
+      "id": "time:server:delay",
+      "in": "time:server",
+      "name": "Delay"
+    },
+    {
+      "id": "time:server:jitter",
+      "in": "time:server",
+      "name": "Jitter"
+    },
+    {
+      "id": "time:server:root-delay",
+      "in": "time:server",
+      "name": "Root Delay"
+    },
+    {
+      "id": "time:server:root-dispersion",
+      "in": "time:server",
+      "name": "Root Dispersion"
+    },
+    {
+      "id": "time:server:precision",
+      "in": "time:server",
+      "name": "Precision"
+    },
+    {
+      "id": "time:server:leap",
+      "in": "time:server",
+      "name": "Leap Second"
+    },
+    {
+      "id": "time:server:ntp-version",
+      "in": "time:server",
+      "name": "NTP Version"
+    },
+    {
+      "id": "time:server:last-sync",
+      "in": "time:server",
+      "name": "Last Sync"
+    },
+    {
+      "id": "time:server:poll",
+      "in": "time:server",
       "name": "Poll Interval"
     },
     {
-      "id": "time:leap",
+      "id": "time:server:packets",
+      "in": "time:server",
+      "name": "Packets"
+    },
+    {
+      "id": "time:server:frequency",
+      "in": "time:server",
+      "name": "Frequency"
+    },
+    {
+      "id": "time:service",
       "in": "time",
-      "name": "Leap Second"
+      "name": "Service"
+    },
+    {
+      "id": "time:servers",
+      "in": "time",
+      "name": "Other Servers"
     },
     {
       "id": "sound",

@@ -132,6 +132,7 @@ let
     "launcher/Characters.js"
     "launcher/Units.js"
     "launcher/Zones.js"
+    "launcher/Ago.js"
     "launcher/Colours.js"
     "launcher/Asking.js"
     "launcher/Catalogue.js"

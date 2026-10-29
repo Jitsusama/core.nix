@@ -1305,44 +1305,56 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
 
 
 def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
-    """The time here says how the clock is kept, as timesyncd last said."""
+    """The time here says how the clock is kept, its server a thing to dig into."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     kept = "$XDG_RUNTIME_DIR/timekeeping.json"
     # timekeeping runs, and timesyncd, asking a server that isn't there,
-    # has made no exchange, so the file says nothing, and the time says
-    # nothing of its keeping.
+    # has made no exchange, so the time says it isn't synchronised, and
+    # what keeps it, with no server to step into.
     machine.wait_until_succeeds(
         desktop.in_session("systemctl --user is-active timekeeping"),
         timeout=dt.timedelta(seconds=60),
     )
     machine.wait_until_succeeds(
-        desktop.in_session(f"test \"$(cat {kept})\" = '{{}}'"),
+        desktop.in_session(f"grep -q '\"exchange\":null' {kept}"),
         timeout=dt.timedelta(seconds=60),
     )
-    keeping = [
-        "Synchronised", "Server", "Offset", "Delay", "Jitter", "Stratum", "Reference",
-        "Poll Interval", "Leap Second",
-    ]  # fmt: skip
     desktop.answer("time")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
-    assert "Offset" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    desktop.launcher_until(lambda shown: "Service" in shown["rows"])
+    rows = cast("list[str]", desktop.showing()["rows"])
+    assert rows[rows.index("Synchronised") + 1] == "Service", rows
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # An exchange made, written as timekeeping writes it, with it stopped
-    # so nothing writes over it.
+    # so nothing writes over it; heard back two minutes ago.
     desktop.as_account("systemctl --user stop timekeeping")
+    last = int(machine.succeed("date +%s%3N").strip()) - 120_000
     said = {
-        "version": 1, "synchronised": True, "server": "0.harbour.pool.ntp.org",
-        "address": "192.0.2.7", "stratum": 1, "reference": "GNSS", "offset": 388,
-        "delay": 36112, "jitter": 11888, "poll": 2048, "leap": "normal", "packets": 13,
-        "frequency": 6.267,
+        "version": 2, "synchronised": True, "frequency": 6.267,
+        "poll": {"now": 2048, "least": 32, "most": 2048},
+        "servers": {
+            "system": [], "link": [], "runtime": [],
+            "fallback": ["0.harbour.pool.ntp.org", "1.harbour.pool.ntp.org"],
+        },
+        "exchange": {
+            "server": "0.harbour.pool.ntp.org", "address": "192.0.2.7", "stratum": 1,
+            "reference": "GNSS", "offset": 388, "delay": 36112, "jitter": 11888,
+            "rootDelay": 15, "rootDispersion": 457, "precision": -25, "leap": "normal",
+            "ntpVersion": 4, "last": last, "packets": 13,
+        },
     }  # fmt: skip
+    inside = [
+        "Name", "Address", "Stratum", "Reference", "Offset", "Delay", "Jitter", "Root Delay",
+        "Root Dispersion", "Precision", "Leap Second", "NTP Version", "Last Sync",
+        "Poll Interval", "Packets", "Frequency",
+    ]  # fmt: skip
     try:
         desktop.as_account(f"echo '{json.dumps(said)}' > {kept}.new && mv {kept}.new {kept}")
         desktop.answer("time")
         desktop.step_in()
+        keeping = ["Synchronised", "0.harbour.pool.ntp.org", "Service", "Other Servers"]
 
         def kept_rows(shown: Json) -> bool:
             rows = cast("list[str]", shown["rows"])
@@ -1352,15 +1364,50 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             return rows[at : at + len(keeping)] == keeping
 
         desktop.launcher_until(kept_rows)
-        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
         for read in (
-            "Synchronised \u00b7 yes",
-            "Server \u00b7 0.harbour.pool.ntp.org \u00b7 192.0.2.7",
-            "Offset \u00b7 +0.4 ms",
-            "Delay \u00b7 36.1 ms",
-            "Poll Interval \u00b7 every 34 min 8 s",
+            "Synchronised \u00b7 yes, 2 min ago",
+            "0.harbour.pool.ntp.org \u00b7 stratum 1, +0.4 ms",
+            "Service \u00b7 systemd-timesyncd",
+            # The other fallback, the server in use not being another.
+            "Other Servers \u00b7 1",
         ):
-            assert any(str(it).startswith(read) for it in reads), (read, reads)
+            assert any(it.startswith(read) for it in reads), (read, reads)
+        # The server is a thing: its drawer says all it holds, and a step
+        # in lists it, each a figure.
+        desktop.down_to("0.harbour.pool.ntp.org")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["drawer"]["out"] is True
+                and shown["drawer"]["title"] == "0.harbour.pool.ntp.org"
+                and shown["drawer"]["facts"] == inside
+            )
+        )
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][: len(inside)] == inside)
+        reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
+        for read in (
+            "Offset \u00b7 +0.4 ms",
+            "Root Dispersion \u00b7 0.5 ms",
+            "Precision \u00b7 30 ns",
+            "Last Sync \u00b7 2 min ago",
+            "Poll Interval \u00b7 every 34 min 8 s",
+            "Frequency \u00b7 +6.267 ppm",
+        ):
+            assert any(it.startswith(read) for it in reads), (read, reads)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # With nothing keeping the time, Time says so, and no more.
+        desktop.as_account(f"echo '{{}}' > {kept}.new && mv {kept}.new {kept}")
+        desktop.answer("time")
+        desktop.step_in()
+        desktop.launcher_until(
+            lambda shown: any(
+                str(thing["reads"]).startswith("Synchronised \u00b7 no, nothing keeps the time")
+                for thing in shown["things"]
+            )
+        )
+        assert "Service" not in desktop.showing()["rows"], desktop.showing()["rows"]
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
