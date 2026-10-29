@@ -1033,6 +1033,7 @@ below, so the module adds no patches.
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
 | Mics     | their gain held at their own level, so a call doesn't clip                |
+| Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
 
 ### The Keyboard at the Disk Prompt
 
@@ -1133,7 +1134,28 @@ there is a paired Bluetooth one, which BlueZ allows to wake the laptop, but
 the AX200's Bluetooth controller is a USB device (`8087:0029`), and the
 kernel leaves its wakeup off, so at each sleep the kernel dropped its
 connections and left it listening for nobody. The bluetooth module turns
-that wakeup on for every USB controller of Bluetooth's device class.
+that wakeup on for every USB controller of Bluetooth's device class, and
+with it a key on that keyboard woke the laptop, lid shut.
+
+### The Watchdog
+
+A kernel panic on this laptop drew its text and kept its record, but
+`panic=10` never restarted it: it sat frozen until the power button was
+held. The chipset's TCO watchdog (`sp5100_tco`) covers that: the module has
+systemd feed it every 15 s, and once the kernel stops, it resets the
+laptop 30 s later. A crash on a fresh boot restarted that way, and the next
+boot logged "Previous system reset reason [0x02000800]: hardware watchdog
+timer expired".
+
+A sleep stops the watchdog's count, though. After one, `timeleft` stood at
+28 for five seconds running and a crash sat on its panic for over a minute,
+while the chipset's power-management bytes at `0xfed80300` read the same as
+before. The driver sets the chip up only when it loads and has no resume
+step, so nothing starts the count again. Stopping systemd's watchdog and
+starting it again sets it counting, and a crash right after restarted the
+laptop by itself. So a sleep hook stops it before every sleep, which also
+keeps it from resetting a hibernation while the image is written, and
+starts it after.
 
 ### The Microphones
 
@@ -1161,7 +1183,7 @@ keep PipeWire's paths.
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
-| Sleep      | the drain on battery overnight isn't measured, nor a Bluetooth keyboard's wake |
+| Sleep      | the drain on battery overnight isn't measured                                  |
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |

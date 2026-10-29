@@ -3,6 +3,7 @@
 # graphics, Intel's AX200 Wi-Fi 6, a discrete Nuvoton TPM, and a keyboard,
 # battery and charger behind Surface's own embedded controller, the Surface
 # Aggregator Module. docs/hardware.md says what works and what's left.
+{ config, pkgs, ... }:
 {
   imports = [
     ../../modules/device-check/nixos.nix
@@ -25,6 +26,7 @@
     "The battery" = "/sys/class/power_supply/BAT1";
     "The charger" = "/sys/class/power_supply/ADP1";
     "The camera" = "/sys/class/video4linux/video*";
+    "The watchdog" = "/sys/class/watchdog/watchdog0";
   };
 
   # The keyboard reaches the system through the Surface Aggregator, as
@@ -100,4 +102,22 @@
   # out, and with the watchdog off its calibration can come out 0.16% fast,
   # more than NTP can steer. docs/hardware.md has the measurements.
   boot.kernelParams = [ "tsc=unstable" ];
+
+  # A panic drew its text but never restarted the laptop, which sat frozen
+  # until the power button was held. The chipset's watchdog, which systemd
+  # feeds while the kernel runs, resets it 30 s after the kernel stops.
+  systemd.settings.Manager.RuntimeWatchdogSec = "30s";
+
+  # A sleep stops the watchdog's count, and its driver never starts it
+  # again, so the hook stops it before each sleep and starts it after; the
+  # script says why.
+  environment.etc."systemd/system-sleep/watchdog-wakes-again".source =
+    let
+      hook = pkgs.writeShellApplication {
+        name = "watchdog-wakes-again";
+        runtimeInputs = [ config.systemd.package ];
+        text = builtins.readFile ./watchdog-wakes-again.sh;
+      };
+    in
+    "${hook}/bin/watchdog-wakes-again";
 }
