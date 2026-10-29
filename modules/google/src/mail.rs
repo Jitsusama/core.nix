@@ -52,6 +52,8 @@ pub struct Mail {
     pub address: String,
     /// Who it went to, each by name when the header gives one.
     pub to: String,
+    /// Who it was copied to, the same way, empty when nobody was.
+    pub cc: String,
     pub subject: String,
     /// When it came, in milliseconds since the epoch.
     pub at: i64,
@@ -180,11 +182,8 @@ pub fn read(answer: &Value) -> Option<Mail> {
         id: id.to_owned(),
         from: sender(header("From")),
         address: address(header("From")),
-        to: split(header("To"))
-            .iter()
-            .map(|one| sender(one))
-            .collect::<Vec<_>>()
-            .join(", "),
+        to: named(header("To")),
+        cc: named(header("Cc")),
         subject: header("Subject").trim().to_owned(),
         // Gmail writes when it came as a string of milliseconds.
         at: answer
@@ -261,6 +260,15 @@ pub fn address(from: &str) -> String {
 
 /// The people a header lists, split at its commas but not those inside a
 /// quoted name, as "Lovelace, Ada" is.
+/// Everyone an address header names, each by name when it gives one.
+fn named(header: &str) -> String {
+    split(header)
+        .iter()
+        .map(|one| sender(one))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn split(header: &str) -> Vec<String> {
     let mut people = Vec::new();
     let (mut one, mut quoted) = (String::new(), false);
@@ -416,6 +424,7 @@ mod tests {
                 from: "Lovelace, Ada".into(),
                 address: "ada@example.com".into(),
                 to: String::new(),
+                cc: String::new(),
                 subject: "Lunch?".into(),
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
@@ -447,6 +456,14 @@ mod tests {
             {"name": "To", "value": "\"Gerber, Joel\" <joel@example.com>, grace@example.com"}
         ]}});
         assert_eq!(read(&answer).unwrap().to, "Gerber, Joel, grace@example.com");
+    }
+
+    #[test]
+    fn mail_says_who_it_was_copied_to_each_by_name() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {"headers": [
+            {"name": "CC", "value": "Grace Hopper <grace@example.com>, ada@example.com"}
+        ]}});
+        assert_eq!(read(&answer).unwrap().cc, "Grace Hopper, ada@example.com");
     }
 
     #[test]

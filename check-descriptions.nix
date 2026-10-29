@@ -351,12 +351,12 @@
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
     meeting only when Joel holds it, telling every guest, moves one through the calendar Google lets
     him change it on, telling everyone asked, tells it the mail that wants Joel, newest first, each
-    asked for once, with who it went to, its text, never an attachment's, and each file it carries,
-    by its name, kind and size, but what its HTML shows inline, fetching one only when asked, never
-    to open one that runs, into a folder only Joel reads or into Downloads, never over a file there,
-    marking it read or archiving it when asked, marking it unread again, mail read here wanting Joel
-    again at once, and the documents of each kind he looked at lately, his last first, asking Drive
-    again only every five minutes and keeping them while Drive fails
+    asked for once, with who it went to and who was copied, its text, never an attachment's, and
+    each file it carries, by its name, kind and size, but what its HTML shows inline, fetching one
+    only when asked, never to open one that runs, into a folder only Joel reads or into Downloads,
+    never over a file there, marking it read or archiving it when asked, marking it unread again,
+    mail read here wanting Joel again at once, and the documents of each kind he looked at lately,
+    his last first, asking Drive again only every five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1198,9 +1198,10 @@
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and its
-    details say, the files it carries among them, each by its kind and size; writes a reply to who
-    sent it, and a mail to everyone else a meeting names; writes the lines that mark mail read or
-    unread again or archive it or fetch a file it carries; and says how that fetch stands
+    details say, who was copied and the files it carries among them, each file by its kind and size;
+    writes a reply to who sent it, and a mail to everyone else a meeting names; writes the lines
+    that mark mail read or unread again or archive it or fetch a file it carries; and says how that
+    fetch stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
