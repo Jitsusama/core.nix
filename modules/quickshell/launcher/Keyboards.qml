@@ -232,7 +232,7 @@ Provider {
                 name: part("lights:to", state, { n: level, most: most }),
                 glyph: Theme.glyph.brightness,
                 hue: "action",
-                side: level === now ? "in use" : "",
+                side: level === now ? "chosen" : "",
                 stays: true,
                 run: () => Niri.spawn(["brightnessctl", `--device=${device}`, "set", String(set)])
             }));

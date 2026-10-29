@@ -148,7 +148,7 @@ ShellRoot {
 
         const trust = parts[5];
         expect("a setting holds its choices", trust.verb === "more" && trust.glyph !== ""
-            && said(trust.verbs()) === "Let It Reconnect by Itself=in use,"
+            && said(trust.verbs()) === "Let It Reconnect by Itself=chosen,"
                 + "Only Connect It When Asked=", said(trust.verbs()));
         // Each its own word for the foot, which its name's first wouldn't say.
         expect("a choice says what it does", trust.verbs().map(row => row.verb).join(",")
@@ -207,7 +207,7 @@ ShellRoot {
             && row.glyph === ""), "a figure of the adapter doesn't copy");
         const choices = parts[0].verbs();
         expect("the radio's choices", said(choices)
-            === "Turn the Radio On=in use,Turn the Radio Off=", said(choices));
+            === "Turn the Radio On=chosen,Turn the Radio Off=", said(choices));
         parts[1].verbs()[0].run();
         expect("made visible", radio.discoverable, "it's still hidden");
         choices[1].run();

@@ -640,8 +640,9 @@ works the same way everywhere.
   would cut off something in use asks once first ("Turn Bluetooth Off,
   Disconnecting the Keychron"). A choice is said by its value alone
   ("100%", "60 Hz", "Upright"), the setting it's for named in the path
-  above it, the one in use saying so. Rows that come and go, such as
-  Media, sit at the end of their group. A check walks every row to hold
+  above it, the one chosen saying "chosen", whoever picked it. "In use"
+  is only ever what a program holds, as a camera Chrome has open. Rows
+  that come and go, such as Media, sit at the end of their group. A check walks every row to hold
   the order.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds

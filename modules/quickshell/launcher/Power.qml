@@ -301,7 +301,7 @@ Provider {
             verb: Words.verb("power:limit:stop"),
             glyph: Theme.glyph.charge,
             hue: "action",
-            side: Number(stop) === each ? "in use" : "",
+            side: Number(stop) === each ? "chosen" : "",
             stays: true,
             run: () => provider.setLimit(path, begun, Number(stop), each)
         })));

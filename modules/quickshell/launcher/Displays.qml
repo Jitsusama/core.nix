@@ -333,13 +333,13 @@ Provider {
 
     // A choice wears the theme's mark of the setting it's for, by name.
     // Setting it keeps the launcher, the setting saying what it's at now.
-    function choice(key, name, mark, inUse, run) {
+    function choice(key, name, mark, chosen, run) {
         return thing({
             key: `verb:display-${key}`,
             name: name,
             glyph: Theme.glyph[mark],
             hue: "action",
-            side: inUse ? "in use" : "",
+            side: chosen ? "chosen" : "",
             stays: true,
             run: run
         });
