@@ -518,6 +518,34 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 
+def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
+    desktop: Desktop,
+) -> None:
+    """The lid is let go when the power goes, though the shell never hears it."""
+    machine = desktop.machine
+    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    desktop.as_account("systemctl --user start caffeinate.service caffeinate-lid.service")
+    machine.wait_until_succeeds(
+        f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
+    )
+    # The shell stopped stands in for one that missed the power going while
+    # the machine slept, as on 2026-10-28, when a laptop ran flat in a bag.
+    desktop.as_account("systemctl --user stop quickshell.service")
+    try:
+        desktop.power("off")
+        machine.wait_until_fails(
+            f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
+        )
+        machine.succeed(f"{held} | grep -qw idle")
+    finally:
+        desktop.power("on")
+        desktop.as_account("systemctl --user stop caffeinate.service")
+        desktop.as_account("systemctl --user start quickshell.service")
+        machine.wait_until_succeeds(
+            desktop.in_session("qs ipc call launcher list"), timeout=timedelta(seconds=60)
+        )
+
+
 def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what(
     desktop: Desktop,
 ) -> None:
