@@ -80,7 +80,10 @@ QtObject {
         check("the line marking it read", Mail.tidy(mail, "read"), '{"read":{"id":"m_1"}}\n');
         check("the line archiving it", Mail.tidy(mail, "archive"),
             '{"archive":{"id":"m_1"}}\n');
+        check("the line marking it unread again", Mail.tidy(mail, "unread"),
+            '{"unread":{"id":"m_1"}}\n');
         check("read, once it's gone", Mail.tidied("read"), "read");
+        check("unread, once it's back", Mail.tidied("unread"), "unread");
         check("archived, once it's gone", Mail.tidied("archive"), "archived");
         check("nothing for what isn't asked", Mail.tidied("delete"), "");
 

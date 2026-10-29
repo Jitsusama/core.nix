@@ -1772,7 +1772,7 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.launcher_until(lunch_in_full)
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"] == ["Open in Mail", "Reply", "Archive", "Mark As Read"]
+        lambda shown: shown["rows"] == ["Open in Mail", "Reply", "Archive", "Read", "Copy the Link"]
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -1974,7 +1974,7 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
     desktop.answer(subject.lower())
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == subject)
     desktop.step_in()
-    # Its acts: opening it, replying, archiving it and marking it read.
+    # Its acts: opening it, replying, archiving it and whether it's read.
     for _ in range(4):
         if (desktop.showing()["selected"] or {}).get("name") == act:
             break
@@ -2000,20 +2000,39 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
 def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     desktop: Desktop,
 ) -> None:
-    """Mail is marked read or archived from its acts, its foot says so, and the launcher stays."""
+    """Mail is marked read, unread again or archived from its acts, said so, the launcher kept."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
     machine.succeed(f"rm -f {asked}")
-    for subject, act, became, line in [
-        ("Lunch on Friday", "Mark As Read", "read", {"read": {"id": "lunch"}}),
-        ("Quarterly Numbers", "Archive", "archived", {"archive": {"id": "numbers"}}),
-    ]:
-        tidy_from_its_acts(desktop, subject, act, became)
+
+    def was_asked(line: dict[str, object]) -> None:
+        """See that the shell asked the program for `line`."""
         said = json.dumps(line, separators=(",", ":"))
-        machine.succeed(f"grep -qxF {shlex.quote(said)} {asked}")
-        machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        machine.wait_until_succeeds(
+            f"grep -qxF {shlex.quote(said)} {asked}", timeout=dt.timedelta(seconds=10)
+        )
+
+    # Read is a switch: it says no, Return marks it read and it says yes.
+    tidy_from_its_acts(desktop, "Lunch on Friday", "Read", "read")
+    was_asked({"read": {"id": "lunch"}})
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "yes")
+    # Return again marks it unread, and it wants Joel once more.
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Read"
+            and shown["selected"].get("side") == "no"
+            and shown["footer"] == "unread"
+        )
+    )
+    was_asked({"unread": {"id": "lunch"}})
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    tidy_from_its_acts(desktop, "Quarterly Numbers", "Archive", "archived")
+    was_asked({"archive": {"id": "numbers"}})
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(

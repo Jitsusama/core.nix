@@ -11,8 +11,9 @@ written down in google-asked beside the socket, for the test to read, and taken 
 take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
 that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
-with three unread in the inbox; one marked read or
-archived is written down too, and taken out of the mail that wants him, as Gmail would.
+with three unread in the inbox; one marked read or archived is written down too, and taken
+out of the mail that wants him, as Gmail would, and one read and then marked unread again
+wants him once more.
 """
 
 import json
@@ -115,6 +116,8 @@ class Account:
             },
         ]
         self.unread = 3
+        # Mail marked read, which marking it unread again brings back.
+        self.read: list[dict[str, object]] = []
         self.heard = now
         self.leave()
 
@@ -156,13 +159,14 @@ class Account:
     def ask(self, line: str) -> None:
         """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
 
-        Or mail marked read or archived.
+        Or mail marked read or archived, or marked unread again after it was read.
         """
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
         answer = said.get("answer", {})
         tidied = (said.get("read") or said.get("archive") or {}).get("id")
+        unread = said.get("unread", {}).get("id")
         cancelled = said.get("cancel", {}).get("id")
         moved = said.get("move", {})
         with self.lock:
@@ -176,8 +180,15 @@ class Account:
             ]
             held = [mail for mail in self.mail if mail["id"] != tidied]
             if len(held) < len(self.mail):
+                if "read" in said:
+                    self.read += [mail for mail in self.mail if mail["id"] == tidied]
                 self.mail = held
                 self.unread -= 1
+            back = [mail for mail in self.read if mail["id"] == unread]
+            if back:
+                self.read = [mail for mail in self.read if mail["id"] != unread]
+                self.mail = sorted(self.mail + back, key=lambda mail: -int(str(mail["at"])))
+                self.unread += 1
             self.leave()
             for shell in list(self.shells):
                 try:

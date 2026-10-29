@@ -4009,9 +4009,21 @@
     {
       "id": "verb:mail:read",
       "in": "mail:message",
-      "name": "Mark As Read",
+      "name": "Read",
       "verb": "read",
-      "glyph": "readMail"
+      "glyph": "readMail",
+      "states": {
+        "read": {
+          "verb": "unread"
+        }
+      }
+    },
+    {
+      "id": "verb:mail:link",
+      "in": "mail:message",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
     },
     {
       "id": "verb:mail:archive",

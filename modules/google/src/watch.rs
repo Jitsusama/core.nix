@@ -25,6 +25,9 @@ pub struct Watch {
     state: State,
     /// The calendars Joel may change events on, as last heard.
     writable: Vec<String>,
+    /// The mail marked read since it was last looked at, so marking one
+    /// unread again brings it back at once, before Gmail lists it again.
+    read: Vec<Mail>,
 }
 
 impl Watch {
@@ -36,6 +39,7 @@ impl Watch {
             keeper: Keeper::default(),
             state: State::default(),
             writable: Vec::new(),
+            read: Vec::new(),
         }
     }
 
@@ -72,6 +76,9 @@ impl Watch {
             Ok((found, unread)) => {
                 self.state.mail = found;
                 self.state.unread = unread;
+                // What Gmail lists now says what's unread, any marked
+                // unread again from elsewhere included.
+                self.read.clear();
             }
             Err(Looked::Refused(Refused::Unreachable(why))) => {
                 eprintln!("<4>{why}");
@@ -169,10 +176,37 @@ impl Watch {
     pub fn tidy(&mut self, id: &str, how: Tidy, now: &Zoned) -> &State {
         match self.asking(now, |google, token| google.unlabel(token, id, how.label())) {
             Ok(()) => {
-                let before = self.state.mail.len();
-                self.state.mail.retain(|mail| mail.id != id);
-                if self.state.mail.len() < before {
+                if let Some(at) = self.state.mail.iter().position(|mail| mail.id == id) {
+                    let gone = self.state.mail.remove(at);
                     self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
+                    if how == Tidy::Read {
+                        self.read.retain(|mail| mail.id != id);
+                        self.read.push(gone);
+                    }
+                }
+            }
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Marks the mail `id` unread again, as Gmail's own button does, and,
+    /// for one marked read here since it was last looked at, holds it as
+    /// wanting Joel at once, in its place by when it came. Other mail
+    /// comes back as the next look finds it. Mail Google didn't take
+    /// changes nothing held.
+    pub fn unread(&mut self, id: &str, now: &Zoned) -> &State {
+        match self.asking(now, |google, token| google.label(token, id, "UNREAD")) {
+            Ok(()) => {
+                if let Some(at) = self.read.iter().position(|mail| mail.id == id) {
+                    let back = self.read.remove(at);
+                    if !self.state.mail.iter().any(|mail| mail.id == id) {
+                        self.state.mail.push(back);
+                        self.state
+                            .mail
+                            .sort_by_key(|mail| std::cmp::Reverse(mail.at));
+                        self.state.unread = self.state.unread.map(|unread| unread + 1);
+                    }
                 }
             }
             Err(looked) => self.fell(looked, self.state.account),
