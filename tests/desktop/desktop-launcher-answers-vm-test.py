@@ -1970,6 +1970,16 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     the_telemetry_is_let_go(desktop)
 
 
+def open_power(desktop: Desktop) -> None:
+    """Open Power where it lives, in Machine, found by its name from the top.
+
+    Its word and a space don't step into it, since "power off" goes on from them.
+    """
+    desktop.answer("power")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
+    desktop.step_in("ret")
+
+
 def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Desktop) -> None:
     """Power says what kept the processor from resting while on battery, and not on mains."""
     machine = desktop.machine
@@ -1982,14 +1992,11 @@ def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Des
     # there.
     desktop.power("off")
     try:
-        desktop.as_account("qs ipc call launcher toggle")
-        desktop.launcher_ready()
-        machine.send_chars("power ")
+        open_power(desktop)
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["power"]
-                and shown["rows"][1:2] == ["Kept From Resting"]
-                and shown["rows"][0] == "Battery"
+                shown["path"] == ["Machine", "Power"]
+                and shown["rows"][:2] == ["Battery", "Kept From Resting"]
             )
         )
         desktop.type_in("kept", "Kept From Resting")
@@ -2009,10 +2016,10 @@ def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Des
         )
     finally:
         desktop.power("on")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    machine.send_chars("power ")
-    desktop.launcher_until(lambda shown: shown["held"] == ["power"] and "Battery" in shown["rows"])
+    open_power(desktop)
+    desktop.launcher_until(
+        lambda shown: shown["path"] == ["Machine", "Power"] and "Battery" in shown["rows"]
+    )
     assert "Kept From Resting" not in desktop.showing()["rows"], desktop.showing()["rows"]
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
