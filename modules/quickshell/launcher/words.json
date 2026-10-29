@@ -3462,6 +3462,13 @@
       "glyph": "writeMail"
     },
     {
+      "id": "verb:person:page",
+      "in": "people",
+      "name": "Open in {source}",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
       "id": "verb:person:slack",
       "in": "people",
       "name": "Open in Slack",

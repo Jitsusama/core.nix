@@ -12,11 +12,12 @@
 // when a source says, and their address below. Return steps in, as the
 // right arrow does, never calling by itself: inside, every way this
 // machine reaches them, in the sources' order (calling before mail before
-// chat), their next meeting, their Recent, the things lately with them,
-// whether they're a favourite, then each address to copy, last as every
-// Copy is. Each thing is drawn by its own row, so a mail is Mail's row
-// and a meeting the meeting's. Their details, every address and each
-// source's facts, are in the drawer beside the row.
+// chat), their page in each source that keeps one, their next meeting,
+// their Recent, the things lately with them, whether they're a favourite,
+// then each address to copy, last as every Copy is. Each thing is drawn
+// by its own row, so a mail is Mail's row and a meeting the meeting's.
+// Their details, every address and each source's facts, are in the
+// drawer beside the row.
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -133,7 +134,27 @@ Provider {
             side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
-        return acts(person).concat(next(person), recent(person), favourite(person), addresses);
+        return acts(person).concat(pages(person), next(person), recent(person),
+            favourite(person), addresses);
+    }
+
+    // Their page in each source that keeps one and knows them, in the
+    // sources' order, each Open in that source: a look that leaves them as
+    // they are, so after the ways to reach them and before what's with
+    // them (VKCF3Z, a91b2722). It opens in the browser, closing the
+    // launcher.
+    function pages(person) {
+        return sources.map(source => ({ source: source, link: source.page(person) }))
+            .filter(each => each.link !== "" && each.source.called !== "")
+            .map(each => thing({
+                key: `verb:person:page:${each.source.settings.name}`,
+                name: Words.name("verb:person:page", "", { source: each.source.called }),
+                verb: Words.verb("verb:person:page"),
+                glyph: Words.glyph("verb:person:page"),
+                hue: "action",
+                later: true,
+                run: () => Niri.spawn(["xdg-open", each.link])
+            }));
     }
 
     // Whether they're a favourite, a switch, from the first source that

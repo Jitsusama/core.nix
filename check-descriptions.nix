@@ -999,7 +999,8 @@
   '';
   the-launcher-finds-the-people = ''
     People with Tuple as its source lists favourites and those called lately, finds anyone as they
-    stand, calls, joins and favours them, steps in before calling, and never starts a stopped Tuple
+    stand, calls, joins and favours them, steps in before calling, lists a source's page for them
+    after the ways to reach them with its facts in the drawer, and never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in

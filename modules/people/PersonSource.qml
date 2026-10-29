@@ -25,8 +25,12 @@
 // with them, each { at, row }, `at` when it was in milliseconds since the
 // epoch, so People lists every source's newest first. Each row is drawn
 // by that thing's own component (Mail.row, Calendar.row), never one of
-// its own. `favourite` is the switch saying whether they're a favourite,
-// for a source that keeps favourites, or null. Someone it knows by no
+// its own. `page` is the link to their page in the source, for one that
+// keeps a page for each person, or "": People lists it as one row, Open
+// in the source, by the name it's `called`, after the ways to reach them
+// (VKCF3Z, a91b2722), so no source draws a page of its own. `favourite`
+// is the switch saying whether they're a favourite, for a source that
+// keeps favourites, or null. Someone it knows by no
 // address it gives by an `id` of its own instead, a person of its alone,
 // whose stands are keyed "<its name>:<id>", their key. `woken` is asked
 // each time the launcher opens, for a source that only follows what it
@@ -43,6 +47,12 @@ QtObject {
     property var stands: ({})
     // The People place it's a source of, given as it's made.
     property var place: null
+    // Its name as Joel reads it, in Open in it for a person's page.
+    property string called: ""
+
+    function page(person) {
+        return "";
+    }
 
     function acts(person, provider) {
         return [];

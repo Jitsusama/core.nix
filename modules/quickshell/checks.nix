@@ -1694,6 +1694,7 @@ onLinux {
       cp ${../people/Person.js} launcher/Person.js
       cp ${../people/PersonSource.qml} PersonSource.qml
       cp ${../tuple/TupleSource.qml} launcher/people/tuple.qml
+      cp ${../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
