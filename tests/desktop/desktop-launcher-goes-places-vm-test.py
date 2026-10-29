@@ -971,7 +971,7 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -
         # Whatever else the row says holds still while its name moves.
         others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
         assert others == rest, words
-        return named(words)["x"] < start
+        return int(named(words)["x"]) < int(start)
 
     retry(slid, timeout=dt.timedelta(seconds=30))
     # Given up by the selection, it's back at its start at once.
