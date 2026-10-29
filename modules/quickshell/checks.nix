@@ -1035,6 +1035,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Heat.js} launcher/Heat.js
+      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
       cp ${./launcher/Machine.js} launcher/Machine.js
       cp ${./launcher/Machine.qml} launcher/Machine.qml
       cp ${./launcher/Sensors.qml} launcher/Sensors.qml
@@ -1336,6 +1337,11 @@ onLinux {
         Exec=ghost
         NoDisplay=true
       '';
+      # A program whose entry's id isn't its command, as zathura's isn't.
+      viewer = entry "viewer" ''
+        Name=Viewer
+        Exec=viewer %U
+      '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
       mkdir -p launcher share/applications
@@ -1345,6 +1351,7 @@ onLinux {
       cp ${browser} share/applications/browser.desktop
       cp ${pair} share/applications/pair.desktop
       cp ${ghost} share/applications/ghost.desktop
+      cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -1371,9 +1378,11 @@ onLinux {
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
       # The list programs share, as recent-files prints it: the tester by
       # its name and by its id, one file twice, one of no program here, and
-      # one the radio was given, which can't open a file itself.
-      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\n' \
-        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" > $HOME/shared
+      # one the radio was given, which can't open a file itself, and one the
+      # viewer opened, named by its command as recent-files names it.
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\n' \
+        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" \
+        "$HOME/paper.pdf" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       # The browser's sites, as chrome-recent-sites prints them, each
       # reading saying which it is.

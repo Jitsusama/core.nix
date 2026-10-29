@@ -836,13 +836,21 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
         desktop.in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
     )
     desktop.photograph("margin-muted")
-    now_down_to(desktop, "Microphone")
+    # In Now it's the Muted switch, named for whose and saying yes
+    # (docs/design.md: "A switch is one row that keeps its name as it
+    # flips"), never an Unmute It act.
+    now_down_to(desktop, "Microphone Muted")
+    desktop.launcher_until(
+        lambda shown: any(
+            thing["reads"].startswith("Microphone Muted \u00b7 yes") for thing in shown["things"]
+        )
+    )
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     # Unmuting stays in the launcher, which shows it done.
-    stays_showing_it_gone(desktop, "Microphone")
+    stays_showing_it_gone(desktop, "Microphone Muted")
     # Unmuting shows the meter a moment, which the next pictures
     # would hold for as long as the host takes to reach them.
     machine.wait_until_fails(

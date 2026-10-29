@@ -96,6 +96,26 @@ let
     ${prepared.script}
   '';
 
+  # Takes PCR 0 out of the TPM's policy as the machine shuts down with a
+  # firmware update from fwupd waiting (firmware-update.sh), making the
+  # policy again as the boot does, by that unit's own command.
+  firmwareUpdate = pkgs.writeShellApplication {
+    name = "tpm-follows-a-firmware-update";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.efibootmgr
+      pkgs.gnugrep
+      pkgs.gnused
+    ];
+    runtimeEnv = {
+      PCRLOCK = "${config.systemd.package}/lib/systemd/systemd-pcrlock";
+      MAKE_POLICY = pkgs.writeShellScript "make-policy" (
+        lib.last (lib.toList config.systemd.services.systemd-pcrlock-make-policy.serviceConfig.ExecStart)
+      );
+    };
+    text = builtins.readFile ./firmware-update.sh;
+  };
+
   # Every NvPCR this systemd defines, each pointed at /dev/null, which is how
   # systemd reads a definition it should ignore. Taken from the package, so a
   # new one in a later systemd is masked as well.
@@ -241,6 +261,34 @@ in
         );
       };
     };
+
+    # A firmware update changes PCR 0, after which the TPM would refuse the
+    # disk at every boot, and systemd-pcrlock can't make a policy from a
+    # boot its policy doesn't cover. So a machine updating its firmware
+    # through fwupd frees PCR 0 as it shuts down with the update waiting,
+    # and the first boot on the new firmware locks it again. Started at
+    # boot to do nothing, it does its work as it's stopped, after the TPM's
+    # units and the filesystems, since no unit can start during shutdown.
+    # Without measured boot, there's no policy to free.
+    systemd.services.tpm-follows-a-firmware-update =
+      lib.mkIf (config.services.fwupd.enable && config.boot.lanzaboote.measuredBoot.enable)
+        {
+          description = "Free PCR 0 for a firmware update fwupd has waiting";
+          wantedBy = [ "multi-user.target" ];
+          after = [
+            "local-fs.target"
+            "tpm2.target"
+            "systemd-pcrlock-make-policy.service"
+            "sys-firmware-efi-efivars.mount"
+          ];
+          unitConfig.ConditionSecurity = "measured-uki";
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = lib.getExe' pkgs.coreutils "true";
+            ExecStop = lib.getExe firmwareUpdate;
+          };
+        };
 
     # systemd-boot enrols the keys it's given only while the firmware is in
     # setup mode, with Secure Boot off, so they're given only then, and the

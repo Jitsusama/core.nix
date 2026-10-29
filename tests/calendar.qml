@@ -228,7 +228,8 @@ QtObject {
                 guests: [{ name: "Grace Hopper", email: "grace@example.com", answer: "no" },
                     { name: "", email: "alan@example.com", answer: null }],
                 dial: { number: "+1 555-010-0199", pin: "123456789" },
-                attachments: ["Agenda", "Numbers"]
+                attachments: [{ title: "Agenda", link: "https://docs.google.com/document/d/1" },
+                    { title: "Numbers", link: "https://docs.google.com/presentation/d/3" }]
             }), "Untitled"), {
             title: "Standup",
             facts: [
@@ -246,7 +247,7 @@ QtObject {
         check("one file, and a number with no PIN", Calendar.details(meeting("m",
             at(26, 14, 0), at(26, 14, 30), {
                 answer: null, link: null, dial: { number: "+1 555-010-0199", pin: null },
-                attachments: ["Agenda"]
+                attachments: [{ title: "Agenda", link: "https://docs.google.com/document/d/1" }]
             }), "Untitled").facts.slice(1), [
             { label: "Dial In", value: "+1 555-010-0199" },
             { label: "Attachment", value: "Agenda" }

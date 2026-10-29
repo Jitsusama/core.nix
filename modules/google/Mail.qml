@@ -8,8 +8,15 @@ pragma ComponentBehavior: Bound
 // A piece of mail is one thing wherever the launcher shows it: `row`
 // gives its whole row, which the Mail place (Messages.qml), Now's mail
 // (NewMail.qml) and search all take as it is, with its acts in one order,
-// Open, Reply, Archive, Read (a switch) and Copy the Link, and its
-// details in the drawer.
+// Open, Reply, Archive, Read (a switch), Attachments while it carries
+// any, and Copy the Link, and its details in the drawer.
+//
+// Inside Attachments, each file is a row of its own, its kind and size
+// beside it and in the drawer. Return fetches it from Gmail, only then,
+// keeping the launcher while the foot says so, and opens it in the
+// program the desktop opens its kind with, closing the launcher; Save a
+// Copy keeps one in Downloads. A program or a script is only ever saved
+// (VKCF3Z, b077f2d6), its note saying why.
 //
 // `open` opens a piece of mail in Mail through google-opens (opens.sh),
 // keeping one Mail window: with Mail open, it brings that window forward,
@@ -24,8 +31,26 @@ import "Mail.js" as Said
 Singleton {
     id: root
 
-    // Each { id, from, address, to, subject, at, page, body }.
+    // Each { id, from, address, to, subject, at, page, body, attachments },
+    // each attachment { name, kind, size, runs }.
     readonly property var mail: Google.mail
+    // The launcher Mail shows in, as Messages.qml gives it, which a file
+    // closes once it's open, as a program opening anywhere does.
+    property var launcher: null
+    // The file last asked for here, { mail, file, how, since }, until it's
+    // open; `since` tells the program's answer to it from an earlier one.
+    property var fetching: null
+    readonly property var fetched: Google.fetched
+
+    onFetchedChanged: {
+        const asked = root.fetching;
+        if (asked === null || root.stood(asked.mail, asked.file) !== "opened")
+            return;
+        root.fetching = null;
+        Niri.spawn(["xdg-open", root.fetched.path]);
+        if (root.launcher)
+            root.launcher.open = false;
+    }
     // How many in the inbox are unread, or null until Gmail says.
     readonly property var unread: Google.unread
 
@@ -118,8 +143,84 @@ Singleton {
         const listed = [act("verb:mail:open", () => root.open(mail))];
         if (Said.replying(mail) !== "")
             listed.push(act("verb:mail:reply", () => root.reply(mail)));
-        return listed.concat([tidying(mail, "archive", thing), reading(mail, thing),
-            linking(mail, thing)]);
+        listed.push(tidying(mail, "archive", thing), reading(mail, thing));
+        if ((mail.attachments ?? []).length > 0)
+            listed.push(attaching(mail, thing));
+        return listed.concat([linking(mail, thing)]);
+    }
+
+    // Attachments steps in to the files it carries, as a meeting's does
+    // (VKCF3Z, 6abd5c3e), counting them.
+    function attaching(mail, thing) {
+        const key = "verb:mail:attachments";
+        const files = () => mail.attachments.map((file, at) => root.attachment(mail, file, at,
+            thing));
+        return thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            count: String(mail.attachments.length),
+            stays: true,
+            verbs: files,
+            targets: files
+        });
+    }
+
+    // A file's row: Return opens it, or for a program or a script saves a
+    // copy, and the right arrow lists both.
+    function attachment(mail, file, at, thing) {
+        const key = "mail:attachment";
+        const how = file.runs ? "save" : "open";
+        return thing({
+            key: `attachment:${mail.id}:${at}`,
+            what: "file",
+            name: file.name,
+            verb: Words.verb(`verb:attachment:${how}`),
+            glyph: Words.glyph(key),
+            hue: "program",
+            side: Said.sized(file, Words.name(key)),
+            note: file.runs ? Said.fetchedSaid("runs") : "",
+            drawer: Said.carried(file, Words.name(key)),
+            stays: true,
+            state: () => root.said(mail, at),
+            run: () => root.fetch(mail, at, how),
+            verbs: () => root.fileActs(mail, file, at, thing)
+        });
+    }
+
+    // Open, for a file that doesn't run, then Save a Copy.
+    function fileActs(mail, file, at, thing) {
+        const act = how => thing({
+            key: `verb:attachment:${how}`,
+            name: Words.name(`verb:attachment:${how}`),
+            verb: Words.verb(`verb:attachment:${how}`),
+            glyph: Words.glyph(`verb:attachment:${how}`),
+            hue: "action",
+            stays: true,
+            state: () => root.said(mail, at),
+            run: () => root.fetch(mail, at, how)
+        });
+        return (file.runs ? [] : [act("open")]).concat([act("save")]);
+    }
+
+    // How the file `at` on `mail` asked for here stands: "fetching",
+    // "opened", "saved" or why not, or nothing.
+    function stood(id, at) {
+        const asked = root.fetching;
+        if (asked === null || asked.mail !== id || asked.file !== at)
+            return "";
+        return Said.fetchedAs(root.fetched, { id: id }, at, asked.since);
+    }
+
+    function said(mail, at) {
+        return Said.fetchedSaid(root.stood(mail.id, at));
+    }
+
+    function fetch(mail, at, how) {
+        root.fetching = { mail: mail.id, file: at, how: how, since: Date.now() };
+        Google.ask(Said.fetch(mail, at, how));
     }
 
     // Whether it's been marked read: asked here, and no longer held as

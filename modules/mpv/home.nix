@@ -25,7 +25,9 @@
 # the picture's contrast, brightness, gamma and saturation as mpv has them;
 # the launcher lists the
 # ones worth knowing over its window, in their own words. It reports what
-# it plays over MPRIS, so the media keys and the shell's player reach it.
+# it plays over MPRIS, so the media keys and the shell's player reach it,
+# and says each file it plays to the desktop's list of files opened lately
+# (recent-files.lua), so its Recent in the launcher lists them.
 # umpv, the package's second entry, which queues files into one window,
 # stays out of the launcher, where it would sit beside mpv as a second mpv.
 {
@@ -168,6 +170,8 @@ in
   }) keys;
 
   jitsusama.unlisted = [ "umpv" ];
+
+  xdg.configFile."mpv/scripts/recent-files.lua".source = ./recent-files.lua;
 
   programs.mpv = {
     enable = true;

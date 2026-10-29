@@ -8,11 +8,14 @@
 // (open-with's recent-files): its command prints a program and a path a
 // line, a tab between, newest first, and each program is matched to its
 // desktop entry by its id or its window's class, as heuristicLookup does,
-// or else by its name, which is how GTK names a program there. At most
-// nine are kept a program, so 1 to 9 pick one. A source that's `asked`
-// watches nothing and is read only as its program is stepped into, once
-// each time the launcher opens (`ask`), for a program such as Chrome whose
-// history changes with every page.
+// or else by its name, which is how GTK names a program there, or else by
+// its command, which is how recent-files names one (zathura's entry is
+// org.pwmt.zathura), taking the entry the launcher shows rather than a
+// hidden one running the same command (zathura's plugins have one each).
+// At most nine are kept a program, so 1 to 9 pick one. A source that's
+// `asked` watches nothing and is read only as its program is stepped into,
+// once each time the launcher opens (`ask`), for a program such as Chrome
+// whose history changes with every page.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -58,7 +61,9 @@ Scope {
     // The desktop entry a program on the shared list is, by its id.
     function entryOf(program, entries) {
         const entry = DesktopEntries.heuristicLookup(program)
-            ?? entries.find(each => each.name === program);
+            ?? entries.find(each => each.name === program)
+            ?? entries.find(each => !each.noDisplay
+                && (each.command[0] ?? "").split("/").pop() === program);
         return entry?.id ?? "";
     }
 

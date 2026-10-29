@@ -226,6 +226,18 @@ nix run <machine repository>#guide
 It writes the stick as the person, never root, asking polkit for the disk,
 and finishes by saying how to start that machine from it.
 
+The writer keeps the rescue bundle of every stick it writes over, so one
+stick can boot on each of those machines too, not only its own. Ask for it,
+and the guide opens each bundle in turn, with a YubiKey or its passphrase,
+and signs the stick with every one of those machines' keys:
+
+```sh
+nix run <machine repository>#guide -- --every-machine
+```
+
+Until each laptop's own firmware has booted a stick signed so, keep each
+machine's own stick as well.
+
 [1]: installing.md
 [2]: installing.md#when-the-tpm-refuses
 [3]: installing.md#9-make-the-ssh-keys

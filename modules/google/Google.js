@@ -24,7 +24,8 @@ function heard(line) {
         mail: Array.isArray(said.mail) ? said.mail : [],
         unread: typeof said.unread === "number" ? said.unread : null,
         documents: Array.isArray(said.documents) ? said.documents : [],
-        heard: said.heard ?? null
+        heard: said.heard ?? null,
+        fetched: said.fetched ?? null
     };
 }
 

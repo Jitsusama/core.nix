@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::calendar::Meeting;
 use crate::drive::Document;
+use crate::files::Fetched;
 use crate::mail::Mail;
 
 /// How the account stands.
@@ -36,6 +37,8 @@ pub struct State {
     pub documents: Vec<Document>,
     /// When Google last answered, in milliseconds since the epoch.
     pub heard: Option<i64>,
+    /// The file mail carries that was last asked for, as it stands.
+    pub fetched: Option<Fetched>,
 }
 
 impl State {
@@ -64,7 +67,8 @@ mod tests {
         let line = State::without(Standing::SignedOut).line();
         assert_eq!(
             line,
-            "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\"documents\":[],\"heard\":null}\n"
+            "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
+             \"documents\":[],\"heard\":null,\"fetched\":null}\n"
         );
     }
 }

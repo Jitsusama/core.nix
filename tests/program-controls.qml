@@ -171,7 +171,7 @@ ShellRoot {
 
     function ready() {
         if (root.waiting === "the programs"
-                && ["tester", "quiet", "radio", "browser", "pair"]
+                && ["tester", "quiet", "radio", "browser", "pair", "org.example.viewer"]
                     .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 2
@@ -438,6 +438,14 @@ ShellRoot {
             same("a file given to a program that opens none opens as the desktop opens it",
                 JSON.stringify(Niri.spawned), JSON.stringify(["xdg-open", `${root.home}/song.ogg`]));
             same("Media holds only what the player can do", names(radio[3].targets()), "Play");
+            const viewed = program("org.example.viewer").verbs().find(row => row.name === "Recent");
+            same("a program the list names by its command, as recent-files does",
+                viewed ? names(viewed.targets()) : "no Recent", "paper.pdf");
+            same("by its command, the entry shown rather than a hidden one running it too",
+                applications.recents.entryOf("viewer", [
+                    { id: "org.example.viewer-pdf", name: "Viewer PDF", noDisplay: true, command: ["viewer"] },
+                    { id: "org.example.viewer", name: "Viewer", noDisplay: false, command: ["/bin/viewer"] }
+                ]), "org.example.viewer");
             const recording = radio[4];
             same("Sound says it records, with nothing to draw",
                 `${recording.side} ${recording.graph}`, "recording undefined");

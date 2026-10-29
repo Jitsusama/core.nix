@@ -430,13 +430,12 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.answer("what is a fjord?")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
-    # A step in leads with Return's own Copy, then talking it over with
-    # Lighthouse comes before asking in a session of its own.
+    # A step in leads with talking it over with Lighthouse, before asking
+    # in a session of its own, and the copy comes after them.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a Session"]
+        lambda shown: shown["rows"][:3] == ["Talk to Lighthouse", "Ask in a Session", "Copy"]
     )
-    machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
@@ -1678,6 +1677,36 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
+def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
+    """A meeting's attachments open from inside it, a document as its own row."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Attachments comes before Copy the Link, which is always last.
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
+    rows = desktop.showing()["rows"]
+    assert rows[-2] == "Attachments", rows
+    desktop.down_to("Attachments")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan", "Agenda.pdf"])
+    # The plan is the document from Recent, saying who owns it.
+    plan = desktop.showing()["things"][0]
+    assert plan["is"] == "gdoc:plan", plan
+    assert "Ada Lovelace" in plan["reads"], plan
+    desktop.down_to("Agenda.pdf")
+    machine.send_key("ret")
+    agenda = "https://drive.google.com/file/d/agenda/view"
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(agenda)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def now_rows(desktop: Desktop) -> Json:
     """Open the launcher on Now, and give what it shows once it holds Now's rows."""
     desktop.answer("now")
@@ -1939,7 +1968,10 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.launcher_until(lunch_in_full)
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"] == ["Open in Mail", "Reply", "Archive", "Read", "Copy the Link"]
+        lambda shown: (
+            shown["rows"]
+            == ["Open in Mail", "Reply", "Archive", "Read", "Attachments", "Copy the Link"]
+        )
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -1989,6 +2021,52 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
+    desktop: Desktop,
+) -> None:
+    """A file mail carries is fetched only on Return, to open, closing, or to save in Downloads."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    kept = "/run/user/1000/google-files/lunch/menu.pdf"
+    saved = "/home/jitsusama/Downloads/menu.pdf"
+    machine.succeed(f"rm -f {asked} {kept} {saved}")
+
+    def into_the_menu() -> None:
+        """Step into Lunch on Friday's Attachments, its menu selected."""
+        desktop.answer("lunch on friday")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Attachments" in shown["rows"])
+        desktop.down_to("Attachments")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["menu.pdf"])
+
+    into_the_menu()
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "PDF \u00b7 4 B", selected
+    assert selected["drawer"]["facts"] == [
+        {"label": "Kind", "value": "PDF"},
+        {"label": "Size", "value": "4 B"},
+    ], selected
+    # Listing a file fetches nothing; Return fetches it, opens it and closes.
+    machine.fail(f"grep -qs fetch {asked}")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"test -f {kept}", timeout=dt.timedelta(seconds=30))
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Save a Copy keeps one in Downloads, the launcher staying to say so.
+    into_the_menu()
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
+    desktop.down_to("Save a Copy")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"test -f {saved}", timeout=dt.timedelta(seconds=30))
+    desktop.launcher_until(lambda shown: shown["footer"] == "saved in Downloads")
+    desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -2362,6 +2440,18 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
     )
+    # The battery's figure holds more, so Return steps into it, as the right
+    # arrow does, rather than copying and closing, and its copy is listed
+    # last inside (Joel, 2026-10-28).
+    desktop.down_to("Battery")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["path"] == ["Machine", "Power", "Battery"]
+            and shown["rows"][-1:] == ["Copy"]
+        )
+    )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Found by its name from the top, it opens where it lives, and the
@@ -2584,6 +2674,20 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     # weather are, shows as that row wherever it's listed, never as a
     # version a surface drew itself (Joel, 2026-10-28).
     assert said["ownVersions"] == [], "\n".join(said["ownVersions"])
+    # And no step leads with a copy where it holds more, as docs/design.md's
+    # Return rule has it: "Copy is never the first row of a step, unless
+    # it's the only one, and is always the last".
+    copy_first = cast("list[Json]", said["copyFirst"])
+    assert copy_first == [], "Copy leads a step, though it comes last:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in copy_first
+    )
+    # And a row whose Return steps in over an act of its own leads the step
+    # with that act, as docs/design.md's Return rule has it: "its likeliest
+    # act first inside, so Return twice does it".
+    skipped = cast("list[Json]", said["skipped"])
+    assert skipped == [], "A step doesn't lead with the act Return stepped over:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in skipped
+    )
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

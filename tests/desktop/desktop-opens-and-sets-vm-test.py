@@ -1336,10 +1336,11 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.send_key("left")
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
-    # holding its own parts, its hardware address among them.
+    # holding its own parts, its hardware address among them; the figure's
+    # own Copy last (docs/design.md, "Copy ... is always the last").
     desktop.type_in("access", selecting="Access Points")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1", "Copy"])
     desktop.photograph("launcher-wifi-points")
     desktop.step_in("ret")
     desktop.type_in("hardware", selecting="Hardware Address")

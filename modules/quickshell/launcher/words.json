@@ -4125,6 +4125,20 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:attachments",
+      "in": "calendar:meeting",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "calendar:attachment",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
       "id": "verb:calendar:cancel",
       "in": "calendar:meeting",
       "name": "Cancel the Meeting",
@@ -4214,6 +4228,34 @@
       "name": "Archive",
       "verb": "archive",
       "glyph": "archive"
+    },
+    {
+      "id": "verb:mail:attachments",
+      "in": "mail:message",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "mail:attachment",
+      "in": "mail:message",
+      "name": "File",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:open",
+      "in": "mail:attachment",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:save",
+      "in": "mail:attachment",
+      "name": "Save a Copy",
+      "verb": "save",
+      "glyph": "saveCopy"
     },
     {
       "id": "verb:meet:code",

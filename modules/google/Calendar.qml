@@ -213,7 +213,8 @@ Singleton {
     // what's done most after joining, each keeping the launcher, the one
     // he gave noted as his answer; for one Google lets him
     // change, Move the Meeting, to a later time or one typed there, which
-    // asks once, naming who Google tells; and for one Joel holds, Cancel
+    // asks once, naming who Google tells; Attachments, the files on it,
+    // while it has any; and for one Joel holds, Cancel
     // the Meeting, which asks once, since Google mails everyone asked; and
     // last, as copying always is, Copy the Link.
     function acts(meeting, provider) {
@@ -245,11 +246,60 @@ Singleton {
                 rows.push(root.answering(meeting, provider, said));
         if (root.movable(meeting))
             rows.push(root.moving(meeting, provider));
+        if ((meeting.attachments ?? []).length > 0)
+            rows.push(root.attaching(meeting, provider));
         if (meeting.holds)
             rows.push(root.cancelling(meeting, provider));
         if (meeting.link || meeting.page)
             rows.push(root.linking(meeting, provider));
         return rows;
+    }
+
+    // Attachments steps in to the files on it, as mail's does (VKCF3Z,
+    // 6abd5c3e), counting them as Recent does: each of Docs, Sheets or
+    // Slides as the document it is (Drive.qml), the one from Recent when
+    // he's opened it lately, which says when, and any other file a row
+    // opening its link in Google's window.
+    function attaching(meeting, provider) {
+        const key = "verb:calendar:attachments";
+        const files = meeting.attachments;
+        const inside = () => files.map(file => root.attached(file, provider));
+        const row = provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            count: String(files.length),
+            stays: true,
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
+    }
+
+    function attached(file, provider) {
+        if (file.id && file.kind)
+            return Drive.row(Drive.documents.find(document => document.id === file.id) ?? {
+                id: file.id,
+                title: file.title,
+                kind: file.kind,
+                link: file.link,
+                viewed: null,
+                changed: null,
+                owner: null
+            }, provider);
+        const key = "calendar:attachment";
+        return provider.thing({
+            key: `${key}:${file.link}`,
+            name: file.title,
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "program",
+            later: true,
+            run: () => Niri.spawn(["google-opens", file.link])
+        });
     }
 
     // Copy the Link copies its call's link, what others join it by, or,

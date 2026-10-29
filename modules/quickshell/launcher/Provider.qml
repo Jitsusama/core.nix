@@ -299,11 +299,11 @@ Scope {
     }
 
     // A figure holding more, as a CPU's Cores or the weather's Rain: it says
-    // a value, wears its glyph dimmed (Choice.qml's "more"), copies the
-    // value on Return as any figure does, and the right arrow steps into
-    // what `inside` gives, made then (Joel, 2026-10-26: a row showing a
-    // value copies it, everywhere, and the right arrow goes into what it
-    // holds). A setting, as a display's Scale (`offers`), or one with no
+    // a value, wears its glyph dimmed (Choice.qml's "more"), and Return
+    // and the right arrow both step into what `inside` gives, made then,
+    // its copy a row in there after what can be done (Launcher.qml's
+    // copiesOnly; Joel, 2026-10-28: Return steps in where the right arrow
+    // would open, and "the copy at the top of most screens is confusing"). A setting, as a display's Scale (`offers`), or one with no
     // value yet steps in on Return as well, choosing being a setting's act.
     // The launcher asks a row for its verbs at the top and for its targets
     // a step in (enter), so it gives the same rows as both, or a part such

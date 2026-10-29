@@ -37,6 +37,9 @@ Singleton {
     property var documents: []
     // When Google last answered, or null.
     property var heard: null
+    // The file mail carries last asked for, as it stands: { mail, file,
+    // how, asked, path, failed }, or null.
+    property var fetched: null
 
     function hear(line) {
         const said = Said.heard(line);
@@ -48,6 +51,7 @@ Singleton {
         unread = said.unread;
         documents = said.documents;
         heard = said.heard;
+        fetched = said.fetched;
     }
 
     // Everyone the meetings and mail name, by address, for People
@@ -71,6 +75,7 @@ Singleton {
         unread = null;
         documents = [];
         heard = null;
+        fetched = null;
     }
 
     // Asks the program one thing, a line its ask.rs reads. It's running
