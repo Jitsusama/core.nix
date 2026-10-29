@@ -145,6 +145,9 @@ Provider {
             glyph: Words.glyph("person:recent"),
             hue: "person",
             count: String(count),
+            // Stepped into as a program's Recent is: its rows are the
+            // targets it asks which of.
+            ask: "which?",
             nested: true,
             targets: had
         })];

@@ -2422,7 +2422,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Tab moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    for _step in range(2):
+    # Past Programs and People.
+    for _step in range(3):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
