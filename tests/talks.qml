@@ -124,9 +124,9 @@ ShellRoot {
         onTriggered: {
             try {
                 const now = root.threads();
-                expect("focus moving makes no reader again", now <= root.threadsAtFirst + 2,
+                root.expect("focus moving makes no reader again", now <= root.threadsAtFirst + 2,
                     `${root.threadsAtFirst} threads became ${now}`);
-                expect("still only inboxes holding talks", orchestrators.talking.join(" ")
+                root.expect("still only inboxes holding talks", orchestrators.talking.join(" ")
                     === "A003 A117", orchestrators.talking.join(" "));
                 root.waiting = "the talk made since";
                 making.running = true;
