@@ -1678,6 +1678,35 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
+    """A meeting's attachments open from inside it, a document as its own row."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Attachments comes before Copy the Link, which is always last.
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
+    rows = desktop.showing()["rows"]
+    assert rows[-2] == "Attachments", rows
+    desktop.down_to("Attachments")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan", "Agenda.pdf"])
+    # The plan is the document from Recent, saying who owns it.
+    plan = desktop.showing()["things"][0]
+    assert plan["is"] == "gdoc:plan", plan
+    assert "Ada Lovelace" in plan["reads"], plan
+    desktop.down_to("Agenda.pdf")
+    machine.send_key("ret")
+    agenda = "https://drive.google.com/file/d/agenda/view"
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(agenda)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def now_rows(desktop: Desktop) -> Json:
     """Open the launcher on Now, and give what it shows once it holds Now's rows."""
     desktop.answer("now")

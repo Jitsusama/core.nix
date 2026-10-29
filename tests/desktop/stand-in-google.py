@@ -5,8 +5,9 @@ line of JSON, left in google.json beside the socket, which the shell reads, and 
 that connects. The account is ready, unless a test signs it out, with three meetings on Meet
 from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
 minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4,
-with Grace not going; and Planning two hours on, Joel's own with Grace asked. Joel may change
-his own, and Standup on Ada's calendar, which she shares with him. An answer a shell writes is
+with Grace not going and Ada's Quarterly Plan and an agenda attached; and Planning two hours
+on, Joel's own with Grace asked. Joel may change his own, and Standup on Ada's calendar, which
+she shares with him. An answer a shell writes is
 written down in google-asked beside the socket, for the test to read, and taken as Google would
 take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
 that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
@@ -58,6 +59,8 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "organizer": None,
         "guests": [],
         "reminders": [],
+        "attachments": [],
+        "dial": None,
         **more,
     }
 
@@ -85,6 +88,20 @@ class Account:
                 through="ada@example.com",
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
                 guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "no"}],
+                attachments=[
+                    {
+                        "title": "Quarterly Plan",
+                        "link": "https://docs.google.com/document/d/plan/edit",
+                        "id": "plan",
+                        "kind": "document",
+                    },
+                    {
+                        "title": "Agenda.pdf",
+                        "link": "https://drive.google.com/file/d/agenda/view",
+                        "id": None,
+                        "kind": None,
+                    },
+                ],
             ),
             meeting(
                 "planning",

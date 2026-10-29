@@ -4078,6 +4078,20 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:attachments",
+      "in": "calendar:meeting",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "calendar:attachment",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
       "id": "verb:calendar:cancel",
       "in": "calendar:meeting",
       "name": "Cancel the Meeting",
