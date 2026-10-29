@@ -155,11 +155,13 @@ Provider {
     // and everything else that depends on it reads here from (Joel,
     // 2026-10-28: "a location area in now ... tied to what weather and
     // any other geo-conscious options pull from"): its town, else its
-    // position, and how sure it is. Inside, the position, how it was
-    // found, and the time zone the clock keeps, saying so where the place
-    // keeps another. Found by typing its name too, since Now is its home.
-    // The clock following it into another zone is Time's to say, with Put
-    // It Back (Clocks.qml), since the zone is the clock's.
+    // position, and how sure it is, saying so where the place keeps another
+    // zone than the clock. Inside, in the design's order (VKCF3Z's design,
+    // "Location. Inside: Town, How It Knows, Set It by Hand, Find It Again,
+    // Copy"): its town, how it knows, setting it by hand and finding it
+    // again, and Copy, of its position, last. Found by typing its name too,
+    // since Now is its home. The zone, and Put It Back after the clock
+    // followed it, are Time's (Clocks.qml), since the zone is the clock's.
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
@@ -175,7 +177,16 @@ Provider {
         const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
             : differs ? elsewhere : byHand ? within : `${within}, found through GeoClue`;
         const inside = () => {
-            const rows = [];
+            const rows = [copyRow({
+                key: "location:town",
+                name: Words.name("location:town"),
+                side: !here ? side : here.place ?? "not named yet"
+            }), copyRow({
+                key: "location:knows",
+                name: Words.name("location:knows"),
+                side: !here ? "not found yet" : byHand ? "set by hand"
+                    : `GeoClue, ${within}`
+            })];
             // Where GeoClue can't find the laptop, or finds it wrong, Joel
             // names its town, and asks GeoClue again once he's moved on.
             rows.push(thing({
@@ -199,20 +210,19 @@ Provider {
                     stays: true,
                     run: () => Location.findAgain()
                 }));
+            // An act to copy, last as Copy always is, of what the town
+            // alone can't say: where on a map it is.
             if (here)
                 rows.push(copyRow({
-                    key: "location:position",
-                    name: Words.name("location:position"),
+                    key: "verb:location:copy",
+                    name: Words.name("verb:location:copy"),
+                    verb: Words.verb("verb:location:copy"),
+                    glyph: Words.glyph("verb:location:copy"),
                     side: position,
-                    note: within
+                    copy: position,
+                    figure: false,
+                    plain: false
                 }));
-            rows.push(copyRow({
-                key: "location:zone",
-                name: Words.name("location:zone"),
-                side: Location.clockZone,
-                note: elsewhere,
-                hue: differs ? "strong" : "voice"
-            }));
             return rows;
         };
         return thingRow({

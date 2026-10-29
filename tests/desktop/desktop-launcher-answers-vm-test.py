@@ -1234,6 +1234,14 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         )
         location(lambda row: row["side"] == "Lighthouse, Alberta")
         desktop.step_in()
+        # Inside, in the design's order, saying it was set by hand.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Town", "How It Knows", "Set It by Hand", "Find It Again", "Copy"]
+            )
+        )
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        assert "How It Knows \u00b7 set by hand" in reads, reads
         # Found again, the pin goes, and here is what GeoClue says, which
         # in the VM is nothing yet.
         desktop.down_to("Find It Again")
