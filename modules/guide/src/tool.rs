@@ -40,7 +40,9 @@ tools! {
     Chown => "chown", "GUIDE_CHOWN";
     Cryptsetup => "cryptsetup", "GUIDE_CRYPTSETUP";
     Curl => "curl", "GUIDE_CURL";
+    Df => "df", "GUIDE_DF";
     Dmsetup => "dmsetup", "GUIDE_DMSETUP";
+    Du => "du", "GUIDE_DU";
     Env => "env", "GUIDE_ENV";
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
@@ -55,6 +57,7 @@ tools! {
     NixosEnter => "nixos-enter", "GUIDE_NIXOS_ENTER";
     NixosInstall => "nixos-install", "GUIDE_NIXOS_INSTALL";
     Pcrlock => "systemd-pcrlock", "GUIDE_PCRLOCK";
+    Rsync => "rsync", "GUIDE_RSYNC";
     Runuser => "runuser", "GUIDE_RUNUSER";
     Sbctl => "sbctl", "GUIDE_SBCTL";
     Sgdisk => "sgdisk", "GUIDE_SGDISK";

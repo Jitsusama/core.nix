@@ -1,8 +1,10 @@
 // pi at a glance: how many sessions run and how many are working, for the
 // launcher's foot, where the time and the battery are; and a mark in the
 // margin while any wants Joel (Sessions.qml: a question, an approval, or a
-// run stuck without him), What's on saying which and what, with a way to
-// each one's window. With no pi running there's nothing to show.
+// run stuck without him), and a way to each one's window on its notice.
+// Now has no row of its own for it: Waiting on You lists each session that
+// wants Joel, as the session (launcher/WhatsOn.qml's above). With no pi
+// running there's nothing to show.
 import qs
 import QtQuick
 
@@ -33,7 +35,11 @@ Piece {
     // and as many as fit on its notice (Arrivals.qml).
     readonly property var every: wanting.map(session => ({
         glyph: Theme.glyph.windows,
-        name: `Go to ${session.title}`,
+        // Go To, where it goes at its side, as going to anything open is
+        // said everywhere, so the word never changes shape.
+        name: Words.name("verb:agent:switch"),
+        verb: Words.verb("verb:agent:switch"),
+        side: session.title,
         run: () => Sessions.goTo(session)
     }))
     actions: every.slice(0, 3)

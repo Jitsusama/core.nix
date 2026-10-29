@@ -5,8 +5,10 @@
 //! `{"move": {"id": "…", "start": …, "end": …}}` in milliseconds since
 //! the epoch; to mark mail read, `{"read": {"id": "…"}}`, or unread
 //! again, `{"unread": {"id": "…"}}`; to archive it,
-//! `{"archive": {"id": "…"}}`; and to fetch one of the files it carries,
-//! from 0, to open or save, `{"fetch": {"id": "…", "file": 0, "how": "open"}}`.
+//! `{"archive": {"id": "…"}}`; to fetch one of the files it carries,
+//! from 0, to open or save, `{"fetch": {"id": "…", "file": 0, "how": "open"}}`,
+//! a save naming where with `"to": "/…"` once Joel has picked a place;
+//! and to make a new Meet meeting, `{"make": {}}`.
 //!
 //! A line that isn't one of these is let go. The id goes into the path
 //! of a request to Google, so only the letters, digits and underscores
@@ -33,8 +35,17 @@ pub enum Ask {
     Unread { id: String },
     /// Take the mail `id` out of the inbox.
     Archive { id: String },
-    /// Fetch the mail `id`'s file `file` to open or save, as `how` says.
-    Fetch { id: String, file: usize, how: How },
+    /// Fetch the mail `id`'s file `file` to open or save, as `how` says;
+    /// a save goes `to` the path Joel picked, else into Downloads.
+    Fetch {
+        id: String,
+        file: usize,
+        how: How,
+        #[serde(default)]
+        to: Option<String>,
+    },
+    /// Make a new Meet meeting, to copy its link.
+    Make {},
 }
 
 /// What a line asks, or none when it asks nothing this program does.
@@ -42,13 +53,21 @@ pub fn read(line: &str) -> Option<Ask> {
     let ask: Ask = serde_json::from_str(line).ok()?;
     let taken = match &ask {
         Ask::Answer { id, with } => named(id) && *with != Answer::Waiting,
-        Ask::Cancel { id }
-        | Ask::Read { id }
-        | Ask::Unread { id }
-        | Ask::Archive { id }
-        | Ask::Fetch { id, .. } => named(id),
+        Ask::Cancel { id } | Ask::Read { id } | Ask::Unread { id } | Ask::Archive { id } => {
+            named(id)
+        }
+        // Only a save is put somewhere, and only where a path says whole.
+        Ask::Fetch { id, how, to, .. } => {
+            named(id)
+                && to.as_ref().is_none_or(|to| {
+                    *how == How::Save
+                        && std::path::Path::new(to).is_absolute()
+                        && !to.ends_with('/')
+                })
+        }
         // A meeting ends after it starts, and both are after 1970.
         Ask::Move { id, start, end } => named(id) && 0 < *start && start < end,
+        Ask::Make {} => true,
     };
     taken.then_some(ask)
 }
@@ -126,13 +145,20 @@ mod tests {
     }
 
     #[test]
+    fn a_meeting_is_made_by_an_ask_of_nothing_more() {
+        assert_eq!(read(r#"{"make": {}}"#), Some(Ask::Make {}));
+        assert_eq!(read(r#"{"make": {"guests": ["ada@example.com"]}}"#), None);
+    }
+
+    #[test]
     fn a_file_is_fetched_by_its_mail_and_its_place_on_it_to_open_or_save() {
         assert_eq!(
             read(r#"{"fetch": {"id": "19a2b3c4d5e6f708", "file": 1, "how": "save"}}"#),
             Some(Ask::Fetch {
                 id: "19a2b3c4d5e6f708".into(),
                 file: 1,
-                how: How::Save
+                how: How::Save,
+                to: None
             })
         );
         assert_eq!(
@@ -147,6 +173,26 @@ mod tests {
             read(r#"{"fetch": {"id": "../m1", "file": 0, "how": "open"}}"#),
             None
         );
+    }
+
+    #[test]
+    fn a_save_goes_where_a_whole_path_says_and_an_open_goes_nowhere_named() {
+        assert_eq!(
+            read(r#"{"fetch": {"id": "m1", "file": 0, "how": "save", "to": "/home/a/plan.pdf"}}"#),
+            Some(Ask::Fetch {
+                id: "m1".into(),
+                file: 0,
+                how: How::Save,
+                to: Some("/home/a/plan.pdf".into())
+            })
+        );
+        for line in [
+            r#"{"fetch": {"id": "m1", "file": 0, "how": "open", "to": "/home/a/plan.pdf"}}"#,
+            r#"{"fetch": {"id": "m1", "file": 0, "how": "save", "to": "plan.pdf"}}"#,
+            r#"{"fetch": {"id": "m1", "file": 0, "how": "save", "to": "/home/a/"}}"#,
+        ] {
+            assert_eq!(read(line), None, "{line}");
+        }
     }
 
     #[test]

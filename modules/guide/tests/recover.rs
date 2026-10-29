@@ -3,6 +3,7 @@
 //! internal disk and never on the stick, and nothing found on a blank one.
 
 use guide::Machine;
+use guide::recover::copy::{COPIED, CopyHome};
 use guide::recover::{
     AlreadyThere, BootGeneration, CHECKED, CheckSystem, FindMachine, MountSystem, OpenDisk,
     STOPPED, STOPPED_EARLY, already_there, the_machine,
@@ -436,4 +437,183 @@ fn a_filesystem_with_errors_is_mounted_only_to_read() {
             .all(|call| call.contains(",ro,rescue=all,") && !call.contains("compress")),
         "{mounts:#?}"
     );
+}
+
+/// A USB drive as lsblk lists it, its one partition holding `filesystem`.
+fn usb_drive(name: &str, filesystem: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "name": name, "path": format!("/dev/{name}"), "type": "disk",
+        "model": "Flash Drive", "serial": "0123", "size": 64_000_000_000u64,
+        "tran": "usb", "rm": true, "mountpoints": [null],
+        "children": [{
+            "name": format!("{name}1"), "path": format!("/dev/{name}1"), "type": "part",
+            "size": 63_000_000_000u64, "tran": null, "rm": true, "partn": 1,
+            "fstype": filesystem, "mountpoints": [null]
+        }]
+    })
+}
+
+const HOME_FOLDERS: &str = "machine home folders";
+
+/// The VM's opened and mounted machine, its repair stick plugged in,
+/// beside these drives, the machine naming itself `machine`.
+fn with_drives(drives: &[serde_json::Value]) -> StandIn {
+    let mut listing: serde_json::Value =
+        serde_json::from_str(fixture!("lsblk-laid-out.json")).unwrap();
+    listing["blockdevices"]
+        .as_array_mut()
+        .unwrap()
+        .extend(drives.iter().cloned());
+    let mut stand_in = lsblk(&listing.to_string());
+    stand_in
+        .no_file(COPIED)
+        .file("/mnt/etc/hostname", b"machine\n");
+    stand_in
+}
+
+const DU: &[&str] = &["--summarize", "--bytes", "--exclude=.cache", "/mnt/home/"];
+const DF: &[&str] = &["--output=avail", "--block-size=1", "/run/guide/copy"];
+const RSYNC: &[&str] = &[
+    "--recursive",
+    "--times",
+    "--modify-window=2",
+    "--exclude=.cache/",
+    "/mnt/home/",
+    "/run/guide/copy/machine home folders/",
+];
+
+/// A drive with `free` bytes left, chosen for home folders of `needed`
+/// bytes, which rsync copies finishing with `status`.
+fn copying(needed: u64, free: u64, status: i32, said: &str) -> StandIn {
+    let mut stand_in = with_drives(&[usb_drive("sdb", Some("exfat"))]);
+    stand_in
+        .prints(
+            Tool::Mount,
+            &["-o", "X-mount.mkdir", "/dev/sdb1", "/run/guide/copy"],
+            "",
+        )
+        .answers(
+            Program::Tool(Tool::Du),
+            DU,
+            1,
+            &format!("{needed}\t/mnt/home/\n"),
+            "du: cannot read directory '/mnt/home/alice/broken': Input/output error",
+        )
+        .prints(Tool::Df, DF, &format!("Avail\n{free}\n"))
+        .answers(Program::Tool(Tool::Rsync), RSYNC, status, "", said)
+        .prints(Tool::Umount, &["/run/guide/copy"], "");
+    stand_in
+}
+
+fn chosen(at: usize) -> Answers {
+    let mut answers = Answers::new();
+    answers.give("drive", Answer::Chosen(at));
+    answers
+}
+
+#[test]
+fn a_drive_is_chosen_from_those_plugged_in_never_the_stick() {
+    let mut stand_in = with_drives(&[
+        usb_drive("sdb", Some("exfat")),
+        usb_drive("sdc", None),
+        usb_drive("sdd", Some("crypto_LUKS")),
+    ]);
+    let Ok(Standing::Needed { asks }) = CopyHome.observe(&mut stand_in) else {
+        panic!("not asked")
+    };
+    let [
+        Ask::Choose {
+            question, choices, ..
+        },
+    ] = asks.as_slice()
+    else {
+        panic!("{asks:?}")
+    };
+    // The stick's partitions are FAT too, and never offered.
+    assert_eq!(
+        choices,
+        &["Flash Drive, 64 GB, serial 0123, its exfat partition"]
+    );
+    assert!(question.contains(HOME_FOLDERS), "{question}");
+}
+
+#[test]
+fn with_no_drive_plugged_in_it_says_to_plug_one_in() {
+    let mut stand_in = with_drives(&[]);
+    let standing = CopyHome.observe(&mut stand_in);
+    assert!(
+        matches!(&standing, Ok(Standing::Blocked { remedy, .. }) if remedy.contains("plug in a USB drive")),
+        "{standing:?}"
+    );
+}
+
+#[test]
+fn the_home_folders_are_copied_leaving_caches_and_the_drive_unmounted() {
+    let mut stand_in = copying(3_000_000_000, 50_000_000_000, 0, "");
+    CopyHome.run(&mut stand_in, &chosen(0)).unwrap();
+    let order: Vec<&str> = stand_in
+        .calls
+        .iter()
+        .filter_map(|call| call.split_whitespace().next())
+        .filter(|program| program.ends_with("mount") || ["du", "df", "rsync"].contains(program))
+        .collect();
+    assert_eq!(
+        order,
+        ["mount", "du", "df", "rsync", "umount"],
+        "{:#?}",
+        stand_in.calls
+    );
+    let Ok(Standing::Done { evidence }) = CopyHome.observe(&mut stand_in) else {
+        panic!("not done")
+    };
+    assert!(
+        evidence.contains(HOME_FOLDERS) && evidence.contains("can come out"),
+        "{evidence}"
+    );
+    assert!(!evidence.contains("couldn't be read"), "{evidence}");
+}
+
+#[test]
+fn a_drive_too_small_copies_nothing() {
+    let mut stand_in = copying(5_000_000_000, 1_000_000_000, 0, "");
+    let refused = CopyHome.run(&mut stand_in, &chosen(0));
+    assert!(
+        matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("need 5 GB") && why.contains("1 GB free")),
+        "{refused:?}"
+    );
+    assert!(
+        !stand_in.calls.iter().any(|call| call.starts_with("rsync")),
+        "{:#?}",
+        stand_in.calls
+    );
+    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
+    assert_eq!(stand_in.holds(COPIED), None);
+}
+
+#[test]
+fn what_rsync_could_not_read_is_kept_beside_the_copy() {
+    let said =
+        "rsync: [sender] read errors mapping \"/mnt/home/alice/notes\": Input/output error (5)";
+    let mut stand_in = copying(3_000_000_000, 50_000_000_000, 23, said);
+    CopyHome.run(&mut stand_in, &chosen(0)).unwrap();
+    assert_eq!(
+        stand_in.holds("/run/guide/copy/machine home folders, not copied.txt"),
+        Some(said.as_bytes())
+    );
+    let evidence = String::from_utf8_lossy(stand_in.holds(COPIED).unwrap()).into_owned();
+    assert!(evidence.contains("couldn't be read"), "{evidence}");
+}
+
+#[test]
+fn a_copy_rsync_gives_up_on_is_no_copy() {
+    let mut stand_in = copying(
+        3_000_000_000,
+        50_000_000_000,
+        11,
+        "rsync: write failed: No space left on device (28)",
+    );
+    let refused = CopyHome.run(&mut stand_in, &chosen(0));
+    assert!(refused.is_err(), "{refused:?}");
+    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
+    assert_eq!(stand_in.holds(COPIED), None);
 }

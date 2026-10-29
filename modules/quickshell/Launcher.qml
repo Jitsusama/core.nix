@@ -3383,9 +3383,14 @@ Scope {
                                 // The same rows read again leave a glide under
                                 // way; a letter typed never glides, even onto
                                 // the same rows.
+                                // A glide under way is aimed again where its
+                                // row now is, should a row above it have
+                                // changed height, so it never ends off it.
                                 if (same && root.typed === list.typedWas) {
                                     if (!picking.running)
                                         list.pick(false);
+                                    else if (picking.to !== list.fillAt(root.current))
+                                        list.pick(true);
                                     return;
                                 }
                                 list.typedWas = root.typed;
@@ -3402,9 +3407,15 @@ Scope {
                             // way at once to rows made afresh.
                             property real pickY: 0
 
+                            // Where the fill sits on a row, counted from
+                            // the first row's top as rowTop is; the fill
+                            // adds the list's origin, below.
+                            function fillAt(at) {
+                                return list.rowTop(at) + list.rowHeight(at) - Theme.space.xxxl;
+                            }
+
                             function pick(glide) {
-                                const to = list.rowTop(root.current) + list.rowHeight(root.current)
-                                    - Theme.space.xxxl;
+                                const to = list.fillAt(root.current);
                                 picking.stop();
                                 if (glide && to !== list.pickY) {
                                     Report.say(`glides ${Math.round(list.pickY)} to ${Math.round(to)}`);
@@ -3480,7 +3491,14 @@ Scope {
                                 z: -1
                                 width: list.width
                                 height: Theme.space.xxxl
-                                y: list.pickY
+                                // The rows sit from the list's origin, which
+                                // moves off 0 as rows above come or go while
+                                // the list is scrolled, so the fill does too,
+                                // at once, as its row does. Counted from 0, it
+                                // stayed where its row had been, under
+                                // another row (Joel, 2026-10-29: the
+                                // highlight sat off the selected text).
+                                y: list.originY + list.pickY
                                 visible: root.current >= 0 && root.current < root.matches.length
                                 radius: Theme.inner
                                 color: Qt.alpha(Theme.selection, Theme.floating.selection)

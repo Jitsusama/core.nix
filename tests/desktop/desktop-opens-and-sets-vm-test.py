@@ -281,7 +281,7 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
+    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
     assert rows == home, rows
     # A page down stops on the last.
     machine.send_key("pgdn")
@@ -427,6 +427,86 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
     machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
     machine.fail(opened_with)
     machine.succeed(f"rm {portal_png}")
+
+
+# A program asks the portal for a file to open, and then to save, in a
+# folder, as Chrome and Slack do, and the launcher chooses it rather than
+# GTK's dialog: it opens in that folder, its path the program's title and
+# then the folder, every folder on the way held above it. What's typed
+# finds a file there and Return opens it; saving, Return saves as the name
+# the program gave; and Escape chooses nothing. The portal hands the
+# program each path picked, and each ask's socket goes once it's answered.
+
+
+def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Desktop) -> None:
+    """The launcher chooses a file to open or save, for the portal."""
+    machine = desktop.machine
+    notes = f"/home/{desktop.account}/chosen-notes"
+    chose = "/run/user/1000/portal-chose"
+    sockets_gone = "! ls /run/user/1000/open-with/*.sock"
+    desktop.as_account(f"mkdir -p {notes} && touch {notes}/plan.md {notes}/list.md")
+    # The files, then each folder from /home down to the notes.
+    held = 1 + notes.count("/")
+    # The shell's watchers, each an inotify of its own, counted before
+    # any ask: each folder held is read and watched only while it's asked.
+    watchers = (
+        "ls -l /proc/$(systemctl --user show quickshell -p MainPID --value)/fd"
+        " | grep -c inotify; true"
+    )
+    watching = int(desktop.as_account(watchers))
+
+    def choose(mode: str, name: str = "") -> None:
+        """Ask the portal for a file in the notes, and wait until the launcher holds them."""
+        title = "Save the Notes" if mode == "save" else "Open the Notes"
+        machine.succeed(f"rm -f {chose}")
+        desktop.as_account(
+            "systemd-run --user --collect --unit=choose-a-file"
+            f" {desktop.values['choose_a_file']} {mode} {notes} {name}"
+        )
+        desktop.launcher_until(
+            lambda shown: (
+                shown["path"] == [title, "~/chosen-notes"]
+                and len(shown["held"]) == held
+                and shown["selected"] is not None
+            ),
+            timeout=timedelta(seconds=60),
+        )
+
+    def answered(*lines: str) -> None:
+        """Wait until the portal said these lines, and the ask's socket went."""
+        said = "\\n".join(lines)
+        machine.wait_until_succeeds(
+            f'[ "$(cat {chose})" = "$(printf \'{said}\')" ]', timeout=timedelta(seconds=60)
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+        machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
+
+    choose("open")
+    desktop.photograph("file-chooser")
+    machine.send_chars("plan")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "plan.md")
+    machine.send_key("ret")
+    answered("0", f"file://{notes}/plan.md")
+
+    choose("save", "saved.md")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "saved.md")
+    machine.send_key("ret")
+    answered("0", f"file://{notes}/saved.md")
+
+    choose("open")
+    machine.send_key("esc")
+    answered("1")
+    desktop.as_account(f"rm -r {notes}")
+    # Three asks later, the shell watches no more than it did before them.
+    try:
+        machine.wait_until_succeeds(
+            desktop.in_session(f'[ "$({watchers})" -le {watching} ]'),
+            timeout=timedelta(seconds=30),
+        )
+    except AssertionError:
+        after = desktop.as_account(watchers).strip()
+        kept = f"the shell holds {after} inotify handles after three asks, {watching} before"
+        raise AssertionError(kept) from None
 
 
 def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Desktop) -> None:

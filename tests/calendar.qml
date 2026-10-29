@@ -4,11 +4,12 @@
 // which Meet call a window is and whose, from meetings like the google
 // program's, run in Qt's own JavaScript engine,
 // the one the shell runs it in. The
-// `the-shell-tells-the-next-meeting` check copies Calendar.js beside this
+// `the-shell-tells-the-next-meeting` check copies Calendar.js and Meet.js beside this
 // file and runs `qml -platform offscreen calendar.qml`. Times are made on
 // the local clock, so the cases hold in whatever zone the check runs in.
 import QtQuick
 import "Calendar.js" as Calendar
+import "Meet.js" as Meet
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -239,6 +240,7 @@ QtObject {
                 { label: "Dial In", value: "+1 555-010-0199, PIN 123456789" },
                 { label: "Your Answer", value: "maybe" },
                 { label: "Holds It", value: "Ada Lovelace" },
+                { label: "Answers", value: "1 not going, 1 not answered" },
                 { label: "Asked", value: "Grace Hopper, not going; alan@example.com" },
                 { label: "Attachments", value: "Agenda, Numbers" }
             ],
@@ -293,6 +295,17 @@ QtObject {
             "",
             ""
         ]);
+        // How those asked answered, counted in an invitation's order.
+        const answering = answers => Calendar.details(meeting("m", at(26, 14, 0), at(26, 14, 30),
+            { answer: null, link: null, guests: answers.map((answer, n) => ({
+                name: `Guest ${n}`, email: "", answer: answer })) }), "Untitled").facts
+            .find(fact => fact.label === "Answers")?.value ?? "";
+        check("how those asked answered, counted", [
+            ["waiting", "yes", "no", "yes", "maybe", "yes", null],
+            ["yes", "yes", "yes"],
+            ["no"],
+            []
+        ].map(answering), ["3 going, 1 maybe, 1 not going, 2 not answered", "3 going", "", ""]);
         check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
             '{"answer":{"id":"abc_1","with":"no"}}\n');
         check("the line cancelling one", Calendar.cancel(meeting("abc_1", now, now)),
@@ -398,7 +411,7 @@ QtObject {
             ["nothing", "", ""]
         ];
         for (const [what, typed, meant] of codes)
-            check(`a Meet code ${what}`, Calendar.meetCode(typed), meant);
+            check(`a Meet code ${what}`, Meet.meetCode(typed), meant);
 
         // Which Meet call a window is, by its app id: [what, the app id, its code]
         const windows = [
@@ -413,7 +426,7 @@ QtObject {
             ["a window with no app id", null, ""]
         ];
         for (const [what, appId, code] of windows)
-            check(what, Calendar.meetCall(appId), code);
+            check(what, Meet.meetCall(appId), code);
         const onMeet = meeting("on meet", now, now + 30 * minute);
         const pasted = meeting("pasted", now, now + 30 * minute, {
             link: "https://meet.google.com/abc-defg-hijk"
@@ -421,13 +434,13 @@ QtObject {
         const another = meeting("another", now, now + 30 * minute, {
             link: "https://meet.google.com/klm-nopq-rst?authuser=1"
         });
-        check("a call's meeting", (Calendar.calledBy([pasted, onMeet], "abc-defg-hij") ?? {}).id,
+        check("a call's meeting", (Meet.calledBy([pasted, onMeet], "abc-defg-hij") ?? {}).id,
             "on meet");
         check("a call's meeting by a link that says more",
-            (Calendar.calledBy([onMeet, another], "klm-nopq-rst") ?? {}).id, "another");
-        check("a call on no meeting", Calendar.calledBy([onMeet], "xyz-abcd-efg"), null);
+            (Meet.calledBy([onMeet, another], "klm-nopq-rst") ?? {}).id, "another");
+        check("a call on no meeting", Meet.calledBy([onMeet], "xyz-abcd-efg"), null);
         check("no call on a meeting with no link",
-            Calendar.calledBy([meeting("room", now, now, { link: null })], ""), null);
+            Meet.calledBy([meeting("room", now, now, { link: null })], ""), null);
 
         for (const failure of failures)
             console.warn(failure);

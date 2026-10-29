@@ -40,6 +40,22 @@ let
   answering = linux { realm = "personal"; };
   apart = linux { };
 
+  both = {
+    realm = "home";
+    links = [ "one" ];
+    alsoJoins.other.links = [ "two" ];
+  };
+  bothLinux = (linux both).systemd.user.services;
+  otherNode = toString bothLinux.mycelium-other.Service.ExecStart;
+  otherApart = [
+    "--state"
+    "/home/someone/.local/state/mycelium/other"
+    "--mesh"
+    "/home/someone/.local/state/pi/agentic-harness.pi/realms/other/mesh-workflow"
+    "--steer"
+    "/home/someone/.local/state/pi/agentic-harness.pi/realms/other/steer"
+  ];
+
   declaring = {
     reach = [ "internet" ];
     probes.home = "192.0.2.1:53";
@@ -66,10 +82,11 @@ in
   # runs it dialling nothing, since its node still holds its sessions and
   # starts what others ask of it, and one in no realm has neither a realm
   # nor a node. On Linux the node signs in with the agents' key, which asks
-  # nothing.
+  # nothing; on a Mac what it starts signs commits with that key, since
+  # nobody at another machine can touch this one's sensor.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links don't each get dialled in its realm, Linux's node signs in with a key that may ask for a PIN, a Mac's node starts sessions whose commits wait on its sensor, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && linuxAgent == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
@@ -81,6 +98,7 @@ in
           ]
           ++ ssh
         && (mac links).launchd.agents.mycelium.enable
+        && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
         && lib.hasInfix "--realm personal node" (
           toString answering.systemd.user.services.mycelium.Service.ExecStart
         )
@@ -90,6 +108,38 @@ in
         && answering.home.sessionVariables.MYCELIUM_REALM == "personal"
         && !(apart.home.sessionVariables ? MYCELIUM_REALM)
         && lib.any (package: (package.pname or "") == "mycelium") apart.home.packages
+      );
+
+  # A machine joining a further realm runs a node of its own for it, apart
+  # as another machine's would be: its own state, and the mesh and steer
+  # folders the harness keeps for a realm that isn't home. Its links sign in
+  # with that realm's own key, never the agents' key every session reaches,
+  # and the home realm's node is as it was. Its pis know which realm is home.
+  mycelium-keeps-each-realm-apart =
+    holds "mycelium-keeps-each-realm-apart"
+      "A further realm's node shares the home realm's state, mesh, steer folders or key, the home realm's node changes, or a pi isn't told its home realm."
+      (
+        lib.hasInfix (lib.escapeShellArgs (
+          [
+            "--realm"
+            "other"
+            "node"
+          ]
+          ++ otherApart
+          ++ [
+            "--ssh"
+            "two"
+          ]
+        )) otherNode
+        && bothLinux.mycelium-other.Service.Environment == [ "SSH_AUTH_SOCK=%t/other-link.sock" ]
+        && bothLinux.mycelium-other.Unit.Wants == [ "other-link.socket" ]
+        && lib.hasSuffix "--realm home node --ssh one" (toString bothLinux.mycelium.Service.ExecStart)
+        && bothLinux.mycelium.Service.Environment == [ "SSH_AUTH_SOCK=%t/agent-signing.sock" ]
+        && lib.hasSuffix "/.local/state/pi/agentic-harness.pi/realms/other/steer --ssh two" (
+          toString (mac both).launchd.agents.mycelium-other.config.ProgramArguments
+        )
+        && (linux both).home.sessionVariables.PI_HOME_REALM == "home"
+        && (linux both).home.sessionVariables.MYCELIUM_REALM == "home"
       );
 
   # A machine that declares what its node can't measure has it written where

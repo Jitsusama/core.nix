@@ -290,6 +290,17 @@ in
           };
         };
 
+    # Measured boot holds sysinit.target back while systemd-pcrlock makes
+    # the disk's policy, two to three seconds, longest on new firmware. In
+    # that wait every unit asked for pulls sysinit.target's wants in again,
+    # and nixpkgs's wrappers unit, a oneshot that doesn't stay active, ran
+    # five times in a second, hit its start limit and was left failed,
+    # though each run worked. It runs once a boot now, as a unit that sets
+    # the machine up should; a switch still runs it again whenever the
+    # wrappers change, since its script's store path changes the unit.
+    systemd.services.suid-sgid-wrappers.serviceConfig.RemainAfterExit =
+      lib.mkIf config.boot.lanzaboote.measuredBoot.enable true;
+
     # systemd-boot enrols the keys it's given only while the firmware is in
     # setup mode, with Secure Boot off, so they're given only then, and the
     # machine restarts for it. A firmware that already enforces, as one

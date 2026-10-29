@@ -10,6 +10,13 @@
 // heavy work it has running or waiting, what it works on and what it
 // hears. What runs, and
 // how each is doing, is Sessions.qml's.
+//
+// Sessions on the realm's other machines are in the same list, drawn the
+// same, their machine leading the note (VKCF3Z, 2026-10-29, G8 of
+// mycelium's plan): those wanting Joel first, then those working, then
+// those listening, this machine's first in each, then the others by when
+// each last changed. Go To joins one elsewhere through its node; one on a
+// machine out of reach stays, dimmed, saying so, and does nothing.
 import qs
 import Quickshell
 import QtQuick
@@ -26,11 +33,39 @@ Provider {
     // helpers and spend are its parts there.
     collection: Words.collection("agents")
 
-    // Those that truly want Joel first, then the one used last.
-    readonly property var all: Sessions.wanting
-        .concat(Sessions.running.filter(session => !Sessions.wanting.includes(session)))
-        .map(session => made(session))
+    // Those that truly want Joel first, then those working, then those
+    // listening, each in the order Sessions keeps: this machine's, the one
+    // used last first, then the others, the one that changed last first.
+    readonly property var all: {
+        const rank = session => Sessions.wanting.includes(session) ? 0
+            : SessionRow.stands(session.presence) === "busy" ? 1 : 2;
+        return Sessions.running.map((session, at) => ({ session: session, at: at }))
+            .sort((a, b) => rank(a.session) - rank(b.session) || a.at - b.at)
+            .map(one => made(one.session));
+    }
     onAllChanged: changedTo(all)
+
+    // What's said of a session elsewhere, in the vocabulary's words.
+    function elsewhere(key, session, why) {
+        return String((Words.of("agents:machine").said ?? {})[key] ?? "")
+            .replace("{machine}", session.machine).replace("{why}", why ?? "");
+    }
+
+    // A session elsewhere that couldn't be joined or told is said in a
+    // notice, since nothing opens to show it.
+    Connections {
+        target: Sessions
+
+        function onUnjoined(session) {
+            Niri.spawn(["notify-send", "--app-name=Sessions", "--", session.title,
+                provider.elsewhere(session.reachable ? "unheld" : "unreached", session)]);
+        }
+
+        function onUnsteered(session, why) {
+            Niri.spawn(["notify-send", "--app-name=Sessions", "--", session.title,
+                provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why)]);
+        }
+    }
 
     // Where a session's first job waiting for its turn stands in line.
     function inLine(presence) {
@@ -53,6 +88,12 @@ Provider {
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const spent = presence && presence.session && !Quiet.sharing
             ? SpendWatch.sessions[presence.session] ?? "" : "";
+        const note = asks && presence.wants.said ? presence.wants.said
+            : presence && presence.worksOn ? presence.worksOn : "";
+        // Elsewhere, its machine leads the note; out of reach, it's all
+        // the note says, and the row does nothing.
+        const where = session.here ? ""
+            : elsewhere(session.reachable ? "on" : "away", session);
         return member({
             key: `agent:${session.address}`,
             kind: SessionRow.KIND,
@@ -61,7 +102,7 @@ Provider {
             // one row left of them (Launcher.qml's compose).
             is: Sessions.isOf(session),
             rich: 2,
-            verb: "switch",
+            verb: "go",
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since
             // a member keeps its words as given.
@@ -70,8 +111,9 @@ Provider {
             hue: "program",
             side: [session.address, doing, spent !== "" ? `${spent} today` : "", session.folder]
                 .filter(part => part !== "").join(" \u00b7 "),
-            note: asks && presence.wants.said ? presence.wants.said
-                : presence && presence.worksOn ? presence.worksOn : "",
+            note: !session.reachable ? where
+                : [where, note].filter(part => part !== "").join(" \u00b7 "),
+            gone: !session.reachable,
             later: true,
             run: () => Sessions.goTo(session),
             verbs: () => provider.verbs(session, quest, spent),
@@ -86,6 +128,7 @@ Provider {
             spent: spent,
             started: presence.owner?.startedAt ? started(presence.owner.startedAt) : "",
             address: session.address,
+            machine: session.machine,
             named: id => Words.name(`agents:${id}`)
         });
     }
@@ -94,7 +137,7 @@ Provider {
     property string told: ""
 
     // A session's own acts, in the one order every session keeps
-    // (SessionRow.js), each steering it through its inbox but Switch; an
+    // (SessionRow.js), each steering it through its inbox but Go To; an
     // orchestrator's row offers the same ones (Orchestrators.qml).
     function sessionActs(session) {
         const act = (id, fields) => thing(Object.assign({
@@ -121,7 +164,7 @@ Provider {
             resume: () => act("resume", { run: steered("resume") }),
             stop: () => act("stop", { run: steered("stop") })
         };
-        const windowed = !!(session.window || session.kitty);
+        const windowed = !!(session.window || session.kitty || (!session.here && session.attach));
         return SessionRow.acts(SessionRow.stands(session.presence), windowed)
             .map(id => made[id]());
     }
@@ -209,7 +252,7 @@ Provider {
 
     readonly property var start: {
         const quests = () => (source("quests")?.everything() ?? [])
-            .filter(row => row.unfinished && row.verb !== "switch");
+            .filter(row => row.unfinished && row.verb !== "go");
         const orchestrators = () => source("orchestrators")?.startable ?? [];
         const choice = (id, note, rows) => thingRow({
             key: `agents:start:${id}`,
@@ -232,10 +275,64 @@ Provider {
         });
     }
 
-    things: [start]
+    // The sessions the last boot's end took away (Sessions.qml's
+    // lastBoot), one row after the sessions running while any are left,
+    // and gone on the boot they ran in or once put off (VKCF3Z's design,
+    // [fce929da]). Now shows this same row among what else wants Joel
+    // (WhatsOn.qml). Return steps in with Reopen Them All first, so
+    // Return twice brings every one back, each in its own window and
+    // folder; then each one, as a closed session, reopening just it; then
+    // Not Now. Its count is in its note, never its name, which would
+    // change as he reopens them.
+    readonly property var lastBoot: {
+        const lost = Sessions.lastBoot;
+        if (lost.length === 0)
+            return null;
+        const act = (id, fields) => thing(Object.assign({
+            key: `verb:agents:last-boot:${id}`,
+            verb: Words.verb(`verb:agents:last-boot:${id}`),
+            name: Words.name(`verb:agents:last-boot:${id}`),
+            glyph: Words.glyph(`verb:agents:last-boot:${id}`),
+            hue: "action"
+        }, fields));
+        const home = Sessions.home;
+        const homely = folder => folder === home || folder.startsWith(`${home}/`)
+            ? `~${folder.slice(home.length)}` : folder;
+        // In its own folder only; when that's gone, a notice says so and
+        // nothing opens, never one in the home folder instead.
+        const gone = String((Words.of("verb:agents:last-boot:one").said ?? {}).gone ?? "");
+        const reopen = one => Sessions.reopen(one, cwd => Sessions.sayUnopened(
+            String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd))));
+        const closed = one => thing({
+            key: `agents:last-boot:${one.id}`,
+            name: String(one.title || one.address || one.id),
+            // One held elsewhere says where, as a session there does.
+            side: one.machine !== undefined ? provider.elsewhere("on", one) : homely(one.cwd),
+            verb: Words.verb("verb:agents:last-boot:one"),
+            glyph: Theme.glyph.agent,
+            hue: "program",
+            later: true,
+            run: () => reopen(one)
+        });
+        return thingRow({
+            key: "agents:last-boot",
+            name: Words.name("agents:last-boot"),
+            side: ((Words.of("agents:last-boot").said ?? {})[lost.length === 1 ? "one" : "many"]
+                ?? "").replace("{count}", lost.length),
+            glyph: Words.glyph("agents:last-boot"),
+            hue: "action"
+        }, () => [act("all", {
+            later: true,
+            run: () => lost.forEach(one => reopen(one))
+        })].concat(lost.map(closed), [act("notNow", {
+            run: () => Sessions.putOffLastBoot()
+        })]));
+    }
+
+    things: lastBoot ? [lastBoot, start] : [start]
 
     function everything() {
-        return all.concat([start]);
+        return all.concat(lastBoot ? [lastBoot] : [], [start]);
     }
 
     function counted() {

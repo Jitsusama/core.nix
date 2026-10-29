@@ -96,14 +96,29 @@ opens it with the YubiKey's PIN or the recovery key, never the TPM, and
 checks its filesystem with `btrfs check --readonly`, which changes nothing.
 Then it mounts everything under /mnt: as the machine does when the check is
 clean, or only to read, with every rescue btrfs has, when it finds errors.
-Copy off what matters from the root shell before any repair, since writing
-to a damaged filesystem can lose more of it. Then it offers, coming back
-after each:
+Copy off what matters before any repair, since writing to a damaged
+filesystem can lose more of it. Then it offers, coming back after each:
 
 - a root shell inside the installed system;
+- the home folders copied onto a USB drive (below);
 - which generation boots next;
 - the boot loader installed again, signed with the machine's keys;
 - a lost YubiKey replaced (below).
+
+## Copying the Home Folders Off
+
+Any USB drive with an exFAT, FAT, ext4, btrfs or XFS partition takes them;
+nothing on it is removed or formatted. If the guide said it runs from
+memory, the stick can come out to make a port for the drive. The guide says
+how much room they need before it copies anything, and stops if the drive
+hasn't got it.
+
+They go into a folder named for the machine, such as "laptop home folders",
+leaving out every folder named .cache, which programs make again. A file
+that can't be read is skipped rather than stopping the copy, and what rsync
+said of each is kept beside the folder, in "laptop home folders, not
+copied.txt". Copying again carries on where the last copy stopped. The guide
+unmounts the drive when it's done, so it can come out at once.
 
 ## A YubiKey Is Lost
 

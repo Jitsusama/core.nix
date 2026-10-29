@@ -103,7 +103,7 @@ Provider {
             // its Agents row says more of (Launcher.qml's compose).
             is: session ? session.is : `quest:${quest.id}`,
             rich: 1,
-            verb: session ? "switch" : "open",
+            verb: session ? "go" : "open",
             name: quest.title || quest.id,
             unfinished: isOpen(quest),
             glyph: Theme.glyph[marks[quest.status] ?? "pending"],
@@ -146,13 +146,18 @@ Provider {
         const homely = quest.folder === home || quest.folder.startsWith(`${home}/`)
             ? `~${quest.folder.slice(home.length)}` : quest.folder;
         const parent = quest.parent ? quests.find(other => other.id === quest.parent) : null;
+        // Start a Session says where its Return starts one, and, where the
+        // realm has another machine, the right arrow steps into each.
+        const choosing = !session && Sessions.choosesMachine;
         return [thing({
             key: session ? "verb:quest:switch" : "verb:quest:open",
             verb: Words.verb(session ? "verb:quest:switch" : "verb:quest:open"),
             name: Words.name(session ? "verb:quest:switch" : "verb:quest:open"),
             glyph: Words.glyph(session ? "verb:quest:switch" : "verb:quest:open"),
             hue: "action",
+            note: choosing ? "this machine" : "",
             later: true,
+            verbs: choosing ? () => provider.machines(quest) : null,
             run: () => provider.go(quest)
         })].concat([
             fact("id", quest.id),
@@ -162,6 +167,39 @@ Provider {
             parent ? fact("parent", parent.title || parent.id, parent.id) : null,
             fact("folder", homely, "where a session starts", quest.folder)
         ].filter(row => row !== null));
+    }
+
+    // Where a session on `quest` may start, as Start a Session's right
+    // arrow shows it (VKCF3Z and Y2YBTS, 2026-10-29): this machine first,
+    // where its Return starts one, then each other machine the realm
+    // links, then Wherever It Fits, which the node places. One that can't
+    // take a session now stays in its place, dimmed, its note saying why,
+    // and does nothing: a gone row says no key and its Return runs
+    // nothing (Launcher.qml's keysFor and run), though it keeps its run.
+    function machines(quest) {
+        const on = one => thing({
+            key: `quest:${quest.id}:start:${one.name}`,
+            verb: "start",
+            name: one.name,
+            glyph: Theme.glyph.agent,
+            hue: "action",
+            note: one.cannot || one.rather || (one.name === Sessions.machine ? "this machine" : ""),
+            gone: one.cannot !== "",
+            later: true,
+            run: () => Sessions.startOn(one.name, quest.id, quest.folder)
+        });
+        const anywhere = thing({
+            key: `quest:${quest.id}:start:anywhere`,
+            verb: Words.verb("verb:quest:start-anywhere"),
+            name: Words.name("verb:quest:start-anywhere"),
+            glyph: Words.glyph("verb:quest:start-anywhere"),
+            hue: "action",
+            note: Sessions.fits !== "" ? `on ${Sessions.fits}` : "no machine can take one now",
+            gone: Sessions.fits === "",
+            later: true,
+            run: () => Sessions.startOn("", quest.id, quest.folder)
+        });
+        return Sessions.places.map(on).concat([anywhere]);
     }
 
     function search(typed) {
@@ -227,10 +265,15 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open)
+            if (provider.launcher.open) {
                 provider.look();
+                Sessions.lookAround();
+            }
         }
     }
 
-    Component.onCompleted: look()
+    Component.onCompleted: {
+        look();
+        Sessions.lookAround();
+    }
 }

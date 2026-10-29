@@ -13,9 +13,15 @@
 // viewfinder (modules/camera), and are left out where there's no camera.
 // Each waits for the launcher to be gone, so it's never in the picture.
 // Whether a camera is open, and each camera's parts, are the cameras' own
-// (Cameras.qml). After its own rows come what's done with screenshots once
-// they're taken, the programs' own rows (`lodged`).
+// (Cameras.qml). After its own rows comes its Recent: what was taken
+// lately, screenshots, recordings and the camera's pictures and videos in
+// one list, newest first, nine at most, each the file it is wherever it
+// shows (Files.qml), a picture shown in the drawer, read each time Capture
+// is stepped into and never otherwise (VKCF3Z and Y2YBTS, 2026-10-29).
+// Then what's done with screenshots once they're taken, the programs' own
+// rows (`lodged`).
 import Quickshell
+import Quickshell.Io
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -214,6 +220,76 @@ Provider {
 
     onFixedChanged: changed()
 
+    // Where what's taken goes: niri's screenshots (modules/niri), the
+    // recordings (Recorder.qml), and the camera's (modules/camera).
+    readonly property string home: Quickshell.env("HOME")
+    readonly property var takenIn: [`${home}/Pictures/Screenshots`, `${home}/Videos/Recordings`]
+        .concat(settings.camera ? [`${home}/Pictures/Camera`, `${home}/Videos/Camera`] : [])
+    // What was taken lately, newest first.
+    property var taken: []
+
+    // Stepped into, so what was taken is read again. It's read once as the
+    // shell starts too, so the first step-in draws Recent where it stays
+    // rather than pushing the rows below it down once find answers.
+    function opened() {
+        taking.running = true;
+    }
+
+    Component.onCompleted: taking.running = true
+
+    // find's lines, a file's time and its path each, newest kept.
+    function tookAll(lines) {
+        taken = lines.split("\n").filter(line => line.includes("\t"))
+            .map(line => ({ at: Number(line.slice(0, line.indexOf("\t"))),
+                path: line.slice(line.indexOf("\t") + 1) }))
+            .sort((a, b) => b.at - a.at).slice(0, 9).map(each => each.path);
+        changed();
+    }
+
+    Process {
+        id: taking
+
+        command: ["find"].concat(provider.takenIn, ["-maxdepth", "1", "-type", "f", "-not",
+            "-name", ".*", "-printf", "%T@\\t%p\\n"])
+        stdout: StdioCollector {
+            onStreamFinished: provider.tookAll(text)
+        }
+    }
+
+    // Capture's Recent: a part stepped into, as a program's Recent is
+    // (Applications.qml). It always stands, saying none while nothing's
+    // taken, since a row that came once the first capture was read would
+    // go below the rows already drawn (Steady.kept), after the screenshot's
+    // own rows rather than before them.
+    readonly property var recent: [entering(member({
+            key: "capture:recent",
+            name: Words.name("capture:recent"),
+            glyph: Words.glyph("capture:recent"),
+            hue: "program",
+            count: taken.length === 0 ? String((Words.of("capture:recent").said ?? {}).none ?? "")
+                : String(taken.length),
+            ask: "which?",
+            empty: Words.of("capture:recent").empty
+        }), () => provider.taken.map(path => provider.takenRow(path)))]
+
+    // One thing taken: Return opens it in its program, the picture viewer
+    // or mpv, and a picture is shown in the drawer.
+    function takenRow(path) {
+        const key = "verb:path:file:open";
+        const act = thing({
+            key: `${key}:${path}`,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            run: () => Niri.spawn(["xdg-open", path])
+        });
+        const row = Files.file(path, thing, [act]);
+        if (/\.(png|jpe?g|webp)$/i.test(path))
+            row.drawer = { title: row.name, picture: path };
+        return row;
+    }
+
     // A row's words, its name's and those beside it, made ready once.
     property var said: ({})
 
@@ -231,7 +307,7 @@ Provider {
     function search(typed) {
         const words = Fuzzy.words(typed);
         const found = [];
-        for (const row of fixed.concat(windows, lodged())) {
+        for (const row of fixed.concat(windows, recent, lodged())) {
             const m = matched(row, words);
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
@@ -243,11 +319,11 @@ Provider {
         return { rows: kept.map(f => f.row), grade: finest };
     }
 
-    // What it captures, then the screenshots taken, to edit the newest or
-    // look through them all (collection-order.md), each its own
-    // program's.
+    // What it captures, then what it took lately, then the screenshots
+    // taken, to edit the newest or look through them all
+    // (collection-order.md), each its own program's.
     function everything() {
-        return fixed.concat(lodged());
+        return fixed.concat(recent, lodged());
     }
 
     function counted() {

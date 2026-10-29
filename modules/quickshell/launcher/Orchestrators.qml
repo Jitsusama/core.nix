@@ -18,8 +18,16 @@
 // every orchestrator listed: his words, and beside them how it went,
 // in one word that changes in place (delivered, reading, replying,
 // replied, not delivered). The right arrow reads one: his words, how it
-// went, and the reply below. The newest 20 are read, and watched while the
-// shell runs, so a reply being written is seen as it's written.
+// went, and the reply below. The newest 20 are read, the newest of them
+// watched while the shell runs, so a reply being written is seen as it's
+// written, and all read again as the launcher opens.
+//
+// Only an inbox that holds talks is read: which do is listed once as the
+// shell starts and again as the launcher opens, by one command over the
+// steer folder. Each reader costs Qt a thread and a file watcher of its
+// own, and on 2026-10-29 a reader for every session and orchestrator,
+// made again whenever a window was focused, ran the shell out of files
+// once a few dozen sessions had started, crashing it every half minute.
 pragma ComponentBehavior: Bound
 import qs
 import Qt.labs.folderlistmodel
@@ -37,11 +45,15 @@ Provider {
 
     // As the harness wrote them, or none before it has.
     property var listed: []
-    // Where each quest starts a session, and the last session it had, as
-    // the quest index says. Not named `starts`, which the launcher asks a
-    // source for as the function saying which row it opens on.
+    // Where each quest starts a session, as the quest index says. Not
+    // named `starts`, which the launcher asks a source for as the function
+    // saying which row it opens on.
     property var startFolders: ({})
-    property var lastSessions: ({})
+    // The session the quest index names to resume each quest by: its
+    // newest that was last on that quest, named only while its folder is
+    // there. Never the index's `sessions`, which can hold one long dead
+    // whose pid was used again (Joel's Aquifer orchestrator, 2026-10-29).
+    property var resumable: ({})
 
     readonly property string harness: Sessions.state
     readonly property string inboxes: Sessions.inboxes
@@ -253,18 +265,46 @@ Provider {
     // again each time.
     property int looked: 0
 
+    // The inboxes holding talks, by address, as the steer folder was last
+    // listed.
+    property var holdingTalks: []
+
     // Whose talks are read: every orchestrator listed and every session
-    // running, each once. Said as one line first, which changes only when
-    // who it is does: the sessions running are made again as any window
-    // changes, and a new list each time would make every inbox's readers
-    // again before their files had loaded.
+    // running whose inbox holds talks, each once, in the order of their
+    // addresses. Said as one line first, which changes only when who it
+    // is does: the sessions running are made again and reordered as any
+    // window is focused, and a new list each time would make every
+    // inbox's readers again.
     readonly property string talkingSaid: {
         const addresses = listed.map(one => String(one.address ?? "").toUpperCase())
             .concat(Sessions.running.map(session => String(session.address).toUpperCase()));
         return addresses.filter((address, at) => address !== "" && addresses.indexOf(address)
-            === at).join(" ");
+            === at && holdingTalks.includes(address)).sort().join(" ");
     }
     readonly property var talking: talkingSaid === "" ? [] : talkingSaid.split(" ")
+
+    // Lists which inboxes hold talks, unless it already is.
+    function lookForTalks() {
+        if (!talkFolders.running)
+            talkFolders.running = true;
+    }
+
+    Process {
+        id: talkFolders
+        command: ["sh", "-c",
+            'for d in "$1"/*/replies; do [ -d "$d" ] && basename "${d%/replies}"; done; true',
+            "talks", provider.inboxes]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const found = text.split("\n").filter(line => line !== "")
+                    .map(line => line.toUpperCase()).sort();
+                if (found.join(" ") !== provider.holdingTalks.join(" "))
+                    provider.holdingTalks = found;
+            }
+        }
+    }
+
+    Component.onCompleted: lookForTalks()
 
     // Each orchestrator not running as a row whose Return starts its
     // session, for Agents' Start a Session, named as its own row is.
@@ -282,19 +322,30 @@ Provider {
             }));
     }
 
-    // A closed orchestrator resumed where it left off: its quest's last
-    // session, in the folder that session ran in (Joel, 2026-10-28: "i
-    // want to be able to easily restart an orchestrator that is closed,
-    // continuing from where it left off"); one with no session yet is
-    // started on its quest, in the folder the quest index says a new one
-    // starts in, never the quest's own.
+    // A closed orchestrator resumed where it left off: the session the
+    // quest index names to resume, in the folder
+    // that session ran in (Joel, 2026-10-28: "i want to be able to easily
+    // restart an orchestrator that is closed, continuing from where it
+    // left off"); one with no session yet is started on its quest, in the
+    // folder the quest index says a new one starts in, never the quest's
+    // own. When the session's folder is gone, it starts afresh in that
+    // start folder, never the home folder, and a notice says so.
     function start(one) {
-        const folder = startFolders[one.quest] ?? Sessions.home;
-        const last = lastSessions[one.quest];
-        if (last)
-            Sessions.resume(last, one.quest, folder);
-        else
-            Sessions.start(one.quest, folder);
+        const last = resumable[one.quest];
+        if (!last) {
+            Sessions.start(one.quest, startFolders[one.quest] ?? Sessions.home);
+            return;
+        }
+        const name = one.short || one.title || one.address;
+        const said = Words.of("verb:orchestrator:resume").said ?? {};
+        const home = Sessions.home;
+        const homely = folder => folder === home || folder.startsWith(`${home}/`)
+            ? `~${folder.slice(home.length)}` : folder;
+        const which = (cwd, startedIn) => startedIn !== "" ? "afresh"
+            : cwd === "" ? "unfound" : "nowhere";
+        Sessions.resume(last, one.quest, startFolders[one.quest] ?? "", (cwd, startedIn) =>
+            Sessions.sayUnopened(name, String(said[which(cwd, startedIn)] ?? "")
+                .replace("{cwd}", homely(cwd)).replace("{folder}", homely(startedIn))));
     }
 
     function everything() {
@@ -317,8 +368,8 @@ Provider {
         return { rows: found.map(f => f.row), grade: 0 };
     }
 
-    // Each orchestrator's talks: its replies folder listed, and its newest
-    // files read and watched.
+    // Each inbox's talks: its replies folder listed, its newest files
+    // read, and the newest watched.
     Instantiator {
         model: provider.talking
 
@@ -347,12 +398,27 @@ Provider {
                 model: inbox.newest
 
                 delegate: FileView {
+                    id: talkFile
+
                     required property var modelData
+                    required property int index
                     path: String(modelData)
-                    watchChanges: true
+                    // The newest alone, where a reply is being written.
+                    watchChanges: index === 0
                     printErrors: false
                     onFileChanged: reload()
                     onLoaded: provider.heardTalk(inbox.address, path, text())
+
+                    // Read again as the launcher opens, the newest's
+                    // watch aside, since an older talk may still be
+                    // answered.
+                    readonly property Connections reopened: Connections {
+                        target: provider
+
+                        function onLookedChanged() {
+                            talkFile.reload();
+                        }
+                    }
                 }
             }
         }
@@ -369,6 +435,7 @@ Provider {
                 orchestrators.reload();
                 questIndex.reload();
                 provider.looked += 1;
+                provider.lookForTalks();
             }
         }
     }
@@ -398,18 +465,18 @@ Provider {
         onLoaded: {
             try {
                 const out = {};
-                const last = {};
+                const resumes = {};
                 for (const quest of JSON.parse(text()).quests ?? []) {
                     if (quest.start)
                         out[quest.id] = quest.start;
-                    if ((quest.sessions ?? []).length > 0)
-                        last[quest.id] = quest.sessions[quest.sessions.length - 1];
+                    if (typeof quest.resume?.id === "string")
+                        resumes[quest.id] = quest.resume.id;
                 }
                 provider.startFolders = out;
-                provider.lastSessions = last;
+                provider.resumable = resumes;
             } catch (e) {
                 provider.startFolders = {};
-                provider.lastSessions = {};
+                provider.resumable = {};
             }
         }
     }

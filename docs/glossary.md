@@ -93,6 +93,7 @@ first in the queue and conclude.
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
+| reopen | opening a closed session again where it left off, in its own window and folder | restore | `restore.json` |
 | waiting on | what a session can't go on without: Joel, an answer, or its turn in the queue | | |
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
 | peer | another session on the same machine, reached over the mesh | instance, swarm | |
@@ -100,6 +101,7 @@ first in the queue and conclude.
 | node | mycelium's program on a machine, carrying its mesh to the machines it links with | | `mycelium node` |
 | link | two machines' nodes joined, carrying the mesh's messages and sessions between them | | `mycelium link`, `jitsusama.mycelium.links` |
 | realm | a set of machines whose nodes link, such as Joel's work or personal ones, with nothing crossing between realms | | `jitsusama.mycelium.realm` |
+| link key | the key a realm's node signs in to the realm's other machines with, held apart from every other realm's | | `jitsusama.linkKeys`, `<realm>-link` |
 | address | a peer's own group on the mesh, six letters | | |
 | group | a set of peers a mesh message goes to, such as an orchestration's | | `#quest/<id>` |
 | question | a mesh message asking peers for an answer | mesh question | `intent: question` |
@@ -200,7 +202,7 @@ or a copy, can be opened, copied or forgotten.
 | field | where Joel types, at the top of every place | | |
 | back | going up one place, to the row he was on | | the ← key |
 | action | what a row can do: the same set for every row of its kind | verb | |
-| go to | the action moving to something already open, such as a window or a session | | |
+| go to | the action moving to something already open, such as a window or a session, a row named Go To with where at its side | | |
 | open | the action starting something, such as a program or a file | | |
 | turn on | the action starting a setting, a radio or a light | | |
 | turn off | the action stopping a setting, a radio or a light | | |
@@ -234,6 +236,7 @@ off.
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
+| offload builder | a builder elsewhere lent to the machine while its queue holds builds back, and given back once idle | remote builder | `nix-offload` |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |
 | chosen | of a setting's choices, the one it's at, whoever picked it: Joel, the charger or a profile | | |
@@ -257,6 +260,7 @@ off.
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
 | VM | a computer run as a program on this one | virtual machine | libvirt, QEMU |
+| Linux builder | a VM on a Mac that builds what Linux machines run, so the Mac's work builds there | | `darwinModules.linux-builder`, `darwin.linux-builder-vz` |
 | container | a program run apart from the machine, with its own files | | Podman |
 
 ## Network
@@ -300,6 +304,7 @@ now, and keep or stop keeping a folder.
 | ledger | the disk guard's record of what held each filesystem over two days, so a holder says how much it grew | history | `ledger.json`, a holder's `grew` |
 | keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
 | clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe | `disk-guard clear` |
+| footprint | what files take on a filesystem, which compressed can be far less than their size | | `disk-guard footprint`, `Request::Footprint` |
 
 ## Keyboards
 

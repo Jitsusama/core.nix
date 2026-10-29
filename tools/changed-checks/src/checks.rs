@@ -24,12 +24,16 @@ pub const WEIGHT: usize = 40;
 /// What a VM test weighs against an ordinary check.
 const VM_TEST: usize = 4;
 
-/// How many chunks are evaluated at once. Measured on core's 305 checks, a
-/// comparison's evaluations kept about 1.6 of the machine's 16 cores busy
-/// and peaked at 5.8 GB one at a time, so two at once take about half as
-/// long and hold about twice that, well short of the 24 GB that evaluating
-/// every check in one held.
+/// How many chunks are evaluated at once, at most. Measured on core's 305
+/// checks, a comparison's evaluations kept about 1.6 of the machine's 16
+/// cores busy and peaked at 5.8 GB one at a time, so two at once take about
+/// half as long and hold about twice that, well short of the 24 GB that
+/// evaluating every check in one held. The second begins only while memory
+/// isn't stalling (see pressure.rs).
 pub const AT_ONCE: usize = 2;
+
+/// How long a chunk that may not begin yet waits before asking again.
+const WAIT_TO_BEGIN: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// What a check's name may hold beside letters and digits, so a name is
 /// never read as Nix code.
@@ -109,12 +113,17 @@ pub fn chunks(names: &[String]) -> Vec<&[String]> {
     chunks
 }
 
-/// Do `work` on each item, `at_once` at a time, answering in the items'
-/// order. Once one fails, no item not yet begun is begun, since the first
-/// failure in order is what the run reports.
+/// Do `work` on each item, up to `at_once` at a time, answering in the
+/// items' order. Once one fails, no item not yet begun is begun, since the
+/// first failure in order is what the run reports.
+///
+/// Only one item at a time is sure to go: each further one begins only
+/// while `may_begin` says so, and otherwise waits and asks again. So a run
+/// always makes progress, one item at a time while memory stalls.
 pub fn each_at_once<T, R, E>(
     items: &[T],
     at_once: usize,
+    may_begin: impl Fn() -> bool + Sync,
     work: impl Fn(&T) -> Result<R, E> + Sync,
 ) -> Result<Vec<R>, E>
 where
@@ -126,9 +135,19 @@ where
     let failed = AtomicBool::new(false);
     let done: Mutex<Vec<Option<Result<R, E>>>> = Mutex::new(items.iter().map(|_| None).collect());
     thread::scope(|scope| {
-        for _ in 0..at_once.clamp(1, items.len().max(1)) {
-            scope.spawn(|| {
+        for worker in 0..at_once.clamp(1, items.len().max(1)) {
+            let (next, failed, done, work, may_begin) = (&next, &failed, &done, &work, &may_begin);
+            scope.spawn(move || {
                 while !failed.load(Ordering::Relaxed) {
+                    // Every worker but the first waits for room to begin, and
+                    // stops waiting once nothing is left for it.
+                    if worker > 0 && !may_begin() {
+                        if next.load(Ordering::Relaxed) >= items.len() {
+                            break;
+                        }
+                        thread::sleep(WAIT_TO_BEGIN);
+                        continue;
+                    }
                     let at = next.fetch_add(1, Ordering::Relaxed);
                     let Some(item) = items.get(at) else {
                         break;
@@ -178,28 +197,44 @@ fn is_name(text: &str) -> bool {
 /// Give the derivations kept at the path, or evaluate and keep them.
 ///
 /// They're written beside the path and moved onto it, so a run stopped
-/// halfway keeps nothing rather than half.
+/// halfway keeps nothing rather than half. Evaluating holds a lock beside
+/// them, so a run that wants a commit another run is evaluating waits for
+/// its result rather than evaluating it too: main moves between most
+/// runs, and each new base cost every run that met it a whole evaluation.
 pub fn kept(
     path: &Path,
     evaluate: impl FnOnce() -> Result<Derivations, String>,
 ) -> Result<Derivations, String> {
     let unreadable = |error: &dyn std::fmt::Display| format!("{}: {error}", path.display());
-    match fs::read_to_string(path) {
-        Ok(text) => return serde_json::from_str(&text).map_err(|error| unreadable(&error)),
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-            return Err(unreadable(&error));
-        }
-        Err(_) => {}
+    if let Some(found) = read_kept(path)? {
+        return Ok(found);
     }
-    let found = evaluate()?;
-    let writing = path.with_extension("writing");
     if let Some(folder) = path.parent() {
         fs::create_dir_all(folder).map_err(|error| unreadable(&error))?;
     }
+    let lock = fs::File::create(path.with_extension("lock")).map_err(|error| unreadable(&error))?;
+    lock.lock().map_err(|error| unreadable(&error))?;
+    if let Some(found) = read_kept(path)? {
+        return Ok(found);
+    }
+    let found = evaluate()?;
+    let writing = path.with_extension("writing");
     let text = serde_json::to_string(&found).map_err(|error| unreadable(&error))?;
     fs::write(&writing, text).map_err(|error| unreadable(&error))?;
     fs::rename(&writing, path).map_err(|error| unreadable(&error))?;
     Ok(found)
+}
+
+/// Give the derivations kept at the path, or none when nothing is kept.
+fn read_kept(path: &Path) -> Result<Option<Derivations>, String> {
+    let unreadable = |error: &dyn std::fmt::Display| format!("{}: {error}", path.display());
+    match fs::read_to_string(path) {
+        Ok(text) => serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|error| unreadable(&error)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(unreadable(&error)),
+    }
 }
 
 /// Give where a commit's derivations for a system are kept, under the
@@ -326,8 +361,46 @@ mod tests {
     #[test]
     fn work_done_at_once_is_answered_in_its_items_order() {
         let items: Vec<usize> = (0..7).collect();
-        let answered = each_at_once(&items, AT_ONCE, |item| Ok::<_, ()>(item * 10));
+        let answered = each_at_once(&items, AT_ONCE, || true, |item| Ok::<_, ()>(item * 10));
         assert_eq!(answered, Ok(vec![0, 10, 20, 30, 40, 50, 60]));
+    }
+
+    #[test]
+    fn while_memory_stalls_one_item_goes_at_a_time_and_every_one_is_done() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let items: Vec<usize> = (0..5).collect();
+        let (running, most) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let answered = each_at_once(
+            &items,
+            AT_ONCE,
+            || false,
+            |item| {
+                let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                most.fetch_max(now, Ordering::SeqCst);
+                thread::sleep(std::time::Duration::from_millis(20));
+                running.fetch_sub(1, Ordering::SeqCst);
+                Ok::<_, ()>(*item)
+            },
+        );
+        assert_eq!(answered, Ok(vec![0, 1, 2, 3, 4]));
+        assert_eq!(most.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn with_room_the_items_go_at_once() {
+        use std::sync::Barrier;
+        // Both items wait on each other, so this ends only if both run at once.
+        let together = Barrier::new(2);
+        let answered = each_at_once(
+            &[0, 1],
+            AT_ONCE,
+            || true,
+            |item| {
+                together.wait();
+                Ok::<_, ()>(*item)
+            },
+        );
+        assert_eq!(answered, Ok(vec![0, 1]));
     }
 
     #[test]
@@ -336,6 +409,7 @@ mod tests {
         let answered = each_at_once(
             &items,
             1,
+            || true,
             |item| {
                 if *item >= 3 { Err(*item) } else { Ok(*item) }
             },
@@ -345,7 +419,7 @@ mod tests {
 
     #[test]
     fn no_work_is_no_answers() {
-        let answered = each_at_once(&[] as &[usize], AT_ONCE, |item| Ok::<_, ()>(*item));
+        let answered = each_at_once(&[] as &[usize], AT_ONCE, || true, |item| Ok::<_, ()>(*item));
         assert_eq!(answered, Ok(vec![]));
     }
 
@@ -387,6 +461,37 @@ mod tests {
         kept(&path, || Ok(derivations(&[("a", Some("a.drv"))]))).expect("kept");
         let found = kept(&path, || panic!("it evaluated again"));
         assert_eq!(found, Ok(derivations(&[("a", Some("a.drv"))])));
+    }
+
+    #[test]
+    fn runs_wanting_one_commit_at_once_evaluate_it_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let path = folder("at-once").join("abc-x86_64-linux.json");
+        let evaluations = AtomicUsize::new(0);
+        let found: Vec<_> = thread::scope(|scope| {
+            let runs: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        kept(&path, || {
+                            evaluations.fetch_add(1, Ordering::SeqCst);
+                            // Long enough that the other runs arrive while
+                            // this one holds the lock.
+                            thread::sleep(std::time::Duration::from_millis(200));
+                            Ok(derivations(&[("a", Some("a.drv"))]))
+                        })
+                    })
+                })
+                .collect();
+            runs.into_iter()
+                .map(|run| run.join().expect("ran"))
+                .collect()
+        });
+        assert_eq!(evaluations.load(Ordering::SeqCst), 1);
+        assert!(
+            found
+                .iter()
+                .all(|found| *found == Ok(derivations(&[("a", Some("a.drv"))])))
+        );
     }
 
     #[test]

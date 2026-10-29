@@ -16,7 +16,8 @@
 //! nobody signed in, the file is looked at, and Google never asked.
 //!
 //! The shell asks it to answer an invitation, to mark mail read or
-//! archive it, and to fetch a file mail carries, on the same socket
+//! archive it, to fetch a file mail carries, and to make a Meet meeting
+//! for its link, which Joel's sign-in must grant, on the same socket
 //! (ask.rs), which it does at once, telling every shell what changed. A
 //! file to open is kept in google-files beside the socket, in the
 //! session's runtime folder; one to save goes to Downloads
@@ -113,9 +114,13 @@ fn main() -> ExitCode {
                     Some(Ask::Archive { id }) => watch.tidy(&id, Tidy::Archive, &now),
                     // Said as it starts, so the shell can say so while
                     // Gmail answers, then again once it's done.
-                    Some(Ask::Fetch { id, file, how }) => {
-                        socket.say(watch.fetching(&id, file, how, &now).line());
+                    Some(Ask::Fetch { id, file, how, to }) => {
+                        socket.say(watch.fetching(&id, file, how, to, &now).line());
                         watch.fetch(&places, &now)
+                    }
+                    Some(Ask::Make {}) => {
+                        socket.say(watch.making(&now).line());
+                        watch.make(&now)
                     }
                     None => continue,
                 };

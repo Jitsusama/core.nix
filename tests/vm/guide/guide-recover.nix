@@ -1,9 +1,10 @@
 # A machine recovered from a repair stick, its data left in place: the
 # stick, written by the guide with nothing of the machine's on it, boots
 # into the guide, which finds the machine's disk by core's layout, opens it
-# with a YubiKey's PIN, mounts every subvolume and the boot partition, sets which
-# generation boots next, replaces a lost YubiKey, and hands over a root
-# shell inside the installed system. The machine's disk is one disko's
+# with a YubiKey's PIN, mounts every subvolume and the boot partition,
+# copies the home folders onto a USB drive, sets which generation boots
+# next, replaces a lost YubiKey, and hands over a root shell inside the
+# installed system. The machine's disk is one disko's
 # image builder laid out and installed, as vm-secure-boot-installs builds
 # its own; its two YubiKeys are enrolled from the stick before the guide
 # starts, as a machine's own install leaves them. The tests are
@@ -25,6 +26,24 @@ let
     "lost"
     "new"
   ];
+
+  # A USB drive to copy the home folders onto, as a person's often is: one
+  # exFAT partition in a GPT, made on its own and put in place at 1 MiB.
+  drive =
+    pkgs.runCommand "copy-drive"
+      {
+        nativeBuildInputs = [
+          pkgs.exfatprogs
+          pkgs.gptfdisk
+        ];
+      }
+      ''
+        truncate -s 64M partition.raw
+        mkfs.exfat partition.raw
+        truncate -s 66M $out
+        sgdisk --new=1:2048:133119 --typecode=1:0700 $out
+        dd if=partition.raw of=$out bs=1M seek=1 conv=notrunc status=none
+      '';
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "guide-recover";
@@ -85,6 +104,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           "-device qemu-xhci,id=xhci"
           "-drive if=none,id=stick,format=qcow2,file=$STICK_IMAGE"
           "-device usb-storage,bus=xhci.0,drive=stick,bootindex=0"
+          "-drive if=none,id=drive,format=qcow2,file=$DRIVE_IMAGE"
+          "-device usb-storage,bus=xhci.0,drive=drive"
           "-device canokey,id=key,bus=xhci.0,file=$KEYS_DIR/kept"
           "-device usb-kbd,bus=xhci.0"
         ];
@@ -112,6 +133,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           qemuImg = "${qemu}/bin/qemu-img";
           image = "${nodes.machine.system.build.diskoImages}/main.qcow2";
           stick = "${written}/stick.raw";
+          drive = "${drive}";
           keys = "${keys}";
           inherit pin recovery;
         }

@@ -118,7 +118,7 @@ Provider {
         const spent = cost(run.participants);
         const row = member({
             key: `run:${run.id}`,
-            verb: session ? "switch" : "copy",
+            verb: session ? "go" : "copy",
             name: named(run),
             live: live,
             glyph: Theme.glyph[mark(states)],

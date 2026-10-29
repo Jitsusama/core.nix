@@ -236,6 +236,10 @@ onLinux {
         '') files
       )}
       mv quickshell qs
+      # Slack's source for People is installed only where a machine brings
+      # Slack, as no example does, so it's read here as if one had.
+      mkdir -p qs/launcher/people
+      cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${
@@ -600,6 +604,22 @@ onLinux {
       touch $out
     '';
 
+  # A long name slides at one reading pace between soft ends, as
+  # tests/reading.qml says, in Qt's own engine.
+  a-long-name-reads-at-one-pace =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-long-name-reads-at-one-pace" { } ''
+      cp ${../../tests/reading.qml} reading.qml
+      cp ${./Reading.js} Reading.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml reading.qml
+      touch $out
+    '';
+
   # The askpass prompt says who's asking for what, for each program's words,
   # as tests/askpass.qml says, in Qt's own engine.
   the-askpass-says-who-asks-for-what =
@@ -787,6 +807,14 @@ onLinux {
         function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
         property var started: null
         function start(quest, folder) { started = [quest, folder]; }
+        readonly property string machine: "alpha"
+        property var places: []
+        property string fits: ""
+        readonly property bool choosesMachine: places.length > 1
+        property int lookedAround: 0
+        function lookAround() { lookedAround += 1; }
+        property var startedOn: null
+        function startOn(on, quest, folder) { startedOn = [on, quest, folder]; }
       '';
       quests = pkgs.callPackage ./pi-helper.nix {
         name = "pi-quests";
@@ -810,6 +838,58 @@ onLinux {
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       # At home here, so a folder here reads from ~.
       export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
+
+  # The orchestrators' talks (tests/talks.qml), over 120 inboxes with 120
+  # sessions running, two inboxes holding talks: only those are read, and
+  # focus moving makes no reader again, so the shell's threads, and with
+  # them its file watchers, stay bounded.
+  the-launcher-reads-talks-boundedly =
+    let
+      niri = singleton "Niri.qml" ''
+        property int revision: 0
+        function spawn(command) {}
+        function act(request) {}
+      '';
+      sessions = singleton "Sessions.qml" ''
+        readonly property string home: Quickshell.env("HOME")
+        readonly property string state: Quickshell.env("PWD") + "/state"
+        readonly property string inboxes: state + "/steer"
+        property var running: Array.from({ length: 120 },
+          (_, at) => ({ address: "A" + String(at).padStart(3, "0") }))
+        property var present: ({})
+        function resume(id, quest, folder, gone) {}
+        function start(quest, folder) {}
+        function sayUnopened(title, body) {}
+      '';
+      delivered = words: ''{"stage":"delivered","at":"2026-10-29T10:00:00Z","text":"${words}"}'';
+    in
+    pkgs.runCommandLocal "the-launcher-reads-talks-boundedly" { } ''
+      mkdir -p launcher state/quest-workflow
+      for at in $(seq -w 0 119); do mkdir -p state/steer/A$at; done
+      mkdir state/steer/A003/replies state/steer/A117/replies
+      echo '${delivered "wrap up the release"}' > state/steer/A003/replies/t-1.jsonl
+      echo '${delivered "check the lights"}' > state/steer/A117/replies/t-2.jsonl
+      echo '{"orchestrators":[{"address":"A003","quest":"QEST-A","title":"A"}]}' \
+        > state/quest-workflow/orchestrators.json
+      echo '{"quests":[]}' > state/quest-workflow/quests.json
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Orchestrators.qml} launcher/Orchestrators.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/talks.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -841,9 +921,12 @@ onLinux {
         function settle(each, how) {}
         function go(each) {}
       '';
-      # Where an item is done names its session, which needs none here.
+      # Where an item is done names its session, and Waiting on You lists
+      # the sessions wanting Joel, none of which it needs here.
       sessions = singleton "Sessions.qml" ''
         property var running: []
+        property var wanting: []
+        function wanted(wants) { return "asks you"; }
       '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in
@@ -1326,6 +1409,18 @@ onLinux {
         Name=Browser
         Exec=browser %U
       '';
+      # Hidden, as Tuple's is: one another provider gives acts to, and one
+      # nobody does.
+      pair = entry "pair" ''
+        Name=Pair
+        Exec=pair
+        NoDisplay=true
+      '';
+      ghost = entry "ghost" ''
+        Name=Ghost
+        Exec=ghost
+        NoDisplay=true
+      '';
       # A program whose entry's id isn't its command, as zathura's isn't.
       viewer = entry "viewer" ''
         Name=Viewer
@@ -1338,6 +1433,8 @@ onLinux {
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
       cp ${browser} share/applications/browser.desktop
+      cp ${pair} share/applications/pair.desktop
+      cp ${ghost} share/applications/ghost.desktop
       cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
@@ -1383,6 +1480,43 @@ onLinux {
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';
+
+  # The launcher chooses the files a program opens or saves, as open-with
+  # asks it (tests/file-chooser.qml): in folders made here, with the files
+  # opened lately listed by a stand-in for recent-files, and the desktop's
+  # kinds of file by a few of shared-mime-info's lines.
+  the-launcher-chooses-files-as-asked =
+    pkgs.runCommandLocal "the-launcher-chooses-files-as-asked" { }
+      ''
+        mkdir -p launcher kinds
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./launcher/Provider.qml} launcher/Provider.qml
+        cp ${./launcher/Asking.js} launcher/Asking.js
+        cp ${./launcher/Numbers.js} launcher/Numbers.js
+        cp ${../open-with/FileChooser.qml} launcher/FileChooser.qml
+        cp ${./Words.qml} Words.qml
+        cp ${./Files.qml} Files.qml
+        cp ${./launcher/words.json} launcher/words.json
+        cp ${../../tests/file-chooser.qml} shell.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        mkdir -m 700 $XDG_RUNTIME_DIR
+        mkdir $XDG_RUNTIME_DIR/open-with
+        export FONTCONFIG_FILE=${noFonts}
+        # A folder of notes, two hidden things in it, and a file opened lately
+        # elsewhere beside one of its own.
+        mkdir -p $HOME/notes/sub $HOME/notes/.secret $HOME/elsewhere
+        touch $HOME/notes/a.md $HOME/notes/b.png $HOME/notes/notes.txt $HOME/notes/.hidden.txt
+        touch $HOME/elsewhere/old.md
+        printf 'Notes\t%s\nNotes\t%s\n' "$HOME/elsewhere/old.md" "$HOME/notes/a.md" > $HOME/recent
+        export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
+        printf '50:text/markdown:*.md\n50:image/png:*.png\n50:text/plain:*.txt\n' > kinds/globs2
+        printf 'text/markdown text/plain\n' > kinds/subclasses
+        export KINDS=$PWD/kinds
+        ${shellFolderLint}
+        timeout 60 ${qs} -p shell.qml
+        touch $out
+      '';
 
   # Every program an account lists in the launcher, each desktop entry it
   # shows, wears a mark of its own in launcher/Provider.qml's table, its
@@ -1537,8 +1671,12 @@ onLinux {
         property var current: null
         property var acted: null
         property var spawned: []
+        property var spawns: []
         function act(request) { acted = request; }
-        function spawn(command) { spawned = command; }
+        function spawn(command) {
+          spawned = command;
+          spawns = spawns.concat([command.join(" ")]);
+        }
       '';
       options = singleton "Options.qml" ''
         readonly property var sounds: ({ wants: "", player: "" })
@@ -1553,20 +1691,22 @@ onLinux {
       waiting = singleton "WaitingOnYou.qml" ''
         readonly property var standing: ({})
       '';
+      report = singleton "Report.qml" "function say(text) {}";
     in
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
-      export XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
       cp ${./Sessions.qml} Sessions.qml
       cp ${./Waiting.js} Waiting.js
       cp ${waiting} WaitingOnYou.qml
+      cp ${report} Report.qml
       cp ${../../tests/sessions.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
       cp ${notices} Notices.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
@@ -1574,11 +1714,10 @@ onLinux {
       touch $out
     '';
 
-  # Tuple's place in the launcher leads with what can be done about calls
-  # now, as a stand-in for Tuple.qml says it, and its people follow Tuple's
-  # contacts through the real
-  # tuple-people, which reads a stand-in for Tuple's follow here, and call,
-  # join or favour one (tests/people.qml), with niri stood in. Stopping the
+  # The launcher's People, with Tuple as its source, follows Tuple's
+  # contacts through the real tuple-people, which reads a stand-in for
+  # Tuple's follow here, and calls, joins or favours one (tests/people.qml),
+  # with niri stood in. Stopping the
   # helper stops Tuple's follow, which writes only when someone's presence
   # changes and so would never find out by itself. A listener stands in for
   # the daemon's socket, and once it's stopped, leaving the socket's file
@@ -1589,13 +1728,6 @@ onLinux {
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
-      '';
-      # Out of a call, as Tuple.qml would be, which the test changes.
-      calls = singleton "Tuple.qml" ''
-        property var controls: [{ key: "tuple:open", verb: "open", name: "Open My Tuple Room",
-          keywords: "pair call start new", glyph: "o", hue: "action", run: () => {} }]
-        property bool calling: false
-        property string standing: ""
       '';
       helper = pkgs.callPackage ./pi-helper.nix {
         name = "tuple-people";
@@ -1665,19 +1797,27 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-launcher-finds-the-people" { } ''
-      mkdir launcher
+      mkdir -p launcher/people
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${../tuple/People.qml} launcher/People.qml
+      cp ${../people/People.qml} launcher/People.qml
+      cp ${../people/Person.js} launcher/Person.js
+      cp ${./launcher/Zones.js} launcher/Zones.js
+      cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+      cp ${../people/PersonSource.qml} PersonSource.qml
+      cp ${../tuple/TupleSource.qml} launcher/people/tuple.qml
+      cp ${../../tests/people-page-source.qml} launcher/people/pages.qml
+      cp ${../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
-      cp ${calls} Tuple.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      # Here is UTC, so how far a zone is from here is known.
+      export TZ=UTC
       export FOLLOWED=${followed} STOP_TUPLE=${stop} PATH=${helper}/bin:${tuple}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork,unlink-close=0 /dev/null &
@@ -1776,6 +1916,7 @@ onLinux {
     pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${../../tests/graphs.qml} shell.qml
@@ -1804,9 +1945,11 @@ onLinux {
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Reading.js} Reading.js
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
+      cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

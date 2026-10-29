@@ -121,12 +121,15 @@ Scope {
     // marked as its mark's when it's to be taken back.
     function say(piece, mark) {
         const actions = piece.actions;
+        // Where an act goes, too, since a button can't say it beside
+        // its name as a row does: three sessions' Go To differ by it.
+        const offered = action => action.side ? `${action.name} \u00b7 ${action.side}` : action.name;
         notice.createObject(root, {
             actions,
             command: ["notify-send", `--app-name=${piece.app}`]
                 .concat(piece.now ? ["--urgency=critical"] : [])
                 .concat(piece.withdraws ? [`--hint=string:x-arrival:${mark}`] : [])
-                .concat(actions.map((action, index) => `--action=${index}=${action.name}`))
+                .concat(actions.map((action, index) => `--action=${index}=${offered(action)}`))
                 .concat([piece.hint], piece.context === "" ? [] : [piece.context])
         });
         if (Options.reports)

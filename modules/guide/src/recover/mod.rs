@@ -5,6 +5,8 @@
 //! and the first one built. Any stick does this, since it needs nothing
 //! from the machine's own repository: the disk says what it is.
 
+pub mod copy;
+
 use std::collections::BTreeSet;
 
 use crate::install::disk::described;
@@ -523,6 +525,7 @@ fn capitalised(text: &str) -> String {
 /// with what each says, in the order they're offered.
 pub const REPAIRS: &[&str] = &[
     "Open a root shell inside it",
+    "Copy its home folders onto a drive",
     "Choose which generation it boots next",
     "Replace a lost YubiKey",
     "Install its boot loader again",

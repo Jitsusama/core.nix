@@ -26,8 +26,18 @@
 # shares the CPU as an app would.
 #
 # session.slice holds the compositor and the shell, which took 0.98 GiB
-# between them on the XPS 14, so a 1.5 GiB floor keeps it in memory however
-# hard a build pushes. The floor is a hard one, MemoryMin: the kernel
+# between them on the XPS 14, and 1.63 GB on 29 October, past the 1.5 GiB
+# floor it had: 678 MB of it the shell, 126 MB niri. So the floor is 2.5 GiB,
+# and inside it the compositor and the shell hold floors of their own,
+# 256 MiB and 1 GiB, set in their modules beside their units, so what's
+# kept for them is theirs rather than the portals'. They come first there
+# too, at ten times the CPU weight of session.slice's other units: they're
+# how Joel drives the machine. Neither runs in real time. On 29 October at
+# a load of 28, the shell's main thread waited 11 us to run and niri's
+# 16 us, while the shell's own work took 43% of a core: real time would run
+# that ahead of the compositor and save almost nothing.
+#
+# The floor is a hard one, MemoryMin: the kernel
 # takes a soft one, MemoryLow, back whenever it finds nothing else to take, and
 # when an evaluation filled a 61 GiB laptop it did so 215,001 times, leaving
 # two thirds of niri in swap. niri then read keys up to 281 ms late, and past
@@ -133,14 +143,22 @@ let
   # to 338 ms, against 24 ms and 26 ms with memory free. A soft floor of
   # 8 GiB, MemoryLow, brought that to 32 ms and 143 ms: the kernel still took
   # it back. A hard one, MemoryMin, to 26 ms and 68 ms, and nothing was
-  # ended. The floor is a share of memory, about 8 GiB there, so it scales
-  # with the machine. Every slice above app.slice claims a little more, to
-  # cover session.slice's 1.5 GiB beside it: 9.96 GiB there, against 9.6 GiB
-  # below. What the floors below leave unused the kernel shares among the
+  # ended. The floor is a share of memory, so it scales with the machine.
+  # At 13%, 8.1 GiB, it held too little of what Joel works in: on 29 October,
+  # with about 17 agents' sessions open, app.slice held 17.6 GiB, 8.4 of it in
+  # swap. Under builds it read 1 GiB of that back from swap every two minutes
+  # and waited on memory 2.6% of the time, over the 1% past which the machine
+  # queue holds builds, so the builds waited too. 20%, 12.5 GiB there, holds
+  # what it kept in memory and what it read back. A floor its programs
+  # don't fill costs work only what they leave unused. Every slice above
+  # app.slice claims a little more, to cover session.slice's 1.5 GiB beside
+  # it. What the floors below leave unused the kernel shares among the
   # account's other slices. Work in jobs, background and containers has the
-  # rest of memory, and when that runs out, it's what swaps.
-  apps = "13%";
-  account = "16%";
+  # rest of memory, and when that runs out, it's what swaps. The account's
+  # 25% covers app.slice's 12.5 GiB and session.slice's 2.5 on a 62 GiB
+  # machine.
+  apps = "20%";
+  account = "25%";
 in
 {
   options.jitsusama.slices.disks = lib.mkOption {
@@ -193,7 +211,7 @@ in
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
-      MemoryMin = "1536M";
+      MemoryMin = "2560M";
     }
     // latency;
 
