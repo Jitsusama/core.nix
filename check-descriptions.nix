@@ -1223,6 +1223,10 @@
   timed-work-goes-ahead-of-other-work = ''
     timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it
   '';
+  timekeeping-passes-clippy = ''
+    clippy finds nothing in timekeeping, which works out the clock's offset and delay as
+    timedatectl does, or its tests
+  '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple
