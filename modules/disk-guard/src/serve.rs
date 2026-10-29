@@ -89,6 +89,10 @@ pub fn answering(
                                 let walking = std::thread::Builder::new()
                                     .name("footprint".to_owned())
                                     .spawn(move || {
+                                        // At idle priority, as the account's
+                                        // sizing is, so a walk never slows
+                                        // what the person or a build does.
+                                        crate::commands::idle();
                                         let found = footprints(&paths, uid);
                                         WALKING.store(false, Ordering::Release);
                                         responder.send(&Reply::Footprints(found));
