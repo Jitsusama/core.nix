@@ -129,10 +129,15 @@ let
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
-    inherit pkgs claude;
-    inherit (config.jitsusama.pi.claude) model;
+    inherit pkgs claude homeRealm;
+    inherit (config.jitsusama.pi.claude) model realm;
     ownLogin = onClaude;
   };
+
+  # The machine's home realm and the further ones it joins, as mycelium
+  # says them where its module is loaded.
+  homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
+  further = lib.attrNames (lib.attrByPath [ "jitsusama" "mycelium" "alsoJoins" ] { } config);
 
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
@@ -207,6 +212,19 @@ in
     '';
   };
 
+  options.jitsusama.pi.claude.realm = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "personal";
+    description = ''
+      The realm pi-claude's sessions belong to, a further realm this
+      machine joins for Joel's own work (jitsusama.mycelium.alsoJoins), or
+      null to keep them on no mesh. Never the home realm, whose mesh is the
+      work one wherever pi-claude is installed; in the further realm a
+      session keeps its folders apart from the home realm's.
+    '';
+  };
+
   options.jitsusama.pi.ask = {
     plan = lib.mkOption {
       type = lib.types.enum (lib.attrNames quickModels);
@@ -258,6 +276,20 @@ in
   };
 
   config = {
+    assertions = [
+      {
+        # A further realm with a home beside it: with no home realm named,
+        # the harness would take this one for home and write into its folders.
+        assertion =
+          config.jitsusama.pi.claude.realm != null
+          ->
+            homeRealm != null
+            && config.jitsusama.pi.claude.realm != homeRealm
+            && lib.elem config.jitsusama.pi.claude.realm further;
+        message = "jitsusama.pi.claude.realm names no realm of jitsusama.mycelium.alsoJoins.";
+      }
+    ];
+
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
 
     home.packages = lib.optional (!onClaude) piClaude ++ [
