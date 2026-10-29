@@ -1284,7 +1284,9 @@
     them, knows which Google program opens each kind, and says who owns a document and when Joel
     last opened it beside its title, with its details for the drawer; reads the Drive folder last
     listed and the downloads, writes the lines that list a folder and download a file, a save alone
-    saying where, and says how the newest download asked stands
+    saying where, and says how the newest download asked stands; and says a Drive file in the
+    picker by its size and when it changed, or what Google's own kind comes as, picked by that
+    name and kind, adopting its document row, with why a file or a folder couldn't be had
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail

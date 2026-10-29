@@ -118,6 +118,50 @@ QtObject {
             { state: "done", path: "/run/f1/new.pdf", failed: "" }
         ]);
 
+        // Drive's files as the picker lists them.
+        const menu = {
+            id: "pdf1", name: "menu.pdf", kind: "file", mime: "application/pdf", size: 2400000,
+            changed: at(28, 9, 5), owner: "Ada Lovelace", link: "https://x/pdf1", runs: false
+        };
+        const sheet = {
+            id: "sheet1", name: "Numbers", kind: "spreadsheet",
+            mime: "application/vnd.google-apps.spreadsheet", size: null, changed: at(26, 9, 30),
+            owner: "", link: "https://docs.google.com/spreadsheets/d/sheet1/edit", runs: false
+        };
+        const trips = { id: "dir1", name: "Trips", kind: "folder", size: null, changed: null };
+        check("a file picked as it is, Google's own as its office file",
+            [menu, sheet].map(Drive.pickedAs), [
+                { name: "menu.pdf", mime: "application/pdf" },
+                { name: "Numbers.xlsx",
+                    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+            ]);
+        check("a file's row says its size and when it changed", Drive.placed(menu, now), {
+            key: "drive:pdf1", name: "menu.pdf", note: "2.4 MB \u00b7 09:05",
+            drawer: { title: "menu.pdf", facts: [
+                { label: "Owner", value: "Ada Lovelace" },
+                { label: "Changed", value: "Wednesday 28 October, 09:05" },
+                { label: "Size", value: "2.4 MB" }
+            ], body: "" }
+        });
+        check("Google's own says what it comes as", Drive.placed(sheet, now).note, "as .xlsx");
+        check("a folder's row, keyed as one", Drive.placed(trips, now),
+            { key: "drive:folder:dir1", name: "Trips", note: "",
+                drawer: { title: "Trips", facts: [], body: "" } });
+        check("Google's own adopts its document row, no other file",
+            [Drive.asDocument(sheet), Drive.asDocument(menu)], [{
+                id: "sheet1", title: "Numbers", kind: "spreadsheet",
+                link: "https://docs.google.com/spreadsheets/d/sheet1/edit", viewed: null,
+                changed: at(26, 9, 30), owner: ""
+            }, null]);
+        check("why a file or a folder wasn't had, as a sentence", [
+            Drive.unfetched("gone"), Drive.unfetched("unwritten"), Drive.unfetched("strange"),
+            Drive.unlisted("listing"), Drive.unlisted("unreachable"), Drive.unlisted("")
+        ], [
+            "It's no longer in Google Drive.", "It couldn't be written down.",
+            "Google Drive couldn't be reached.", "Listing it.", "Google Drive couldn't be reached.",
+            ""
+        ]);
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);
