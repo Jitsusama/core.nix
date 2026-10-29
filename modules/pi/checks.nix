@@ -174,10 +174,12 @@
         printf 'arg %s\n' "$@" >> "$SAID"
         env | sed 's/^/env /' >> "$SAID"
       '';
-      program = lib.getExe (import ./claude.nix { inherit pkgs claude; });
+      # The plan's model as an account has it.
+      inherit (home.jitsusama.pi.claude) model;
+      program = lib.getExe (import ./claude.nix { inherit pkgs claude model; });
       onOwnLogin = lib.getExe (
         import ./claude.nix {
-          inherit pkgs claude;
+          inherit pkgs claude model;
           ownLogin = true;
         }
       );

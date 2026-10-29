@@ -3,8 +3,8 @@
 # that plan (the claude-code provider, $PROVIDER). A plan's limits are small
 # for agent work, so it starts on $PLAN_MODEL unless given a --model, and
 # stays off the mesh (PI_MESH=off), where the machine's holds and questions
-# would start turns on that allowance. The login lives in a config folder of its own,
-# ~/.claude-personal, apart from any other Claude Code login in ~/.claude,
+# would start turns on that allowance. The login lives in a config folder
+# of its own, ~/.claude-personal, apart from any other Claude Code login in ~/.claude,
 # and `pi-claude login` signs it in. On a machine whose only login is the
 # plan's ($OWN_LOGIN, or ~/.claude named in PI_CLAUDE_CONFIG_DIR), no folder
 # is named to Claude Code at all: on macOS a named folder is a keychain entry

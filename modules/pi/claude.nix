@@ -7,7 +7,7 @@
 {
   pkgs,
   claude,
-  model ? "claude-sonnet-5",
+  model,
   ownLogin ? false,
 }:
 pkgs.writeShellApplication {
