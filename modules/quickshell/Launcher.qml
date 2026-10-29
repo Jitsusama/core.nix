@@ -687,11 +687,13 @@ Scope {
 
     // The kinds made by one component each, by how their rows are keyed,
     // and the component that makes them (docs/design.md, one component per
-    // thing): a mail or a meeting row made anywhere but by its component
-    // is a version a surface drew of it.
+    // thing): a mail, a meeting, a file or a folder row made anywhere but
+    // by its component is a version a surface drew of it.
     readonly property var components: [
         { keyed: /^mail:/, made: "mail" },
-        { keyed: /^calendar:meeting:/, made: "meeting" }
+        { keyed: /^calendar:meeting:/, made: "meeting" },
+        { keyed: /^file:/, made: "file" },
+        { keyed: /^folder:/, made: "folder" }
     ]
 
     // A row of a kind its component makes, made otherwise, or null.
