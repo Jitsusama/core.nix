@@ -303,7 +303,6 @@ in
       marks = lib.mapAttrs (_: mark: mark.glyph) {
         inherit (marks)
           branch
-          unsaved
           unpushed
           more
           complete
