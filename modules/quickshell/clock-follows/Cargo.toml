@@ -1,0 +1,12 @@
+# The clock's time zone following where the laptop is: run each time
+# whereabouts writes where it is (src/main.rs says how).
+[package]
+name = "clock-follows"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

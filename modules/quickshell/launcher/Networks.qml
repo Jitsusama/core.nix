@@ -198,12 +198,14 @@ Provider {
         if (now === null)
             return unknown;
         const shown = listed(now);
-        const rows = shown.map(link => holderRow({
+        const rows = shown.map(link => thingRow({
             key: `networks:${link.name}`,
             name: linkName(link, shown),
             side: addressOf(link) || stateSaid[link.state],
             glyph: linkGlyph(link.kind),
             keywords: link.name,
+            // What its kind was called, so "wired" still finds Ethernet.
+            once: Words.of(`networks:${link.kind}`).once ?? [],
             note: link.name === now.out ? "where the machine's traffic leaves" : ""
         }, () => provider.partsOf(link.name)));
         const out = shown.find(link => link.name === now.out) ?? shown[0] ?? null;

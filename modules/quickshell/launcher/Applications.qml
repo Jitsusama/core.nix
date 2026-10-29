@@ -10,16 +10,16 @@
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
 // first (Switch, New window, New window below, its other windows by title,
-// its desktop entry's own actions, its Shortcuts where it has keys of its
-// own, Quit), then its parts (Media while it
+// its desktop entry's own actions, Recent where it keeps what it had open
+// lately, its Shortcuts where it has keys of its own, Quit), then its parts (Media while it
 // has a player, Sound while it plays or records, Notifications while the
 // history holds any of its), then any part another provider gives it, such
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
 // pressed, and again as its player or its streams change while it's open,
 // never as letters are typed, and nothing is read from a file.
 //
-// Programs is a collection too, home's row for them: every program by
-// name, as every list is. It adds no row of its own to a search, where
+// Programs is a collection too, home's row for them: every program, those
+// open first, each by name. It adds no row of its own to a search, where
 // each program is found by itself.
 import Quickshell
 import qs
@@ -33,9 +33,13 @@ Provider {
 
     collection: Words.collection("applications", { searched: false })
 
+    // Open programs first, then the rest, each A to Z, so a program moves
+    // only as it opens or closes, which Joel did himself
+    // (collection-order.md).
     function everything() {
-        return things.slice().sort((a, b) => a.name.localeCompare(b.name, undefined,
-            { numeric: true, sensitivity: "base" }));
+        const shut = row => (running[row.key.slice("program:".length)] ?? []).length === 0;
+        return things.slice().sort((a, b) => Number(shut(a)) - Number(shut(b))
+            || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
     }
 
     // Inside Programs, by its name or what it is, the best grade first.
@@ -125,8 +129,12 @@ Provider {
     // Its windows but the one used last, which Switch already goes to, as
     // rows Return goes to, each by its own title, saying where it is as the
     // Windows collection does: nothing on the workspace in front, and a
-    // column when two are titled alike.
+    // column when two are titled alike. Each holds what Windows' row for it
+    // does (Windows.qml's actsOf), so a window has one set of insides
+    // wherever it shows.
     function windowsOf(entry) {
+        const listing = (provider.launcher?.sources ?? [])
+            .find(source => typeof source.actsOf === "function") ?? null;
         const windows = running[entry.id] ?? [];
         const here = Niri.workspace();
         const alike = {};
@@ -142,7 +150,8 @@ Provider {
                 glyph: programGlyph(entry.id),
                 hue: "program",
                 side: provider.placeOf(window, workspace, here, alike[titled(window, entry)]),
-                run: () => Niri.act({ FocusWindow: { id: window.id } })
+                run: () => Niri.act({ FocusWindow: { id: window.id } }),
+                verbs: listing ? () => listing.actsOf(window, entry) : null
             });
         });
     }
@@ -165,7 +174,7 @@ Provider {
     // stepped into is made again as its player and streams change
     // (`playingNow`). Return copies nothing.
     function figure(key, name, side, graph) {
-        const row = copyRow({ key: key, name: name(), copy: "" });
+        const row = copyRow({ key: key, name: name(), side: side(), copy: "" });
         Object.defineProperties(row, {
             name: { enumerable: true, get: name },
             side: { enumerable: true, get: side }
@@ -235,12 +244,12 @@ Provider {
     // asks about anything unsaved as its window's close button would.
     function quit(entry, windows) {
         const key = "verb:program:quit";
-        const closing = windows.length === 1 ? "its window" : `${windows.length} windows`;
+        const closing = windows.length === 1 ? "Its Window" : `${windows.length} Windows`;
         return said(key, "", {
             targets: () => [provider.thing({
                 key: `${key}:sure`,
                 verb: Words.verb(key),
-                name: `${Words.of(key).sure}, closing ${closing}`,
+                name: `${Words.of(key).sure}, Closing ${closing}`,
                 glyph: Words.glyph(key),
                 hue: "alert",
                 run: () => {
@@ -275,6 +284,7 @@ Provider {
                 const going = player.isPlaying;
                 if (going ? player.canPause : player.canPlay)
                     rows.push(provider.said("verb:program:play", going ? "playing" : "", {
+                        stays: true,
                         run: () => {
                             if (player.isPlaying)
                                 player.pause();
@@ -380,6 +390,7 @@ Provider {
             targets: () => [provider.said("verb:program:mute",
                 provider.muted(recorders) ? "muted" : "", {
                     key: "verb:program:mute:microphone",
+                    stays: true,
                     run: () => {
                         const hushed = provider.muted(recorders);
                         for (const node of provider.live(recorders))
@@ -405,6 +416,7 @@ Provider {
                 });
                 const rows = streams.length === 0 ? [] : [provider.said("verb:program:mute",
                     provider.muted(streams) ? "muted" : "", {
+                        stays: true,
                         run: () => {
                             const hushed = provider.muted(streams);
                             for (const node of provider.live(streams))
@@ -468,6 +480,83 @@ Provider {
         return own === "desktop" ? "" : own;
     }
 
+    // What each program had open lately, from the files they write.
+    readonly property Recents recents: Recents {
+        sources: provider.settings.recents ?? []
+    }
+
+    // Recent: what it had open lately (Recents.qml), in the order it keeps
+    // them, each a folder or a file by its name, beside the folder it's in.
+    // Return opens it through the program as its settings say: `open`
+    // while a window of it is open, through the process behind the window
+    // used last ({pid}), and `start` while none is. Any other provider may
+    // give a program's Recent its own things, each its one row, by
+    // `recentOf(program)`, newest first, as Docs' documents are given
+    // (Documents.qml); it says `changed` when they change, so a Recent
+    // shown is made again.
+    function recent(entry) {
+        const source = (settings.recents ?? []).find(each => each.app === entry.id);
+        const listed = () => (source ? provider.recents.of(entry.id)
+            .map(path => provider.lately(entry, source, path)) : [])
+            .concat(givenRecent(entry.id)).slice(0, provider.recents.most);
+        const count = listed().length;
+        if (count === 0)
+            return [];
+        return [said("program:recent", "", {
+            hue: "program",
+            count: String(count),
+            ask: "which?",
+            nested: true,
+            targets: listed
+        })];
+    }
+
+    // What other providers give a program's Recent.
+    function givenRecent(program) {
+        return hooked("recentOf", program);
+    }
+
+    // The acts other providers give a program beside its desktop entry's
+    // own (`programActs(program)`), as Meet's Join by Code is given
+    // (Meet.qml), listed after its desktop entry's actions and before its
+    // Recent.
+    function givenActs(program) {
+        return hooked("programActs", program);
+    }
+
+    // What every other provider with the hook `hook` gives `program`.
+    function hooked(hook, program) {
+        return (provider.launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other[hook] === "function")
+            .reduce((rows, other) => rows.concat(other[hook](program)), []);
+    }
+
+    // One path a program had open lately, as Recent's row. Not named
+    // opened, which is the hook the launcher calls as Programs is stepped
+    // into (Provider.qml).
+    function lately(entry, source, path) {
+        const home = Quickshell.env("HOME");
+        const shown = path === home ? "~"
+            : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+        // "~/src/core.nix" is core.nix in ~/src; "/etc" is etc in /.
+        const cut = shown.lastIndexOf("/");
+        const folder = cut < 0 || shown === "/" ? "" : cut === 0 ? "/" : shown.slice(0, cut);
+        return thing({
+            key: `recent:${entry.id}:${path}`,
+            verb: Words.verb("recent:path"),
+            name: cut < 0 || shown === "/" ? shown : shown.slice(cut + 1),
+            glyph: "path",
+            hue: "program",
+            side: folder,
+            run: () => {
+                const window = (provider.running[entry.id] ?? [])[0] ?? null;
+                const command = window ? source.open : source.start;
+                Niri.spawn(command.map(part => part.replace("{path}", path)
+                    .replace("{pid}", String(window?.pid ?? ""))));
+            }
+        });
+    }
+
     // Its own keys, where Shortcuts has a layer of them (KeyMap.qml's
     // layerOf), as Shortcuts lists the layer, named Shortcuts here since
     // the program already says whose they are.
@@ -494,7 +583,8 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), keysOf(entry), latest ? [quit(entry, windows)] : [],
+        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), keysOf(entry),
+            latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
             notices(same));

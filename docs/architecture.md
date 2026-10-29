@@ -178,7 +178,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.signing.allowedSigners` | every key that signs Joel's work, per machine repository |
 | `jitsusama.theme.name`, `.file`    | which theme everything draws in, Osaka Jade by default   |
 | `jitsusama.theme.palette.*`        | every colour the theme uses, by the name it gives it     |
-| `jitsusama.theme.roles.*`          | what each colour means: text, muted, accent, alert       |
+| `jitsusama.theme.colours.*`        | what each colour means: text, muted, accent, alert       |
 | `jitsusama.theme.terminal.*`       | the terminal's own colours and its sixteen ANSI ones     |
 | `jitsusama.theme.shades`           | eight colours from the background to the brightest text  |
 | `jitsusama.theme.font.*`           | the monospaced and proportional faces, and their sizes   |
@@ -188,7 +188,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.theme.space.*`          | the unit and the steps every padding and margin names    |
 | `jitsusama.theme.type.*`           | the type scale's ratio, its steps, and each face's sizes |
 | `jitsusama.theme.motion.*`         | the spring, the curve and the durations of every motion  |
-| `jitsusama.theme.glyphs`           | every mark, by meaning, with its stand-in on a console   |
+| `jitsusama.theme.marks`            | every mark, by meaning, with its stand-in on a console   |
 | `jitsusama.keys.*`                 | every layer's shortcuts, checked for clashes             |
 | `jitsusama.niri.binds`             | niri's shortcuts: chord, plain words and action          |
 | `jitsusama.mypy.packages`          | the libraries a repository's Python imports, for mypy    |

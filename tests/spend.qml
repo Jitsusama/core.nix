@@ -263,7 +263,7 @@ ShellRoot {
                     JSON.stringify(spend.answer(typed)));
             const all = spend.everything();
             // A day of history has no forecast yet and the history no cap,
-            // so today and Earlier.
+            // so today and the periods before.
             expect("everything", all.length >= 2 && all[0].name === "Today"
                 && all.every(row => row.side.length <= 32),
                 all.map(row => `${row.name}: ${row.side}`).join(", "));
@@ -271,13 +271,12 @@ ShellRoot {
                 spend.counted());
 
             // A period steps into its cuts, and a cut into its rows, each
-            // saying more in the footer and copying its report. This week
-            // is among the periods behind Earlier.
-            const earlier = all.find(row => row.name === "Earlier");
-            expect("no week of its own on the first screen",
-                earlier && !all.some(row => row.name === "This week"),
+            // saying more in the footer and copying its report. The
+            // periods sit in AI spend itself, behind no row of their own.
+            expect("the periods on the first screen", !all.some(row => row.name === "Earlier")
+                && all.some(row => row.name === "This week"),
                 all.map(row => row.name).join(", "));
-            const thisWeek = earlier.verbs().find(row => row.name === "This week");
+            const thisWeek = all.find(row => row.name === "This week");
             expect("a period with its cuts",
                 thisWeek && thisWeek.nested && thisWeek.ask === "which?",
                 JSON.stringify(thisWeek));
@@ -289,7 +288,7 @@ ShellRoot {
             expect("its rows", models.length === 2 && models.every(row => !row.verbs),
                 models.map(row => row.name).join(", "));
             expect("copying its report", byModel.verb === "copy", byModel.verb);
-            // Typing finds a period however deep it's kept.
+            // Typing finds a period.
             const found = spend.search("this week").rows;
             expect("a search", found.length > 0 && found[0].name === "This week",
                 found.map(row => row.name).join(", "));
@@ -337,7 +336,7 @@ ShellRoot {
             burn.run();
             expect("going to its session", Niri.spawned.join(" ") === "spend-watch go s1",
                 Niri.spawned.join(" "));
-            const expected = burn.verbs().find(row => row.name === "It's expected");
+            const expected = burn.verbs().find(row => row.name === "It's Expected");
             expected.run();
             expect("marking it expected",
                 Niri.spawned.join(" ") === "spend-watch findings expect burn:s1",

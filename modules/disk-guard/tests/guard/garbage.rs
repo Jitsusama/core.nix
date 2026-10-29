@@ -125,6 +125,8 @@ fn what_isnt_a_store_path_in_the_store_is_not_described() {
 /// A `nix` whose `store delete` refuses the whole call in Nix's words when
 /// any path it's given is marked alive, deleting none, as Determinate Nix
 /// 3.21 does, and otherwise deletes them all; it notes each time it's run.
+/// Like Nix it looks at the paths in order of their names, which in the
+/// store is their hashes', and names the first it finds alive.
 fn deleting_nix(dir: &Path) -> std::path::PathBuf {
     script(
         &dir.join("nix"),
@@ -132,7 +134,7 @@ fn deleting_nix(dir: &Path) -> std::path::PathBuf {
             "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
              [ \"$1 $2\" = 'store delete' ] || exit 9\nshift 2\n\
              echo \"$*\" >> {}\n\
-             for p in \"$@\"; do\n\
+             for p in $(printf '%s\\n' \"$@\" | sort); do\n\
                [ -e \"$p\" ] || {{ echo \"error: path '$p' is not valid\" >&2; exit 1; }}\n\
                if [ -e \"$p.alive\" ]; then\n\
                  echo \"error: Cannot delete path '$p' since it is still alive. To find out \
@@ -157,7 +159,7 @@ fn a_batch_is_deleted_without_what_came_alive_or_is_already_gone() {
     }
     fs::write(path("live.alive"), "").unwrap();
     let batch = [path("gone"), path("a"), path("live"), path("b")];
-    delete(&nix, &batch, false).unwrap();
+    delete(&nix, &dir.path().join("roots"), &batch, false).unwrap();
     assert!(!Path::new(&path("a")).exists() && !Path::new(&path("b")).exists());
     assert!(Path::new(&path("live")).exists(), "alive, so kept");
     let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
@@ -186,11 +188,46 @@ fn a_batch_that_keeps_coming_alive_is_given_up_after_three_refusals() {
     }
     let batch: Vec<String> = names.iter().map(|name| path(name)).collect();
     assert_eq!(
-        delete(&nix, &batch, false).unwrap_err(),
+        delete(&nix, &dir.path().join("roots"), &batch, false).unwrap_err(),
         "3 paths came alive since the listing"
     );
     let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
     assert_eq!(runs.lines().count(), 4, "{runs}");
+}
+
+#[test]
+fn what_an_evaluation_begun_since_the_batch_holds_is_never_offered_to_nix() {
+    // Each refusal costs Nix a whole look for roots and deletes nothing, and
+    // a temporary root read just before costs a folder's read. On 28
+    // October every batch of 2,000 derivations met more than three that an
+    // evaluation begun since held, and the system guard spent a core
+    // giving them up and listing again, freeing nothing for hours.
+    let dir = tempfile::tempdir().unwrap();
+    let nix = deleting_nix(dir.path());
+    let path = |name: &str| dir.path().join(name).to_str().unwrap().to_owned();
+    let names = ["p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"];
+    let held = ["p1", "p3", "p5", "p7"];
+    for name in names {
+        fs::create_dir(path(name)).unwrap();
+    }
+    let roots = dir.path().join("roots");
+    fs::create_dir(&roots).unwrap();
+    let mut rooted = String::new();
+    for name in held {
+        fs::write(path(&format!("{name}.alive")), "").unwrap();
+        rooted.push_str(&path(name));
+        rooted.push('\0');
+    }
+    fs::write(roots.join("4242"), rooted).unwrap();
+    let batch: Vec<String> = names.iter().map(|name| path(name)).collect();
+    delete(&nix, &roots, &batch, false).unwrap();
+    let left: Vec<&str> = names
+        .into_iter()
+        .filter(|name| Path::new(&path(name)).exists())
+        .collect();
+    assert_eq!(left, held, "only the held stay");
+    let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
+    assert_eq!(runs.lines().count(), 1, "one call, without them: {runs}");
 }
 
 #[test]
@@ -204,6 +241,7 @@ fn a_delete_that_fails_otherwise_says_why() {
     fs::create_dir(&real).unwrap();
     let failed = delete(
         &dir.path().join("nix"),
+        &dir.path().join("roots"),
         &[real.to_str().unwrap().to_owned()],
         false,
     );
@@ -214,6 +252,7 @@ fn a_delete_that_fails_otherwise_says_why() {
     assert_eq!(
         delete(
             &dir.path().join("nix"),
+            &dir.path().join("roots"),
             &["/nowhere/at/all".to_owned()],
             false
         ),
@@ -256,6 +295,33 @@ fn store(name: &str) -> String {
 /// The batches a listing of `all` makes, all of it still there.
 fn batches(all: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> Vec<Batch> {
     Listing::new(0.0, all.to_vec()).batches(|_| true, now, keep, budget, most)
+}
+
+#[test]
+fn a_dead_output_goes_no_later_than_the_dead_derivation_that_built_it() {
+    // Nix keeps a derivation while an output it built is there, since it
+    // keeps derivations, so a batch with the one and not the other was
+    // refused every time: on 28 October, 443 derivations in one batch had
+    // all 237 of their outputs in others, and nothing cleared for an hour.
+    let described = r#"{
+        "/nix/store/aaa-check.drv": {"narSize": 4096, "registrationTime": 5,
+            "references": ["/nix/store/bbb-source"], "deriver": null},
+        "/nix/store/zzz-check": {"narSize": 1, "registrationTime": 5,
+            "references": [], "deriver": "/nix/store/aaa-check.drv"},
+        "/nix/store/bbb-source": {"narSize": 2, "registrationTime": 5,
+            "references": []}
+    }"#;
+    let dead = parse(described).unwrap();
+    let made = batches(&dead, NOW, 0.0, u64::MAX, 1);
+    let order: Vec<&str> = made.iter().map(|batch| batch.paths[0].as_str()).collect();
+    assert_eq!(
+        order,
+        [
+            "/nix/store/zzz-check",
+            "/nix/store/aaa-check.drv",
+            "/nix/store/bbb-source"
+        ]
+    );
 }
 
 #[test]

@@ -11,6 +11,8 @@
 let
   guide = pkgs.callPackage ./package.nix { systemd = config.systemd.package; };
   showStatus = "${config.systemd.package}/bin/busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager SetShowStatus s";
+  # Made when the installed guide starts, and gone with the boot.
+  started = "/run/guide-installed-started";
   # Each account's keys in the TPM, as its home-manager modules name them
   # (modules/ssh-tpm-agent/home.nix's jitsusama.tpmKeys).
   named = lib.concatLists (
@@ -160,9 +162,16 @@ in
     # manager to hold them while it runs and to go back to the machine's own
     # setting however it leaves, as org.freedesktop.systemd1(5) suggests for
     # SetShowStatus.
+    #
+    # It runs once a boot. Started again once someone has signed in, as a
+    # switch does, hanging up the first console would end the session
+    # there (2026-10-26), so a stamp in /run skips it for the rest of the
+    # boot, and a switch never restarts it while it runs.
     systemd.services.guide-installed = {
       description = "Finish the machine the guide installed";
       wantedBy = [ "multi-user.target" ];
+      restartIfChanged = false;
+      unitConfig.ConditionPathExists = "!${started}";
       after = [
         "plymouth-quit.service"
         "prepare-sb-auto-enroll.service"
@@ -175,7 +184,10 @@ in
       ];
       serviceConfig = {
         Type = "oneshot";
-        ExecStartPre = "${showStatus} no";
+        ExecStartPre = [
+          "${lib.getExe' pkgs.coreutils "touch"} ${started}"
+          "${showStatus} no"
+        ];
         ExecStart = "${guide}/bin/guide installed";
         ExecStopPost = "${showStatus} ''";
         StandardInput = "tty";

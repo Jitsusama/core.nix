@@ -136,6 +136,7 @@
         btop = ./modules/btop/home.nix;
         camera = ./modules/camera/home.nix;
         cargo = ./modules/cargo/home.nix;
+        chrome = ./modules/chrome/home.nix;
         claude = ./modules/claude/home.nix;
         curl = ./modules/curl/home.nix;
         delta = ./modules/delta/home.nix;
@@ -154,7 +155,7 @@
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
-        google = ./modules/google/home.nix;
+        google = moduleFrom ./modules/google/home.nix { inherit (self.homeModules) quickshell; };
         gtk = ./modules/gtk/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
@@ -173,6 +174,7 @@
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
+        onepassword = ./modules/onepassword/home.nix;
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
@@ -187,6 +189,7 @@
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;
+        slack = ./modules/slack/home.nix;
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
@@ -198,6 +201,7 @@
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
         tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
+        unlisted = ./modules/unlisted/home.nix;
         vivid = ./modules/vivid/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
@@ -233,6 +237,7 @@
       nixosModules = {
         backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
+        bluetooth-disk-prompt = ./modules/bluetooth-disk-prompt/nixos.nix;
         bluetooth-links = ./modules/bluetooth-links/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
@@ -253,6 +258,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         guide = ./modules/guide/nixos.nix;
+        hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         inlyne = ./modules/inlyne/nixos.nix;
         ir-camera = ./modules/ir-camera/nixos.nix;
@@ -283,6 +289,7 @@
         plymouth = moduleFrom ./modules/plymouth/nixos.nix { inherit wallpapers; };
         podman = ./modules/podman/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
+        processor-telemetry = ./modules/processor-telemetry/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
         shaper = ./modules/shaper/nixos.nix;
         shure-mv7 = ./modules/shure-mv7/nixos.nix;
@@ -295,6 +302,7 @@
         timesyncd = ./modules/timesyncd/nixos.nix;
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
+        unlisted = ./modules/unlisted/nixos.nix;
         usb-camera-holders = ./modules/usb-camera-holders/nixos.nix;
         usb-wake = ./modules/usb-wake/nixos.nix;
         v4l2loopback = ./modules/v4l2loopback/nixos.nix;

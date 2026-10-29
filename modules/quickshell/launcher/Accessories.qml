@@ -72,6 +72,7 @@ Provider {
         name: Words.name("bluetooth:radio", on ? "" : "off"),
         glyph: Words.glyph("bluetooth:radio", on ? "" : "off"),
         hue: "machine",
+        stays: true,
         run: () => provider.adapter.enabled = !provider.on
     })
 
@@ -151,7 +152,9 @@ Provider {
             note: note,
             device: device,
             state: () => provider.said(device, note),
-            stays: !joined,
+            // Connecting or disconnecting keeps the launcher, which says how
+            // it went.
+            stays: true,
             run: joined ? () => device.disconnect() : () => provider.join(device),
             verbs: () => provider.verbs(device)
         });
@@ -160,7 +163,7 @@ Provider {
     // The machine's own adapter, last, so Return on the first row still
     // connects the likeliest device: a thing holding how it's set and what
     // it is.
-    readonly property var adapterRow: adapter === null ? null : holderRow({
+    readonly property var adapterRow: adapter === null ? null : thingRow({
         key: "bluetooth:adapter",
         name: Words.name("bluetooth:adapter"),
         side: on ? "on" : "off",
@@ -287,13 +290,17 @@ Provider {
         }, fields ?? {}), choices);
     }
 
-    function choice(id, inUse, mark, run) {
+    function choice(id, chosen, mark, run) {
         return thing({
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`),
+            // Its own word for the foot where it has one, since a choice's
+            // name can start with a word that says nothing ("Only").
+            verb: Words.verb(`verb:${id}`) ?? "",
             glyph: mark,
             hue: "action",
-            side: inUse ? "in use" : "",
+            side: chosen ? "chosen" : "",
+            stays: true,
             run: run
         });
     }
@@ -571,10 +578,9 @@ Provider {
             };
         return {
             headline: `${told.length} connected`,
-            copy: "",
             glyph: glyph,
             note: "",
-            rows: told.map(each => holderRow({
+            rows: told.map(each => thingRow({
                 key: `link:bluetooth:${each.device.address}`,
                 name: each.device.name,
                 side: said(each),
@@ -609,6 +615,7 @@ Provider {
             name: Words.name("verb:bluetooth-disconnect"),
             glyph: Theme.glyph.disconnect,
             hue: "action",
+            stays: true,
             run: () => device.disconnect()
         }) : thing({
             key: "verb:bluetooth-connect",
@@ -636,21 +643,23 @@ Provider {
                 name: Words.name("verb:bluetooth-forget"),
                 glyph: Theme.glyph.forget,
                 hue: "action",
+                stays: true,
                 run: () => device.forget()
             }));
         return rows.concat(deviceParts(device));
     }
 
-    // Done with the device being connected: the launcher closes, if it's
-    // still on that device.
+    // Done with the device being connected: a passkey asked for is done
+    // with, so the launcher steps back to the device, which says it's
+    // connected, and stays, as a setting does.
     function finish(device) {
         joining = null;
         const launcher = provider.launcher;
         if (!launcher)
             return;
         const at = launcher.selected ?? launcher.asking;
-        if (launcher.open && at && at.device === device)
-            launcher.open = false;
+        if (launcher.open && at && at.device === device && launcher.asking === at)
+            launcher.back();
     }
 
     // How the device being connected went. BlueZ says a new device is

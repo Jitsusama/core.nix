@@ -146,7 +146,7 @@ pub struct Situation<'a> {
 const FORECAST_MARGIN: f64 = 300.0;
 
 /// How often routine upkeep comes round.
-const UPKEEP_EVERY: f64 = 6.0 * 3600.0;
+pub(crate) const UPKEEP_EVERY: f64 = 6.0 * 3600.0;
 
 pub fn decide(situation: &Situation) -> Decision {
     let next = match situation.band {

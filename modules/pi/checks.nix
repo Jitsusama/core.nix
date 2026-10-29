@@ -42,9 +42,9 @@
       colours = lib.attrValues theme.colors ++ lib.attrValues theme.export;
     in
     holds "pi-wears-the-theme" "pi's theme isn't the machine's, or names a colour pi can't read." (
-      theme.colors.text == home.jitsusama.theme.roles.text
+      theme.colors.text == home.jitsusama.theme.colours.text
       && theme.colors.syntaxString == home.jitsusama.theme.syntax.string.colour
-      && theme.colors.thinkingMax == home.jitsusama.theme.roles.alert
+      && theme.colors.thinkingMax == home.jitsusama.theme.colours.alert
       && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
     );
 
@@ -58,7 +58,7 @@
         builtins.unsafeDiscardStringContext
           home.xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text
       );
-      inherit (home.jitsusama.theme) glyphs;
+      inherit (home.jitsusama.theme) marks;
       engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
     in
     holds "pi-tells-where-as-the-prompt-does"
@@ -68,14 +68,12 @@
         && where.engine == builtins.unsafeDiscardStringContext engine
         &&
           where.marks == {
-            branch = glyphs.branch.glyph;
-            unsaved = glyphs.on.glyph;
-            unpushed = glyphs.unpushed.glyph;
-            more = glyphs.more.glyph;
-            complete = glyphs.complete.glyph;
-            active = glyphs.active.glyph;
-            pending = glyphs.pending.glyph;
-            thinking = glyphs.thinking.glyph;
+            branch = marks.branch.glyph;
+            more = marks.more.glyph;
+            complete = marks.complete.glyph;
+            active = marks.active.glyph;
+            pending = marks.pending.glyph;
+            thinking = marks.thinking.glyph;
           }
       );
 

@@ -50,6 +50,9 @@ Item {
     // `leftOn` for a mode he set and might forget. And whether it needs
     // him now, not soon (`now`): the battery about to die, a call ringing.
     property string kind: wants ? "wants" : "leftOn"
+    // Which of Now's groups it's listed in (launcher/Now.js): its kind,
+    // but for one with a group of its own, as what's playing has.
+    property string group: kind
     property bool now: false
     // The program whose notices say this piece's news, as a notification
     // names it, so its mark waits while one of its cards is on screen:
@@ -58,12 +61,33 @@ Item {
     // Whether it comes true by itself, not by Joel's keys, and so is said
     // as a notice of its app's when it does (Arrivals.qml).
     property bool arrives: false
+    // Whether that notice goes, read, once it's no longer true, as one of
+    // a meeting about to start does once it has started: news only while
+    // it lasts.
+    property bool withdraws: false
+    // What its notice tells, for one said more than once while it's true:
+    // each time this changes, it's said again and its earlier notice, which
+    // it `withdraws`, is taken back, as a meeting is at each of its
+    // reminders and as it starts. Empty, it's said once.
+    property string telling: ""
     // Whether another piece's mark stands for it, so the margin leaves its
     // own out while What's on still lists it: quiet turned on by a share is
     // the share's, whose words say notices are held.
     property bool collected: false
+    // The glyph its mark is drawn with, by name, where it isn't the mark's
+    // own: the power profile's mark says which profile is on. The mark
+    // stays its name, so what Now lists is the same thing whichever it is.
+    property string markGlyph: ""
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }, and a `verb` where the name is
-    // too long for the launcher's foot to say beside Return.
+    // too long for the launcher's foot to say beside Return. One that only
+    // changes how things stand, rather than taking Joel somewhere, says
+    // `stays: true`, so the launcher stays open and shows the change
+    // (Joel, 2026-10-26: Return closes only when it takes him out).
     property var actions: []
+    // The things it stands for, where each is a thing of the launcher's
+    // own, such as a piece of mail: given the launcher's `thing`, their
+    // rows, which Return lists in place of doing its first act, so each
+    // shows as it does everywhere else. Null for a piece that's only acts.
+    property var rows: null
 }

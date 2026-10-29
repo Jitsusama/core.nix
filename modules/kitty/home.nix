@@ -1,6 +1,6 @@
 # Joel's kitty: kitty.conf says how it behaves, and theme.conf, written here
 # from jitsusama.theme, how it looks: the theme's terminal colours, and its
-# roles for the frame around them, so kitty matches the rest of the desktop.
+# colours for the frame around them, so kitty matches the rest of the desktop.
 # keys.conf, written here from jitsusama.kitty.keys, holds its shortcuts,
 # which also go into the keyboard map (modules/keys). Its kitty scrolls by
 # touch too, which upstream's doesn't on Wayland (touch-scrolling.patch).
@@ -17,7 +17,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     terminal
     font
     space
@@ -65,9 +65,9 @@ let
   # the accent, and what it points at reads in the strongest text.
   hints = lib.concatStringsSep " " [
     "kitten hints"
-    "--hints-foreground-color=${roles.on_accent}"
-    "--hints-background-color=${roles.accent}"
-    "--hints-text-color=${roles.strong}"
+    "--hints-foreground-color=${colours.on_accent}"
+    "--hints-background-color=${colours.accent}"
+    "--hints-text-color=${colours.strong}"
   ];
 in
 {
@@ -120,7 +120,7 @@ in
   # The page another machine is drawn on: the theme's own, a little towards
   # the hue the prompt gives another machine.
   config.xdg.configFile."kitty/elsewhere.conf".text = ''
-    background ${mix 0.07 roles.machine terminal.background}
+    background ${mix 0.07 colours.machine terminal.background}
   '';
 
   # Only kitty can run the kitten, so ssh is plain ssh anywhere else.
@@ -145,20 +145,20 @@ in
     cursor ${terminal.cursor}
     cursor_text_color ${terminal.cursor_text}
 
-    active_border_color ${roles.accent}
+    active_border_color ${colours.accent}
     # The tab in view is drawn in the page's own colour against a darker
     # strip, as Chrome marks its current tab, the rest muted on the strip.
-    tab_bar_background ${roles.deepest}
-    active_tab_background ${roles.background}
-    active_tab_foreground ${roles.strong}
-    inactive_tab_background ${roles.deepest}
-    inactive_tab_foreground ${roles.muted}
+    tab_bar_background ${colours.deepest}
+    active_tab_background ${colours.background}
+    active_tab_foreground ${colours.strong}
+    inactive_tab_background ${colours.deepest}
+    inactive_tab_foreground ${colours.muted}
 
     action_alias hints ${hints}
 
     # A link under the pointer underlined in the theme's strongest text, as
     # glow underlines one, rather than in kitty's own blue curl.
-    url_color ${roles.strong}
+    url_color ${colours.strong}
     url_style straight
 
     color0 ${terminal.black}

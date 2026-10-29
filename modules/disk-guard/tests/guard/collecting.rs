@@ -60,7 +60,10 @@ struct Store {
 
 impl Store {
     /// A store, and a nix and nix-store over it that log what they're asked
-    /// to `log`, each with the scheduling policy it ran under.
+    /// to `log`, each with the scheduling policy it ran under. A path with
+    /// `held` beside its `meta` is listed as dead every time and refused by
+    /// every delete, as what a build roots again after a listing; while
+    /// `listing-slow` is there, every listing after the first waits on it.
     fn new() -> Store {
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
@@ -103,6 +106,8 @@ impl Store {
                  fi\n\
                  [ \"$*\" = '--gc --print-dead' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
+                 if [ -e {listed} ]; then while [ -e {slow_list} ]; do sleep 0.05; done; fi\n\
+                 : > {listed}\n\
                  [ -e {broken} ] && {{ echo 'error: a temporary file went' >&2; exit 1; }}\n\
                  for p in {store}/*; do [ -e \"$p/meta\" ] || continue\n\
                    [ -e \"$p/alive\" ] && [ ! -e {stale} ] || echo \"$p\"\n\
@@ -113,6 +118,8 @@ impl Store {
                 linked = linked.display(),
                 slow = root.join("slow").display(),
                 broken = root.join("listing-broken").display(),
+                listed = root.join("listed").display(),
+                slow_list = root.join("listing-slow").display(),
                 stale = root.join("listing-stale").display(),
             ),
         );
@@ -128,7 +135,7 @@ impl Store {
                        \"$sep\" \"$p\" \"$s\" \"$t\"; sep=,\n\
                    done; printf '}}' ;;\n\
                  'store delete') shift 2; echo \"delete $*\" >> {log}\n\
-                   for p in \"$@\"; do [ -e \"$p/alive\" ] || continue\n\
+                   for p in \"$@\"; do [ -e \"$p/alive\" ] || [ -e \"$p/held\" ] || continue\n\
                      echo \"error: Cannot delete path '$p' since it is still alive.\" >&2; exit 1\n\
                    done; rm -r \"$@\" ;;\n\
                  'store gc') shift 2; echo \"gc $* {policy}\" >> {log} ;;\n\
@@ -295,12 +302,13 @@ impl Store {
         log.lines().map(str::to_owned).collect()
     }
 
-    /// Steps `guard` until `done` holds, as the listing runs apart.
+    /// Steps `guard` until `done` holds, as the listing runs apart: for
+    /// as long as a loaded machine takes to run its few shell stand-ins.
     fn step_until(&self, guard: &mut Guard, done: impl Fn(&Store) -> bool) {
         let started = Instant::now();
         while !done(self) {
             assert!(
-                started.elapsed() < Duration::from_secs(10),
+                started.elapsed() < Duration::from_secs(30),
                 "{:?}",
                 self.log()
             );
@@ -406,6 +414,78 @@ fn a_batch_that_meets_garbage_come_alive_has_the_store_listed_again() {
     store.step_until(&mut guard, |_| !free.exists());
     assert_eq!(lists(&store), 2, "{:?}", store.log());
     assert!(alive.iter().all(|path| path.exists()), "a root holds them");
+}
+
+#[test]
+fn a_listing_found_stale_offers_no_more_batches_until_the_next_is_heard() {
+    // Builds root again what a listing called dead, hundreds of roots
+    // reaching into a batch within minutes, so on 28 October batch after
+    // batch from one listing was refused, each a whole look for roots,
+    // while the listing that would cure it waited on the lock they took.
+    let store = Store::new();
+    for n in 0..4 {
+        let path = store.dead(&format!("{n}-held"), 10.0 * DAY, 4096);
+        fs::write(path.join("held"), "").unwrap();
+    }
+    let free = store.dead("zzz-free", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| batches_begun(store) > 0);
+    // Processes holding paths come and go all the while, each a reason to
+    // collect again.
+    for pid in 9000..9020 {
+        let file = store.root.join("temproots").join(pid.to_string());
+        fs::write(&file, "").unwrap();
+        guard.step(&tick(), &CALM).unwrap();
+        fs::remove_file(&file).unwrap();
+        guard.step(&tick(), &CALM).unwrap();
+    }
+    let begun = batches_begun(&store);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    assert_eq!(begun, 1, "{:?}", store.log());
+    assert!(free.exists(), "refused with the batch");
+}
+
+#[test]
+fn a_pass_offers_nix_no_batch_after_one_is_found_stale() {
+    // Builds root again what a listing called dead, so on 28 October a
+    // pass that met it in one batch went on to meet it in every other,
+    // 37 deletes a minute each refused whole.
+    let store = Store::new();
+    // Largest first, so the four largest fill the first batch of 8 GiB.
+    // That's the order only with no cache kept: kept, the oldest go first,
+    // and a second turning while these are made dates the smallest older.
+    for n in 0..8u64 {
+        let path = store.dead(&format!("held-{n}"), 10.0 * DAY, (2 << 30) + n);
+        fs::write(path.join("held"), "").unwrap();
+    }
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config_as_given("0%", "0%"));
+    store.step_until(&mut guard, |store| {
+        store.log().iter().any(|line| line.starts_with("delete"))
+    });
+    for _ in 0..10 {
+        guard.step(&tick(), &CALM).unwrap();
+    }
+    let log = store.log();
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    let later = |line: &&String| (0..4).any(|n| line.contains(&format!("/held-{n}")));
+    assert!(
+        !log.iter()
+            .filter(|line| line.starts_with("delete"))
+            .any(|line| later(&line)),
+        "{log:?}"
+    );
+}
+
+/// The deletes that began a batch, naming all five of its paths: each try
+/// after a refusal leaves the refused path out.
+fn batches_begun(store: &Store) -> usize {
+    store
+        .log()
+        .iter()
+        .filter(|line| line.starts_with("delete") && line.split(' ').count() == 6)
+        .count()
 }
 
 #[test]

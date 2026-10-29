@@ -1,14 +1,60 @@
 //! Which filesystem a path is on, as its free space is shared, which is
-//! how the daemons tell their filesystems apart. Walks still stop at any
-//! change of device, so they never cross into a mount or a subvolume.
+//! how the daemons tell their filesystems apart. Walks stop at a change of
+//! device, so they never cross into a mount; the walk that finds targets
+//! goes on into a Btrfs subvolume, which `within` tells from a mount, and
+//! `beneath` lets the guard open what it found there.
 
 use std::io;
+use std::os::fd::OwnedFd;
 use std::path::Path;
 
 /// On Linux a Btrfs pool counts once, whatever subvolumes it holds.
 #[cfg(target_os = "linux")]
 pub fn pool(path: &Path) -> io::Result<u64> {
     crate::linux::pool(path)
+}
+
+/// Whether a walk may go on from `parent` into `path`, a directory beneath
+/// it with a device number of its own: on Linux, when it's a subvolume of
+/// the same Btrfs pool, not mounted and not read-only. The work broker
+/// clones each tree as a subvolume, and its builds are in it.
+#[cfg(target_os = "linux")]
+pub fn within(parent: &Path, path: &Path) -> bool {
+    crate::linux::subvolume_within(parent, path)
+}
+
+/// Anywhere else a change of device is a mount, or an APFS volume, which
+/// is mounted as one.
+#[cfg(not(target_os = "linux"))]
+pub fn within(_parent: &Path, _path: &Path) -> bool {
+    false
+}
+
+/// Whether `child`, opened beneath `parent` with a device number of its
+/// own, may be gone on into as `within` says of paths, so a target the
+/// walk found in a subvolume can be opened to reclaim it.
+#[cfg(target_os = "linux")]
+pub fn beneath(parent: &OwnedFd, child: &OwnedFd) -> bool {
+    crate::linux::subvolume_beneath(parent, child)
+}
+
+/// Anywhere else a change of device is a mount.
+#[cfg(not(target_os = "linux"))]
+pub fn beneath(_parent: &OwnedFd, _child: &OwnedFd) -> bool {
+    false
+}
+
+/// A file's extents shared with other files, as where each lies on the
+/// disk and its length: on Linux, as `FIEMAP` maps them.
+#[cfg(target_os = "linux")]
+pub fn shared_extents(file: &OwnedFd) -> Vec<(u64, u64)> {
+    crate::linux::shared_extents(file)
+}
+
+/// Anywhere else a file's blocks are its own: APFS clones aren't mapped.
+#[cfg(not(target_os = "linux"))]
+pub fn shared_extents(_file: &OwnedFd) -> Vec<(u64, u64)> {
+    Vec::new()
 }
 
 /// The APFS container a volume is in, by what it's mounted from: volume

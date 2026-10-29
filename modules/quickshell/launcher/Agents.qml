@@ -25,9 +25,9 @@ Provider {
     // helpers and spend are its parts there.
     collection: Words.collection("agents")
 
-    // Those that want Joel first, then the one used last.
+    // Those that truly want Joel first, then the one used last.
     readonly property var all: Sessions.wanting
-        .concat(Sessions.running.filter(session => !(session.presence && session.presence.wants)))
+        .concat(Sessions.running.filter(session => !Sessions.wanting.includes(session)))
         .map(session => made(session))
     onAllChanged: changedTo(all)
 
@@ -41,8 +41,11 @@ Provider {
     function made(session) {
         const presence = session.presence;
         const queued = inLine(presence);
+        // A want that isn't truly Joel's (Sessions.asks) reads as what the
+        // session does meanwhile.
+        const asks = Sessions.asks(session);
         const doing = presence === null ? ""
-            : presence.wants ? Sessions.wanted(presence.wants)
+            : asks ? Sessions.wanted(presence.wants)
             : queued !== "" ? queued
             : presence.busy ? "working" : "waiting";
         const quest = presence && presence.owns
@@ -54,7 +57,7 @@ Provider {
             // The session is its window, which the windows and its quest
             // also find, and it says the most of the three, so it's the
             // one row left of them (Launcher.qml's compose).
-            is: `window:${session.window.id}`,
+            is: Sessions.isOf(session),
             rich: 2,
             verb: "switch",
             name: session.title,
@@ -65,10 +68,10 @@ Provider {
             hue: "program",
             side: [session.address, doing, spent !== "" ? `${spent} today` : "", session.folder]
                 .filter(part => part !== "").join(" \u00b7 "),
-            note: presence && presence.wants && presence.wants.said ? presence.wants.said
+            note: asks && presence.wants.said ? presence.wants.said
                 : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
-            run: () => Niri.act({ FocusWindow: { id: session.window.id } }),
+            run: () => Sessions.goTo(session),
             verbs: () => provider.verbs(session, quest, spent)
         });
     }
@@ -126,7 +129,7 @@ Provider {
             glyph: Words.glyph("verb:agent:switch"),
             hue: "action",
             later: true,
-            run: () => Niri.act({ FocusWindow: { id: session.window.id } })
+            run: () => Sessions.goTo(session)
         })].concat(facts);
     }
 
@@ -148,8 +151,46 @@ Provider {
         return { rows: kept.map(f => f.row), grade: grade };
     }
 
+    // Starting a session, Agents' own last row, after the sessions running
+    // (Joel, 2026-10-28: "i'm also not able to start an orchestrator agent
+    // session from the launcher ... it is also a bit non-intuitive"): one
+    // row, then a choice of a session on a quest or one as an
+    // orchestrator, each listing what it can start, the quests' and the
+    // orchestrators' own rows, whose Return starts it. Found by its name
+    // from anywhere, and folded, so home names the sessions, never it.
+    function source(name) {
+        return (provider.launcher?.sources ?? []).find(one => one.settings.name === name) ?? null;
+    }
+
+    readonly property var start: {
+        const quests = () => (source("quests")?.everything() ?? [])
+            .filter(row => row.unfinished && row.verb !== "switch");
+        const orchestrators = () => source("orchestrators")?.startable ?? [];
+        const choice = (id, note, rows) => thingRow({
+            key: `agents:start:${id}`,
+            name: Words.name(`agents:start:${id}`),
+            note: note,
+            glyph: Theme.glyph.agent,
+            hue: "action"
+        }, rows);
+        return Object.assign(thingRow({
+            key: "agents:start",
+            name: Words.name("agents:start"),
+            glyph: Theme.glyph.agent,
+            hue: "action"
+        }, () => [
+            choice("quest", "a session working on one of your quests", quests),
+            choice("orchestrator", "a session that runs a quest and the quests under it",
+                orchestrators)
+        ]), {
+            folded: true
+        });
+    }
+
+    things: [start]
+
     function everything() {
-        return all.slice();
+        return all.concat([start]);
     }
 
     function counted() {

@@ -3,7 +3,7 @@
 # module reads it from jitsusama.theme and writes it in the program's own
 # format, so a terminal, a notification and the lock screen all look alike,
 # and picking another theme changes them all. Surfaces name what a colour
-# means (roles), never the colour itself, and the theme is checked for
+# means (its colours), never the colour itself, and the theme is checked for
 # legibility as the machine is evaluated.
 { config, lib, ... }:
 let
@@ -32,7 +32,7 @@ let
       inherit description;
     };
 
-  roles = {
+  colours = {
     background = "behind everything: windows, the terminal, menus";
     sunken = "below the background: a sidebar, an inactive tab, a list";
     deepest = "the very back: the overview's backdrop, a tab bar";
@@ -154,7 +154,7 @@ let
         };
       role = name: {
         inherit name;
-        value = cfg.roles.${name};
+        value = cfg.colours.${name};
       };
       term = name: {
         name = "terminal ${name}";
@@ -289,7 +289,7 @@ let
 
   # The marks every surface draws from, looked up by meaning, each with a
   # stand-in a console font can draw (glyphs.nix).
-  glyphs = import ./glyphs.nix { inherit lib; };
+  marks = import ./glyphs.nix { inherit lib; };
 
   keyFace = lib.types.submodule {
     options = {
@@ -391,9 +391,9 @@ in
       '';
     };
 
-    roles = lib.mapAttrs (
-      name: description: colorOption theme.roles.${name} "The colour for ${description}."
-    ) roles;
+    colours = lib.mapAttrs (
+      name: description: colorOption theme.colours.${name} "The colour for ${description}."
+    ) colours;
 
     terminal = lib.mapAttrs (
       name: description: colorOption theme.terminal.${name} "The colour for ${description}."
@@ -403,7 +403,7 @@ in
       colour = lib.mkOption {
         type = color;
         default =
-          if written name ? pigment then pigment (written name).pigment else cfg.roles.${about.role};
+          if written name ? pigment then pigment (written name).pigment else cfg.colours.${about.role};
         defaultText = lib.literalMD "the pigment the theme file names, or the ${about.role} role";
         description = "The colour for ${about.means}.";
       };
@@ -601,9 +601,9 @@ in
       };
     };
 
-    glyphs = lib.mkOption {
+    marks = lib.mkOption {
       type = lib.types.attrsOf glyph;
-      default = lib.recursiveUpdate glyphs (theme.glyphs or { });
+      default = lib.recursiveUpdate marks (theme.marks or { });
       defaultText = lib.literalMD "pi's marks, with any the theme file changes";
       description = ''
         The marks every surface draws, by what they mean, each with a stand-in
@@ -614,7 +614,7 @@ in
 
     keys = lib.mkOption {
       type = lib.types.attrsOf keyFace;
-      default = import ./keys.nix { mark = name: cfg.glyphs.${name}.glyph; };
+      default = import ./keys.nix { mark = name: cfg.marks.${name}.glyph; };
       defaultText = lib.literalMD "the faces in keys.nix, wearing the theme's marks";
       description = ''
         How a key is drawn wherever a surface names one, by its xkb name: its
@@ -864,7 +864,7 @@ in
   # of its own written: pi, a script, the stick's guide.
   config.xdg.configFile."jitsusama/theme.json".text = builtins.toJSON {
     inherit (cfg)
-      roles
+      colours
       terminal
       syntax
       shades
@@ -879,7 +879,7 @@ in
       ;
     inherit (cfg.type) mono sans;
     name = cfg.title;
-    glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.glyphs;
+    marks = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.marks;
   };
 
   # Joel's aesthetic, for every agent on the machine, so one designing

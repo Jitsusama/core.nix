@@ -20,6 +20,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Notice.js" as Notice
 
 Provider {
     id: provider
@@ -42,11 +43,7 @@ Provider {
 
     // The window of the program that sent it, or the program to open.
     function source(app) {
-        const entry = DesktopEntries.heuristicLookup(app);
-        const ids = [app.toLowerCase()].concat(entry ? [entry.id.toLowerCase()] : []);
-        const window = Object.values(Niri.windows)
-            .find(w => w.app_id && ids.includes(w.app_id.toLowerCase()));
-        return { entry: entry, window: window ?? null };
+        return { entry: DesktopEntries.heuristicLookup(app), window: Notices.senderWindow(app) };
     }
 
     // Goes to the program that sent it: its window as things are now, since
@@ -69,9 +66,16 @@ Provider {
         const said = notice.body === "" ? notice.summary : `${notice.summary}\n${notice.body}`;
         const from = source(notice.app);
         const opened = opens(notice) !== null;
-        return member({
+        // With nothing to open or go to, Return steps in, as the right
+        // arrow does, rather than copying: copying is never first (Joel,
+        // 2026-10-28: "having the separate copy option at the top is very
+        // confusing"). Its verbs and targets both make it a row holding
+        // rows, which Return's own act never leads (Catalogue.js's leading).
+        const nowhere = !opened && !from.window && !from.entry;
+        const verbs = () => provider.verbs(notice, said);
+        const row = member({
             key: `notice:${notice.app}:${notice.summary}`,
-            verb: opened || (!from.window && from.entry) ? "open" : from.window ? "switch" : "copy",
+            verb: nowhere ? "more" : opened || !from.window ? "open" : "switch",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
             // The whole of what it said, summary over body.
@@ -87,78 +91,133 @@ Provider {
             // keys, and a sender can raise its window only from a token
             // asked for while it does; going to a window niri focuses
             // waits for the launcher to be gone.
-            now: opened || (!from.window && !from.entry),
-            later: !opened,
-            verbs: () => provider.verbs(notice, said),
+            now: opened,
+            later: !opened && !nowhere,
+            stays: nowhere,
+            verbs: verbs,
+            targets: nowhere ? verbs : null,
             run: () => {
+                if (nowhere) {
+                    provider.launcher?.enter(row);
+                    return;
+                }
                 Notices.mark(notice.id, true);
                 const opening = provider.opens(notice);
                 if (opening)
-                    opening.invoke();
-                else if (!from.window && !from.entry)
-                    Quickshell.clipboardText = said;
+                    Notices.open(opening, notice.app);
                 else
                     provider.go(notice.app);
             }
         });
+        return row;
     }
 
-    // What can be done to a notice: what its program offers while it's
-    // open, then copying what it said, then letting it go. Quickshell
-    // destroys a notification's actions when it closes or its program
-    // replaces it, so each is found again by its identifier when it's run;
-    // one whose notice has gone by then goes to its program instead.
+    // What can be done to a notice, the acts its card lists too, in the
+    // same order (Notice.js). Quickshell destroys a notification's actions
+    // when it closes or its program replaces it, so each is found again by
+    // its identifier when it's run; one whose notice has gone by then goes
+    // to its program instead. The launcher puts Return's own act first
+    // (Catalogue.js): opening what it's about while it's open, else going
+    // to the program.
     function verbs(notice, said) {
         const live = Notices.live[notice.id] ?? null;
-        // The default is Return's on the notice itself, not one of these.
-        const offered = live ? live.actions.filter(action => action.identifier !== "default")
-            .map(action => ({
-            identifier: action.identifier,
-            text: action.text
-        })).map(action => thing({
-            key: `verb:notice:${action.identifier}`,
-            name: action.text,
-            glyph: /reply/i.test(action.text) ? Theme.glyph.reply : Theme.glyph.offer,
-            hue: "action",
-            now: true,
-            run: () => {
-                Notices.mark(notice.id, true);
-                const still = Notices.live[notice.id] ?? null;
-                const now = still
-                    ? still.actions.find(a => a.identifier === action.identifier) ?? null : null;
-                if (now)
-                    now.invoke();
-                else
+        const from = source(notice.app);
+        const acts = Notice.acts({
+            live: live !== null,
+            opens: live ? Notice.opens(live.actions) : false,
+            offers: live ? Notice.offers(live.actions) : []
+        }, { window: from.window !== null, stack: false });
+        return acts.map(act => provider.act(notice, said, from, act));
+    }
+
+    // One of a notice's acts as a row of its own.
+    function act(notice, said, from, act) {
+        const action = identifier => {
+            const still = Notices.live[notice.id] ?? null;
+            return still ? still.actions.find(a => a.identifier === identifier) ?? null : null;
+        };
+        // As the vocabulary names it.
+        const named = id => ({
+            key: id,
+            name: Words.name(id),
+            glyph: Words.glyph(id),
+            hue: "action"
+        });
+        switch (act.act) {
+        case "open":
+            return thing(Object.assign(named("verb:notice:open"), {
+                verb: Words.verb("verb:notice:open"),
+                now: true,
+                run: () => {
+                    Notices.mark(notice.id, true);
+                    const opening = action("default");
+                    if (opening)
+                        Notices.open(opening, notice.app);
+                    else
+                        provider.go(notice.app);
+                }
+            }));
+        case "offer":
+            return thing({
+                key: `verb:notice:${act.identifier}`,
+                name: act.text,
+                glyph: /reply/i.test(act.text) ? Theme.glyph.reply : Theme.glyph.offer,
+                hue: "action",
+                now: true,
+                run: () => {
+                    Notices.mark(notice.id, true);
+                    const now = action(act.identifier);
+                    if (now)
+                        now.invoke();
+                    else
+                        provider.go(notice.app);
+                }
+            });
+        case "goTo":
+            // Going to its program while a window of it is open. Opening a
+            // program that isn't open would be named Open, which the
+            // launcher would take for opening the notice. Going there reads
+            // it, as opening it does, and as Go To on its card does.
+            return thing(Object.assign(named("verb:notice:goTo"), {
+                verb: Words.verb("verb:notice:goTo"),
+                name: Words.name("verb:notice:goTo", "",
+                    { program: from.entry ? from.entry.name : notice.app }),
+                later: true,
+                run: () => {
+                    Notices.mark(notice.id, true);
                     provider.go(notice.app);
-            }
-        })) : [];
-        return offered.concat([thing({
-            key: "verb:notice:copy",
-            name: "Copy what it said",
-            glyph: Theme.glyph.copy,
-            hue: "action",
-            now: true,
-            run: () => {
-                Notices.mark(notice.id, true);
-                Quickshell.clipboardText = said;
-            }
-        }), thing({
-            key: "verb:notice:mark",
-            name: notice.read ? "Mark it unread" : "Mark it read",
-            glyph: notice.read ? Theme.glyph.unread : Theme.glyph.read,
-            hue: "action",
-            run: () => Notices.mark(notice.id, !notice.read)
-        })], live ? [thing({
-            key: "verb:notice:dismiss",
-            name: "Let it go",
-            glyph: Theme.glyph.dismiss,
-            hue: "action",
-            run: () => {
-                const still = Notices.live[notice.id] ?? null;
-                if (still)
-                    still.dismiss();
-            }
-        })] : []);
+                }
+            }));
+        case "read":
+            // One switch, its name the same either way and what it is at
+            // its side, as every setting's is. It changes the notice rather
+            // than taking Joel anywhere, so the launcher stays and shows it
+            // changed.
+            return thing(Object.assign(named("verb:notice:read"), {
+                glyph: Words.glyph("verb:notice:read", notice.read ? "read" : ""),
+                side: notice.read ? "yes" : "no",
+                stays: true,
+                run: () => Notices.mark(notice.id, !notice.read)
+            }));
+        case "forget":
+            return thing(Object.assign(named("verb:notice:forget"), {
+                stays: true,
+                run: () => {
+                    const still = Notices.live[notice.id] ?? null;
+                    if (still)
+                        still.dismiss();
+                }
+            }));
+        default:
+            // Copying what it said, always last.
+            return thing(Object.assign(named("verb:notice:copy"), {
+                now: true,
+                run: () => {
+                    Notices.mark(notice.id, true);
+                    Quickshell.clipboardText = said;
+                }
+            }));
+        }
     }
 
     // Made again only when the history changes, each with its age as of

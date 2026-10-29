@@ -14,3 +14,8 @@
 # tile cache from the machine it runs on, so those are left to it.
 (undo-levels 25)
 (undo-size 2G)
+
+# The shortcuts are declared, in the shortcutsrc home.nix links into the
+# account's folder, so GIMP doesn't save them as it exits. A key changed in
+# Edit, Keyboard Shortcuts lasts until GIMP closes.
+(save-accels no)

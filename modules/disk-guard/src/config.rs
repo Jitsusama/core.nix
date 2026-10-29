@@ -181,8 +181,16 @@ pub enum Source {
         pattern: String,
         command: String,
     },
-    /// Quest workspaces, judged by their quest's README.
-    Workspaces { path: PathBuf, quests: PathBuf },
+    /// Quest workspaces, judged by their quest's README. `trees`, when
+    /// given, is a tree broker's records, one JSON file per tree naming
+    /// its `path` and the `owners` holding it: a tree none of them still
+    /// holds, and no quest going lists, has its builds spent.
+    Workspaces {
+        path: PathBuf,
+        quests: PathBuf,
+        #[serde(default)]
+        trees: Option<PathBuf>,
+    },
     /// A temporary directory's per-run leftovers: the one named, or the
     /// account's own, which on a Mac is a folder of its own under
     /// /var/folders rather than /tmp.
@@ -205,6 +213,12 @@ pub enum Source {
         every: Option<Span>,
         #[serde(default)]
         from: Option<Band>,
+        /// Files whose change since it last ran makes it due in the next
+        /// upkeep, looked at once a minute: what its own rule would let go
+        /// is spent once what it watches says something new arrived, not
+        /// when a schedule comes round.
+        #[serde(default)]
+        watch: Vec<PathBuf>,
         timeout: Span,
     },
     /// A command that says whether a checkout's work is finished, for
@@ -214,6 +228,9 @@ pub enum Source {
         command: Vec<String>,
         timeout: Span,
     },
+    /// Git repositories, by their git directories, whose temporaries go
+    /// once no git works on them.
+    Git { repos: Vec<PathBuf> },
     /// systemd-coredump's cores.
     Coredumps { path: PathBuf },
     /// Build directories Nix left behind.
@@ -255,6 +272,7 @@ impl Source {
             Source::Podman { .. } => "podman",
             Source::Producer { .. } => "producer",
             Source::Finished { .. } => "finished",
+            Source::Git { .. } => "git",
             Source::Coredumps { .. } => "coredumps",
             Source::NixBuilds { .. } => "nix-builds",
         }
@@ -277,10 +295,18 @@ impl Source {
 
     fn paths(&self) -> Vec<&Path> {
         match self {
-            Source::Cargo { roots, .. } | Source::Installs { roots, .. } => {
-                roots.iter().map(PathBuf::as_path).collect()
-            }
-            Source::Workspaces { path, quests } => vec![path, quests],
+            Source::Cargo { roots, .. }
+            | Source::Installs { roots, .. }
+            | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
+            Source::Workspaces {
+                path,
+                quests,
+                trees,
+            } => [path, quests]
+                .into_iter()
+                .chain(trees)
+                .map(PathBuf::as_path)
+                .collect(),
             Source::Cache { path, .. }
             | Source::Scratch { path, .. }
             | Source::Snapshots { path, .. }
@@ -323,11 +349,18 @@ impl Source {
                 command,
                 every,
                 from,
+                watch,
                 ..
             } => {
                 check_command(command)?;
                 if every.is_none() && from.is_none() {
                     return Err("it says neither when to run (every) nor from which band".into());
+                }
+                if let Some(path) = watch.iter().find(|path| !plain_absolute(path)) {
+                    return Err(format!(
+                        "it watches {}, which is not an absolute path",
+                        path.display()
+                    ));
                 }
             }
             _ => {}
@@ -528,6 +561,12 @@ pub struct Config {
     pub sources: BTreeMap<String, Source>,
     pub nix: Nix,
     pub system: Option<System>,
+    /// The space used past which the guard says what holds each disk, as
+    /// it does below healthy, though it takes nothing more for it: a disk
+    /// can be far from filling and still hold more than anything on it has
+    /// reason to, and a budget is a signal and a backstop, never a reason
+    /// to take what an owner still holds.
+    pub budget: Option<Size>,
 }
 
 #[derive(Deserialize)]
@@ -551,6 +590,7 @@ struct Rendered {
     garbage: Option<Garbage>,
     dedupe: Option<Dedupe>,
     boot: Option<PathBuf>,
+    budget: Option<Size>,
 }
 
 fn yes() -> bool {
@@ -628,6 +668,7 @@ impl Config {
             sources: rendered.sources,
             nix,
             system,
+            budget: rendered.budget,
         })
     }
 }

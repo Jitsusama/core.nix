@@ -60,6 +60,7 @@ Provider {
         name: Words.name("wifi:radio", on ? "" : "off"),
         glyph: Words.glyph("wifi:radio", on ? "" : "off"),
         hue: "machine",
+        stays: true,
         run: () => Wifi.turn(!provider.on)
     })
 
@@ -227,25 +228,31 @@ Provider {
         const signal = network.strength > 0 ? `${network.strength} of 4 bars · ` : "";
         const note = `${signal}${locked.words}`;
         const opening = met && locked.account ? provider.accountFor(network, "peap") : null;
+        // Joined but wanting a sign-in, Return signs in, as it's all that's
+        // left to do there; otherwise it leaves a network joined or joins one.
+        const signing = joined && SignIn.network === network.name;
         return member({
             key: `wifi:${network.name}`,
-            verb: joined ? "disconnect" : "connect",
+            verb: signing ? Words.verb("verb:wifi-sign-in") : joined ? "disconnect" : "connect",
             name: network.name,
             glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
-            // Joined, as Return joins it and its access point says it is.
-            side: joined ? "joined" : network.known ? "saved" : "",
+            // Connected, as Return connects it and its access point says it
+            // is; join is a call's word (docs/glossary.md).
+            side: joined ? "connected" : network.known ? "saved" : "",
             note: note,
             network: network.name,
             state: () => provider.said(network, note),
-            // Joining keeps the launcher, which says how it went.
-            stays: !joined,
+            // Joining or leaving keeps the launcher, which says how it went;
+            // signing in opens the page, so it closes.
+            stays: !signing,
             secret: asks,
             ask: asks ? "password" : opening ? opening.ask : "",
             chip: network.name,
             given: asks ? password => provider.join(network, password)
                 : opening ? opening.given : null,
-            run: joined ? () => Wifi.leave(network.name) : () => provider.join(network),
+            run: signing ? () => SignIn.open() : joined ? () => Wifi.leave(network.name)
+                : () => provider.join(network),
             verbs: () => provider.verbs(network, locked)
         });
     }
@@ -377,8 +384,8 @@ Provider {
         }, fields ?? {}));
     }
 
-    // A part holding more, which steps in on Return as on the right arrow,
-    // wearing Wi-Fi's glyph dimmed. What it holds is made as it's opened,
+    // A part holding more, which copies its value on Return and steps in
+    // by the right arrow, wearing Wi-Fi's glyph dimmed. What it holds is made as it's opened,
     // from what wifid and iw say then, so it follows them while shown.
     function holds(key, id, side, fields, inside) {
         return holderRow(Object.assign({
@@ -470,7 +477,6 @@ Provider {
             return [];
         const lasted = Interfaces.lasted(read.connected);
         return [fact(`wifi:link:${card}:connected`, "connected", lasted, {
-            copy: "",
             note: `since ${Qt.formatDateTime(new Date(Date.now() - read.connected * 1000),
                 "HH:mm")}`
         })];
@@ -585,7 +591,7 @@ Provider {
         const trouble = read.retries + (read.failed ?? 0);
         return holds(`wifi:link:${card}:speed:retries`, "retries", trouble === 0 ? "none"
             : `${number(read.retries)} sent again, ${number(read.failed ?? 0)} never sent`, {
-                note: "since it joined"
+                note: "since it connected"
             }, () => provider.retryParts(card));
     }
 
@@ -643,7 +649,7 @@ Provider {
         const key = id => `wifi:protection:${id}`;
         const rows = [fact(key("standard"), "standard", protection.standard),
             fact(key("proof"), "proof", protection.ways.join(" or "), {
-                note: "how a card proves it may join"
+                note: "how a card proves it may connect"
             })];
         if (protection.ciphers.length > 0)
             rows.push(fact(key("cipher"), "cipher", protection.ciphers.join(" or "), {
@@ -695,8 +701,8 @@ Provider {
     // the fastest, why. A step in, its parts.
     function pointRow(point, detail) {
         const fastest = fastestOf(point, detail);
-        const mark = point.joined ? " \u00b7 joined" : fastest ? " \u00b7 fastest" : "";
-        return holderRow({
+        const mark = point.joined ? " \u00b7 connected" : fastest ? " \u00b7 fastest" : "";
+        return thingRow({
             key: `wifi:point:${point.bssid}`,
             name: named("point", { band: ghz[point.band], channel: point.channel }),
             side: `${point.signal} dBm \u00b7 ~${point.estimate} Mb/s${mark}`,
@@ -721,7 +727,6 @@ Provider {
             graph: level(point.signal),
             note: `${point.bars} of 4 bars`
         }), fact(key("estimate"), "estimate", `about ${point.estimate} Mb/s`, {
-            copy: "",
             note: "how fast a card would get on with it"
         }), fact(key("width"), "width", `${point.width} MHz`), fact(key("generation"),
             "generation", point.generation ? `Wi-Fi ${point.generation}` : "older", {
@@ -765,6 +770,7 @@ Provider {
         if (network.connected)
             rows.push(thing(act("wifi-leave", "", {
                 glyph: Theme.glyph.offline,
+                stays: true,
                 run: () => Wifi.leave(network.name)
             })));
         else if (network.known || !locked.locked || locked.password)
@@ -796,20 +802,24 @@ Provider {
                 note: network.trusted ? "this machine stops finding others on it, and they it"
                     : "this machine finds others on it, and they it",
                 glyph: Theme.glyph.trust,
+                stays: true,
                 run: () => Wifi.trust(network.name, !network.trusted)
             })));
             rows.push(thing(act("wifi-forget", "", {
                 glyph: Theme.glyph.forget,
+                stays: true,
                 run: () => Wifi.forget(network.name)
             })));
         }
         return rows.concat(facts(network));
     }
 
-    // How the join went: once the card is on the network, the launcher's
-    // done, if it's still showing it; a password that didn't work, or none
-    // given where one's needed, asks for it; anything else says what
-    // happened.
+    // How the join went: once the card is on the network, a password asked
+    // for is done with, so the launcher steps back to the network, which
+    // says it's joined, and stays (Joel, 2026-10-26: an act that changes
+    // something "stays open and shows the new state on its row"); a
+    // password that didn't work, or none given where one's needed, asks for
+    // it; anything else says what happened.
     Connections {
         target: Wifi
 
@@ -818,8 +828,12 @@ Provider {
             const at = launcher.selected ?? launcher.asking;
             const showing = launcher.open && at && at.network === name;
             if (refused === "") {
-                if (showing)
-                    launcher.open = false;
+                // Joined, every ask it made is put away, its name, its
+                // server's and its password, back to the network itself.
+                if (showing && launcher.asking === at)
+                    while (launcher.asking && launcher.asking.network === name
+                        && launcher.held.length > 0)
+                        launcher.back();
                 return;
             }
             Report.say(`refused wifi ${name}`);
@@ -847,10 +861,10 @@ Provider {
             provider.trouble = {
                 TimedOut: "it didn't answer in time",
                 NotNearby: "it's out of reach",
-                TurnedAway: "it didn't let this machine join",
+                TurnedAway: "it didn't let this machine connect",
                 ServerUnproven: "its server couldn't prove it's that domain's",
                 Declared: "Nix keeps its password"
-            }[refused] ?? "it couldn't be joined";
+            }[refused] ?? "it couldn't be connected";
         }
     }
 
@@ -858,7 +872,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of all) {
+        for (const row of everything()) {
             if ((row.prepared.mask & need) !== need)
                 continue;
             const m = Fuzzy.match(row.prepared, words, false);
@@ -872,9 +886,12 @@ Provider {
         return { rows: kept.map(f => f.row), grade: finest };
     }
 
-    // With Wi-Fi off, turning it on is all there is to do.
+    // Wi-Fi holds its own off, after the networks so stepping in never
+    // lands on it, as Bluetooth holds its radio (collection-order.md);
+    // typed from the top, it's still found by name. With Wi-Fi off,
+    // turning it on is all there is to do.
     function everything() {
-        return on ? all.slice() : [radio];
+        return on ? all.concat([radio]) : [radio];
     }
 
     function counted() {

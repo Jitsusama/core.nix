@@ -137,13 +137,15 @@ pub fn survey(temp: &Path) -> Vec<Entry> {
     found
 }
 
-/// The entries a pass may take: this user's, with a made-up name not named
-/// for the user, holding
-/// no socket or checkout, and not any live process's TMPDIR or above one.
-/// A dev server can sit in a shell for days writing nothing, and its
-/// scratch is still its own. Whether a process works in one is for the
-/// caller to judge.
-pub fn leftovers(entries: Vec<Entry>, uid: u32, tmpdirs: &[PathBuf]) -> Vec<Entry> {
+/// The entries a pass may take: this user's, not named for the user,
+/// holding no socket or checkout, and not any live process's TMPDIR or
+/// above one, with a made-up name or nothing changed in it since `boot`,
+/// in wall seconds. A dev server can sit in a shell for days writing
+/// nothing, and its scratch is still its own; but nothing running now
+/// started before the boot, so a name a program chose itself keeps nothing
+/// from before then. Whether a process works in one is for the caller to
+/// judge.
+pub fn leftovers(entries: Vec<Entry>, uid: u32, tmpdirs: &[PathBuf], boot: f64) -> Vec<Entry> {
     // As named as well as resolved: a TMPDIR that is a link resolves to
     // where it points, and the entry that holds it is the link.
     let tmpdirs: Vec<PathBuf> = tmpdirs
@@ -167,7 +169,7 @@ pub fn leftovers(entries: Vec<Entry>, uid: u32, tmpdirs: &[PathBuf]) -> Vec<Entr
             && !users
             && !hidden
             && !PROTECTED.iter().any(|prefix| name.starts_with(prefix))
-            && made_up(name)
+            && (made_up(name) || entry.newest < boot)
             && !entry.socket
             && !entry.checkout
             && !tmpdirs.iter().any(|dir| dir.starts_with(&entry.path))
@@ -175,14 +177,16 @@ pub fn leftovers(entries: Vec<Entry>, uid: u32, tmpdirs: &[PathBuf]) -> Vec<Entr
     entries.into_iter().filter(offered).collect()
 }
 
-pub fn candidate(entry: &Entry, awake: &Awake, now: f64) -> Candidate {
+/// The candidate a leftover makes, spent when nothing has changed in it
+/// since `boot`: its maker ended with the boot before.
+pub fn candidate(entry: &Entry, awake: &Awake, now: f64, boot: f64) -> Candidate {
     Candidate {
         path: entry.path.clone(),
         class: Class::Temp,
         idle: awake.since(entry.newest.min(now), now).max(0.0),
         size: entry.size,
         occupied: false,
-        spent: false,
+        spent: entry.newest < boot,
         checkout: None,
     }
 }

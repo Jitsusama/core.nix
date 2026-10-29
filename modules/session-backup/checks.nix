@@ -13,7 +13,7 @@
 onLinux {
   # clippy finds nothing in session-backup, its tests included, which run
   # as it builds against a stand-in for Google that refuses any call but a
-  # token, a list in the folder and a file made in it.
+  # token, a list in the folder, a file made in it and a file read back.
   session-backup-passes-clippy = passesClippy "session-backup-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );
@@ -45,9 +45,10 @@ onLinux {
       timer = named.systemd.user.timers.session-backup.Timer;
     in
     holds "session-backup-stays-in-the-background"
-      "session-backup runs outside background.slice, misses an hour slept through, is restarted by a switch, or runs for an account that names no folder."
+      "session-backup runs outside background.slice, misses an hour slept through, gives up at its first failure, is restarted by a switch, or runs for an account that names no folder."
       (
         service.Slice == "background.slice"
+        && service.Restart == "on-failure"
         && unit.X-RestartIfChanged == false
         && timer.Persistent
         && !(unnamed.systemd.user.services ? session-backup)

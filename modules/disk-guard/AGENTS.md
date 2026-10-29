@@ -14,16 +14,31 @@ or launchd, and [`home.nix`][2] the account's.
   pressure, urgent or critical by its free space (25%, 10% and 4% by
   default), and a pass reclaims towards the target (35%). A forecast starts a pass
   before the next band arrives. Btrfs pools are one filesystem however many
-  subvolumes they hold.
+  subvolumes they hold. A writable subvolume reached through the same mount, as
+  the work broker clones each tree, is walked into and reclaimed from as any
+  folder is, and one that is itself what goes, as each quest's scratch is
+  made, goes whole; a mount, a read-only snapshot and a subvolume inside a
+  build or a scratch aren't.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
-  oversized logs, Nix's leftover build directories), Nix generations and
+  oversized logs, Nix's leftover build directories, and what a killed git
+  left staged in a repository no git works on now), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,
   caches cheapest to refill first, idle targets and installs, older builds a
-  newer one of their crate replaced, and last what is occupied. While
+  newer one of their crate replaced, and last what is occupied. Waste,
+  which costs nothing to lose, goes largest first; the rest of a group
+  goes longest idle first. While
   healthy, routine upkeep takes what's due every six hours: on the charger or a
   battery over half, ten minutes after boot or resume, however busy the
   machine, since a workstation that's always busy would otherwise never
-  be tidied.
+  be tidied. It comes at once, too, when an owner ends: the guard looks
+  each minute, and a tree newly spent, a new boot, a guard with new
+  rules or a file a producer watches changing since it last ran makes
+  upkeep due, so what an owner leaves never waits hours for the routine.
+  A producer whose watched file changed runs in that upkeep whatever its
+  schedule, as a cache gaining a version ends an older one's use. Upkeep
+  that kept something only the system daemon could have vouched for,
+  while it couldn't be asked, as when a switch restarts both daemons,
+  comes again ten minutes later.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -31,7 +46,12 @@ or launchd, and [`home.nix`][2] the account's.
   after a week. What belongs to something that has ended goes once it
   rests: a concluded or retired quest's scratch ten minutes after its last
   write, and the builds in every tree its README lists, at once, whatever
-  the band. `src/plan.rs` holds the table.
+  the band. So do the builds in a tree the tree broker's records say no
+  running process holds, unless a quest at work lists it (a quest parked
+  on the bench or for someday isn't: its builds are a cache), and a temp
+  entry nothing has changed since the last boot, whatever its name, since
+  whatever made it ended with that boot.
+  `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables
@@ -44,7 +64,12 @@ or launchd, and [`home.nix`][2] the account's.
   running, is left for the next group; a batch predicting under a gigabyte
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
-  under pressure, five at urgent and one at critical.
+  under pressure, five at urgent and one at critical. A survey counts the
+  blocks its candidates share once, for the first it measures, as trees
+  cloned with their builds inside share them: what it predicts is what
+  deleting them all frees, unless something it didn't measure shares them
+  too. Counted per build, five builds sharing one copy predicted 194 GiB
+  and freed 56.
 - **Pacing.** A busy machine never stops a pass; deleting slowly is how it
   spares the machine. Btrfs frees what's unlinked only when it commits, and
   saves wait behind a commit carrying a big delete, which no I/O priority
@@ -86,9 +111,16 @@ or launchd, and [`home.nix`][2] the account's.
   process holds, as a temporary root or a file it has open, and every dead
   path it reaches, is left for a later pass: Nix refuses a whole delete for
   one live path, deleting none, and each refusal costs it a whole look for
-  roots. It expires generations,
-  never the current, running or booted one, the newest five, or one with a
-  boot entry. It links the store's identical
+  roots. A built output goes no later than the dead derivation that built
+  it, since Nix keeps a derivation while its output is there. Temporary
+  roots are read again just before each delete, since an
+  evaluation begun after the batch was made holds what it writes for
+  minutes. Once a batch is refused anyway, the store is listed again and
+  none of the old listing's batches goes to Nix meanwhile, not even the
+  rest of that pass's, since builds root again what a listing called
+  dead, within minutes of it. It expires
+  generations, never the current, running or booted one, the
+  newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing
   stalls on the disk or memory, since it can wait without cost, stopping
   when the moment ends. An account's guard on the same filesystem asks it to
@@ -96,23 +128,52 @@ or launchd, and [`home.nix`][2] the account's.
   collects with `nix store gc --max` from urgent.
 - **Status.** Each daemon keeps a status file, the account's in its
   runtime directory and the system's in `/run/disk-guard`, which the
-  desktop and `disk-guard status` read. Its second version says things in
-  sentences the desktop shows as they are: one for the machine, one for
-  each disk beside its size, use, fill an hour and when it fills, and one
-  for each of the last 20 things cleared, which the journal remembers
-  across restarts. `src/words.rs` writes them. The fill and when it fills
+  desktop and `disk-guard status` read. A thread of its own writes it
+  again every 30 seconds for as long as the daemon runs, from its first
+  moment, on what the last daemon left until it has its own, each stamped
+  as it's written: so the heartbeat says what the unit's state does, and
+  neither a restart nor a long step reads as a guard that stopped. The
+  desktop asks the unit before it says one has. Its second version says
+  things in sentences the desktop shows as they are: one for the machine,
+  one for each disk beside its size, use, fill an hour and when it fills,
+  and one for each of the last 20 things cleared, which the journal
+  remembers across restarts. `src/words.rs` writes them. The fill and when it fills
   are the trend over about two hours, told once it's watched ten minutes
   and while the disk is filling now too, since builds writing and freeing
   gigabytes every few minutes swing the two-minute rate passes plan by
   either way by tens of gigabytes an hour. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. While a disk
-  is below healthy, `holders` says what holds the space: the ten biggest
+  is below healthy, or holds more than the config's `budget` (a size or a
+  share used, which takes nothing more), `holders` says what holds the
+  space: the ten biggest
   folders the sources name, each straight under a root or a cache whole,
   with whose it is (a quest, a worktree, a cache, containers or other),
   whether the guard may clear any of it and, when not, why. Sizing them
   reads millions of entries, so a thread at idle priority does it at most
   every half hour; `holders_at` says when. `src/holders.rs` holds it.
+- **Keeps.** `disk-guard keep FOLDER REASON...` tells the account's guard
+  never to clear anything in a folder, or holding one, for Joel's reason;
+  `disk-guard unkeep FOLDER` lets go. They live in the state folder's
+  `keeps.json`, read afresh at each survey, so a keep holds from the next
+  step. A holder a keep covers says his reason, and carries it as `kept`,
+  while `clearable` and `clears` stay what the guard judged of it. The
+  command marks the status file's holders itself before it ends, and
+  every writer of the file marks what it writes the same way, so the
+  holder has changed by the time the answer is heard. `src/keeps.rs`
+  holds it.
+- **Clears.** `disk-guard clear FOLDER` asks the account's guard to clear
+  what it may of a folder now, without waiting for its band or for it to
+  sit idle. Each ask is a file of its own in the state folder's `clears/`,
+  so two never race, and the next step takes it: a pass of the survey's
+  offers inside the folder that `plan::clears` allows, which is what a
+  critically full disk would take, less anything occupied and the store's
+  garbage, each judged for use again as it goes and paced by the disk's
+  own band. An ask ends with its pass, whatever the pass did, and until
+  then the holders it touches say `clearing`. A holder's `clears` counts
+  the same set, so what a clear offers to free is what it takes, and a
+  pass drops what it reclaimed from it at once. The command refuses a
+  kept folder. `src/clears.rs` holds the asks.
 - **Notices.** The account's guard shows one desktop notice, and only from
   urgent on: a disk under pressure is the launcher's to show. A notice the
   desktop didn't take, as when the notification server is still starting,
@@ -135,6 +196,8 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/pace.rs`             | resting between batches, by the disk's own feel          |
 | `src/survey.rs`           | each source's candidates                                 |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
+| `src/keeps.rs`            | the folders Joel keeps, and why                          |
+| `src/clears.rs`           | the folders Joel asked cleared now                       |
 | `src/anchor.rs`           | removal that never leaves its root                       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |

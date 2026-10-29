@@ -5,11 +5,11 @@
 // those hours, each its chance and how much. "rain", "umbrella",
 // "precipitation" or "when will it rain", here or "in" a place, answer
 // with the rain itself, its hours a step in. Here is where the laptop is,
-// as whereabouts last found it through GeoClue (../whereabouts), else
-// `place`, a name, or else the city the machine's time zone is named for
-// (`zone`, which NixOS gives), and the footer says which. The laptop's
-// forecast is asked by its position, to a hundredth of a degree, and the
-// footer says it by that position, since GeoClue names no place. Forecasts
+// as the shell's one place for it says (../Location.qml), else `place`, a
+// name, or else the city the clock's time zone is named for, and the
+// footer says which. The laptop's forecast is asked by its position, to a
+// hundredth of a degree, and the footer says it by its town, or by that
+// position while the town couldn't be asked. Forecasts
 // are Open-Meteo's, one request for all of it, asked only when the weather
 // is typed and kept for a quarter of an hour; other places are found
 // through its geocoder and kept for a day. `units` is "metric" or
@@ -17,8 +17,6 @@
 // ask it and its parts' names are the vocabulary's (launcher/words.json,
 // Words.qml).
 import qs
-import Quickshell
-import Quickshell.Io
 import QtQuick
 import "Numbers.js" as Numbers
 
@@ -106,30 +104,14 @@ Provider {
             : `${Numbers.format(value, 1, settings.group, settings.point)} mm`;
     }
 
-    // Where the laptop is, as whereabouts writes it in the runtime
-    // directory (its src/fix.rs), or null with no file, or one of another
-    // version. whereabouts replaces the file whole, and only once the
-    // laptop has moved, so each change heard is a new here. A test points
-    // it at a file of its own.
-    property string whereabouts: `${Quickshell.env("XDG_RUNTIME_DIR")}/whereabouts.json`
-    property var laptop: null
+    // Where the laptop is, as Location says it, or null while it's
+    // unknown. A test gives one of its own.
+    property var laptop: Location.here
     // A new here answers again what's shown, as a forecast arriving does.
     onLaptopChanged: answered()
-
-    function fixOf(text) {
-        const fix = parsed(text);
-        return fix.v === 1 && Number.isFinite(fix.latitude) && Number.isFinite(fix.longitude)
-            ? fix : null;
-    }
-
-    FileView {
-        path: provider.whereabouts
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.laptop = provider.fixOf(text())
-        onLoadFailed: provider.laptop = null
-    }
+    // The zone the clock keeps, as Location asks it, else the one the
+    // machine was given.
+    readonly property string zone: Location.clockZone || (settings.zone ?? "")
 
     // A position to a hundredth of a degree, about a kilometre, as near as
     // a forecast needs, so a forecast is kept for it whatever the last
@@ -153,7 +135,7 @@ Provider {
             const latitude = hundredths(laptop.latitude);
             const longitude = hundredths(laptop.longitude);
             return {
-                name: position(latitude, longitude),
+                name: laptop.place ?? position(latitude, longitude),
                 latitude: latitude,
                 longitude: longitude,
                 from: "from where the laptop is"
@@ -161,9 +143,10 @@ Provider {
         }
         if (settings.place)
             return { name: settings.place, from: "from the place you set" };
-        if (!settings.zone)
+        // A zone that names no city, as UTC or Etc/GMT+5, gives no here.
+        if (!zone.includes("/") || zone.startsWith("Etc/"))
             return null;
-        const city = settings.zone.split("/").pop().replace(/_/g, " ");
+        const city = zone.split("/").pop().replace(/_/g, " ");
         return { name: city, from: "from your time zone" };
     }
 
@@ -326,8 +309,9 @@ Provider {
             side: headline,
             glyph: glyph(now.weather_code, day)
         })];
-        // Rain holds its hours, and Return steps into them, since copying
-        // them would be copying a table: a part holding more, as any is.
+        // Rain holds its hours, a step in by the right arrow, and Return
+        // copies when it next rains, as asked alone: a part holding more,
+        // as any is.
         if (hours.length > 0) {
             const inside = hourRows(hours);
             rows.push(holderRow({

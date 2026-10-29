@@ -46,7 +46,7 @@ let
     let
       names = eight ++ map (name: "bright_${name}") eight;
       at = lib.lists.findFirstIndex (
-        name: lib.toLower terminal.${name} == lib.toLower theme.roles.${role}
+        name: lib.toLower terminal.${name} == lib.toLower theme.colours.${role}
       ) null names;
     in
     if at == null then "39" else toString (if at < 8 then 30 + at else 82 + at);
@@ -82,7 +82,7 @@ let
     ];
     text = lib.concatLines [
       "alert=${slot "alert"} strong=${slot "strong"} text=${slot "text"} muted=${slot "muted"}"
-      "mark=${lib.escapeShellArg theme.glyphs.failed.console}"
+      "mark=${lib.escapeShellArg theme.marks.failed.console}"
       (builtins.readFile ./stopped.sh)
     ];
   };

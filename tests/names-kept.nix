@@ -25,10 +25,8 @@
   waiting = {
     icon-marks-past-the-basic-plane = "Launcher (Y2YBTS): icon to mark";
     the-margins-glyphs-stand-level = "Launcher (Y2YBTS): glyph to mark";
-    "jitsusama.theme.glyphs" = "Look and programs (QGB4ON): glyph to mark";
     palette-graphs-draw-in-braille = "Launcher (Y2YBTS): palette to launcher";
     palette-rows-keep-their-words-apart = "Launcher (Y2YBTS): palette to launcher";
     "jitsusama.quickshell.quiet.whileSharing" = "Launcher (Y2YBTS): quiet to Do not disturb";
-    xdg-open-opens-each-kind-in-its-app = "Look and programs (QGB4ON): app to program";
   };
 }

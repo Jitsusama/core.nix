@@ -103,7 +103,7 @@ Provider {
             person: person,
             known: stands !== null,
             status: stands ? stands.status : "unknown",
-            glyph: String.fromCodePoint(stands !== null && stands.favourite ? 0xf04ce : 0xf0004),
+            glyph: stands !== null && stands.favourite ? Theme.glyph.favourite : Theme.glyph.person,
             hue: "person",
             side: how(stands).said,
             note: person.email,
@@ -116,7 +116,7 @@ Provider {
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.prepare(person.email))
+            get: () => also ?? (also = Fuzzy.kept(person.email))
         });
         return row;
     }
@@ -151,7 +151,7 @@ Provider {
         const favourite = stood !== null && stood.favourite;
         return [thing({
             key: busy ? "verb:person:join" : "verb:person:call",
-            name: busy ? "Join their call" : "Call them",
+            name: busy ? "Join Their Call" : "Call Them",
             side: how(stood).said,
             glyph: busy ? Theme.glyph.joinCall : Theme.glyph.call,
             hue: "action",
@@ -159,15 +159,15 @@ Provider {
             run: () => provider.pair(person)
         }), thing({
             key: "verb:person:favourite",
-            name: favourite ? "Stop them being a favourite" : "Make them a favourite",
-            glyph: String.fromCodePoint(favourite ? 0xf04d2 : 0xf04ce),
+            name: favourite ? "Stop Them Being a Favourite" : "Make Them a Favourite",
+            glyph: favourite ? Theme.glyph.notFavourite : Theme.glyph.favourite,
             hue: "action",
             run: () => provider.favour(person, !favourite)
         })].concat(person.email ? [copyRow({
             key: "fact:person:email",
             name: person.email,
             side: "their email",
-            glyph: String.fromCodePoint(0xf01ee)
+            glyph: Theme.glyph.email
         })] : []);
     }
 
@@ -196,26 +196,44 @@ Provider {
     // is found there on its own (Calls.qml).
     // Everyone is searched, thousands of them, so each name and email's
     // letters are tested first, which passes most over without a call,
-    // and only those left are made ready to match, once.
+    // and only those with a word starting as each typed word does, so
+    // "s" passes over the many who only hold an s; only those left are
+    // made ready to match, once. A letter more
+    // searches only those the letters before it found, since each word
+    // matches where a word starts and so does all it starts with: walking
+    // everyone each key was the launcher's dearest list, 8 ms a key and
+    // 553 ms at worst (launcher-trials.json, 2026-10-25 to 27). Only who
+    // matched is kept; how each stands, and so their order, is read anew.
+    readonly property var lately: ({ typed: null, among: null, found: [] })
+
     function gather(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const rows = known;
         const missed = { score: -1, grade: 3 };
         const found = [];
+        const matched = [];
         let grade = 3;
-        for (const row of everyone) {
+        const narrowing = lately.among === everyone && lately.typed !== null
+            && String(typed).toLowerCase().startsWith(lately.typed);
+        for (const row of narrowing ? lately.found : everyone) {
             const person = row.person;
             const byName = (person.named & need) === need
+                && Fuzzy.begins(person.nameStarts, words)
                 ? Fuzzy.match(row.prepared, words, false) : missed;
             const byEmail = (person.mailed & need) === need
+                && Fuzzy.begins(person.mailStarts, words)
                 ? Fuzzy.match(row.also, words, false) : missed;
             const best = byName.score >= byEmail.score ? byName : byEmail;
             if (best.score < 0)
                 continue;
+            matched.push(row);
             grade = Math.min(grade, best.grade);
             found.push({ score: best.score, grade: best.grade, row: rows[row.key] ?? row, at: found.length });
         }
+        lately.typed = String(typed).toLowerCase();
+        lately.among = everyone;
+        lately.found = matched;
         // Those Tuple knows first, then the best match, and among equals
         // the order Tuple lists them in.
         const kept = found.filter(f => f.grade === grade)
@@ -254,7 +272,9 @@ Provider {
                     name: name,
                     email: email,
                     named: Fuzzy.letters([name.toLowerCase()]),
-                    mailed: Fuzzy.letters([email.toLowerCase()])
+                    mailed: Fuzzy.letters([email.toLowerCase()]),
+                    nameStarts: Fuzzy.starts(name),
+                    mailStarts: Fuzzy.starts(email)
                 };
                 byId[id] = person;
                 rows.push(made(person, null));

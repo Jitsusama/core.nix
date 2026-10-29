@@ -90,7 +90,9 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: Words.started("power").concat(Object.keys(partsAsked))
+    // "charger" asks it whole, so the charger's old names do too.
+    questions: Words.started("power").concat(Object.keys(partsAsked),
+        Words.olds(Words.of("power:charger")))
 
     function answer(typed) {
         const question = asks(typed);
@@ -112,6 +114,17 @@ Provider {
             note: row.note !== "" ? row.note : whole.note,
             live: provider
         };
+    }
+
+    // How Power stands, said on its row where Machine holds it (Launcher's
+    // standsOf): the charge and what it's doing, then the power profile in
+    // use, as the session says it (Session.qml), so the row reads "36%,
+    // full in 6:41" and then "Full Performance". A machine with no battery
+    // says its profile alone.
+    function stands() {
+        const session = (launcher?.sources ?? []).find(one => one.settings.name === "session");
+        return [battery ? doing() : "", session?.profile?.side ?? ""]
+            .filter(part => part !== "").join(" \u00b7 ");
     }
 
     function doing() {
@@ -288,7 +301,8 @@ Provider {
             verb: Words.verb("power:limit:stop"),
             glyph: Theme.glyph.charge,
             hue: "action",
-            side: Number(stop) === each ? "in use" : "",
+            side: Number(stop) === each ? "chosen" : "",
+            stays: true,
             run: () => provider.setLimit(path, begun, Number(stop), each)
         })));
     }

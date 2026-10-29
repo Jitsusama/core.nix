@@ -108,7 +108,12 @@ ShellRoot {
     }
 
     // Nothing here waits forever: a case that never comes fails, by name.
+    // Each case has its own 30 s, from when the test starts waiting for it,
+    // so a machine slowed by other work fails no case that came in time.
+    onWaitingChanged: deadline.restart()
+
     Timer {
+        id: deadline
         running: true
         interval: 30000
         onTriggered: root.fail(`never came: ${root.waiting}`)
@@ -131,37 +136,38 @@ ShellRoot {
     // Tuple's row says so.
     function moments() {
         const idle = people.everything();
-        expect("out of a call, the room leads", idle[0].name === "Open my Tuple room"
+        expect("out of a call, the room leads", idle[0].name === "Open My Tuple Room"
             && idle[1].name === "Ada Brook", names(idle.slice(0, 2)));
         expect("asking who to pair with", people.collection.ask === "who to pair with?",
             people.collection.ask);
         const quiet = () => {};
         Tuple.controls = [
-            { key: "tuple:mute", verb: "mute", name: "Mute me in the Tuple call",
+            { key: "tuple:mute", verb: "mute", name: "Mute Me in the Tuple Call",
                 keywords: "pair microphone voice", glyph: "m", hue: "action", run: quiet },
-            { key: "tuple:share", verb: "share", name: "Share the screen in the Tuple call",
+            { key: "tuple:share", verb: "share", name: "Share the Screen in the Tuple Call",
                 keywords: "pair", glyph: "s", hue: "action", run: quiet },
-            { key: "tuple:leave", verb: "leave", name: "Leave the Tuple call",
+            { key: "tuple:leave", verb: "leave", name: "Leave the Tuple Call",
                 keywords: "pair hang up end", glyph: "l", hue: "action", run: quiet }
         ];
         Tuple.calling = true;
         Tuple.standing = "in a call";
         const calling = people.everything();
         expect("in a call, its controls lead", names(calling.slice(0, 4))
-            === "Mute me in the Tuple call, Share the screen in the Tuple call, Leave the Tuple call, "
-                + "Ada Brook", names(calling.slice(0, 4)));
+            === "Mute Me in the Tuple Call, Share the Screen in the Tuple Call, "
+                + "Leave the Tuple Call, Ada Brook", names(calling.slice(0, 4)));
         expect("they're calls", calling[0].what === "call", calling[0].what);
         expect("Tuple's row says it's in a call", people.counted() === "in a call", people.counted());
         expect("asking what to do", people.collection.ask === "what to do in the call?",
             people.collection.ask);
         const leave = people.search("leave").rows;
-        expect("typing in the place finds a control", names(leave) === "Leave the Tuple call", names(leave));
+        expect("typing in the place finds a control", names(leave) === "Leave the Tuple Call",
+            names(leave));
         const hang = people.search("hang up").rows;
-        expect("and by what else it's called", names(hang) === "Leave the Tuple call", names(hang));
+        expect("and by what else it's called", names(hang) === "Leave the Tuple Call", names(hang));
         expect("the main search leaves controls to their own rows",
             !people.gather("leave").rows.some(row => row.key.startsWith("tuple:")),
             names(people.gather("leave").rows));
-        Tuple.controls = [{ key: "tuple:open", verb: "open", name: "Open my Tuple room",
+        Tuple.controls = [{ key: "tuple:open", verb: "open", name: "Open My Tuple Room",
             keywords: "pair call start new", glyph: "o", hue: "action", run: quiet }];
         Tuple.calling = false;
         Tuple.standing = "";
@@ -214,6 +220,23 @@ ShellRoot {
                 names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, Dee Ellery, Eli Fenwick, "
                     + "gus@example.com, Zo\u00eb \"Zed\" Quill", names(all));
 
+            // A letter more searches only those the letters before found:
+            // what they found is hidden here, so a search that walked
+            // everyone again would still find Ada.
+            people.gather("ad");
+            expect("what the letters found is kept", names(people.lately.found) === "Ada Brook",
+                names(people.lately.found));
+            people.lately.found = [];
+            expect("a letter more searches only those", people.gather("ada").rows.length === 0,
+                names(people.gather("ada").rows));
+            expect("other letters search everyone", names(people.gather("ben").rows) === "Ben Carrow",
+                names(people.gather("ben").rows));
+            expect("a word more is a letter more",
+                names(people.gather("ben c").rows) === "Ben Carrow", names(people.gather("ben c").rows));
+            expect("a letter taken away searches everyone",
+                names(people.gather("be").rows) === "Ben Carrow", names(people.gather("be").rows));
+            people.gather("ad");
+
             open[0].run();
             expect("calling one who's available",
                 Niri.spawned.join(" ") === "tuple call start ada@example.com", Niri.spawned.join(" "));
@@ -229,18 +252,21 @@ ShellRoot {
             hal[0].run();
             expect("calling one with no email by their id",
                 Niri.spawned.join(" ") === "tuple call start 108", Niri.spawned.join(" "));
-            expect("and nothing of theirs to copy", names(hal[0].verbs()) === "Call them, Make them a favourite",
+            expect("and nothing of theirs to copy",
+                names(hal[0].verbs()) === "Call Them, Make Them a Favourite",
                 names(hal[0].verbs()));
 
             const steps = open[0].verbs();
             expect("stepping in",
-                names(steps) === "Call them, Stop them being a favourite, ada@example.com", names(steps));
+                names(steps) === "Call Them, Stop Them Being a Favourite, ada@example.com",
+                names(steps));
             expect("their email copies itself", steps[2].verb === "copy", steps[2].verb);
-            expect("stepping into one in a call", open[1].verbs()[0].name === "Join their call",
+            expect("stepping into one in a call", open[1].verbs()[0].name === "Join Their Call",
                 open[1].verbs()[0].name);
 
             const making = eli[0].verbs()[1];
-            expect("a stranger can be a favourite", making.name === "Make them a favourite", making.name);
+            expect("a stranger can be a favourite", making.name === "Make Them a Favourite",
+                making.name);
             making.run();
             expect("telling Tuple of a favourite",
                 Niri.spawned.join(" ") === "tuple contacts favorite eli@example.com", Niri.spawned.join(" "));
@@ -279,6 +305,11 @@ ShellRoot {
                     && sides(open) === "in a call, in a call, away, offline", `${names(open)}: ${sides(open)}`);
             expect("is joined", open[0].verb === "join", open[0].verb);
             expect("everyone heard once", people.everyone === root.first, "everyone was made again");
+            // Found by a letter more, from what the letters before found
+            // when Ada was available, she says how she stands now.
+            const ada = people.gather("ada").rows;
+            expect("a letter more says how they stand now",
+                names(ada) === "Ada Brook" && ada[0].side === "in a call", `${names(ada)} ${ada[0]?.side}`);
             expect("the count", people.counted() === "0 available", people.counted());
             present.running = true;
         } catch (error) {

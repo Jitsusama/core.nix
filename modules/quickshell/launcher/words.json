@@ -17,22 +17,13 @@
         "windows:this",
         "windows",
         "displays",
-        "light",
         "notices",
         "clipboard",
-        "copies:forget",
         "capture",
-        "gimp",
-        "swayimg",
         "session:recording",
-        "tuple",
         "people",
         "emoji",
-        "today",
-        "time",
-        "weather",
-        "session:quiet",
-        "waits"
+        "session:quiet"
       ],
       "commands": [
         "command:brightness",
@@ -57,11 +48,12 @@
         "bluetooth",
         "sound",
         "cameras",
-        "machine",
+        "light",
+        "machine:cpu",
         "machine:memory",
         "heat",
         "machine:disk",
-        "jobs"
+        "waits"
       ],
       "commands": [
         "command:volume"
@@ -70,6 +62,7 @@
     {
       "id": "energy",
       "name": "Power",
+      "stands": "power",
       "holds": [
         "power",
         "session:profile",
@@ -87,7 +80,6 @@
       "term": "Network",
       "holds": [
         "wifi",
-        "wifi:radio",
         "wifi:sign-in",
         "networks",
         "traffic"
@@ -111,16 +103,38 @@
       "parts": [
         "orchestrators",
         "quests",
+        "jobs",
         "runs",
         "spend"
       ],
-      "ask": "which agent?",
-      "empty": "No agents running."
+      "ask": "which session?",
+      "empty": "No sessions running."
     },
     {
       "id": "agents:task",
       "in": "agents",
       "name": "Quest"
+    },
+    {
+      "id": "agents:start",
+      "in": "agents",
+      "name": "Start a Session",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
+      "id": "agents:start:quest",
+      "in": "agents:start",
+      "name": "On a Quest",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
+      "id": "agents:start:orchestrator",
+      "in": "agents:start",
+      "name": "As an Orchestrator",
+      "verb": "more",
+      "glyph": "agent"
     },
     {
       "id": "agents:address",
@@ -140,12 +154,12 @@
     {
       "id": "agents:spent",
       "in": "agents",
-      "name": "Spent today"
+      "name": "Spent Today"
     },
     {
       "id": "agents:works",
       "in": "agents",
-      "name": "Working on"
+      "name": "Working On"
     },
     {
       "id": "agents:hears",
@@ -154,6 +168,7 @@
     },
     {
       "id": "quests",
+      "once": ["Tasks"],
       "name": "Quests",
       "term": "Agents/quest",
       "noun": "quests",
@@ -165,7 +180,7 @@
     {
       "id": "quests:id",
       "in": "quests",
-      "name": "Id"
+      "name": "ID"
     },
     {
       "id": "quests:status",
@@ -175,12 +190,12 @@
     {
       "id": "quests:updated",
       "in": "quests",
-      "name": "Last touched"
+      "name": "Last Touched"
     },
     {
       "id": "quests:parent",
       "in": "quests",
-      "name": "Part of"
+      "name": "Part Of"
     },
     {
       "id": "quests:folder",
@@ -189,6 +204,7 @@
     },
     {
       "id": "runs",
+      "once": ["Helpers"],
       "name": "Subagents",
       "term": "Agents/subagent",
       "noun": "subagents",
@@ -199,7 +215,7 @@
     },
     {
       "id": "spend",
-      "name": "AI spend",
+      "name": "AI Spend",
       "term": "Agents/AI spend",
       "noun": "spend",
       "glyph": "agent",
@@ -209,42 +225,124 @@
     {
       "id": "spend:copy",
       "in": "spend",
-      "name": "Copy what it found"
+      "name": "Copy What It Found"
     },
     {
       "id": "spend:expect",
       "in": "spend",
-      "name": "It's expected"
+      "name": "It's Expected",
+      "verb": "expect"
     },
     {
       "id": "jobs",
       "name": "Queue",
       "term": "Machine/queue",
-      "provider": "machine",
-      "question": "queue",
-      "answers": [
-        "queue"
-      ]
+      "noun": "jobs",
+      "what": "job",
+      "glyph": "timed",
+      "ask": "which job?",
+      "empty": "Nothing queued.",
+      "said": {
+        "running": "{count} running",
+        "waiting": "{count} waiting",
+        "none": "nothing queued",
+        "silent": "the queue has stopped saying",
+        "ranOf": "{ran} of {last} min",
+        "over": "{over} min over",
+        "ranFor": "for {ran} min",
+        "memory": "waits for memory",
+        "vms": "waits for a VM",
+        "behind": "behind a VM test",
+        "inLine": "{place} in line",
+        "holds": "holds {gib} GiB",
+        "needs": "needs {gib} GiB",
+        "more": "and {more} more",
+        "first": "put first",
+        "quick": "quick",
+        "capped": "capped",
+        "vm-test": "VM test",
+        "vm-check": "VM check",
+        "build": "build",
+        "benchmark": "benchmark",
+        "spare": "{gib} GiB to spare",
+        "heldUp": "the processors {percent}% held up",
+        "wasted": "{minutes} min waited with room today"
+      }
     },
     {
-      "id": "verb:job:switch",
+      "id": "verb:job:go",
       "in": "jobs",
-      "name": "Switch",
-      "verb": "switch"
+      "name": "Go To",
+      "verb": "go"
     },
     {
-      "id": "machine",
-      "name": "Machine",
-      "term": "Machine/machine",
-      "question": "processor",
-      "parts": [
-        "machine:memory",
-        "machine:cpu",
-        "machine:uptime"
-      ]
+      "id": "jobs:vm-test",
+      "in": "jobs",
+      "name": "VM Test"
+    },
+    {
+      "id": "jobs:vm-check",
+      "in": "jobs",
+      "name": "VM Check"
+    },
+    {
+      "id": "jobs:build",
+      "in": "jobs",
+      "name": "Build"
+    },
+    {
+      "id": "jobs:benchmark",
+      "in": "jobs",
+      "name": "Benchmark"
+    },
+    {
+      "id": "jobs:checks",
+      "in": "jobs",
+      "name": "Checks"
+    },
+    {
+      "id": "jobs:quest",
+      "in": "jobs",
+      "name": "Quest"
+    },
+    {
+      "id": "jobs:session",
+      "in": "jobs",
+      "name": "Session"
+    },
+    {
+      "id": "jobs:command",
+      "in": "jobs",
+      "name": "Command"
+    },
+    {
+      "id": "jobs:class",
+      "in": "jobs",
+      "name": "Class"
+    },
+    {
+      "id": "jobs:needs",
+      "in": "jobs",
+      "name": "Needs"
+    },
+    {
+      "id": "jobs:held",
+      "in": "jobs",
+      "name": "Holds"
+    },
+    {
+      "id": "jobs:since",
+      "in": "jobs",
+      "name": "Since"
+    },
+    {
+      "id": "jobs:last",
+      "in": "jobs",
+      "name": "Last Run"
     },
     {
       "id": "machine:memory",
+      "once": ["RAM"],
       "name": "Memory",
       "term": "Machine/memory",
       "provider": "machine",
@@ -289,7 +387,7 @@
     {
       "id": "machine:memory:using",
       "in": "machine:memory",
-      "name": "Using it"
+      "name": "Using It"
     },
     {
       "id": "machine:memory:type",
@@ -301,8 +399,11 @@
     },
     {
       "id": "machine:cpu",
+      "once": ["CPU"],
       "name": "Processor",
       "term": "Machine/processor",
+      "provider": "machine",
+      "question": "processor",
       "glyph": "processor",
       "answers": [
         "processor",
@@ -354,7 +455,7 @@
     {
       "id": "machine:cpu:using",
       "in": "machine:cpu",
-      "name": "Using it"
+      "name": "Using It"
     },
     {
       "id": "machine:cpu:load",
@@ -382,7 +483,7 @@
     {
       "id": "machine:cpu:low-power",
       "in": "machine:cpu:kinds",
-      "name": "Low-power"
+      "name": "Low-Power"
     },
     {
       "id": "machine:cpu:model",
@@ -394,6 +495,7 @@
     },
     {
       "id": "machine:uptime",
+      "in": "computer",
       "name": "Uptime",
       "answers": [
         "uptime"
@@ -401,6 +503,7 @@
     },
     {
       "id": "machine:disk",
+      "once": ["Drive", "SSD", "Storage"],
       "name": "Disk",
       "term": "Disk/disk",
       "provider": "machine",
@@ -434,7 +537,7 @@
     {
       "id": "machine:disk:filling",
       "in": "machine:disk",
-      "name": "What's filling it",
+      "name": "What's Filling It",
       "said": {
         "quest": "{name}",
         "worktree": "{name}",
@@ -442,9 +545,55 @@
         "containers": "containers",
         "other": "{name}",
         "clears": "some is builds or caches the guard clears once idle",
+        "clearing": "the guard is clearing it now",
         "now": "measured just now",
         "ago": "measured {minutes} min ago"
       }
+    },
+    {
+      "id": "machine:disk:holder:size",
+      "in": "machine:disk:filling",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:holder:clears",
+      "in": "machine:disk:filling",
+      "name": "Clearable"
+    },
+    {
+      "id": "verb:disk:open",
+      "in": "machine:disk:filling",
+      "name": "Open Its Folder",
+      "verb": "open",
+      "glyph": "offer"
+    },
+    {
+      "id": "verb:disk:keep",
+      "in": "machine:disk:filling",
+      "name": "Keep",
+      "verb": "keep",
+      "glyph": "locked",
+      "ask": "why keep it?",
+      "states": {
+        "kept": {
+          "verb": "release"
+        }
+      }
+    },
+    {
+      "id": "verb:disk:clear",
+      "in": "machine:disk:filling",
+      "name": "Clear",
+      "verb": "clear",
+      "glyph": "forget",
+      "sure": "Clear {amount} of {name}"
+    },
+    {
+      "id": "verb:disk:copy-path",
+      "in": "machine:disk:filling",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "machine:disk:speed",
@@ -516,7 +665,7 @@
     {
       "id": "machine:disk:shutdowns",
       "in": "machine:disk:health",
-      "name": "Unsafe shutdowns"
+      "name": "Unsafe Shutdowns"
     },
     {
       "id": "machine:disk:model",
@@ -574,7 +723,7 @@
     {
       "id": "traffic:trip",
       "in": "traffic",
-      "name": "Round trip"
+      "name": "Round Trip"
     },
     {
       "id": "traffic:dropped",
@@ -588,6 +737,7 @@
     },
     {
       "id": "power:charger",
+      "once": ["Mains"],
       "in": "power",
       "name": "Charger"
     },
@@ -646,7 +796,7 @@
     {
       "id": "power:type",
       "in": "power",
-      "name": "Charge type",
+      "name": "Charge Type",
       "answers": [
         "charge type"
       ]
@@ -654,7 +804,7 @@
     {
       "id": "power:limit",
       "in": "power",
-      "name": "Charge limit",
+      "name": "Charge Limit",
       "answers": [
         "charge limit"
       ]
@@ -720,7 +870,7 @@
     {
       "id": "heat:package",
       "in": "heat:throttled",
-      "name": "Whole processor"
+      "name": "Whole Processor"
     },
     {
       "id": "heat:throttled-cores",
@@ -755,7 +905,7 @@
     {
       "id": "heat:wifi",
       "in": "heat",
-      "name": "Wi-Fi card"
+      "name": "Wi-Fi Card"
     },
     {
       "id": "heat:chipset",
@@ -775,17 +925,17 @@
     {
       "id": "heat:air",
       "in": "heat",
-      "name": "Air inside"
+      "name": "Air Inside"
     },
     {
       "id": "heat:video-fan",
       "in": "heat",
-      "name": "Video fan"
+      "name": "Video Fan"
     },
     {
       "id": "heat:cpu-fan",
       "in": "heat",
-      "name": "Processor fan"
+      "name": "Processor Fan"
     },
     {
       "id": "heat:fan",
@@ -815,12 +965,12 @@
     {
       "id": "heat:aiming",
       "in": "heat",
-      "name": "Aiming for"
+      "name": "Aiming For"
     },
     {
       "id": "waits",
       "name": "Lag",
-      "term": "Desktop/lag",
+      "term": "Machine/lag",
       "answers": [
         "lag"
       ],
@@ -837,39 +987,39 @@
     {
       "id": "waits:typical",
       "in": "waits",
-      "name": "Desktop answers"
+      "name": "Desktop Answers"
     },
     {
       "id": "waits:work",
       "in": "waits",
-      "name": "Heavy work",
+      "name": "Heavy Work",
       "verb": "see",
       "glyph": "timed"
     },
     {
       "id": "waits:see:cpu",
       "in": "waits",
-      "name": "See what's using the processor",
+      "name": "See What's Using the Processor",
       "verb": "see",
       "glyph": "processor"
     },
     {
       "id": "waits:see:memory",
       "in": "waits",
-      "name": "See what's using memory",
+      "name": "See What's Using Memory",
       "verb": "see",
       "glyph": "memory"
     },
     {
       "id": "waits:see:disk",
       "in": "waits",
-      "name": "See what's filling the disk",
+      "name": "See What's Filling the Disk",
       "verb": "see",
       "glyph": "disk"
     },
     {
       "id": "light",
-      "name": "Desk light",
+      "name": "Desk Light",
       "term": "Machine/desk light",
       "answers": [
         "desk light",
@@ -925,17 +1075,18 @@
     {
       "id": "verb:turn",
       "in": "light",
-      "name": "Turn it off",
+      "name": "Turn It Off",
       "verb": "off",
       "states": {
         "off": {
-          "name": "Turn it on",
+          "name": "Turn It On",
           "verb": "on"
         }
       }
     },
     {
       "id": "today",
+      "in": "on",
       "name": "Date",
       "answers": [
         "date",
@@ -954,7 +1105,7 @@
     {
       "id": "today:day",
       "in": "today",
-      "name": "Day of the year"
+      "name": "Day of the Year"
     },
     {
       "id": "today:utc",
@@ -983,22 +1134,22 @@
     {
       "id": "keyboards:laptop",
       "in": "keyboards",
-      "name": "The laptop's keyboard"
+      "name": "The Laptop's Keyboard"
     },
     {
       "id": "keyboards:caps",
       "in": "keyboards",
-      "name": "Caps lock"
+      "name": "Caps Lock"
     },
     {
       "id": "keyboards:num",
       "in": "keyboards",
-      "name": "Num lock"
+      "name": "Num Lock"
     },
     {
       "id": "keyboards:scroll",
       "in": "keyboards",
-      "name": "Scroll lock"
+      "name": "Scroll Lock"
     },
     {
       "id": "keyboards:layer",
@@ -1013,6 +1164,7 @@
     },
     {
       "id": "keyboards:lights",
+      "once": ["Backlight"],
       "in": "keyboards",
       "name": "Light",
       "answers": [
@@ -1026,7 +1178,7 @@
       "verb": "set",
       "states": {
         "off": {
-          "name": "Light off",
+          "name": "Light Off",
           "verb": "turn off"
         }
       }
@@ -1034,7 +1186,7 @@
     {
       "id": "keyboards:lights:on",
       "in": "keyboards:lights",
-      "name": "Light on",
+      "name": "Light On",
       "verb": "turn on"
     },
     {
@@ -1052,7 +1204,7 @@
     {
       "id": "keyboards:timeout",
       "in": "keyboards",
-      "name": "Light off after"
+      "name": "Light Off After"
     },
     {
       "id": "keyboards:connection",
@@ -1084,23 +1236,25 @@
     },
     {
       "id": "networks:wired",
+      "once": ["Wired"],
       "in": "networks",
       "name": "Ethernet"
     },
     {
       "id": "networks:tunnel",
+      "once": ["Tunnel"],
       "in": "networks",
       "name": "VPN"
     },
     {
       "id": "networks:bridge",
       "in": "networks",
-      "name": "Virtual bridge"
+      "name": "Virtual Bridge"
     },
     {
       "id": "networks:virtual",
       "in": "networks",
-      "name": "Virtual network"
+      "name": "Virtual Network"
     },
     {
       "id": "networks:address",
@@ -1110,7 +1264,7 @@
     {
       "id": "networks:ipv6",
       "in": "networks",
-      "name": "IPv6 address"
+      "name": "IPv6 Address"
     },
     {
       "id": "networks:gateway",
@@ -1131,7 +1285,7 @@
     {
       "id": "networks:hardware",
       "in": "networks",
-      "name": "Hardware address"
+      "name": "Hardware Address"
     },
     {
       "id": "networks:mtu",
@@ -1146,12 +1300,12 @@
     {
       "id": "networks:public",
       "in": "networks",
-      "name": "Public address"
+      "name": "Public Address"
     },
     {
       "id": "networks:public6",
       "in": "networks",
-      "name": "Public IPv6 address"
+      "name": "Public IPv6 Address"
     },
     {
       "id": "networks:mask",
@@ -1166,12 +1320,12 @@
     {
       "id": "networks:first",
       "in": "networks",
-      "name": "First address"
+      "name": "First Address"
     },
     {
       "id": "networks:last",
       "in": "networks",
-      "name": "Last address"
+      "name": "Last Address"
     },
     {
       "id": "networks:hosts",
@@ -1206,7 +1360,7 @@
     {
       "id": "networks:full",
       "in": "networks",
-      "name": "Written in full"
+      "name": "Written in Full"
     },
     {
       "id": "networks:kind",
@@ -1216,7 +1370,7 @@
     {
       "id": "networks:holder",
       "in": "networks",
-      "name": "Held by"
+      "name": "Held By"
     },
     {
       "id": "networks:block",
@@ -1226,7 +1380,7 @@
     {
       "id": "networks:registered",
       "in": "networks",
-      "name": "Registered range"
+      "name": "Registered Range"
     },
     {
       "id": "vendors:kind",
@@ -1236,12 +1390,12 @@
     {
       "id": "vendors:colons",
       "in": "vendors",
-      "name": "With colons"
+      "name": "With Colons"
     },
     {
       "id": "vendors:dotted",
       "in": "vendors",
-      "name": "With dots"
+      "name": "With Dots"
     },
     {
       "id": "characters:decimal",
@@ -1261,7 +1415,7 @@
     {
       "id": "characters:point",
       "in": "characters",
-      "name": "Code point"
+      "name": "Code Point"
     },
     {
       "id": "characters:name",
@@ -1281,7 +1435,7 @@
     {
       "id": "characters:percent",
       "in": "characters",
-      "name": "Percent-encoded"
+      "name": "Percent-Encoded"
     },
     {
       "id": "characters:bits",
@@ -1291,7 +1445,7 @@
     {
       "id": "characters:points",
       "in": "characters",
-      "name": "Code points"
+      "name": "Code Points"
     },
     {
       "id": "characters:length",
@@ -1320,6 +1474,7 @@
     },
     {
       "id": "weather",
+      "in": "on",
       "name": "Weather",
       "answers": [
         "weather"
@@ -1334,7 +1489,7 @@
       "name": "Now",
       "states": {
         "away": {
-          "name": "Now, {clock} {weekday} there"
+          "name": "Now There, {clock} {weekday}"
         }
       }
     },
@@ -1364,7 +1519,7 @@
     {
       "id": "verb:ask:onward",
       "in": "ask",
-      "name": "Ask in a session",
+      "name": "Ask in a Session",
       "verb": "open",
       "glyph": "agent"
     },
@@ -1372,7 +1527,7 @@
       "id": "verb:ask:talk",
       "in": "ask",
       "name": "Talk to {name}",
-      "verb": "say",
+      "verb": "talk",
       "glyph": "reply"
     },
     {
@@ -1387,10 +1542,34 @@
     },
     {
       "id": "time",
+      "in": "on",
       "name": "Time",
+      "question": "time",
       "answers": [
         "time"
       ]
+    },
+    {
+      "id": "location",
+      "in": "on",
+      "name": "Location"
+    },
+    {
+      "id": "location:position",
+      "in": "location",
+      "name": "Position"
+    },
+    {
+      "id": "location:zone",
+      "in": "location",
+      "name": "Zone"
+    },
+    {
+      "id": "verb:time:put-back",
+      "in": "time",
+      "name": "Put It Back",
+      "verb": "put back",
+      "glyph": "zone"
     },
     {
       "id": "time:day",
@@ -1400,7 +1579,7 @@
     {
       "id": "time:apart",
       "in": "time",
-      "name": "From here"
+      "name": "From Here"
     },
     {
       "id": "time:zone",
@@ -1421,7 +1600,7 @@
       ],
       "said": {
         "volume": "volume {level}",
-        "in-use": "in use",
+        "chosen": "chosen",
         "muted": "muted",
         "none": "none",
         "on": "on",
@@ -1503,7 +1682,7 @@
     {
       "id": "sound:voice",
       "in": "sound",
-      "name": "Voice processing"
+      "name": "Voice Processing"
     },
     {
       "id": "sound:filter",
@@ -1548,27 +1727,27 @@
     {
       "id": "sound:called:speakers",
       "in": "sound",
-      "name": "Built-in speakers"
+      "name": "Built-In Speakers"
     },
     {
       "id": "sound:called:microphones",
       "in": "sound",
-      "name": "Built-in microphones"
+      "name": "Built-In Microphones"
     },
     {
       "id": "sound:called:jack",
       "in": "sound",
-      "name": "Headphone jack"
+      "name": "Headphone Jack"
     },
     {
       "id": "sound:called:jack-microphone",
       "in": "sound",
-      "name": "Headset jack microphone"
+      "name": "Headset Jack Microphone"
     },
     {
       "id": "sound:called:its-microphone",
       "in": "sound",
-      "name": "{device} microphone"
+      "name": "{device} Microphone"
     },
     {
       "id": "sound:resolution",
@@ -1578,7 +1757,7 @@
     {
       "id": "sound:usb-id",
       "in": "sound",
-      "name": "USB id"
+      "name": "USB ID"
     },
     {
       "id": "sound:profile",
@@ -1588,7 +1767,7 @@
     {
       "id": "sound:rate",
       "in": "sound",
-      "name": "Sample rate"
+      "name": "Sample Rate"
     },
     {
       "id": "sound:delay",
@@ -1603,17 +1782,17 @@
     {
       "id": "sound:playing",
       "in": "sound",
-      "name": "Playing at"
+      "name": "Playing At"
     },
     {
       "id": "sound:recording",
       "in": "sound",
-      "name": "Recording at"
+      "name": "Recording At"
     },
     {
       "id": "sound:measured-rate",
       "in": "sound",
-      "name": "Measured rate"
+      "name": "Measured Rate"
     },
     {
       "id": "sound:offers",
@@ -1661,11 +1840,11 @@
     {
       "id": "verb:sound-use",
       "in": "sound",
-      "name": "Play sound through it",
+      "name": "Play Sound Through It",
       "verb": "use",
       "states": {
         "input": {
-          "name": "Listen through it"
+          "name": "Listen Through It"
         }
       }
     },
@@ -1703,25 +1882,25 @@
     {
       "id": "keyboard:show",
       "in": "keyboard",
-      "name": "Show the keyboard's layout",
+      "name": "Show the Keyboard's Layout",
       "verb": "show"
     },
     {
       "id": "keyboard:flash",
       "in": "keyboard",
-      "name": "Flash the keyboard",
+      "name": "Flash the Keyboard",
       "verb": "flash"
     },
     {
       "id": "keyboard:release",
       "in": "keyboard",
-      "name": "Let {layer} go",
+      "name": "Let {layer} Go",
       "verb": "release"
     },
     {
       "id": "keyboard:lock",
       "in": "keyboard",
-      "name": "Lock {layer} on",
+      "name": "Lock {layer} On",
       "verb": "lock"
     },
     {
@@ -1737,29 +1916,30 @@
     {
       "id": "keyboard:lights-off",
       "in": "keyboard:lights",
-      "name": "Turn off the keyboard's light",
+      "name": "Turn Off the Keyboard's Light",
       "verb": "turn off"
     },
     {
       "id": "keyboard:lights-on",
       "in": "keyboard:lights",
-      "name": "Turn on the keyboard's light",
+      "name": "Turn on the Keyboard's Light",
       "verb": "turn on"
     },
     {
       "id": "keyboard:brighter",
       "in": "keyboard:lights",
-      "name": "Brighten the keyboard's light",
+      "name": "Brighten the Keyboard's Light",
       "verb": "brighten"
     },
     {
       "id": "keyboard:dimmer",
       "in": "keyboard:lights",
-      "name": "Dim the keyboard's light",
+      "name": "Dim the Keyboard's Light",
       "verb": "dim"
     },
     {
       "id": "shortcuts",
+      "once": ["Bindings"],
       "name": "Shortcuts",
       "term": "Keyboards/shortcut",
       "noun": "shortcuts",
@@ -1794,16 +1974,70 @@
       "glyph": "agent"
     },
     {
+      "id": "shortcuts:btop",
+      "in": "shortcuts",
+      "name": "Processes",
+      "glyph": "processor"
+    },
+    {
       "id": "shortcuts:swayimg",
       "in": "shortcuts",
-      "name": "Picture viewer",
+      "name": "Picture Viewer",
       "glyph": "picture"
     },
     {
       "id": "shortcuts:inlyne",
       "in": "shortcuts",
-      "name": "Markdown reader",
+      "name": "Markdown Reader",
       "glyph": "document"
+    },
+    {
+      "id": "shortcuts:zathura",
+      "in": "shortcuts",
+      "name": "Document Viewer",
+      "glyph": "book"
+    },
+    {
+      "id": "shortcuts:mpv",
+      "in": "shortcuts",
+      "name": "Player",
+      "glyph": "film"
+    },
+    {
+      "id": "shortcuts:chrome",
+      "in": "shortcuts",
+      "name": "Browser",
+      "glyph": "web"
+    },
+    {
+      "id": "shortcuts:slack",
+      "in": "shortcuts",
+      "name": "Slack",
+      "glyph": "chat"
+    },
+    {
+      "id": "shortcuts:onepassword",
+      "in": "shortcuts",
+      "name": "Passwords",
+      "glyph": "password"
+    },
+    {
+      "id": "shortcuts:gimp",
+      "in": "shortcuts",
+      "name": "Picture Editor",
+      "glyph": "brush"
+    },
+    {
+      "id": "shortcuts:inkscape",
+      "in": "shortcuts",
+      "name": "Drawing Editor",
+      "glyph": "vector"
+    },
+    {
+      "id": "shortcuts:spotify",
+      "in": "shortcuts",
+      "name": "Music",
+      "glyph": "playing"
     },
     {
       "id": "shortcuts:desktop:windows",
@@ -1874,7 +2108,7 @@
     {
       "id": "shortcuts:desktop:windows:new",
       "in": "shortcuts",
-      "name": "New windows",
+      "name": "New Windows",
       "glyph": "below"
     },
     {
@@ -1904,19 +2138,19 @@
     {
       "id": "shortcuts:desktop:workspaces:column",
       "in": "shortcuts",
-      "name": "The column",
+      "name": "The Column",
       "glyph": "columns"
     },
     {
       "id": "shortcuts:desktop:workspaces:window",
       "in": "shortcuts",
-      "name": "The window",
+      "name": "The Window",
       "glyph": "windows"
     },
     {
       "id": "shortcuts:desktop:workspaces:near",
       "in": "shortcuts",
-      "name": "Above and below",
+      "name": "Above and Below",
       "glyph": "workspace"
     },
     {
@@ -1928,19 +2162,19 @@
     {
       "id": "shortcuts:desktop:screens:column",
       "in": "shortcuts",
-      "name": "The column",
+      "name": "The Column",
       "glyph": "columns"
     },
     {
       "id": "shortcuts:desktop:screens:window",
       "in": "shortcuts",
-      "name": "The window",
+      "name": "The Window",
       "glyph": "windows"
     },
     {
       "id": "shortcuts:desktop:screens:this",
       "in": "shortcuts",
-      "name": "This screen",
+      "name": "This Screen",
       "glyph": "brightness"
     },
     {
@@ -1963,7 +2197,7 @@
     {
       "id": "shortcuts:terminal:numbers",
       "in": "shortcuts",
-      "name": "Tab numbers"
+      "name": "Tab Numbers"
     },
     {
       "id": "shortcuts:terminal:scrollback",
@@ -1989,7 +2223,7 @@
     {
       "id": "shortcuts:neovim:files:open",
       "in": "shortcuts",
-      "name": "Open files"
+      "name": "Open Files"
     },
     {
       "id": "shortcuts:neovim:files:folders",
@@ -2009,7 +2243,7 @@
     {
       "id": "shortcuts:neovim:files:numbers",
       "in": "shortcuts",
-      "name": "Tab numbers"
+      "name": "Tab Numbers"
     },
     {
       "id": "shortcuts:neovim:search",
@@ -2080,7 +2314,7 @@
     {
       "id": "shortcuts:neovim:github:people",
       "in": "shortcuts",
-      "name": "People and labels"
+      "name": "People and Labels"
     },
     {
       "id": "shortcuts:neovim:github:comments",
@@ -2095,7 +2329,7 @@
     {
       "id": "shortcuts:neovim:github:runs",
       "in": "shortcuts",
-      "name": "Workflow runs"
+      "name": "Workflow Runs"
     },
     {
       "id": "shortcuts:neovim:editor",
@@ -2110,7 +2344,7 @@
     {
       "id": "shortcuts:neovim:editor:commands",
       "in": "shortcuts",
-      "name": "Command line"
+      "name": "Command Line"
     },
     {
       "id": "shortcuts:neovim:editor:looks",
@@ -2125,32 +2359,32 @@
     {
       "id": "shortcuts:neovim:tests:running",
       "in": "shortcuts",
-      "name": "Running tests"
+      "name": "Running Tests"
     },
     {
       "id": "shortcuts:neovim:tests:results",
       "in": "shortcuts",
-      "name": "Test results"
+      "name": "Test Results"
     },
     {
       "id": "shortcuts:neovim:files:finding",
       "in": "shortcuts",
-      "name": "Finding a file"
+      "name": "Finding a File"
     },
     {
       "id": "shortcuts:neovim:files:browser",
       "in": "shortcuts",
-      "name": "File browser"
+      "name": "File Browser"
     },
     {
       "id": "shortcuts:neovim:code:definitions",
       "in": "shortcuts",
-      "name": "Definitions and calls"
+      "name": "Definitions and Calls"
     },
     {
       "id": "shortcuts:neovim:code:hints",
       "in": "shortcuts",
-      "name": "Hints and fixes"
+      "name": "Hints and Fixes"
     },
     {
       "id": "shortcuts:neovim:code:refactoring",
@@ -2165,82 +2399,82 @@
     {
       "id": "shortcuts:neovim:code:selecting",
       "in": "shortcuts",
-      "name": "Selecting code"
+      "name": "Selecting Code"
     },
     {
       "id": "shortcuts:neovim:code:pieces",
       "in": "shortcuts",
-      "name": "Blocks of code"
+      "name": "Blocks of Code"
     },
     {
       "id": "shortcuts:neovim:code:through",
       "in": "shortcuts",
-      "name": "Moving through code"
+      "name": "Moving Through Code"
     },
     {
       "id": "shortcuts:neovim:code:server",
       "in": "shortcuts",
-      "name": "Language servers"
+      "name": "Language Servers"
     },
     {
       "id": "shortcuts:neovim:problems:finding",
       "in": "shortcuts",
-      "name": "Finding problems"
+      "name": "Finding Problems"
     },
     {
       "id": "shortcuts:neovim:problems:showing",
       "in": "shortcuts",
-      "name": "Showing problems"
+      "name": "Showing Problems"
     },
     {
       "id": "shortcuts:neovim:problems:through",
       "in": "shortcuts",
-      "name": "Moving through problems"
+      "name": "Moving Through Problems"
     },
     {
       "id": "shortcuts:neovim:problems:opening",
       "in": "shortcuts",
-      "name": "Opening a problem"
+      "name": "Opening a Problem"
     },
     {
       "id": "shortcuts:neovim:problems:list",
       "in": "shortcuts",
-      "name": "The problems list"
+      "name": "The Problems List"
     },
     {
       "id": "shortcuts:neovim:problems:folding",
       "in": "shortcuts",
-      "name": "Folding the list"
+      "name": "Folding the List"
     },
     {
       "id": "shortcuts:neovim:outline:showing",
       "in": "shortcuts",
-      "name": "Showing the outline"
+      "name": "Showing the Outline"
     },
     {
       "id": "shortcuts:neovim:outline:symbols",
       "in": "shortcuts",
-      "name": "Going to a symbol"
+      "name": "Going to a Symbol"
     },
     {
       "id": "shortcuts:neovim:outline:through",
       "in": "shortcuts",
-      "name": "Moving through the outline"
+      "name": "Moving Through the Outline"
     },
     {
       "id": "shortcuts:neovim:outline:holding",
       "in": "shortcuts",
-      "name": "What a symbol holds"
+      "name": "What a Symbol Holds"
     },
     {
       "id": "shortcuts:neovim:outline:folding",
       "in": "shortcuts",
-      "name": "Folding the outline"
+      "name": "Folding the Outline"
     },
     {
       "id": "shortcuts:neovim:outline:walking",
       "in": "shortcuts",
-      "name": "Walking the outline"
+      "name": "Walking the Outline"
     },
     {
       "id": "shortcuts:neovim:git:changes",
@@ -2260,7 +2494,7 @@
     {
       "id": "shortcuts:neovim:git:branches",
       "in": "shortcuts",
-      "name": "Branches and tags"
+      "name": "Branches and Tags"
     },
     {
       "id": "shortcuts:neovim:git:stashes",
@@ -2270,12 +2504,12 @@
     {
       "id": "shortcuts:neovim:git:remote",
       "in": "shortcuts",
-      "name": "Pushing and pulling"
+      "name": "Pushing and Pulling"
     },
     {
       "id": "shortcuts:neovim:git:status",
       "in": "shortcuts",
-      "name": "Git's status"
+      "name": "Git's Status"
     },
     {
       "id": "shortcuts:neovim:github:repositories",
@@ -2285,17 +2519,17 @@
     {
       "id": "shortcuts:neovim:github:notifications",
       "in": "shortcuts",
-      "name": "GitHub notices"
+      "name": "GitHub Notices"
     },
     {
       "id": "shortcuts:neovim:pulls:finding",
       "in": "shortcuts",
-      "name": "Finding changes"
+      "name": "Finding Changes"
     },
     {
       "id": "shortcuts:neovim:pulls:pull",
       "in": "shortcuts",
-      "name": "The change"
+      "name": "The Change"
     },
     {
       "id": "shortcuts:neovim:pulls:merging",
@@ -2310,7 +2544,7 @@
     {
       "id": "shortcuts:neovim:pulls:reviewing",
       "in": "shortcuts",
-      "name": "Starting a review"
+      "name": "Starting a Review"
     },
     {
       "id": "shortcuts:neovim:pulls:threads",
@@ -2320,12 +2554,12 @@
     {
       "id": "shortcuts:neovim:pulls:files",
       "in": "shortcuts",
-      "name": "Changed files"
+      "name": "Changed Files"
     },
     {
       "id": "shortcuts:neovim:pulls:submitting",
       "in": "shortcuts",
-      "name": "Submitting a review"
+      "name": "Submitting a Review"
     },
     {
       "id": "shortcuts:pi:message",
@@ -2360,7 +2594,7 @@
     {
       "id": "shortcuts:swayimg:picture",
       "in": "shortcuts",
-      "name": "The picture"
+      "name": "The Picture"
     },
     {
       "id": "shortcuts:inlyne:scrolling",
@@ -2373,7 +2607,133 @@
       "name": "Zoom"
     },
     {
+      "id": "shortcuts:zathura:turning",
+      "in": "shortcuts",
+      "name": "Turning Pages"
+    },
+    {
+      "id": "shortcuts:zathura:fitting",
+      "in": "shortcuts",
+      "name": "Fitting the Page"
+    },
+    {
+      "id": "shortcuts:mpv:seeking",
+      "in": "shortcuts",
+      "name": "Seeking"
+    },
+    {
+      "id": "shortcuts:mpv:speed",
+      "in": "shortcuts",
+      "name": "Playback Speed"
+    },
+    {
+      "id": "shortcuts:mpv:loudness",
+      "in": "shortcuts",
+      "name": "Loudness"
+    },
+    {
+      "id": "shortcuts:mpv:list",
+      "in": "shortcuts",
+      "name": "In the List"
+    },
+    {
+      "id": "shortcuts:chrome:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:chrome:numbers",
+      "in": "shortcuts",
+      "name": "Tab Numbers"
+    },
+    {
+      "id": "shortcuts:chrome:pages",
+      "in": "shortcuts",
+      "name": "On the Page"
+    },
+    {
+      "id": "shortcuts:slack:conversations",
+      "in": "shortcuts",
+      "name": "Conversations"
+    },
+    {
+      "id": "shortcuts:slack:messages",
+      "in": "shortcuts",
+      "name": "Messages"
+    },
+    {
+      "id": "shortcuts:onepassword:finding",
+      "in": "shortcuts",
+      "name": "Finding Items"
+    },
+    {
+      "id": "shortcuts:onepassword:item",
+      "in": "shortcuts",
+      "name": "The Chosen Item"
+    },
+    {
+      "id": "shortcuts:gimp:tools",
+      "in": "shortcuts",
+      "name": "Tools"
+    },
+    {
+      "id": "shortcuts:gimp:view",
+      "in": "shortcuts",
+      "name": "Seeing the Picture"
+    },
+    {
+      "id": "shortcuts:gimp:selection",
+      "in": "shortcuts",
+      "name": "Selecting"
+    },
+    {
+      "id": "shortcuts:gimp:layers",
+      "in": "shortcuts",
+      "name": "Layers"
+    },
+    {
+      "id": "shortcuts:inkscape:tools",
+      "in": "shortcuts",
+      "name": "Tools"
+    },
+    {
+      "id": "shortcuts:inkscape:view",
+      "in": "shortcuts",
+      "name": "Seeing the Drawing"
+    },
+    {
+      "id": "shortcuts:inkscape:objects",
+      "in": "shortcuts",
+      "name": "Objects"
+    },
+    {
+      "id": "shortcuts:inkscape:panels",
+      "in": "shortcuts",
+      "name": "Panels"
+    },
+    {
+      "id": "shortcuts:btop:processes",
+      "in": "shortcuts",
+      "name": "The Process List"
+    },
+    {
+      "id": "shortcuts:btop:boxes",
+      "in": "shortcuts",
+      "name": "The Boxes"
+    },
+    {
+      "id": "shortcuts:spotify:going",
+      "in": "shortcuts",
+      "name": "Going Places"
+    },
+    {
+      "id": "shortcuts:spotify:playing",
+      "in": "shortcuts",
+      "name": "Playing"
+    },
+    {
       "id": "on",
+      "once": ["What's on"],
       "name": "Now",
       "term": "Desktop/Now",
       "noun": "now",
@@ -2385,12 +2745,168 @@
     {
       "id": "on:waiting",
       "in": "on",
-      "name": "Waiting on you",
+      "name": "Waiting on You",
       "verb": "switch",
       "glyph": "waitsOnJoel",
       "said": {
         "first": "{title}, {minutes} min",
-        "minutes": "{minutes} min"
+        "minutes": "{minutes} min",
+        "later": "{count} later"
+      }
+    },
+    {
+      "id": "verb:on:waiting:go",
+      "in": "on",
+      "name": "Go to {where}",
+      "verb": "switch",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:on:waiting:copy",
+      "in": "on",
+      "name": "Copy What It Said",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:on:waiting:done",
+      "in": "on",
+      "name": "Done",
+      "verb": "done",
+      "glyph": "done"
+    },
+    {
+      "id": "verb:on:waiting:notNow",
+      "in": "on",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
+      "id": "on:waiting:why",
+      "in": "on",
+      "name": "Why"
+    },
+    {
+      "id": "on:waiting:when",
+      "in": "on",
+      "name": "When"
+    },
+    {
+      "id": "on:waiting:quest",
+      "in": "on",
+      "name": "Quest"
+    },
+    {
+      "id": "on:waiting:since",
+      "in": "on",
+      "name": "Since"
+    },
+    {
+      "id": "on:waiting:detail",
+      "in": "on",
+      "name": "Detail"
+    },
+    {
+      "id": "verb:on:layer:release",
+      "in": "on",
+      "name": "Release It",
+      "verb": "release",
+      "glyph": "layerOff"
+    },
+    {
+      "id": "verb:on:awake:open",
+      "in": "on",
+      "name": "Only While the Lid Is Open",
+      "verb": "keep",
+      "glyph": "lidOpen"
+    },
+    {
+      "id": "verb:on:awake:shut",
+      "in": "on",
+      "name": "With the Lid Shut Too",
+      "verb": "keep",
+      "glyph": "awake"
+    },
+    {
+      "id": "verb:on:quiet:more",
+      "in": "on",
+      "name": "An Hour More",
+      "verb": "extend",
+      "glyph": "timed"
+    },
+    {
+      "id": "verb:on:quiet:held",
+      "in": "on",
+      "name": "Show What's Held",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:on:low:save",
+      "in": "on",
+      "name": "Save Power",
+      "verb": "save",
+      "glyph": "saver"
+    },
+    {
+      "id": "verb:on:muted:unmute",
+      "in": "on",
+      "name": "Unmute It",
+      "verb": "unmute",
+      "glyph": "microphone"
+    },
+    {
+      "id": "verb:on:network:check",
+      "in": "on",
+      "name": "Check It Again",
+      "verb": "check",
+      "glyph": "retry"
+    },
+    {
+      "id": "verb:on:playing:pause",
+      "in": "on",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:on:playing:next",
+      "in": "on",
+      "name": "Next Track",
+      "verb": "next",
+      "glyph": "next"
+    },
+    {
+      "id": "verb:on:playing:previous",
+      "in": "on",
+      "name": "Previous Track",
+      "verb": "previous",
+      "glyph": "previous"
+    },
+    {
+      "id": "verb:on:playing:show",
+      "in": "on",
+      "name": "Show {player}",
+      "verb": "show"
+    },
+    {
+      "id": "verb:on:playing:pauseOther",
+      "in": "on",
+      "name": "Pause {player} Too",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:on:sharing:stop",
+      "in": "on",
+      "name": "Stop Sharing",
+      "verb": "stop",
+      "glyph": "displayOff",
+      "states": {
+        "all": {
+          "name": "Stop Sharing All of It"
+        }
       }
     },
     {
@@ -2403,6 +2919,7 @@
     },
     {
       "id": "notices",
+      "once": ["Notifications"],
       "name": "Notices",
       "term": "Desktop/notice",
       "noun": "notices",
@@ -2410,7 +2927,76 @@
       "ask": "which notice?"
     },
     {
+      "id": "verb:notice:open",
+      "in": "notices",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "offer"
+    },
+    {
+      "id": "verb:notice:goTo",
+      "in": "notices",
+      "name": "Go to {program}",
+      "verb": "switch",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:notice:copy",
+      "in": "notices",
+      "name": "Copy What It Said",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:notice:read",
+      "in": "notices",
+      "name": "Read",
+      "verb": "mark",
+      "glyph": "read",
+      "states": {
+        "read": {
+          "glyph": "unread"
+        }
+      }
+    },
+    {
+      "id": "verb:notice:forget",
+      "in": "notices",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notices:forget",
+      "in": "notices",
+      "name": "Forget Them All",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notices:all",
+      "in": "notices",
+      "name": "All the Notices",
+      "verb": "see",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:notices:show",
+      "in": "notices",
+      "name": "Show Them",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:notices:seen",
+      "in": "notices",
+      "name": "Forget Them",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
       "id": "wifi",
+      "once": ["Wireless", "WLAN"],
       "name": "Wi-Fi",
       "term": "Network/Wi-Fi",
       "noun": "networks",
@@ -2427,6 +3013,7 @@
     },
     {
       "id": "displays",
+      "once": ["Displays", "Monitors"],
       "name": "Screens",
       "term": "Desktop/screen",
       "noun": "screens",
@@ -2452,7 +3039,7 @@
     {
       "id": "displays:room",
       "in": "displays",
-      "name": "Room light",
+      "name": "Room Light",
       "answers": [
         "room light"
       ]
@@ -2503,7 +3090,7 @@
     {
       "id": "displays:depth",
       "in": "displays",
-      "name": "Colour depth",
+      "name": "Colour Depth",
       "answers": [
         "colour depth"
       ]
@@ -2565,47 +3152,47 @@
     {
       "id": "capture:stop",
       "in": "capture",
-      "name": "Stop recording"
+      "name": "Stop Recording"
     },
     {
       "id": "capture:screen",
       "in": "capture",
-      "name": "The whole screen"
+      "name": "The Whole Screen"
     },
     {
       "id": "capture:window",
       "in": "capture",
-      "name": "This window · {title}"
+      "name": "This Window · {title}"
     },
     {
       "id": "capture:region",
       "in": "capture",
-      "name": "A region"
+      "name": "A Region"
     },
     {
       "id": "capture:record-screen",
       "in": "capture",
-      "name": "Record the whole screen"
+      "name": "Record the Whole Screen"
     },
     {
       "id": "capture:record-window",
       "in": "capture",
-      "name": "Record this window · {title}"
+      "name": "Record This Window · {title}"
     },
     {
       "id": "capture:record-region",
       "in": "capture",
-      "name": "Record a region"
+      "name": "Record a Region"
     },
     {
       "id": "capture:camera-picture",
       "in": "capture",
-      "name": "A picture from the camera"
+      "name": "A Picture From the Camera"
     },
     {
       "id": "capture:camera-video",
       "in": "capture",
-      "name": "A video from the camera"
+      "name": "A Video From the Camera"
     },
     {
       "id": "cameras",
@@ -2619,14 +3206,14 @@
     {
       "id": "cameras:camera",
       "in": "cameras",
-      "name": "Built-in camera",
+      "name": "Built-In Camera",
       "verb": "open",
       "said": "the camera"
     },
     {
       "id": "cameras:ir-camera",
       "in": "cameras",
-      "name": "IR camera",
+      "name": "IR Camera",
       "said": "the infrared camera"
     },
     {
@@ -2637,12 +3224,12 @@
     {
       "id": "cameras:holders",
       "in": "cameras",
-      "name": "In use"
+      "name": "In Use"
     },
     {
       "id": "cameras:privacy",
       "in": "cameras",
-      "name": "Privacy light",
+      "name": "Privacy Light",
       "answers": [
         "privacy light"
       ]
@@ -2650,7 +3237,7 @@
     {
       "id": "cameras:flood",
       "in": "cameras",
-      "name": "IR light",
+      "name": "IR Light",
       "answers": [
         "ir light"
       ]
@@ -2705,7 +3292,7 @@
     {
       "id": "cameras:field-of-view",
       "in": "cameras",
-      "name": "Field of view"
+      "name": "Field of View"
     },
     {
       "id": "emoji",
@@ -2724,18 +3311,34 @@
     },
     {
       "id": "tuple",
-      "name": "The call"
+      "in": "people",
+      "name": "The Call"
     },
     {
       "id": "gimp",
-      "name": "The newest screenshot"
+      "in": "capture",
+      "name": "The Newest Screenshot"
+    },
+    {
+      "id": "gimp:screenshot",
+      "in": "capture",
+      "name": "Edit the Newest Screenshot",
+      "verb": "edit"
     },
     {
       "id": "swayimg",
+      "in": "capture",
       "name": "Screenshots"
     },
     {
+      "id": "swayimg:screenshots",
+      "in": "capture",
+      "name": "Look Through the Screenshots",
+      "verb": "look"
+    },
+    {
       "id": "applications",
+      "once": ["Apps"],
       "name": "Programs",
       "term": "Programs/program",
       "noun": "programs",
@@ -2752,33 +3355,35 @@
     },
     {
       "id": "windows:this",
-      "name": "This window",
+      "name": "This Window",
       "term": "Desktop/This window",
       "verb": "open",
       "glyph": "windows"
     },
     {
       "id": "session:awake",
-      "name": "Keep awake",
+      "once": ["Caffeinate"],
+      "name": "Keep Awake",
       "term": "Machine/Keep awake",
       "verb": "start",
       "glyph": "awake",
       "states": {
         "on": {
-          "name": "Let it sleep",
+          "name": "Let It Sleep",
           "verb": "stop"
         }
       }
     },
     {
       "id": "session:quiet",
-      "name": "Do not disturb",
+      "once": ["DND", "Quiet"],
+      "name": "Do Not Disturb",
       "term": "Desktop/Do not disturb",
       "verb": "start",
       "glyph": "quiet",
       "states": {
         "on": {
-          "name": "Let notices show",
+          "name": "Let Notices Show",
           "verb": "stop"
         }
       }
@@ -2786,39 +3391,39 @@
     {
       "id": "session:quiet:60",
       "in": "session:quiet",
-      "name": "For an hour",
+      "name": "For an Hour",
       "glyph": "quiet"
     },
     {
       "id": "session:quiet:0",
       "in": "session:quiet",
-      "name": "Until it's ended",
+      "name": "Until It's Ended",
       "glyph": "quiet"
     },
     {
       "id": "session:recording",
-      "name": "Stop recording",
+      "name": "Stop Recording",
       "verb": "stop",
       "glyph": "recording"
     },
     {
       "id": "session:profile",
-      "name": "Power profile",
+      "name": "Power Profile",
       "term": "Machine/power profile",
       "glyph": "balanced"
     },
     {
       "id": "session:power:Power Saver",
       "of": "session:profile",
-      "name": "Power saver",
-      "part": "Power saver",
+      "name": "Power Saver",
+      "part": "Power Saver",
       "verb": "use",
       "glyph": "saver"
     },
     {
       "id": "session:power:Balanced Power",
       "of": "session:profile",
-      "name": "Balanced power",
+      "name": "Balanced Power",
       "part": "Balanced",
       "verb": "use",
       "glyph": "balanced"
@@ -2826,8 +3431,8 @@
     {
       "id": "session:power:Performance",
       "of": "session:profile",
-      "name": "Full performance",
-      "part": "Full performance",
+      "name": "Full Performance",
+      "part": "Full Performance",
       "verb": "use",
       "glyph": "performance"
     },
@@ -2839,6 +3444,7 @@
     },
     {
       "id": "session:Suspend",
+      "once": ["Suspend"],
       "name": "Sleep",
       "term": "Machine/sleep",
       "verb": "sleep",
@@ -2846,36 +3452,40 @@
     },
     {
       "id": "session:Log Out",
-      "name": "Log out",
+      "once": ["Sign out"],
+      "name": "Log Out",
       "term": "Machine/log out",
-      "verb": "leave",
+      "verb": "log out",
       "glyph": "logout",
-      "sure": "Log out now"
+      "sure": "Log Out Now"
     },
     {
       "id": "session:Reboot",
+      "once": ["Restart"],
       "name": "Reboot",
       "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
-      "sure": "Reboot now"
+      "sure": "Reboot Now"
     },
     {
       "id": "session:Power Off",
-      "name": "Power off",
+      "once": ["Shut down"],
+      "name": "Power Off",
       "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
-      "sure": "Power off now"
+      "sure": "Power Off Now"
     },
     {
       "id": "wifi:radio",
-      "name": "Wi-Fi off",
+      "in": "wifi",
+      "name": "Wi-Fi Off",
       "verb": "off",
       "glyph": "offline",
       "states": {
         "off": {
-          "name": "Wi-Fi on",
+          "name": "Wi-Fi On",
           "verb": "on",
           "glyph": "wireless"
         }
@@ -2890,42 +3500,42 @@
     {
       "id": "verb:wifi-leave",
       "in": "wifi",
-      "name": "Disconnect it"
+      "name": "Disconnect It"
     },
     {
       "id": "verb:wifi-join",
       "in": "wifi",
-      "name": "Connect it"
+      "name": "Connect It"
     },
     {
       "id": "verb:wifi-password",
       "in": "wifi",
-      "name": "Connect it with a new password"
+      "name": "Connect It with a New Password"
     },
     {
       "id": "verb:wifi-account",
       "in": "wifi",
-      "name": "Connect it with an account over {method}"
+      "name": "Connect It with an Account Over {method}"
     },
     {
       "id": "verb:wifi-trust",
       "in": "wifi",
-      "name": "Trust it",
+      "name": "Trust It",
       "states": {
         "trusted": {
-          "name": "Stop trusting it"
+          "name": "Stop Trusting It"
         }
       }
     },
     {
       "id": "verb:wifi-forget",
       "in": "wifi",
-      "name": "Forget it"
+      "name": "Forget It"
     },
     {
       "id": "verb:wifi-sign-in",
       "in": "wifi",
-      "name": "Sign in to it",
+      "name": "Sign in to It",
       "verb": "open",
       "glyph": "signIn"
     },
@@ -2952,17 +3562,17 @@
     {
       "id": "wifi:beacons",
       "in": "wifi:signal",
-      "name": "Access point's beacons"
+      "name": "Access Point's Beacons"
     },
     {
       "id": "wifi:margin",
       "in": "wifi:signal",
-      "name": "Over the noise"
+      "name": "Over the Noise"
     },
     {
       "id": "wifi:power",
       "in": "wifi:signal",
-      "name": "Transmit power"
+      "name": "Transmit Power"
     },
     {
       "id": "wifi:speed",
@@ -3007,22 +3617,22 @@
     {
       "id": "wifi:retried",
       "in": "wifi:retries",
-      "name": "Sent again"
+      "name": "Sent Again"
     },
     {
       "id": "wifi:failed",
       "in": "wifi:retries",
-      "name": "Never sent"
+      "name": "Never Sent"
     },
     {
       "id": "wifi:missed",
       "in": "wifi:retries",
-      "name": "Beacons missed"
+      "name": "Beacons Missed"
     },
     {
       "id": "wifi:dropped",
       "in": "wifi:retries",
-      "name": "Dropped coming in"
+      "name": "Dropped Coming In"
     },
     {
       "id": "wifi:protection",
@@ -3037,7 +3647,7 @@
     {
       "id": "wifi:proof",
       "in": "wifi:protection",
-      "name": "Joined by"
+      "name": "Connected By"
     },
     {
       "id": "wifi:cipher",
@@ -3047,27 +3657,27 @@
     {
       "id": "wifi:group",
       "in": "wifi:protection",
-      "name": "Encryption to all"
+      "name": "Encryption to All"
     },
     {
       "id": "wifi:frames",
       "in": "wifi:protection",
-      "name": "Management frames"
+      "name": "Management Frames"
     },
     {
       "id": "wifi:connected",
       "in": "wifi",
-      "name": "Joined for"
+      "name": "Connected For"
     },
     {
       "id": "wifi:heard",
       "in": "wifi",
-      "name": "Access points"
+      "name": "Access Points"
     },
     {
       "id": "wifi:point",
       "in": "wifi:heard",
-      "name": "{band}, channel {channel}"
+      "name": "{band}, Channel {channel}"
     },
     {
       "id": "wifi:estimate",
@@ -3082,32 +3692,32 @@
     {
       "id": "wifi:stations",
       "in": "wifi:point",
-      "name": "On it"
+      "name": "On It"
     },
     {
       "id": "wifi:heard-ago",
       "in": "wifi:point",
-      "name": "Last heard"
+      "name": "Last Heard"
     },
     {
       "id": "wifi:fastest",
       "in": "wifi:point",
-      "name": "Fastest because"
+      "name": "Fastest Because"
     },
     {
       "id": "wifi:bssid",
       "in": "wifi:point",
-      "name": "Hardware address"
+      "name": "Hardware Address"
     },
     {
       "id": "bluetooth:radio",
       "in": "bluetooth",
-      "name": "Bluetooth off",
+      "name": "Bluetooth Off",
       "verb": "off",
       "glyph": "bluetoothOff",
       "states": {
         "off": {
-          "name": "Bluetooth on",
+          "name": "Bluetooth On",
           "verb": "on",
           "glyph": "bluetooth"
         }
@@ -3116,7 +3726,7 @@
     {
       "id": "bluetooth:links",
       "in": "bluetooth",
-      "name": "Bluetooth performance",
+      "name": "Bluetooth Performance",
       "provider": "bluetooth",
       "question": "bluetooth performance",
       "answers": [
@@ -3131,7 +3741,7 @@
     {
       "id": "bluetooth:quality",
       "in": "bluetooth",
-      "name": "Link quality"
+      "name": "Link Quality"
     },
     {
       "id": "bluetooth:codec",
@@ -3151,12 +3761,12 @@
     {
       "id": "bluetooth:rate",
       "in": "bluetooth",
-      "name": "Sample rate"
+      "name": "Sample Rate"
     },
     {
       "id": "bluetooth:sound-channels",
       "in": "bluetooth",
-      "name": "Audio channels"
+      "name": "Audio Channels"
     },
     {
       "id": "bluetooth:held",
@@ -3176,12 +3786,12 @@
     {
       "id": "bluetooth:trusted",
       "in": "bluetooth",
-      "name": "Reconnects by itself"
+      "name": "Reconnects by Itself"
     },
     {
       "id": "bluetooth:wake",
       "in": "bluetooth",
-      "name": "Wakes the machine"
+      "name": "Wakes the Machine"
     },
     {
       "id": "bluetooth:address",
@@ -3201,7 +3811,7 @@
     {
       "id": "bluetooth:discoverable",
       "in": "bluetooth",
-      "name": "Visible to others"
+      "name": "Visible to Others"
     },
     {
       "id": "bluetooth:pairable",
@@ -3231,77 +3841,84 @@
     {
       "id": "verb:bluetooth-trust",
       "in": "bluetooth",
-      "name": "Let it reconnect by itself"
+      "name": "Let It Reconnect by Itself",
+      "verb": "reconnect"
     },
     {
       "id": "verb:bluetooth-untrust",
       "in": "bluetooth",
-      "name": "Only connect it when asked"
+      "name": "Only Connect It When Asked",
+      "verb": "ask"
     },
     {
       "id": "verb:bluetooth-wake",
       "in": "bluetooth",
-      "name": "Let it wake the machine"
+      "name": "Let It Wake the Machine",
+      "verb": "wake"
     },
     {
       "id": "verb:bluetooth-no-wake",
       "in": "bluetooth",
-      "name": "Keep it from waking the machine"
+      "name": "Keep It From Waking the Machine",
+      "verb": "refuse"
     },
     {
       "id": "verb:bluetooth-radio-on",
       "in": "bluetooth",
-      "name": "Turn the radio on"
+      "name": "Turn the Radio On"
     },
     {
       "id": "verb:bluetooth-radio-off",
       "in": "bluetooth",
-      "name": "Turn the radio off"
+      "name": "Turn the Radio Off"
     },
     {
       "id": "verb:bluetooth-visible",
       "in": "bluetooth",
-      "name": "Let others find it"
+      "name": "Let Others Find It",
+      "verb": "show"
     },
     {
       "id": "verb:bluetooth-hidden",
       "in": "bluetooth",
-      "name": "Keep it hidden"
+      "name": "Keep It Hidden",
+      "verb": "hide"
     },
     {
       "id": "verb:bluetooth-pairable",
       "in": "bluetooth",
-      "name": "Let others pair with it"
+      "name": "Let Others Pair with It",
+      "verb": "allow"
     },
     {
       "id": "verb:bluetooth-unpairable",
       "in": "bluetooth",
-      "name": "Refuse new pairings"
+      "name": "Refuse New Pairings"
     },
     {
       "id": "verb:bluetooth-connect",
       "in": "bluetooth",
-      "name": "Connect it",
+      "name": "Connect It",
       "states": {
         "unpaired": {
-          "name": "Pair and connect it"
+          "name": "Pair and Connect It"
         }
       }
     },
     {
       "id": "verb:bluetooth-disconnect",
       "in": "bluetooth",
-      "name": "Disconnect it"
+      "name": "Disconnect It"
     },
     {
       "id": "verb:bluetooth-passkey",
       "in": "bluetooth",
-      "name": "Pair it with a passkey"
+      "name": "Pair It with a Passkey"
     },
     {
       "id": "verb:bluetooth-forget",
       "in": "bluetooth",
-      "name": "Forget it"
+      "name": "Forget It"
     },
     {
       "id": "verb:copy:paste",
@@ -3333,7 +3950,8 @@
     },
     {
       "id": "copies:forget",
-      "name": "Forget the clipboard",
+      "in": "clipboard",
+      "name": "Forget the Clipboard",
       "verb": "forget",
       "glyph": "forget"
     },
@@ -3341,8 +3959,232 @@
       "id": "byhand:slack",
       "of": "program:slack",
       "part": "Theme",
-      "name": "Slack theme",
+      "name": "Slack Theme",
       "verb": "copy"
+    },
+    {
+      "id": "calendar:meeting",
+      "of": "program:google-calendar",
+      "name": "Meeting",
+      "glyph": "meeting",
+      "verb": "join",
+      "states": {
+        "untitled": {
+          "name": "A Meeting Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:calendar:join",
+      "in": "calendar:meeting",
+      "name": "Join the Meeting",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:calendar:write",
+      "in": "calendar:meeting",
+      "name": "Write to the Guests",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:calendar:link",
+      "in": "calendar:meeting",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:calendar:open",
+      "in": "calendar:meeting",
+      "name": "Open in Calendar",
+      "verb": "open",
+      "glyph": "meeting"
+    },
+    {
+      "id": "verb:calendar:see",
+      "in": "calendar:meeting",
+      "name": "See It",
+      "verb": "see",
+      "glyph": "meetingDetails"
+    },
+    {
+      "id": "verb:calendar:cancel",
+      "in": "calendar:meeting",
+      "name": "Cancel the Meeting",
+      "verb": "cancel",
+      "glyph": "cancelMeeting",
+      "sure": "Cancel It Now"
+    },
+    {
+      "id": "verb:calendar:move",
+      "in": "calendar:meeting",
+      "name": "Move the Meeting",
+      "verb": "move",
+      "glyph": "moveMeeting",
+      "sure": "Move It"
+    },
+    {
+      "id": "verb:calendar:yes",
+      "in": "calendar:meeting",
+      "name": "Going",
+      "words": ["yes"],
+      "verb": "answer",
+      "glyph": "going"
+    },
+    {
+      "id": "verb:calendar:maybe",
+      "in": "calendar:meeting",
+      "name": "Maybe",
+      "verb": "answer",
+      "glyph": "maybeGoing"
+    },
+    {
+      "id": "verb:calendar:no",
+      "in": "calendar:meeting",
+      "name": "Not Going",
+      "words": ["no"],
+      "verb": "answer",
+      "glyph": "notGoing"
+    },
+    {
+      "id": "mail:message",
+      "of": "program:google-mail",
+      "name": "Mail",
+      "glyph": "mail",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "Mail Without a Subject"
+        }
+      }
+    },
+    {
+      "id": "verb:mail:open",
+      "in": "mail:message",
+      "name": "Open in Mail",
+      "verb": "open",
+      "glyph": "mail"
+    },
+    {
+      "id": "verb:mail:reply",
+      "in": "mail:message",
+      "name": "Reply",
+      "verb": "reply",
+      "glyph": "reply"
+    },
+    {
+      "id": "verb:mail:read",
+      "in": "mail:message",
+      "name": "Read",
+      "verb": "read",
+      "glyph": "readMail",
+      "states": {
+        "read": {
+          "verb": "unread"
+        }
+      }
+    },
+    {
+      "id": "verb:mail:link",
+      "in": "mail:message",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:mail:archive",
+      "in": "mail:message",
+      "name": "Archive",
+      "verb": "archive",
+      "glyph": "archive"
+    },
+    {
+      "id": "verb:meet:code",
+      "in": "applications",
+      "name": "Join by Code",
+      "verb": "join",
+      "glyph": "joinCall",
+      "ask": "which code?"
+    },
+    {
+      "id": "docs:document",
+      "of": "program:google-docs",
+      "name": "Document",
+      "glyph": "googleDocument",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Document Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:docs:open",
+      "in": "docs:document",
+      "name": "Open in Docs",
+      "verb": "open",
+      "glyph": "googleDocument"
+    },
+    {
+      "id": "verb:docs:link",
+      "in": "docs:document",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "sheets:spreadsheet",
+      "of": "program:google-sheets",
+      "name": "Spreadsheet",
+      "glyph": "googleSpreadsheet",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Spreadsheet Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:sheets:open",
+      "in": "sheets:spreadsheet",
+      "name": "Open in Sheets",
+      "verb": "open",
+      "glyph": "googleSpreadsheet"
+    },
+    {
+      "id": "verb:sheets:link",
+      "in": "sheets:spreadsheet",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "slides:presentation",
+      "of": "program:google-slides",
+      "name": "Presentation",
+      "glyph": "googlePresentation",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Presentation Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:slides:open",
+      "in": "slides:presentation",
+      "name": "Open in Slides",
+      "verb": "open",
+      "glyph": "googlePresentation"
+    },
+    {
+      "id": "verb:slides:link",
+      "in": "slides:presentation",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
     },
     {
       "id": "verb:switch",
@@ -3354,21 +4196,21 @@
     {
       "id": "verb:bring",
       "in": "windows",
-      "name": "Bring here",
+      "name": "Bring Here",
       "verb": "bring",
       "glyph": "workspace"
     },
     {
       "id": "verb:move",
       "in": "windows",
-      "name": "Move to a workspace",
+      "name": "Move to a Workspace",
       "verb": "choose",
       "glyph": "workspace"
     },
     {
       "id": "verb:screen",
       "in": "windows",
-      "name": "Move to a screen",
+      "name": "Move to a Screen",
       "verb": "choose",
       "glyph": "display"
     },
@@ -3382,32 +4224,32 @@
     {
       "id": "verb:size:third",
       "in": "windows",
-      "name": "A third of the screen",
+      "name": "A Third of the Screen",
       "verb": "size"
     },
     {
       "id": "verb:size:half",
       "in": "windows",
-      "name": "Half the screen",
+      "name": "Half the Screen",
       "verb": "size"
     },
     {
       "id": "verb:size:two-thirds",
       "in": "windows",
-      "name": "Two thirds of the screen",
+      "name": "Two Thirds of the Screen",
       "verb": "size"
     },
     {
       "id": "verb:below",
       "in": "windows",
-      "name": "New window below",
+      "name": "New Window Below",
       "verb": "start",
       "glyph": "below"
     },
     {
       "id": "verb:start",
       "in": "applications",
-      "name": "New window",
+      "name": "New Window",
       "verb": "start",
       "glyph": "below"
     },
@@ -3424,7 +4266,7 @@
       "name": "Quit",
       "verb": "quit",
       "glyph": "close",
-      "sure": "Quit now"
+      "sure": "Quit Now"
     },
     {
       "id": "program:media",
@@ -3520,6 +4362,19 @@
       "glyph": "notifications"
     },
     {
+      "id": "program:recent",
+      "in": "applications",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
+    },
+    {
+      "id": "recent:path",
+      "in": "program:recent",
+      "name": "Opened Lately",
+      "verb": "open"
+    },
+    {
       "id": "verb:float",
       "in": "windows",
       "name": "Float",
@@ -3535,14 +4390,14 @@
     {
       "id": "verb:full-width",
       "in": "windows",
-      "name": "Full width",
+      "name": "Full Width",
       "verb": "widen",
       "glyph": "columns"
     },
     {
       "id": "verb:title",
       "in": "windows",
-      "name": "Copy title",
+      "name": "Copy Title",
       "verb": "copy",
       "glyph": "copy"
     },
@@ -3576,7 +4431,7 @@
         "busy": "busy",
         "paused": "paused",
         "off": "not running",
-        "sent": "said to {name}"
+        "sent": "talked to {name}"
       }
     },
     {
@@ -3595,30 +4450,30 @@
     {
       "id": "orchestrators:talk:yours",
       "in": "orchestrators",
-      "name": "You said"
+      "name": "You Said"
     },
     {
       "id": "orchestrators:talk:went",
       "in": "orchestrators",
-      "name": "How it went"
+      "name": "How It Went"
     },
     {
       "id": "orchestrators:talk:came",
       "in": "orchestrators",
-      "name": "What came of it"
+      "name": "What Came of It"
     },
     {
       "id": "verb:orchestrator:talk",
       "in": "orchestrators",
       "name": "Talk",
-      "verb": "say",
+      "verb": "talk",
       "glyph": "reply",
-      "ask": "say something"
+      "ask": "what to talk about?"
     },
     {
       "id": "verb:orchestrator:open",
       "in": "orchestrators",
-      "name": "Open its window",
+      "name": "Open Its Window",
       "verb": "switch",
       "glyph": "windows"
     },
@@ -3644,13 +4499,6 @@
       "glyph": "stopped"
     },
     {
-      "id": "verb:orchestrator:start",
-      "in": "orchestrators",
-      "name": "Start a session",
-      "verb": "start",
-      "glyph": "agent"
-    },
-    {
       "id": "verb:quest:switch",
       "in": "quests",
       "name": "Switch",
@@ -3660,7 +4508,7 @@
     {
       "id": "verb:quest:open",
       "in": "quests",
-      "name": "Start an agent",
+      "name": "Start a Session",
       "verb": "start",
       "glyph": "agent"
     },
@@ -3673,17 +4521,17 @@
     },
     {
       "id": "tuple:ringing",
-      "name": "Show the call from {who}",
+      "name": "Show the Call From {who}",
       "verb": "show",
       "by": "tuple"
     },
     {
       "id": "tuple:mute",
-      "name": "Mute me in the call",
+      "name": "Mute Me in the Call",
       "verb": "mute",
       "states": {
         "muted": {
-          "name": "Let them hear me again",
+          "name": "Let Them Hear Me Again",
           "verb": "unmute"
         }
       },
@@ -3691,31 +4539,31 @@
     },
     {
       "id": "tuple:share",
-      "name": "Share the screen in the call",
+      "name": "Share the Screen in the Call",
       "verb": "share",
       "by": "tuple"
     },
     {
       "id": "tuple:leave",
-      "name": "Leave the call",
+      "name": "Leave the Call",
       "verb": "leave",
       "by": "tuple"
     },
     {
       "id": "tuple:open",
-      "name": "Open my room",
+      "name": "Open My Room",
       "verb": "open",
       "by": "tuple"
     },
     {
       "id": "tuple:join",
-      "name": "Join the call in the clipboard",
+      "name": "Join the Call in the Clipboard",
       "verb": "join",
       "by": "tuple"
     },
     {
       "id": "tuple:link",
-      "name": "Copy my room's link",
+      "name": "Copy My Room's Link",
       "verb": "copy",
       "by": "tuple"
     }
@@ -3850,17 +4698,27 @@
       "word": "tabs",
       "things": [
         "shortcuts:terminal:tabs",
-        "shortcuts:neovim:files:tabs"
+        "shortcuts:neovim:files:tabs",
+        "shortcuts:chrome:tabs"
       ],
-      "why": "The terminal and Neovim both have tabs, and each group says what holds it beside it."
+      "why": "The terminal, Neovim and the browser all have tabs, and each group says what holds it beside it."
     },
     {
       "word": "tab numbers",
       "things": [
         "shortcuts:terminal:numbers",
-        "shortcuts:neovim:files:numbers"
+        "shortcuts:neovim:files:numbers",
+        "shortcuts:chrome:numbers"
       ],
-      "why": "The terminal and Neovim both go to a tab by its number, and each group says what holds it beside it."
+      "why": "The terminal, Neovim and the browser all go to a tab by its number, and each group says what holds it beside it."
+    },
+    {
+      "word": "tools",
+      "things": [
+        "shortcuts:gimp:tools",
+        "shortcuts:inkscape:tools"
+      ],
+      "why": "GIMP and Inkscape both choose a tool by a letter, and each group says which program's it is beside it."
     },
     {
       "word": "focus",

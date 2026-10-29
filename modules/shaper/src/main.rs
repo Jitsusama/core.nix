@@ -42,8 +42,9 @@ const TABLE: &str = "shaper";
 const STEP: Duration = Duration::from_millis(200);
 
 /// Where a network nobody has measured starts, in kbit/s: under most home
-/// uplinks and downlinks, so its first seconds of load don't queue at the
-/// modem, and climbing from there within seconds when the line takes more.
+/// connections both ways, so its first seconds of load don't queue at the
+/// modem, and climbing from there within seconds when the connection takes
+/// more.
 const FIRST: Held = Held {
     up: 10_000,
     down: 50_000,
@@ -274,14 +275,24 @@ fn start(
 }
 
 fn install(link: &str, ifb: &str, up: u64, down: u64) {
-    for command in qdisc::install(link, ifb, up, down) {
-        if let Err(e) = sh(&command) {
+    run_all(qdisc::install(link, ifb, up, down));
+}
+
+/// Runs each command, saying what failed, and gives whether all went.
+fn run_all(commands: Vec<Vec<String>>) -> bool {
+    let mut fine = true;
+    for command in commands {
+        match sh(&command) {
             // The IFB is left from before when the shaper restarts.
-            if !(command[..3] == ["ip", "link", "add"] && e.contains("exists")) {
+            Err(e) if command[..3] == ["ip", "link", "add"] && e.contains("exists") => {}
+            Err(e) => {
                 eprintln!("{e}");
+                fine = false;
             }
+            Ok(_) => {}
         }
     }
+    fine
 }
 
 fn uplinks() -> Vec<links::Uplink> {
@@ -291,7 +302,7 @@ fn uplinks() -> Vec<links::Uplink> {
 }
 
 /// The links the shaper holds and what each reaches without the router.
-fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, u64>) -> classes::Local {
+fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> classes::Local {
     let mut local = classes::Local::default();
     local.links.extend(vpns.keys().cloned());
     for name in shaped.keys() {
@@ -340,7 +351,7 @@ fn run(options: &Options) -> ExitCode {
     let mut last_fill: Option<Instant> = None;
     let mut filled = String::new();
     let mut reach = classes::Local::default();
-    let mut vpns: BTreeMap<String, u64> = BTreeMap::new();
+    let mut vpns: BTreeMap<String, Vpn> = BTreeMap::new();
     let mut last_kept = Instant::now();
     loop {
         let now = Instant::now();
@@ -365,10 +376,7 @@ fn run(options: &Options) -> ExitCode {
                     s.follows = leader;
                 }
             }
-            let base = order
-                .first()
-                .and_then(|p| shaped.get(p))
-                .map(|s| s.applied.0);
+            let base = order.first().and_then(|p| shaped.get(p)).map(|s| s.applied);
             follow_vpns(&mut vpns, &options.vpns, base);
             reach = local(&shaped, &vpns);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
@@ -389,7 +397,7 @@ fn run(options: &Options) -> ExitCode {
         }
         let t = (now - began).as_secs_f64();
         // Every link is counted, followers too: their traffic crosses the
-        // leader's line, and a leader blind to it reads the queue a
+        // leader's connection, and a leader blind to it reads the queue a
         // download over Wi-Fi builds against an idle download, and cuts
         // its upload.
         let carried: BTreeMap<String, (f64, f64)> = shaped
@@ -400,13 +408,13 @@ fn run(options: &Options) -> ExitCode {
             .iter()
             .filter_map(|(n, s)| s.follows.clone().map(|l| (n.clone(), l)))
             .collect();
-        for (name, (sent, received)) in links::line_loads(&carried, &follows) {
+        for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
             if let Some(s) = shaped.get_mut(&name) {
                 step(s, t, sent, received);
             }
         }
         // A follower holds its leader's rates, so the two together stay
-        // under the one line; its own controller only keeps its pings.
+        // under the one connection; its own controller only keeps its pings.
         let rates: BTreeMap<String, (u64, u64)> = shaped
             .iter()
             .map(|(n, s)| (n.clone(), (s.controller.up.rate, s.controller.down.rate)))
@@ -458,40 +466,81 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
     down.learned = false;
 }
 
-/// What a VPN may send, against the connection it rides: a little under, so
-/// its own queue forms inside the VPN, where its packets can still be told
-/// apart, before the connection's CAKE sees them as one flow. A VPN's
+/// What a VPN may send and bring in, against the connection it rides: a
+/// little under, so its own queue forms inside the VPN, where its packets
+/// can still be told apart, before the connection's CAKE sees them as one
+/// flow. A VPN's
 /// own header takes about 4% of a packet (MASQUE's or `WireGuard`'s on
 /// 1300 bytes).
 const VPN_SHARE: f64 = 0.95;
 
-/// Keeps a CAKE on each VPN that's there, at its share of the primary
-/// uplink's rate, and lets go of one that's gone or has no uplink to ride.
-fn follow_vpns(applied: &mut BTreeMap<String, u64>, names: &[String], base: Option<u64>) {
+/// What the shaper holds a VPN to each way, in kbit/s, and the IFB its
+/// downloads are turned round through.
+struct Vpn {
+    up: u64,
+    down: u64,
+    ifb: String,
+}
+
+/// Whether a rate moved by more than a hundredth from what was applied.
+fn moved(applied: Option<u64>, kbit: u64) -> bool {
+    applied.is_none_or(|a| a.abs_diff(kbit) * 100 > a)
+}
+
+/// Keeps a CAKE on each VPN that's there, each way, at its share of the
+/// primary uplink's rates, and lets go of one that's gone or has no uplink
+/// to ride.
+fn follow_vpns(applied: &mut BTreeMap<String, Vpn>, names: &[String], base: Option<(u64, u64)>) {
     for name in names {
-        let there = Path::new("/sys/class/net").join(name).exists();
-        let Some(base) = base.filter(|_| there) else {
-            if applied.remove(name).is_some() && there {
-                let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
+        let dir = Path::new("/sys/class/net").join(name);
+        let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
+        let (Some((up, down)), Some(index)) = (base, index) else {
+            if let Some(gone) = applied.remove(name) {
+                if dir.exists() {
+                    let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
+                    let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
+                }
+                let _ = sh(&words(&format!("ip link del {}", gone.ifb)));
             }
             continue;
         };
-        let kbit = whole(float(base) * VPN_SHARE).max(FLOOR.up);
+        let ifb = qdisc::ifb(index);
+        let up = whole(float(up) * VPN_SHARE).max(FLOOR.up);
+        let down = whole(float(down) * VPN_SHARE).max(FLOOR.down);
+        let was = applied.get(name);
+        // A VPN brought back up is a new device, with a new index.
+        if let Some(old) = was.filter(|v| v.ifb != ifb) {
+            let _ = sh(&words(&format!("ip link del {}", old.ifb)));
+        }
+        let same_ifb = was.is_some_and(|v| v.ifb == ifb);
+        let (was_up, was_down) = (was.map(|v| v.up), was.map(|v| v.down).filter(|_| same_ifb));
         let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
-        let moved = applied
-            .get(name)
-            .is_none_or(|a| a.abs_diff(kbit) * 100 > *a);
-        if !qdisc::vpn_ours(&json) || moved {
-            match sh(&qdisc::vpn(name, kbit)) {
-                Ok(_) => {
-                    if !applied.contains_key(name) {
-                        eprintln!("shaping VPN {name} at {kbit} kbit/s");
-                    }
-                    applied.insert(name.clone(), kbit);
-                }
+        let back = sh(&words(&format!("tc -j qdisc show dev {ifb}"))).unwrap_or_default();
+        let mut kept = Vpn {
+            up: was_up.unwrap_or(0),
+            down: was_down.unwrap_or(0),
+            ifb: ifb.clone(),
+        };
+        if !qdisc::vpn_ours(&json) || moved(was_up, up) {
+            match sh(&qdisc::vpn(name, up)) {
+                Ok(_) => kept.up = up,
                 Err(e) => eprintln!("{e}"),
             }
         }
+        if !qdisc::turned(&json) || !qdisc::vpn_ours(&back) {
+            if run_all(qdisc::vpn_ingress(name, &ifb, down)) {
+                kept.down = down;
+            }
+        } else if moved(was_down, down) {
+            match sh(&qdisc::vpn_ingress_change(&ifb, down)) {
+                Ok(_) => kept.down = down,
+                Err(e) => eprintln!("{e}"),
+            }
+        }
+        if was.is_none() {
+            eprintln!("shaping VPN {name} at {up} kbit/s up and {down} down");
+        }
+        applied.insert(name.clone(), kept);
     }
 }
 
@@ -607,8 +656,8 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
     }
 }
 
-/// One step of an uplink's controller on what its line carried, in kbit/s,
-/// applying its rates when they moved.
+/// One step of an uplink's controller on what its connection carried, in
+/// kbit/s, applying its rates when they moved.
 fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
     let was = (s.controller.up.rate, s.controller.down.rate);
     s.state = s.controller.step(t, sent, received);
@@ -756,7 +805,7 @@ fn status(runtime: &Path) -> ExitCode {
         if let Some(leader) = &link.follows {
             let _ = writeln!(out, "  at {leader}'s rate: both reach the same router");
         }
-        // Said only while it holds: a quiet line needs no line saying so.
+        // Said only while it holds: a quiet connection needs no line saying so.
         if link.building && link.follows.is_none() {
             let _ = writeln!(
                 out,
@@ -819,11 +868,9 @@ fn stop() {
             continue;
         }
         let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
-        if qdisc::ours(&json) {
+        if qdisc::ours(&json) || qdisc::vpn_ours(&json) {
             let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
             let _ = sh(&words(&format!("tc qdisc del dev {name} ingress")));
-        } else if qdisc::vpn_ours(&json) {
-            let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
         }
     }
 }

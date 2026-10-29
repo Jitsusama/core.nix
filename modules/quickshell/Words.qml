@@ -65,17 +65,26 @@ Singleton {
     }
 
     // The words that ask its answer, typed whole, best first, as a
-    // provider's questions are (Provider.qml).
+    // provider's questions are (Provider.qml), then the names it had, so a
+    // rename never loses it: "ram" still asks Memory.
     function answers(id) {
-        return of(id).answers;
+        const entry = of(id);
+        return entry.answers.concat(olds(entry));
     }
 
     // Those of them whose start, three letters or more, asks it too: every
     // one, unless it says which, as the weather's "forecast" is only asked
-    // whole, so "for" doesn't ask the weather.
+    // whole, so "for" doesn't ask the weather. A name it had is among them
+    // to be asked whole, and the launcher never asks one by its start
+    // (Launcher.qml's oldWords).
     function started(id) {
         const entry = of(id);
-        return entry.started ?? entry.answers;
+        return (entry.started ?? entry.answers).concat(olds(entry));
+    }
+
+    // The names it had, as a question is typed.
+    function olds(entry) {
+        return (entry.once ?? []).map(old => old.toLowerCase());
     }
 
     // A typed command, by its id: its start, form and the verb Return does

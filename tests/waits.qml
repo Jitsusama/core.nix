@@ -88,8 +88,8 @@ ShellRoot {
         expect("lag is answered", slow !== null, "nothing");
         expect("the worst of what waited leads", slow.headline === line, slow.headline);
         expect("then what to do about it, how fast the desktop answers, and heavy work",
-            names(slow.rows) === `${line}, See what's using the processor, Desktop answers, `
-                + "Heavy work", names(slow.rows));
+            names(slow.rows) === `${line}, See What's Using the Processor, Desktop Answers, `
+                + "Heavy Work", names(slow.rows));
         expect("the desktop's answers in plain words",
             slow.rows[2].side === "in 0.3 ms, at worst 0.4 ms", slow.rows[2].side);
         expect("heavy work says how hard it runs", slow.rows[3].side === "busy",
@@ -110,7 +110,7 @@ ShellRoot {
         expect("nothing in the way says so", calm.headline === "nothing's slowing the desktop",
             calm.headline);
         expect("and offers nothing to look into",
-            names(calm.rows) === "Desktop answers, Heavy work", names(calm.rows));
+            names(calm.rows) === "Desktop Answers, Heavy Work", names(calm.rows));
         expect("an old word asks nothing", waits.answer("jank") === null, "it answered");
         Qt.callLater(() => Qt.exit(0));
     }

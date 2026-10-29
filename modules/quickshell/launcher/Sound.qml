@@ -1,10 +1,10 @@
 // Sound, a collection: the devices sound goes out of and comes in through,
-// outputs then inputs, the one in use first in each, every glyph saying
+// outputs then inputs, the one chosen first in each, every glyph saying
 // what kind of device it is, its volume drawn as a bar and said in the
 // footer. A jack with nothing plugged into it, as the headphones' while
-// none are, isn't listed unless it's the one in use, which says so, or
+// none are, isn't listed unless it's the one chosen, which says so, or
 // what's said of its jack can no longer be trusted to be current. Return
-// uses one, or mutes or unmutes the one in use, and the right arrow holds
+// uses one, or mutes or unmutes the one chosen, and the right arrow holds
 // its parts, each named first and saying how it stands:
 //
 // - an output: its Level going out, live while it shows; its Volume, in
@@ -113,20 +113,20 @@ Provider {
             && !node.properties["node.link-group"] && node.properties["stream.monitor"] !== "true";
     }
 
-    function inUse(node) {
+    function chosen(node) {
         return node === (node.isSink ? Pipewire.defaultAudioSink : Pipewire.defaultAudioSource);
     }
 
     // A device is listed while there's something to hear it through: a jack
     // desk-facts says has nothing plugged in isn't, as the headphones
-    // aren't while none are, unless it's the one in use, which says so, or
+    // aren't while none are, unless it's the one chosen, which says so, or
     // what desk-facts said is no longer current (jacksCurrent), when it's
     // listed rather than hidden. A display's output desk-facts says nothing
     // of waits for a display.
     function listed(node) {
         const told = factsOf(node);
         if (Sounds.plugged(told) !== "")
-            return !Sounds.hidden(told, jacksCurrent) || inUse(node);
+            return !Sounds.hidden(told, jacksCurrent) || chosen(node);
         return displayed || !display(node);
     }
 
@@ -143,7 +143,8 @@ Provider {
     // jack, and a headset's microphone is named as its (Sounds.js called).
     function named(node) {
         const own = nicknamed(node);
-        const called = Sounds.called(node.name);
+        const shared = inputs.includes(node) && outputs.some(output => nicknamed(output) === own);
+        const called = Sounds.called(node.name, shared);
         return called === "" ? own : Words.name(`sound:called:${called}`, "", { device: own });
     }
 
@@ -189,7 +190,7 @@ Provider {
     }
 
     function made(node) {
-        const used = inUse(node);
+        const used = chosen(node);
         const muted = node.audio.muted;
         const note = [said("volume", { level: percent(node.audio.volume) })]
             .concat(muted ? [said("muted")] : [],
@@ -199,15 +200,16 @@ Provider {
         return member({
             key: `sound:${node.name}`,
             // Return does what its first act would: use it, or mute or
-            // unmute the one in use.
+            // unmute the one chosen.
             verb: !used ? Words.verb("verb:sound-use")
                 : Words.verb("verb:sound-mute", muted ? "muted" : ""),
             name: named(node),
             glyph: worn(node),
             hue: "machine",
-            side: used ? said("in-use") : "",
+            side: used ? said("chosen") : "",
             graph: loudness(node),
             note: note,
+            stays: true,
             run: used ? () => provider.mute(node) : () => provider.use(node),
             verbs: () => provider.verbs(node)
         });
@@ -308,17 +310,18 @@ Provider {
             : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
     }
 
-    // A device's right arrow: using it, when it isn't the one in use, then
+    // A device's right arrow: using it, when it isn't the one chosen, then
     // its parts, and what the kernel says of its card.
     function verbs(node) {
         const using = node.isSink ? "" : "input";
-        const rows = inUse(node) ? [] : [thing({
+        const rows = chosen(node) ? [] : [thing({
             key: "verb:sound-use",
             verb: Words.verb("verb:sound-use", using),
             name: Words.name("verb:sound-use", using),
             glyph: glyph(kind(node)),
             hue: "action",
             note: switches(node) ? said("profile-switches") : "",
+            stays: true,
             run: () => provider.use(node)
         })];
         const parts = [levelPart(node), volumePart(node), mutePart(node), programsPart(node),
@@ -445,12 +448,15 @@ Provider {
     }
 
     // An act on a device, as the vocabulary says it, in the state it's in.
+    // Each changes how something sounds, so it keeps the launcher, its row
+    // saying what it changed to.
     function act(key, state, fields) {
         return thing(Object.assign({
             key: key,
             verb: Words.verb(key, state),
             name: Words.name(key, state, fields.fill),
-            hue: "action"
+            hue: "action",
+            stays: true
         }, fields));
     }
 
@@ -476,7 +482,7 @@ Provider {
             fill: { level: percent(each) },
             glyph: Theme.glyph.volume,
             side: !node.audio.muted && Math.abs(node.audio.volume - each) < 0.005
-                ? said("in-use") : "",
+                ? said("chosen") : "",
             note: Sounds.decibels(each),
             run: () => {
                 node.audio.volume = each;
@@ -486,7 +492,7 @@ Provider {
     }
 
     // Whether it's Muted: a setting, saying yes or no as Bluetooth's are,
-    // Mute and Unmute a step in, the one it is in use. Each keeps the words
+    // Mute and Unmute a step in, the one it is chosen. Each keeps the words
     // that found it before ("mute it").
     function mutePart(node) {
         const muted = node.audio.muted;
@@ -498,14 +504,14 @@ Provider {
             offers: true
         }, () => [act("verb:sound-mute", "", {
             glyph: provider.struck(node),
-            side: node.audio.muted ? provider.said("in-use") : "",
+            side: node.audio.muted ? provider.said("chosen") : "",
             run: () => {
                 node.audio.muted = true;
             }
         }), act("verb:sound-mute", "muted", {
             key: "verb:sound-unmute",
             glyph: provider.glyph(provider.kind(node)),
-            side: node.audio.muted ? "" : provider.said("in-use"),
+            side: node.audio.muted ? "" : provider.said("chosen"),
             run: () => {
                 node.audio.muted = false;
             }
@@ -599,7 +605,7 @@ Provider {
         const first = streams[0];
         const paused = streams.every(stream => stream.properties["pulse.corked"] === "true");
         const key = `sound:${node.name}:program:${program.name}`;
-        return holderRow({
+        return thingRow({
             key: key,
             name: program.name,
             side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),
@@ -673,7 +679,7 @@ Provider {
             return null;
         const id = node.isSink ? "tuning" : "voice";
         const key = `sound:${node.name}:${id}`;
-        return holderRow({
+        return thingRow({
             key: key,
             name: Words.name(`sound:${id}`),
             side: found.some(filter => provider.flowing(filter, node)) ? said("running")
@@ -722,7 +728,7 @@ Provider {
 
     // Its Port, when its card offers it several, as one card's analog
     // output offers its speakers and a headphone jack: a setting, saying
-    // the one in use, the others a step in, each saying when nothing's
+    // the one chosen, the others a step in, each saying when nothing's
     // plugged into it. Quickshell carries no card's ports, so pw-dump is
     // asked for them, once a device the sound server says has several is
     // stepped into, and again when a jack or the port changes.
@@ -821,7 +827,7 @@ Provider {
     function portPart(node) {
         const offered = portsOf[node.name] ?? [];
         const now = offered.find(port => port.active) ?? null;
-        // A port nothing's plugged into is no choice, unless it's in use.
+        // A port nothing's plugged into is no choice, unless it's chosen.
         const choosable = offered.filter(port => port.active || port.available !== "no");
         if (!routed(node) || now === null || choosable.length < 2)
             return null;
@@ -836,7 +842,7 @@ Provider {
             key: `verb:sound-port-${port.index}`,
             fill: { port: port.name },
             glyph: mark,
-            side: port.active ? provider.said("in-use") : "",
+            side: port.active ? provider.said("chosen") : "",
             note: port.available === "no" ? provider.said("unplugged") : "",
             run: () => provider.movePort(node, port)
         })));
@@ -930,9 +936,9 @@ Provider {
         }, () => rows);
     }
 
-    // In use first, then by name, outputs before inputs.
+    // The chosen first, then by name, outputs before inputs.
     function ordered(nodes) {
-        return nodes.slice().sort((a, b) => Number(inUse(b)) - Number(inUse(a))
+        return nodes.slice().sort((a, b) => Number(chosen(b)) - Number(chosen(a))
             || named(a).localeCompare(named(b)));
     }
 
@@ -1049,6 +1055,7 @@ Provider {
             headline: said("set", { device: named(out), level: `${share}%` }),
             verb: Words.command("command:volume").verb,
             glyph: worn(out),
+            stays: true,
             run: () => {
                 out.audio.volume = share / 100;
                 out.audio.muted = false;

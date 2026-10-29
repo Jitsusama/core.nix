@@ -6,10 +6,10 @@ that never reached its packets, a set left empty or a rule that matched the wron
 as bytes in the wrong tin. They are bytes, not packets: what arrives reaches the IFB merged by
 GRO, so a download's packet count says more about the merging than about the traffic.
 
-Each test asks for the state it starts from as a fixture: the line up with its slices held,
-a WireGuard tunnel to the server, the default route moved to the client's other link, that
-link unplugged and plugged back in. A fixture's work is done once a run, however many tests
-ask for it, so any test runs alone with `-k`, and all of them run in the order they're
+Each test asks for the state it starts from as a fixture: the connection up with its slices
+held, a WireGuard tunnel to the server, the default route moved to the client's other link,
+that link unplugged and plugged back in. A fixture's work is done once a run, however many
+tests ask for it, so any test runs alone with `-k`, and all of them run in the order they're
 written, each after what it needs. The tests need no value from Nix: they ask the machines
 for their addresses.
 """
@@ -72,8 +72,8 @@ def address(node_ip: str) -> str:
 
 
 @dataclass
-class Line:
-    """The client, its line through the router to the server, and what CAKE counts on it."""
+class Connection:
+    """The client, its connection through the router to the server, and what CAKE counts on it."""
 
     client: BaseMachine
     server: BaseMachine
@@ -182,8 +182,8 @@ class Line:
 
 
 @pytest.fixture(scope="module")
-def line(machines: dict[str, BaseMachine]) -> Line:
-    """Give the line once the shaper shapes it, every slice held open and in its set."""
+def connection(machines: dict[str, BaseMachine]) -> Connection:
+    """Give the connection once the shaper shapes it, every slice held open and in its set."""
     client, server = machines["client"], machines["server"]
     for node in machines.values():
         node.start()
@@ -195,7 +195,7 @@ def line(machines: dict[str, BaseMachine]) -> Line:
     client.wait_for_unit("shaper.service")
     client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=COMING_UP)
     client.wait_until_succeeds("nft list set inet shaper uplinks | grep -q eth1", timeout=COMING_UP)
-    held = Line(
+    held = Connection(
         client=client,
         server=server,
         far=address(server.succeed("ip -4 -o address show dev eth1")),
@@ -217,15 +217,15 @@ def line(machines: dict[str, BaseMachine]) -> Line:
 
 
 @pytest.fixture(scope="module")
-def tunnel(line: Line) -> Line:
-    """Give the line with a WireGuard tunnel to the server, shaped as a VPN's is."""
+def tunnel(connection: Connection) -> Connection:
+    """Give the connection with a WireGuard tunnel to the server, shaped as a VPN's is."""
     keys = {}
-    for node in (line.client, line.server):
+    for node in (connection.client, connection.server):
         node.succeed("wg genkey > /root/key")
         keys[node.name] = node.succeed("wg pubkey < /root/key").strip()
     for node, me, peer, there in (
-        (line.client, "10.9.0.1", line.server, line.far),
-        (line.server, "10.9.0.2", line.client, line.near),
+        (connection.client, "10.9.0.1", connection.server, connection.far),
+        (connection.server, "10.9.0.2", connection.client, connection.near),
     ):
         node.succeed(
             "ip link add wg0 type wireguard",
@@ -234,38 +234,47 @@ def tunnel(line: Line) -> Line:
             f"ip addr add {me}/24 dev wg0",
             "ip link set wg0 up",
         )
-    line.client.wait_until_succeeds("ping -c1 -W1 10.9.0.2", timeout=COMING_UP)
-    line.client.wait_until_succeeds("tc -j qdisc show dev wg0 | grep -q cake", timeout=SHAPING)
-    line.client.wait_until_succeeds(
+    connection.client.wait_until_succeeds("ping -c1 -W1 10.9.0.2", timeout=COMING_UP)
+    connection.client.wait_until_succeeds(
+        "tc -j qdisc show dev wg0 | grep -q cake", timeout=SHAPING
+    )
+    connection.client.wait_until_succeeds(
+        f"tc -j qdisc show dev {connection.ifb('wg0')} | grep -q cake", timeout=SHAPING
+    )
+    connection.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q wg0", timeout=SHAPING
     )
-    return line
+    return connection
 
 
 @pytest.fixture(scope="module")
-def on_eth2(line: Line) -> Line:
-    """Give the line with the default route moved to the client's other link, eth2."""
-    line.client.succeed("ip route replace default via 192.168.3.2 dev eth2")
-    line.client.wait_until_succeeds("tc -j qdisc show dev eth2 | grep -q cake", timeout=SHAPING)
-    line.client.wait_until_succeeds("! tc -j qdisc show dev eth1 | grep -q cake", timeout=SHAPING)
-    line.client.wait_until_succeeds(
+def on_eth2(connection: Connection) -> Connection:
+    """Give the connection with the default route moved to the client's other link, eth2."""
+    connection.client.succeed("ip route replace default via 192.168.3.2 dev eth2")
+    connection.client.wait_until_succeeds(
+        "tc -j qdisc show dev eth2 | grep -q cake", timeout=SHAPING
+    )
+    connection.client.wait_until_succeeds(
+        "! tc -j qdisc show dev eth1 | grep -q cake", timeout=SHAPING
+    )
+    connection.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q eth2", timeout=SHAPING
     )
-    return line
+    return connection
 
 
 @dataclass(frozen=True)
 class Replugged:
-    """The line after eth2 was unplugged and plugged back in, and its IFBs either side."""
+    """The connection after eth2 was unplugged and plugged back in, and its IFBs either side."""
 
-    line: Line
+    connection: Connection
     unplugged_ifb: str
     plugged_ifb: str
 
 
 @pytest.fixture(scope="module")
-def replugged(on_eth2: Line) -> Replugged:
-    """Give the line after eth2 is unplugged and plugged back in, as a dock's adapter is.
+def replugged(on_eth2: Connection) -> Replugged:
+    """Give the connection after eth2 is unplugged and plugged back in, as a dock's adapter is.
 
     A dock's network adapter is a USB device: pulling the dock takes the link away, and
     plugging it back makes it anew under a new index, as unbinding a virtio NIC from its
@@ -290,32 +299,34 @@ def replugged(on_eth2: Line) -> Replugged:
     return Replugged(on_eth2, unplugged_ifb, on_eth2.ifb("eth2"))
 
 
-def test_jobs(line: Line) -> None:
+def test_jobs(connection: Connection) -> None:
     """The account's work goes in bulk, both ways."""
-    line.lands("bulk", "jobs.slice", line.upload)
-    line.lands("bulk", "jobs.slice", line.download, dev=line.ifb("eth1"))
-    line.lands("bulk", "background.slice", line.datagrams(9000))
+    connection.lands("bulk", "jobs.slice", connection.upload)
+    connection.lands("bulk", "jobs.slice", connection.download, dev=connection.ifb("eth1"))
+    connection.lands("bulk", "background.slice", connection.datagrams(9000))
 
 
-def test_awaited(line: Line) -> None:
+def test_awaited(connection: Connection) -> None:
     """What Joel waits on at a terminal goes as an app's would, both ways."""
-    line.lands("best effort", "jobs-awaited.slice", line.upload)
-    line.lands("best effort", "jobs-awaited.slice", line.download, dev=line.ifb("eth1"))
+    connection.lands("best effort", "jobs-awaited.slice", connection.upload)
+    connection.lands(
+        "best effort", "jobs-awaited.slice", connection.download, dev=connection.ifb("eth1")
+    )
 
 
-def test_builds(line: Line) -> None:
+def test_builds(connection: Connection) -> None:
     """The system's builds go in bulk."""
-    line.lands("bulk", "system:build.slice", line.upload)
+    connection.lands("bulk", "system:build.slice", connection.upload)
 
 
-def test_guest(line: Line) -> None:
+def test_guest(connection: Connection) -> None:
     """What it forwards for a machine or a container goes in bulk, both ways.
 
     A guest as libvirt's NAT or a container's bridge makes one: its own network namespace
     behind a veth, sent out eth1 under the client's address. Nothing it sends is a socket on
     the client, so only the forward chain can class it.
     """
-    client = line.client
+    client = connection.client
     client.succeed(
         "ip netns add guest",
         "ip link add vethguest type veth peer name eth0 netns guest",
@@ -339,49 +350,51 @@ def test_guest(line: Line) -> None:
 
         return send
 
-    line.reaches("bulk", "a guest", guest(line.upload), "eth1", LEAST_TRANSFER)
-    line.reaches("bulk", "a guest", guest(line.download), line.ifb("eth1"), LEAST_TRANSFER)
+    connection.reaches("bulk", "a guest", guest(connection.upload), "eth1", LEAST_TRANSFER)
+    connection.reaches(
+        "bulk", "a guest", guest(connection.download), connection.ifb("eth1"), LEAST_TRANSFER
+    )
     client.succeed("nft delete table ip guest", "ip link delete vethguest", "ip netns delete guest")
 
 
-def test_apps(line: Line) -> None:
+def test_apps(connection: Connection) -> None:
     """An app's pages are best effort, and its calls video, Meet's on 443 among them.
 
     Nothing answers at Meet's address here, and needn't: the client's default route sends it
     through eth1, whose CAKE counts it on the way out.
     """
-    line.lands("best effort", "app.slice", line.upload)
-    line.lands("best effort", "app.slice", line.download, dev=line.ifb("eth1"))
-    line.lands("best effort", "app.slice", line.datagrams(443))
-    line.lands("video", "app.slice", line.datagrams(9000))
-    line.lands("video", "app.slice", line.datagrams(443, to=MEET))
+    connection.lands("best effort", "app.slice", connection.upload)
+    connection.lands("best effort", "app.slice", connection.download, dev=connection.ifb("eth1"))
+    connection.lands("best effort", "app.slice", connection.datagrams(443))
+    connection.lands("video", "app.slice", connection.datagrams(9000))
+    connection.lands("video", "app.slice", connection.datagrams(443, to=MEET))
 
 
-def test_real_time(line: Line) -> None:
-    """A call's packets make the shaper keep the line's queue here.
+def test_real_time(connection: Connection) -> None:
+    """A call's packets make the shaper keep the connection's queue here.
 
     Datagrams an app sends past 443 are a call's, in the video tin, and a few hundred in a
     second are as many as a call's audio sends; the shaper looks once a second.
     """
-    line.run("app.slice", line.datagrams(9000, n=600))
+    connection.run("app.slice", connection.datagrams(9000, n=600))
     # grep reads it all: one that stops at the match leaves the status writing to nothing.
-    line.client.wait_until_succeeds(
+    connection.client.wait_until_succeeds(
         "shaper status | grep 'real-time traffic flows'", timeout=SHAPING
     )
-    line.client.succeed("journalctl -u shaper | grep -q 'real-time traffic flows'")
+    connection.client.succeed("journalctl -u shaper | grep -q 'real-time traffic flows'")
 
 
-def test_tuple(line: Line) -> None:
+def test_tuple(connection: Connection) -> None:
     """Everything Tuple's daemon sends is video.
 
     The daemon runs well before a call, so its unit's set knows it by the time it sends: the
     stand-in waits to send until the set holds it. It hands 4 MB to a socket whose buffer holds
     them, so it ends, and its cgroup goes from the set, with most still to send: those bytes
-    keep the connection's class too.
+    keep the TCP stream's class too.
     """
-    client = line.client
+    client = connection.client
     client.succeed("sysctl -w net.ipv4.tcp_wmem='4096 8388608 8388608'")
-    upload = f"{BIN}/head -c 4000000 /dev/zero > /dev/tcp/{line.far}/5201"
+    upload = f"{BIN}/head -c 4000000 /dev/zero > /dev/tcp/{connection.far}/5201"
     client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=tuple"
         f" {BIN}/bash -c 'until [ -e /tmp/send ]; do {BIN}/sleep 0.1; done; {upload}'"
@@ -395,80 +408,84 @@ def test_tuple(line: Line) -> None:
         client.succeed("touch /tmp/send")
         client.wait_until_fails("systemctl -M alice@ --user is-active tuple.service")
 
-    line.reaches("video", "unit:tuple", send, "eth1", LEAST_TRANSFER)
+    connection.reaches("video", "unit:tuple", send, "eth1", LEAST_TRANSFER)
 
 
-def test_names(line: Line) -> None:
+def test_names(connection: Connection) -> None:
     """Names and time go first, from anything."""
-    line.lands("voice", "jobs.slice", line.datagrams(53))
+    connection.lands("voice", "jobs.slice", connection.datagrams(53))
 
 
-def test_pings(line: Line) -> None:
-    """The shaper's pings go first, so they measure the line."""
-    first = line.counts("eth1", "sent_packets")[VOICE]
+def test_pings(connection: Connection) -> None:
+    """The shaper's pings go first, so they measure the connection."""
+    first = connection.counts("eth1", "sent_packets")[VOICE]
 
     def pinged(_last_try: bool) -> bool:
         """Say whether the shaper has pinged a few times since the test began."""
-        return line.counts("eth1", "sent_packets")[VOICE] - first > PINGS
+        return connection.counts("eth1", "sent_packets")[VOICE] - first > PINGS
 
     retry(pinged, timeout=HOLDING)
 
 
-def test_slice_made_again(line: Line) -> None:
+def test_slice_made_again(connection: Connection) -> None:
     """A slice made again keeps its class.
 
     The set holds a slice by its cgroup, which a new slice doesn't share, so it counts once
     the shaper has found the new one.
     """
     account = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
-    line.client.succeed("systemctl -M alice@ --user stop background.slice")
-    line.client.wait_until_fails(f"test -d {account}/background.slice")
-    line.hold("background.slice")
+    connection.client.succeed("systemctl -M alice@ --user stop background.slice")
+    connection.client.wait_until_fails(f"test -d {account}/background.slice")
+    connection.hold("background.slice")
 
     def found(_last_try: bool) -> bool:
         """Say whether most of a few datagrams from the new slice went in bulk."""
-        script = line.datagrams(9000, n=30)
-        moved = line.moved_by(
-            "background.slice", lambda: line.run("background.slice", script), "eth1"
+        script = connection.datagrams(9000, n=30)
+        moved = connection.moved_by(
+            "background.slice", lambda: connection.run("background.slice", script), "eth1"
         )
         return moved["bulk"] > moved["best effort"]
 
     retry(found, timeout=SHAPING)
-    line.lands("bulk", "background.slice", line.datagrams(9000))
+    connection.lands("bulk", "background.slice", connection.datagrams(9000))
 
 
-def test_local(line: Line) -> None:
+def test_local(connection: Connection) -> None:
     """Traffic to the client's own network isn't slowed."""
-    router_near = line.near.rsplit(".", 1)[0] + ".2"
-    before = line.counts("eth1", "sent_packets")
-    line.run("jobs.slice", line.datagrams(9000, n=1000, to=router_near))
-    assert sum(line.counts("eth1", "sent_packets")) - sum(before) < LOCAL_STRAYS
-    local = next(q for q in line.qdiscs("eth1") if q.get("parent") == "1:1")
+    router_near = connection.near.rsplit(".", 1)[0] + ".2"
+    before = connection.counts("eth1", "sent_packets")
+    connection.run("jobs.slice", connection.datagrams(9000, n=1000, to=router_near))
+    assert sum(connection.counts("eth1", "sent_packets")) - sum(before) < LOCAL_STRAYS
+    local = next(q for q in connection.qdiscs("eth1") if q.get("parent") == "1:1")
     assert local["packets"] > LOCAL_LEAST, local
 
 
-def test_tunnel(tunnel: Line) -> None:
-    """Inside a tunnel, the same classes reach its own queue."""
+def test_tunnel(tunnel: Connection) -> None:
+    """Inside a tunnel, the same classes reach its own queues, both ways."""
     inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
     tunnel.lands("bulk", "jobs.slice", inner, dev="wg0")
     tunnel.lands("best effort", "app.slice", inner, dev="wg0")
+    inner_down = f"exec 3<>/dev/tcp/10.9.0.2/5202; {BIN}/cat <&3 > /dev/null"
+    back = tunnel.ifb("wg0")
+    tunnel.lands("bulk", "jobs.slice", inner_down, dev=back)
+    tunnel.lands("best effort", "app.slice", inner_down, dev=back)
 
 
-def test_route_moves(on_eth2: Line) -> None:
+def test_route_moves(on_eth2: Connection) -> None:
     """The queues follow the default route to another link."""
     assert not on_eth2.shaped("eth1")
     on_eth2.client.succeed(f"! ip link show {on_eth2.ifb('eth1')}")
     on_eth2.lands("bulk", "jobs.slice", on_eth2.upload, dev="eth2")
 
 
-def test_status(on_eth2: Line) -> None:
+def test_status(on_eth2: Connection) -> None:
     """Its status says what it holds the link to."""
     status = on_eth2.client.succeed("shaper status")
     assert "eth2" in status, status
     assert "held under load" in status, status
 
 
-def test_ifbs_left_alone(on_eth2: Line) -> None:
+def test_ifbs_left_alone(on_eth2: Connection) -> None:
     """Udev leaves the shaper's IFBs as it made them.
 
     Each IFB came and went with a link above, so udev has met several.
@@ -478,26 +495,29 @@ def test_ifbs_left_alone(on_eth2: Line) -> None:
 
 def test_replug(replugged: Replugged) -> None:
     """A link unplugged and plugged back in is shaped afresh, both ways."""
-    line = replugged.line
+    connection = replugged.connection
     assert replugged.plugged_ifb != replugged.unplugged_ifb
-    line.client.wait_until_succeeds(
+    connection.client.wait_until_succeeds(
         f"tc -j qdisc show dev {replugged.plugged_ifb} | grep -q cake", timeout=SHAPING
     )
-    assert line.shaped("eth2")
-    line.client.wait_until_succeeds(
+    assert connection.shaped("eth2")
+    connection.client.wait_until_succeeds(
         "nft list set inet shaper uplinks | grep -q eth2", timeout=SHAPING
     )
-    line.lands("bulk", "jobs.slice", line.upload, dev="eth2")
-    line.lands("bulk", "jobs.slice", line.download, dev=replugged.plugged_ifb)
+    connection.lands("bulk", "jobs.slice", connection.upload, dev="eth2")
+    connection.lands("bulk", "jobs.slice", connection.download, dev=replugged.plugged_ifb)
 
 
 @pytest.mark.usefixtures("tunnel")
-def test_stopping(on_eth2: Line) -> None:
+def test_stopping(on_eth2: Connection) -> None:
     """Stopping it leaves the links as they were."""
     client = on_eth2.client
     eth2_ifb = on_eth2.ifb("eth2")
+    wg0_ifb = on_eth2.ifb("wg0")
     client.succeed("systemctl stop shaper.service")
     assert not on_eth2.shaped("eth2")
     client.succeed(f"! ip link show {eth2_ifb}")
     client.succeed("! tc -j qdisc show dev eth2 | grep -q ingress")
     client.succeed("! tc -j qdisc show dev wg0 | grep -q cake")
+    client.succeed("! tc -j qdisc show dev wg0 | grep -q ingress")
+    client.succeed(f"! ip link show {wg0_ifb}")

@@ -2,7 +2,8 @@
 //! nothing; `guide tools` says where this build finds each program it
 //! runs, and fails when one is missing. `guide host IMAGE` writes a stick
 //! on whatever machine runs it, as the person: given `--sign-with` and
-//! sbctl's db key directory, its boot program signed for that machine;
+//! sbctl's db key directory, its boot program signed for that machine, and
+//! for each machine whose directory follows another `--sign-with`;
 //! given `--install` and a machine's payload (payload.nix), its vault
 //! holding everything to install it, sealed to the stick's passphrase;
 //! given `--rescue-bundle` too, the machine's Secure Boot keys, opened
@@ -39,8 +40,8 @@ use guide::vault::store::{Directory, Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide github
-       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
-       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE]]
+       guide host IMAGE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
+       guide write-stick IMAGE FILE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE]]
        guide seal-keys TARGET BUNDLE";
 
 fn main() -> ExitCode {
@@ -86,8 +87,8 @@ fn main() -> ExitCode {
         ["host", image, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
-                reported(written.open().and_then(|(signer, payload, bundle)| {
-                    host(image, signer, payload, bundle, written.uses_kept())
+                reported(written.open().and_then(|(signers, payload, bundle)| {
+                    host(image, signers, payload, bundle, written.uses_kept())
                 }))
             } else {
                 eprintln!("{USAGE}");
@@ -97,8 +98,8 @@ fn main() -> ExitCode {
         ["write-stick", image, target, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
-                reported(written.open().and_then(|(signer, payload, bundle)| {
-                    write_stick(image, target, signer, payload, bundle)
+                reported(written.open().and_then(|(signers, payload, bundle)| {
+                    write_stick(image, target, signers, payload, bundle)
                 }))
             } else {
                 eprintln!("{USAGE}");
@@ -112,13 +113,14 @@ fn main() -> ExitCode {
     }
 }
 
-/// What a stick is written with, each given at most once: the db key
-/// directory its boot program is signed with, the machine's payload, and
-/// the machine's rescue bundle, whose keys the stick carries for a
-/// reinstall and signs with when no other key is named.
+/// What a stick is written with: the db key directories its boot program
+/// is signed with, one for each machine it's to boot on, and, each given
+/// at most once, the machine's payload and the machine's rescue bundle,
+/// whose keys the stick carries for a reinstall and signs with when no
+/// other key is named.
 #[derive(Default)]
 struct Written<'a> {
-    sign_with: Option<&'a str>,
+    sign_with: Vec<&'a str>,
     install: Option<&'a str>,
     rescue_bundle: Option<&'a str>,
     /// Whether no bundle the host keeps may be used.
@@ -139,8 +141,12 @@ impl<'a> Written<'a> {
             let [option, value, rest @ ..] = options else {
                 return None;
             };
+            if *option == "--sign-with" {
+                written.sign_with.push(value);
+                options = rest;
+                continue;
+            }
             let slot = match *option {
-                "--sign-with" => &mut written.sign_with,
                 "--install" => &mut written.install,
                 "--rescue-bundle" => &mut written.rescue_bundle,
                 _ => return None,
@@ -159,16 +165,17 @@ impl<'a> Written<'a> {
     /// Whether the bundle the host keeps for the machine signs its stick:
     /// only when no bundle or key is named, nor none asked for.
     fn uses_kept(&self) -> bool {
-        !self.no_rescue_bundle && self.sign_with.is_none() && self.rescue_bundle.is_none()
+        !self.no_rescue_bundle && self.sign_with.is_empty() && self.rescue_bundle.is_none()
     }
 
     /// Each as it was given, the bundle read but not yet opened, since
     /// opening it asks for a YubiKey or the passphrase.
     fn open(&self) -> Result<Opened, Fault> {
-        let signer = self
+        let signers = self
             .sign_with
+            .iter()
             .map(|directory| Signer::open(Path::new(directory)))
-            .transpose()?;
+            .collect::<Result<Vec<_>, _>>()?;
         let payload = self
             .install
             .map(|payload| Payload::open(Path::new(payload)))
@@ -181,28 +188,27 @@ impl<'a> Written<'a> {
                     .and_then(|bytes| Bundle::read(&bytes))
             })
             .transpose()?;
-        Ok((signer, payload, bundle))
+        Ok((signers, payload, bundle))
     }
 }
 
-type Opened = (Option<Signer>, Option<Payload>, Option<Bundle>);
+type Opened = (Vec<Signer>, Option<Payload>, Option<Bundle>);
 
-/// The keys a rescue bundle opened to: they sign the stick unless another
-/// key was named, and the payload carries them.
+/// The keys a rescue bundle opened to: they sign the stick unless other
+/// keys were named, and the payload carries them.
 fn carrying(
-    signer: Option<Signer>,
+    mut signers: Vec<Signer>,
     payload: Option<Payload>,
     machine: &str,
     keys: Keys,
-) -> Result<(Signer, Option<Payload>), Fault> {
-    let signer = match signer {
-        Some(signer) => signer,
-        None => keys.signer()?,
-    };
+) -> Result<(Vec<Signer>, Option<Payload>), Fault> {
+    if signers.is_empty() {
+        signers.push(keys.signer()?);
+    }
     let payload = payload
         .map(|payload| payload.with_secure_boot_keys(machine, keys))
         .transpose()?;
-    Ok((signer, payload))
+    Ok((signers, payload))
 }
 
 fn reported(result: Result<(), Fault>) -> ExitCode {
@@ -238,7 +244,7 @@ fn passphrase() -> Result<Secret, Fault> {
 fn write_stick(
     image: &str,
     target: &str,
-    signer: Option<Signer>,
+    signers: Vec<Signer>,
     payload: Option<Payload>,
     bundle: Option<Bundle>,
 ) -> Result<(), Fault> {
@@ -259,18 +265,17 @@ fn write_stick(
         .map_err(kept)?;
     let passphrase = payload.as_ref().map(|_| passphrase()).transpose()?;
     // The bundle's passphrase follows the vault's, on the next line.
-    let (signer, payload) = match bundle {
+    let (signers, payload) = match bundle {
         Some(bundle) => {
             let keys = bundle.open_with_passphrase(&self::passphrase()?)?;
-            let (signer, payload) = carrying(signer, payload, bundle.machine(), keys)?;
-            (Some(signer), payload)
+            carrying(signers, payload, bundle.machine(), keys)?
         }
-        None => (signer, payload),
+        None => (signers, payload),
     };
     let vault = host::write(
         Path::new(image),
         &mut disk,
-        signer.as_ref(),
+        &signers,
         payload.as_ref().zip(passphrase.as_ref()),
         &[],
         &guide::progress::Meter::new(),
@@ -317,7 +322,7 @@ fn host_log() -> Option<File> {
 /// on the screen of whatever machine writes it, as the person, not root.
 fn host(
     image: &str,
-    signer: Option<Signer>,
+    signers: Vec<Signer>,
     payload: Option<Payload>,
     bundle: Option<Bundle>,
     uses_kept: bool,
@@ -400,7 +405,7 @@ fn host(
     };
     let opening = Journey::new(steps).map_err(|why| Fault::unreadable("the host's steps", why))?;
     walk.journey = &opening;
-    let (signer, payload) = match bundle_of {
+    let (signers, payload) = match bundle_of {
         Some(machine_of) => {
             // The terminal is put back as it was before this is said.
             if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
@@ -409,10 +414,9 @@ fn host(
             let Some(keys) = opened.take() else {
                 return unopened(&machine_of);
             };
-            let (signer, payload) = carrying(signer, payload, &machine_of, keys)?;
-            (Some(signer), payload)
+            carrying(signers, payload, &machine_of, keys)?
         }
-        None => (signer, payload),
+        None => (signers, payload),
     };
 
     let next = match &payload {
@@ -421,7 +425,7 @@ fn host(
     };
     // Only a host that gathered bundles carries them, and then writes over
     // only the stick it gathered them from.
-    let write = WriteStick::new(PathBuf::from(image), payload, signer);
+    let write = WriteStick::new(PathBuf::from(image), payload, signers);
     let write = match &kept {
         Some(_) => write.carrying(bundles),
         None => write,

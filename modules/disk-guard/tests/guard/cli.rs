@@ -509,3 +509,122 @@ fn plan_shows_what_a_pass_would_take() {
         "a plan journals nothing"
     );
 }
+
+/// A status file with one holder, as the account's guard writes it.
+fn holding(machine: &Machine, path: &Path) {
+    let status = serde_json::json!({
+        "version": 2, "heartbeat": 1.0, "says": "", "filesystems": [], "cleared": [],
+        "last": null, "frozen": [], "writer": null, "notice": null, "holders_at": 1.0,
+        "holders": [{
+            "path": path, "bytes": 4096, "owner": { "kind": "other", "name": "photos" },
+            "name": "~/photos", "clearable": true, "clears": 4096, "why": null, "kept": null,
+            "says": "~/photos holds 4.0 KiB, of which 4.0 KiB can be cleared now."
+        }]
+    });
+    write_file(&machine.env.status, &status.to_string());
+}
+
+fn holder(machine: &Machine) -> serde_json::Value {
+    let status: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&machine.env.status).unwrap()).unwrap();
+    status["holders"][0].clone()
+}
+
+#[test]
+fn a_keep_holds_its_reason_and_shows_in_the_status_before_the_command_ends() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(&photos).unwrap();
+    holding(&machine, &photos);
+    let (code, out, err) = machine.run(&format!(
+        "keep {} the old camera's copies",
+        photos.display()
+    ));
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert_eq!(
+        out,
+        format!("Kept {}: the old camera's copies.\n", photos.display())
+    );
+    let kept = holder(&machine);
+    assert_eq!(kept["kept"]["reason"], "the old camera's copies", "{kept}");
+    assert!(
+        kept["says"]
+            .as_str()
+            .unwrap()
+            .ends_with("; you keep it: the old camera's copies."),
+        "{kept}"
+    );
+    let (code, out, _) = machine.run(&format!("unkeep {}", photos.display()));
+    assert_eq!(
+        (code, out),
+        (0, format!("No longer kept: {}.\n", photos.display()))
+    );
+    let let_go = holder(&machine);
+    assert!(let_go["kept"].is_null(), "{let_go}");
+    assert!(
+        let_go["says"]
+            .as_str()
+            .unwrap()
+            .ends_with("of which 4.0 KiB can be cleared now."),
+        "{let_go}"
+    );
+}
+
+#[test]
+fn a_clear_shows_as_clearing_before_the_command_ends() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(&photos).unwrap();
+    holding(&machine, &photos);
+    let (code, out, err) = machine.run(&format!("clear {}", photos.display()));
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert_eq!(
+        out,
+        format!(
+            "Clearing {}; the guard starts on its next step.\n",
+            photos.display()
+        )
+    );
+    assert_eq!(holder(&machine)["clearing"], true);
+    assert_eq!(
+        disk_guard::clears::clearing(&machine.env.state),
+        [photos.canonicalize().unwrap()]
+    );
+}
+
+#[test]
+fn a_clear_refuses_what_is_kept_or_not_there() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(photos.join("2019")).unwrap();
+    let (code, _, _) = machine.run(&format!("keep {} the only copies", photos.display()));
+    assert_eq!(code, 0);
+    let (code, _, err) = machine.run(&format!("clear {}", photos.join("2019").display()));
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("you keep it: the only copies"), "{err}");
+    let gone = machine.root.join("gone");
+    let (code, _, err) = machine.run(&format!("clear {}", gone.display()));
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("isn't there"), "{err}");
+    assert_eq!(
+        disk_guard::clears::clearing(&machine.env.state),
+        Vec::<PathBuf>::new(),
+        "nothing refused is asked"
+    );
+}
+
+#[test]
+fn a_keep_needs_a_folder_there_and_a_reason() {
+    let machine = Machine::new();
+    let gone = machine.root.join("gone");
+    let (code, _, err) = machine.run(&format!("keep {} a reason", gone.display()));
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("isn't there"), "{err}");
+    let refused = parse(&words(&format!("keep {}", machine.root.display()))).unwrap_err();
+    assert!(refused.contains("needs a reason"), "{refused}");
+    let (code, out, _) = machine.run(&format!("unkeep {}", machine.root.display()));
+    assert_eq!(
+        (code, out),
+        (0, format!("{} wasn't kept.\n", machine.root.display()))
+    );
+}

@@ -12,6 +12,13 @@
 # Inkscape comes with Apply Transforms, which bakes an object's transforms
 # into its paths.
 #
+# The launcher lists Inkscape's own keys over its window, as the Drawing
+# editor. They're the keys Inkscape ships with, which already speak the
+# desktop's language where Inkscape has the thing it means: ? opens its
+# command palette, and Page Up and Down move the selection a level of the
+# stack. Its digits stay its zoom presets, since it has nothing numbered to
+# go to.
+#
 # Its drawing window opens across the screen's whole width, with the gaps
 # every window has, rather than over the whole screen as it asks to; its
 # splash and dialogs still float.
@@ -24,7 +31,7 @@
 }:
 let
   inherit (config.jitsusama.theme)
-    roles
+    colours
     terminal
     font
     title
@@ -55,7 +62,7 @@ let
     /* Inkscape's own colours, from jitsusama.theme. */
     ${lib.concatStrings (lib.imap1 highlight highlights)}
     #InkSpinScale box.active {
-      box-shadow: 0 0 0 1px ${roles.accent};
+      box-shadow: 0 0 0 1px ${colours.accent};
     }
 
     .mono-font {
@@ -74,10 +81,197 @@ let
         "@desk@"
       ]
       [
-        roles.edge
-        roles.sunken
+        colours.edge
+        colours.sunken
       ]
       (builtins.readFile ./default.svg);
+
+  grouped = group: map (key: key // { inherit group; });
+
+  # From Inkscape 1.4.4's share/keys/inkscape.xml, the keys it ships with.
+  keys =
+    grouped "tools" [
+      {
+        chord = "s";
+        does = "Select and move";
+      }
+      {
+        chord = "n";
+        does = "Edit the nodes";
+      }
+      {
+        chord = "r";
+        does = "Draw a rectangle";
+      }
+      {
+        chord = "e";
+        does = "Draw an ellipse";
+      }
+      {
+        chord = "p";
+        does = "Draw freehand";
+      }
+      {
+        chord = "b";
+        does = "Draw with the pen";
+      }
+      {
+        chord = "t";
+        does = "Write text";
+      }
+      {
+        chord = "g";
+        does = "Edit a gradient";
+      }
+      {
+        chord = "d";
+        does = "Pick a colour from the drawing";
+      }
+      {
+        chord = "u";
+        does = "Fill a closed shape";
+      }
+      {
+        chord = "z";
+        does = "Zoom with the pointer";
+      }
+      {
+        chord = "m";
+        does = "Measure";
+      }
+    ]
+    ++ grouped "view" [
+      {
+        chord = "1";
+        does = "The drawing at its own size";
+      }
+      {
+        chord = "2";
+        does = "The drawing at half its size";
+      }
+      {
+        chord = "3";
+        does = "Zoom to the selection";
+      }
+      {
+        chord = "4";
+        does = "Zoom to the whole drawing";
+      }
+      {
+        chord = "5";
+        does = "Zoom to the page";
+      }
+      {
+        chord = "Plus";
+        does = "The drawing larger";
+      }
+      {
+        chord = "Minus";
+        does = "The drawing smaller";
+      }
+      {
+        chord = "`";
+        does = "The zoom before";
+      }
+      {
+        chord = "%";
+        does = "Snapping on or off";
+      }
+    ]
+    ++ grouped "objects" [
+      {
+        chord = "Ctrl+g";
+        does = "Group the selection";
+      }
+      {
+        chord = "Ctrl+Shift+g";
+        does = "Ungroup the selection";
+      }
+      {
+        chord = "Ctrl+d";
+        does = "Duplicate the selection";
+      }
+      {
+        chord = "Page_Up";
+        does = "Raise the selection a step";
+      }
+      {
+        chord = "Page_Down";
+        does = "Lower the selection a step";
+      }
+      {
+        chord = "Home";
+        does = "Raise the selection to the top";
+      }
+      {
+        chord = "End";
+        does = "Lower the selection to the bottom";
+      }
+      {
+        chord = "h";
+        does = "Flip the selection across";
+      }
+      {
+        chord = "v";
+        does = "Flip the selection over";
+      }
+    ]
+    ++ grouped "panels" [
+      {
+        chord = "Ctrl+Shift+f";
+        does = "Fill and stroke";
+      }
+      {
+        chord = "Ctrl+Shift+l";
+        does = "Layers and objects";
+      }
+      {
+        chord = "Ctrl+Shift+a";
+        does = "Align and distribute";
+      }
+      {
+        chord = "Ctrl+Shift+t";
+        does = "Text and font";
+      }
+      {
+        chord = "Ctrl+Shift+e";
+        does = "Export";
+      }
+      {
+        chord = "Ctrl+Shift+d";
+        does = "Document properties";
+      }
+      {
+        chord = "Ctrl+Shift+x";
+        does = "The XML editor";
+      }
+      {
+        chord = "F12";
+        does = "Show or hide the panels";
+      }
+    ]
+    ++ [
+      {
+        chord = "?";
+        does = "Search Inkscape's commands";
+      }
+      {
+        chord = "Escape";
+        does = "Let go of the selection";
+      }
+      {
+        chord = "Ctrl+f";
+        does = "Find objects";
+      }
+      {
+        chord = "Ctrl+z";
+        does = "Undo";
+      }
+      {
+        chord = "Ctrl+Shift+z";
+        does = "Redo";
+      }
+    ];
 
   inkscape = pkgs.inkscape-with-extensions.override {
     inkscapeExtensions = [ pkgs.inkscape-extensions.applytransforms ];
@@ -85,11 +279,15 @@ let
 in
 {
   imports = [
+    ../keys/home.nix
     ../theme/home.nix
     niri
   ];
 
   home.packages = [ inkscape ];
+
+  # Inkscape's keys, for the launcher to list over its window.
+  jitsusama.keys.inkscape = keys;
 
   # A drawing's window is titled after it, "<file> - Inkscape", from the
   # moment it opens; the splash is titled with the version instead.

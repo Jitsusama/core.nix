@@ -92,7 +92,9 @@ kretprobe:ttm_bo_populate
 // most what it keeps for its caching. A buffer is counted the first time
 // it's passed over, so the pages are what stayed resident at once, at
 // most. A buffer passed over stays held until it's freed or backed up,
-// and the pages held, by caching, keep their peak.
+// and the pages held, by caching, keep their peak. One that leaves some
+// other way, as TTM's own eviction or swapout, still counts as held, so
+// that peak too is at most what was kept at once.
 kprobe:xe_bo_shrink
 {
   $bo = (struct ttm_buffer_object *)arg1;
@@ -158,7 +160,8 @@ END
   printf("kept resident by the shrinker as busy, by caching: buffers, then pages\n");
   print(@kept);
   print(@kept_pages);
-  printf("held at once by the shrinker as busy, by caching: most pages, then buffers freed\n");
+  printf("held at once by the shrinker as busy, by caching: ");
+  printf("at most this many pages, then buffers freed\n");
   print(@held_peak);
   print(@released);
   clear(@held_peak);

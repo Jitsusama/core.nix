@@ -11,8 +11,11 @@ replaces it, matched as tests/names.py matches names, unless its thing is
 listed below: as another sense of the word, or as a rename the launcher
 hasn't made yet. A listed thing that no longer says one fails too, so the
 lists only shrink. The words that only find a thing, never shown, are left
-to the launcher's words step. And so does the check itself, should one of
-its rules stop refusing what it's there for, or refuse what sits beside it.
+to the launcher's words step, but for the names a thing had (`once`): each
+must be a name the glossary replaces, or its plural, so a rename keeps its
+row and no new synonym slips in that way. And so does the check itself,
+should one of its rules stop refusing what it's there for, or refuse what
+sits beside it.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from glossary import Thing, read
+from glossary import Thing, plainly, read
 from names import replaced
 
 if TYPE_CHECKING:
@@ -86,6 +89,22 @@ GLOSSARY = (
 )
 
 
+def invented(things: list[Thing], words: dict[str, list[dict[str, object]]]) -> list[str]:
+    """Say each name a thing keeps as one it had that the glossary replaces for nothing."""
+    olds = {plainly(old) for thing in things for old in thing.not_}
+    out: list[str] = []
+    for entry in entries(words):
+        kept = entry.get("once", [])
+        for name in kept if isinstance(kept, list) else []:
+            plain = plainly(str(name))
+            if plain not in olds and plain.removesuffix("s") not in olds:
+                out.append(
+                    f'{entry.get("id")} keeps "{name}" as a name it had, but the glossary '
+                    "replaces no such name, so it would be a synonym."
+                )
+    return out
+
+
 def vocabulary(*things: dict[str, object]) -> dict[str, list[dict[str, object]]]:
     """Give a stand-in vocabulary holding things, beside one for every listed one."""
     listed: list[dict[str, object]] = [
@@ -119,13 +138,23 @@ def refuses() -> list[str]:
     things, _ = read(GLOSSARY)
     out = [f"The check lets {why} through." for why, words in REFUSED if not drift(things, words)]
     out.extend(f"The check refuses what it shouldn't: {said}" for said in drift(things, ALLOWED))
+    made_up: dict[str, list[dict[str, object]]] = {
+        "things": [{"id": "nap", "name": "Sleep", "once": ["Snooze"]}]
+    }
+    if not invented(things, made_up):
+        out.append("The check lets a name no thing had through as one it had.")
+    kept: dict[str, list[dict[str, object]]] = {
+        "things": [{"id": "nap", "name": "Sleep", "once": ["Suspend", "Lines"]}]
+    }
+    out.extend(f"The check refuses what it shouldn't: {said}" for said in invented(things, kept))
     return out
 
 
 def main(argv: list[str]) -> None:
     """Print every shown word the glossary replaces, and fail if there are any."""
     things, _ = read(Path(argv[0]).read_text())
-    found = refuses() + drift(things, json.loads(Path(argv[1]).read_text()))
+    words = json.loads(Path(argv[1]).read_text())
+    found = refuses() + drift(things, words) + invented(things, words)
     for said in found:
         print(said)
     if found:

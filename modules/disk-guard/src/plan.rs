@@ -30,6 +30,8 @@ pub enum Class {
     },
     /// A snapshot whose process is gone.
     Snapshot,
+    /// What git staged in a repository no git works on now.
+    GitTemporary,
     /// A quest workspace whose quest is done with it.
     Workspace,
     Temp,
@@ -90,6 +92,7 @@ impl Class {
             Class::Variant => "variant",
             Class::Scratch { .. } => "scratch",
             Class::Snapshot => "snapshot",
+            Class::GitTemporary => "git-temporary",
             Class::Workspace => "workspace",
             Class::Temp => "temp",
             Class::Trash => "trash",
@@ -161,6 +164,14 @@ fn days(n: f64) -> Option<f64> {
     Some(n * DAY)
 }
 
+/// Whether a Clear Joel asks for takes it: what a critically full disk
+/// takes now, but nothing a build or a shell is using and none of the
+/// store's garbage, which its own policy collects.
+pub fn clears(candidate: &Candidate) -> bool {
+    group(candidate, Band::Critical)
+        .is_some_and(|group| !matches!(group, Group::Occupied | Group::Garbage))
+}
+
 /// The group a band takes a candidate in, if it takes it at all.
 pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
     let (group, windows) = windows(candidate);
@@ -179,6 +190,8 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             _ => (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE]),
         },
         _ if tree && candidate.spent => (Group::Waste, [AT_ONCE; 4]),
+        // A leftover from before this boot has no maker left to come back.
+        Class::Temp if candidate.spent => (Group::Waste, [AT_ONCE; 4]),
         // Even a healthy disk sheds a build or an install nobody has used
         // for a week or two of awake time: one wanted again costs a build,
         // and keeping every one ever made is how a disk fills.
@@ -193,7 +206,9 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             [healthy, days(1.0), hours(6.0), hours(2.0)],
         ),
         // Of a log, what's trimmed is history nobody reads; the rest stays.
-        Class::Snapshot | Class::NixBuild | Class::Log => (Group::Waste, [AT_ONCE; 4]),
+        Class::Snapshot | Class::GitTemporary | Class::NixBuild | Class::Log => {
+            (Group::Waste, [AT_ONCE; 4])
+        }
         // A quest that's over owns nothing: its scratch goes once nothing
         // has written to it for a few minutes, whatever the disk's band.
         Class::Workspace => (Group::Waste, [minutes(10.0); 4]),
@@ -257,7 +272,9 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
 }
 
 /// What a band takes, cheapest loss first: by group, caches by how cheaply
-/// they refill, then the longest idle. With a shortfall the plan stops once
+/// they refill, then the longest idle. Waste costs nothing to lose, so it
+/// goes largest first, and a few big builds aren't left behind thousands of
+/// small temp entries that are idle longer. With a shortfall the plan stops once
 /// what it predicts freeing covers it, each candidate predicted at its size
 /// times the share of its size its class has been measured to free; without
 /// one, as on a healthy disk's upkeep, it takes everything due.
@@ -292,8 +309,17 @@ pub fn plan(
     };
     steps.sort_by(|a, b| {
         let idle = |step: &Step| candidates[step.index].idle;
+        let size = |step: &Step| candidates[step.index].size;
+        let waste = a.group == Group::Waste && b.group == Group::Waste;
         (a.group, rank(a))
             .cmp(&(b.group, rank(b)))
+            .then_with(|| {
+                if waste {
+                    size(b).cmp(&size(a))
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
             .then(idle(b).total_cmp(&idle(a)))
     });
     if let Some(shortfall) = shortfall {

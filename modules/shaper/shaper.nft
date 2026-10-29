@@ -61,7 +61,7 @@ chain classify {
   ip6 daddr { fe80::/10, ff00::/8 } goto local
 
   # Names and time, which everything waits on, and the shaper's own
-  # pings, which must measure the line rather than a queue here.
+  # pings, which must measure the connection rather than a queue here.
   udp dport { 53, 123, 853 } goto voice
   tcp dport { 53, 853 } goto voice
   socket cgroupv2 level 2 @voice2 goto voice

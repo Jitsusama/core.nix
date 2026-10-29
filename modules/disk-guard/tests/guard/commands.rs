@@ -170,7 +170,10 @@ fn a_command_past_its_time_is_killed_with_everything_it_started() {
         .trim()
         .parse()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(2);
+    // Killed is gone at once, but its exit has to be run: a sandbox build
+    // at low weight on a machine at load 27 waited past 2 s for it on 28
+    // October, so the bound is wide and the wait ends as soon as it's gone.
+    let deadline = Instant::now() + Duration::from_secs(30);
     while !gone(pid) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));
     }

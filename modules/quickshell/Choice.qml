@@ -56,6 +56,10 @@ Rectangle {
     // at their right runs to, so every graph in the list stands in one
     // column clear of them all.
     property int figures: 0
+    // The same for every row in the list, graphed or not, so what a row is
+    // takes the room the widest has needed in this step, and where its
+    // name is cut holds still as what it says there changes.
+    property int sides: 0
     readonly property bool graphed: graph !== null && graph !== undefined
     // Where the name and its detail have to stop: the graph, or else what
     // the row is.
@@ -68,7 +72,11 @@ Rectangle {
     width: parent.width
     height: Theme.space.xxxl
     radius: Theme.inner
-    color: selected ? Qt.alpha(Theme.selection, Theme.floating.selection) : "transparent"
+    // Selected, it's filled, unless the list draws the selection itself so
+    // it can glide from row to row (Launcher.qml's list).
+    property bool fills: true
+    color: selected && fills ? Qt.alpha(Theme.selection, Theme.floating.selection)
+        : "transparent"
 
     Text {
         x: Theme.space.l
@@ -137,10 +145,22 @@ Rectangle {
         readonly property bool chorded: row.kind === "" && row.chord.length > 0
         readonly property string said: row.kind !== "" ? row.kind : row.side
         readonly property bool sided: !chorded && said !== ""
+        // What a row is never takes more than its share of the row, so
+        // however long it runs it can't reach the name, and it gives the
+        // name its room first, down to a fifth of the row: a window's
+        // title is what Joel looks for, its program and place only help
+        // (Joel, 2026-10-25: titles "get elipsed really quick").
+        readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
+            row.width - nameText.x - nameText.implicitWidth - 2 * Theme.space.xxl
+            - Theme.space.l - (row.detail === "" ? 0
+                : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
         // As wide as the widest beside a graph in the list, so the graphs
-        // line up, and never more than what's said may take.
+        // line up, and never more than what's said may take; for a row
+        // without one, as wide as the widest said here in this step, within
+        // its share.
         readonly property real column: row.graphed
-            ? Math.min(row.figures * figureFace.advanceWidth, row.width * 0.45) : 0
+            ? Math.min(row.figures * figureFace.advanceWidth, row.width * 0.45)
+            : right.sided ? Math.min(row.sides * figureFace.advanceWidth, right.share) : 0
 
         width: Math.max(column, chorded ? keys.width : sided ? sideText.width : 0)
         height: chorded ? keys.height : sideText.height
@@ -156,15 +176,7 @@ Rectangle {
             id: sideText
             anchors.right: parent.right
             visible: right.sided
-            // What a row is never takes more than its share of the row, so
-            // however long it runs it can't reach the name, and it gives the
-            // name its room first, down to a fifth of the row: a window's
-            // title is what Joel looks for, its program and place only help
-            // (Joel, 2026-10-25: titles "get elipsed really quick").
-            width: Math.min(implicitWidth, row.width * 0.45, Math.max(row.width * 0.2,
-                row.width - nameText.x - nameText.implicitWidth - 2 * Theme.space.xxl
-                - Theme.space.l - (row.detail === "" ? 0
-                    : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
+            width: Math.min(implicitWidth, right.share)
             elide: Text.ElideRight
             text: right.said
             color: Theme.muted

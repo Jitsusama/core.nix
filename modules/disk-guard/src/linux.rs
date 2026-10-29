@@ -624,6 +624,56 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     Ok((halves[0] ^ halves[1]) | 1 << 63)
 }
 
+/// Whether `path`, a directory beneath `parent` with a device number of
+/// its own, is a Btrfs subvolume of the same pool, reached through the
+/// same mount and writable, so a walk may go on into it as into any
+/// directory. A mount is another filesystem, or this one seen again, and
+/// a read-only snapshot can't be emptied; neither is entered. A kernel
+/// that doesn't say which mount a path is on enters nothing.
+pub fn subvolume_within(parent: &Path, path: &Path) -> bool {
+    let btrfs = |dir: &Path| rustix::fs::statfs(dir).is_ok_and(|stats| is_btrfs(&stats));
+    let mount = |dir: &Path| {
+        let flags = rustix::fs::AtFlags::SYMLINK_NOFOLLOW;
+        let wanted = rustix::fs::StatxFlags::MNT_ID;
+        rustix::fs::statx(rustix::fs::CWD, dir, flags, wanted)
+            .ok()
+            .filter(|stat| stat.stx_mask & wanted.bits() != 0)
+            .map(|stat| stat.stx_mnt_id)
+    };
+    btrfs(parent)
+        && btrfs(path)
+        && btrfs_id(parent).is_ok_and(|id| btrfs_id(path).is_ok_and(|other| other == id))
+        && mount(parent).is_some_and(|id| mount(path) == Some(id))
+        && rustix::fs::access(path, rustix::fs::Access::WRITE_OK).is_ok()
+}
+
+/// Whether `child`, a directory opened beneath `parent` with a device
+/// number of its own, is a writable Btrfs subvolume reached through the
+/// same mount: what `subvolume_within` asks of two paths, asked of open
+/// directories, so nothing can be swapped in between. One mount is one
+/// filesystem, so the pool needn't be asked. A kernel that doesn't say
+/// which mount a directory is on lets nothing through.
+pub fn subvolume_beneath(parent: &std::os::fd::OwnedFd, child: &std::os::fd::OwnedFd) -> bool {
+    let btrfs = |fd| rustix::fs::fstatfs(fd).is_ok_and(|stats| is_btrfs(&stats));
+    let mount = |fd| {
+        let wanted = rustix::fs::StatxFlags::MNT_ID;
+        rustix::fs::statx(fd, "", rustix::fs::AtFlags::EMPTY_PATH, wanted)
+            .ok()
+            .filter(|stat| stat.stx_mask & wanted.bits() != 0)
+            .map(|stat| stat.stx_mnt_id)
+    };
+    let writable = rustix::fs::accessat(
+        child,
+        ".",
+        rustix::fs::Access::WRITE_OK,
+        rustix::fs::AtFlags::empty(),
+    );
+    btrfs(parent)
+        && btrfs(child)
+        && mount(parent).is_some_and(|id| mount(child) == Some(id))
+        && writable.is_ok()
+}
+
 /// Whether a filesystem's statistics say it's Btrfs. The kernel's type is
 /// signed, so its bits are read as the unsigned magic number they are.
 fn is_btrfs(stats: &rustix::fs::StatFs) -> bool {
@@ -687,6 +737,55 @@ fn btrfs_fs_info(fd: &rustix::fd::OwnedFd, flags: u64) -> io::Result<[u8; 1024]>
         return Err(io::Error::last_os_error());
     }
     Ok(args)
+}
+
+/// `FS_IOC_FIEMAP`, `_IOWR('f', 11, struct fiemap)`, whose header is 32
+/// bytes, and the size of each `struct fiemap_extent` after it.
+const FS_IOC_FIEMAP: libc::c_ulong = 0xc020_660b;
+const FIEMAP_HEADER: usize = 32;
+const FIEMAP_EXTENT: usize = 56;
+/// How many extents one call asks for.
+const FIEMAP_BATCH: u32 = 64;
+const FIEMAP_EXTENT_LAST: u32 = 0x1;
+const FIEMAP_EXTENT_SHARED: u32 = 0x2000;
+
+/// A file's extents shared with other files, each as where it lies on the
+/// disk and its length. A file cloned from another, as a tree cloned with
+/// its builds inside is, shares the other's extents, and they're freed
+/// only once the last goes. A filesystem that won't map a file shares
+/// nothing of it.
+pub fn shared_extents(file: &std::os::fd::OwnedFd) -> Vec<(u64, u64)> {
+    let mut shared = Vec::new();
+    let mut start: u64 = 0;
+    loop {
+        let mut map = vec![0u8; FIEMAP_HEADER + FIEMAP_BATCH as usize * FIEMAP_EXTENT];
+        map[0..8].copy_from_slice(&start.to_ne_bytes());
+        map[8..16].copy_from_slice(&u64::MAX.to_ne_bytes());
+        map[24..28].copy_from_slice(&FIEMAP_BATCH.to_ne_bytes());
+        // SAFETY: map is the header and as many extents as it asks for,
+        // and outlives the call.
+        if unsafe { libc::ioctl(file.as_raw_fd(), FS_IOC_FIEMAP as _, map.as_mut_ptr()) } != 0 {
+            return shared;
+        }
+        let field = |at: usize| u64::from_ne_bytes(map[at..at + 8].try_into().unwrap());
+        let flags = |at: usize| u32::from_ne_bytes(map[at..at + 4].try_into().unwrap());
+        let mapped = flags(20) as usize;
+        if mapped == 0 {
+            return shared;
+        }
+        for extent in 0..mapped.min(FIEMAP_BATCH as usize) {
+            let at = FIEMAP_HEADER + extent * FIEMAP_EXTENT;
+            let (logical, physical, length) = (field(at), field(at + 8), field(at + 16));
+            let flags = flags(at + 40);
+            if flags & FIEMAP_EXTENT_SHARED != 0 {
+                shared.push((physical, length));
+            }
+            if flags & FIEMAP_EXTENT_LAST != 0 {
+                return shared;
+            }
+            start = logical + length;
+        }
+    }
 }
 use std::ffi::OsString;
 use std::fmt::Write as _;

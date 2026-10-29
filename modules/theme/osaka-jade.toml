@@ -39,7 +39,7 @@ gold = "#E5C736"        # bright_yellow
 bronze = "#a2734b"      # orange
 umber = "#513925"       # brown
 
-[roles]
+[colours]
 background = "forest"
 sunken = "deep_forest"
 deepest = "night"
@@ -87,10 +87,10 @@ bright_magenta = "celadon"
 bright_cyan = "aqua"
 bright_white = "cream"
 
-# Code's roles. Ours: Omarchy gives Neovim bamboo's own colours rather than
+# Code's colours. Ours: Omarchy gives Neovim bamboo's own colours rather than
 # these. Judgement: strings in mint rather than leaf, which sat too near the
 # accent, and types in seafoam, quieter than the voice's turquoise; the
-# rest wear the roles they fall back to.
+# rest wear the colours they fall back to.
 [syntax]
 string = "mint"
 type = "seafoam"

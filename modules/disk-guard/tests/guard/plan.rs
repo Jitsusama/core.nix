@@ -1,5 +1,5 @@
 use disk_guard::band::Band;
-use disk_guard::plan::{Candidate, Class, Group, plan, windows};
+use disk_guard::plan::{Candidate, Class, Group, clears, plan, windows};
 use disk_guard::units::{float, whole};
 use std::path::PathBuf;
 
@@ -224,6 +224,56 @@ fn critical_takes_everything_offered() {
 }
 
 #[test]
+fn a_clear_takes_what_a_critically_full_disk_would_but_nothing_in_use() {
+    let mut all = everything();
+    all.push(candidate("temp-1h", Class::Temp, HOUR));
+    all.push(candidate(
+        "garbage",
+        Class::Garbage {
+            kept: false,
+            order: 0,
+        },
+        DAY,
+    ));
+    let names: Vec<_> = all
+        .iter()
+        .filter(|candidate| clears(candidate))
+        .map(|candidate| {
+            candidate
+                .path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    for name in [
+        "target-shell-23h",
+        "target-shell-25h",
+        "install-shell-2d",
+        "core-1h",
+    ] {
+        assert!(
+            !names.iter().any(|n| n == name),
+            "{name} is in use: {names:?}"
+        );
+    }
+    assert!(
+        !names.iter().any(|n| n == "temp-1h"),
+        "a young temporary may still be its maker's"
+    );
+    assert!(
+        !names.iter().any(|n| n == "garbage"),
+        "the store's garbage is the store's to collect"
+    );
+    assert_eq!(
+        names.len(),
+        everything().len() - 4,
+        "the rest all go: {names:?}"
+    );
+}
+
+#[test]
 fn a_finished_tree_someone_sits_in_is_judged_as_occupied() {
     let tree = occupied(spent(candidate("merged-shell", Class::Target, HOUR)));
     assert_eq!(
@@ -317,6 +367,30 @@ fn the_plan_goes_cheapest_loss_first() {
         "occupied",
     ];
     assert_eq!(order, expected);
+}
+
+#[test]
+fn waste_goes_largest_first() {
+    // Waste costs nothing to lose, so what frees most goes first: taken
+    // longest idle first on 28 October, six thousand small temp entries
+    // from before the boot kept a pass from 185 GiB of spent builds for an
+    // hour.
+    let sized = |mut candidate: Candidate, size: u64| {
+        candidate.size = size;
+        candidate
+    };
+    let candidates = vec![
+        sized(candidate("temp-old", Class::Temp, 10.0 * DAY), 4096),
+        sized(
+            spent(candidate("build", Class::Target, 8.0 * HOUR)),
+            50 * GIB,
+        ),
+        sized(candidate("trash-old", Class::Trash, 31.0 * DAY), GIB),
+    ];
+    assert_eq!(
+        taken(&candidates, Band::Healthy),
+        ["build", "trash-old", "temp-old"]
+    );
 }
 
 #[test]

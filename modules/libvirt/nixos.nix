@@ -62,6 +62,8 @@ let
   };
 in
 {
+  imports = [ ../unlisted/nixos.nix ];
+
   virtualisation.libvirtd = {
     enable = true;
     package = libvirt;
@@ -129,9 +131,10 @@ in
     pkgs.passt
     pkgs.swtpm
     # virt-install makes a machine from the command line; the package's
-    # graphical manager comes along unused.
+    # graphical manager comes along unused, so it stays out of the launcher.
     pkgs.virt-manager
   ];
+  jitsusama.unlisted = [ "virt-manager" ];
 
   environment.sessionVariables.LIBVIRT_DEFAULT_URI = "qemu:///session";
 

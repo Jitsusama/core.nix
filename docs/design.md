@@ -226,9 +226,9 @@ stand-in the console can draw, and a surface running on a console (the prompt
 in an emergency shell) uses those. The consoles signed in on are kmscon's,
 which draws the face itself, so the prompt there has its real marks.
 
-The table is `jitsusama.theme.glyphs`, each mark with what it means and its
+The table is `jitsusama.theme.marks`, each mark with what it means and its
 stand-in. Every program that can read it is given it: Quickshell as
-`Theme.glyph`, Neovim as `require('theme').glyphs`, and anything else through
+`Theme.glyph`, Neovim as `require('theme').marks`, and anything else through
 `~/.config/jitsusama/theme.json`, which holds the whole theme.
 
 ## Shape and Kinds
@@ -303,7 +303,11 @@ Its detail, a window count, a workspace or what the program is, follows its
 name, muted. A row for an act or a set already says what it is in its name
 ("Lock the screen", "Windows"), so its chord stays at the right. A thing's
 chord is taught in the foot instead, "next time" and the keys. Inside a
-collection the path in the field says the kind, so its rows don't.
+collection the path in the field says the kind, so its rows don't. What
+the rows say at their right takes one column's room, as wide as the widest
+said there since the last key and growing only, within each row's share,
+so where a name is cut holds still as "working" becomes "asks you" and
+back.
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
@@ -473,7 +477,7 @@ it. Owners go by layer:
 | Battery, power                                                         | the margin mark, only when low; the launcher's foot | "battery", "charger"; Now |
 | Network, Bluetooth, audio devices                                      | the network in the launcher's foot, in the warning colour when something's wrong | Wi-Fi, Bluetooth and Sound |
 | Volume, brightness                                                     | an overlay while it changes; the volume in the launcher's foot | Sound                |
-| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
+| Do Not Disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
 | An agent wanting Joel, and for what                                   | the margin mark while one waits, a notice once     | Agents ("pi" finds them); Now |
@@ -503,10 +507,14 @@ battery, the network, the volume, the day's AI spend and the agents, the
 last two both AI's and so under the agents' glyph, drawn once for both.
 Short of room, each says its least first, the battery its charge
 alone; then each shrinks to its glyph alone by collapse rank, the
-volume first, so every fact still shows it's there; and only once all
-are glyphs do they give way, in the same order. The date, with no
-glyph, goes where it would shrink, and the time never goes. The volume
-and the date go first since they're not what Joel looks there for, and
+volume first, so every fact still shows it's there, and a glyph never
+gives way: the marks have first claim on the foot, and the keys make room
+for them, the arrows said by their marks alone (Joel, 2026-10-28: "i
+want icons to be able to be there as much as possible"). The date, with
+no glyph, goes where it would shrink, and the time never goes. Each
+keeps the room it has needed since the launcher opened, so one that
+reads shorter, the battery going from 100% to 99%, moves nothing after
+it. The volume and the date shrink first since they're not what Joel looks there for, and
 each fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
 so a piece with a mark is in each. The overview draws nothing of the
 desktop's own: it's for finding windows (2026-10-21, at Joel's word: "having
@@ -570,14 +578,16 @@ works the same way everywhere.
   option `jitsusama.quickshell.launcher.words`): each thing's name as
   shown, the place it's in and the glyph it wears. A thing is named by
   its context's one term for it, the glossary's (`docs/glossary.md`), and
-  that term is what finds it: there are no synonyms and no hidden words,
-  and an old name finds nothing, so a renamed row is learned once (Joel,
-  2026-10-25: "i don't want 1,000 synonyms for similar ideas"). A word
+  that term is what finds it: there are no synonyms and no hidden words
+  (Joel, 2026-10-25: "i don't want 1,000 synonyms for similar ideas").
+  A rename never loses a row: the names it had (`once`, each one the
+  glossary replaces) still find it, never shown, and its note says "Once
+  called Caffeinate." so the new name is learned as it's used. A word
   may mean its own thing in another context, the crumbs saying which. A
   set is a plural noun ("Windows", "Quests"); an act is short, in
-  sentence case, saying what it does ("Lock", "Keep awake", "Power
-  saver", "Wi-Fi off", "New window", "Bring here"), a switch saying what
-  it will do now. Implementation names are never shown or typed. An
+  Title Case, saying what it does ("Lock", "New Window", "Bring
+  Here"), and a switch is named for what it is ("Keep Awake", "Read"),
+  never for what it will do next. Implementation names are never shown or typed. An
   answer is asked by its term, or a part's name after its thing's
   ("battery health"). A word finds one thing at each strength (a name
   typed whole, an answer's question), or the vocabulary lists it as meant
@@ -593,14 +603,16 @@ works the same way everywhere.
   "slack" is Slack and "slack theme" the theme. A part is still found
   from anywhere by its own name. A program holds what controls it, the
   same for every program and each only while it applies, made as it's
-  stepped into: first what can be done (Switch to the window used last,
-  New window, New window below, its other windows by title, its desktop
-  entry's own actions such as Chrome's New Incognito Window, and Quit,
-  asked once since a window may hold unsaved work), then Media while it
-  has a player (Play or Pause, Next, Previous, and what's playing), Sound
-  while it has a stream open (Mute or Unmute, Louder, Quieter, and its
-  volume as a bar), its Notifications, newest first, and any part of its
-  own, such as the theme. Next, Previous, Louder and Quieter keep the
+  stepped into: first what can be done (Switch to the Window Used Last,
+  New Window, New Window Below, and its desktop entry's own actions such
+  as Chrome's New Incognito Window), then its Recent, what it had open
+  lately, newest first, each the thing it is (a file, a folder, a site),
+  then its other windows by title, its Notifications, newest first, its
+  Shortcuts, any part of its own, such as the theme, and Quit, asked once
+  since a window may hold unsaved work. Media while it has a player
+  (Play or Pause, Next, Previous, and what's playing) and Sound while it
+  has a stream open (Mute or Unmute, Louder, Quieter, and its volume as a
+  bar) come last, since they come and go. Next, Previous, Louder and Quieter keep the
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.
   A setting is a part saying how it's set, its choices a step in, so a
@@ -614,10 +626,28 @@ works the same way everywhere.
   filled, so the left arrow climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
   Only what a thing reads or holds is found so, never what it does.
+- **Acts in one order.** Every kind of thing lists what's inside it in
+  the same order, so three anchors are all there is to learn: the top row
+  does it, what ends it comes near the bottom, and Copy is last. Between
+  them, what leaves the thing as it is comes before what changes it,
+  then who and where it's with (a mail's sender, a window's program),
+  then its parts, settings before readings; then what ends it (Quit,
+  Stop, Forget, Close), each asking once when it can't be taken back,
+  saying what it ends; then Copy. A switch is one row that keeps its name
+  as it flips, its note saying how it stands (Keep Awake, "on, lid shut
+  too"; a notice's Read, "no"), and a setting's two states are never
+  a place holding both. Return flips it and the launcher stays; one that
+  would cut off something in use asks once first ("Turn Bluetooth Off,
+  Disconnecting the Keychron"). A choice is said by its value alone
+  ("100%", "60 Hz", "Upright"), the setting it's for named in the path
+  above it, the one chosen saying "chosen", whoever picked it. "In use"
+  is only ever what a program holds, as a camera Chrome has open. Rows
+  that come and go, such as Media, sit at the end of their group. A check walks every row to hold
+  the order.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
-  Power (Battery, the power profile, Keep awake, Sleep, Lock, Log out,
-  Reboot and Power off). Each is a row found by its word, stepping in
+  Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,
+  Reboot and Power Off). Each is a row found by its word, stepping in
   lists what it holds, and its word and a space steps into it, through
   the places it sits in, so what's typed after it searches only inside
   it ("machine " and then "heat"). When a name goes on from the word and
@@ -631,35 +661,55 @@ works the same way everywhere.
   ⟨unit⟩ in ⟨unit⟩"), and Tab or Return on one puts its start in the
   field, out at the top, to finish there. A command is the one row
   written as it's typed, in lowercase; every other row's name, and every
-  step of the path, starts with a capital, and what an empty list says is
-  a sentence. The-launcher-means-one-thing-a-word holds the vocabulary to
-  it.
+  step of the path, is in Title Case as the glossary sets it, and what an
+  empty list says is a sentence, above the one act that fills it where
+  there is one ("No sessions running.", then Start a Session).
+  The-launcher-means-one-thing-a-word holds the vocabulary to it.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
   as rows come and go, and the list keeps the height it opened at, so the
   foot never jumps. Only what he types orders a list by rank: a list that
   changes while he looks at it (the agents starting and stopping work, a
   window renamed) refreshes in place, each row saying what it says now in
-  the order it's shown, a new one at the end and one gone taken out, the
-  selection on the same row, or where it was when that row went, and the
-  list scrolled where it was. A category held, as Agents in "ai", refreshes
+  the order it's shown, a new one at the end and one gone staying, dimmed
+  and saying so, until the list is opened again, so no row slides up
+  under the keys; the selection stays on the same row, and the list
+  scrolled where it was. A category held, as Agents in "ai", refreshes
   the same way. A collection says it changed only when what its rows show
   did, not each time what they're made from moves.
 - **Home is a few places.** With nothing typed, the launcher shows Now,
   then after a gap the places, each a context with its own words: Agents,
   Programs, Desktop, Machine, Network and Keyboard, always in that order,
   seven rows in a card of eight, so home's shape never changes. Disk is a
-  place in Machine, beside Processor, Memory and Heat, and a disk filling
-  fast shows in Now. Each says what it holds after its name,
-  muted, by its members' own names in the place's own order (Desktop:
-  "This window, Windows, Screens, Light"), as many whole as fit, so a glance
-  reminds Joel what there is. Inside a place, things come by importance
-  and relation, never A to Z, and a typed command comes last in the place
-  whose answer it gives (Network's "ip ⟨address or network⟩").
+  place in Machine, beside Processor, Memory and Heat, with Lag after it,
+  since what slowed the desktop is one of them, and a disk filling
+  fast shows in Now. Now's top never changes: Waiting on You first,
+  always, saying how many wait now and later or that nothing does, a
+  session that wants Joel among them, drawn as the session; then its own
+  rows, always there in this order: the time, the date, the location,
+  the weather and the next meeting, with no Today to step into, each the
+  one row that thing is anywhere it shows, never a version Now draws of
+  it. Below them, only while true, come what else wants Joel (unread
+  mail, missed notices, a low battery), what reaches other people,
+  what's playing and the modes left on, by name within each (the power
+  profile only once picked by hand over the one the machine chose for
+  the charger and the battery, since its own choice isn't a mode Joel
+  left on). Each place says what it holds
+  after its name, muted, by its members' own names in the place's own
+  order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
+  as fit, so a glance reminds Joel what there is; a place that measures
+  something says how it stands instead, as Processor says "99% busy".
+  Inside a place, things come by importance and relation, never A to Z,
+  and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
+- **Tab only completes.** It takes the grey completion the field shows, and
+  does nothing while none shows. Its key, ⇥, follows the completion in the
+  field, only then, rather than standing in the foot, where its coming and
+  going with each letter moved the other keys or took room from how things
+  stand.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
-  steps into the selected row, and so does Tab when the row holds more, so a
-  few letters reach inside a thing from anywhere: what can be done to it,
+  steps into the selected row, so a few letters reach inside a thing from
+  anywhere: what can be done to it,
   searched the same way, each with its chord, and a verb needing a target
   asks for it in the same field. What was typed found the row, so stepping
   in takes it away, and everything inside shows. Where Joel is shows as
@@ -667,10 +717,52 @@ works the same way everywhere.
   by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
   the one before it (the Shortcuts category's Shortcuts) is said once, so
   it reads as a place, not as tags side by side. The left arrow takes
-  away what's typed, whole, and with nothing typed steps back out,
+  away what's typed, whole, where the field says so with ← after it, as
+  ⇥ follows a completion; what it took then stands in grey with → after
+  it, and the right arrow right after puts it back. Any other key lets it
+  go, and with Ctrl the left arrow moves the caret as in any field. With
+  nothing typed it steps back out,
   putting back what was typed before with the same row selected;
-  Backspace in an empty field does the same. Escape always closes. The
-  foot names what Return does and where the arrows go.
+  Backspace in an empty field does the same. Escape always closes, and
+  only the launcher: the window behind never hears it. The foot names
+  every key that works on the selection: what Return does, Shift+Return
+  where a row opens below, and the right arrow wherever there's something
+  inside, a step in as well as at the top. The arrows are said by their
+  marks alone, → and ←, which Joel knows. Where Return steps in just as
+  the right arrow does, the two are said as one, ↵ →, so stepping in
+  reads the same wherever it's done, and no key is said twice. Where Return
+  goes somewhere else in the launcher, a spot to where it is, a command
+  into the field, one that opens a collection into it, the right arrow
+  goes there too, said with Return's word: ↵ → go. A step in lists
+  what Return does first, where the row's own list left it out, so the
+  right arrow never hides the act Return would have done (Joel,
+  2026-10-28: "enter is supposed to be the default action, but that means
+  that action should be selectable within"). Every row has a Return act,
+  the same wherever the row shows, and a check walks every row to hold
+  it. A thing with one obvious act that does no harm does it: a program
+  or a window is gone to, a mail or a file opens, a network connects, a
+  closed orchestrator carries on where it left off. Anything else steps
+  in on Return, as the right arrow does, its likeliest act first inside,
+  so Return twice does it: a person, a quest, a device, a setting, a
+  place. Return never calls someone or starts something new by itself. A
+  meeting joins on Return only from ten minutes before it starts, and
+  before then steps in, Join first, so Joel is never made to join early
+  (2026-10-26: "they force me to join, and what if I want to cancel");
+  the foot says which. A value copies on Return only where it holds
+  nothing more; one holding more, as the battery's answer or the
+  weather's Rain, steps in, copying it a row inside: "rain" asked alone
+  and Rain inside the weather work the same. Copy is never the first row
+  of a step, unless it's the only one, and is always the last. Return
+  closes the launcher only
+  when its act takes Joel out of it: to a window, a program or a file, a
+  call, or something copied to paste. An act that changes something (the
+  volume, a screen's brightness or scale, Wi-Fi, Bluetooth, Do Not
+  Disturb, Keep Awake, the power profile, the desk light, a keyboard's
+  light or layer, a program's playing) keeps it open, and its row says
+  the new state at once; Ctrl+Return does it and closes, and the foot
+  says so on those rows. A copy closes saying so: the keys go back to the
+  window at once, and the card stays a moment with "copied" where
+  Return's key was, its done mark in the success colour, then leaves.
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. Sums, bases, bits ("0b1011 << 3", "~5", "5
   xor 3"), "20% of 50", "3 squared" and measures worked out together ("5
@@ -687,45 +779,54 @@ works the same way everywhere.
   and the day after, Rain saying when it next rains ("from 15:00, 70%")
   beside the next twelve hours' chance, and holding those hours, each its
   chance and how much; "rain", "umbrella" or "when will it rain", here or
-  in a place, answers with the next rain, its hours a step in. So is the
+  in a place, answers with the next rain, its hours a step in. The time
+  here is the clock's, which follows the laptop into another zone once a
+  Wi-Fi fix says it's there to within ten kilometres, never for a fix from
+  the network's address alone; the time then says so ("clock moved to
+  Edmonton time, as the laptop is in Lighthouse"), and Put It Back leads
+  what's inside, holding the zone it kept until the laptop is somewhere
+  else. So is the
   machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
   in the last ten seconds. The machine's own things answer the same way,
   each with its parts a step in: "cpu" (its Cores, one reading each in
   order, which are Maxed, the Clock, the Temperature as "temperature"
-  says it, the programs Using it, the Load, the Kinds of core and the
-  Model), "memory" (Used, Pressure, Swap, Cached, Using it and the Type
+  says it, the programs Using It, the Load, the Kinds of core and the
+  Model), "memory" (Used, Pressure, Swap, Cached, Using It and the Type
   read at boot), "disk" (the Space the disk guard says, Speed, Busy,
   Latency, Temperature, Health as UDisks has it, and the Model), "speed"
   (what the cards carry In and Out now, the Connection as the shaper last
-  measured it and how full it is, the Round trip while it's quiet, each
+  measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
-  too), "uptime" and "queue". The devices hold as much: "heat"
+  too) and "uptime". The queue is Agents', beside the sessions whose
+  heavy work it holds, and "queue" finds it: each job named in words,
+  its time against its last run or what it waits for, and its quest and
+  memory below. The devices hold as much: "heat"
   (each part against its critical point, the processor's Cores, the fans
   against what they're rated for, and how often it Throttled), Bluetooth
-  (each device's Battery, Signal and Link quality, Codec and Connection,
+  (each device's Battery, Signal and Link Quality, Codec and Connection,
   and the Adapter), Sound (each speaker's or microphone's Level, its Volume
   or Gain, whether it's Muted, what's Playing through it, its Port where
   it has several, its Tuning and its card; an unplugged port isn't listed),
   each camera
-  ("built-in camera": In use, its lights, Streaming, Sensor and Modes),
+  ("built-in camera": In Use, its lights, Streaming, Sensor and Modes),
   "keyboards" (each one's locks, Repeat and Lights, which are its own and
   not Light's, and the ErgoDox's Layer as a setting), "ip" (each
   connection's Address, Gateway and DNS, and a joined network's Signal,
-  Speed, Protection and Access points) and "battery" (its Charger, Health
-  and Charge limit). A part answers alone by its own
+  Speed, Protection and Access Points) and "battery" (its Charger, Health
+  and Charge Limit). A part answers alone by its own
   words, "disk speed", "ram type" or "ping". A rate is the difference between two reads, read again
   once a second while it's shown and never for a key, and the footer says
-  whether it's just now or since last asked. A part holding more steps in
-  on Return as on the right arrow; a figure copies nothing, and a model
-  does. The start of one of those words, three letters
+  whether it's just now or since last asked. A figure copies what it
+  shows on Return when it holds nothing more, one holding more steps in,
+  and one still being read copies nothing. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
-  it, and so does the theme's nearest pigment. Return copies it, Tab puts
-  a sum in place of the question, and the right arrow steps into an
-  answer's parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
+  it, and so does the theme's nearest pigment. Return copies a sum, Tab puts
+  it in place of the question, and Return or the right arrow steps into
+  an answer with parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
   40", is an answer that does: Return sets it. The field's end says where
   an answer came from.
   Nothing leaves the machine unless the question needs the network, never
@@ -761,25 +862,54 @@ works the same way everywhere.
   that a password manager marks secret. A copy's glyph says what it is:
   several lines, a link, an address, a path and a number each wear their
   own, plain text the clipboard's, and a picture a picture's. A picture's
-  row is named by its size, and the picture itself shows below the rows
+  row is named by its size, and the picture itself shows in the drawer
   while it's selected, in its own shape with a part's corners.
+- **The drawer is the card continued** (Joel, 2026-10-28: "it should come
+  out of the right side like a drawer, making sure it never passes the
+  bound of the screen"). What a row has to show beyond its line (a
+  picture, a notice's whole words, a mail, a meeting's details) slides
+  out of the card's right side, a floating surface like the card, top
+  aligned and as tall as it: its title in strong type, its facts as a
+  name and a figure, a fact still being read a fixed placeholder, then
+  its words, then its picture. The card's room and the drawer's are
+  worked out for the screen as the launcher opens, the card centred
+  unless the screen is too narrow for the drawer beside it, so the card
+  never moves and never changes size for what's selected. It's out
+  inside a place while any of its rows has one, so it slides only as
+  Joel steps in or out, and never for a search typed at home; stepping
+  between two places that both have one, it stays, and what it shows
+  changes in place. Ctrl+Up and Ctrl+Down scroll it, said in the foot
+  while it holds more than fits, since Page Up and Page Down page the
+  list. Another program's words are shown plain, never as markup.
+- **Ctrl+C copies the selected row.** Any row with a Copy inside copies
+  it with Ctrl+C from wherever it's listed, without stepping in, as
+  Ctrl+C copies everywhere else on the desktop; while text is selected
+  in the field, it copies that text instead.
 - **A notice gone is not lost.** Every notice of the session stays in the
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open. A notice on screen
-  waits while Joel's away, thirty seconds with nothing typed or moved
-  (`notices.away`), whatever keeps the screen awake, so one that comes
-  while he's gone is there when he's back, counting again in full. Each
+  program that sent it, its window when one is open. A notice is one thing
+  on its card and among the notices, its acts the same in the same order
+  (`launcher/Notice.js`): going to what it's about, what its sender offers,
+  Read, one switch saying yes or no, Forget It, and Copy What It Said last;
+  the card adds what's done to the whole stack before the copy, and leads
+  with Forget It where its Return forgets one with nothing to open. A
+  notice on screen waits while Joel's away, thirty seconds with nothing
+  typed or moved (`notices.away`), whatever keeps the screen awake, so one
+  that comes while he's gone is there when he's back, counting again in
+  full. Each
   program can be kept to how far its notices reach (`notices.senders`):
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less
   far, and none reaches further than its program is kept to. The desktop
   makes one sound, softly: when a pi session first wants Joel and its
   notice is said (`sounds.wants`), never while notices are held.
-- **Joining waits to say how it went.** Return on a Wi-Fi network joins it
-  and the launcher stays, its footer saying how far the join has got, until
-  the network takes it or says why not. A locked network met for the first
+- **Connecting waits to say how it went.** Return on a Wi-Fi network
+  connects it and the launcher stays, its footer saying how far it has got,
+  until the network takes it or says why not; connected, a password asked for
+  is put away and the network's row says it's connected. Join is a call's
+  word, never a network's. A locked network met for the first
   time, or one whose password changed, asks for the password in the field,
   the padlock beside the dots. The radio looks for networks only while the
   launcher is open.
@@ -790,14 +920,14 @@ works the same way everywhere.
 - **Awake on purpose.** Keep Awake, in the launcher, stops the machine
   sleeping so work left running goes on, and with power it keeps running
   with the lid shut. Without power the lid is let go, since a laptop shut in
-  a bag on its battery would cook. While it holds, Let It Sleep comes after
-  the focused window at home, and the margin's mark says so.
+  a bag on its battery would cook. While it holds, Keep Awake shows in Now,
+  saying it's on, and the margin's mark says so.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.
 - **Hints in place.** Wherever there are actions, their keys sit beside them in
   muted type, part of the design rather than a cheat sheet bolted on.
-- **No hidden modes.** Do not disturb, caffeinate, recording, a resize, an
+- **No hidden modes.** Do Not Disturb, caffeinate, recording, a resize, an
   editor's modes, a waiting gate: each shows that it's on, and Escape leaves.
 - **One gesture per meaning.** A surface that needs a gesture of its own is a
   design problem to solve, not a feature.
@@ -820,18 +950,18 @@ comes along, and what to do.
   Ctrl reaches across to another screen.
 - **What to do is the same word in every layer:**
 
-  | Key          | Means                                    | Desktop        | Terminal        | Neovim, after Space |
-  | ------------ | ---------------------------------------- | -------------- | --------------- | ------------------- |
-  | arrows       | that way                                 | windows        |                 | splits              |
-  | Tab          | the one used last, the others by typing  | windows        | the next tab    | the file used last  |
-  | Page Up Down | the level above                          | workspaces     | tabs            |                     |
-  | 1 to 9       | that one, by number                      | workspaces     | tabs            | tabs                |
-  | Return       | open a new one                           | a terminal     |                 | a terminal          |
-  | T            | tabs                                     | column as tabs | a new tab       | tabs                |
-  | W            | close the one in focus                   | the window     | the tab         | the split           |
-  | Space        | find anything here                       | the launcher   | the scrollback  | anything            |
-  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's  | Neovim's            |
-  | Escape       | back out                                 | everywhere     | everywhere      | everywhere          |
+  | Key          | Means                                    | Desktop        | Terminal          | Neovim, after Space |
+  | ------------ | ---------------------------------------- | -------------- | ----------------- | ------------------- |
+  | arrows       | that way                                 | windows        |                   | splits              |
+  | Tab          | the one used last, the others by typing  | windows        | the tab used last | the file used last  |
+  | Page Up Down | the level above                          | workspaces     | tabs              |                     |
+  | 1 to 9       | that one, by number                      | workspaces     | tabs              | tabs                |
+  | Return       | open a new one                           | a terminal     |                   | a terminal          |
+  | T            | tabs                                     | column as tabs | a new tab         | tabs                |
+  | W            | close the one in focus                   | the window     | the tab           | the split           |
+  | Space        | find anything here                       | the launcher   | the scrollback    | anything            |
+  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's    | Neovim's            |
+  | Escape       | back out                                 | everywhere     | everywhere        | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
@@ -1001,8 +1131,8 @@ shades = ["forest", "fern", "moss", "lichen", "seafoam", "parchment", "linen", "
 jade = "#509475"
 forest = "#111c18"
 
-# What each colour means, by role (see Colour). Each names a pigment.
-[roles]
+# What each colour means (see Colour). Each names a pigment.
+[colours]
 background = "forest"
 accent = "jade"
 
@@ -1026,7 +1156,7 @@ ratio = "1.25"
 unit = 4
 [motion]
 stiffness = 1600
-[glyphs]
+[marks]
 cursor = { glyph = "\u25b8", console = ">" }
 
 # How cloudy a floating surface is, its scrim and selection, and its shadows.
@@ -1043,7 +1173,7 @@ lock = "landscapes/mountain-woods-green.png"
 [console]
 ```
 
-The shades, `palette`, `roles` and `terminal` are required. Every other table
+The shades, `palette`, `colours` and `terminal` are required. Every other table
 falls back to the defaults the theme module carries, so a theme changes only
 what it means to.
 
@@ -1122,17 +1252,17 @@ by them isn't done.
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
-| Images and drawings                       | swayimg, gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's rows: edit the newest screenshot in GIMP, at home below the window in front for two minutes after it's taken; look through the screenshots in swayimg's gallery; in swayimg, e edits, y copies, Delete trashes, q closes | swayimg's name and place go two seconds after each picture opens |
+| Images and drawings                       | swayimg, gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's rows, in Capture after what it captures: edit the newest screenshot in GIMP; look through the screenshots in swayimg's gallery; in swayimg, e edits, y copies, Delete trashes, q closes | swayimg's name and place go two seconds after each picture opens |
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | What's on: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | What's on: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; What's on says how long and who with |
 | AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's glyph while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
-| The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, with a mark for unsaved work and one for unpushed; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph, the more mark wherever something's hidden; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
+| The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, then git's notation: * not staged, + staged, ? untracked, together, then ↑N ahead and ↓N behind, together, and nothing when clean and in step; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph; what gives way goes without a trace; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
 | Terminal programs                         | each tool's module       | monospace      |        |        |           |         |          |
-| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | a mark while the buffer is unsaved, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; the agents' glyph while an agent is paired; the branch, muted, with the prompt's marks for unsaved and unpushed work; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; the more mark wherever something's hidden |
-| pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's marks for unsaved and unpushed work | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its glyph, what's under way to its glyph, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; the more mark wherever something's hidden |
+| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | Vim's [+] while the buffer has edits not yet written, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; the agents' glyph while an agent is paired; the branch, muted, with the prompt's git notation; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; what gives way goes without a trace |
+| pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's git notation | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its glyph, what's under way to its glyph, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; what gives way goes without a trace |
 
 Where a surface can't take the design (web pages in a browser, a chat app's
 messages), the row says so, and what's themed is what can be reached. The
@@ -1443,7 +1573,7 @@ What each studio round settled, newest first, with the reason.
   day leaning on one model was listed 32 times, every one the week after
   a switch to a newer one. A new model or tool is now listed, a day's
   mix of models is the report by model's, and what's told is a cap, a
-  refusal, what the provider says, a sign-in only the person can give,
+  refusal, what the provider says, a sign-in only Joel can give,
   a day on course for twice the costliest of eight weeks, pi spending
   from sessions no log here knows, and a credential nobody knew
   spending, which may be a leaked key.
@@ -1461,9 +1591,10 @@ What each studio round settled, newest first, with the reason.
   the fewest rows). The first screen said the week twice, this week since
   Monday beside the cap's last seven days, and held a premium day at 0%
   and a forecast nobody had asked about. Now it's today, each cap longer
-  than a day and Earlier: a day's cap is behind today, the next seven days
-  behind the week's cap, whose days are the week that can stop work, and
-  this week among the periods before, still found by typing. What's near a
+  than a day, then the periods before: a day's cap is behind today and the
+  next seven days behind the week's cap, whose days are the week that can
+  stop work. The periods once sat behind an Earlier row, which put a
+  period's cuts four steps deep, so they're in AI spend itself. What's near a
   cap leads as a finding, so the rows can stay plain. The margin's header
   stays how today stands, since a cap's share there would run past it.
 

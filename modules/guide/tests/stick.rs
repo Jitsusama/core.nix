@@ -235,7 +235,7 @@ fn a_written_stick_is_whole_to_sfdisk_fsck_and_its_key() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &Meter::new(),
         fill(&key, &nano),
     )
@@ -289,7 +289,7 @@ fn the_images_partitions_are_copied_byte_for_byte() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &meter,
         fill(&key, &nano),
     )
@@ -434,7 +434,7 @@ fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        Some(&signer),
+        std::slice::from_ref(&signer),
         &Meter::new(),
         fill(&key, &nano),
     )
@@ -470,6 +470,78 @@ fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
 }
 
 #[test]
+fn a_stick_signed_for_two_machines_verifies_with_each_ones_db_key() {
+    let directory = Scratch::new("signed-twice");
+    let first = db_key(&directory.join("first"));
+    let second = db_key(&directory.join("second"));
+    let signers = [
+        Signer::open(&first).unwrap(),
+        Signer::open(&second).unwrap(),
+    ];
+    let mut image = image(&directory);
+    let path = stick_file(&directory, 100 << 20);
+    let mut disk = open(&path);
+    let key = VaultKey::generate();
+    let nano = age::x25519::Identity::generate();
+    let written = stick::write(
+        &mut image,
+        &mut disk,
+        stick::new_guid().unwrap(),
+        &signers,
+        &Meter::new(),
+        fill(&key, &nano),
+    )
+    .unwrap();
+    stick::verify(&written, &mut disk, &Meter::new(), |_| Ok(())).unwrap();
+
+    let esp = image
+        .partitions()
+        .into_iter()
+        .find(|partition| partition.name == "esp")
+        .unwrap();
+    let esp_copy = directory.join("esp-written.fat");
+    copy_out(&mut disk, &esp, &esp_copy);
+    run("fsck.fat", &["-n".as_ref(), esp_copy.as_os_str()]);
+    let program = directory.join("BOOTX64.EFI");
+    run(
+        "mcopy",
+        &[
+            "-i".as_ref(),
+            esp_copy.as_os_str(),
+            "::EFI/BOOT/BOOTX64.EFI".as_ref(),
+            program.as_os_str(),
+        ],
+    );
+    let signed = fs::read(&program).unwrap();
+    assert_eq!(
+        guide::sign::pe::Program::parse(signed.clone())
+            .unwrap()
+            .signatures()
+            .len(),
+        2
+    );
+    for signer in &signers {
+        assert!(signer.has_signed(&signed));
+    }
+    // sbverify takes the program by any of its signatures, so by each
+    // machine's key, and by no other: a third machine's is refused. The
+    // firmware's own word is vm-guide-signs-a-stick-for-two-machines.
+    let verifies = |keys: &Path| {
+        Command::new("sbverify")
+            .arg("--cert")
+            .arg(keys.join("db.pem"))
+            .arg(&program)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    };
+    assert!(verifies(&first));
+    assert!(verifies(&second));
+    assert!(!verifies(&db_key(&directory.join("third"))));
+}
+
+#[test]
 fn an_image_with_nothing_to_sign_is_refused_with_nothing_written() {
     let directory = Scratch::new("unsignable");
     let keys = db_key(&directory);
@@ -481,7 +553,7 @@ fn an_image_with_nothing_to_sign_is_refused_with_nothing_written() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        Some(&signer),
+        std::slice::from_ref(&signer),
         &Meter::new(),
         |_| Ok(()),
     );
@@ -505,7 +577,7 @@ fn a_byte_that_didnt_reach_the_stick_is_caught() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &Meter::new(),
         fill(&key, &nano),
     )
@@ -541,7 +613,7 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
         &mut earlier,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &Meter::new(),
         fill(&key, &nano),
     )
@@ -551,7 +623,7 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &Meter::new(),
         |_| {
             Err(Fault::Unkept {
@@ -583,7 +655,7 @@ fn a_stick_too_small_is_refused_with_nothing_written() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &Meter::new(),
         |_| Ok(()),
     );
@@ -608,7 +680,7 @@ fn the_passphrase_opens_a_vault_on_the_stick_when_no_yubikey_will() {
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
-        None,
+        &[],
         &Meter::new(),
         |store| {
             store

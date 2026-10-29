@@ -12,7 +12,7 @@ let
   };
 
   piece =
-    { glyphs, sources }:
+    { marks, sources }:
     lib.types.submodule {
       # A piece's own settings, its format or its thresholds, sit beside
       # these and go to the file that draws it as they are.
@@ -39,12 +39,12 @@ let
           '';
         };
         mark = lib.mkOption {
-          type = lib.types.nullOr (lib.types.enum (lib.attrNames glyphs));
+          type = lib.types.nullOr (lib.types.enum (lib.attrNames marks));
           default = null;
-          description = "The theme's glyph it wears while it's true, by name.";
+          description = "The theme's mark it wears while it's true, by name.";
         };
         sign = lib.mkOption {
-          type = lib.types.nullOr (lib.types.enum (lib.attrNames glyphs));
+          type = lib.types.nullOr (lib.types.enum (lib.attrNames marks));
           default = null;
           description = ''
             The theme's glyph its value is read by at a glance, by name, so

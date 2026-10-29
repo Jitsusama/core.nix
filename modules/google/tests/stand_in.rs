@@ -34,7 +34,7 @@ struct StandIn {
 }
 
 impl StandIn {
-    fn new(answer: fn(&str, &str) -> (u16, String)) -> StandIn {
+    fn new(answer: impl Fn(&str, &str) -> (u16, String) + Send + 'static) -> StandIn {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -283,6 +283,98 @@ fn gmail_failing_keeps_the_mail_held_and_the_meetings_told() {
     assert_eq!(state.mail, held);
 }
 
+/// The stand-in's Drive: one document of each kind Joel looked at, by the
+/// kind each search asks for.
+fn drive(path: &str, body: &str) -> (u16, String) {
+    if !path.starts_with("GET /drive/v3/files?") {
+        return google(path, body);
+    }
+    let (id, link) = if path.contains("document") {
+        ("d1", "document")
+    } else if path.contains("spreadsheet") {
+        ("s1", "spreadsheets")
+    } else {
+        ("p1", "presentation")
+    };
+    (
+        200,
+        format!(
+            r#"{{"files": [{{"id": "{id}", "name": "About {id}",
+                "webViewLink": "https://docs.google.com/{link}/d/{id}/edit",
+                "viewedByMeTime": "2026-10-26T18:00:00Z",
+                "owners": [{{"displayName": "Ada Lovelace"}}]}}]}}"#
+        ),
+    )
+}
+
+#[test]
+fn each_kind_of_document_is_told_and_drive_asked_again_only_after_a_while() {
+    let stand_in = StandIn::new(drive);
+    let path = credentials("documents", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let state = watch.look(&now()).clone();
+    let said: Vec<_> = state
+        .documents
+        .iter()
+        .map(|document| (document.id.as_str(), document.title.as_str()))
+        .collect();
+    assert_eq!(
+        said,
+        [("d1", "About d1"), ("s1", "About s1"), ("p1", "About p1")]
+    );
+    let searches = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .into_iter()
+            .filter(|heard| heard.line.starts_with("GET /drive/v3/files?"))
+            .collect::<Vec<_>>()
+    };
+    let first = searches(&stand_in);
+    assert_eq!(first.len(), 3);
+    assert!(
+        first[0].line.contains("orderBy=viewedByMeTime+desc")
+            || first[0].line.contains("orderBy=viewedByMeTime%20desc"),
+        "{}",
+        first[0].line
+    );
+    assert!(first[0].line.contains("pageSize=9"));
+    watch.look(&now());
+    assert_eq!(
+        searches(&stand_in).len(),
+        3,
+        "Drive was asked again at once"
+    );
+    let later: Zoned = "2026-10-26T15:25:00-04:00[-04:00]".parse().unwrap();
+    watch.look(&later);
+    assert_eq!(
+        searches(&stand_in).len(),
+        6,
+        "Drive wasn't asked again after five minutes"
+    );
+}
+
+#[test]
+fn drive_failing_keeps_the_documents_held_and_the_rest_told() {
+    let stand_in = StandIn::new(drive);
+    let path = credentials("drive-down", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let held = watch.look(&now()).documents.clone();
+    let down = StandIn::new(|path, body| {
+        if path.starts_with("GET /drive") {
+            (503, "{}".into())
+        } else {
+            google(path, body)
+        }
+    });
+    watch.google = Google::new(down.origins());
+    let later: Zoned = "2026-10-26T15:30:00-04:00[-04:00]".parse().unwrap();
+    let state = watch.look(&later).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert_eq!(state.meetings.len(), 1);
+    assert_eq!(state.documents, held);
+    assert_eq!(held.len(), 3);
+}
+
 #[test]
 fn a_refused_sign_in_is_signed_out_and_not_asked_again() {
     let stand_in = StandIn::new(|path, _| {
@@ -363,6 +455,35 @@ fn every_page_of_meetings_is_joined() {
 }
 
 #[test]
+fn the_calendars_reminders_hold_for_meetings_on_every_page() {
+    // Google says the calendar's reminders on each page; only the first's
+    // are kept, and every meeting that keeps them is reminded by them.
+    let stand_in = StandIn::new(|path, _| {
+        if path.contains("pageToken=two") {
+            (200, EVENTS.replace("e1", "e2"))
+        } else {
+            (
+                200,
+                EVENTS.replace(
+                    r#""items""#,
+                    r#""nextPageToken": "two",
+                        "defaultReminders": [{"method": "popup", "minutes": 10}], "items""#,
+                ),
+            )
+        }
+    });
+    let path = credentials("reminders", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let reminders: Vec<_> = watch
+        .look(&now())
+        .meetings
+        .iter()
+        .map(|m| m.reminders.clone())
+        .collect();
+    assert_eq!(reminders, vec![vec![10], vec![10]]);
+}
+
+#[test]
 fn an_unreachable_google_keeps_what_was_heard() {
     let stand_in = StandIn::new(google);
     let path = credentials("unreachable", 0);
@@ -419,6 +540,42 @@ fn mail_read_or_archived_takes_one_label_and_wants_joel_no_more() {
         let body: serde_json::Value = serde_json::from_str(&asked.body).unwrap();
         assert_eq!(body, serde_json::json!({"removeLabelIds": [label]}));
     }
+}
+
+#[test]
+fn mail_marked_read_then_unread_wants_joel_again_at_once_in_its_place() {
+    let stand_in = StandIn::new(tidied);
+    let path = credentials("unread", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    watch.tidy("new", Tidy::Read, &now());
+    let state = watch.unread("new", &now()).clone();
+    let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+    assert_eq!(held, ["new", "old"]);
+    assert_eq!(state.unread, Some(5));
+    let asked = stand_in
+        .heard()
+        .into_iter()
+        .rfind(|heard| heard.line.starts_with("POST /gmail"))
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_str(&asked.body).unwrap();
+    assert_eq!(body, serde_json::json!({"addLabelIds": ["UNREAD"]}));
+    // Marked unread twice, it's held once.
+    let again = watch.unread("new", &now()).clone();
+    assert_eq!(again.mail.len(), 2);
+    assert_eq!(again.unread, Some(5));
+}
+
+#[test]
+fn mail_archived_isnt_brought_back_by_marking_it_unread() {
+    let stand_in = StandIn::new(tidied);
+    let path = credentials("archived", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    watch.tidy("new", Tidy::Archive, &now());
+    let state = watch.unread("new", &now()).clone();
+    let held: Vec<_> = state.mail.iter().map(|mail| mail.id.as_str()).collect();
+    assert_eq!(held, ["old"]);
 }
 
 #[test]
@@ -493,6 +650,206 @@ fn an_answer_google_refuses_changes_nothing_held() {
     let before = watch.look(&now()).clone();
     let state = watch.answer("e1", Answer::Yes, &now()).clone();
     assert_eq!(state, before);
+}
+
+fn cancelled(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("DELETE") {
+        return (204, String::new());
+    }
+    google(path, body)
+}
+
+#[test]
+fn a_meeting_joel_holds_is_cancelled_telling_every_guest_and_let_go_at_once() {
+    let stand_in = StandIn::new(cancelled);
+    let path = credentials("cancel", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    assert!(watch.look(&now()).meetings[0].holds);
+    let state = watch.cancel("e1", &now()).clone();
+    assert!(state.meetings.is_empty());
+    let heard = stand_in.heard();
+    let written = heard.last().unwrap();
+    assert!(
+        written
+            .line
+            .starts_with("DELETE /calendar/v3/calendars/primary/events/e1?sendUpdates=all "),
+        "{}",
+        written.line
+    );
+    assert_eq!(written.authorization, "Bearer pis");
+}
+
+#[test]
+fn a_meeting_joel_is_only_asked_to_is_never_cancelled() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("GET /calendar") {
+            return (
+                200,
+                r#"{"items": [{"id": "e1", "summary": "Standup",
+                    "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-26T16:15:00-04:00"},
+                    "organizer": {"email": "ada@example.com"}}]}"#
+                    .into(),
+            );
+        }
+        cancelled(path, body)
+    });
+    let path = credentials("not-his", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(watch.cancel("e1", &now()), &before);
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .all(|heard| !heard.line.starts_with("DELETE"))
+    );
+}
+
+#[test]
+fn a_cancel_google_refuses_changes_nothing_held() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("DELETE") {
+            (403, "{}".into())
+        } else {
+            google(path, body)
+        }
+    });
+    let path = credentials(
+        "uncancelled",
+        now().timestamp().as_millisecond() + 3_600_000,
+    );
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(watch.cancel("e1", &now()), &before);
+}
+
+/// The team's Standup, held on a calendar Joel may write to when the
+/// calendar list says so, which `lists` answers, and a move Google takes.
+fn on_the_team(path: &str, lists: (u16, &str)) -> (u16, String) {
+    if path.starts_with("GET /calendar/v3/users/me/calendarList?") {
+        return (lists.0, lists.1.into());
+    }
+    if path.starts_with("GET /calendar") {
+        return (
+            200,
+            r#"{"items": [{"id": "e1", "summary": "Standup",
+                "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+                "end": {"dateTime": "2026-10-26T16:15:00-04:00"},
+                "organizer": {"email": "team@group.calendar.google.com"}}]}"#
+                .into(),
+        );
+    }
+    if path.starts_with("PATCH") {
+        return (200, r#"{"id": "e1"}"#.into());
+    }
+    google(path, "")
+}
+
+const THE_TEAMS: (u16, &str) = (
+    200,
+    r#"{"items": [{"id": "team@group.calendar.google.com"}]}"#,
+);
+
+#[test]
+fn a_meeting_on_a_calendar_joel_may_write_to_is_moved_telling_everyone() {
+    let stand_in = StandIn::new(|path, _| on_the_team(path, THE_TEAMS));
+    let path = credentials("move", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let held = watch.look(&now()).meetings[0].clone();
+    assert_eq!(
+        held.through.as_deref(),
+        Some("team@group.calendar.google.com")
+    );
+    let (start, end) = (held.start + 1_800_000, held.end + 1_800_000);
+    let state = watch.reschedule("e1", start, end, &now()).clone();
+    assert_eq!(
+        (state.meetings[0].start, state.meetings[0].end),
+        (start, end)
+    );
+    let heard = stand_in.heard();
+    let asked = heard
+        .iter()
+        .find(|heard| {
+            heard
+                .line
+                .starts_with("GET /calendar/v3/users/me/calendarList?")
+        })
+        .unwrap();
+    assert!(
+        asked.line.contains("minAccessRole=writer"),
+        "{}",
+        asked.line
+    );
+    let written = heard.last().unwrap();
+    assert!(
+        written.line.starts_with(
+            "PATCH /calendar/v3/calendars/team@group.calendar.google.com/events/e1?sendUpdates=all"
+        ),
+        "{}",
+        written.line
+    );
+    let body: serde_json::Value = serde_json::from_str(&written.body).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "start": {"dateTime": "2026-10-26T20:30:00Z"},
+            "end": {"dateTime": "2026-10-26T20:45:00Z"}
+        })
+    );
+}
+
+#[test]
+fn a_meeting_joel_may_not_change_is_never_moved() {
+    let stand_in = StandIn::new(|path, _| on_the_team(path, (200, r#"{"items": []}"#)));
+    let path = credentials(
+        "not-movable",
+        now().timestamp().as_millisecond() + 3_600_000,
+    );
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    assert_eq!(before.meetings[0].through, None);
+    let (start, end) = (before.meetings[0].start + 1, before.meetings[0].end + 1);
+    assert_eq!(watch.reschedule("e1", start, end, &now()), &before);
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .all(|heard| !heard.line.starts_with("PATCH"))
+    );
+}
+
+#[test]
+fn the_calendars_joel_may_write_to_are_kept_when_only_their_list_fails() {
+    let listed = Arc::new(Mutex::new(THE_TEAMS));
+    let lists = Arc::clone(&listed);
+    let stand_in = StandIn::new(move |path, _| on_the_team(path, *lists.lock().unwrap()));
+    let path = credentials("list-fails", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    watch.look(&now());
+    *listed.lock().unwrap() = (500, "{}");
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert_eq!(
+        state.meetings[0].through.as_deref(),
+        Some("team@group.calendar.google.com")
+    );
+}
+
+#[test]
+fn a_move_google_refuses_changes_nothing_held() {
+    let stand_in = StandIn::new(|path, body| {
+        if path.starts_with("PATCH") {
+            (403, "{}".into())
+        } else {
+            google(path, body)
+        }
+    });
+    let path = credentials("unmoved", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let before = watch.look(&now()).clone();
+    let (start, end) = (before.meetings[0].start + 1, before.meetings[0].end + 1);
+    assert_eq!(watch.reschedule("e1", start, end, &now()), &before);
 }
 
 #[test]

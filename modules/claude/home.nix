@@ -8,7 +8,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) appearance roles terminal;
+  inherit (config.jitsusama.theme) appearance colours terminal;
   mix = import ../theme/mix.nix { inherit lib; };
 
   # The status line (statusline/), and each part's colour in the theme for
@@ -17,17 +17,17 @@ let
   statusline = pkgs.callPackage ./statusline/package.nix { };
   statuslineColours = builtins.toFile "claude-statusline-colours.json" (
     builtins.toJSON {
-      folder = roles.strong;
-      model = roles.program;
-      context = roles.success;
-      separator = roles.rule;
+      folder = colours.strong;
+      model = colours.program;
+      context = colours.success;
+      separator = colours.rule;
     }
   );
 
   # A diff's lines and words are tinted backgrounds under the text, so a
   # change reads at a glance without the text itself changing colour. The
   # alert is the brighter of the two, so it takes less to weigh the same.
-  tint = weight: colour: mix weight colour roles.background;
+  tint = weight: colour: mix weight colour colours.background;
 
   # Claude Code's own names for what it colours, in its custom theme format.
   # The subagents' and the rainbow's take the terminal's. The base isn't its
@@ -37,43 +37,43 @@ let
     name = "Jitsusama";
     base = appearance;
     overrides = {
-      claude = roles.program;
-      claudeShimmer = roles.strong;
-      clawd_body = roles.program;
-      clawd_background = roles.deepest;
-      inherit (roles) text;
-      inverseText = roles.deepest;
-      inactive = roles.muted;
-      inactiveShimmer = roles.text;
-      subtle = roles.muted;
-      promptBorder = roles.rule;
-      promptBorderShimmer = roles.muted;
-      suggestion = roles.accent;
-      remember = roles.accent;
-      permission = roles.action;
-      permissionShimmer = roles.strong;
-      planMode = roles.voice;
-      ide = roles.program;
-      background = roles.voice;
-      inherit (roles) success;
-      error = roles.alert;
-      inherit (roles) warning;
-      warningShimmer = roles.strong;
-      merged = roles.person;
-      diffAdded = tint 0.25 roles.success;
-      diffRemoved = tint 0.18 roles.alert;
-      diffAddedDimmed = tint 0.12 roles.success;
-      diffRemovedDimmed = tint 0.09 roles.alert;
-      diffAddedWord = tint 0.45 roles.success;
-      diffRemovedWord = tint 0.35 roles.alert;
-      userMessageBackground = roles.raised;
-      userMessageBackgroundHover = roles.selection;
-      composerSidebarBackground = roles.raised;
-      bashMessageBackgroundColor = roles.sunken;
-      memoryBackgroundColor = roles.raised;
-      selectionBg = roles.selection;
-      rate_limit_fill = roles.warning;
-      rate_limit_empty = roles.raised;
+      claude = colours.program;
+      claudeShimmer = colours.strong;
+      clawd_body = colours.program;
+      clawd_background = colours.deepest;
+      inherit (colours) text;
+      inverseText = colours.deepest;
+      inactive = colours.muted;
+      inactiveShimmer = colours.text;
+      subtle = colours.muted;
+      promptBorder = colours.rule;
+      promptBorderShimmer = colours.muted;
+      suggestion = colours.accent;
+      remember = colours.accent;
+      permission = colours.action;
+      permissionShimmer = colours.strong;
+      planMode = colours.voice;
+      ide = colours.program;
+      background = colours.voice;
+      inherit (colours) success;
+      error = colours.alert;
+      inherit (colours) warning;
+      warningShimmer = colours.strong;
+      merged = colours.person;
+      diffAdded = tint 0.25 colours.success;
+      diffRemoved = tint 0.18 colours.alert;
+      diffAddedDimmed = tint 0.12 colours.success;
+      diffRemovedDimmed = tint 0.09 colours.alert;
+      diffAddedWord = tint 0.45 colours.success;
+      diffRemovedWord = tint 0.35 colours.alert;
+      userMessageBackground = colours.raised;
+      userMessageBackgroundHover = colours.selection;
+      composerSidebarBackground = colours.raised;
+      bashMessageBackgroundColor = colours.sunken;
+      memoryBackgroundColor = colours.raised;
+      selectionBg = colours.selection;
+      rate_limit_fill = colours.warning;
+      rate_limit_empty = colours.raised;
       red_FOR_SUBAGENTS_ONLY = terminal.red;
       blue_FOR_SUBAGENTS_ONLY = terminal.blue;
       green_FOR_SUBAGENTS_ONLY = terminal.green;

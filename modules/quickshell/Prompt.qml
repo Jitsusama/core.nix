@@ -37,7 +37,15 @@ Item {
     // back out, as the launcher's levels want: what's typed there is a few
     // letters narrowing a list, never text worth walking through, so the
     // arrow is the one key for "not that", and a second press goes up.
+    // Only the plain arrow does, the field saying so with its mark after
+    // what's typed, as Tab's follows the ghost, and the right arrow just
+    // after puts it back (Joel, 2026-10-26: the left arrow clears only
+    // where it says so, and the right arrow right after brings the text
+    // back). With Ctrl or Alt it moves the caret, as in any field.
     property bool leftClears: false
+    // What the left arrow just took away, which the right arrow puts back
+    // until any other key is pressed or anything else is typed.
+    property string cleared: ""
     // Says how far an aside may run, so a long one never crowds what's typed
     // or where Joel is: the path's steps and room to type come first, and
     // the aside has what they leave, up to two fifths of the line. With the
@@ -73,10 +81,16 @@ Item {
         : asideText.x - Theme.space.xl
             - (capitals ? Theme.space.s + capitalsGlyph.implicitWidth : 0)
 
-    // Return, or Shift+Return, which asks for it below the focused window.
-    signal accepted(bool below)
+    // Return, or Shift+Return, which asks for it below the focused window,
+    // or Ctrl+Return, which does it and closes whatever it is.
+    signal accepted(bool below, bool closing)
     // Tab, which takes the ghost.
     signal completed
+
+    // Words as they read, in the styled text a ghost is drawn in.
+    function plain(words: string): string {
+        return words.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
     signal cancelled
     // The right arrow past the end of what's typed, and the left arrow before
     // its start (or anywhere, with leftClears, once what's typed is gone) or
@@ -85,11 +99,14 @@ Item {
     signal backward
 
     function clear() {
+        cleared = "";
         input.text = "";
     }
 
-    // Takes the keys back from whatever else in its window had them.
+    // Takes the keys back from whatever else in its window had them, as it
+    // opens, so nothing cleared before is offered back.
     function take() {
+        cleared = "";
         input.forceActiveFocus();
     }
 
@@ -244,12 +261,23 @@ Item {
         // A fifth of the size between dots, so each reads as one character.
         // Points are 4/3 of a pixel at 96 dots an inch.
         font.letterSpacing: prompt.secret ? Theme.mono.large * 4 / 3 * 0.2 : 0
-        Keys.onReturnPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0)
-        Keys.onEnterPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0)
+        Keys.onReturnPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
+            (event.modifiers & Qt.ControlModifier) !== 0)
+        Keys.onEnterPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0,
+            (event.modifiers & Qt.ControlModifier) !== 0)
         Keys.onTabPressed: prompt.completed()
         Keys.onEscapePressed: prompt.cancelled()
+        onTextChanged: {
+            if (text !== "")
+                prompt.cleared = "";
+        }
         Keys.onPressed: event => {
             const none = input.selectionStart === input.selectionEnd;
+            const plainly = (event.modifiers & ~Qt.KeypadModifier) === Qt.NoModifier;
+            const restoring = event.key === Qt.Key_Right && plainly && input.text === ""
+                && prompt.cleared !== "";
+            if (!restoring)
+                prompt.cleared = "";
             // A key whose release comes late, past the repeat delay, while
             // the shell is busy, repeats as if held
             // (modules/keyboard/repeat.nix). No field here wants a character
@@ -257,12 +285,19 @@ Item {
             if (event.isAutoRepeat && event.text !== "" && event.text >= " "
                 && event.text !== "\u007f") {
                 event.accepted = true;
+            } else if (restoring) {
+                input.text = prompt.cleared;
+                input.cursorPosition = input.text.length;
+                event.accepted = true;
             } else if (event.key === Qt.Key_Right && none
                 && input.cursorPosition === input.text.length) {
                 prompt.forward();
                 event.accepted = true;
-            } else if (event.key === Qt.Key_Left && prompt.leftClears && input.text !== "") {
+            } else if (event.key === Qt.Key_Left && plainly && prompt.leftClears
+                && input.text !== "") {
+                const was = input.text;
                 input.text = "";
+                prompt.cleared = was;
                 event.accepted = true;
             } else if ((event.key === Qt.Key_Left && none && input.cursorPosition === 0)
                 || (event.key === Qt.Key_Backspace && input.text === "")) {
@@ -272,7 +307,10 @@ Item {
         }
 
         // The caret in the accent, since it's where the keys go. It takes
-        // no room of its own, so a ghost reads on as one word.
+        // no room of its own, so a ghost reads on as one word. Qt leaves
+        // blinking to a caret drawn as its own delegate, so this one holds
+        // steady and a launcher left still draws nothing (the launcher
+        // audit's finding 34, held by goes-places' frame count).
         cursorDelegate: Rectangle {
             width: 2
             color: Theme.accent
@@ -281,12 +319,28 @@ Item {
 
         // A hint stands just clear of the caret; a ghost runs on from what's
         // typed as one word, and ends in an ellipsis where the field does.
+        // Tab's key follows the ghost it takes, as a key's mark does in the
+        // foot: said where it works and only while it does, and one word
+        // with the ghost, so it never stands still while the letters move
+        // it, nor takes the foot's room from how things stand. The left
+        // arrow's follows it where the arrow clears what's typed, and once
+        // it has, what it took stands as the ghost with the right arrow's
+        // mark, which puts it back.
         Text {
+            readonly property string mark: `<font color="${Theme.text}">%1</font>`
+            readonly property string clears: prompt.leftClears ? mark.arg("\u2190") : ""
+
             x: input.text === "" ? Theme.space.xs : input.contentWidth
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.verticalCenter: parent.verticalCenter
-            text: input.text === "" ? prompt.hint : prompt.ghost
+            textFormat: Text.StyledText
+            text: input.text === "" ? prompt.cleared !== ""
+                    ? `${prompt.plain(prompt.cleared)} ${mark.arg("\u2192")}`
+                    : prompt.plain(prompt.hint)
+                : prompt.ghost === "" ? (clears === "" ? "" : `&nbsp;${clears}`)
+                : `${prompt.plain(prompt.ghost)} ${mark.arg("\u21e5")}`
+                    + (clears === "" ? "" : ` ${clears}`)
             visible: text !== "" && (input.text === "" || !prompt.secret)
             color: Theme.muted
             font.family: Theme.mono.family

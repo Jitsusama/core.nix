@@ -12,8 +12,8 @@
 }:
 let
   inherit (import ../greetd/account.nix { inherit config lib options; }) theme;
-  roles = lib.attrByPath [ "roles" ] null theme;
-  panic = if roles == null then null else { inherit (roles) text background; };
+  colours = lib.attrByPath [ "colours" ] null theme;
+  panic = if colours == null then null else { inherit (colours) text background; };
 in
 {
   options.jitsusama.kernel.cpu = lib.mkOption {

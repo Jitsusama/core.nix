@@ -1,47 +1,49 @@
 //! How fast a link may send and receive, found from what its delay does.
 //!
-//! The line beyond the router has a queue of its own, and it only stays
-//! empty while this machine sends and receives a little slower than the
-//! line can carry. How fast that is differs from network to network and
-//! from minute to minute on Wi-Fi or a phone's tether, so it's found as it
-//! goes, as cake-autorate does on routers: pings to a few distant hosts
-//! each keep a baseline, the least round trip seen lately, and a ping that
-//! comes back well over its baseline is delayed. While enough of the latest
-//! pings are delayed and a direction is busy, a little under what that
-//! direction was carrying is held as the line's rate, since that is what
-//! the line managed with a queue building. The rate itself goes further
-//! under, by as much as the queue is deep, so the queue drains in about a
-//! second rather than the ten a rate a tenth under the line would take
-//! over a full modem buffer. The pings stay late while it drains, which is
-//! no reason to cut again: a later cut in the same spell comes only while
-//! the delay is still rising, as it does when the line is slower than the
-//! cut, and the held rate follows it down. Cutting at every late ping took
-//! an 8 Mbit/s line's rate to 3. Nothing climbs until a whole
-//! window of fresh pings says the line is quiet. Then a busy direction
-//! climbs quickly back to the held rate, and above it only slowly, so a
-//! probe past what the line takes builds a few milliseconds of queue before
-//! the pings see it, not a few hundred. While a direction rests, its rate
-//! settles back towards the held rate, so the next burst starts there.
-//! A cut long past says little about the line now, and climbing back from
-//! it took a download most of a minute at half speed, so a direction that
-//! rests long after its last cut holds its best rate again. Should the
-//! line still be slow, the first burst's queue cuts it within a second or
-//! two, and that cut is kept rather than forgotten again.
+//! The connection beyond the router has a queue of its own, and it only
+//! stays empty while this machine sends and receives a little slower than
+//! the connection can carry. How fast that is differs from network to
+//! network and from minute to minute on Wi-Fi or a phone's tether, so it's
+//! found as it goes, as cake-autorate does on routers: pings to a few
+//! distant hosts each keep a baseline, the least round trip seen lately,
+//! and a ping that comes back well over its baseline is delayed. While
+//! enough of the latest pings are delayed and a direction is busy, a
+//! little under what that direction was carrying is held as the
+//! connection's rate, since that is what the connection managed with a
+//! queue building. The rate itself goes further under, by as much as the
+//! queue is deep, so the queue drains in about a second rather than the
+//! ten a rate a tenth under the connection would take over a full modem
+//! buffer. The pings stay late while it drains, which is no reason to cut
+//! again: a later cut in the same spell comes only while the delay is
+//! still rising, as it does when the connection is slower than the cut,
+//! and the held rate follows it down. Cutting at every late ping took an
+//! 8 Mbit/s connection's rate to 3. Nothing climbs until a whole window of
+//! fresh pings says the connection is quiet. Then a busy direction climbs
+//! quickly back to the held rate, and above it only slowly, so a probe
+//! past what the connection takes builds a few milliseconds of queue
+//! before the pings see it, not a few hundred. While a direction rests,
+//! its rate settles back towards the held rate, so the next burst starts
+//! there. A cut long past says little about the connection now, and
+//! climbing back from it took a download most of a minute at half speed,
+//! so a direction that rests long after its last cut holds its best rate
+//! again. Should the connection still be slow, the first burst's queue
+//! cuts it within a second or two, and that cut is kept rather than
+//! forgotten again.
 //! Only a direction busy for some seconds climbs past its held rate. pi's
 //! requests, a megabyte or two each, kept the upload busy a second or two
-//! at a time, and each such burst climbed past the line and was cut, so
-//! every few seconds a queue of about 20 ms built that calls shared. A
+//! at a time, and each such burst climbed past the connection and was cut,
+//! so every few seconds a queue of about 20 ms built that calls shared. A
 //! burst now fits under the held rate, and a transfer that lasts still
 //! looks for more.
 //! Only this machine's own traffic is cut for a queue. A download that
-//! arrives faster than its rate is held back here, so the line carries
-//! more than that and its queue is the upload's or another machine's; on
-//! Wi-Fi, cut for each such spell, a download fell from 85 Mbit/s to its
-//! floor of 5 and stayed there. Pings come back late and early by turns
-//! on Wi-Fi, so a queue back within moments of a cut is still the same
-//! spell, cut again only if it grows. An upload has no arrivals to tell
-//! by, so each cut is on trial: once the line is quiet the rate climbs
-//! straight back to where it was cut from, and the cut stands only if the
+//! arrives faster than its rate is held back here, so the connection
+//! carries more than that and its queue is the upload's or another
+//! machine's; on Wi-Fi, cut for each such spell, a download fell from 85
+//! Mbit/s to its floor of 5 and stayed there. Pings come back late and
+//! early by turns on Wi-Fi, so a queue back within moments of a cut is
+//! still the same spell, cut again only if it grows. An upload has no
+//! arrivals to tell by, so each cut is on trial: once the connection is
+//! quiet the rate climbs straight back to where it was cut from, and the cut stands only if the
 //! queue comes back on the way. A cut near where one was confirmed isn't
 //! tried again.
 
@@ -86,12 +88,12 @@ pub struct Settings {
     /// the one filling the queue.
     pub loaded: f64,
     /// The one of the two likeliest to fill the queue fills it from this
-    /// share. What arrives is capped by the line, so a line fallen under
-    /// half of the download's rate brings in under half of it while its
-    /// queue grows, and at `loaded` alone would never be cut. The likeliest
-    /// is the one whose share fell by this much since the line was last
-    /// quiet, as a download's does when its line falls and a call's upload
-    /// beside it doesn't, and otherwise the one with the larger share.
+    /// share. What arrives is capped by the connection, so a connection
+    /// fallen under half of the download's rate brings in under half of it
+    /// while its queue grows, and at `loaded` alone would never be cut. The
+    /// likeliest is the one whose share fell by this much since the
+    /// connection was last quiet, as a download's does when its connection
+    /// falls and a call's upload beside it doesn't, and otherwise the one with the larger share.
     pub fuller: f64,
     /// What a cut leaves of what the direction carried.
     pub cut: f64,
@@ -108,14 +110,14 @@ pub struct Settings {
     pub drain_ms: f64,
     /// Seconds after a cut before a resting direction forgets it.
     pub forget_s: f64,
-    /// Seconds a forgotten-back peak must carry a busy line without delay
-    /// before it's the line's again, and a later cut is forgotten too.
+    /// Seconds a forgotten-back peak must carry a busy connection without
+    /// delay before it's the connection's again, and a later cut is forgotten too.
     pub proven_s: f64,
     /// Seconds a direction must stay busy before it climbs past its held
     /// rate.
     pub probe_after_s: f64,
     /// A download arriving at more than this share of its rate is held
-    /// back here, not on the line.
+    /// back here, not on the connection.
     pub held_here: f64,
     /// Seconds after a cut within which a queue back again is the same
     /// spell's, not a new one's.
@@ -123,10 +125,13 @@ pub struct Settings {
     /// Seconds a busy direction held at its floor may meet a queue that
     /// never drains before its best comes down a cut's share.
     pub floored_s: f64,
+    /// Seconds between the spells of a connection's queue past which a direction
+    /// carrying well under its floor in them is no longer counted as thin.
+    pub thin_gap_s: f64,
     /// The share of the best rate a direction has held that no cut goes
-    /// under; none lets a cut follow the line down to its floor.
+    /// under; none lets a cut follow the connection down to its floor.
     pub least_of_best: f64,
-    /// The same share while real-time traffic flows, when the line's
+    /// The same share while real-time traffic flows, when the connection's
     /// queue has to be this machine's, where CAKE sends a call first.
     pub least_of_best_live: f64,
 }
@@ -144,34 +149,39 @@ impl Default for Settings {
             fuller: 0.2,
             cut: 0.9,
             // About 10% a second at five steps a second, and about 2.5%:
-            // a line that dipped to half is found again in about 30 s.
+            // a connection that dipped to half is found again in about 30 s.
             climb_back: 1.02,
             climb: 1.005,
             settle: 0.05,
             after_cut_s: 0.6,
             drain_ms: 1000.0,
-            // A line's dips, from a neighbour's upload or a busy evening,
+            // A connection's dips, from a neighbour's upload or a busy evening,
             // come and go within minutes; ten of them quiet is long past.
             forget_s: 600.0,
-            // Past a cable modem's burst allowance, which can carry a line
-            // over its rate for its first several seconds. A peak not yet
-            // proven costs little: one the line does carry is climbed to.
+            // Past a cable modem's burst allowance, which can carry a
+            // connection over its rate for its first several seconds. A peak
+            // not yet proven costs little: one the connection does carry is
+            // climbed to.
             proven_s: 15.0,
             // Longer than a request's burst, and short beside a download
-            // or a push that a faster line would help.
+            // or a push that a faster connection would help.
             probe_after_s: 5.0,
             // Past the twentieth over its rate that senders send while
             // they probe; a download arriving between its rate and that
-            // may still be what fills the line.
+            // may still be what fills the connection.
             held_here: 1.05,
             // Over a few pings' worth: on Wi-Fi a queue's pings come back
             // late and early by turns, and each turn read as a new spell
             // cut the upload from 1.8 Mbit/s to 1.0 within three seconds.
             spell_gap_s: 2.0,
             // The air's late pings came a second of every three, so a
-            // queue standing for six seconds running is the line's own.
+            // queue standing for six seconds running is the connection's
+            // own.
             floored_s: 6.0,
-            // A cable's line does fall, to half on a busy evening, and a
+            // At a hotel, five in six of the gaps between a thin connection's
+            // spells were under ten seconds.
+            thin_gap_s: 10.0,
+            // A cable's connection does fall, to half on a busy evening, and a
             // cut that follows it keeps its queue short.
             least_of_best: 0.0,
             least_of_best_live: 0.0,
@@ -184,16 +194,19 @@ impl Settings {
     /// late for the air's sake, a neighbour's or the router's as often as
     /// for a queue of this machine's: three times on one day, cuts for such
     /// pings took its upload of about 10 Mbit/s to 1 or 2 and its download
-    /// from 50 to 6 or 17. Joel wants the line's whole rate kept, and a
-    /// shaper over the line only leaves it as unshaped, so a cut there
-    /// never goes more than a twentieth under the best the line has
-    /// carried, as a cable's ceiling sits. At a fifth, live under the
+    /// from 50 to 6 or 17. Joel wants the connection's whole rate kept, and
+    /// a shaper over the connection only leaves it as unshaped, so a cut
+    /// there never goes more than a twentieth under the best the connection
+    /// has carried, as a cable's ceiling sits. At a fifth, live under the
     /// agents' load, 104 of 115 cuts in 13 minutes ended at that floor,
-    /// holding an upload of 10.5 Mbit/s at 8.
+    /// holding an upload of 10.5 Mbit/s at 8. A connection far under the best,
+    /// as a hotel's or a tether's is beside the one at home, is followed
+    /// under the floor all the same, once its queue has built for some
+    /// seconds while a direction carries the same under half its rate.
     ///
     /// While a call or a screen share runs, though, Joel wants it to work
-    /// well above all, and a floor over the line leaves its packets behind
-    /// the line's own queue: at 95% of a best learned in an upload's first
+    /// well above all, and a floor over the connection leaves its packets
+    /// behind the connection's own queue: at 95% of a best learned in an upload's first
     /// seconds, a bulk upload took pings past the router from 27 ms to 44
     /// on average, and up to 134. Then a cut may go to three fifths of the
     /// best. Live, over four pairs beside a stand-in call, an upload ran
@@ -228,7 +241,7 @@ pub struct Direction {
     /// leaves alone: the rate no cut goes under is a share of it.
     pub best: u64,
     /// Whether the held rate is the peak put back since the last cut, so a
-    /// cut that follows shows the peak is no longer the line's.
+    /// cut that follows shows the peak is no longer the connection's.
     forgot: bool,
     /// When the latest run of busy steps without delay began, while
     /// `forgot` holds.
@@ -240,19 +253,36 @@ pub struct Direction {
     /// was cut.
     busy_since: Option<f64>,
     /// The rate held before a cut still on trial, which it climbs straight
-    /// back to once the line is quiet. Late pings say a queue, not whose:
-    /// on Wi-Fi or beside a busy host they come late for no queue of ours,
-    /// and each cut a tenth, with climbing past the held rate waiting five
-    /// busy seconds, took an upload to its floor within two minutes. The
-    /// cut stands only if the queue comes back on the way.
+    /// back to once the connection is quiet. Late pings say a queue, not
+    /// whose: on Wi-Fi or beside a busy host they come late for no queue of
+    /// ours, and each cut a tenth, with climbing past the held rate waiting
+    /// five busy seconds, took an upload to its floor within two minutes.
+    /// The cut stands only if the queue comes back on the way.
     on_trial: Option<u64>,
-    /// The rate at which the line's queue last came back on a trial's way
-    /// up: a cut from near it isn't tried again, since the line is there.
+    /// The rate at which the connection's queue last came back on a trial's
+    /// way up: a cut from near it isn't tried again, since the connection
+    /// is there.
     confirmed: Option<u64>,
-    /// Since when it has been busy at its floor with the line's queue
+    /// Since when it has been busy at its floor with the connection's queue
     /// standing, without a quiet window between.
     floored_since: Option<f64>,
+    /// The seconds it has carried well under a floor with the connection's
+    /// queue building, the most and least it carried then, and when it last
+    /// did.
+    thin_for: f64,
+    thin_most: f64,
+    thin_least: f64,
+    thin_last: Option<f64>,
+    /// The best and the peak it had when the call now running began, which
+    /// it has again once the call ends.
+    before_call: Option<(u64, u64)>,
 }
+
+/// The share of the most a thin direction has carried that it must still
+/// carry for the connection to be the same: a full connection carries
+/// about the same from step to step, as the hotel's did, at 21% to 23% of
+/// its rate.
+const STEADY: f64 = 0.75;
 
 impl Direction {
     pub fn new(bounds: Bounds, held: u64) -> Self {
@@ -271,6 +301,11 @@ impl Direction {
             on_trial: None,
             confirmed: None,
             floored_since: None,
+            thin_for: 0.0,
+            thin_most: 0.0,
+            thin_least: f64::INFINITY,
+            thin_last: None,
+            before_call: None,
         }
     }
 
@@ -278,10 +313,37 @@ impl Direction {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
     }
 
+    /// A call or a screen share begins: what it learns of the connection
+    /// is for its length.
+    fn call_began(&mut self) {
+        self.before_call = Some((self.best, self.peak));
+    }
+
+    /// The call ends, and what was cut for it goes with it. Joel chose the
+    /// call over the rate only while it runs: through one, the air's late
+    /// pings beside requests that came and went took a download from 50
+    /// Mbit/s to 9, and with the best it had learned there, a busy
+    /// download had climbed back only to 36 a minute after. So the best
+    /// and the peak are what they were before it, or more, and a rate
+    /// under the floor they give is back at the floor, as a cut outside a
+    /// call would leave it.
+    fn call_ended(&mut self, s: &Settings) {
+        let Some((best, peak)) = self.before_call.take() else {
+            return;
+        };
+        self.best = self.best.max(best);
+        self.peak = self.peak.max(peak);
+        let floor = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+        self.held = self.held.max(floor);
+        if self.rate < floor {
+            self.set(float(floor));
+        }
+    }
+
     /// Holds this direction under a new most the link carries, as when a
     /// cable moves to a port of another speed, saying whether it moved. A
     /// lower one brings down whatever was held above it; a higher one only
-    /// lets the rate climb there, as it learns the line.
+    /// lets the rate climb there, as it learns the connection.
     pub fn bound(&mut self, max: u64) -> bool {
         let max = max.max(self.bounds.min);
         if max == self.bounds.max {
@@ -303,10 +365,10 @@ impl Direction {
     /// under load without delay, which a cut long past is forgotten back
     /// to, rather than the latest cut. A restart from the cut had no better
     /// rate to forget back to, and held a download on Wi-Fi at 5 Mbit/s
-    /// where the line carried 85. Should the line be slower now, the first
-    /// burst's queue cuts it within a second or two.
+    /// where the connection carried 85. Should the connection be slower
+    /// now, the first burst's queue cuts it within a second or two.
     ///
-    /// A line no cut goes far under keeps its best instead. There a cut
+    /// A connection no cut goes far under keeps its best instead. There a cut
     /// after the peak was put back lowers the peak to the floor, a share
     /// of the best; a restart made that the best, and so each restart
     /// took the floor down by that share again. Live, one restart moved a
@@ -319,12 +381,12 @@ impl Direction {
         }
     }
 
-    /// A busy step on a quiet line: climbs back to the held rate, past it
+    /// A busy step on a quiet connection: climbs back to the held rate, past it
     /// once it has been busy a while, and proves a peak put back.
     fn climb(&mut self, s: &Settings, now: f64) {
         self.floored_since = None;
-        // A peak put back is proved by carrying the line, whether or not
-        // it may climb past it yet.
+        // A peak put back is proved by carrying the connection, whether or
+        // not it may climb past it yet.
         if self.forgot {
             let since = *self.proving.get_or_insert(now);
             if now - since >= s.proven_s {
@@ -341,7 +403,7 @@ impl Direction {
         }
         if self.rate > self.held {
             self.held = self.rate;
-            // A trial's way up isn't yet the line's best.
+            // A trial's way up isn't yet the connection's best.
             if self.on_trial.is_none() {
                 self.peak = self.peak.max(self.held);
                 self.best = self.best.max(self.peak);
@@ -350,8 +412,8 @@ impl Direction {
         }
     }
 
-    /// Cuts to `held`, putting the cut on trial unless the line has shown
-    /// it's there: its queue came back on this trial's way up, a trial found
+    /// Cuts to `held`, putting the cut on trial unless the connection has
+    /// shown it's there: its queue came back on this trial's way up, a trial found
     /// it near the rate cut from, or the peak was just put back.
     fn cut_to(&mut self, held: u64) {
         let before = self.held;
@@ -387,17 +449,17 @@ impl Direction {
         forgot
     }
 
-    /// A step of the line's queue standing: lowers the best by a cut's
-    /// share, and the held rate with it, when this direction has been busy
-    /// at its floor, the queue never draining, for `floored_s`. A queue
-    /// that stands full no longer grows, so no cut would come of it. The
-    /// floor keeps cuts off a line whose late pings are the air's, which come and go; a queue that
-    /// stands for as long as this direction fills its rate is its own, and
-    /// live the floor held an upload at 11.7 Mbit/s over a line of 9.3,
-    /// its queue at 60 to 70 ms. A climb puts the best back once the line
-    /// carries more.
+    /// A step of the connection's queue standing: lowers the best by a
+    /// cut's share, and the held rate with it, when this direction has been
+    /// busy at its floor, the queue never draining, for `floored_s`. A
+    /// queue that stands full no longer grows, so no cut would come of it.
+    /// The floor keeps cuts off a connection whose late pings are the
+    /// air's, which come and go; a queue that stands for as long as this
+    /// direction fills its rate is its own, and live the floor held an
+    /// upload at 11.7 Mbit/s over a connection of 9.3, its queue at 60 to
+    /// 70 ms. A climb puts the best back once the connection carries more.
     ///
-    /// Only a direction that may be filling the line counts: a download
+    /// Only a direction that may be filling the connection counts: a download
     /// arriving faster than its rate is held back here, and lowering its
     /// best for a queue elsewhere took one from 50 Mbit/s to 8 in two
     /// minutes.
@@ -417,6 +479,100 @@ impl Direction {
             self.learned = true;
             self.floored_since = Some(now);
         }
+    }
+
+    /// A step of the connection's queue building while this direction
+    /// carries well under its rate, and a cut from what it carried would go
+    /// under its floor: the floor, a share of the best the network ever
+    /// carried, is over the connection. Busy against so high a rate it
+    /// never is, so the floor's own rule above never comes of it. At a
+    /// hotel on 27 October the floor held a download at 47.5 Mbit/s while
+    /// the connection carried about 10, and its queue built in the router,
+    /// where nothing is sorted, so every session's requests waited behind
+    /// Nix's fetches.
+    /// The queue came and went there, built for about a second at a time
+    /// with about two and a half between, and the download carried the
+    /// same tenth of a megabit in every spell.
+    ///
+    /// A queue built for `floored_s` in all, its spells each within
+    /// `thin_gap_s` of the last, is the connection's own, not the air's,
+    /// and while it builds the connection carries no more than came
+    /// through. So the held rate comes down to a cut under the most that
+    /// did, and the rate
+    /// under that by as much as the queue is deep, as a cut's does. The
+    /// best comes down so the floor sits at that rate: a floor at the held
+    /// rate let the next cut put the rate back there, and a queue of
+    /// seconds took most of a minute to drain. The cut counts as one, and
+    /// is on trial as any is: once the connection is quiet a busy direction
+    /// climbs straight back, and the cut stands only if the queue comes
+    /// back on the way, so one for pings the air made late costs a climb.
+    /// Only a direction carrying under half its rate counts, and only
+    /// while it carries about the same from step to step, as a full
+    /// connection does: on Wi-Fi the air makes pings late a second of
+    /// every three while a direction carries more than that, or carries
+    /// what comes and goes, and the floor is there so that no cut comes of
+    /// it. While real-time traffic flows, though, Joel chose the call over
+    /// the rate, and a connection shared with others is never steady: at a
+    /// hotel on 28 October the download's share swung by half from spell
+    /// to spell while the floor held it at 130 Mbit/s on a connection
+    /// carrying about 50. Then any thin spell counts, and a cut for the
+    /// air's pings costs the call nothing and the rate a climb. A spell
+    /// held back here says the connection isn't thin; one carrying under
+    /// the least it may be held to says nothing of the connection. Gives
+    /// whether it cut.
+    fn thin(
+        &mut self,
+        s: &Settings,
+        now: f64,
+        carried: f64,
+        held_here: bool,
+        drain: f64,
+        live: bool,
+    ) -> bool {
+        if s.least_of_best <= 0.0 || carried < float(self.bounds.min) {
+            return false;
+        }
+        let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
+        let thin =
+            !held_here && carried < float(self.rate) * s.loaded && whole(carried * s.cut) < least;
+        let gone = self.thin_last.is_some_and(|at| now - at > s.thin_gap_s);
+        let steady =
+            live || carried >= self.thin_most * STEADY && carried * STEADY <= self.thin_least;
+        if !thin || gone || !steady {
+            self.thin_for = 0.0;
+            self.thin_most = 0.0;
+            self.thin_least = f64::INFINITY;
+            self.thin_last = None;
+        }
+        if !thin {
+            return false;
+        }
+        // Steps one after another add their time; a gap between spells
+        // adds none.
+        if let Some(at) = self.thin_last.filter(|at| now - at <= s.after_cut_s) {
+            self.thin_for += now - at;
+        }
+        self.thin_last = Some(now);
+        self.thin_most = self.thin_most.max(carried);
+        self.thin_least = self.thin_least.min(carried);
+        if self.thin_for < s.floored_s {
+            return false;
+        }
+        self.cut_to(whole(self.thin_most * s.cut).max(self.bounds.min));
+        self.set(float(self.held) * drain);
+        self.best = whole(float(self.rate) / s.least_of_best).min(self.best);
+        self.peak = self.peak.min(self.best).max(self.held);
+        self.learned = true;
+        self.forgot = false;
+        self.proving = None;
+        self.cut_at = Some(now);
+        self.busy_since = None;
+        self.floored_since = None;
+        self.thin_for = 0.0;
+        self.thin_most = 0.0;
+        self.thin_least = f64::INFINITY;
+        self.thin_last = None;
+        true
     }
 }
 
@@ -458,7 +614,7 @@ pub struct Controller {
     pub up: Direction,
     pub down: Direction,
     /// Whether real-time traffic, a call's or a screen share's, crosses the
-    /// line now, as the shaper's video tin says.
+    /// connection now, as the shaper's video tin says.
     pub live: bool,
     baselines: HashMap<String, Baseline>,
     recent: VecDeque<bool>,
@@ -468,19 +624,21 @@ pub struct Controller {
     last_cut: Option<f64>,
     /// The queue's delay when the rate was last cut.
     cut_level: f64,
-    /// Whether the line has been delayed since a cut, without a whole
+    /// Whether the connection has been delayed since a cut, without a whole
     /// quiet window between: a spell ends only when the queue has drained.
     in_spell: bool,
     /// What each direction carried of its rate, up and down, at the last
-    /// step whose line wasn't building a queue.
+    /// step whose connection wasn't building a queue.
     quiet_shares: [f64; 2],
     /// The direction this spell's latest cut took alone, 0 up and 1 down.
     cut_alone: Option<usize>,
     /// Whether this spell has cut each direction, up and down.
     cut_in_spell: [bool; 2],
-    /// When a download last arrived faster than its rate while the line
-    /// built a queue.
+    /// When a download last arrived faster than its rate while the
+    /// connection built a queue.
     held_at: Option<f64>,
+    /// Whether real-time traffic flowed at the last step.
+    was_live: bool,
 }
 
 /// One step's climb, from a direction's rate and what it held.
@@ -523,6 +681,7 @@ impl Controller {
             cut_alone: None,
             cut_in_spell: [false; 2],
             held_at: None,
+            was_live: false,
         }
     }
 
@@ -560,7 +719,7 @@ impl Controller {
         self.cut_level
     }
 
-    /// Whether the line's queue is building now.
+    /// Whether the connection's queue is building now.
     pub fn building(&self) -> bool {
         self.recent.iter().filter(|d| **d).count() >= self.settings.delayed_needed
     }
@@ -582,9 +741,25 @@ impl Controller {
         all
     }
 
+    /// Tells each direction when a call or a screen share begins or ends.
+    fn follow_calls(&mut self) {
+        if self.live == self.was_live {
+            return;
+        }
+        for dir in [&mut self.up, &mut self.down] {
+            if self.live {
+                dir.call_began();
+            } else {
+                dir.call_ended(&self.settings);
+            }
+        }
+        self.was_live = self.live;
+    }
+
     /// One step, given what each direction carried since the last, in
     /// kbit/s, at `now` seconds. Returns what it decided.
     pub fn step(&mut self, now: f64, sent: f64, received: f64) -> State {
+        self.follow_calls();
         let mut s = self.settings.clone();
         if self.live {
             s.least_of_best = s.least_of_best.min(s.least_of_best_live);
@@ -610,13 +785,13 @@ impl Controller {
             let level = self.level();
             // A queue that drains needs no cut: only one still growing does.
             let rising = new_spell || level > self.cut_level + s.delay_ms / 3.0;
-            // A rate a tenth under the line drains its queue at a tenth of
-            // the line: a second of modem buffer would take ten seconds. So
-            // a cut goes under the held rate by a share as large as the
-            // queue's delay is of a second, up to half, which drains it in
-            // about a second, and stays there until the line is quiet. A
-            // rate let back up as the queue fell stood at the line with the
-            // queue half drained.
+            // A rate a tenth under the connection drains its queue at a
+            // tenth of the connection: a second of modem buffer would take
+            // ten seconds. So a cut goes under the held rate by a share as
+            // large as the queue's delay is of a second, up to half, which
+            // drains it in about a second, and stays there until the
+            // connection is quiet. A rate let back up as the queue fell
+            // stood at the connection with the queue half drained.
             let drain = 1.0 - (level / s.drain_ms).min(0.5);
             let mut cuts = [false; 2];
             if new_spell {
@@ -630,8 +805,8 @@ impl Controller {
                 if filling[i] && !resting && rising {
                     let from = carried.min(float(dir.rate));
                     // A queue still growing after a cut says that rate too
-                    // was over the line, so each cut is the line's best
-                    // guess.
+                    // was over the connection, so each cut is the
+                    // connection's best guess.
                     let least = whole(float(dir.best) * s.least_of_best).max(dir.bounds.min);
                     dir.cut_to(whole(from * s.cut).clamp(least, dir.bounds.max.max(least)));
                     dir.set((float(dir.held) * drain).max(float(least)));
@@ -645,11 +820,13 @@ impl Controller {
                     cuts[i] = true;
                 }
             }
+            let held_here = [false, shares[1] > s.held_here];
             for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
                 .enumerate()
             {
                 dir.pinned(&s, now, carried, filling[i]);
+                cuts[i] |= dir.thin(&s, now, carried, held_here[i], drain, self.live);
             }
             if cuts[0] || cuts[1] {
                 self.cut_in_spell[0] |= cuts[0];
@@ -692,8 +869,8 @@ impl Controller {
         }
     }
 
-    /// Which directions, up and down, may be filling the line's building
-    /// queue, given what each `carried` and its share of its rate.
+    /// Which directions, up and down, may be filling the connection's
+    /// building queue, given what each `carried` and its share of its rate.
     fn suspects(
         &mut self,
         now: f64,
@@ -707,18 +884,19 @@ impl Controller {
             self.quiet_shares[1] - shares[1],
         ];
         // A download arriving faster than its rate is held back by the
-        // shaping here, so the line carries more than that rate and
+        // shaping here, so the connection carries more than that rate and
         // the download can't be what queues on it: the queue is the
         // upload's, or another machine's. Cut for every spell while a
         // video took its rate, a download on Wi-Fi fell from 85 Mbit/s
         // to the floor of 5 within ten minutes and never climbed back.
-        // Once this spell has cut it, though, the line's queue drains
-        // at the line's speed, over the new rate, so it says nothing.
+        // Once this spell has cut it, though, the connection's queue
+        // drains at the connection's speed, over the new rate, so it says
+        // nothing.
         let held_here = [false, shares[1] > s.held_here && !self.cut_in_spell[1]];
         // That leaves the upload, or another machine, but not the upload by
         // elimination: it's cut only when it carries enough to fill the
         // queue on its own. A video's bursts arrive faster than the
-        // download's rate and queue on the line as they do, and put to the
+        // download's rate and queue on the connection as they do, and put to the
         // upload, the agents' requests beside it took Wi-Fi's upload of
         // about 10 Mbit/s to its floor within three minutes. The pings stay
         // late a moment after a burst ends, while its queue drains, so a
@@ -730,8 +908,8 @@ impl Controller {
         // A cut leaves a direction under what it's asked to carry, so
         // weighed against its rate it reads as full at every burst after,
         // and requests asking 3 Mbit/s beside a video were held at 2.3.
-        // Beside a burst, each is weighed against the best the line has
-        // carried for it instead.
+        // Beside a burst, each is weighed against the best the connection
+        // has carried for it instead.
         let weighed = if held_lately {
             [
                 carried[0] / float(self.up.peak.max(self.up.rate).max(1)),
@@ -803,7 +981,7 @@ mod tests {
     }
 
     #[test]
-    fn a_quiet_line_builds_no_queue() {
+    fn a_quiet_connection_builds_no_queue() {
         let mut c = controller(20_000, 100_000);
         pings(&mut c, 20.0, 12);
         assert!(!c.building());
@@ -853,7 +1031,7 @@ mod tests {
         pings(&mut c, 20.0, 6);
         pings(&mut c, 200.0, 3);
         assert_eq!(c.step(1.0, 11_000.0, 2_000.0), State::Cut);
-        // The line held a tenth under what it carried; the queue of about
+        // The connection held a tenth under what it carried; the queue of about
         // 180 ms drains at about that much under that.
         assert_eq!(c.up.held, 9_900);
         assert!((8_000..8_300).contains(&c.up.rate), "{}", c.up.rate);
@@ -862,12 +1040,12 @@ mod tests {
     }
 
     #[test]
-    fn a_download_arriving_faster_than_its_rate_isnt_cut_for_the_line_s_queue() {
+    fn a_download_arriving_faster_than_its_rate_isnt_cut_for_the_connection_s_queue() {
         let mut c = controller(10_000, 20_000);
         pings(&mut c, 20.0, 6);
         // A video takes all the download's rate and more arrives: the
-        // shaping here holds it back, so the line carries more than the
-        // download's rate and the download can't be what queues on it.
+        // shaping here holds it back, so the connection carries more than
+        // the download's rate and the download can't be what queues on it.
         // The queue is the upload's, or another machine's.
         pings(&mut c, 60.0, 3);
         assert_eq!(c.step(1.0, 9_500.0, 22_000.0), State::Cut);
@@ -879,7 +1057,7 @@ mod tests {
     fn a_queue_nobody_here_fills_leaves_a_download_held_back_here_alone() {
         let mut c = controller(10_000, 85_000);
         pings(&mut c, 20.0, 6);
-        // Another machine keeps the line's queue at 20 to 40 ms over its
+        // Another machine keeps the connection's queue at 20 to 40 ms over its
         // baseline, with quiet moments between, while a video here takes
         // all of the download's rate and more arrives. Cut at every spell,
         // the download fell from 85 to the floor of 5 within ten minutes
@@ -906,7 +1084,7 @@ mod tests {
         let mut c = controller(10_000, 50_000);
         pings(&mut c, 20.0, 6);
         // A 4K video fetches a second of every four at more than the
-        // download's rate, and the line's queue builds 40 ms while it does,
+        // download's rate, and the connection's queue builds 40 ms while it does,
         // as the agents' requests keep a third of the upload busy. Put to
         // the upload as the only other likeliest, every burst cut it, and
         // Wi-Fi's upload of about 10 Mbit/s was at its floor of 1 within
@@ -950,7 +1128,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wi_fi_line_is_never_cut_far_under_its_best() {
+    fn a_wi_fi_connection_is_never_cut_far_under_its_best() {
         let bounds = |min| Bounds {
             min,
             max: 1_000_000,
@@ -961,7 +1139,7 @@ mod tests {
             Direction::new(bounds(5_000), 50_000),
         );
         pings(&mut c, 20.0, 6);
-        // As the agents came back after a reboot, the line's queue grew
+        // As the agents came back after a reboot, the connection's queue grew
         // from 29 ms to 92 while each cut took the upload and then the
         // download, from 10 Mbit/s to 2.4 and from 50 to 16 within a
         // second: the queue was neither's. Here pings grow late for a
@@ -983,7 +1161,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wi_fi_line_s_best_is_the_most_it_has_carried() {
+    fn a_wi_fi_connection_s_best_is_the_most_it_has_carried() {
         let bounds = |min| Bounds {
             min,
             max: 1_000_000,
@@ -994,7 +1172,7 @@ mod tests {
             Direction::new(bounds(5_000), 50_000),
         );
         pings(&mut c, 20.0, 6);
-        // A push finds the line faster than where it started.
+        // A push finds the connection faster than where it started.
         let mut at = 0.0;
         while at < 30.0 {
             pings(&mut c, 20.0, 3);
@@ -1018,7 +1196,7 @@ mod tests {
     }
 
     #[test]
-    fn a_wi_fi_line_remembers_its_best_past_a_cut_at_its_floor() {
+    fn a_wi_fi_connection_remembers_its_best_past_a_cut_at_its_floor() {
         let bounds = |min| Bounds {
             min,
             max: 1_000_000,
@@ -1076,22 +1254,22 @@ mod tests {
     }
 
     #[test]
-    fn a_wi_fi_line_slower_than_its_floor_is_followed_down() {
+    fn a_wi_fi_connection_slower_than_its_floor_is_followed_down() {
         // Live, an upload learned 12.3 Mbit/s, so its floor held it at 11.7
-        // when the line carried 9.3: the queue stood at 60 to 70 ms in the
-        // router, ahead of every ping and call. The queue was this
+        // when the connection carried 9.3: the queue stood at 60 to 70 ms in
+        // the router, ahead of every ping and call. The queue was this
         // machine's: it stayed for as long as the upload ran.
         let mut c = wi_fi(12_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Line {
+        let mut connection = Connection {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        line.run(&mut c, 9_000.0, 90.0);
-        // Then it holds just under the line, losing little of it.
+        connection.run(&mut c, 9_000.0, 90.0);
+        // Then it holds just under the connection, losing little of it.
         let (mut lowest, mut worst) = (u64::MAX, 0.0_f64);
         for _ in 0..30 {
-            worst = worst.max(line.run(&mut c, 9_000.0, 1.0));
+            worst = worst.max(connection.run(&mut c, 9_000.0, 1.0));
             lowest = lowest.min(c.up.rate);
         }
         assert!(c.up.rate < 9_000, "{}", c.up.rate);
@@ -1102,7 +1280,8 @@ mod tests {
     #[test]
     fn a_busy_wi_fi_upload_keeps_its_best_through_the_air_s_late_pings() {
         // The floor's reason: pings late for the air's sake, a second of
-        // every three, while the upload fills its rate on a faster line.
+        // every three, while the upload fills its rate on a faster
+        // connection.
         let mut c = wi_fi(10_000);
         pings(&mut c, 20.0, 6);
         let (mut at, mut lowest) = (0.0, u64::MAX);
@@ -1118,9 +1297,94 @@ mod tests {
     }
 
     #[test]
+    fn a_wi_fi_download_on_a_connection_far_under_its_floor_is_followed_down() {
+        // A hotel's Wi-Fi on 27 October: a best of 50 Mbit/s remembered,
+        // so the floor held the download at 47.5 while the connection carried
+        // about 10 with its queue standing. Carrying a fifth of its rate,
+        // the download was never busy at its floor, so no rule brought the
+        // floor down, and the queue stayed in the hotel's router, ahead of
+        // every request.
+        let mut c = wi_fi(10_000);
+        c.down.held = 47_500;
+        c.down.rate = 47_500;
+        pings(&mut c, 20.0, 6);
+        let mut connection = Download {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        // Its ISP's buffer, ten seconds of this connection, fills within
+        // three. Followed down six seconds after, it's drained within half
+        // a minute.
+        connection.run(&mut c, 10_000.0, 30.0, 500.0);
+        assert!(c.down.held < 10_000, "{}", c.down.held);
+        assert!(c.down.best < 50_000, "{}", c.down.best);
+        let queue = |connection: &Download| connection.queue_kbit / 10_000.0 * 1000.0;
+        assert!(queue(&connection) < 50.0, "{} ms", queue(&connection));
+        // Then it holds just under the connection, its queue short, cut at
+        // most a tenth under where it sat when a queue stands at the floor.
+        let (mut lowest, mut worst) = (u64::MAX, 0.0_f64);
+        for _ in 0..60 {
+            connection.run(&mut c, 10_000.0, 1.0, 500.0);
+            worst = worst.max(queue(&connection));
+            lowest = lowest.min(c.down.rate);
+        }
+        assert!(worst < 50.0, "{worst} ms");
+        assert!(lowest >= 8_500, "{lowest}");
+    }
+
+    #[test]
+    fn a_wi_fi_download_on_a_thin_connection_is_followed_down_through_short_spells() {
+        // As the hotel's was: a connection of about 10 Mbit/s whose queue
+        // built for about a second at a time while the rate was over it, the
+        // download carrying the connection in every spell.
+        let mut c = wi_fi(10_000);
+        c.down.held = 47_500;
+        c.down.rate = 47_500;
+        pings(&mut c, 20.0, 6);
+        let connection = 10_000.0;
+        let (mut at, mut lowest, mut highest) = (0.0, u64::MAX, 0);
+        while at < 150.0 {
+            let over = float(c.down.rate) > connection;
+            let late = if over && at % 3.5 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            let received = float(c.down.rate).min(connection);
+            c.step(at, 300.0, received);
+            if at >= 90.0 {
+                lowest = lowest.min(c.down.rate);
+                highest = highest.max(c.down.rate);
+            }
+        }
+        // Followed within the first minute and a half, and its trial back
+        // up found the connection: the last minute holds at it, probing a little
+        // past it and cut back to a floor a twentieth under.
+        assert!(highest <= 10_500, "{highest}");
+        assert!(lowest >= 9_000, "{lowest}");
+    }
+
+    #[test]
+    fn a_wi_fi_download_that_comes_and_goes_keeps_its_floor_through_late_pings() {
+        // The floor's reason, with little asked: pings late for the air's
+        // sake a second of every three, while requests come and go.
+        let mut c = wi_fi(10_000);
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut lowest) = (0.0_f64, u64::MAX);
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            let asked = 6_000.0 + 5_000.0 * (at * 0.9).sin();
+            c.step(at, 500.0, asked);
+            lowest = lowest.min(c.down.rate);
+        }
+        assert!(lowest >= 47_500, "{lowest}");
+        assert!(c.down.best >= 50_000, "{}", c.down.best);
+    }
+
+    #[test]
     fn a_download_held_back_here_keeps_its_best_through_a_standing_queue() {
         // Binks's case on core #616: a Wi-Fi download at its floor, arriving
-        // at 1.1 times its rate, is held back here and fills no line; with
+        // at 1.1 times its rate, is held back here and fills no connection; with
         // pings standing 60 ms late, its rate fell to 18 Mbit/s in a minute
         // and a best of 19 was kept.
         let mut c = wi_fi(10_000);
@@ -1138,8 +1402,8 @@ mod tests {
         assert!(c.down.rate >= 47_500, "{}", c.down.rate);
     }
 
-    /// Uploads four seconds of every five into a line of 11 Mbit/s, under a
-    /// best of 12.3 whose floor is over the line, and gives the worst
+    /// Uploads four seconds of every five into a connection of 11 Mbit/s,
+    /// under a best of 12.3 whose floor is over the connection, and gives the worst
     /// queue of the last minute, in ms, and the least rate held in it: the
     /// queue rises and drains by turns, as it did live at 20:21, never
     /// standing long.
@@ -1168,16 +1432,95 @@ mod tests {
     }
 
     #[test]
-    fn while_real_time_flows_a_wi_fi_line_keeps_its_queue_here() {
+    fn while_real_time_flows_a_wi_fi_connection_keeps_its_queue_here() {
         // Live, a bulk upload took pings past the router from 27 ms to 44
         // on average, up to 134, while the floor held it at 11.7 Mbit/s:
-        // its queue was the line's, where a call's packets wait behind it.
+        // its queue was the connection's, where a call's packets wait behind it.
         let (held, _) = bursts_over_the_floor(false);
         let (live, rate) = bursts_over_the_floor(true);
         assert!(held > 60.0, "{held} ms at the floor");
         assert!(live < 30.0, "{live} ms while live, against {held}");
-        // It gives up little of the line for it.
+        // It gives up little of the connection for it.
         assert!(rate >= 8_800, "{rate}");
+    }
+
+    /// Downloads into a hotel's connection of about 40 Mbit/s shared with
+    /// other guests, so what reaches this machine swings between 25 and 55
+    /// from moment to moment, under a best of 137.3 whose floor is far
+    /// over it, while the agents' requests keep the upload at two thirds
+    /// of its rate. The router's queue holds a tenth of a second, as the
+    /// hotel's did on 28 October. Gives the share of the last minute its
+    /// queue stood over 30 ms, and the most the download was held to in
+    /// it. No rate keeps that queue away: one under every dip would leave
+    /// half the connection unused.
+    fn a_shared_connection(live: bool) -> (f64, u64) {
+        let mut c = wi_fi(13_900);
+        c.live = live;
+        c.down.best = 137_300;
+        c.down.peak = 137_300;
+        c.down.held = 130_400;
+        c.down.rate = 130_400;
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut queue_kbit, mut most) = (0.0_f64, 0.0_f64, 0);
+        let (mut steps, mut queued) = (0_u32, 0_u32);
+        while at < 240.0 {
+            let share = 40_000.0 + 15_000.0 * (at * 1.7).sin() * (at * 0.23).cos();
+            let offered = float(c.down.rate) * 1.05;
+            queue_kbit = (queue_kbit + (offered - share) * 0.2).clamp(0.0, share * 0.1);
+            let received = if queue_kbit > 0.0 { share } else { offered };
+            let delay = queue_kbit / share * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            c.step(at, 9_000.0, received);
+            if at > 180.0 {
+                steps += 1;
+                queued += u32::from(delay > 30.0);
+                most = most.max(c.down.rate);
+            }
+        }
+        (f64::from(queued) / f64::from(steps), most)
+    }
+
+    #[test]
+    fn while_real_time_flows_a_shared_connection_s_download_is_followed_down() {
+        // At a hotel on 28 October a download held at 130.4 Mbit/s filled
+        // a connection carrying about 50, its share swinging by half as
+        // the other guests' came and went, and the pings past the router
+        // went from 30 ms to 95 at their slowest twentieth. A call's
+        // packets wait behind that queue, and none of it is sorted here.
+        // Outside a call the floor keeps the download's whole rate, as
+        // Joel chose, and the queue stands.
+        let (held, _) = a_shared_connection(false);
+        let (live, most) = a_shared_connection(true);
+        assert!(held > 0.9, "queued {held} of the minute at the floor");
+        assert!(live < 0.5, "queued {live} of the minute while live");
+        assert!(most <= 60_000, "{most}");
+    }
+
+    #[test]
+    fn a_download_cut_in_a_call_for_the_air_s_pings_comes_back_after_it() {
+        // Through a call, pings late for the air's sake a second of every
+        // three while requests come and go may follow the download down.
+        // Once the call ends and a download fills a quiet connection, its
+        // rate comes back.
+        let mut c = wi_fi(10_000);
+        c.live = true;
+        pings(&mut c, 20.0, 6);
+        let mut at = 0.0_f64;
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            let asked = 6_000.0 + 5_000.0 * (at * 0.9).sin();
+            c.step(at, 500.0, asked);
+        }
+        c.live = false;
+        while at < 240.0 {
+            pings(&mut c, 20.0, 3);
+            at += 0.2;
+            c.step(at, 500.0, float(c.down.rate));
+        }
+        assert!(c.down.rate >= 47_500, "{}", c.down.rate);
     }
 
     #[test]
@@ -1204,7 +1547,8 @@ mod tests {
         let draining = c.up.rate;
         pings(&mut c, 300.0, 3);
         c.step(1.7, 9_900.0, 0.0);
-        // Still growing at the draining rate: the line is under even that.
+        // Still growing at the draining rate: the connection is under even
+        // that.
         assert_eq!(c.up.held, whole(float(draining) * 0.9));
         assert!(c.up.rate < c.up.held);
     }
@@ -1273,7 +1617,7 @@ mod tests {
     }
 
     #[test]
-    fn a_busy_line_without_delay_climbs_once_it_has_been_busy_a_while() {
+    fn a_busy_connection_without_delay_climbs_once_it_has_been_busy_a_while() {
         let mut c = controller(10_000, 100_000);
         pings(&mut c, 20.0, 6);
         assert_eq!(c.step(1.0, 9_500.0, 1_000.0), State::Climbing);
@@ -1287,7 +1631,7 @@ mod tests {
     }
 
     #[test]
-    fn a_rate_under_what_the_line_held_climbs_back_quickly() {
+    fn a_rate_under_what_the_connection_held_climbs_back_quickly() {
         let mut c = controller(10_000, 100_000);
         c.up.rate = 5_000;
         pings(&mut c, 20.0, 6);
@@ -1309,7 +1653,7 @@ mod tests {
     }
 
     #[test]
-    fn a_resting_rate_settles_back_to_what_the_line_held() {
+    fn a_resting_rate_settles_back_to_what_the_connection_held() {
         let mut c = controller(10_000, 100_000);
         c.up.rate = 20_000;
         pings(&mut c, 20.0, 6);
@@ -1328,28 +1672,29 @@ mod tests {
         assert_eq!((c.up.rate, c.down.rate), (1_000, 5_000));
     }
 
-    /// A line beyond the router as the timed VM test makes it: `line`
-    /// kbit/s, 20 ms away, with a buffer of a second at 8 Mbit/s, and
-    /// uploads that always fill what the shaper lets out. Steps it for
-    /// `seconds`, three pings a step, and gives the queue's delay in ms.
-    struct Line {
+    /// A connection beyond the router as the timed VM test makes it:
+    /// `connection` kbit/s, 20 ms away, with a buffer of a second at 8
+    /// Mbit/s, and uploads that always fill what the shaper lets out. Steps
+    /// it for `seconds`, three pings a step, and gives the queue's delay in
+    /// ms.
+    struct Connection {
         queue_kbit: f64,
         at: f64,
     }
 
-    impl Line {
-        fn run(&mut self, c: &mut Controller, line: f64, seconds: f64) -> f64 {
+    impl Connection {
+        fn run(&mut self, c: &mut Controller, connection: f64, seconds: f64) -> f64 {
             let dt = 0.2;
             let end = self.at + seconds;
             while self.at < end {
                 let sent = float(c.up.rate);
-                self.queue_kbit = (self.queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
-                let delay = self.queue_kbit / line * 1000.0;
+                self.queue_kbit = (self.queue_kbit + (sent - connection) * dt).clamp(0.0, 8_000.0);
+                let delay = self.queue_kbit / connection * 1000.0;
                 pings(c, 20.0 + delay, 3);
                 self.at += dt;
                 c.step(self.at, sent, 0.0);
             }
-            self.queue_kbit / line * 1000.0
+            self.queue_kbit / connection * 1000.0
         }
 
         /// Uploads `on` seconds of every `on + off`, as requests do, for
@@ -1357,7 +1702,7 @@ mod tests {
         fn bursts(
             &mut self,
             c: &mut Controller,
-            line: f64,
+            connection: f64,
             seconds: f64,
             on: f64,
             off: f64,
@@ -1368,11 +1713,11 @@ mod tests {
             while self.at < start + seconds {
                 let sending = (self.at - start) % (on + off) < on;
                 let sent = if sending { float(c.up.rate) } else { 0.0 };
-                self.queue_kbit = (self.queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
-                let delay = self.queue_kbit / line * 1000.0;
+                self.queue_kbit = (self.queue_kbit + (sent - connection) * dt).clamp(0.0, 8_000.0);
+                let delay = self.queue_kbit / connection * 1000.0;
                 pings(c, 20.0 + delay, 3);
                 self.at += dt;
-                if c.step(self.at, sent.min(line), 0.0) == State::Cut {
+                if c.step(self.at, sent.min(connection), 0.0) == State::Cut {
                     cuts += 1;
                 }
             }
@@ -1381,29 +1726,29 @@ mod tests {
     }
 
     #[test]
-    fn requests_sent_in_bursts_fit_under_the_line_without_probing_past_it() {
+    fn requests_sent_in_bursts_fit_under_the_connection_without_probing_past_it() {
         let mut c = controller(12_000, 50_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Line {
+        let mut connection = Connection {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        // A long upload finds the line.
-        line.run(&mut c, 10_000.0, 30.0);
+        // A long upload finds the connection.
+        connection.run(&mut c, 10_000.0, 30.0);
         // Then two seconds of every five: each fits under what was held,
-        // and none climbs past the line to fill its queue.
-        let cuts = line.bursts(&mut c, 10_000.0, 120.0, 2.0, 3.0);
+        // and none climbs past the connection to fill its queue.
+        let cuts = connection.bursts(&mut c, 10_000.0, 120.0, 2.0, 3.0);
         assert!(cuts <= 1, "{cuts}");
     }
 
-    /// An upload filling all it may on a `line` kbit/s line 20 ms away, as
-    /// `Line` does, with pings `late` ms late for 0.8 s of every `every`
+    /// An upload filling all it may on a `connection` kbit/s connection 20
+    /// ms away, as `Connection` does, with pings `late` ms late for 0.8 s of every `every`
     /// that no queue of its made, as on Wi-Fi or a busy host. Steps for
     /// `seconds`, and gives the lowest rate after the first ten and how many
     /// times it cut.
     fn upload_beside_noise(
         c: &mut Controller,
-        line: f64,
+        connection: f64,
         seconds: f64,
         every: f64,
         late: f64,
@@ -1412,11 +1757,11 @@ mod tests {
         let (mut queue_kbit, mut at, mut lowest, mut cuts) = (0.0_f64, 0.0, u64::MAX, 0);
         while at < seconds {
             let sent = float(c.up.rate);
-            queue_kbit = (queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
+            queue_kbit = (queue_kbit + (sent - connection) * dt).clamp(0.0, 8_000.0);
             let noise = if at % every < 0.8 { late } else { 0.0 };
-            pings(c, 20.0 + queue_kbit / line * 1000.0 + noise, 3);
+            pings(c, 20.0 + queue_kbit / connection * 1000.0 + noise, 3);
             at += dt;
-            if c.step(at, sent.min(line), 0.0) == State::Cut {
+            if c.step(at, sent.min(connection), 0.0) == State::Cut {
                 cuts += 1;
             }
             if at > 10.0 {
@@ -1438,8 +1783,8 @@ mod tests {
     }
 
     #[test]
-    fn a_line_a_retry_confirmed_is_cut_no_more_often() {
-        // Retrying every cut cut a steady line 50 times in two minutes,
+    fn a_connection_a_retry_confirmed_is_cut_no_more_often() {
+        // Retrying every cut cut a steady connection 50 times in two minutes,
         // where it took 11.
         let mut c = controller(10_000, 50_000);
         pings(&mut c, 20.0, 6);
@@ -1449,27 +1794,28 @@ mod tests {
     }
 
     #[test]
-    fn a_full_modem_buffer_is_drained_without_cutting_far_under_the_line() {
+    fn a_full_modem_buffer_is_drained_without_cutting_far_under_the_connection() {
         let mut c = controller(10_000, 50_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Line {
+        let mut connection = Connection {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        // It probes a little past the line and cuts at the queue that
-        // builds, so it sits within a tenth of the line either way.
-        line.run(&mut c, 8_000.0, 20.0);
+        // It probes a little past the connection and cuts at the queue
+        // that builds, so it sits within a tenth of the connection either
+        // way.
+        connection.run(&mut c, 8_000.0, 20.0);
         assert!((5_000..8_800).contains(&c.up.rate), "{}", c.up.rate);
-        let delay = line.run(&mut c, 8_000.0, 10.0);
+        let delay = connection.run(&mut c, 8_000.0, 10.0);
         assert!(delay < 60.0, "{delay}");
         assert!((5_000..8_800).contains(&c.up.rate), "{}", c.up.rate);
-        // The line halves: followed within seconds.
-        line.run(&mut c, 4_000.0, 30.0);
+        // The connection halves: followed within seconds.
+        connection.run(&mut c, 4_000.0, 30.0);
         assert!(c.up.rate < 4_400, "{}", c.up.rate);
-        let delay = line.run(&mut c, 4_000.0, 10.0);
+        let delay = connection.run(&mut c, 4_000.0, 10.0);
         assert!(delay < 100.0, "{delay}");
         // And back: found again within two minutes.
-        line.run(&mut c, 8_000.0, 120.0);
+        connection.run(&mut c, 8_000.0, 120.0);
         assert!(c.up.rate > 6_000, "{}", c.up.rate);
     }
 
@@ -1485,10 +1831,10 @@ mod tests {
         assert!(b.ms.unwrap() < 40.0, "{:?}", b.ms);
     }
 
-    /// A download over a line beyond the router: `line` kbit/s, with an
-    /// ISP's buffer, and senders that fill what the shaper lets through and
-    /// a little more, as TCP probing does. What arrives is what the line
-    /// carries while its queue holds anything. Steps it for `seconds`,
+    /// A download over a connection beyond the router: `connection` kbit/s,
+    /// with an ISP's buffer, and senders that fill what the shaper lets
+    /// through and a little more, as TCP probing does. What arrives is what
+    /// the connection carries while its queue holds anything. Steps it for `seconds`,
     /// three pings a step, and gives the seconds the queue was over 30 ms.
     struct Download {
         queue_kbit: f64,
@@ -1496,15 +1842,20 @@ mod tests {
     }
 
     impl Download {
-        fn run(&mut self, c: &mut Controller, line: f64, seconds: f64, acks: f64) -> f64 {
+        fn run(&mut self, c: &mut Controller, connection: f64, seconds: f64, acks: f64) -> f64 {
             let dt = 0.2;
             let end = self.at + seconds;
             let mut late = 0.0;
             while self.at < end {
                 let offered = float(c.down.rate) * 1.05;
-                self.queue_kbit = (self.queue_kbit + (offered - line) * dt).clamp(0.0, 100_000.0);
-                let received = if self.queue_kbit > 0.0 { line } else { offered };
-                let delay = self.queue_kbit / line * 1000.0;
+                self.queue_kbit =
+                    (self.queue_kbit + (offered - connection) * dt).clamp(0.0, 100_000.0);
+                let received = if self.queue_kbit > 0.0 {
+                    connection
+                } else {
+                    offered
+                };
+                let delay = self.queue_kbit / connection * 1000.0;
                 if delay > 30.0 {
                     late += dt;
                 }
@@ -1515,7 +1866,7 @@ mod tests {
             late
         }
 
-        /// Nothing sent or received for `seconds`, the line quiet.
+        /// Nothing sent or received for `seconds`, the connection quiet.
         fn rest(&mut self, c: &mut Controller, seconds: f64) {
             let end = self.at + seconds;
             self.queue_kbit = 0.0;
@@ -1527,163 +1878,164 @@ mod tests {
         }
     }
 
-    /// A download whose line dipped to 50 of its 95 Mbit/s, and was cut.
+    /// A download whose connection dipped to 50 of its 95 Mbit/s, and was
+    /// cut.
     fn cut_by_a_dip() -> (Controller, Download) {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Download {
+        let mut connection = Download {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
-        line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        connection.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        connection.run(&mut c, 50_000.0, 10.0, 1_000.0);
         assert!(c.down.held < 50_000, "{}", c.down.held);
-        (c, line)
+        (c, connection)
     }
 
     #[test]
-    fn a_dip_leaves_the_line_s_best_to_be_remembered() {
+    fn a_dip_leaves_the_connection_s_best_to_be_remembered() {
         // A restart starts from what is remembered: a cut remembered in
         // place of the best held a download on Wi-Fi at 5 Mbit/s with no
-        // peak to forget back to, where the line carried 85.
+        // peak to forget back to, where the connection carried 85.
         let (c, _) = cut_by_a_dip();
         assert_eq!(c.down.remembered(&c.settings), 95_000);
     }
 
     #[test]
-    fn a_peak_the_line_no_longer_carries_is_remembered_no_more() {
-        let (mut c, mut line) = cut_by_a_dip();
-        line.rest(&mut c, 600.0);
-        // The line stayed at 50: the peak put back is cut again, and that
-        // cut is what the line now holds.
-        line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+    fn a_peak_the_connection_no_longer_carries_is_remembered_no_more() {
+        let (mut c, mut connection) = cut_by_a_dip();
+        connection.rest(&mut c, 600.0);
+        // The connection stayed at 50: the peak put back is cut again, and
+        // that cut is what the connection now holds.
+        connection.run(&mut c, 50_000.0, 10.0, 1_000.0);
         let remembered = c.down.remembered(&c.settings);
         assert!(remembered < 50_000, "{remembered}");
     }
 
     #[test]
     fn a_cut_long_past_is_forgotten_by_the_next_download() {
-        let (mut c, mut line) = cut_by_a_dip();
+        let (mut c, mut connection) = cut_by_a_dip();
         // Said once, on the step it's forgotten.
         let mut told = 0;
         for _ in 0..3_500 {
             pings(&mut c, 20.0, 3);
-            line.at += 0.2;
-            if c.step(line.at, 0.0, 0.0) == State::Forgot {
+            connection.at += 0.2;
+            if c.step(connection.at, 0.0, 0.0) == State::Forgot {
                 told += 1;
             }
         }
         assert_eq!(told, 1);
-        // The line is back: the download starts near what it carried
+        // The connection is back: the download starts near what it carried
         // before the dip, not half way up a half-minute climb.
-        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        connection.run(&mut c, 100_000.0, 2.0, 1_000.0);
         assert!(c.down.rate > 85_000, "{}", c.down.rate);
     }
 
     #[test]
-    fn a_peak_the_line_carried_again_outlasts_the_next_dip() {
-        let (mut c, mut line) = cut_by_a_dip();
-        line.rest(&mut c, 700.0);
+    fn a_peak_the_connection_carried_again_outlasts_the_next_dip() {
+        let (mut c, mut connection) = cut_by_a_dip();
+        connection.rest(&mut c, 700.0);
         // The peak put back carries a download for a while: it's the
-        // line's again, and a later dip's cut is forgotten back to it. The
-        // line is faster than the climb reaches, so no probe past it is
-        // cut on the way.
-        line.run(&mut c, 200_000.0, 20.0, 1_000.0);
-        line.rest(&mut c, 60.0);
-        line.run(&mut c, 50_000.0, 10.0, 1_000.0);
-        line.rest(&mut c, 700.0);
+        // connection's again, and a later dip's cut is forgotten back to
+        // it. The connection is faster than the climb reaches, so no probe
+        // past it is cut on the way.
+        connection.run(&mut c, 200_000.0, 20.0, 1_000.0);
+        connection.rest(&mut c, 60.0);
+        connection.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        connection.rest(&mut c, 700.0);
         assert!(c.down.held > 90_000, "{}", c.down.held);
     }
 
     #[test]
     fn an_upload_cut_now_and_then_leaves_an_old_download_cut_to_be_forgotten() {
-        let (mut c, mut line) = cut_by_a_dip();
+        let (mut c, mut connection) = cut_by_a_dip();
         for _ in 0..4 {
-            line.rest(&mut c, 300.0);
-            let mut upload = Line {
+            connection.rest(&mut c, 300.0);
+            let mut upload = Connection {
                 queue_kbit: 0.0,
-                at: line.at,
+                at: connection.at,
             };
             upload.run(&mut c, 5_000.0, 5.0);
-            line.at = upload.at;
+            connection.at = upload.at;
         }
         // The upload was cut by its last run, from the peak put back after
         // 600 s, rather than left at its own: an upload that fits under
-        // its line isn't cut at all.
+        // its connection isn't cut at all.
         assert!(c.up.peak < 10_000, "{}", c.up.peak);
         assert!(c.down.held > 90_000, "{}", c.down.held);
     }
 
     #[test]
     fn a_recent_cut_is_still_held() {
-        let (mut c, mut line) = cut_by_a_dip();
-        line.rest(&mut c, 60.0);
-        assert_ne!(c.step(line.at + 0.2, 0.0, 0.0), State::Forgot);
+        let (mut c, mut connection) = cut_by_a_dip();
+        connection.rest(&mut c, 60.0);
+        assert_ne!(c.step(connection.at + 0.2, 0.0, 0.0), State::Forgot);
         assert!(c.down.held < 50_000, "{}", c.down.held);
     }
 
     #[test]
-    fn a_line_that_stayed_slow_is_cut_once_and_kept() {
-        let (mut c, mut line) = cut_by_a_dip();
-        line.rest(&mut c, 700.0);
-        // Forgotten, but the line is still slow: the first download's
+    fn a_connection_that_stayed_slow_is_cut_once_and_kept() {
+        let (mut c, mut connection) = cut_by_a_dip();
+        connection.rest(&mut c, 700.0);
+        // Forgotten, but the connection is still slow: the first download's
         // queue is drained within a couple of seconds, and its cut is
         // kept rather than forgotten again.
-        let late = line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        let late = connection.run(&mut c, 50_000.0, 10.0, 1_000.0);
         assert!(late < 2.0, "{late}");
-        line.rest(&mut c, 700.0);
+        connection.rest(&mut c, 700.0);
         assert!(c.down.held < 50_000, "{}", c.down.held);
     }
 
     #[test]
-    fn a_line_fallen_under_half_the_download_is_followed_down() {
+    fn a_connection_fallen_under_half_the_download_is_followed_down() {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Download {
+        let mut connection = Download {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
-        // The line falls to 40: what arrives is then 42% of the shaped
+        connection.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        // The connection falls to 40: what arrives is then 42% of the shaped
         // rate, under `loaded`, but the download is still what fills it.
-        let late = line.run(&mut c, 40_000.0, 10.0, 1_000.0);
+        let late = connection.run(&mut c, 40_000.0, 10.0, 1_000.0);
         assert!(c.down.rate < 40_000, "{}", c.down.rate);
         assert!(late < 2.0, "{late}");
-        let late = line.run(&mut c, 40_000.0, 10.0, 1_000.0);
+        let late = connection.run(&mut c, 40_000.0, 10.0, 1_000.0);
         assert!(late < 0.5, "{late}");
     }
 
     #[test]
-    fn a_call_s_upload_isnt_cut_for_a_fallen_download_line() {
+    fn a_call_s_upload_isnt_cut_for_a_fallen_download_connection() {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Download {
+        let mut connection = Download {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        line.run(&mut c, 100_000.0, 2.0, 3_000.0);
+        connection.run(&mut c, 100_000.0, 2.0, 3_000.0);
         // A call sends 3 of the upload's 10 (0.30) while the download's
-        // line falls to 25 of its 95 (0.26): the larger share is the
+        // connection falls to 25 of its 95 (0.26): the larger share is the
         // upload's, but it is the download's that fell.
-        let late = line.run(&mut c, 25_000.0, 20.0, 3_000.0);
+        let late = connection.run(&mut c, 25_000.0, 20.0, 3_000.0);
         assert_eq!(c.up.rate, 10_000);
         assert!(c.down.rate < 25_000, "{}", c.down.rate);
         assert!(late < 3.0, "{late}");
     }
 
     #[test]
-    fn a_line_falling_twice_is_followed_while_the_upload_carries_acks() {
+    fn a_connection_falling_twice_is_followed_while_the_upload_carries_acks() {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Download {
+        let mut connection = Download {
             queue_kbit: 0.0,
             at: 0.0,
         };
-        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
-        // The line falls, then falls again within the spell: handing the
-        // next cut to the upload's acknowledgements mustn't stall it.
-        line.run(&mut c, 25_000.0, 3.0, 1_000.0);
-        let late = line.run(&mut c, 12_000.0, 20.0, 1_000.0);
+        connection.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        // The connection falls, then falls again within the spell: handing
+        // the next cut to the upload's acknowledgements mustn't stall it.
+        connection.run(&mut c, 25_000.0, 3.0, 1_000.0);
+        let late = connection.run(&mut c, 12_000.0, 20.0, 1_000.0);
         assert!(c.down.rate < 12_000, "{}", c.down.rate);
         assert!(late < 4.0, "{late}");
     }
@@ -1693,18 +2045,18 @@ mod tests {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
         let (mut queue_kbit, mut at, mut late) = (0.0_f64, 0.0, 0.0);
-        // A download fills the line, then ends as an app's upload of 4 of
-        // 10 meets an uplink fallen to 3: the download's share fell the
-        // more, so it is cut first, but the queue is the upload's.
+        // A download fills the connection, then ends as an app's upload of
+        // 4 of 10 meets a connection fallen to 3: the download's share fell
+        // the more, so it is cut first, but the queue is the upload's.
         while at < 30.0 {
-            let (line, sending, received) = if at < 2.0 {
+            let (connection, sending, received) = if at < 2.0 {
                 (10_000.0, 1_000.0_f64, float(c.down.rate))
             } else {
                 (3_000.0, 4_000.0, 30_000.0_f64.min(float(c.down.rate)))
             };
             let sent = sending.min(float(c.up.rate));
-            queue_kbit = (queue_kbit + (sent - line) * 0.2).clamp(0.0, 8_000.0);
-            let delay = queue_kbit / line * 1000.0;
+            queue_kbit = (queue_kbit + (sent - connection) * 0.2).clamp(0.0, 8_000.0);
+            let delay = queue_kbit / connection * 1000.0;
             if at > 20.0 && delay > 30.0 {
                 late += 0.2;
             }
@@ -1712,7 +2064,7 @@ mod tests {
             at += 0.2;
             c.step(at, sent, received);
         }
-        // It probes a little past the line once the queue is gone.
+        // It probes a little past the connection once the queue is gone.
         assert!(c.up.rate < 3_300, "{}", c.up.rate);
         assert!(late < 1.0, "{late}");
     }
@@ -1721,12 +2073,12 @@ mod tests {
     fn a_download_s_acks_are_not_cut_for_its_queue() {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
-        let mut line = Download {
+        let mut connection = Download {
             queue_kbit: 0.0,
             at: 0.0,
         };
         // A quarter of the upload is the download's acknowledgements.
-        line.run(&mut c, 40_000.0, 10.0, 2_500.0);
+        connection.run(&mut c, 40_000.0, 10.0, 2_500.0);
         assert_eq!(c.up.rate, 10_000);
         assert!(c.down.rate < 40_000, "{}", c.down.rate);
     }

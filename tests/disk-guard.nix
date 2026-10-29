@@ -6,8 +6,9 @@
 # the fresh target go, but a real cargo build, waiting in its build script
 # with cargo's locks held, keeps its own until it ends. The account takes
 # nothing at all without the machine's guard vouching for the processes it
-# can't read. A target on a disk too full to make a trash in is deleted in
-# place. With its store under pressure, the machine's guard expires all but
+# can't read. A target in a Btrfs subvolume is offered as one beside it is,
+# and one in a read-only snapshot isn't. A target on a disk too full to make
+# a trash in is deleted in place. With its store under pressure, the machine's guard expires all but
 # the newest five of a profile's generations and collects what that and
 # anything else left dead. The tests are disk-guard-vm-test.py, which pytest
 # runs inside the driver (tests/lib/vm_pytest.py); one runs alone with
@@ -101,6 +102,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     };
 
     environment.systemPackages = [
+      pkgs.btrfs-progs
       pkgs.cargo
       pkgs.jq
       pkgs.rustc
@@ -165,6 +167,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       values = pkgs.writeText "disk-guard-values.json" (
         builtins.toJSON {
           systemDropIn = "${systemDropIn}";
+          userConfig = "${userConfig}";
           userDropIn = "${userDropIn}";
           waiting = "${waiting}";
         }

@@ -1,11 +1,11 @@
-"""Whether the shaper finds a modem's line and keeps an app's pings near it, under load.
+"""Whether the shaper finds a modem's connection and keeps an app's pings near it, under load.
 
 tests/shaper-rate.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
-its opening comment says what the test proves. The router is the line: a netem delay, then a
-tbf whose rate the test changes and whose backlog is the modem's queue. The test waits on that
-queue rather than on the clock, as it's what the pings would wait in.
+its opening comment says what the test proves. The router is the connection: a netem delay,
+then a tbf whose rate the test changes and whose backlog is the modem's queue. The test waits
+on that queue rather than on the clock, as it's what the pings would wait in.
 
-Each test asks for the state it starts from as a fixture: the line found under the jobs'
+Each test asks for the state it starts from as a fixture: the connection found under the jobs'
 uploads, then halved, then back at its full rate. A fixture's work is done once a run, however
 many tests ask for it, so any test runs alone with `-k`, and all of them run in the order
 they're written, each after what it needs. The tests need no value from Nix: they ask the
@@ -30,22 +30,22 @@ if TYPE_CHECKING:
 type Json = dict[str, Any]
 
 BIN = "/run/current-system/sw/bin"
-# The line's queue at 8 Mbit/s, for a burst of 32 kbit and a second of buffer.
-LINE = "tbf rate {} burst 32kbit limit 1000000"
-# The line at its full rate and halved, in kbit/s.
+# The connection's queue at 8 Mbit/s, for a burst of 32 kbit and a second of buffer.
+CONNECTION = "tbf rate {} burst 32kbit limit 1000000"
+# The connection at its full rate and halved, in kbit/s.
 FULL = 8000
 HALVED = 4000
-# The shaper probes a little past the line and cuts at the queue that
-# builds, so any moment finds it within a tenth of the line; at a quarter
-# under, it's still draining a cut.
+# The shaper probes a little past the connection and cuts at the queue that
+# builds, so any moment finds it within a tenth of the connection; at a
+# quarter under, it's still draining a cut.
 PROBED = 8800
 SETTLED = 6000
-# The line's queue, in bytes, when it's drained: 40 ms at 8 Mbit/s, or 80 ms
+# The connection's queue, in bytes, when it's drained: 40 ms at 8 Mbit/s, or 80 ms
 # at 4; and full, half a second of it at 8.
 DRAINED = 40_000
 FILLED = 500_000
-# An app's median round trip with the shaper at the full line and the
-# halved one, and the least it takes without the shaper, in ms.
+# An app's median round trip with the shaper at the full connection and
+# the halved one, and the least it takes without the shaper, in ms.
 SHAPED = 80
 DROPPED = 100
 UNSHAPED = 300
@@ -53,10 +53,13 @@ UNSHAPED = 300
 ANSWERS = 20
 # CAKE's diffserv4 tins, in the order its counts list them.
 TINS = ["bulk", "best effort", "video", "voice"]
-# What an app's upload sends while the jobs' uploads go on, and the most of
+# What an app's uploads send while the jobs' uploads go on, and the most of
 # that the jobs may send meanwhile: CAKE leaves bulk a sixteenth while
-# anything else wants the line, where five flows shared evenly would leave
-# the jobs four times the app's.
+# anything else wants the connection, where six flows shared evenly would leave
+# the jobs twice the app's. The app sends two, since one alone, short of
+# CPU in a VM on a host at a load of 40, left gaps in its queue that bulk
+# rightly filled, to over a fifth of the connection.
+APP_FLOWS = 2
 APP_SENDS = 2_000_000
 JOBS_SHARE = 4
 # The most a link that carries no uploads sends between two looks a second
@@ -66,26 +69,26 @@ QUIET = 20_000
 # window of 1.2 s.
 QUIET_LOOKS = 2
 # What the app's upload sends before the count starts, so its first round
-# trips, while the jobs still have the line, aren't counted against it.
+# trips, while the jobs still have the connection, aren't counted against it.
 APP_STARTS = 500_000
 # How long the client may take to boot to its first queues, and the
 # server's link to take its address.
 COMING_UP = dt.timedelta(seconds=30)
 ADDRESSING = dt.timedelta(seconds=60)
-# How long the shaper may take to find the line from where it starts, to
+# How long the shaper may take to find the connection from where it starts, to
 # follow it down or a second link, and to climb back to it.
 FINDING = dt.timedelta(seconds=90)
 FOLLOWING = dt.timedelta(seconds=60)
 CLIMBING = dt.timedelta(seconds=120)
-# How long an upload may take to send what's counted, and the line's queue
-# to fill without the shaper.
+# How long an upload may take to send what's counted, and the connection's
+# queue to fill without the shaper.
 SENDING = dt.timedelta(seconds=60)
 FILLING = dt.timedelta(seconds=30)
 
 
 @dataclass
 class Rig:
-    """The client, the router that is its line, the server past it, and what each counts."""
+    """The client, the router that is its connection, the server past it, and what each counts."""
 
     client: BaseMachine
     router: BaseMachine
@@ -101,7 +104,7 @@ class Rig:
         return next((int(link["up"]) for link in status if link["name"] == "eth1"), 0)
 
     def backlog(self) -> int:
-        """Give the bytes waiting in the line's queue at the router."""
+        """Give the bytes waiting in the connection's queue at the router."""
         queues: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth2"))
         return int(next(q for q in queues if q["kind"] == "tbf")["backlog"])
 
@@ -115,10 +118,10 @@ class Rig:
         """Give the bytes the client has sent on a link."""
         return int(self.client.succeed(f"cat /sys/class/net/{link}/statistics/tx_bytes"))
 
-    def line(self, kbit: int) -> None:
-        """Set the line's rate."""
+    def connection(self, kbit: int) -> None:
+        """Set the connection's rate."""
         self.router.succeed(
-            f"tc qdisc change dev eth2 parent 1: handle 2: {LINE.format(f'{kbit}kbit')}"
+            f"tc qdisc change dev eth2 parent 1: handle 2: {CONNECTION.format(f'{kbit}kbit')}"
         )
 
     def uploads(self) -> None:
@@ -143,18 +146,18 @@ class Rig:
         return statistics.median(times)
 
     def holds_under(self, kbit: int) -> bool:
-        """Say whether the shaper holds under that rate with the line's queue drained."""
+        """Say whether the shaper holds under that rate with the connection's queue drained."""
         return self.up() < kbit and self.backlog() < DRAINED
 
 
 @pytest.fixture(scope="module")
 def rig(machines: dict[str, BaseMachine]) -> Rig:
-    """Give the machines once the shaper shapes the client's line and the server listens."""
+    """Give the machines once the shaper shapes the client's connection and the server listens."""
     client, router, server = machines["client"], machines["router"], machines["server"]
     for node in machines.values():
         node.start()
     server.wait_for_open_port(5201)
-    router.wait_for_unit("line.service")
+    router.wait_for_unit("connection.service")
     client.wait_for_unit("user@1000.service")
     client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=COMING_UP)
     # The sink listens on every address, so its port can open before the
@@ -167,11 +170,11 @@ def rig(machines: dict[str, BaseMachine]) -> Rig:
 
 @pytest.fixture(scope="module")
 def loaded(rig: Rig) -> Rig:
-    """Give the rig with the jobs' uploads filling the line, and the shaper holding under it."""
+    """Give the rig with the jobs' uploads filling the connection, the shaper holding under it."""
     rig.uploads()
 
     def found(_last_try: bool) -> bool:
-        """Say whether the shaper holds under the line with its queue drained."""
+        """Say whether the shaper holds under the connection with its queue drained."""
         return SETTLED < rig.up() < FULL and rig.backlog() < DRAINED
 
     retry(found, timeout=FINDING)
@@ -180,22 +183,22 @@ def loaded(rig: Rig) -> Rig:
 
 @pytest.fixture(scope="module")
 def dropped(loaded: Rig) -> Rig:
-    """Give the loaded rig once its line is halved and the shaper has followed it down."""
-    loaded.line(HALVED)
+    """Give the loaded rig once its connection is halved and the shaper has followed it down."""
+    loaded.connection(HALVED)
     retry(lambda _last_try: loaded.holds_under(HALVED), timeout=FOLLOWING)
     return loaded
 
 
 @pytest.fixture(scope="module")
 def returned(dropped: Rig) -> Rig:
-    """Give the rig once its line is back at its full rate and the shaper has climbed to it."""
-    dropped.line(FULL)
+    """Give the rig once its connection is back at full rate and the shaper has climbed to it."""
+    dropped.connection(FULL)
     retry(lambda _last_try: dropped.up() > SETTLED, timeout=CLIMBING)
     return dropped
 
 
-def test_finds_the_line(loaded: Rig) -> None:
-    """The shaper finds the line and an app's pings stay near it."""
+def test_finds_the_connection(loaded: Rig) -> None:
+    """The shaper finds the connection and an app's pings stay near it."""
     shaped = loaded.ping("shaped")
     rate = loaded.up()
     assert SETTLED < rate < PROBED, rate
@@ -203,11 +206,12 @@ def test_finds_the_line(loaded: Rig) -> None:
 
 
 def test_app_upload(loaded: Rig) -> None:
-    """An app's upload takes the line from the jobs' while it runs."""
+    """An app's upload takes the connection from the jobs' while it runs."""
     started = loaded.sent()["best effort"]
     loaded.client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=app-upload"
-        f" {BIN}/bash -c 'while true; do {BIN}/cat /dev/zero > /dev/tcp/{loaded.far}/5201; done'"
+        f" {BIN}/bash -c 'for i in $({BIN}/seq {APP_FLOWS}); do (while true; do"
+        f" {BIN}/cat /dev/zero > /dev/tcp/{loaded.far}/5201; done) & done; wait'"
     )
     retry(lambda _last_try: loaded.sent()["best effort"] - started >= APP_STARTS, timeout=SENDING)
     before = loaded.sent()
@@ -223,7 +227,7 @@ def test_app_upload(loaded: Rig) -> None:
 
 
 def test_follows_down(dropped: Rig) -> None:
-    """When the line drops, the shaper follows it down."""
+    """When the connection drops, the shaper follows it down."""
     assert dropped.ping("dropped") < DROPPED
 
 
@@ -233,7 +237,7 @@ def test_climbs_back(returned: Rig) -> None:
 
 
 def test_second_link(returned: Rig) -> None:
-    """Uploads over a second link to the same router count against the line."""
+    """Uploads over a second link to the same router count against the connection."""
     rig = returned
     rig.client.succeed("systemctl -M alice@ --user stop uploads.service")
 
@@ -245,7 +249,7 @@ def test_second_link(returned: Rig) -> None:
     retry(follows, timeout=FOLLOWING)
     # eth1's controller judges by its last second or so of traffic, so it
     # must have none of its own left before only eth2 carries the uploads:
-    # then it sees the line fill only if it counts what eth2 sends.
+    # then it sees the connection fill only if it counts what eth2 sends.
     last = {"sent": rig.sent_by("eth1"), "quiet": 0}
 
     def quiet(_last_try: bool) -> bool:
@@ -263,15 +267,15 @@ def test_second_link(returned: Rig) -> None:
     )
     started = rig.sent_by("eth2")
     retry(lambda _last_try: rig.sent_by("eth2") - started >= APP_SENDS, timeout=SENDING)
-    rig.line(HALVED)
+    rig.connection(HALVED)
     retry(lambda _last_try: rig.holds_under(HALVED), timeout=FOLLOWING)
     rig.client.succeed("systemctl stop second-link-uploads.service")
-    rig.line(FULL)
+    rig.connection(FULL)
     rig.uploads()
 
 
 def test_unshaped(loaded: Rig) -> None:
-    """Without the shaper, the line's buffer fills."""
+    """Without the shaper, the connection's buffer fills."""
     loaded.client.succeed("systemctl stop shaper.service")
     retry(lambda _last_try: loaded.backlog() > FILLED, timeout=FILLING)
     unshaped = loaded.ping("unshaped")

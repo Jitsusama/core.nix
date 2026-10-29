@@ -184,11 +184,32 @@ Scope {
         return [];
     }
 
+    // The things of the providers the vocabulary puts inside this one's
+    // collection (their `in`), as GIMP's newest screenshot lives in
+    // Capture, so a collection lists them after its own without naming
+    // them. Each is still found by its name from the top.
+    function lodged() {
+        const here = settings.name ?? "";
+        const spoken = launcher?.vocabulary;
+        if (here === "" || !spoken)
+            return [];
+        return (launcher.sources ?? [])
+            .filter(source => source !== provider
+                && spoken.of(source.settings?.name ?? "").in === here)
+            .reduce((rows, source) => rows.concat(source.things), []);
+    }
+
     // What a collection's row at home says after its title: how many it
     // holds, grouped by thousands.
     function counted() {
         const size = everything().length;
         return size === 0 ? "empty" : String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    // What a collection's row says below it while it's picked, as the
+    // queue says how much room the machine has: nothing, for most.
+    function noted() {
+        return "";
     }
 
     // A collection was stepped into, so all of it has been seen.
@@ -222,7 +243,7 @@ Scope {
         let prepared = null;
         Object.defineProperty(made, "prepared", {
             enumerable: true,
-            get: () => prepared ?? (prepared = Fuzzy.prepare(made.name))
+            get: () => prepared ?? (prepared = Fuzzy.kept(made.name))
         });
         return made;
     }
@@ -253,29 +274,57 @@ Scope {
     // It's a figure, saying a value, so it wears no glyph unless it does
     // more (verbs) or says it's an act to copy (figure false), as a theme to
     // paste is (Choice.qml).
+    // A row that only shows a value copies it (Joel, 2026-10-26: every row
+    // has a Return act, and one that only shows a value copies it): what
+    // it says to copy, or else its value as it reads when Return comes,
+    // so a live figure copies what it shows. One still being read copies
+    // nothing yet.
     function copyRow(fields) {
-        const text = fields.copy ?? fields.name;
-        return thing(Object.assign({
-            verb: text === "" ? "close" : "copy",
+        const valueOf = side => typeof side === "string" && side !== "\u2026" ? side : "";
+        const textOf = from => (from.copy ?? from.name) === "" ? valueOf(from.side)
+            : from.copy ?? from.name;
+        const row = thing(Object.assign({
+            verb: textOf(fields) === "" ? "close" : "copy",
             hue: "voice",
             figure: true,
             plain: true,
             now: true,
             run: () => {
+                const text = textOf({ copy: fields.copy, name: fields.name, side: row.side });
                 if (text !== "")
                     Quickshell.clipboardText = text;
             }
         }, fields));
+        return row;
     }
 
-    // A figure holding more, as a CPU's Cores or a display's Scale: it says
-    // a value, wears its glyph dimmed (Choice.qml's "more"), and steps in
-    // on Return as on the right arrow to what `inside` gives, made then.
+    // A figure holding more, as a CPU's Cores or the weather's Rain: it says
+    // a value, wears its glyph dimmed (Choice.qml's "more"), copies the
+    // value on Return as any figure does, and the right arrow steps into
+    // what `inside` gives, made then (Joel, 2026-10-26: a row showing a
+    // value copies it, everywhere, and the right arrow goes into what it
+    // holds). A setting, as a display's Scale (`offers`), or one with no
+    // value yet steps in on Return as well, choosing being a setting's act.
     // The launcher asks a row for its verbs at the top and for its targets
     // a step in (enter), so it gives the same rows as both, or a part such
-    // as a display's Scale, a step inside the display, would open nothing.
+    // as Rain, a step inside the weather, would open nothing.
     function holderRow(fields, inside) {
         const row = copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields));
+        if (!row.offers && row.verb === "copy")
+            return Object.assign(row, { verbs: inside, targets: inside });
+        return entering(row, inside);
+    }
+
+    // A thing holding more, as a Bluetooth device or a camera, whose side
+    // says how it stands rather than a figure: Return steps in, as the
+    // right arrow does, to what `inside` gives.
+    function thingRow(fields, inside) {
+        return entering(copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields)),
+            inside);
+    }
+
+    // A row made to step in on Return to what `inside` gives.
+    function entering(row, inside) {
         return Object.assign(row, {
             verb: "more",
             stays: true,
@@ -402,28 +451,47 @@ Scope {
         }
     }
 
-    // An application's own glyph where the icon font has one, by its desktop
-    // entry's id or a window's app id, with a machine's own from
-    // `settings.glyphs`, as hex code points. These are the programs' own
-    // logos, named by the programs rather than by a meaning, so they're
-    // kept here and not among the theme's marks; one without a logo wears
+    // An application's own glyph, by its desktop entry's id or a window's
+    // app id, with a machine's own from `settings.glyphs`: its logo where
+    // the icon font has one, as a hex code point, and otherwise the
+    // theme's mark for what it is, as `mark:` and the mark's name, so no
+    // two programs read alike. Logos are named by the programs rather than
+    // by a meaning, so they're kept here and not among the theme's marks.
+    // A window Chrome opens for a site wears Chrome's, and anything else
     // the theme's program mark, through the launcher, since this file
-    // mustn't import qs.
+    // mustn't import qs; every program an account lists has its own
+    // (`every-program-wears-its-own-mark`).
     readonly property var programGlyphs: Object.assign({
         "kitty": "f011b",
         "google-chrome": "f268",
         "slack": "f198",
         "nvim": "f36f",
-        "1password": "f0881",
+        "com.onepassword.onepassword": "f0881",
         "gimp": "f338",
         "org.inkscape.inkscape": "f33b",
         "spotify": "f1bc",
         "swayimg": "f02e9",
-        "org.pwmt.zathura": "f0219"
+        "org.pwmt.zathura": "f0219",
+        "mpv": "f36e",
+        "inlyne": "f0354",
+        "btop": "mark:processor",
+        "pi": "mark:agent",
+        "tuple": "f1218",
+        "google-mail": "f02ab",
+        "google-calendar": "mark:meeting",
+        "google-drive": "f02b6",
+        "google-docs": "f0dc8",
+        "google-sheets": "f09f7",
+        "google-slides": "f0428",
+        "google-meet": "f0567"
     }, settings.glyphs ?? {})
 
     function programGlyph(id) {
-        const code = programGlyphs[(id ?? "").toLowerCase()] ?? "";
+        const key = (id ?? "").toLowerCase();
+        const code = programGlyphs[key]
+            ?? (/^chrome-.+-[^-]+$/.test(key) ? programGlyphs["google-chrome"] : "");
+        if (code.startsWith("mark:"))
+            return provider.launcher?.marks?.[code.slice("mark:".length)] ?? "";
         return code === "" ? provider.launcher?.marks?.program ?? ""
             : String.fromCodePoint(parseInt(code, 16));
     }

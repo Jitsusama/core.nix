@@ -2,8 +2,9 @@
 # video`, which the launcher's Capture collection runs. Both open a
 # viewfinder in mpv (camera.lua) that's driven by the keys: Return takes a
 # picture, or starts and then stops a video, and the viewfinder goes once
-# it's done; Tab changes which, and Escape closes it. Pictures go to Pictures/Camera and are copied, and videos to
-# Videos/Camera, beside the screen's own.
+# it's done; Tab changes which, Left chooses a picture and Right a video,
+# and Escape closes it. Pictures go to Pictures/Camera and are copied, and
+# videos to Videos/Camera, beside the screen's own.
 #
 # The viewfinder plays the camera with nothing buffered and nothing timed,
 # so it keeps up with Joel, and mirrored, as a mirror would show him; what's
@@ -21,15 +22,16 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font;
+  inherit (config.jitsusama.theme) colours font;
   inherit (config.jitsusama.camera) device;
   nerd = import ../theme/nerd.nix { inherit lib; };
 
   # The theme's look for the viewfinder's panel, as mpv's script options.
   look = lib.concatStringsSep "," (
     lib.mapAttrsToList (name: value: "camera-${name}=${value}") {
+      sans = font.sans.family;
       mono = font.mono.family;
-      inherit (roles)
+      inherit (colours)
         deepest
         shadow
         edge
@@ -41,7 +43,7 @@ let
         ;
       opacity = toString config.jitsusama.theme.floating.opacity;
       picture = nerd "f0100";
-      video = config.jitsusama.theme.glyphs.recording.glyph;
+      video = config.jitsusama.theme.marks.recording.glyph;
     }
   );
 

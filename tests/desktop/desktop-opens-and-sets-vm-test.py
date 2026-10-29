@@ -217,9 +217,30 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
         return desktop.as_account("wl-paste --no-newline 2>&1 || true") == "kept until forgotten"
 
     retry(still_kept, timeout=timedelta(seconds=10))
+    # The clipboard holds its own Forget, after the copies, so it opens on
+    # the newest copy, and Desktop lists the clipboard alone.
+    desktop.as_account("qs ipc call launcher collection clipboard")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][-1:] == ["Forget the Clipboard"]
+            and (shown["selected"] or {}).get("name") != "Forget the Clipboard"
+        ),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("forget the clip", selecting="Forget the clipboard")
+    machine.send_chars("desktop ")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and "Clipboard" in shown["rows"],
+    )
+    assert "Forget the Clipboard" not in desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("forget the clip", selecting="Forget the Clipboard")
     desktop.photograph("launcher-forget-copies")
     with desktop.told("forgot the copies"):
         machine.send_key("ret")
@@ -273,9 +294,21 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.as_account("niri msg action screenshot-screen")
     machine.wait_until_succeeds(f"ls {desktop.pictures}/*.png", timeout=timedelta(seconds=15))
     picture = machine.succeed(f"ls {desktop.pictures}/*.png").strip()
+    # Capture holds what's done with a screenshot once it's taken, after
+    # what it captures, so it still opens on the whole screen.
+    desktop.as_account("qs ipc call launcher collection capture")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][-2:] == ["Edit the Newest Screenshot", "Look Through the Screenshots"]
+            and (shown["selected"] or {}).get("name") == "The Whole Screen"
+        ),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
-    desktop.type_in("edit the screenshot", selecting="Edit the screenshot in GIMP")
+    desktop.type_in("edit the newest", selecting="Edit the Newest Screenshot")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"pgrep -u {desktop.account} -f '[g]imp.*{picture}'", timeout=STARTING
@@ -441,6 +474,8 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
+        # It changed something, so the launcher stays until it's closed.
+        machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 
@@ -508,11 +543,11 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
 ) -> None:
     """The launcher's Sound opens an output's and a microphone's parts."""
     machine = desktop.machine
-    # The speakers, in use, hold their Level, Volume, whether they're
-    # Muted, and Channels, named first; the null sink has no card, so
-    # nothing more.
+    # The speakers, chosen, hold Return's own Mute, then their Level,
+    # Volume, whether they're Muted, and Channels, named first; the null
+    # sink has no card, so nothing more.
     sound_device(desktop, "speakers", "speakers")
-    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Level", "Volume", "Muted"])
+    desktop.launcher_until(lambda shown: shown["rows"][:4] == ["Mute", "Level", "Volume", "Muted"])
     desktop.launcher_until(lambda shown: "Channels" in shown["rows"])
     desktop.launcher_until(sound_reads("Channels", "stereo"))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -520,8 +555,10 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Level", "silent"))
     assert "Playing" not in desktop.showing()["rows"]
     desktop.photograph("launcher-sound-output-parts")
-    # Return on Volume steps into its choices, each level saying its
-    # decibels in the footer.
+    # Return on Volume, past Mute and the Level, steps into its choices,
+    # each level saying its decibels in the footer.
+    machine.send_key("down")
+    desktop.launcher_until(sound_selected("Level"))
     machine.send_key("down")
     desktop.launcher_until(sound_selected("Volume"))
     desktop.launcher_until(lambda shown: shown["footer"].endswith(" dB"))
@@ -533,37 +570,44 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     machine.send_key("ret")
     sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
     machine.wait_until_succeeds(desktop.in_session(sink), timeout=timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # The part says what it was set to.
     sound_device(desktop, "speakers", "speakers")
     desktop.launcher_until(sound_reads("Volume", "50%"))
-    # The right arrow on Muted holds Mute and Unmute, Unmute in use, and
+    # The right arrow on Muted holds Mute and Unmute, Unmute chosen, and
     # Return on Mute mutes the speakers; then Unmute, its Return, unmutes.
-    for _down in range(2):
+    # Muted is the fourth row, after Return's own Mute, Level and Volume.
+    for _down in range(3):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Muted"))
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Mute", "Unmute"])
-    desktop.launcher_until(sound_reads("Unmute", "in use"))
+    desktop.launcher_until(sound_reads("Unmute", "chosen"))
     desktop.photograph("launcher-sound-muted")
     desktop.launcher_until(sound_selected("Mute"))
     machine.send_key("ret")
     hushed_sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"
     machine.wait_until_succeeds(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     sound_device(desktop, "speakers", "speakers")
     desktop.launcher_until(sound_reads("Muted", "yes"))
     desktop.type_in("unmute", selecting="Unmute")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
-    # The microphone holds its own: a live Level, its Gain, whether it's
-    # Muted, and who's Recording, which is nobody, though the Level's own
-    # stream is reading it while it shows.
+    # The microphone holds its own after Return's Mute: a live Level, its
+    # Gain, whether it's Muted, and who's Recording, which is nobody,
+    # though the Level's own stream is reading it while it shows.
     sound_device(desktop, "microphone", "stand-in microphone")
     desktop.launcher_until(
-        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Muted", "Recording"],
+        lambda shown: shown["rows"][:5] == ["Mute", "Level", "Gain", "Muted", "Recording"],
     )
     desktop.launcher_until(sound_reads("Level", "%"))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -588,8 +632,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(lambda shown: "Recording" in shown["rows"])
     desktop.launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
     # The right arrow on Recording, then on the program, and Return mutes
-    # what it records.
-    for _down in range(3):
+    # what it records. Return's own Mute leads, so Recording is counted to.
+    for _down in range(desktop.showing()["rows"].index("Recording")):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Recording"))
     desktop.step_in()
@@ -600,6 +644,8 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     machine.send_key("ret")
     hushed = f"wpctl get-volume {recording} | grep -q MUTED"
     machine.wait_until_succeeds(desktop.in_session(hushed), timeout=timedelta(seconds=10))
+    # It changed something, so the launcher stays until it's closed.
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("systemctl --user stop listening")
     desktop.as_account(f"rm -f {listening}")
@@ -704,8 +750,12 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
             desktop.type_in(part.lower(), selecting=part)
             desktop.step_in()
 
-    def press(name: str, then: str = "") -> None:
-        """Type a row's name and press Return on it, then clear what was typed if it stays."""
+    def press(name: str, then: str = "", becomes: str = "") -> None:
+        """Press Return on a row by its name: it stays, saying so or becoming its opposite.
+
+        Each changes how the program plays, so the launcher stays. One that says where it is
+        now has what was typed cleared for the next; one that becomes its opposite is closed.
+        """
         desktop.type_in(name.lower(), selecting=name)
         machine.send_key("ret")
         if then:
@@ -713,6 +763,8 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
             machine.send_key("left")
             desktop.launcher_until(lambda shown: shown["typed"] == "")
         else:
+            desktop.launcher_until(lambda shown: becomes in shown["rows"])
+            machine.send_key("esc")
             machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=WAIT)
 
     # The right arrow on the program holds Media and Sound, each saying
@@ -740,10 +792,10 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     desktop.as_account("qs ipc call music toggle")
     playing("Paused", "First tone")
     desktop.launcher_until(lambda shown: shown["rows"][0] == "Play")
-    press("Play")
+    press("Play", becomes="Pause")
     playing("Playing", "First tone")
     controls("Media")
-    press("Pause")
+    press("Pause", becomes="Play")
     playing("Paused", "First tone")
     controls()
     desktop.launcher_until(reads("Media", "paused"))
@@ -766,9 +818,9 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     press("Louder", then="now 100%")
     heard("1.00")
     desktop.launcher_until(reads("Volume", "100%"))
-    # Mute closes the launcher, and the stream is muted; it says Unmute
-    # when next opened, and the program's Sound says it's muted.
-    press("Mute")
+    # Mute keeps the launcher, and the stream is muted; it says Unmute at
+    # once, and the program's Sound says it's muted.
+    press("Mute", becomes="Unmute")
     heard("1.00 [MUTED]")
     controls()
     desktop.launcher_until(reads("Sound", "muted"))
@@ -840,46 +892,180 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     machine.succeed(f"rm -r {tones}")
 
 
-def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
-    """The launcher sets the power profile."""
+# kitty's Recent holds the folders zoxide has learned, read again as
+# zoxide's database changes, even one it made after the shell started.
+# Return on one opens a kitty window there through the kitty already open,
+# over its socket, rather than starting another.
+
+
+def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -> None:
+    """Recent in kitty lists a folder zoxide learned, and Return opens a window there."""
     machine = desktop.machine
-    # By its name, power saver last, where what follows starts from.
-    for typed, profile, name in [
-        ("balanced power", "balanced", "Balanced power"),
-        ("power saver", "power-saver", "Power saver"),
+    folder = f"/home/{desktop.account}/src/tide"
+    desktop.as_account(f"mkdir -p {folder} && zoxide add {folder}")
+    desktop.as_account("niri msg action spawn -- kitty --title recent-from")
+    machine.wait_until_succeeds(
+        desktop.in_session("niri msg focused-window | grep -q recent-from"), timeout=STARTING
+    )
+
+    def kittys() -> list[int]:
+        """Name the process behind each of kitty's windows, one a window."""
+        windows = json.loads(desktop.as_account("niri msg --json windows"))
+        return [window["pid"] for window in windows if window["app_id"] == "kitty"]
+
+    before = kittys()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.step_in()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "tide" in shown["rows"])
+    desktop.photograph("launcher-kitty-recent")
+    desktop.type_in("tide", selecting="tide")
+    machine.send_key("ret")
+    there = (
+        f"for p in $(pgrep -u {desktop.account}); do"
+        f' [ "$(readlink /proc/$p/cwd)" = {folder} ] && exit 0; done; exit 1'
+    )
+    machine.wait_until_succeeds(desktop.in_session(there), timeout=STARTING)
+    retry(lambda _: len(kittys()) > len(before), timeout=timedelta(seconds=30))
+    assert set(kittys()) == set(before), "it started another kitty"
+    desktop.as_account("pkill -f 'kitty --title recent-from'")
+    machine.wait_until_fails(desktop.in_session(there), timeout=timedelta(seconds=30))
+
+
+def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
+    """The launcher sets the power profile, staying to say so, or closing on Ctrl+Return."""
+    machine = desktop.machine
+    # By its name, power saver last, where what follows starts from. Setting
+    # it changes something, so Return keeps the launcher, the row saying
+    # it's chosen, and Ctrl+Return sets it and closes.
+    for typed, profile, name, key in [
+        ("balanced power", "balanced", "Balanced Power", "ret"),
+        ("power saver", "power-saver", "Power Saver", "ctrl-ret"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
         desktop.type_in(typed, selecting=name)
-        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: "Ctrl+\u21b5 close" in (shown["selected"] or {}).get("told", [])
+        )
+        machine.send_key(key)
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
         )
+        if key == "ret":
+            desktop.launcher_until(
+                lambda shown: shown["open"] and (shown["selected"] or {}).get("side") == "chosen"
+            )
+            machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    # And as the setting it is: one part saying which is in use, its
+    # A profile that isn't balanced is a mode left on, so Now lists it,
+    # saying which.
+    machine.send_key("meta_l-o")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now"]
+            and any(
+                thing["reads"].startswith("Power Profile \u00b7 Power Saver")
+                for thing in shown["things"]
+            )
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # And as the setting it is: one part saying which is chosen, its
     # choices a step in by Return or the right arrow, each named there as
     # the part reads it.
     for key, profile, name, was in [
-        ("ret", "balanced", "Balanced", "Power saver"),
-        ("right", "power-saver", "Power saver", "Balanced"),
+        ("ret", "balanced", "Balanced", "Power Saver"),
+        ("right", "power-saver", "Power Saver", "Balanced"),
     ]:
         desktop.as_account("qs ipc call launcher toggle")
         desktop.launcher_ready()
-        desktop.type_in("power profile", selecting="Power profile")
+        desktop.type_in("power profile", selecting="Power Profile")
         # The wait ends before the loop moves on, so it reads this pass's name.
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == was)  # noqa: B023
         desktop.step_in(key)
-        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power saver", "Balanced"])
+        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Power Saver", "Balanced"])
         desktop.type_in(name.split()[0][:3].lower(), selecting=name)
         machine.send_key("ret")
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
         )
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "chosen")
+        machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
 
 # The right arrow on one of a collection's members offers its own
 # actions, as on anything at the top.
+
+
+# What the machine chose for the charger and the battery, where the shell
+# reads it (modules/power-profiles-daemon/follow.sh).
+WANTED = "/run/power-profile/wanted"
+
+
+def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) -> None:
+    """Now lists the power profile only when it isn't the machine's own choice."""
+    machine = desktop.machine
+
+    def listed(shown: Json) -> str:
+        """Give what Now's power profile row reads, or nothing while it isn't there."""
+        return next(
+            (
+                str(thing["reads"])
+                for thing in shown["things"]
+                if str(thing["reads"]).startswith("Power Profile") and not thing.get("gone")
+            ),
+            "",
+        )
+
+    def now_reads(reads: str) -> None:
+        """Open Now and wait until its power profile row reads so, or is gone for nothing."""
+        machine.send_key("meta_l-o")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now"] and listed(shown).startswith(reads)
+                if reads
+                else shown["held"] == ["now"] and listed(shown) == ""
+            )
+        )
+
+    def close() -> None:
+        machine.send_key("esc")
+        machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+
+    # The VM runs on mains without a performance profile, so the machine
+    # chose balanced, and says so; in use, Now has nothing to say of it.
+    machine.wait_until_succeeds(f"grep -qx balanced {WANTED}", timeout=timedelta(seconds=10))
+    machine.succeed("powerprofilesctl set balanced")
+    now_reads("")
+    close()
+    # Power saver picked by hand is a mode left on, and its Return uses the
+    # machine's choice again, keeping the launcher.
+    machine.succeed("powerprofilesctl set power-saver")
+    now_reads("Power Profile \u00b7 Power Saver")
+    desktop.down_to("Power Profile")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "use")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "powerprofilesctl get | grep -qx balanced", timeout=timedelta(seconds=10)
+    )
+    desktop.launcher_until(lambda shown: shown["open"] and listed(shown) == "")
+    close()
+    # The machine's own power saver, as it chooses on a low battery, says
+    # nothing; the VM has no battery, so its choice is written as follow.sh
+    # writes it. Balanced, then, is the one picked by hand.
+    machine.succeed(f"echo power-saver > {WANTED}")
+    now_reads("Power Profile \u00b7 Balanced")
+    close()
+    machine.succeed("powerprofilesctl set power-saver")
+    now_reads("")
+    close()
+    machine.succeed(f"echo balanced > {WANTED}", "powerprofilesctl set balanced")
 
 
 def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Desktop) -> None:
@@ -913,12 +1099,13 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
         # Its settings lead, each saying how it's set, their choices a step
         # in, there by Return on the setting, or found from here by what's
         # typed. The backlight lights the one screen there is, so its
-        # Brightness comes first, and the Room light once the sensor's said.
+        # Brightness comes first after Return's own Focus, and the Room
+        # light once the sensor's said.
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"][:1] == ["Brightness"]
-                and [row for row in shown["rows"] if row != "Room light"][1:7]
-                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour depth", "EDID"]
+                shown["rows"][:2] == ["Focus", "Brightness"]
+                and [row for row in shown["rows"] if row != "Room Light"][2:8]
+                == ["Scale", "Refresh", "Resolution", "Rotation", "Colour Depth", "EDID"]
             )
         )
         desktop.photograph("launcher-displays")
@@ -937,6 +1124,8 @@ def test_the_launchers_displays_scales_a_display_by_keys_and_back(desktop: Deskt
             return scale() == wanted
 
         retry(scaled, timeout=timedelta(seconds=15))
+        # Scaling changes something, so the launcher stays until it's closed.
+        machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
     # A part is asked by its words from the top: the refresh rate.
@@ -989,7 +1178,17 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
         "journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=timedelta(seconds=60)
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
-    # Once it's joined, the launcher's done.
+    # Once it's connected, the password is done with: the launcher steps
+    # back to Lantern, which says so, and stays.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and not shown["asking"]
+            and (shown["selected"] or {}).get("name") == "Lantern"
+            and (shown["selected"] or {}).get("side") == "connected"
+        )
+    )
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Lantern wants a sign-in, so Sign in to it is found by typing, and
     # Return opens the window on its front desk.
@@ -998,12 +1197,13 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         f'{described} | grep -qF \'"reach":"signIn"\'', timeout=timedelta(seconds=60)
     )
-    # Its own first act is to sign in to it, beside Disconnect it.
+    # Return's act, signing in to it, comes first, as it's all that's left
+    # to do there, then Disconnect it.
     desktop.as_account("qs ipc call launcher collection wifi")
     desktop.launcher_ready()
     desktop.type_in("lant", selecting="Lantern")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to it", "Disconnect it"])
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Sign in to It", "Disconnect It"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")
@@ -1055,6 +1255,29 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         "journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=timedelta(seconds=60)
     )
+    desktop.launcher_until(lambda shown: shown["open"] and not shown["asking"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # Found from the root, the right arrow steps into every network with
+    # the Office still selected among them (Joel, 2026-10-26: stepping in
+    # keeps the match), and the left arrow puts back what was typed.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("office", selecting="Office")
+    told = desktop.showing()["selected"]["told"]
+    assert "\u2192" in told, told
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            len(shown["held"]) == 1
+            and shown["typed"] == ""
+            and len(shown["rows"]) > 1
+            and (shown["selected"] or {}).get("name") == "Office"
+        )
+    )
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "office")
+    machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     # Stepped into, a network says after what can be done to it what's
     # heard of it, each a part named first, the selected row's footer
@@ -1071,8 +1294,8 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.type_in("signal", selecting="Signal")
     desktop.launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     desktop.launcher_until(lambda shown: "over the noise" in shown["footer"])
-    desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: "Transmit power" in shown["rows"])
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Transmit Power" in shown["rows"])
     # The left arrow steps out with the word put back, and again takes
     # the word.
     machine.send_key("left")
@@ -1092,16 +1315,34 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     # The access points, each named by its band and channel, and each
     # holding its own parts, its hardware address among them.
-    desktop.type_in("access", selecting="Access points")
+    desktop.type_in("access", selecting="Access Points")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, channel 1"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, Channel 1"])
     desktop.photograph("launcher-wifi-points")
     desktop.step_in("ret")
-    desktop.type_in("hardware", selecting="Hardware address")
+    desktop.type_in("hardware", selecting="Hardware Address")
     assert desktop.showing()["selected"]["side"] == "02:00:00:00:02:00"
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    # Turning Wi-Fi off is an action like any.
+    # Wi-Fi holds its own off, last, so stepping in never lands on it;
+    # Network lists Wi-Fi alone.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("network ")
+    desktop.launcher_until(lambda shown: shown["held"] == ["network"] and "Wi-Fi" in shown["rows"])
+    assert "Wi-Fi Off" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    desktop.type_in("wi-fi", selecting="Wi-Fi")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            len(shown["rows"]) > 1
+            and shown["rows"][-1] == "Wi-Fi Off"
+            and (shown["selected"] or {}).get("name") != "Wi-Fi Off"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # Turning Wi-Fi off is an action like any, found by name from the top.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("wifi off")
@@ -1109,6 +1350,12 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     machine.wait_until_succeeds(
         "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=15)
     )
+    # It changed something, so the launcher stays, its row now Wi-Fi On.
+    desktop.launcher_until(
+        lambda shown: shown["open"] and (shown["selected"] or {}).get("name") == "Wi-Fi On"
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.succeed("rfkill unblock wifi")
 
 
@@ -1134,7 +1381,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.type_in("wi-fi", selecting="Wi-Fi")
     desktop.step_in("ret")
     desktop.launcher_until(
-        lambda shown: {"Address", "Hardware address", "MTU", "State"} <= set(shown["rows"])
+        lambda shown: {"Address", "Hardware Address", "MTU", "State"} <= set(shown["rows"])
     )
     assert "Device name" not in desktop.showing()["rows"], desktop.showing()
     desktop.type_in("mtu", selecting="MTU")
@@ -1158,7 +1405,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
     desktop.step_in()
     desktop.type_in("address", selecting="Address")
     assert desktop.showing()["selected"]["side"] == "100.100.1.2/32"
-    assert "Hardware address" not in desktop.showing()["rows"], desktop.showing()
+    assert "Hardware Address" not in desktop.showing()["rows"], desktop.showing()
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     machine.succeed("ip link delete tailscale0")

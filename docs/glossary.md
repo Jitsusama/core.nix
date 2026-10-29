@@ -8,8 +8,10 @@ called. A word that isn't here yet hasn't been settled, and a word under
 
 The words are kept in bounded contexts, one section each. Inside a context,
 each concept has one term, and the term is what's written, what's shown and
-what Joel types: there are no synonyms, so an old name finds nothing and a
-term is learned once. A word may mean its own thing in another context, and
+what Joel types: there are no synonyms, so a term is learned once. An old
+name still finds what it named, never shown, so a rename loses nothing
+(Joel, 2026-10-26: "i didn't know its name had changed, i was used to
+calling it caffeinate"). A word may mean its own thing in another context, and
 the launcher's place, with its crumbs, says which: Network › Address is the
 machine's, Agents › Sessions › Language › Address is a session's.
 
@@ -19,8 +21,9 @@ Each table has the same columns:
   In prose it's in lower case unless it's a name, such as Bluetooth or Keep
   Awake, which is written as its title everywhere.
 - **Means**: what it is, in a few plain words.
-- **Not**: names it replaces. They're never written, shown or found for
-  anything, in any context.
+- **Not**: names it replaces. They're never written or shown, in any
+  context; typed, one still finds the thing it named, whose row says
+  "Once called" it.
 - **In code**: how code spells it, where code has to spell it otherwise, such
   as a program's name for a module or NixOS's own option.
 
@@ -53,10 +56,11 @@ never places: Security, which the others lean on, and the Library and Checks,
 which are core.nix's own.
 
 - **Desktop shows every context.** Each launcher place belongs to one; Now is a
-  view onto the others' rows, each kept in its own place, with one row of its
-  own, Today. A filling disk shows in Now, with its forecast, while it fills.
+  view onto the others' rows, each kept in its own place, with rows of its
+  own last: the time, the date, the weather and the next meeting. A filling
+  disk shows in Now, with its forecast, while it fills.
 - **Agents uses Machine's queue**: a session's heavy work waits there, shown on
-  the session as what it's waiting on.
+  the session as what it's waiting on, and listed whole in Agents' Queue.
 - **Disk acts on Machine's jobs**: the disk guard freezes and thaws them.
 - **Security seals Disk and signs Agents' work**: the TPM unlocks the disk,
   and Joel's key and the agents' key sign commits.
@@ -128,15 +132,16 @@ first in the queue and conclude.
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a Claude plan one window allows: five hours, or a week | limit | `5h`, `wk` |
-| person | the human a session works for | user, human, operator | |
+| Joel | the human every session works for | user, human, operator | |
 | status line | the line under a session saying how it stands | status bar | |
 
 ## Programs
 
 What Joel runs, and the terminal he types commands into, and the mail,
-meetings and calls he has through them. A program can be opened, opened below,
-given a new window and quit. A meeting can be joined, and an invitation
-answered yes, maybe or no; mail can be read, marked unread and archived.
+meetings and calls he has through them, and the people they're with. A
+program can be opened, opened below, given a new window and quit. A meeting
+can be joined or seen, and an invitation answered yes, maybe or no; mail can
+be read, marked unread and archived.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -152,8 +157,15 @@ answered yes, maybe or no; mail can be read, marked unread and archived.
 | calendar | Joel's meetings in his Google account, and the place in Programs holding them | | Google Calendar |
 | meeting | an event on Joel's calendar with a call or with others | | |
 | invitation | a meeting someone asks Joel to, answered yes, maybe or no | | |
+| going | an invitation Joel answered yes | accepted | `yes` |
+| maybe | an invitation Joel answered maybe | tentative | |
+| not going | an invitation Joel answered no | declined | `no` |
+| not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
+| person | someone Joel deals with, the same one by their email across mail, meetings, calls and chat | | |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | join | going into a meeting's call, or a call another sends | | |
+| see | looking at a meeting's details in the launcher: when, its call, who's going | | |
+| cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 
 ## Desktop
 
@@ -194,12 +206,11 @@ or a copy, can be opened, copied or forgotten.
 | foot | the launcher's bottom line: the time, the battery and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `WhatsOn.qml` |
 | Waiting on You | everything waiting on Joel, each with its minutes, at the top of Now | | |
-| lag | how long the desktop takes to answer a key or a click | slow, jank, stutter | `lag-watch` |
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
-| Today | Now's row for the date, the weather and the next meeting, whose Return joins the meeting | | |
-| here | where the weather is when no town is typed: where the laptop is, else the town set, else the time zone's city | | the `whereabouts` program; the weather provider's `place` |
+| location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` program |
+| here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
 
 ## Machine
 
@@ -217,15 +228,19 @@ off.
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zram |
 | memory pressure | how long programs are waiting for memory | | PSI |
+| lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
 | job | work Joel or an agent starts, run below the desktop so it gives way to it | | `jobs.slice` |
 | kind of work | what a job is, which says how much the machine favours it: what Joel waits on at a terminal, timed work or agents' work | job class | the slices `jobs-awaited`, `jobs-timed` and `jobs-work` |
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |
+| chosen | of a setting's choices, the one it's at, whoever picked it: Joel, the charger or a profile | | |
+| in use | held by a program, as a camera Chrome has open or a microphone in a call | | |
 | charger | the power cable, and what it's plugged into | mains | AC |
 | Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
 | wake | coming back from sleep | | |
+| hibernate | the machine off with its memory written to the swap file, until it starts again from it | | `systemctl hibernate` |
 | log out | ending the desktop, back to the greeter | sign out | `session:` |
 | reboot | starting the machine again | restart | |
 | power off | turning the machine off | shut down | |
@@ -279,6 +294,9 @@ now, and keep or stop keeping a folder.
 | nearly full | the disk guard's second band, under a tenth free, when it takes more | urgent | `urgent` |
 | critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | critical | `critical` |
 | forecast | how long a filesystem has until it's full, at the rate it's filling | | |
+| holder | a folder the disk guard names as taking a filesystem's room, with whose it is | | `holders` |
+| keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
+| clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe | `disk-guard clear` |
 
 ## Keyboards
 
@@ -332,7 +350,7 @@ The words core.nix is built from. Never a launcher place.
 | identity | who Joel is on a machine | | `jitsusama.identity.email` |
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
-| colour | what a colour means in the theme, such as the accent | colour role | `jitsusama.theme.roles`, to be renamed |
+| colour | what a colour means in the theme, such as the accent | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | account | the account on a machine that home-manager configures | | `home-manager.users.<account>` |
 
 ## Checks

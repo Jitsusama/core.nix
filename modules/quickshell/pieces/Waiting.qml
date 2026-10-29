@@ -22,14 +22,15 @@ Piece {
         : senders.length === 1 ? `from ${senders[0]}`
         : `from ${senders[0]} and ${senders.length - 1} more`
     actions: [{
-        glyph: Theme.glyph.notifications,
-        name: "Show them",
+        glyph: Words.glyph("verb:notices:show"),
+        name: Words.name("verb:notices:show"),
         chord: opening.chord,
         run: shell => shell.launcher.into("notices")
     }, {
-        glyph: Theme.glyph.dismiss,
-        name: "Let them go",
-        verb: "dismiss",
+        glyph: Words.glyph("verb:notices:seen"),
+        name: Words.name("verb:notices:seen"),
+        verb: Words.verb("verb:notices:seen"),
+        stays: true,
         run: () => Notices.seen()
     }]
 }

@@ -8,7 +8,9 @@ import QtQuick
 Row {
     id: hints
 
-    // Each a key and what it does: [["↵", "unlock"], ["Esc", "clear"]].
+    // Each a key and what it does: [["↵", "unlock"], ["Esc", "clear"]],
+    // and the key's colour third where it isn't the text's, as a done
+    // mark wears success.
     property var keys: []
     // How wide each one's place is, when it keeps one wider than what it
     // says now, so the keys hold still as what they say changes; a key of
@@ -34,8 +36,10 @@ Row {
             width: Math.max(implicitWidth, hints.widths[index] ?? 0)
             horizontalAlignment: hints.endsRight && index === hints.keys.length - 1
                 ? Text.AlignRight : Text.AlignLeft
+            // A key Joel knows by its mark alone, as the arrows, says no word.
             text: modelData[0] === "" ? ""
-                : `<font color="${Theme.text}">${modelData[0]}</font> ${modelData[1]}`
+                : `<font color="${modelData[2] ?? Theme.text}">${modelData[0]}</font>`
+                    + ((modelData[1] ?? "") === "" ? "" : ` ${modelData[1]}`)
             textFormat: Text.StyledText
             color: Theme.muted
             font.family: Theme.mono.family

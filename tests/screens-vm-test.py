@@ -273,16 +273,18 @@ class Screens:
         self.wait_for_held_on("launcher", {screen}, timeout=dt.timedelta(seconds=10))
 
     def launcher_works_on(self, screen: str) -> None:
-        """Open the launcher on a screen, find Keep Awake and run it, then open it and close it."""
+        """Open the launcher on a screen, run Keep Awake and close it, then open it and close it."""
         was = self.awake()
-        typed, row = ("let it sleep", "Let it sleep") if was else ("keep awake", "Keep awake")
+        typed, row = ("let it sleep", "Let It Sleep") if was else ("keep awake", "Keep Awake")
         self.super_space_on(screen)
         self.machine.send_chars(typed)
         self.launcher_until(
             lambda shown: shown["typed"] == typed and (shown["selected"] or {}).get("name") == row,
             f"found {row!r} on {screen}",
         )
-        self.machine.send_key("ret")
+        # Keep Awake is a setting, which Return does and stays to show;
+        # Ctrl+Return does it and closes.
+        self.machine.send_key("ctrl-ret")
         self.launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")
         deadline = time.monotonic() + 30
         while self.awake() == was:
@@ -629,8 +631,9 @@ def test_one_of_two_screens_goes_and_the_margin_and_bar_stay(one_gone: Apart) ->
 def test_the_screen_comes_back_and_the_margin_is_on_both_again(one_back: Apart) -> None:
     """The screen comes back, and the margin is on both again."""
     one_back.screens.wait_for_held_on("margin", one_back.screens.both)
-    # Still listening through it all, so the second press ends it.
-    assert one_back.screens.listening(), "dictation stopped listening as the screens changed"
+    # Still listening through it all, so the second press ends it. The shell remakes the bar as
+    # the screens are put back, gone for under a second, so one look can land in that gap.
+    one_back.screens.wait_for_surfaces("dictation")
     one_back.screens.quiet()
 
 

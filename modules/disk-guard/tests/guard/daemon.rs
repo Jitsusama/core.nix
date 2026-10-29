@@ -362,6 +362,7 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
             path: home.root.clone(),
             every: None,
             from: Some(Band::Pressure),
+            watch: Vec::new(),
             timeout: Span(std::time::Duration::from_secs(10)),
         },
     );
@@ -389,6 +390,55 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
         .unwrap();
     assert_eq!(ran["path"], format!("{}#gc", home.root.display()));
     assert_eq!(ran["outcome"], "reclaimed");
+}
+
+#[test]
+fn a_producer_runs_again_once_what_it_watches_changes() {
+    // A tool's cache that gains a version every few minutes keeps every old
+    // one until its producer runs: run every six hours, a cache of zone
+    // builds held 24 versions of each tool and 17.7 GiB of the store on 28
+    // October, where its own rule keeps four.
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let marker = home.root.join("ran");
+    let stamp = home.root.join("stamp");
+    fs::write(&stamp, "").unwrap();
+    touch(&stamp, 1_000_000_000);
+    let mut config = home.config("0%", "0%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!("echo ran >> {}", marker.display()),
+            ],
+            path: home.root.clone(),
+            every: Some(Span(std::time::Duration::from_hours(6))),
+            from: None,
+            watch: vec![stamp.clone()],
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let runs = || fs::read_to_string(&marker).map_or(0, |text| text.lines().count());
+    let start = wall().floor();
+    let at = |seconds: f64| Tick {
+        wall: start + seconds,
+        monotonic: 3600.0 + seconds,
+        ..tick()
+    };
+    let mut guard = home.guard(config);
+    guard.step(&at(0.0), &CALM).unwrap();
+    assert_eq!(runs(), 1, "the first upkeep runs it");
+    guard.step(&at(61.0), &CALM).unwrap();
+    assert_eq!(runs(), 1, "nothing it watches has changed");
+    #[expect(clippy::cast_possible_truncation, reason = "a wall clock in seconds")]
+    touch(&stamp, start as i64 + 100);
+    guard.step(&at(122.0), &CALM).unwrap();
+    assert_eq!(runs(), 2, "what it watches changed since it ran");
+    guard.step(&at(183.0), &CALM).unwrap();
+    assert_eq!(runs(), 2, "once for each change");
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
@@ -463,6 +513,7 @@ fn producer_policy(pressure: &str, urgent: f64) -> String {
             path: home.root.clone(),
             every: Some(Span(std::time::Duration::from_secs(60))),
             from: Some(Band::Urgent),
+            watch: Vec::new(),
             timeout: Span(std::time::Duration::from_secs(10)),
         },
     );
@@ -648,6 +699,60 @@ fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     assert!(
         home.journal().is_empty(),
         "nothing done, nothing journalled"
+    );
+}
+
+/// A step can run for minutes, and its status was stamped with the
+/// moment it began: on 28 October a system guard's read 189 seconds old
+/// as it was written, and the desktop said the disks weren't watched.
+#[test]
+fn a_status_is_stamped_when_it_is_written_not_when_its_step_began() {
+    let home = Home::new();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    let begun = Tick {
+        wall: wall() - 300.0,
+        ..tick()
+    };
+    guard.step(&begun, &CALM).unwrap();
+    let age = wall() - home.status()["heartbeat"].as_f64().unwrap();
+    assert!(age < 5.0, "written {age:.0} seconds ago");
+}
+
+/// A restarted guard's first step can take minutes, in which the status
+/// the last one left went quiet and the desktop took a restart for a
+/// guard that had stopped. It beats from its first moment, on what the
+/// last one said until it has said something itself.
+#[test]
+fn a_restarted_guard_beats_on_the_last_status_before_its_first_step() {
+    let home = Home::new();
+    fs::write(
+        home.root.join("status.json"),
+        r#"{ "version": 2, "heartbeat": 1, "says": "left by the last guard" }"#,
+    )
+    .unwrap();
+    let guard = home.guard(home.config("0%", "0%"));
+    guard.beating()();
+    let status = home.status();
+    let age = wall() - status["heartbeat"].as_f64().unwrap();
+    assert!(age < 5.0, "beat {age:.0} seconds ago");
+    assert_eq!(status["says"], "left by the last guard");
+}
+
+/// Once a guard has written its own, a beat rewrites that, fresh.
+#[test]
+fn a_beat_rewrites_the_status_last_written_with_a_fresh_heartbeat() {
+    let home = Home::new();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let written = home.status();
+    fs::write(home.root.join("status.json"), r#"{ "heartbeat": 1 }"#).unwrap();
+    guard.beating()();
+    let beaten = home.status();
+    assert!(wall() - beaten["heartbeat"].as_f64().unwrap() < 5.0);
+    assert_eq!(beaten["says"], written["says"]);
+    assert_eq!(
+        beaten["filesystems"][0]["path"],
+        written["filesystems"][0]["path"]
     );
 }
 
@@ -894,6 +999,144 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
     assert!(later.exists());
 }
 
+/// A user config watching cargo builds under `trees`, each tree cut by a
+/// broker whose records are in `cut`, and a healthy disk.
+fn owned_trees(home: &Home) -> Config {
+    Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
+             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{
+               "src": {{ "kind": "cargo", "roots": ["{0}/trees"] }},
+               "workspaces": {{ "kind": "workspaces", "path": "{0}/workspaces",
+                                "quests": "{0}/quests", "trees": "{0}/cut" }} }} }}"#,
+        home.root.display()
+    ))
+    .unwrap()
+}
+
+/// A tree with a cargo build in it, held by process `pid`, which runs: the
+/// build's one file.
+fn held_tree(home: &Home, pid: u32) -> PathBuf {
+    let tree = home.root.join("trees/app");
+    fs::create_dir_all(tree.join("src")).unwrap();
+    fs::write(tree.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+    let target = tree.join("target");
+    fs::create_dir_all(target.join("debug")).unwrap();
+    fs::write(
+        target.join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n# created by cargo\n",
+    )
+    .unwrap();
+    fs::write(target.join("debug/app"), "x".repeat(8192)).unwrap();
+    fs::create_dir_all(home.root.join("workspaces")).unwrap();
+    fs::create_dir_all(home.root.join("quests")).unwrap();
+    fs::create_dir_all(home.root.join("cut")).unwrap();
+    let start = 9_000;
+    let boot = disk_guard::sys::boot(Path::new("/proc/stat")).unwrap();
+    let started = (boot.wall + disk_guard::units::float(start) / boot.ticks) * 1000.0;
+    fs::write(
+        home.root.join("cut/app.json"),
+        format!(
+            r#"{{"path":"{}","owners":[{{"pid":{pid},"startedAt":{started}}}]}}"#,
+            tree.display()
+        ),
+    )
+    .unwrap();
+    let proc = home.root.join("proc");
+    let me = unsafe { libc::geteuid() };
+    let at = |file: &str| format!("{pid}/{file}");
+    crate::procs::text(&proc, &at("stat"), &crate::procs::stat(pid, "pi", 0, start));
+    crate::procs::text(
+        &proc,
+        &at("status"),
+        &format!("Name:\tpi\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+    );
+    crate::procs::text(&proc, &at("cmdline"), "pi\0");
+    crate::procs::text(&proc, &at("maps"), "");
+    crate::procs::link(&proc, &at("cwd"), home.root.to_str().unwrap());
+    crate::procs::link(&proc, &at("exe"), "/bin/pi");
+    fs::create_dir_all(proc.join(at("fd"))).unwrap();
+    target.join("debug/app")
+}
+
+#[test]
+fn a_trees_build_goes_within_a_minute_of_its_last_holder_ending() {
+    // Upkeep comes every six hours, but what an owner leaves is spent the
+    // moment it ends: waiting for routine upkeep kept 190 GiB of builds
+    // whose sessions had ended for hours on 27 October.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    let mut guard = home.guard(owned_trees(&home));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(built.exists(), "a held tree's build stays through upkeep");
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    guard.step(&tick_at(3630.0), &CALM).unwrap();
+    assert!(built.exists(), "owners are looked at once a minute");
+    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    assert!(!built.exists(), "the build goes once its holder has ended");
+}
+
+#[test]
+fn a_new_boot_makes_upkeep_due_and_a_restart_does_not() {
+    // A boot ends every program, so what they left in temp is spent; a
+    // guard merely restarting in the same boot ends nothing.
+    let home = Home::new();
+    let expired = home.trashed("old.txt", "2020-01-01T00:00:00");
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!expired.exists(), "the first guard's upkeep");
+    let later = home.trashed("later.txt", "2020-01-01T00:00:00");
+    let mut again = home.guard(home.config("0%", "0%"));
+    again.step(&tick(), &CALM).unwrap();
+    assert!(later.exists(), "the same boot and guard owe no upkeep");
+    let rebooted = Tick {
+        boot: "another".into(),
+        wall: wall() + 7200.0,
+        ..tick()
+    };
+    let mut booted = home.guard(home.config("0%", "0%"));
+    booted.step(&rebooted, &CALM).unwrap();
+    assert!(!later.exists(), "a new boot makes upkeep due");
+}
+
+#[test]
+fn upkeep_the_system_daemon_could_not_vouch_for_comes_again_soon() {
+    // A switch restarts both guards, and on 28 October the user guard's
+    // upkeep began in the seven seconds the system's was down: it kept
+    // 3,036 temp entries for a process of root's it couldn't read, and
+    // would have left them for six hours.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(built.exists(), "kept while nothing vouches for process 300");
+    let at = |seconds: f64| Tick {
+        wall: wall() + seconds,
+        monotonic: 3600.0 + seconds,
+        ..tick()
+    };
+    let _heard = fake_system(&socket, false);
+    guard.step(&at(60.0), &CALM).unwrap();
+    assert!(
+        built.exists(),
+        "an unheard system daemon costs a pass now and then, not every minute"
+    );
+    guard.step(&at(660.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "upkeep comes again once the system daemon can vouch"
+    );
+}
+
 #[test]
 fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
     let home = Home::new();
@@ -925,12 +1168,13 @@ fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
     );
 }
 
-#[test]
-fn a_predicates_answer_is_kept_for_the_next_guard() {
+/// A committed checkout with a build, and a config whose predicate says
+/// every checkout is finished, writing to the file returned each time
+/// it's asked.
+fn merged_app(home: &Home) -> (impl Fn() -> Config, PathBuf) {
     use crate::finished::git;
     use std::os::unix::fs::PermissionsExt;
-    let home = Home::new();
-    let (_, deps) = home.replaced_build("0%");
+    home.replaced_build("0%");
     let app = home.root.join("src/app");
     git(&app, &["init", "-q", "-b", "work"]);
     git(
@@ -950,7 +1194,8 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
     )
     .unwrap();
     fs::set_permissions(&predicate, fs::Permissions::from_mode(0o755)).unwrap();
-    let config = || {
+    let root = home.root.clone();
+    let config = move || {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "notify": false,
                  "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
@@ -959,25 +1204,45 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
                    "src": {{ "kind": "cargo", "roots": ["{0}/src"] }},
                    "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
                                 "command": ["{1}"], "timeout": "5s" }} }} }}"#,
-            home.root.display(),
+            root.display(),
             predicate.display()
         ))
         .unwrap()
     };
-    let _ = deps;
+    (config, asked)
+}
+
+fn times_asked(asked: &Path) -> usize {
+    fs::read_to_string(asked)
+        .unwrap_or_default()
+        .lines()
+        .count()
+}
+
+#[test]
+fn a_predicates_answer_is_kept_for_the_next_guard() {
+    let home = Home::new();
+    let (config, asked) = merged_app(&home);
     let mut first = home.guard(config());
     first.step(&tick(), &CALM).unwrap();
-    let times = || {
-        fs::read_to_string(&asked)
-            .unwrap_or_default()
-            .lines()
-            .count()
-    };
-    assert_eq!(times(), 1, "routine upkeep asks once");
+    assert_eq!(times_asked(&asked), 1, "routine upkeep asks once");
     drop(first);
     let mut second = home.guard(config());
     second.preview(&tick(), Some(Band::Pressure), None).unwrap();
-    assert_eq!(times(), 1, "a finished head is known still");
+    assert_eq!(times_asked(&asked), 1, "a finished head is known still");
+}
+
+#[test]
+fn a_checkout_with_work_not_committed_is_never_finished() {
+    // On 28 October a session went on editing a tree whose head had just
+    // merged, and the guard took its packages from under it twice.
+    let home = Home::new();
+    let (config, asked) = merged_app(&home);
+    let manifest = home.root.join("src/app/Cargo.toml");
+    fs::write(&manifest, "[package]\nname = \"app2\"\n").unwrap();
+    let mut guard = home.guard(config());
+    guard.step(&tick(), &CALM).unwrap();
+    assert_eq!(times_asked(&asked), 0, "its head isn't what's in it");
 }
 
 #[test]

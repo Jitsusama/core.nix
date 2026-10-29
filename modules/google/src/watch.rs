@@ -1,15 +1,18 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
-//! asks for the meetings and the mail that wants Joel, and says how it all
-//! stands; an answer to an invitation, and mail marked read or archived,
-//! are asked the same way, and change what's held at once.
+//! asks for the meetings and the mail that wants Joel, and every few
+//! minutes the documents he looked at lately, and says how it all stands; an answer to an invitation, a meeting cancelled or moved, and
+//! mail marked read or archived, are asked the same way, and change what's
+//! held at once.
 
 use std::path::PathBuf;
 
-use jiff::Zoned;
+use jiff::{Timestamp, Zoned};
+use serde_json::Value;
 
 use crate::account::{self, Missing};
 use crate::api::{Google, Refused};
 use crate::calendar::{self, Answer};
+use crate::drive::{self, Document, Kind};
 use crate::mail::{self, Mail, Tidy};
 use crate::state::{Standing, State};
 use crate::token::Keeper;
@@ -21,7 +24,20 @@ pub struct Watch {
     pub account: Option<String>,
     keeper: Keeper,
     state: State,
+    /// The calendars Joel may change events on, as last heard.
+    writable: Vec<String>,
+    /// The mail marked read since it was last looked at, so marking one
+    /// unread again brings it back at once, before Gmail lists it again.
+    read: Vec<Mail>,
+    /// When the documents were last heard, in milliseconds since the
+    /// epoch, or none since the account was last gone.
+    documented: Option<i64>,
 }
+
+/// How long the documents are kept before Drive is asked again: what Joel
+/// looked at lately moves when he opens one, seldom within minutes, and
+/// it's three asks each time.
+const DOCUMENTS_EVERY: i64 = 5 * 60 * 1000;
 
 impl Watch {
     pub fn new(google: Google, credentials: PathBuf, account: Option<String>) -> Watch {
@@ -31,17 +47,31 @@ impl Watch {
             account,
             keeper: Keeper::default(),
             state: State::default(),
+            writable: Vec::new(),
+            read: Vec::new(),
+            documented: None,
         }
     }
 
     /// How the account stands at `now`, asking Google if it's signed in.
     /// Unreachable, what was held is kept, with when it was heard. The
     /// mail is asked after the meetings, so Gmail failing alone keeps the
-    /// mail held and costs the meetings nothing.
+    /// mail held and costs the meetings nothing. Which calendars Joel may
+    /// change events on is asked with the meetings, and kept as last heard
+    /// when only that can't be.
     pub fn look(&mut self, now: &Zoned) -> &State {
         let (from, to) = calendar::window(now);
         match self.asking(now, |google, token| google.events(token, from, to)) {
-            Ok(answer) => {
+            Ok(mut answer) => {
+                match self.asking(now, Google::writable) {
+                    Ok(writable) => self.writable = writable,
+                    Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                    Err(looked) => {
+                        self.fell(looked, Standing::Unreachable);
+                        return &self.state;
+                    }
+                }
+                answer["writable"] = Value::from(self.writable.clone());
                 self.state.account = Standing::Ready;
                 self.state.meetings = calendar::meetings(&answer, now.time_zone());
                 self.state.heard = Some(now.timestamp().as_millisecond());
@@ -56,12 +86,34 @@ impl Watch {
             Ok((found, unread)) => {
                 self.state.mail = found;
                 self.state.unread = unread;
+                // What Gmail lists now says what's unread, any marked
+                // unread again from elsewhere included.
+                self.read.clear();
             }
             Err(Looked::Refused(Refused::Unreachable(why))) => {
                 eprintln!("<4>{why}");
                 self.state.mail = held;
             }
-            Err(looked) => self.fell(looked, Standing::Unreachable),
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return &self.state;
+            }
+        }
+        let at = now.timestamp().as_millisecond();
+        if self
+            .documented
+            .is_none_or(|heard| at - heard >= DOCUMENTS_EVERY)
+        {
+            match self.asking(now, recently) {
+                Ok(found) => {
+                    self.state.documents = found;
+                    self.documented = Some(at);
+                }
+                // Drive failing alone keeps the documents held, and costs
+                // the meetings and the mail nothing.
+                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                Err(looked) => self.fell(looked, Standing::Unreachable),
+            }
         }
         &self.state
     }
@@ -84,6 +136,68 @@ impl Watch {
         &self.state
     }
 
+    /// Cancels the meeting `id` and lets it go from what's held, so the
+    /// shell hears it at once. Only a meeting held as Joel's is cancelled:
+    /// deleting one he's only asked to would take it off his calendar alone
+    /// and tell nobody, which isn't cancelling it. One Google didn't take
+    /// changes nothing held.
+    pub fn cancel(&mut self, id: &str, now: &Zoned) -> &State {
+        let his = self
+            .state
+            .meetings
+            .iter()
+            .any(|meeting| meeting.id == id && meeting.holds);
+        if !his {
+            eprintln!("<4>a meeting asked to be cancelled isn't one Joel holds");
+            return &self.state;
+        }
+        match self.asking(now, |google, token| google.cancel(token, id)) {
+            Ok(()) => self.state.meetings.retain(|meeting| meeting.id != id),
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Moves the meeting `id` to run from `start` to `end`, through the
+    /// calendar Google lets Joel change it on, and holds it moved so the
+    /// shell hears it at once. Only a meeting held as one he may change is
+    /// moved, and never one lasting all day, whose times are days. One
+    /// Google didn't take changes nothing held.
+    pub fn reschedule(&mut self, id: &str, start: i64, end: i64, now: &Zoned) -> &State {
+        let through = self
+            .state
+            .meetings
+            .iter()
+            .find(|meeting| meeting.id == id && !meeting.all_day)
+            .and_then(|meeting| meeting.through.clone());
+        let (Some(through), Ok(from), Ok(to)) = (
+            through,
+            Timestamp::from_millisecond(start),
+            Timestamp::from_millisecond(end),
+        ) else {
+            eprintln!("<4>a meeting asked to be moved isn't one Joel may change");
+            return &self.state;
+        };
+        let moved = self.asking(now, |google, token| {
+            google.reschedule(token, &through, id, from, to)
+        });
+        match moved {
+            Ok(()) => {
+                for meeting in &mut self.state.meetings {
+                    if meeting.id == id {
+                        meeting.start = start;
+                        meeting.end = end;
+                    }
+                }
+                self.state
+                    .meetings
+                    .sort_by_key(|meeting| (meeting.start, meeting.end));
+            }
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
     /// Marks the mail `id` read or archives it, as `how` says, and lets it
     /// go from what's held so the shell hears it at once: it wants Joel no
     /// more either way. Held, it was unread in the inbox, so the inbox has
@@ -91,10 +205,37 @@ impl Watch {
     pub fn tidy(&mut self, id: &str, how: Tidy, now: &Zoned) -> &State {
         match self.asking(now, |google, token| google.unlabel(token, id, how.label())) {
             Ok(()) => {
-                let before = self.state.mail.len();
-                self.state.mail.retain(|mail| mail.id != id);
-                if self.state.mail.len() < before {
+                if let Some(at) = self.state.mail.iter().position(|mail| mail.id == id) {
+                    let gone = self.state.mail.remove(at);
                     self.state.unread = self.state.unread.map(|unread| unread.saturating_sub(1));
+                    if how == Tidy::Read {
+                        self.read.retain(|mail| mail.id != id);
+                        self.read.push(gone);
+                    }
+                }
+            }
+            Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Marks the mail `id` unread again, as Gmail's own button does, and,
+    /// for one marked read here since it was last looked at, holds it as
+    /// wanting Joel at once, in its place by when it came. Other mail
+    /// comes back as the next look finds it. Mail Google didn't take
+    /// changes nothing held.
+    pub fn unread(&mut self, id: &str, now: &Zoned) -> &State {
+        match self.asking(now, |google, token| google.label(token, id, "UNREAD")) {
+            Ok(()) => {
+                if let Some(at) = self.read.iter().position(|mail| mail.id == id) {
+                    let back = self.read.remove(at);
+                    if !self.state.mail.iter().any(|mail| mail.id == id) {
+                        self.state.mail.push(back);
+                        self.state
+                            .mail
+                            .sort_by_key(|mail| std::cmp::Reverse(mail.at));
+                        self.state.unread = self.state.unread.map(|unread| unread + 1);
+                    }
                 }
             }
             Err(looked) => self.fell(looked, self.state.account),
@@ -108,9 +249,13 @@ impl Watch {
     /// reached.
     fn fell(&mut self, looked: Looked, unreachable: Standing) {
         match looked {
-            Looked::Missing => self.state = State::without(Standing::None),
+            Looked::Missing => {
+                self.state = State::without(Standing::None);
+                self.documented = None;
+            }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
+                self.documented = None;
             }
             Looked::Refused(Refused::Unreachable(why)) => {
                 eprintln!("<4>{why}");
@@ -151,6 +296,16 @@ impl Watch {
             answer => Ok(answer?),
         }
     }
+}
+
+/// The documents of every kind Joel looked at lately, each kind's last
+/// first.
+fn recently(google: &Google, token: &str) -> Result<Vec<Document>, Refused> {
+    let mut found = Vec::new();
+    for kind in Kind::ALL {
+        found.extend(drive::documents(&google.documents(token, kind)?, kind));
+    }
+    Ok(found)
 }
 
 /// The mail that wants Joel, newest first, and how many in the inbox are

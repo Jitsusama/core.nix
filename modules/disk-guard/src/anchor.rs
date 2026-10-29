@@ -4,7 +4,10 @@
 //! an open directory, refusing a symlink, a `..` or another filesystem
 //! anywhere on the way, so nothing swapped in between a check and a delete
 //! can send the guard somewhere else. A Btrfs subvolume reads as another
-//! device, so it's never crossed either.
+//! device too. One reached through the same mount and writable, as the work
+//! broker clones each tree, is opened on the way down to what's reclaimed,
+//! since the walk that found it went in; emptying never enters one, so one
+//! inside what's emptied is left whole.
 
 #[cfg(target_os = "linux")]
 use rustix::fs::ResolveFlags;
@@ -39,6 +42,31 @@ const TRASH: &[u8] = b".disk-guard-trash-";
 
 /// Deeper than any build tree goes, and short of running out of open files.
 const DEEPEST: usize = 256;
+
+/// The smallest file whose extents are asked after when sizing: what's
+/// shared between builds is mostly libraries and binaries of megabytes,
+/// and mapping every small file would cost a call each.
+const SHARED_FROM: u64 = 1 << 20;
+
+/// What a size has counted already: files with several links, by device
+/// and inode, and shared extents, by where they lie on the disk.
+#[derive(Default)]
+pub struct Counted {
+    inodes: HashSet<(Dev, u64)>,
+    extents: HashSet<u64>,
+}
+
+impl Counted {
+    /// How many of a file's bytes lie in shared extents counted already,
+    /// counting those that aren't yet.
+    fn again(&mut self, file: &OwnedFd) -> u64 {
+        crate::pool::shared_extents(file)
+            .into_iter()
+            .filter(|&(physical, _)| !self.extents.insert(physical))
+            .map(|(_, length)| length)
+            .sum()
+    }
+}
 
 impl Detached<'_> {
     pub fn name(&self) -> &OsStr {
@@ -195,7 +223,8 @@ impl Dir {
         let resolve = ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_XDEV;
         let fd = rustix::fs::openat2(&self.fd, relative, DIRECTORY, Mode::empty(), resolve)?;
         let child = Dir::from_fd(fd)?;
-        if child.dev != self.dev {
+        // `NO_XDEV` refuses a mount, but not a subvolume on this one.
+        if self.foreign(&child) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "another filesystem",
@@ -204,9 +233,15 @@ impl Dir {
         Ok(child)
     }
 
+    /// Whether a directory opened beneath this one is on another filesystem:
+    /// another device, unless it's a subvolume `pool::beneath` lets through.
+    fn foreign(&self, child: &Dir) -> bool {
+        child.dev != self.dev && !crate::pool::beneath(&self.fd, &child.fd)
+    }
+
     /// Opens a directory beneath this one a component at a time, each one
-    /// without following a symlink and checked to be on this filesystem,
-    /// refusing any `..`. It's how `child` resolves where there's no
+    /// without following a symlink and checked to be on the filesystem of
+    /// the one before, refusing any `..`. It's how `child` resolves where there's no
     /// `openat2`, and public so Linux's tests hold it to the same rules.
     #[doc(hidden)]
     pub fn child_stepwise(&self, relative: &Path) -> io::Result<Dir> {
@@ -220,7 +255,7 @@ impl Dir {
                 }
             };
             let next = Dir::from_fd(rustix::fs::openat(&dir.fd, name, DIRECTORY, Mode::empty())?)?;
-            if next.dev != self.dev {
+            if dir.foreign(&next) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     "another filesystem",
@@ -263,6 +298,16 @@ impl Dir {
         Ok((child.dev == self.dev).then_some(child))
     }
 
+    /// Opens a directory entry to reclaim it whole: on this filesystem, or
+    /// a subvolume of its own that `pool::beneath` lets through, as the
+    /// harness makes each quest's scratch. Emptying it still never enters
+    /// another subvolume within, such as a tree cloned there.
+    pub(crate) fn whole_entry(&self, name: &OsStr) -> io::Result<Option<Dir>> {
+        let fd = rustix::fs::openat(&self.fd, name, DIRECTORY, Mode::empty())?;
+        let child = Dir::from_fd(fd)?;
+        Ok((!self.foreign(&child)).then_some(child))
+    }
+
     /// Removes one entry all the way down, as emptying a trash does.
     pub(crate) fn remove_entry(&self, name: &OsStr) -> io::Result<()> {
         remove(self, name, 0, &mut || {})
@@ -300,12 +345,20 @@ impl Dir {
     }
 
     /// The bytes allocated to everything beneath this directory, on its own
-    /// filesystem, with each file counted once however many links it has.
+    /// filesystem, with each file counted once however many links it has,
+    /// and each extent shared among its files once.
     /// What vanishes or can't be read during the walk, as a running build
     /// replaces its files, is left out rather than failing the count.
     pub fn size(&self) -> io::Result<u64> {
-        let mut seen = HashSet::new();
-        self.size_into(&mut seen)
+        self.size_counted(&mut Counted::default())
+    }
+
+    /// The bytes allocated beneath this directory, as `size` says, less any
+    /// already in `counted`, which takes in what's counted here. Measuring
+    /// several directories through one counts what they share once, for
+    /// the first measured, as deleting all of them frees it once.
+    pub fn size_counted(&self, counted: &mut Counted) -> io::Result<u64> {
+        self.size_into(counted)
     }
 
     /// Moves every entry but those kept into a fresh trash inside this
@@ -471,7 +524,7 @@ impl Dir {
         Ok(rustix::fs::chmod(link.as_str(), Mode::from_raw_mode(mode))?)
     }
 
-    fn size_into(&self, seen: &mut HashSet<u64>) -> io::Result<u64> {
+    fn size_into(&self, counted: &mut Counted) -> io::Result<u64> {
         let mut total = 0;
         for name in self.names()? {
             let name = OsStr::from_bytes(&name);
@@ -482,15 +535,23 @@ impl Dir {
                 continue;
             }
             let kind = FileType::from_raw_mode(stat.st_mode);
-            if stat.st_nlink > 1 && kind != FileType::Directory && !seen.insert(stat.st_ino) {
+            let inode = (stat.st_dev, stat.st_ino);
+            if stat.st_nlink > 1 && kind != FileType::Directory && !counted.inodes.insert(inode) {
                 continue;
             }
             // The kernel never counts a negative number of blocks.
-            total += u64::try_from(stat.st_blocks).unwrap_or(0) * 512;
+            let blocks = u64::try_from(stat.st_blocks).unwrap_or(0) * 512;
+            let shared = if kind == FileType::RegularFile && blocks >= SHARED_FROM {
+                self.file(name, false)
+                    .map_or(0, |file| counted.again(&file))
+            } else {
+                0
+            };
+            total += blocks.saturating_sub(shared);
             if kind == FileType::Directory
                 && let Ok(Some(child)) = self.entry(name)
             {
-                total += child.size_into(seen).unwrap_or(0);
+                total += child.size_into(counted).unwrap_or(0);
             }
         }
         Ok(total)
