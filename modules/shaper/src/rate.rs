@@ -741,19 +741,25 @@ impl Controller {
         all
     }
 
+    /// Tells each direction when a call or a screen share begins or ends.
+    fn follow_calls(&mut self) {
+        if self.live == self.was_live {
+            return;
+        }
+        for dir in [&mut self.up, &mut self.down] {
+            if self.live {
+                dir.call_began();
+            } else {
+                dir.call_ended(&self.settings);
+            }
+        }
+        self.was_live = self.live;
+    }
+
     /// One step, given what each direction carried since the last, in
     /// kbit/s, at `now` seconds. Returns what it decided.
     pub fn step(&mut self, now: f64, sent: f64, received: f64) -> State {
-        if self.live != self.was_live {
-            for dir in [&mut self.up, &mut self.down] {
-                if self.live {
-                    dir.call_began();
-                } else {
-                    dir.call_ended(&self.settings);
-                }
-            }
-            self.was_live = self.live;
-        }
+        self.follow_calls();
         let mut s = self.settings.clone();
         if self.live {
             s.least_of_best = s.least_of_best.min(s.least_of_best_live);
