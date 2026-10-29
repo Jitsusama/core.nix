@@ -498,9 +498,15 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     answered("1")
     desktop.as_account(f"rm -r {notes}")
     # Three asks later, the shell watches no more than it did before them.
-    machine.wait_until_succeeds(
-        desktop.in_session(f'[ "$({watchers})" -le {watching} ]'), timeout=timedelta(seconds=30)
-    )
+    try:
+        machine.wait_until_succeeds(
+            desktop.in_session(f'[ "$({watchers})" -le {watching} ]'),
+            timeout=timedelta(seconds=30),
+        )
+    except AssertionError:
+        after = desktop.as_account(watchers).strip()
+        kept = f"the shell holds {after} inotify handles after three asks, {watching} before"
+        raise AssertionError(kept) from None
 
 
 def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Desktop) -> None:
