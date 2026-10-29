@@ -108,6 +108,7 @@ fn label(kind: &str) -> Option<&'static str> {
         "install" => "an install",
         "scratch" => "scratch space",
         "snapshot" => "a snapshot",
+        "git-temporary" => "what an unfinished git fetch left",
         "workspace" => "a workspace",
         "temp" => "a temporary file",
         "trash" => "something from the trash",

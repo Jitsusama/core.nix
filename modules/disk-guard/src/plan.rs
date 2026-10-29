@@ -30,6 +30,8 @@ pub enum Class {
     },
     /// A snapshot whose process is gone.
     Snapshot,
+    /// What git staged in a repository no git works on now.
+    GitTemporary,
     /// A quest workspace whose quest is done with it.
     Workspace,
     Temp,
@@ -90,6 +92,7 @@ impl Class {
             Class::Variant => "variant",
             Class::Scratch { .. } => "scratch",
             Class::Snapshot => "snapshot",
+            Class::GitTemporary => "git-temporary",
             Class::Workspace => "workspace",
             Class::Temp => "temp",
             Class::Trash => "trash",
@@ -195,7 +198,9 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             [healthy, days(1.0), hours(6.0), hours(2.0)],
         ),
         // Of a log, what's trimmed is history nobody reads; the rest stays.
-        Class::Snapshot | Class::NixBuild | Class::Log => (Group::Waste, [AT_ONCE; 4]),
+        Class::Snapshot | Class::GitTemporary | Class::NixBuild | Class::Log => {
+            (Group::Waste, [AT_ONCE; 4])
+        }
         // A quest that's over owns nothing: its scratch goes once nothing
         // has written to it for a few minutes, whatever the disk's band.
         Class::Workspace => (Group::Waste, [minutes(10.0); 4]),
