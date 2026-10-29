@@ -121,7 +121,7 @@ pub fn write(
     image: &mut Image,
     disk: &mut File,
     vault_guid: [u8; 16],
-    signer: Option<&Signer>,
+    signers: &[Signer],
     meter: &Meter,
     fill: impl FnOnce(&mut dyn Store) -> Result<(), Fault>,
 ) -> Result<Written, Fault> {
@@ -139,7 +139,7 @@ pub fn write(
     // Signed before anything is written, so a key that won't sign leaves
     // the stick as it was.
     let mut signed_esps = vec![];
-    if let Some(signer) = signer {
+    if !signers.is_empty() {
         for partition in image.partitions() {
             if partition.kind == EFI_SYSTEM {
                 let length = in_memory(partition.bytes())
@@ -150,7 +150,7 @@ pub fn write(
                     .seek(SeekFrom::Start(partition.offset()))
                     .and_then(|_| image.file.read_exact(&mut esp))
                     .map_err(|why| Fault::unreadable("the stick's image", why))?;
-                sign_esp(&mut esp, signer)?;
+                sign_esp(&mut esp, signers)?;
                 signed_esps.push((partition.slot, esp));
             }
         }
@@ -236,11 +236,13 @@ const BOOT_PROGRAM: &str = "EFI/BOOT/BOOTX64.EFI";
 
 /// Signs the boot program in an EFI system partition held in memory, the
 /// one file there firmware boots on its own, so nothing else that lands on
-/// a stick's partition is ever signed with a machine's key. One this
-/// signer signed as it is now is left alone, and says nothing changed.
-/// fatfs rewrites a file in place without the directory entries it gets
-/// wrong when it makes one.
-fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<bool, Fault> {
+/// a stick's partition is ever signed with a machine's key. It's signed by
+/// each of the signers, and by no other unless all of them had signed it
+/// already, so it boots on each of their machines. One they've all signed
+/// as it is now is left alone, and says nothing changed. fatfs
+/// rewrites a file in place without the directory entries it gets wrong
+/// when it makes one.
+fn sign_esp(esp: &mut [u8], signers: &[Signer]) -> Result<bool, Fault> {
     let unsigned = |why: io::Error| Fault::unreadable("the stick's EFI system partition", why);
     let filesystem =
         fatfs::FileSystem::new(io::Cursor::new(esp), crate::vault::store::fat_options())
@@ -257,10 +259,17 @@ fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<bool, Fault> {
             })?;
         let mut program = vec![];
         file.read_to_end(&mut program).map_err(unsigned)?;
-        if signer.has_signed(&program) {
+        if signers.iter().all(|signer| signer.has_signed(&program)) {
             return Ok(false);
         }
-        let program = signer.sign(program, std::time::SystemTime::now())?;
+        let mut signing = signers.iter();
+        let mut program = match signing.next() {
+            Some(first) => first.sign(program, std::time::SystemTime::now())?,
+            None => return Ok(false),
+        };
+        for signer in signing {
+            program = signer.sign_beside(program, std::time::SystemTime::now())?;
+        }
         file.seek(SeekFrom::Start(0))
             .and_then(|_| file.write_all(&program))
             .and_then(|()| file.truncate())
@@ -289,7 +298,7 @@ pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
         .and_then(|mut region| region.read_exact(&mut was))
         .map_err(unwritten)?;
     let mut signed_esp = was.clone();
-    if !sign_esp(&mut signed_esp, signer)? {
+    if !sign_esp(&mut signed_esp, std::slice::from_ref(signer))? {
         return Ok(());
     }
     let block = blocks::BLOCK_LENGTH;

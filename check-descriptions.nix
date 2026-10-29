@@ -1390,6 +1390,11 @@
     without changing it, mounts it whole, sets which generation boots next, replaces a lost key,
     reinstalls a boot loader gone from the ESP, and gives a root shell inside
   '';
+  vm-guide-signs-a-stick-for-two-machines = ''
+    a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under
+    each machine's firmware, which holds only that machine's keys, and firmware holding neither
+    refuses it
+  '';
   vm-guide-writes-a-stick = ''
     the guide writes a stick as the person, holding the host awake, through UDisks2, unmounting what
     was mounted from it, its passphrase seven words shown alone for a phone and typed back,
