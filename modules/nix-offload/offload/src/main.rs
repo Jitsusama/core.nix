@@ -5,7 +5,8 @@
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
 //! PATH]`, or `nix-offload stand --standing PATH` to name standing
 //! builders alone and lend none, or `nix-offload report --rate DOLLARS` for
-//! today's line.
+//! today's line, or `nix-offload there [-L] [--keep-going] FLAKE ATTR...`
+//! to build a flake the builder can fetch on it, as src/there.rs says.
 //!
 //! Every 20 seconds it reads the machine queue. The moment a build or a VM
 //! check is queued or running, it asks the helper for a builder, names it
@@ -59,6 +60,7 @@ mod decide;
 mod journal;
 mod machines;
 mod queue;
+mod there;
 
 use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
@@ -94,7 +96,8 @@ const LENDING: &str = "/run/nix-offload/lending";
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--standing PATH] | nix-offload stand --standing PATH \
-                    | nix-offload report --rate DOLLARS";
+                    | nix-offload report --rate DOLLARS \
+                    | nix-offload there [-L] [--keep-going] FLAKE ATTR...";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -189,6 +192,27 @@ fn main() -> ExitCode {
             .and_then(|at| arguments.get(at + 1))
             .cloned()
     };
+    if arguments.first().map(String::as_str) == Some("there") {
+        let Some(asked) = there::asked(&arguments[1..]) else {
+            eprintln!("nix-offload: there takes a flake and its attributes\n{USED}");
+            return ExitCode::from(64);
+        };
+        // A test names its own folder, as changed-checks lets one.
+        let store = env::var_os("NIX_OFFLOAD_DIR").map_or_else(
+            || PathBuf::from(STORE),
+            |dir| PathBuf::from(dir).join("store"),
+        );
+        let store = fs::read_to_string(store).ok();
+        let scratch = env::var_os("XDG_RUNTIME_DIR")
+            .map_or_else(env::temp_dir, PathBuf::from)
+            .join("nix-offload-there");
+        let began = now();
+        let ran = there::run(&asked, store.as_deref(), &scratch, "ssh", "nix");
+        let ended = now();
+        let journal = state().join("nix-offload/there.jsonl");
+        there::note(&journal, ended, ended.saturating_sub(began), &asked, &ran);
+        return ExitCode::from(u8::try_from(ran.status).unwrap_or(1));
+    }
     if arguments.first().map(String::as_str) == Some("stand") {
         let Some(standing) = given("--standing") else {
             eprintln!("nix-offload: stand needs --standing\n{USED}");
