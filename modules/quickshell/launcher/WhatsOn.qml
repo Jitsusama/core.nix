@@ -56,8 +56,7 @@ Provider {
             name: fact.piece.title,
             row: made(fact)
         }));
-        return (waiting === null ? [] : [waiting]).concat(moment,
-            Now.ordered(rows).map(each => each.row));
+        return [waiting].concat(moment, Now.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()
 
