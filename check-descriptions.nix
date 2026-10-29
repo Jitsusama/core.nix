@@ -349,13 +349,14 @@
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
-    meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest first,
-    each asked for once, with who it went to, its text, never an attachment's, and the name of each
-    file it carries but what its HTML shows inline, marking it read or archiving it when asked,
-    marking it unread again, mail read here wanting Joel again at once, and the documents of each
-    kind he looked at lately, his last first, asking Drive again only every five minutes and
-    keeping them while Drive fails
+    meeting only when Joel holds it, telling every guest, moves one through the calendar Google lets
+    him change it on, telling everyone asked, tells it the mail that wants Joel, newest first, each
+    asked for once, with who it went to, its text, never an attachment's, and each file it carries,
+    by its name, kind and size, but what its HTML shows inline, fetching one only when asked, never
+    to open one that runs, into a folder only Joel reads or into Downloads, never over a file there,
+    marking it read or archiving it when asked, marking it unread again, mail read here wanting Joel
+    again at once, and the documents of each kind he looked at lately, his last first, asking Drive
+    again only every five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1191,10 +1192,10 @@
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
-    included, and nothing from half a line; says when mail came in words, and what its row and
-    its details say, the files it carries among them; writes a reply to who sent it, and a mail to
-    everyone else a meeting names; and writes the lines that mark mail read or unread again or
-    archive it
+    included, and nothing from half a line; says when mail came in words, and what its row and its
+    details say, the files it carries among them, each by its kind and size; writes a reply to who
+    sent it, and a mail to everyone else a meeting names; writes the lines that mark mail read or
+    unread again or archive it or fetch a file it carries; and says how that fetch stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1357,9 +1358,10 @@
     its Meet call in Now while it's open, says Google signed out in Now with Return signing in again
     in pi, counts the mail that wants Joel in Now with Return listing it as Mail does, details and
     all, opens mail by its subject, keeping one Mail window, replies to it, flips its Read switch
-    both ways and archives it, lists the documents Joel opened lately in Docs' Recent and opens one,
-    the same row its title finds, joins a Meet call by its code after Meet's New Meeting, sets the
-    volume, loses no letter typed after its chord, and shows the shortcuts
+    both ways, archives it, and opens a file it carries or saves a copy, lists the documents Joel
+    opened lately in Docs' Recent and opens one, the same row its title finds, joins a Meet call by
+    its code after Meet's New Meeting, sets the volume, loses no letter typed after its chord, and
+    shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

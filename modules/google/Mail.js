@@ -68,7 +68,7 @@ function details(mail, untitled) {
         { label: "Date", value: dated(mail.at) },
         {
             label: attachments.length === 1 ? "Attachment" : "Attachments",
-            value: attachments.join(", ")
+            value: attachments.map(file => file.name).join(", ")
         }
     ];
     return {
@@ -125,6 +125,91 @@ const TIDIED = { read: "read", unread: "unread", archive: "archived" };
 
 function tidied(how) {
     return TIDIED[how] ?? "";
+}
+
+// What a file's row says while the program fetches it and once it's done,
+// or why it couldn't, as a network's says it's connecting.
+const ELLIPSIS = "\u2026";
+const FETCHED = {
+    fetching: `fetching${ELLIPSIS}`,
+    saved: "saved in Downloads",
+    gone: "no longer in the mail",
+    runs: "a program or a script, so only saved",
+    unreachable: "Gmail couldn't be reached",
+    unwritten: "couldn't be written down"
+};
+
+function fetchedSaid(stood) {
+    return FETCHED[stood] ?? "";
+}
+
+// How the file `at` on `mail` stands, by what the program last said of
+// the file fetched (src/files.rs), for an ask made at or after `since`:
+// "fetching", "opened", "saved" or why not, and nothing for one not
+// asked for since.
+function fetchedAs(fetched, mail, at, since) {
+    if (!fetched || fetched.mail !== mail.id || fetched.file !== at || fetched.asked < since) {
+        return "";
+    }
+    if (fetched.failed) {
+        return fetched.failed;
+    }
+    if (!fetched.path) {
+        return "fetching";
+    }
+    return fetched.how === "save" ? "saved" : "opened";
+}
+
+// The line asking the program to fetch the file `at` on `mail`, to open
+// or save as `how` says.
+function fetch(mail, at, how) {
+    return `${JSON.stringify({ fetch: { id: mail.id, file: at, how } })}\n`;
+}
+
+// A file's kind as a file manager says it, by its ending ("PDF"), or
+// `plain` for one with none.
+function kind(file, plain) {
+    const at = file.name.lastIndexOf(".");
+    return at > 0 && at < file.name.length - 1 ? file.name.slice(at + 1).toUpperCase() : plain;
+}
+
+// Sizes in decimal units, as a picture's and a disk's are said elsewhere
+// in the launcher (Copies.qml's weighed), with a figure after the point
+// only below ten.
+const GIGA = 1e9;
+const MEGA = 1e6;
+const KILO = 1e3;
+const UNITS = [
+    [GIGA, "GB"],
+    [MEGA, "MB"],
+    [KILO, "kB"]
+];
+const TENS = 10;
+
+function weighed(bytes) {
+    const unit = UNITS.find(each => bytes >= each[0]);
+    if (!unit) {
+        return `${Math.round(bytes)} B`;
+    }
+    const scaled = bytes / unit[0];
+    return `${scaled < TENS ? scaled.toFixed(1) : Math.round(scaled)} ${unit[1]}`;
+}
+
+// What a file's row says beside it: its kind and size.
+function sized(file, plain) {
+    return `${kind(file, plain)} \u00b7 ${weighed(file.size ?? 0)}`;
+}
+
+// A file's details, as the drawer shows them beside its row.
+function carried(file, plain) {
+    return {
+        title: file.name,
+        facts: [
+            { label: "Kind", value: kind(file, plain) },
+            { label: "Size", value: weighed(file.size ?? 0) }
+        ],
+        body: ""
+    };
 }
 
 // Chrome names a Google web app's window from the link it opened:

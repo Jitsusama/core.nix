@@ -13,7 +13,8 @@ use crate::account::{self, Missing};
 use crate::api::{Google, Refused};
 use crate::calendar::{self, Answer};
 use crate::drive::{self, Document, Kind};
-use crate::mail::{self, Mail, Tidy};
+use crate::files::{self, Failed, Fetched, How, Places};
+use crate::mail::{self, Bytes, Mail, Tidy};
 use crate::state::{Standing, State};
 use crate::token::Keeper;
 
@@ -241,6 +242,79 @@ impl Watch {
             Err(looked) => self.fell(looked, self.state.account),
         }
         &self.state
+    }
+
+    /// Says the mail `id`'s file `file` is being fetched to open or save,
+    /// which `fetch` then does, so the shell can say so while it waits.
+    pub fn fetching(&mut self, id: &str, file: usize, how: How, now: &Zoned) -> &State {
+        self.state.fetched = Some(Fetched {
+            mail: id.to_owned(),
+            file,
+            how,
+            asked: now.timestamp().as_millisecond(),
+            path: None,
+            failed: None,
+        });
+        &self.state
+    }
+
+    /// Fetches the file `fetching` named, from the mail held, read here
+    /// lately or wanting Joel, into `places`: where it is once written, or
+    /// why it isn't. A program or a script is never fetched to open.
+    pub fn fetch(&mut self, places: &Places, now: &Zoned) -> &State {
+        let Some(asked) = self.state.fetched.clone() else {
+            return &self.state;
+        };
+        let found = self.fetched(&asked, places, now);
+        self.state.fetched = Some(Fetched {
+            path: found.as_ref().ok().map(|path| path.display().to_string()),
+            failed: found.err(),
+            ..asked
+        });
+        &self.state
+    }
+
+    fn fetched(
+        &mut self,
+        asked: &Fetched,
+        places: &Places,
+        now: &Zoned,
+    ) -> Result<PathBuf, Failed> {
+        let file = self
+            .state
+            .mail
+            .iter()
+            .chain(&self.read)
+            .find(|mail| mail.id == asked.mail)
+            .and_then(|mail| mail.attachments.get(asked.file))
+            .cloned()
+            .ok_or(Failed::Gone)?;
+        if file.runs && asked.how == How::Open {
+            return Err(Failed::Runs);
+        }
+        let data = match &file.bytes {
+            Bytes::Held(data) => data.clone(),
+            Bytes::Asked(part) => {
+                match self.asking(now, |google, token| {
+                    google.attachment(token, &asked.mail, part)
+                }) {
+                    Ok(data) => data,
+                    Err(looked) => {
+                        self.fell(looked, self.state.account);
+                        return Err(Failed::Unreachable);
+                    }
+                }
+            }
+        };
+        let bytes = mail::bytes(&data);
+        match asked.how {
+            How::Open => files::kept(&places.kept, &asked.mail, &file.name, &bytes),
+            How::Save => files::saved(&places.saves, &file.name, &bytes),
+        }
+        .map_err(|error| {
+            eprintln!("<4>couldn't write a file mail carries: {error}");
+            Failed::Unwritten
+        })
     }
 
     /// What's held once Google didn't answer: nothing, for an account gone

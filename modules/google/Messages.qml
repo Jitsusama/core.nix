@@ -14,4 +14,11 @@ Provider {
 
     things: Mail.mail.map(mail => Mail.row(mail, provider.thing))
     onThingsChanged: changedTo(things)
+
+    // Mail's launcher, which a file it opens closes (Mail.qml).
+    Binding {
+        target: Mail
+        property: "launcher"
+        value: provider.launcher
+    }
 }

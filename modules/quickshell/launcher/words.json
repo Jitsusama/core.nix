@@ -4183,6 +4183,34 @@
       "glyph": "archive"
     },
     {
+      "id": "verb:mail:attachments",
+      "in": "mail:message",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "mail:attachment",
+      "in": "mail:message",
+      "name": "File",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:open",
+      "in": "mail:attachment",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:save",
+      "in": "mail:attachment",
+      "name": "Save a Copy",
+      "verb": "save",
+      "glyph": "saveCopy"
+    },
+    {
       "id": "verb:meet:code",
       "in": "applications",
       "name": "Join by Code",

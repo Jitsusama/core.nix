@@ -15,9 +15,12 @@
 //! after the laptop wakes comes at once rather than a minute later. With
 //! nobody signed in, the file is looked at, and Google never asked.
 //!
-//! The shell asks it to answer an invitation, and to mark mail read or
-//! archive it, on the same socket (ask.rs), which it does at once, telling
-//! every shell what changed.
+//! The shell asks it to answer an invitation, to mark mail read or
+//! archive it, and to fetch a file mail carries, on the same socket
+//! (ask.rs), which it does at once, telling every shell what changed. A
+//! file to open is kept in google-files beside the socket, in the
+//! session's runtime folder; one to save goes to Downloads
+//! (`$XDG_DOWNLOAD_DIR`, or `~/Downloads`) (files.rs).
 //!
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
@@ -36,6 +39,7 @@ use jiff::Zoned;
 
 use google::api::{Google, Origins};
 use google::ask::{self, Ask};
+use google::files::Places;
 use google::mail::Tidy;
 use google::socket::Socket;
 use google::state::{Standing, State};
@@ -64,6 +68,13 @@ fn main() -> ExitCode {
             eprintln!("<3>couldn't listen at {}: {error}", path.display());
             return ExitCode::FAILURE;
         }
+    };
+    let places = Places {
+        kept: path.with_file_name("google-files"),
+        saves: env::var_os("XDG_DOWNLOAD_DIR").map_or_else(
+            || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join("Downloads"),
+            PathBuf::from,
+        ),
     };
     let mut watch = Watch::new(Google::new(Origins::default()), credentials, None);
     let mut wait = EVERY;
@@ -100,6 +111,12 @@ fn main() -> ExitCode {
                     Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),
                     Some(Ask::Unread { id }) => watch.unread(&id, &now),
                     Some(Ask::Archive { id }) => watch.tidy(&id, Tidy::Archive, &now),
+                    // Said as it starts, so the shell can say so while
+                    // Gmail answers, then again once it's done.
+                    Some(Ask::Fetch { id, file, how }) => {
+                        socket.say(watch.fetching(&id, file, how, &now).line());
+                        watch.fetch(&places, &now)
+                    }
                     None => continue,
                 };
                 socket.say(state.line());
