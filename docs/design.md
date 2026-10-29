@@ -507,8 +507,10 @@ volume first, so every fact still shows it's there, and a glyph never
 gives way: the marks have first claim on the foot, and the keys make room
 for them, the arrows said by their marks alone (Joel, 2026-10-28: "i
 want icons to be able to be there as much as possible"). The date, with
-no glyph, goes where it would shrink, and the time never goes. The volume
-and the date shrink first since they're not what Joel looks there for, and
+no glyph, goes where it would shrink, and the time never goes. Each
+keeps the room it has needed since the launcher opened, so one that
+reads shorter, the battery going from 100% to 99%, moves nothing after
+it. The volume and the date shrink first since they're not what Joel looks there for, and
 each fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
 so a piece with a mark is in each. The overview draws nothing of the
 desktop's own: it's for finding windows (2026-10-21, at Joel's word: "having

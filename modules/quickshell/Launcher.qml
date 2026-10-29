@@ -1478,6 +1478,13 @@ Scope {
     // opened (Standing.js's fittedFrom), which they never read longer than
     // until it closes.
     property int footStage: 0
+    // The room each of the foot's facts has needed since the launcher
+    // opened, by its label and the way it reads, which it keeps: the
+    // battery going from 100% to 99%, or the agents from "10 working" to
+    // "9 working", slid every fact after it (the launcher audit's finding
+    // 32, Joel's yes on 2026-10-26). Kept for each way, so a fact shrunk
+    // to its glyph doesn't keep the room its words took.
+    property var factsWidest: ({})
 
     // A step of its own has notes of its own, so the field's right end
     // takes the room they need afresh (Prompt.qml's steady). Known by the
@@ -2756,6 +2763,7 @@ Scope {
             pointer = Qt.point(-1, -1);
             footReset();
             footStage = 0;
+            factsWidest = {};
             figuresStep = "";
             held = [];
             prompt.forget();
@@ -3407,8 +3415,9 @@ Scope {
                         // typed, held or asked, so it's always where he
                         // looks for it. As room runs short, each says its
                         // least, then by collapse rank, lowest first, its
-                        // glyph alone, and only then do they give way, in
-                        // that order (launcher/Standing.js). Two
+                        // glyph alone, and a glyph never gives way
+                        // (launcher/Standing.js). Each keeps the room it
+                        // has needed since the launcher opened. Two
                         // facts side by side under one glyph (the day's
                         // AI spend and the agents, both AI's) wear it
                         // once.
@@ -3431,8 +3440,16 @@ Scope {
                             // Read no longer than the shortest they've had to
                             // since the launcher opened (root.footStage), so
                             // they change their form once, not back and forth.
+                            // The room a fact takes: what it says, or the
+                            // most it's said that way since the launcher
+                            // opened (root.factsWidest).
+                            function place(fact) {
+                                return Math.max(measure.advanceWidth(fact.said),
+                                    root.factsWidest[`${fact.entry.label}:${fact.way}`] ?? 0);
+                            }
+
                             readonly property var fit: {
-                                const wide = facts => facts.reduce((sum, fact) => sum + measure.advanceWidth(fact.said), 0)
+                                const wide = facts => facts.reduce((sum, fact) => sum + place(fact), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
                                 return Standing.fittedFrom(facts, told => wide(told) <= foot.room,
                                     root.footStage);
@@ -3446,6 +3463,20 @@ Scope {
                             function noteStage() {
                                 if (root.open && foot.room > 0 && fit.stage > root.footStage)
                                     root.footStage = fit.stage;
+                                if (!root.open)
+                                    return;
+                                const widest = Object.assign({}, root.factsWidest);
+                                let grew = false;
+                                for (const fact of kept) {
+                                    const key = `${fact.entry.label}:${fact.way}`;
+                                    const now = measure.advanceWidth(fact.said);
+                                    if (now > (widest[key] ?? 0)) {
+                                        widest[key] = now;
+                                        grew = true;
+                                    }
+                                }
+                                if (grew)
+                                    root.factsWidest = widest;
                             }
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")
@@ -3467,6 +3498,7 @@ Scope {
                                 Text {
                                     required property var modelData
 
+                                    width: standing.place(modelData)
                                     text: modelData.said
                                     textFormat: Text.PlainText
                                     // As the margin's mark wears it (Margin.qml).
