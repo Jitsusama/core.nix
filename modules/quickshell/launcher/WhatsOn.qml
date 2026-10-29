@@ -19,6 +19,7 @@
 import qs
 import Quickshell
 import QtQuick
+import "../Fuzzy.js" as Fuzzy
 import "../Marks.js" as Marks
 import "Now.js" as Now
 
@@ -427,6 +428,26 @@ Provider {
                     actions[0].run();
             }
         });
+    }
+
+    // What's typed inside Now narrows its rows by name, as every place's
+    // search does: with none, typing "time" found nothing, Time a row
+    // there. A moment's row placed as an answer is made ready to match
+    // here, as the launcher does for such rows.
+    function search(typed) {
+        const words = Fuzzy.words(typed);
+        const need = Fuzzy.letters(words);
+        const found = [];
+        for (const row of all) {
+            const prepared = row.prepared ?? Fuzzy.prepare(row.name);
+            if ((prepared.mask & need) !== need)
+                continue;
+            const m = Fuzzy.match(prepared, words, false);
+            if (m.score >= 0)
+                found.push({ item: prepared, score: m.score, grade: m.grade, row: row });
+        }
+        const kept = Fuzzy.keep(found);
+        return { rows: kept.map(f => f.row), grade: kept.length > 0 ? kept[0].grade : 0 };
     }
 
     function everything() {
