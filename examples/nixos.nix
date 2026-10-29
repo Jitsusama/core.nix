@@ -23,7 +23,9 @@ nixpkgs.lib.nixosSystem {
         };
 
         users.users.joel.isNormalUser = true;
+        # The account that lends builders chooses root's, so Nix trusts it.
         jitsusama.nix-offload.account = "joel";
+        nix.settings.trusted-users = [ "joel" ];
         home-manager.users.joel = {
           home.stateVersion = "26.05";
 

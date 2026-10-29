@@ -599,8 +599,10 @@
   '';
   nix-offload-decides-when = ''
     a builder is asked for only for builds and VM checks held three minutes for room a builder
-    gives, its host is found from its line and its use from ssh, and a day's journal sums to its
-    hours and cost
+    gives, by a queue still writing, within the day's hours and never beside one not yet seen
+    gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
+    only builders it asked for are ever given back; standing builders are named while they
+    answer; and a day's journal sums to its hours and cost
   '';
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
