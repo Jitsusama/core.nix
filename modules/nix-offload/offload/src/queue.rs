@@ -1,19 +1,14 @@
-//! When the machine queue wants a builder: jobs a builder elsewhere could
-//! take, held back for room this machine doesn't have, or running and
-//! waiting while the machine stalls.
+//! When the machine queue wants a builder: the moment any job a builder
+//! elsewhere could take is queued or running.
 //!
-//! A slot held back isn't enough on its own: the queue gives out slots by
-//! count, so on 29 October five VM tests ran here with memory stalled 10%
-//! of the time and nothing waiting, and the person at the machine felt it.
+//! Waiting until the machine has no room, or until it stalls, is too late:
+//! the queue gives out slots by count, so on 29 October five VM tests ran
+//! here with memory stalled 10% of the time and nothing waiting, and the
+//! person at the machine felt it before a builder was asked for. One made
+//! early costs only minutes of its price once the work stops, since it's
+//! given back idle.
 
 use serde_json::Value;
-
-/// What a job waits on that a builder elsewhere gives: a VM slot; a build
-/// slot, which the build cap and CPU pressure beside VMs hold back as
-/// `behind`; or its turn behind those. Memory isn't among them, since
-/// evaluation stays here, nor planning, which is Nix being asked what to
-/// build.
-const RELIEVED: [&str; 3] = ["vms", "behind", "order"];
 
 /// The kinds whose work Nix runs, and so could run elsewhere. A `vm-test`
 /// runs its driver in the session itself, here.
@@ -24,12 +19,10 @@ const SENT: [&str; 2] = ["build", "vm-check"];
 /// stopped, whose waiting jobs would otherwise keep a builder all day.
 const STALE: u64 = 120;
 
-/// Whether a builder is wanted at `now`: a job a builder could take has
-/// waited at least `wait` seconds since it asked for a slot, or the queue
-/// says the machine is over a pressure line (`machine.over`) while such a
-/// job runs or waits for any reason. A queue that can't be read, or that
-/// stopped writing, wants nothing.
-pub fn wants(queue: &str, now: u64, wait: u64) -> bool {
+/// Whether a builder is wanted at `now`: a job a builder could take is
+/// waiting or running. A queue that can't be read, or that stopped
+/// writing, wants nothing.
+pub fn wants(queue: &str, now: u64) -> bool {
     let Ok(queue) = serde_json::from_str::<Value>(queue) else {
         return false;
     };
@@ -37,23 +30,12 @@ pub fn wants(queue: &str, now: u64, wait: u64) -> bool {
         .as_str()
         .and_then(seconds_of)
         .is_some_and(|at| now.saturating_sub(at) <= STALE);
-    let stalling = queue["machine"]["over"]
-        .as_array()
-        .is_some_and(|over| !over.is_empty());
     fresh
         && queue["jobs"].as_array().is_some_and(|jobs| {
-            jobs.iter()
-                .filter(|job| SENT.iter().any(|kind| job["kind"] == *kind))
-                .any(|job| {
-                    let state = job["state"].as_str();
-                    let held = state == Some("waiting")
-                        && RELIEVED.iter().any(|on| job["waitingOn"] == *on)
-                        && job["since"]
-                            .as_str()
-                            .and_then(seconds_of)
-                            .is_some_and(|since| now.saturating_sub(since) >= wait);
-                    held || (stalling && matches!(state, Some("waiting" | "running")))
-                })
+            jobs.iter().any(|job| {
+                SENT.iter().any(|kind| job["kind"] == *kind)
+                    && matches!(job["state"].as_str(), Some("waiting" | "running"))
+            })
         })
 }
 
@@ -96,111 +78,51 @@ mod tests {
         format!(r#"{{"v":1,"at":"{at}","jobs":[{jobs}]}}"#)
     }
 
-    fn queue_over(over: &str, jobs: &str) -> String {
-        format!(
-            r#"{{"v":1,"at":"2026-10-29T14:59:50.000Z","machine":{{"over":[{over}]}},"jobs":[{jobs}]}}"#
-        )
-    }
-
-    fn job(kind: &str, state: &str, on: &str, asked: u64) -> String {
-        let since = time_of(asked);
-        format!(r#"{{"kind":"{kind}","state":"{state}","waitingOn":"{on}","since":"{since}"}}"#)
-    }
-
-    /// The queue's form of a time in the hour before `NOW`, to the minute.
-    fn time_of(seconds: u64) -> String {
-        let before = (NOW - seconds) / 60;
-        format!("2026-10-29T14:{:02}:00.000Z", 60 - before)
+    fn job(kind: &str, state: &str) -> String {
+        format!(r#"{{"kind":"{kind}","state":"{state}","waitingOn":"memory"}}"#)
     }
 
     #[test]
-    fn a_build_held_for_a_slot_long_enough_wants_a_builder() {
-        assert!(wants(
-            &queue(&job("build", "waiting", "order", NOW - 300)),
-            NOW,
-            180
-        ));
-        assert!(wants(
-            &queue(&job("vm-check", "waiting", "vms", NOW - 180)),
-            NOW,
-            180
-        ));
-        assert!(wants(
-            &queue(&job("build", "waiting", "behind", NOW - 240)),
-            NOW,
-            180
-        ));
-    }
-
-    #[test]
-    fn work_a_builder_could_take_wants_one_while_the_machine_stalls() {
+    fn work_a_builder_could_take_wants_one_the_moment_it_is_queued_or_running() {
         for job in [
-            job("build", "running", "", NOW - 30),
-            job("vm-check", "running", "", NOW - 30),
-            job("build", "waiting", "memory", NOW - 10),
+            job("build", "waiting"),
+            job("build", "running"),
+            job("vm-check", "waiting"),
+            job("vm-check", "running"),
         ] {
-            assert!(wants(&queue_over(r#""memory""#, &job), NOW, 180), "{job}");
-            assert!(!wants(&queue_over("", &job), NOW, 180), "{job}");
+            assert!(wants(&queue(&job), NOW), "{job}");
         }
     }
 
     #[test]
-    fn a_stall_wants_nothing_without_work_a_builder_could_take() {
-        assert!(!wants(&queue_over(r#""cpu""#, ""), NOW, 180));
+    fn only_work_a_builder_could_take_wants_one() {
+        assert!(!wants(&queue(""), NOW));
         for job in [
-            job("vm-test", "running", "", NOW - 30),
-            job("build", "done", "", NOW - 30),
+            job("vm-test", "running"),
+            job("vm-test", "waiting"),
+            job("build", "done"),
         ] {
-            assert!(!wants(&queue_over(r#""cpu""#, &job), NOW, 180), "{job}");
-        }
-    }
-
-    #[test]
-    fn a_job_that_just_asked_wants_nothing_yet() {
-        assert!(!wants(
-            &queue(&job("build", "waiting", "order", NOW - 60)),
-            NOW,
-            180
-        ));
-    }
-
-    #[test]
-    fn only_what_a_builder_relieves_wants_one() {
-        for job in [
-            job("build", "waiting", "memory", NOW - 600),
-            job("build", "waiting", "planning", NOW - 600),
-            job("build", "running", "order", NOW - 600),
-            job("vm-test", "waiting", "vms", NOW - 600),
-        ] {
-            assert!(!wants(&queue(&job), NOW, 180), "{job}");
+            assert!(!wants(&queue(&job), NOW), "{job}");
         }
     }
 
     #[test]
     fn one_job_wanting_is_enough() {
-        let jobs = [
-            job("build", "waiting", "memory", NOW - 600),
-            job("vm-check", "waiting", "vms", NOW - 600),
-        ]
-        .join(",");
-        assert!(wants(&queue(&jobs), NOW, 180));
+        let jobs = [job("vm-test", "running"), job("vm-check", "waiting")].join(",");
+        assert!(wants(&queue(&jobs), NOW));
     }
 
     #[test]
     fn a_queue_that_stopped_writing_wants_nothing() {
-        let waiting = job("build", "waiting", "order", NOW - 600);
-        assert!(!wants(
-            &queue_at("2026-10-29T14:57:00.000Z", &waiting),
-            NOW,
-            180
-        ));
-        assert!(!wants(&format!(r#"{{"jobs":[{waiting}]}}"#), NOW, 180));
+        let waiting = job("build", "waiting");
+        assert!(!wants(&queue_at("2026-10-29T14:57:00.000Z", &waiting), NOW));
+        assert!(!wants(&format!(r#"{{"jobs":[{waiting}]}}"#), NOW));
     }
 
     #[test]
     fn a_queue_that_cant_be_read_wants_nothing() {
-        assert!(!wants("", NOW, 180));
-        assert!(!wants(r#"{"v":1}"#, NOW, 180));
+        assert!(!wants("", NOW));
+        assert!(!wants(r#"{"v":1}"#, NOW));
     }
 
     #[test]

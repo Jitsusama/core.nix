@@ -1,5 +1,5 @@
 # nix-offload: lends the machine a builder elsewhere while its machine queue
-# holds builds back, and gives it back once idle or at a deadline each day,
+# has builds one could take, and gives it back once idle or at a deadline each day,
 # so none is kept overnight (offload/src/main.rs says how). It decides when;
 # the machine's helper says how, so core names no place a builder lives.
 {
@@ -94,7 +94,7 @@ in
     home.packages = [ offload ];
 
     systemd.user.services.nix-offload = {
-      Unit.Description = "Names this machine's builders, lending one while its queue holds builds back";
+      Unit.Description = "Names this machine's builders, lending one while its queue has builds one could take";
       Service = {
         ExecStart = lib.concatStringsSep " " (
           if cfg.helper == null then
