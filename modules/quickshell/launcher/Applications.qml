@@ -696,8 +696,11 @@ Provider {
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : []);
     }
 
+    // Quickshell lists no entry that hides itself, so a hidden one another
+    // provider declares is looked up by its id, as its list changes.
     things: DesktopEntries.applications.values
-        .filter(entry => !entry.noDisplay || provider.declared.includes(entry.id))
+        .concat(provider.declared.map(id => DesktopEntries.byId(id))
+            .filter(entry => entry?.noDisplay))
         .map(entry => {
             const start = () => Niri.spawn(provider.command(entry));
             const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
