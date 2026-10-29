@@ -1462,16 +1462,28 @@ Scope {
     // grew or shrank by a digit.
     property int figuresWidest: 0
     property string figuresStep: ""
+    // The same for what every row says at its right, so where a name is
+    // cut holds still as "working" becomes "asks you" and back: worked out
+    // afresh, each title's cut crept left and right as its side changed
+    // (the launcher audit's finding 31, Joel's yes on 2026-10-26).
+    property int sidesWidest: 0
 
     function noteFigures() {
         const step = `${held.map(each => steadyId(each.row)).join("/")}|${typed}`;
-        const now = Math.max(0, ...matches.filter(row => !!row.graph).map(row => ((held.length === 0
-            ? kindOf(row) : "") || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length));
+        const said = row => ((held.length === 0 ? kindOf(row) : "")
+            || ((row.chord ?? []).length > 0 ? "" : row.side ?? "")).length;
+        const now = Math.max(0, ...matches.filter(row => !!row.graph).map(said));
+        const sides = Math.max(0, ...matches.map(said));
         if (step !== figuresStep) {
             figuresStep = step;
             figuresWidest = now;
-        } else if (now > figuresWidest)
+            sidesWidest = sides;
+            return;
+        }
+        if (now > figuresWidest)
             figuresWidest = now;
+        if (sides > sidesWidest)
+            sidesWidest = sides;
     }
 
     // The shortest way the foot's facts have had to read since the launcher
@@ -2625,8 +2637,11 @@ Scope {
             const spare = Math.max(0, item.width - item.contentWidth);
             const inset = item.horizontalAlignment === Qt.AlignRight ? spare
                 : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
+            // How wide it's drawn and whether it's cut, so a test can say
+            // where a name is cut held still.
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
-                starts: Math.round(at.x + inset) });
+                starts: Math.round(at.x + inset), width: Math.round(item.width),
+                cut: item.truncated === true });
         }
         for (const child of item.children)
             for (const word of wordsIn(child, into))
@@ -3062,6 +3077,8 @@ Scope {
                             // says it, so their graphs stand in one column that
                             // holds still as 9% becomes 10% (root.figuresWidest).
                             readonly property int figures: root.figuresWidest
+                            // And the widest any row has said there.
+                            readonly property int sides: root.sidesWidest
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
                             model: root.matches
@@ -3209,6 +3226,7 @@ Scope {
                                     sort: entry.sort
                                     graph: entry.modelData.graph ?? null
                                     figures: list.figures
+                                    sides: list.sides
                                     name: selected ? entry.modelData.name
                                         : root.marked(entry.modelData)
                                     chord: entry.modelData.chord

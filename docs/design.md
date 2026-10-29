@@ -303,7 +303,11 @@ Its detail, a window count, a workspace or what the program is, follows its
 name, muted. A row for an act or a set already says what it is in its name
 ("Lock the screen", "Windows"), so its chord stays at the right. A thing's
 chord is taught in the foot instead, "next time" and the keys. Inside a
-collection the path in the field says the kind, so its rows don't.
+collection the path in the field says the kind, so its rows don't. What
+the rows say at their right takes one column's room, as wide as the widest
+said there since the last key and growing only, within each row's share,
+so where a name is cut holds still as "working" becomes "asks you" and
+back.
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
