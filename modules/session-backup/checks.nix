@@ -13,7 +13,7 @@
 onLinux {
   # clippy finds nothing in session-backup, its tests included, which run
   # as it builds against a stand-in for Google that refuses any call but a
-  # token, a list in the folder and a file made in it.
+  # token, a list in the folder, a file made in it and a file read back.
   session-backup-passes-clippy = passesClippy "session-backup-passes-clippy" (
     pkgs.callPackage ./package.nix { }
   );

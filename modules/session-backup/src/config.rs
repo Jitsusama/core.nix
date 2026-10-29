@@ -32,6 +32,9 @@ pub struct Config {
     pub recipients: Vec<String>,
     /// The gcloud application-default login.
     pub credentials: PathBuf,
+    /// The age identity files a fetch opens a copy with. Those not on this
+    /// machine are passed over, so one list serves every machine.
+    pub identities: Vec<PathBuf>,
     pub settled: Duration,
     /// How long a log Drive holds is kept on the machine after its last
     /// write, or `None` to keep every log.
@@ -100,6 +103,16 @@ impl Config {
             host: text("host")?,
             recipients,
             credentials: text("credentials")?.into(),
+            identities: value
+                .get("identities")
+                .and_then(Value::as_array)
+                .map(|all| {
+                    all.iter()
+                        .filter_map(Value::as_str)
+                        .map(PathBuf::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
             settled: Duration::from_hours(hours),
             keep,
             retries,

@@ -1,8 +1,10 @@
-//! The two calls made to Drive, both scoped to the backup's one folder:
-//! whether a name is in it, and making a file in it. Nothing here can
-//! change, move or remove a file, and the tests fail on any other call.
+//! The three calls made to Drive, each about the backup's one folder:
+//! whether a name is in it, making a file in it, and reading back a file
+//! found there. Nothing here can change, move or remove a file, and the
+//! tests fail on any other call.
 
 use std::fs::File;
+use std::io;
 use std::path::Path;
 use std::time::Duration;
 
@@ -132,6 +134,31 @@ impl Drive<'_> {
             .and_then(Value::as_str)
             .map(str::to_owned)
             .ok_or_else(|| Fault::Other(format!("Drive took {name} but gave no id")))
+    }
+
+    /// Write the file Drive holds as `id` to `path`, however long it is;
+    /// answers how many bytes it wrote. `name` says which file in a fault.
+    pub fn download(&self, token: &str, id: &str, name: &str, path: &Path) -> Result<u64, Fault> {
+        let url = format!(
+            "{}/drive/v3/files/{}?alt=media&supportsAllDrives=true",
+            self.api,
+            encoded(id)
+        );
+        let mut answer = self
+            .agent
+            .get(&url)
+            .header("Authorization", format!("Bearer {token}"))
+            .call()
+            .map_err(|why| Fault::Busy(format!("can't reach Drive: {why}")))?;
+        if !answer.status().is_success() {
+            read(&mut answer, "read back", name)?;
+        }
+        let mut file = File::create(path)
+            .map_err(|why| Fault::Other(format!("can't write {}: {why}", path.display())))?;
+        // A connection dropped part way is Drive out of reach for now; the
+        // retry starts the file again from nothing.
+        io::copy(&mut answer.body_mut().as_reader(), &mut file)
+            .map_err(|why| Fault::Busy(format!("can't read {name} back from Drive: {why}")))
     }
 }
 

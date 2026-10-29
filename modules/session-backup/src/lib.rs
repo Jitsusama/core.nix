@@ -13,7 +13,13 @@
 //! is copied again under its new last write, and a restore takes the newest.
 //! Nothing on Drive is ever replaced or removed, so the run only ever creates
 //! files in its one folder and asks Drive whether a name is there already;
-//! the tests fail on any other call (drive.rs).
+//! a fetch reads one back. The tests fail on any other call (drive.rs).
+//!
+//! `session-backup fetch NAME --to PATH` reads a copy back: downloaded by
+//! the id the ledger keeps, or found by name, and opened with the first
+//! key the settings' `identities` name that the machine holds, a TPM's
+//! through its plugin (fetch.rs). Mining reads the logs gone from the
+//! machine this way.
 //!
 //! A log stays on the machine for `keepDays` after its last write, 90 by
 //! default. Past that, a run removes it once its copy under that last write
@@ -38,7 +44,9 @@
 pub mod backup;
 pub mod config;
 pub mod drive;
+pub mod fetch;
 pub mod ledger;
 pub mod names;
+pub mod retry;
 pub mod seal;
 pub mod token;
