@@ -19,7 +19,10 @@
 // read again as its file changes, nine at most, a program held then drawn
 // again. A program's files on the
 // list programs share are its Recent too, found by its desktop entry's id
-// or name, and opened by its own command. Typing on
+// or name, and opened by its own command when it takes files, else as the
+// desktop opens them. A program whose sites are read only as it's stepped
+// into reads them then, once each time the launcher opens, each site by
+// its title beside its host, opened by its own command. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -108,6 +111,12 @@ ShellRoot {
                 // The list programs share, as recent-files prints it.
                 watch: `${root.home}/shared`,
                 list: [Quickshell.env("SHARED_LIST")]
+            }, {
+                // Sites, read as the browser is stepped into.
+                app: "browser",
+                kind: "site",
+                asked: true,
+                list: [Quickshell.env("SITES_LIST")]
             }]
         })
         // Desktop entries and what quiet had open are read in the
@@ -121,6 +130,10 @@ ShellRoot {
         function onLatelyChanged() {
             if (root.waiting === "the recents to change")
                 root.changed();
+            else if (root.waiting === "the sites")
+                root.browsed(1);
+            else if (root.waiting === "the sites again")
+                root.browsed(2);
             else
                 root.ready();
         }
@@ -140,7 +153,7 @@ ShellRoot {
 
     function ready() {
         if (root.waiting === "the programs"
-                && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined)
+                && ["tester", "quiet", "radio", "browser"].every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 2
                 && applications.recents.of("radio").length === 1)
@@ -179,7 +192,7 @@ ShellRoot {
                         try {
                             expect("a program held as another provider's Recent for it changes is drawn again",
                                 root.redrawn > 0, root.redrawn);
-                            Qt.exit(0);
+                            root.browse();
                         } catch (error) {
                             fail(error.message);
                         }
@@ -188,6 +201,48 @@ ShellRoot {
                     fail(error.message);
                 }
             });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // A program whose sites are read as it's stepped into: not before,
+    // once an opening, and again the next time the launcher opens.
+    function browse() {
+        launcher.open = false;
+        launcher.open = true;
+        same("sites aren't read before their program is stepped into",
+            applications.recents.of("browser").length, 0);
+        root.waiting = "the sites";
+        program("browser").verbs();
+    }
+
+    function browsed(reading) {
+        if (applications.recents.of("browser").length === 0)
+            return;
+        try {
+            const rows = program("browser").verbs();
+            same("stepped into, it reads its sites as its Recent", names(rows),
+                "New Window, New Window Below, Recent");
+            const sites = rows[2].targets();
+            same("each site by its title beside its host, keyed by the page, newest first",
+                `${names(sites)} ${sites.map(row => row.side).join(" ")} ${sites[0].key}`,
+                `Page ${reading}, Older page example.org other.example.net site:https://example.org/${reading}`);
+            same("read once an opening, however often it's stepped into",
+                JSON.stringify(applications.recents.asked), '{"browser":true}');
+            if (reading === 2) {
+                Qt.exit(0);
+                return;
+            }
+            sites[0].run();
+            same("Return opens the page by the program's own command", JSON.stringify(Niri.spawned),
+                JSON.stringify(["browser", "https://example.org/1"]));
+            launcher.open = false;
+            same("closing the launcher lets the next opening read them again",
+                JSON.stringify(applications.recents.asked), "{}");
+            launcher.open = true;
+            root.waiting = "the sites again";
+            program("browser").verbs();
         } catch (error) {
             fail(error.message);
         }

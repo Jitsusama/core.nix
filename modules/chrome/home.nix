@@ -5,8 +5,10 @@
 # nothing; a machine with Chrome imports it. Chrome takes no settings for
 # its keys, so these are its own, which mostly speak the keyboard's
 # language already (docs/design.md, The Keyboard): T tabs, W closes, a
-# number is that tab, and the arrows go back and forward.
-{ lib, ... }:
+# number is that tab, and the arrows go back and forward. Its Recent in the
+# launcher lists the sites it visited lately, read from its history as
+# Chrome is stepped into (recent-sites).
+{ lib, pkgs, ... }:
 let
   grouped = group: map (key: key // { inherit group; });
 
@@ -110,7 +112,19 @@ let
     ];
 in
 {
-  imports = [ ../keys/home.nix ];
+  imports = [
+    ../keys/home.nix
+    ../quickshell/recents.nix
+  ];
 
   jitsusama.keys.chrome = keys;
+
+  jitsusama.quickshell.launcher.recents = [
+    {
+      app = "google-chrome";
+      kind = "site";
+      asked = true;
+      list = [ (lib.getExe (pkgs.callPackage ./recent-sites/package.nix { })) ];
+    }
+  ];
 }
