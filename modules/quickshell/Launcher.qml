@@ -711,6 +711,11 @@ Scope {
         // last"; Joel, 2026-10-28: "the copy at the top of most screens is
         // confusing").
         const copyFirst = [];
+        // Every row whose Return steps in over an act of its own, where the
+        // step doesn't lead with that act, so it couldn't be chosen inside
+        // (Joel, 2026-10-28: "enter is supposed to be the default action,
+        // but that means that action should be selectable within").
+        const skipped = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -735,6 +740,13 @@ Scope {
                         ? catalogueHolds(row, above === null || collects({ row: above })) : [];
                     if (inside.length > 1 && copying(inside[0]))
                         copyFirst.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    if (inside.length > 0 && stepsOver(row)
+                        && !Catalogue.saysAct(inside[0], verbOf(row).toLowerCase()))
+                        skipped.push({
+                            id,
+                            words: `${row.name} (${verbOf(row)}, led by ${inside[0].name})`,
+                            in: names.join(" \u203a ")
+                        });
                     walk(inside, row, path, names.concat([row.name]), depth + 1);
                 }
             }
@@ -742,8 +754,20 @@ Scope {
         walk(home(), null, [], [], 0);
         // How many it walked too, so a check that finds none knows it
         // looked.
-        return { walked: seen.size, rows: out, ownVersions: own, copyFirst,
+        return { walked: seen.size, rows: out, ownVersions: own, copyFirst, skipped,
             uncomposed: loose, composed: composed };
+    }
+
+    // Whether Return on a row steps in where the row has an act of its own
+    // it would otherwise do, which the step must then lead with: not a
+    // copy, which comes after the acts, nor a row that only steps in, asks
+    // first or asks for words.
+    function stepsOver(row) {
+        const verb = verbOf(row).toLowerCase();
+        // A row with no act of its own, as a place or a group, steps over
+        // nothing: stepping in is all its Return does.
+        return !!row.run && stepsIn(row) && !leadsElsewhere(row) && !row.confirm && !row.given
+            && !["", "more", "see all", "copy", "close"].includes(verb);
     }
 
     // Whether a row is an act of copying, as a step's Copy is, rather than

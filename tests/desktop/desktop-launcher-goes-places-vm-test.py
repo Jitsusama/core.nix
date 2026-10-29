@@ -2554,6 +2554,13 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     assert copy_first == [], "Copy leads a step, though it comes last:\n" + "\n".join(
         f"{row['in']} \u203a {row['words']}" for row in copy_first
     )
+    # And a row whose Return steps in over an act of its own leads the step
+    # with that act, as docs/design.md's Return rule has it: "its likeliest
+    # act first inside, so Return twice does it".
+    skipped = cast("list[Json]", said["skipped"])
+    assert skipped == [], "A step doesn't lead with the act Return stepped over:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in skipped
+    )
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
