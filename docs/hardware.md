@@ -1031,7 +1031,7 @@ with AMD: a Ryzen 5 Microsoft Surface Edition (six Zen 2 cores, Renoir) with
 Radeon graphics, Intel's AX200 Wi-Fi 6, a Nuvoton TPM 2.0, and Surface's own
 embedded controller, the Surface Aggregator Module, behind which sit the
 keyboard, the battery and the charger. The stock kernel drives all of what's
-below, so the module adds no patches.
+below but the thermal sensors and the fan, which one patch adds.
 
 | Part     | What the module does                                                      |
 | -------- | ------------------------------------------------------------------------- |
@@ -1042,6 +1042,7 @@ below, so the module adds no patches.
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
+| Sensors  | the Aggregator's thermal sensors and fan, through a kernel patch          |
 | Mics     | their gain held at their own level, so a call doesn't clip                |
 | Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
 
@@ -1197,7 +1198,7 @@ Asked directly through `/dev/surface/aggregator`, the controller answers
 for both: its sensor list names eight sensors, I_RTS1, I_RTS3, I_RTS5,
 I_RTS6 and I_RTS8 and I_VTS1 to I_VTS3, at 26.6 °C to 34.2 °C on an idle
 laptop, and the fan reads 0 rpm. The module's kernel patch
-([`kernel/surface-laptop-amd-sensors-and-fan.patch`][22]) gives MSHW0110 a
+([`kernel/surface-laptop-amd-sensors-and-fan.patch`][23]) gives MSHW0110 a
 group of its own with both devices, so `surface_temp` and `surface_fan`
 bind and show them under hwmon; the device check expects both. The
 platform profile still doesn't drive the fan's own profile, since no fan
@@ -1237,5 +1238,4 @@ profile command has been tried on this controller.
 [20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
 [22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
-
-[22]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
+[23]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
