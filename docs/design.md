@@ -309,6 +309,14 @@ said there since the last key and growing only, within each row's share,
 so where a name is cut holds still as "working" becomes "asks you" and
 back.
 
+**A long name reads on.** A name too long for its row ends in an ellipsis,
+and once selected it reads on in place: after a second's rest it slides at
+a steady reading pace, eight characters a second, until its end shows,
+rests, then glides back to its start and rests again, for as long as it's
+selected. Only the name moves, inside its own room, so nothing beside it
+does, and given up by the selection it's back at its start at once (Joel,
+2026-10-25: titles "get elipsed really quick").
+
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
 bar for a level (the charge, a light, the volume), filling from the left;

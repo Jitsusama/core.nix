@@ -939,6 +939,53 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
     )
 
 
+def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
+    """A name too long for its row slides to show its end while selected, and only it moves."""
+    machine = desktop.machine
+    title = (
+        "Edgewise notes, and a title that runs on well past the edge of the launcher row"
+        " as the title of a web page often does"
+    )
+    long = desktop.opened(title)
+    short = desktop.opened("Edgewise")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("edgewise")
+    desktop.launcher_until(lambda shown: {title, "Edgewise"} <= set(shown["rows"]))
+    desktop.down_to(title)
+
+    def selected_words() -> list[Json]:
+        """Give the words the selected row draws, with where each is."""
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return next(row["words"] for row in laid["rows"] if row["selected"])
+
+    def named(words: list[Json]) -> Json:
+        return next(word for word in words if word["text"] == title)
+
+    first = selected_words()
+    start = named(first)["x"]
+    rest = sorted((word["text"], word["x"]) for word in first if word["text"] != title)
+
+    def slid(_: bool) -> bool:
+        words = selected_words()
+        # Whatever else the row says holds still while its name moves.
+        others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
+        assert others == rest, words
+        return named(words)["x"] < start
+
+    retry(slid, timeout=dt.timedelta(seconds=30))
+    # Given up by the selection, it's back at its start at once.
+    machine.send_key("up" if desktop.showing()["rows"].index(title) > 0 else "down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    row = next(row for row in laid["rows"] if row["reads"].startswith(title))
+    assert named(row["words"])["x"] == start, row
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close(long)
+    desktop.close(short)
+
+
 # Super+Tab opens the launcher on every other window, the one used last
 # first, so Return goes back to it, and a few letters find any other,
 # among two dozen as easily as among two, with nothing held down. The

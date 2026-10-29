@@ -89,25 +89,79 @@ Rectangle {
         font.pointSize: Theme.mono.large
     }
 
-    Text {
-        id: nameText
+    // The name's room, which it's cut to. Selected, a name too long for
+    // it reads on: after a rest to read how it starts, it slides at a
+    // steady reading pace until its end shows, rests there, then glides
+    // back to its start and rests again, for as long as it's selected.
+    // Only the name moves, inside its own room, so nothing beside it does,
+    // and the row isn't any wider for it (Joel, 2026-10-25: titles "get
+    // elipsed really quick").
+    Item {
+        id: nameBox
         x: Theme.space.l + Theme.space.xxl
-        width: Math.max(0, Math.min(implicitWidth, row.ends - x - Theme.space.xxl
+        width: Math.max(0, Math.min(nameText.implicitWidth, row.ends - x - Theme.space.xxl
             - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
                 + Theme.space.m)))
+        height: nameText.height
         anchors.verticalCenter: parent.verticalCenter
-        text: row.name
-        textFormat: row.selected || row.quiet ? Text.PlainText : Text.StyledText
-        elide: Text.ElideRight
-        color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
-        font.family: Theme.mono.family
-        font.pointSize: Theme.mono.large
-        font.weight: row.selected ? Font.Medium : Font.Normal
+        clip: scrolls
+
+        // How far past its room the name runs, when it does.
+        readonly property real over: Math.max(0, nameText.implicitWidth - width)
+        readonly property bool scrolls: row.selected && over > 0
+        // A reading pace, in characters a second, and the rests at each end.
+        readonly property real pace: 8 * figureFace.advanceWidth
+        readonly property int rest: Math.round(1000 * Theme.motion.slowdown)
+
+        Text {
+            id: nameText
+            width: nameBox.scrolls ? implicitWidth : nameBox.width
+            text: row.name
+            textFormat: row.selected || row.quiet ? Text.PlainText : Text.StyledText
+            elide: nameBox.scrolls ? Text.ElideNone : Text.ElideRight
+            color: row.quiet ? Theme.muted : row.selected ? Theme.strong : Theme.text
+            font.family: Theme.mono.family
+            font.pointSize: Theme.mono.large
+            font.weight: row.selected ? Font.Medium : Font.Normal
+        }
+
+        SequentialAnimation {
+            id: reading
+            running: nameBox.scrolls
+            loops: Animation.Infinite
+            onRunningChanged: {
+                if (!running)
+                    nameText.x = 0;
+            }
+
+            PauseAnimation {
+                duration: nameBox.rest
+            }
+            NumberAnimation {
+                target: nameText
+                property: "x"
+                from: 0
+                to: -nameBox.over
+                duration: Math.round(1000 * Theme.motion.slowdown * nameBox.over
+                    / Math.max(1, nameBox.pace))
+            }
+            PauseAnimation {
+                duration: nameBox.rest
+            }
+            NumberAnimation {
+                target: nameText
+                property: "x"
+                to: 0
+                duration: Theme.motion.medium
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Theme.motion.curve
+            }
+        }
     }
 
     Text {
         id: countText
-        x: nameText.x + nameText.width + Theme.space.m
+        x: nameBox.x + nameBox.width + Theme.space.m
         // As much as the name leaves, and never less than its share, so a
         // short name's detail (what a category holds) says all it can.
         width: Math.min(implicitWidth, Math.max(row.width * 0.3, row.ends - x - Theme.space.xxl))
@@ -151,7 +205,7 @@ Rectangle {
         // title is what Joel looks for, its program and place only help
         // (Joel, 2026-10-25: titles "get elipsed really quick").
         readonly property real share: Math.min(row.width * 0.45, Math.max(row.width * 0.2,
-            row.width - nameText.x - nameText.implicitWidth - 2 * Theme.space.xxl
+            row.width - nameBox.x - nameText.implicitWidth - 2 * Theme.space.xxl
             - Theme.space.l - (row.detail === "" ? 0
                 : Math.min(countText.implicitWidth, row.width * 0.3) + Theme.space.m)))
         // As wide as the widest beside a graph in the list, so the graphs

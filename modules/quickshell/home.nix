@@ -1653,6 +1653,10 @@ in
                     medium
                     long
                     ;
+                  # How much slower than written everything moves, for motion
+                  # timed by its distance rather than by a duration, as a
+                  # long row's scroll is.
+                  slowdown = builtins.fromJSON motion.slowdown;
                   # Easing.BezierSpline's form: the two control points, then the end.
                   curve = map builtins.fromJSON motion.curve ++ [
                     1
