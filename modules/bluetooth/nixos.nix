@@ -58,9 +58,12 @@ let
   # (wireless controller, RF, Bluetooth: e0, 01, 01), as Intel's and most
   # Realtek's do; one that says so only on its interface, as MediaTek's do,
   # stays as the kernel leaves it. A controller on PCI, as Intel's newest
-  # are, has its wakeup elsewhere and is left alone too.
+  # are, is the same story: its driver asks whether the device may wake the
+  # machine and never says it may, so it's matched by its PCI class
+  # (wireless controller, Bluetooth: 0x0d1100) and given the same.
   wakes = pkgs.writeTextDir "lib/udev/rules.d/70-bluetooth-wakes.rules" ''
     ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{bDeviceClass}=="e0", ATTR{bDeviceSubClass}=="01", ATTR{bDeviceProtocol}=="01", ATTR{power/wakeup}="enabled"
+    ACTION=="add", SUBSYSTEM=="pci", ATTR{class}=="0x0d1100", ATTR{power/wakeup}="enabled"
   '';
 in
 {
