@@ -2174,7 +2174,13 @@ Scope {
         // (Joel, 2026-10-26: an act that changes something stays open and
         // shows the new state on its row at once).
         if (held.length === 0) {
-            if (typed.trim() !== ""
+            // Home, with nothing typed, names each collection with what it
+            // holds, so a collection that changed says it again in place:
+            // Agents makes its rows only once the launcher is open, after
+            // home was first drawn from none, and a session can start while
+            // home is shown.
+            const home = typed.trim() === "" && collections.includes(source);
+            if (home || typed.trim() !== ""
                 && matches.some(row => source.things.some(own => own.key === row.key))) {
                 reshow(0);
                 Report.say(`refreshed ${source.settings.name}`);
