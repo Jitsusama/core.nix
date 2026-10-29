@@ -682,10 +682,9 @@ works the same way everywhere.
   rows, always there in this order: the time, the date, the location,
   the weather and the next meeting, with no Today to step into, each the
   one row that thing is anywhere it shows, never a version Now draws of
-  it. Below
-  them, only while true, come what else wants Joel (unread mail, missed
-  notices, a low battery), what reaches other people, what's playing and
-  the modes left on, by name within each. Each place says what it holds
+  it. Below them, only while true, come what else wants Joel (unread
+  mail, missed notices, a low battery), what reaches other people,
+  what's playing and the modes left on, by name within each. Each place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
   as fit, so a glance reminds Joel what there is; a place that measures

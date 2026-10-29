@@ -724,10 +724,12 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     desktop.photograph("margin-waiting")
     machine.send_key("meta_l-o")
     desktop.whats_on("Notices")
-    # The time and the date are Now's own rows, always last, each its own
-    # answer as it's placed anywhere; the VM has no forecast and no
-    # calendar, so there's no weather or meeting after them.
-    time, today = desktop.showing()["things"][-2:]
+    # The time and the date are among Now's own rows, always last, each its
+    # own answer as it's placed anywhere; the VM has no forecast and no
+    # calendar, so the location ends them.
+    things = desktop.showing()["things"]
+    time, today = things[-3:-1]
+    assert things[-1]["is"] == "on:location", things
     date = machine.succeed("date '+%A %-d %B %Y'").strip()
     assert time["is"] == "answer:time", time
     assert re.match(r"Time \u00b7 \d\d:\d\d", time["reads"]), time
