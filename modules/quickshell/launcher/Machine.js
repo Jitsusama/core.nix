@@ -4,7 +4,8 @@
 // each core is, how fast a disk read and wrote between two reads, which
 // programs use the processors and the memory, what held the processor
 // back and what kept it from resting as its own telemetry says, and the
-// memory modules the machine read at boot. Machine.qml reads the files and says the figures.
+// memory modules the machine read at boot. Machine.qml reads the files
+// and says the figures.
 .pragma library
 
 // A line of /proc/stat counting a processor's time: "cpu" for them all,
@@ -184,6 +185,31 @@ function heldBack(reading) {
     const whole = strongest(reading.heldBack);
     const most = whole ?? strongest(cores);
     return most ? { share: most.share, by: most.by, whole: whole !== null, cores } : null;
+}
+
+// How many readings, a second each, Held Back stays once nothing holds the
+// processor back: as long as Kept From Resting's average, so a share near
+// a twentieth doesn't come and go each second under Joel's selection.
+const STEADY = 10;
+
+// What Held Back shows after a reading, given what held the processor back
+// in it (heldBack) and what it showed before: what holds it now, or, for
+// STEADY readings after the last that did, the same row and cores at
+// nothing, and then null. `calm` counts the readings since one held it.
+function stillHeld(now, was) {
+    if (now) {
+        return Object.assign({ calm: 0 }, now);
+    }
+    if (!was || was.calm + 1 >= STEADY) {
+        return null;
+    }
+    return {
+        share: 0,
+        by: was.by,
+        whole: was.whole,
+        cores: was.cores.map(core => ({ n: core.n, share: 0, by: core.by })),
+        calm: was.calm + 1
+    };
 }
 
 // Each part the processor's telemetry says kept the package from resting,

@@ -788,6 +788,21 @@ QtObject {
                 { n: 13, share: 0.3, by: "heat" }] });
         machine("held back by nothing", [Machine.heldBack({ heldBack: [], clusters: [
             { cpus: "0", heldBack: [] }] }), Machine.heldBack(null)], [null, null]);
+        // Held Back stays at nothing for nine readings after the last that
+        // held it, and goes on the tenth.
+        const holding = { share: 0.3, by: "heat", whole: false,
+            cores: [{ n: 12, share: 0.3, by: "heat" }] };
+        let still = Machine.stillHeld(holding, null);
+        const calmed = [];
+        for (let n = 0; n < 10; n++) {
+            still = Machine.stillHeld(null, still);
+            calmed.push(still === null ? null : [still.share, still.calm, still.cores[0].share]);
+        }
+        machine("held back, kept a while after", [calmed[0], calmed[8], calmed[9]],
+            [[0, 1, 0], [0, 9, 0], null]);
+        machine("held back again, said at once", Machine.stillHeld(holding,
+            { share: 0, by: "heat", whole: false, cores: [], calm: 4 }).share, 0.3);
+        machine("held back by nothing, nothing kept", Machine.stillHeld(null, null), null);
         machine("what held it back, as a note says it", ["pl1", "platformPl1", "prochot",
             "heat", "novel"].map(Machine.limit), ["its power limit, PL1",
             "the whole machine's power limit, PL1", "being told to slow down", "heat", "novel"]);

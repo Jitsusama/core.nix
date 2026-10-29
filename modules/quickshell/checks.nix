@@ -1131,6 +1131,7 @@ onLinux {
       cp ${singleton "ProcessorTelemetry.qml" ''
         property int watching: 0
         property var reading: null
+        property var held: null
         property var kept: null
       ''} ProcessorTelemetry.qml
       cp ${../../tests/machine.qml} shell.qml

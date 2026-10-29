@@ -4,11 +4,10 @@
 // parts Joel knows (the processor and its cores, its NPU, image processor
 // and media and display engines as its own telemetry says them, the disk
 // and its other sensors, the memory, the air inside, each fan), how near
-// each is to the
-// most it's meant to reach, and how often the processor has slowed itself
-// to cool down. Heat.qml reads the files and draws the rows; Machine.qml
-// draws its processor's and disk's temperature with the same level, so the
-// two say them alike.
+// each is to the most it's meant to reach, and how often the processor has
+// slowed itself to cool down. Heat.qml reads the files and draws the rows;
+// Machine.qml draws its processor's and disk's temperature with the same
+// level, so the two say them alike.
 .pragma library
 .import "Machine.js" as Machine
 

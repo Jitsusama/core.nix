@@ -356,6 +356,7 @@ Provider {
             graph: bar(total),
             glyph: Words.glyph(kinds.cpu),
             title: Words.name(kinds.cpu),
+            about: kinds.cpu,
             note: since(kept)
         }, () => cpuParts(kept));
     }
@@ -398,26 +399,31 @@ Provider {
                 note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
             }));
         }
-        const held = Machine.heldBack(ProcessorTelemetry.reading);
+        // Held Back stays a few seconds after nothing holds the processor
+        // back (Machine.stillHeld), so the rows under it don't move each
+        // second; meanwhile it says so.
+        const held = ProcessorTelemetry.held;
+        const heldNote = by => held.calm > 0 ? "nothing holds it back now"
+            : `by ${Machine.limit(by)}, over the last second`;
         if (held && held.cores.length > 0)
             rows.push(holderRow({
                 name: named("cpu:held-back"),
                 side: percent(held.share),
                 graph: bar(held.share),
                 glyph: chip,
-                note: `by ${Machine.limit(held.by)}, over the last second`
+                note: heldNote(held.by)
             }, () => held.cores.map(core => figure({
                 name: named("cpu:held-back-core", { n: core.n }),
                 side: percent(core.share),
                 graph: bar(core.share),
-                note: `by ${Machine.limit(core.by)}`
+                note: held.calm > 0 ? "not held now" : `by ${Machine.limit(core.by)}`
             }))));
         else if (held)
             rows.push(figure({
                 name: named("cpu:held-back"),
                 side: percent(held.share),
                 graph: bar(held.share),
-                note: `by ${Machine.limit(held.by)}, over the last second`
+                note: heldNote(held.by)
             }));
         if (now.heat)
             rows.push(heated("cpu:temperature", now.heat, "processor"));
@@ -1019,7 +1025,7 @@ Provider {
     // for.
     readonly property bool watched: shown && [launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
-        .some(row => row?.live === provider && row.title === Words.name(kinds.cpu))
+        .some(row => row?.live === provider && row.about === kinds.cpu)
     onWatchedChanged: ProcessorTelemetry.watching += watched ? 1 : -1
 
     Timer {
