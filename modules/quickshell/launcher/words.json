@@ -76,6 +76,9 @@
       ],
       "while": {
         "machine:cpu:kept-from-resting": "on battery"
+      },
+      "said": {
+        "on battery": "on the charger"
       }
     },
     {

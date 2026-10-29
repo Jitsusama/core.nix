@@ -1947,7 +1947,10 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # On battery, Power holds it too, right after Battery, where Joel looks
     # when the battery drains; nothing else shown asks for the reading, so
-    # Power's holding it is what has it read. On mains it isn't there.
+    # Power's holding it is what has it read. It's held whole, with no
+    # parts, until that reading comes: were it dropped then, it would come
+    # later at the end, after the commands, not second. On mains it isn't
+    # there.
     desktop.power("off")
     try:
         desktop.as_account("qs ipc call launcher toggle")
