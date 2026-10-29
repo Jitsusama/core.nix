@@ -318,10 +318,10 @@ ShellRoot {
             same("a hidden program another gives acts to steps in rather than starting",
                 `${pair.verb} ${pair.stays} ${names(pair.verbs())} ${names(pair.targets())}`,
                 "more true Open the Room Open the Room");
-            const before = JSON.stringify(Niri.spawned);
+            const spawnedBefore = JSON.stringify(Niri.spawned);
             pair.run();
             expect("and Return steps in, starting nothing", launcher.entered === pair
-                && JSON.stringify(Niri.spawned) === before, JSON.stringify(Niri.spawned));
+                && JSON.stringify(Niri.spawned) === spawnedBefore, JSON.stringify(Niri.spawned));
             same("one closed still starts", program("radio").verb, "start");
             same("Switch names the window used last", switching.side, "Logbook");
             switching.run();
