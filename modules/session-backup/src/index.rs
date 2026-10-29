@@ -10,6 +10,11 @@
 //! finds logs sent before there was an index, sends their rows sealed as
 //! one more object, `<host>/index/<run>.jsonl.zst.age`, and keeps them on
 //! the machine in the index file, which says which logs have a row.
+//!
+//! A row is keyed by the object's name, so a session resumed after it was
+//! sent has a row for each copy, and its newest `ended` says the most; the
+//! same row sent twice, as a batch Drive took but answered busy for is, is
+//! the same row.
 
 use std::collections::{BTreeSet, HashSet};
 use std::fs::{self, File, OpenOptions};
@@ -17,8 +22,6 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-
-use crate::names::Settled;
 
 /// The index on the machine, at one path.
 pub struct Index {
@@ -75,11 +78,12 @@ impl Index {
     }
 }
 
-/// The row for a log sent as `log.name`, read from the log, with its quest
-/// from the session's record in `records` when one is kept there.
-pub fn row(log: &Settled, records: Option<&Path>) -> Result<Value, String> {
-    let file =
-        File::open(&log.path).map_err(|why| format!("can't read {}: {why}", log.path.display()))?;
+/// The row for the log at `path`, `bytes` long, sent as `name`: read from
+/// the log itself, whether it is the machine's own or a copy read back,
+/// with its quest from the session's record in `records` when one is kept
+/// there.
+pub fn row(name: &str, path: &Path, bytes: u64, records: Option<&Path>) -> Result<Value, String> {
+    let file = File::open(path).map_err(|why| format!("can't read {}: {why}", path.display()))?;
     let mut id = None;
     let mut folder = None;
     let mut started = None;
@@ -89,7 +93,7 @@ pub fn row(log: &Settled, records: Option<&Path>) -> Result<Value, String> {
     let mut turns = 0u64;
     let mut cost = 0f64;
     for line in BufReader::new(file).lines() {
-        let line = line.map_err(|why| format!("can't read {}: {why}", log.path.display()))?;
+        let line = line.map_err(|why| format!("can't read {}: {why}", path.display()))?;
         // A line cut short, as a session killed mid-write leaves, says
         // nothing, and the rest of the log still does.
         let Ok(entry) = serde_json::from_str::<Value>(&line) else {
@@ -123,9 +127,11 @@ pub fn row(log: &Settled, records: Option<&Path>) -> Result<Value, String> {
             _ => {}
         }
     }
-    let quest = records.zip(id.as_deref()).and_then(|(dir, id)| quest(dir, id));
+    let quest = records
+        .zip(id.as_deref())
+        .and_then(|(dir, id)| quest(dir, id));
     Ok(json!({
-        "name": log.name,
+        "name": name,
         "id": id,
         "folder": folder,
         "started": started,
@@ -136,7 +142,7 @@ pub fn row(log: &Settled, records: Option<&Path>) -> Result<Value, String> {
         "turns": turns,
         // To the cent, as a bill says it.
         "cost": (cost * 100.0).round() / 100.0,
-        "bytes": log.bytes,
+        "bytes": bytes,
     }))
 }
 

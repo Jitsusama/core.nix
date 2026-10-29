@@ -3,11 +3,12 @@
 //! holds removed from the machine.
 
 use std::fs::{self, File, TryLockError};
+use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::config::Config;
 use serde_json::Value;
 
+use crate::config::Config;
 use crate::drive::{self, Drive, Fault};
 use crate::index::{self, Index};
 use crate::ledger::Ledger;
@@ -167,7 +168,9 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
             .into_iter()
             // A log gone or unreadable since it was listed has no row to
             // give; a later run reads it again if it is back.
-            .filter_map(|log| index::row(log, config.records.as_deref()).ok())
+            .filter_map(|log| {
+                index::row(&log.name, &log.path, log.bytes, config.records.as_deref()).ok()
+            })
             .collect();
         if !rows.is_empty() {
             let sending = Sending {
@@ -177,8 +180,20 @@ pub fn run(config: &Config, now: SystemTime, most: Option<usize>) -> Result<Done
                 recipients: &recipients,
                 scratch: &scratch,
             };
-            let name = format!("{}/index/{}.jsonl.zst.age", config.host, names::stamp(seconds(now)));
-            send_rows(&rows, &name, &sending, &mut login, &mut ledger, index, &mut done)?;
+            let name = format!(
+                "{}/index/{}.jsonl.zst.age",
+                config.host,
+                names::stamp(seconds(now))
+            );
+            send_rows(
+                &rows,
+                &name,
+                &sending,
+                &mut login,
+                &mut ledger,
+                index,
+                &mut done,
+            )?;
         }
     }
     if done.busy.is_none() {
@@ -193,7 +208,7 @@ struct Sending<'a> {
     agent: &'a ureq::Agent,
     retries: &'a [Duration],
     recipients: &'a Recipients,
-    scratch: &'a std::path::Path,
+    scratch: &'a Path,
 }
 
 /// Send `rows` sealed as `name`, then keep them in the index and the

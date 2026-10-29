@@ -37,6 +37,11 @@ let
     builtins.toJSON {
       sessions = "${config.home.homeDirectory}/.pi/agent/sessions";
       ledger = "${config.xdg.stateHome}/session-backup/sent.jsonl";
+      # A row for each log sent, which mining reads first (src/index.rs).
+      index = "${config.xdg.stateHome}/session-backup/index.jsonl";
+      # agentic-harness.pi's record of each session, which names its quest;
+      # a session started outside the harness has none, and its row says so.
+      records = "${config.xdg.stateHome}/pi/agentic-harness.pi/quest-workflow/sessions";
       inherit (cfg)
         folder
         host
