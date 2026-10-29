@@ -881,6 +881,7 @@ gather (
     ./modules/lanzaboote/checks.nix
     ./modules/libvirt/checks.nix
     ./modules/lid/checks.nix
+    ./modules/link-keys/checks.nix
     ./modules/linux-id/checks.nix
     ./modules/litra/checks.nix
     ./modules/memory-modules/checks.nix
