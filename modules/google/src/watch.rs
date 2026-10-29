@@ -3,7 +3,9 @@
 //! minutes the documents he looked at lately and how each series of
 //! meetings repeats, and says how it all stands; an answer to an
 //! invitation, a meeting cancelled or moved, and mail marked read or
-//! archived, are asked the same way, and change what's held at once.
+//! archived, are asked the same way, and change what's held at once. A
+//! Drive folder is listed, and a file downloaded, only when the shell
+//! asks.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,8 +16,8 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, MAKES_MEETINGS, Refused};
 use crate::calendar::{self, Answer};
-use crate::drive::{self, Document, Kind};
-use crate::files::{self, Failed, Fetched, How, Places};
+use crate::drive::{self, Document, Downloaded, Folder, Kind, Listed, Unlisted};
+use crate::files::{self, Failed, Fetched, Heard, How, Places};
 use crate::mail::{self, Bytes, Mail, Tidy};
 use crate::state::{Made, Standing, State};
 use crate::token::Keeper;
@@ -406,16 +408,139 @@ impl Watch {
             }
         };
         let bytes = mail::bytes(&data);
+        let from = &mut bytes.as_slice();
         match asked.how {
-            How::Open => files::kept(&places.kept, &asked.mail, &file.name, &bytes),
+            How::Open | How::Pick => files::kept(&places.kept, &asked.mail, &file.name, from),
             How::Save => match &asked.to {
-                Some(to) => files::put(Path::new(to), &bytes),
-                None => files::saved(&places.saves, &file.name, &bytes),
+                Some(to) => files::put(Path::new(to), from),
+                None => files::saved(&places.saves, &file.name, from),
             },
         }
         .map_err(|error| {
             eprintln!("<4>couldn't write a file mail carries: {error}");
             Failed::Unwritten
+        })
+    }
+
+    /// Lists what the Drive folder `folder` holds, as the shell named it,
+    /// or why it couldn't be. Drive failing leaves the rest held as it
+    /// stood.
+    pub fn list(&mut self, folder: &str, now: &Zoned) -> &State {
+        let Some(named) = Folder::named(folder) else {
+            return &self.state;
+        };
+        let found = self.asking(now, |google, token| match named.search() {
+            Some(search) => Ok(google
+                .folder(token, &search)?
+                .map(|answer| drive::entries(&answer))),
+            None => Ok(Some(drive::drives(&google.drives(token)?))),
+        });
+        let (files, more, failed) = match found {
+            Ok(Some((files, more))) => (files, more, None),
+            Ok(None) => (Vec::new(), false, Some(Unlisted::Gone)),
+            Err(looked) => {
+                self.fell(looked, self.state.account);
+                if matches!(self.state.account, Standing::None | Standing::SignedOut) {
+                    return &self.state;
+                }
+                (Vec::new(), false, Some(Unlisted::Unreachable))
+            }
+        };
+        self.state.drive.listed = Some(Listed {
+            folder: folder.to_owned(),
+            asked: now.timestamp().as_millisecond(),
+            files,
+            more,
+            failed,
+        });
+        &self.state
+    }
+
+    /// Says the Drive file `file` is being downloaded to open, pick or
+    /// save, `to` a path Joel picked when he picked one, which `download`
+    /// then does, so the shell can say so while it waits. The last
+    /// `DOWNLOADS_KEPT` asked are told, newest first.
+    pub fn downloading(&mut self, file: &str, how: How, to: Option<String>, now: &Zoned) -> &State {
+        let downloads = &mut self.state.drive.downloads;
+        downloads.insert(
+            0,
+            Downloaded {
+                file: file.to_owned(),
+                how,
+                to,
+                asked: now.timestamp().as_millisecond(),
+                path: None,
+                failed: None,
+            },
+        );
+        downloads.truncate(drive::DOWNLOADS_KEPT);
+        &self.state
+    }
+
+    /// Downloads the file `downloading` named last into `places`: where
+    /// it is once written, or why it isn't. A program or a script is never
+    /// downloaded to open, and one of Google's own kinds comes as the
+    /// office program's file.
+    pub fn download(&mut self, places: &Places, now: &Zoned) -> &State {
+        let Some(asked) = self.state.drive.downloads.first().cloned() else {
+            return &self.state;
+        };
+        let found = self.downloaded(&asked, places, now);
+        if let Some(first) = self.state.drive.downloads.first_mut() {
+            first.path = found.as_ref().ok().map(|path| path.display().to_string());
+            first.failed = found.err();
+        }
+        &self.state
+    }
+
+    fn downloaded(
+        &mut self,
+        asked: &Downloaded,
+        places: &Places,
+        now: &Zoned,
+    ) -> Result<PathBuf, Failed> {
+        let file = match self.asking(now, |google, token| google.file(token, &asked.file)) {
+            Ok(file) => file.as_ref().and_then(drive::entry).ok_or(Failed::Gone)?,
+            Err(looked) => {
+                self.fell(looked, self.state.account);
+                return Err(Failed::Unreachable);
+            }
+        };
+        if file.runs && asked.how == How::Open {
+            return Err(Failed::Runs);
+        }
+        let (exported, name) = match file.kind.google().map(Kind::export) {
+            Some((kind, ending)) => (Some(kind), format!("{}{ending}", file.name)),
+            None if file.kind == drive::Is::Folder => return Err(Failed::Gone),
+            None => (None, file.name.clone()),
+        };
+        let body = match self.asking(now, |google, token| {
+            google.content(token, &file.id, exported)
+        }) {
+            Ok(body) => body.ok_or(Failed::Gone)?,
+            Err(looked) => {
+                self.fell(looked, self.state.account);
+                return Err(Failed::Unreachable);
+            }
+        };
+        let mut heard = Heard::new(body);
+        match asked.how {
+            How::Open | How::Pick => {
+                files::kept(&places.kept.join("drive"), &file.id, &name, &mut heard)
+            }
+            How::Save => match &asked.to {
+                Some(to) => files::put(Path::new(to), &mut heard),
+                None => files::saved(&places.saves, &name, &mut heard),
+            },
+        }
+        .map_err(|error| {
+            if heard.fell {
+                eprintln!("<4>Drive broke off a file: {error}");
+                Failed::Unreachable
+            } else {
+                eprintln!("<4>couldn't write a Drive file: {error}");
+                Failed::Unwritten
+            }
         })
     }
 

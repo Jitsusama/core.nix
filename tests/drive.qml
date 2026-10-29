@@ -77,6 +77,47 @@ QtObject {
         check("an untitled one's, bare", Drive.details({ title: "", kind: "document" }, "Untitled"),
             { title: "Untitled", facts: [], body: "" });
 
+        // Drive's folders and downloads, as the picker and Files read them.
+        const listed = { folder: "root", asked: now, files: [], more: false, failed: null };
+        const downloads = [
+            { file: "f1", how: "pick", asked: now + 5, path: null, failed: null },
+            { file: "f2", how: "open", asked: now + 3, path: null, failed: "runs" },
+            { file: "f1", how: "pick", asked: now + 1, path: "/run/f1/old.pdf", failed: null }
+        ];
+        const drive = { listed, downloads };
+        check("a folder listed and the downloads, read", Google.heard(JSON.stringify({
+            account: "ready", meetings: [], drive
+        })).drive, drive);
+        check("no Drive said, none held", Google.heard(JSON.stringify({
+            account: "ready", meetings: []
+        })).drive, { listed: null, downloads: [] });
+        check("the line listing a folder", Google.list("shared"),
+            '{"list":{"folder":"shared"}}\n');
+        check("the lines downloading, a save saying where and no other", [
+            Google.download("f1", "pick", "/home/a/x.pdf"),
+            Google.download("f1", "save", "/home/a/x.pdf"),
+            Google.download("f1", "save", "")
+        ], [
+            '{"download":{"file":"f1","how":"pick"}}\n',
+            '{"download":{"file":"f1","how":"save","to":"/home/a/x.pdf"}}\n',
+            '{"download":{"file":"f1","how":"save"}}\n'
+        ]);
+        check("a download stands by the newest asked since", [
+            Google.downloading(drive, "f1", null),
+            Google.downloading(drive, "f1", now),
+            Google.downloading(drive, "f1", now + 6),
+            Google.downloading(drive, "f2", now),
+            Google.downloading({
+                downloads: [{ file: "f1", asked: now + 5, path: "/run/f1/new.pdf", failed: null }]
+            }, "f1", now + 2)
+        ], [
+            { state: "", path: "", failed: "" },
+            { state: "fetching", path: "", failed: "" },
+            { state: "fetching", path: "", failed: "" },
+            { state: "failed", path: "", failed: "runs" },
+            { state: "done", path: "/run/f1/new.pdf", failed: "" }
+        ]);
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);

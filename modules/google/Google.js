@@ -26,8 +26,47 @@ function heard(line) {
         documents: Array.isArray(said.documents) ? said.documents : [],
         heard: said.heard ?? null,
         fetched: said.fetched ?? null,
-        meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null }
+        meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null },
+        drive: {
+            listed: said.drive?.listed ?? null,
+            downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : []
+        }
     };
+}
+
+// The line that asks the program what a Drive folder holds: "root" (My
+// Drive), "shared" (Shared with Me), "drives" (the shared drives) or a
+// folder's id.
+function list(folder) {
+    return `${JSON.stringify({ list: { folder } })}\n`;
+}
+
+// The line that asks the program to download a Drive file to "open",
+// "pick" (for the program that asked the picker) or "save", a save going
+// `to` the path Joel picked, or into Downloads when none is given.
+function download(file, how, to) {
+    const asked = { file, how };
+    if (how === "save" && to) {
+        asked.to = to;
+    }
+    return `${JSON.stringify({ download: asked })}\n`;
+}
+
+// How the Drive file asked for at `since` stands, as { state, path,
+// failed }: "fetching" until the program says where the newest one asked
+// since is, then "done" with its path, or "failed" with why; "" when none
+// was asked.
+function downloading(drive, file, since) {
+    if (since === null) {
+        return { state: "", path: "", failed: "" };
+    }
+    const asked = (drive?.downloads ?? []).find(each => each.file === file && each.asked >= since);
+    if (!asked || !(asked.path || asked.failed)) {
+        return { state: "fetching", path: "", failed: "" };
+    }
+    return asked.path
+        ? { state: "done", path: asked.path, failed: "" }
+        : { state: "failed", path: "", failed: asked.failed };
 }
 
 // The line that asks the program to make a new Meet meeting.

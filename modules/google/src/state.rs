@@ -4,7 +4,7 @@
 use serde::Serialize;
 
 use crate::calendar::Meeting;
-use crate::drive::Document;
+use crate::drive::{Document, Drive};
 use crate::files::Fetched;
 use crate::mail::Mail;
 
@@ -41,6 +41,8 @@ pub struct State {
     pub fetched: Option<Fetched>,
     /// Making a Meet meeting, as it stands.
     pub meet: Meet,
+    /// The Drive folder last listed, and the files downloaded lately.
+    pub drive: Drive,
 }
 
 /// Making a Meet meeting to copy its link: whether the sign-in lets this
@@ -94,7 +96,8 @@ mod tests {
             line,
             "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
              \"documents\":[],\"heard\":null,\"fetched\":null,\
-             \"meet\":{\"granted\":false,\"made\":null}}\n"
+             \"meet\":{\"granted\":false,\"made\":null},\
+             \"drive\":{\"listed\":null,\"downloads\":[]}}\n"
         );
     }
 }

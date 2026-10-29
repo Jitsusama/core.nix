@@ -19,6 +19,15 @@ use crate::mail;
 /// its base64 makes a third again.
 const ATTACHMENT_MOST: u64 = 36 * 1024 * 1024;
 
+/// How long a Drive file may take to come, written as it comes: long
+/// enough for a large one on a slow network, where every other answer
+/// has twenty seconds.
+const DOWNLOAD_TAKES: Duration = Duration::from_secs(600);
+
+/// What Drive is asked of each file it lists, or is asked about.
+const ENTRY_FIELDS: &str =
+    "id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName),shortcutDetails";
+
 /// The scope that lets this program make a Meet meeting, and manage only
 /// those it made, which a sign-in from before pi asked for it lacks.
 pub const MAKES_MEETINGS: &str = "https://www.googleapis.com/auth/meetings.space.created";
@@ -138,6 +147,19 @@ impl Google {
         query: &[(&str, &str)],
         what: &str,
     ) -> Result<Value, Refused> {
+        self.found(token, path, query, what)?
+            .ok_or_else(|| refused(404, what))
+    }
+
+    /// Asks as `get` does, but answers none where Google says there's no
+    /// such thing, with a 404.
+    fn found(
+        &self,
+        token: &str,
+        path: &str,
+        query: &[(&str, &str)],
+        what: &str,
+    ) -> Result<Option<Value>, Refused> {
         let mut request = self
             .agent
             .get(format!("{}{path}", self.origins.api))
@@ -146,13 +168,15 @@ impl Google {
             request = request.query(*name, *value);
         }
         let mut answer = request.call().map_err(|error| unreachable(&error))?;
-        let status = answer.status().as_u16();
-        if status != 200 {
-            return Err(refused(status, what));
+        match answer.status().as_u16() {
+            200 => {}
+            404 => return Ok(None),
+            status => return Err(refused(status, what)),
         }
         answer
             .body_mut()
             .read_json()
+            .map(Some)
             .map_err(|error| Refused::Unreachable(format!("Google's answer to {what}: {error}")))
     }
 
@@ -329,6 +353,85 @@ impl Google {
             ],
             "the documents",
         )
+    }
+
+    /// What a Drive folder holds, found by `search`, folders first, then
+    /// by name, from every drive; none when Drive has no such folder.
+    pub fn folder(&self, token: &str, search: &str) -> Result<Option<Value>, Refused> {
+        let most = drive::LISTED_MOST.to_string();
+        let fields = format!("nextPageToken,files({ENTRY_FIELDS})");
+        self.found(
+            token,
+            "/drive/v3/files",
+            &[
+                ("q", search),
+                ("orderBy", "folder,name_natural"),
+                ("pageSize", &most),
+                ("corpora", "allDrives"),
+                ("includeItemsFromAllDrives", "true"),
+                ("supportsAllDrives", "true"),
+                ("fields", &fields),
+            ],
+            "a folder",
+        )
+    }
+
+    /// The shared drives Joel is on.
+    pub fn drives(&self, token: &str) -> Result<Value, Refused> {
+        self.get(
+            token,
+            "/drive/v3/drives",
+            &[
+                ("pageSize", "100"),
+                ("fields", "nextPageToken,drives(id,name)"),
+            ],
+            "the shared drives",
+        )
+    }
+
+    /// What Drive says of the file `id`, on any drive; none when it has
+    /// no such file.
+    pub fn file(&self, token: &str, id: &str) -> Result<Option<Value>, Refused> {
+        self.found(
+            token,
+            &format!("/drive/v3/files/{id}"),
+            &[("supportsAllDrives", "true"), ("fields", ENTRY_FIELDS)],
+            "a file",
+        )
+    }
+
+    /// The bytes of the file `id` as they come, or, for one of Google's
+    /// own kinds, of its copy exported `as` the kind named; none when
+    /// Drive has no such file.
+    pub fn content(
+        &self,
+        token: &str,
+        id: &str,
+        exported: Option<&str>,
+    ) -> Result<Option<impl std::io::Read + use<>>, Refused> {
+        let request = match exported {
+            Some(kind) => self
+                .agent
+                .get(format!("{}/drive/v3/files/{id}/export", self.origins.api))
+                .query("mimeType", kind),
+            None => self
+                .agent
+                .get(format!("{}/drive/v3/files/{id}", self.origins.api))
+                .query("alt", "media")
+                .query("supportsAllDrives", "true"),
+        };
+        let answer = request
+            .header("Authorization", &format!("Bearer {token}"))
+            .config()
+            .timeout_global(Some(DOWNLOAD_TAKES))
+            .build()
+            .call()
+            .map_err(|error| unreachable(&error))?;
+        match answer.status().as_u16() {
+            200 => Ok(Some(answer.into_body().into_reader())),
+            404 => Ok(None),
+            status => Err(refused(status, "a file's bytes")),
+        }
     }
 
     /// The inbox, for how many in it are unread.
