@@ -16,12 +16,14 @@
 # login would hold every agent's signature up until he answered.
 #
 # A machine also declares what its node can't measure of it, for work to be
-# placed by: the networks work there reaches, what a held session outlives,
-# whether work costs money, and what it refuses. Only this configuration says
-# it, as a file every end of a link on the machine reads:
+# placed by: the networks work there always reaches, a probe for each it
+# reaches only some of the time (a laptop's home), what a held session
+# outlives, whether work costs money, and what it refuses. Only this
+# configuration says it, as a file every end of a link on the machine reads:
 #
 #   jitsusama.mycelium.declares = {
-#     reach = [ "home" "internet" ];
+#     reach = [ "internet" ];
+#     probes.home = "router.lan:53";
 #     taints = [ { key = "person-works"; effect = "prefer_not"; why = "..."; } ];
 #   };
 { mycelium }:
@@ -68,7 +70,16 @@ let
           "home"
           "internet"
         ];
-        description = "The networks work on this machine reaches.";
+        description = "The networks work on this machine always reaches, wherever it is.";
+      };
+      probes = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+        example = {
+          home = "router.lan:53";
+        };
+        # The node opens a connection to each every 30 seconds.
+        description = "Networks reached only at times, each by a host:port answering only then.";
       };
       outlives = lib.mkOption {
         type = lib.types.listOf (
@@ -165,6 +176,7 @@ in
       # Where mycelium reads it: XDG_CONFIG_HOME's, or ~/.config's.
       xdg.configFile."mycelium/declared.json".text = builtins.toJSON {
         inherit (cfg.declares) reach outlives taints;
+        probes = lib.mapAttrs (_: connect: { inherit connect; }) cfg.declares.probes;
         costs_money = cfg.declares.costsMoney;
       };
     })

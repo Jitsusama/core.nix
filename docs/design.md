@@ -309,6 +309,14 @@ said there since the last key and growing only, within each row's share,
 so where a name is cut holds still as "working" becomes "asks you" and
 back.
 
+**A long name reads on.** A name too long for its row ends in an ellipsis,
+and once selected it reads on in place: after a second's rest it slides at
+a steady reading pace, eight characters a second, until its end shows,
+rests, then glides back to its start and rests again, for as long as it's
+selected. Only the name moves, inside its own room, so nothing beside it
+does, and given up by the selection it's back at its start at once (Joel,
+2026-10-25: titles "get elipsed really quick").
+
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
 bar for a level (the charge, a light, the volume), filling from the left;
@@ -375,8 +383,8 @@ processor or niri, for a minute shows quietly, as something left on, from
 lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
-What each is, in words, is the launcher's Now, opened by Super+O or by
-clicking a mark, on that mark's row: a row each, its glyph, its name, how it
+What each is, in words, is the launcher's Now, opened by Super+O on its
+most pressing row or by clicking a mark, on that mark's row: a row each, its glyph, its name, how it
 stands at the right, and what more there is to know in the footer, grouped
 by how much it asks with what wants Joel first. Return does its first
 action and the right arrow steps into the rest. While it's open, the mark
@@ -640,8 +648,9 @@ works the same way everywhere.
   would cut off something in use asks once first ("Turn Bluetooth Off,
   Disconnecting the Keychron"). A choice is said by its value alone
   ("100%", "60 Hz", "Upright"), the setting it's for named in the path
-  above it, the one in use saying so. Rows that come and go, such as
-  Media, sit at the end of their group. A check walks every row to hold
+  above it, the one chosen saying "chosen", whoever picked it. "In use"
+  is only ever what a program holds, as a camera Chrome has open. Rows
+  that come and go, such as Media, sit at the end of their group. A check walks every row to hold
   the order.
 - **Places are levels.** Desktop, Machine and Network gather what
   they're about, and a place may hold a smaller one, as Machine holds
@@ -693,7 +702,13 @@ works the same way everywhere.
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
-  left on). Each place says what it holds
+  left on). Waiting on You is a place, so Return steps into it whatever waits, to
+  the most pressing first or to "Nothing waits on you.", and into each
+  thing waiting, going to its window first inside; Super+O, Return,
+  Return reaches the pressing thing, each press foreseen. Now opens on
+  its most pressing row: Waiting on You while something waits now, else
+  the first that wants Joel or is live, else Waiting on You; never a
+  mode left on, which Return would turn off. Each place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
   as fit, so a glance reminds Joel what there is; a place that measures

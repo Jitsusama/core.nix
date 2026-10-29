@@ -5,15 +5,19 @@ pragma Singleton
 // notice once for each want, withdrawn when the want ends.
 //
 // A session is what its own record says: the file each keeps in the mesh's
-// presence folder while it runs, watched for changes. It's running while
-// the process that record names is, on this boot, started when the record
-// says; a record left by a session that died, or by an earlier boot, is
-// passed over. Nothing is read from a window's title, which a program can
-// set, a terminal can cut short and two sessions can share (Joel,
-// 2026-10-27: "we should have a better system for agent session awareness
-// that isn't so fragile"). Each reader here goes through `running` and the
-// functions beside it, so the records can later come from the machine's
-// mycelium node rather than the folder, and nothing else changes.
+// presence folder while it runs. The machine's mycelium node passes each
+// record on, and says the moment a session starts, changes or ends, from
+// its process rather than a clock (Jitsusama/mycelium), so while the node
+// answers, the sessions are this machine's of those it holds. While it
+// doesn't, as on a machine with none or while it restarts, the records
+// are read from the folder, watched for changes, and a session is running
+// while the process its record names is, on this boot, started when the
+// record says; a record left by a session that died, or by an earlier
+// boot, is passed over. Nothing is read from a window's title, which a
+// program can set, a terminal can cut short and two sessions can share
+// (Joel, 2026-10-27: "we should have a better system for agent session
+// awareness that isn't so fragile"). Each reader here goes through
+// `running` and the functions beside it, so neither way shows past them.
 //
 // A session's window is found through its terminal, as its record names it
 // (`terminal`, or the kitty its process was started in): kitty says which
@@ -38,8 +42,9 @@ Singleton {
 
     // Each session running: its window or null, its address, its quest's
     // title as its README gives it or its record's label does, its folder,
-    // its record, and the kitty window it runs in or null. The one whose
-    // window was used last first, then those with none.
+    // its record, the kitty window it runs in or null, and the id its
+    // holder keeps it by or null. The one whose window was used last
+    // first, then those with none.
     readonly property var running: {
         Niri.revision;
         const when = window => {
@@ -57,7 +62,8 @@ Singleton {
                 title: titles[address] || label.cut || address,
                 folder: label.folder,
                 presence: presence,
-                kitty: record.kitty
+                kitty: record.kitty,
+                held: record.held
             };
         }).sort((a, b) => when(b.window) - when(a.window));
     }
@@ -88,7 +94,7 @@ Singleton {
     // 2026-10-28).
     function start(quest, folder) {
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", folder,
-            "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "zsh", "-lic", "exec pi"]);
+            "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`, "zsh", "-lic", held("pi")]);
         Report.say(`started a session on ${quest}`);
     }
 
@@ -98,7 +104,16 @@ Singleton {
     // shell's $0, so nothing in them is read as the shell's own.
     function tell(words, folder, program) {
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", folder,
-            "zsh", "-lic", `exec ${program ?? "pi"} -- "$0"`, words]);
+            "zsh", "-lic", held(`${program ?? "pi"} -- "$0"`), words]);
+    }
+
+    // What a launcher start's login shell runs: `command`, kept by the
+    // realm's mycelium holder, so closing its window leaves the session
+    // running and Go To attaches it again; or run as it is on a machine in
+    // no realm. Every start goes through here, so each is held the same.
+    readonly property bool holds: /^[A-Za-z0-9._-]+$/.test(realm)
+    function held(command) {
+        return holds ? `exec mycelium --realm ${realm} hold -- ${command}` : `exec ${command}`;
     }
 
     // Reopens a session that closed, where it left off: pi told the
@@ -134,18 +149,37 @@ Singleton {
             return;
         }
         Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions", "--directory", cwd,
-            "zsh", "-lic", `exec pi --session ${asked.id}`]);
+            "zsh", "-lic", held(`pi --session ${asked.id}`)]);
         Report.say(`resumed session ${asked.id}`);
     }
 
     // Go to a session: its window, or, when niri's isn't known, kitty's,
-    // which kitty raises if niri lets it.
+    // which kitty raises if niri lets it. A held session in no window is
+    // attached in a new one, and only then: Go To never makes a second
+    // window of a session (Joel: "seeing multiples of the same thing
+    // gives me executive dysfunction").
     function goTo(session) {
         if (session.window)
             Niri.act({ FocusWindow: { id: session.window.id } });
         else if (session.kitty)
             Niri.spawn(["kitten", "@", "--to", session.kitty.socket, "focus-window",
                 "--match", `id:${session.kitty.window}`]);
+        else if (session.held)
+            attach(session.held);
+    }
+
+    // Attaches what is held as `id` in a new window of the sessions' kitty.
+    // The node names the window within moments of its joining; until it
+    // does, asking again opens nothing more.
+    readonly property int attachPatience: 5000
+    property var attaching: ({})
+    function attach(id) {
+        if (!holds || Date.now() - (attaching[id] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [id]: Date.now() });
+        Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions",
+            "zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"', realm, id]);
+        Report.say(`attached session ${id}`);
     }
 
     // What a session is, for the launcher to keep one row of it: its window,
@@ -296,6 +330,11 @@ Singleton {
     // The kitty window a session runs in, { socket, window }, or null: as
     // its record's terminal says, or else as its process was started.
     readonly property var kittySocket: /^unix:@kitty-(\d+)$/
+    // The kitty window the node says a session is in, from its `window`.
+    function kittyOfWindow(window) {
+        return window && window.terminal === "kitty" && window.within && Number(window.id) > 0
+            ? { socket: window.within, window: Number(window.id) } : null;
+    }
     function kittyOf(presence) {
         const terminal = presence.terminal;
         if (terminal && typeof terminal === "object")
@@ -309,17 +348,44 @@ Singleton {
         return socket !== "" && window > 0 ? { socket: socket, window: window } : null;
     }
 
-    // Each record whose process runs, { file, presence, kitty }, made again
-    // when a record changes or a window comes or goes, and kept as it was
-    // when nothing in it did, so what reads it isn't told for nothing.
+    // Each running session's record, { file, presence, kitty, held }: as
+    // the node has it while it answers, else each from the folder whose
+    // process runs. A held session is in the window the node says joined
+    // its holder last, or none, since its process has lost its own. Made
+    // again when a record changes, the node tells of a change or a window
+    // comes or goes, and kept as it was when nothing in it did, so what
+    // reads it isn't told for nothing.
     property var live: []
     property string liveSaid: ""
     function relive() {
         const next = [];
-        for (const file of Object.keys(records).sort()) {
-            const presence = records[file];
-            if ((presence.addresses ?? []).length > 0 && alive(presence.owner))
-                next.push({ file: file, presence: presence, kitty: kittyOf(presence) });
+        // A node from before it passed records on says too little to show.
+        if (node !== null && Object.values(node).every(session => session.presence)) {
+            for (const id of Object.keys(node).sort()) {
+                const session = node[id];
+                const presence = session.presence;
+                const running = session.state === "busy" || session.state === "idle";
+                const kitty = kittyOfWindow(session.window);
+                if (session.machine === machine && running
+                        && presence && (presence.addresses ?? []).length > 0)
+                    next.push({
+                        file: id,
+                        presence: presence,
+                        kitty: session.held ? kitty : kitty ?? kittyOf(presence),
+                        held: session.held ?? null
+                    });
+            }
+        } else {
+            for (const file of Object.keys(records).sort()) {
+                const presence = records[file];
+                if ((presence.addresses ?? []).length > 0 && alive(presence.owner))
+                    next.push({
+                        file: file,
+                        presence: presence,
+                        kitty: kittyOf(presence),
+                        held: null
+                    });
+            }
         }
         const said = JSON.stringify(next);
         if (said === liveSaid)
@@ -501,6 +567,82 @@ Singleton {
         id: readme
         blockLoading: true
         printErrors: false
+    }
+
+    // The machine's mycelium node, for the realm the machine is in: the
+    // realm's name, which the node keeps in its state, and this machine's,
+    // which the node names each session's machine by.
+    FileView {
+        id: realmFile
+        path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/mycelium/realm`
+        blockLoading: true
+        printErrors: false
+        // A node's first run writes it after the shell has started.
+        watchChanges: true
+        onFileChanged: reload()
+    }
+    readonly property string realm: realmFile.text().trim()
+    FileView {
+        id: hostname
+        path: "/proc/sys/kernel/hostname"
+        blockLoading: true
+        printErrors: false
+    }
+    readonly property string machine: hostname.text().trim()
+
+    // The node's sessions by id, everyone it holds, while it answers a
+    // watch; null while it doesn't, so the folder is read instead.
+    property var node: null
+    Socket {
+        id: mycelium
+        path: root.realm !== "" && Quickshell.env("XDG_RUNTIME_DIR")
+            ? `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${root.realm}.sock` : ""
+        connected: path !== ""
+        onConnectionStateChanged: {
+            if (connected) {
+                write('{"Watch":{"groups":[],"recent":0}}\n');
+                flush();
+            } else if (root.node !== null) {
+                root.node = null;
+                root.relive();
+            }
+        }
+        parser: SplitParser {
+            onRead: line => root.nodeSaid(line)
+        }
+    }
+    // A node not yet up, or restarting, is asked again every few seconds.
+    Timer {
+        interval: 5000
+        repeat: true
+        running: mycelium.path !== "" && !mycelium.connected
+        onTriggered: mycelium.connected = true
+    }
+    // What the node tells a watch: every session first, then each one new,
+    // changed or forgotten.
+    function nodeSaid(line) {
+        let event;
+        try {
+            event = JSON.parse(line);
+        } catch (e) {
+            return;
+        }
+        let next;
+        if (event.SessionsChanged) {
+            next = {};
+            for (const session of event.SessionsChanged.sessions ?? [])
+                next[session.id] = session;
+        } else if (event.SessionChanged) {
+            next = Object.assign({}, node ?? {});
+            next[event.SessionChanged.session.id] = event.SessionChanged.session;
+        } else if (event.SessionForgotten) {
+            next = Object.assign({}, node ?? {});
+            delete next[event.SessionForgotten.id];
+        } else {
+            return;
+        }
+        node = next;
+        relive();
     }
 
     FolderListModel {

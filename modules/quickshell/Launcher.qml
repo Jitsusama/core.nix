@@ -686,9 +686,26 @@ Scope {
             && row.key !== `place:${id}`;
     }
 
+    // The kinds made by one component each, by how their rows are keyed,
+    // and the component that makes them (docs/design.md, one component per
+    // thing): a mail or a meeting row made anywhere but by its component
+    // is a version a surface drew of it.
+    readonly property var components: [
+        { keyed: /^mail:/, made: "mail" },
+        { keyed: /^calendar:meeting:/, made: "meeting" }
+    ]
+
+    // A row of a kind its component makes, made otherwise, or null.
+    function uncomposed(row) {
+        const kind = components.find(one => one.keyed.test(row.key ?? ""));
+        return kind && row.component !== kind.made ? kind.made : null;
+    }
+
     function actless() {
         const out = [];
         const own = [];
+        const loose = [];
+        let composed = 0;
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -701,6 +718,12 @@ Scope {
                     if (ownVersion(row, above))
                         own.push(`${names.concat([row.name]).join(" \u203a ")}`
                             + ` (${row.is ?? row.key})`);
+                    const kind = uncomposed(row);
+                    if (kind !== null)
+                        loose.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.key}, not made as a ${kind})`);
+                    else if (row.component)
+                        composed += 1;
                     if (depth < actlessDeepest && !(row.opens && Catalogue.long(row.opens)))
                         walk(catalogueHolds(row, above === null || collects({ row: above })),
                             row, path, names.concat([row.name]), depth + 1);
@@ -710,7 +733,8 @@ Scope {
         walk(home(), null, [], [], 0);
         // How many it walked too, so a check that finds none knows it
         // looked.
-        return { walked: seen.size, rows: out, ownVersions: own };
+        return { walked: seen.size, rows: out, ownVersions: own, uncomposed: loose,
+            composed: composed };
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a
@@ -1689,13 +1713,14 @@ Scope {
             return answerPlace(id);
         const row = whole(source, false, false);
         // In Now, what waits on Joel leads, named by the first of it, since
-        // it's the one thing there only he can move; the rest follow by name.
+        // it's the one thing there only he can move; the rest follow by
+        // name, and its row, there with nothing in it too, isn't one.
         const lead = source.foremost ?? "";
         // A row folded into a place, as Agents' Start a Session is, does
         // something there rather than being one of what it holds, so home
         // never names it.
         const names = source.everything()
-            .filter(one => (lead === "" || one.key !== "on:waitingOnYou") && one.folded !== true)
+            .filter(one => one.key !== "on:waitingOnYou" && one.folded !== true)
             .map(one => one.name);
         const left = room > 0 ? room - row.name.length : Infinity;
         const fitted = names.length === 0 ? ""
@@ -1901,9 +1926,11 @@ Scope {
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
         // A collection with nothing in it still holds the places its
         // vocabulary names, which a step into it shows: Agents with no
-        // agent running still leads to its Quests and Orchestrators.
+        // agent running still leads to its Quests and Orchestrators. A row
+        // saying what it holds when empty, as Waiting on You does, is a
+        // place stepped into however little it holds.
         const places = things && row.from ? partsOf(row.from).length : 0;
-        if ((!into || into.length === 0) && places === 0)
+        if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
         const made = Date.now();
         held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
@@ -1921,6 +1948,10 @@ Scope {
             if (matched >= 0) {
                 current = matched;
                 list.positionViewAtIndex(matched, ListView.Contain);
+            } else if (held.length === 1 && row.from.starts) {
+                // A collection stepped into from home opens on its most
+                // pressing row, as Super+O opens it (into).
+                current = Math.max(0, row.from.starts(matches));
             }
         }
         // Said as a key's are: making the step's lists, what each part of
@@ -2644,10 +2675,16 @@ Scope {
             const inset = item.horizontalAlignment === Qt.AlignRight ? spare
                 : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
             // How wide it's drawn and whether it's cut, so a test can say
-            // where a name is cut held still.
+            // where a name is cut held still. A word in a box that clips it,
+            // as a selected name reading on is, is cut by that box rather
+            // than by an ellipsis, and the box is the room it holds.
+            const clipper = item.parent && item.parent.clip ? item.parent : item;
+            const box = clipper.mapToItem(into, 0, 0);
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
-                cut: item.truncated === true });
+                cut: item.truncated === true
+                    || (clipper !== item && item.implicitWidth > clipper.width),
+                room: { x: Math.round(box.x), width: Math.round(clipper.width) } });
         }
         for (const child of item.children)
             for (const word of wordsIn(child, into))
@@ -2696,6 +2733,8 @@ Scope {
                     .filter(part => part !== "").join(" \u00b7 ")
             })),
             asking: !!root.asking,
+            // What the list says in place of rows, where it has none.
+            nothing: nothingShown.visible ? nothingShown.name : "",
             selected: !row ? null : {
                 name: row.name,
                 is: Rank.identity(row),
@@ -2761,6 +2800,10 @@ Scope {
         const lead = source.leading ? source.leading() : null;
         if (lead)
             enter(lead);
+        // Or it says which row is the most pressing, where it isn't the
+        // first, as Now does when nothing waits (WhatsOn.qml's starts).
+        else if (source.starts)
+            current = Math.max(0, source.starts(matches));
     }
 
     // Where the pointer last was, in the window, so the selection follows
@@ -3326,8 +3369,11 @@ Scope {
                         // nothing found, it says so. A field asking for words has
                         // only space below it.
                         Choice {
-                            readonly property var inside: root.held.length > 0
-                                ? root.held[root.held.length - 1].row.from ?? null : null
+                            id: nothingShown
+
+                            readonly property var holder: root.held.length > 0
+                                ? root.held[root.held.length - 1].row : null
+                            readonly property var inside: holder?.from ?? null
                             visible: root.matches.length === 0 && root.answer === null
                                 && root.asking === null
                             glyph: root.typed === "" ? Theme.glyph.greeting
@@ -3336,6 +3382,7 @@ Scope {
                             quiet: true
                             name: root.typed !== ""
                                 ? `Nothing answers to \u201c${root.typed}\u201d.`
+                                : holder?.empty ? holder.empty
                                 : inside?.collection
                                     ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
                                 : "A window, a program, an action, or what a key does."

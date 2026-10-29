@@ -5,11 +5,12 @@
 # UPower answers each question whether the machine is on battery with the
 # next of the steps given, "on-battery percent" a line, and says the
 # battery changed once for each step after the first, then goes, which ends
-# the service's monitor.
-# A service that says what it chose in its runtime folder, as systemd gives
-# it, is given this one's, and with WANTED set its last word there must be
-# that.
-# usage: [WANTED=<choice>] run.sh <service's command line> <steps> <expected calls> <what follows> <PATH>
+# the service's monitor. Given the lines the service should say, it checks
+# those too. A service that says what it chose in its runtime folder, as
+# systemd gives it, is given this one's, and with WANTED set its last word
+# there must be that.
+# usage: [WANTED=<choice>] run.sh <service's command line> <steps> <expected calls>
+#   <what follows> <PATH> [<expected lines said>]
 set -euo pipefail
 
 # The service's ExecStart, a program and its arguments.
@@ -26,13 +27,13 @@ export RUNTIME_DIRECTORY=$work
 cp "$steps" "$work/steps"
 chmod u+w "$work/steps"
 mkdir "$work/bin"
-for stand_in in busctl gdbus niri powerprofilesctl; do
+for stand_in in busctl gdbus niri; do
   printf '#!%s\nexec %s %s "$@"\n' "$BASH" "$BASH" "$here/$stand_in.sh" > "$work/bin/$stand_in"
   chmod +x "$work/bin/$stand_in"
 done
 export PATH=$work/bin:$5
 
-if "${service[@]}"; then
+if "${service[@]}" > "$work/said"; then
   echo "The service ended without its monitor failing." >&2
   exit 1
 fi
@@ -46,4 +47,8 @@ if [ -n "${WANTED:-}" ]; then
     echo "$follows said it chose $said, where its last choice was $WANTED." >&2
     exit 1
   fi
+fi
+if [ -n "${6:-}" ] && ! diff "$6" "$work/said"; then
+  echo "$follows didn't say what it did as listed." >&2
+  exit 1
 fi

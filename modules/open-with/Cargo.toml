@@ -9,6 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The desktop's list of files opened lately, read and written as GTK does.
+gio = "0.22"
+glib = { version = "0.22", features = ["v2_76"] }
 serde_json = "1.0"
 tokio = { version = "1.53", features = ["macros", "net", "rt", "sync", "time"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }

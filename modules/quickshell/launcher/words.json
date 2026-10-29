@@ -545,6 +545,7 @@
         "containers": "containers",
         "other": "{name}",
         "clears": "some is builds or caches the guard clears once idle",
+        "clearing": "the guard is clearing it now",
         "now": "measured just now",
         "ago": "measured {minutes} min ago"
       }
@@ -578,6 +579,14 @@
           "verb": "release"
         }
       }
+    },
+    {
+      "id": "verb:disk:clear",
+      "in": "machine:disk:filling",
+      "name": "Clear",
+      "verb": "clear",
+      "glyph": "forget",
+      "sure": "Clear {amount} of {name}"
     },
     {
       "id": "verb:disk:copy-path",
@@ -1563,6 +1572,21 @@
       "glyph": "zone"
     },
     {
+      "id": "verb:location:set",
+      "in": "location",
+      "name": "Set It by Hand",
+      "verb": "set",
+      "ask": "where are you?",
+      "glyph": "location"
+    },
+    {
+      "id": "verb:location:again",
+      "in": "location",
+      "name": "Find It Again",
+      "verb": "find",
+      "glyph": "location"
+    },
+    {
       "id": "time:day",
       "in": "time",
       "name": "Date"
@@ -1591,7 +1615,7 @@
       ],
       "said": {
         "volume": "volume {level}",
-        "in-use": "in use",
+        "chosen": "chosen",
         "muted": "muted",
         "none": "none",
         "on": "on",
@@ -2739,10 +2763,12 @@
       "name": "Waiting on You",
       "verb": "switch",
       "glyph": "waitsOnJoel",
+      "empty": "Nothing waits on you.",
       "said": {
         "first": "{title}, {minutes} min",
         "minutes": "{minutes} min",
-        "later": "{count} later"
+        "later": "{count} later",
+        "none": "nothing waits"
       }
     },
     {
@@ -4411,6 +4437,13 @@
       "in": "program:recent",
       "name": "Opened Lately",
       "verb": "open"
+    },
+    {
+      "id": "recent:site",
+      "in": "program:recent",
+      "name": "Site",
+      "verb": "open",
+      "glyph": "web"
     },
     {
       "id": "verb:float",

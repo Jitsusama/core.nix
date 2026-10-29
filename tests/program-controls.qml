@@ -3,9 +3,9 @@
 // beside this, with niri, the desktop's shortcuts, the notices' history and
 // what's playing (launcher/Playing.qml) stood in. A running program with a
 // player, a stream and notices holds, in order, Switch to the window used
-// last, New window, New window below, its other window by title, its desktop
-// entry's own actions (one shortened, one left to New window), Quit, then
-// Media, Sound and Notices, each doing what it says: Quit asks once
+// last, New window, New window below, its desktop entry's own actions (one
+// shortened, one left to New window), Recent, its other window by title,
+// Notices, Quit, then Media and Sound, each doing what it says: Quit asks once
 // and closes each window, the media and sound acts reach the player and
 // the program's streams only, and its figures follow what they did. A
 // program with nothing of the sort holds only New window and New window
@@ -16,7 +16,13 @@
 // keeps what it had open lately holds Recent, each path by its name beside
 // its folder, opened by its start command while none of its windows is
 // open and through the process behind its last window while one is, and
-// read again as its file changes, nine at most. Typing on
+// read again as its file changes, nine at most, a program held then drawn
+// again. A program's files on the
+// list programs share are its Recent too, found by its desktop entry's id
+// or name, and opened by its own command when it takes files, else as the
+// desktop opens them. A program whose sites are read only as it's stepped
+// into reads them then, once each time the launcher opens, each site by
+// its title beside its host, opened by its own command. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -51,7 +57,19 @@ ShellRoot {
         property bool open: false
         property var held: []
         property var belowChord: []
-        property var sources: [notices, keys]
+        property var sources: [notices, keys, giver]
+    }
+
+    // Another provider giving a program's Recent its own things, as Docs'
+    // documents are given.
+    QtObject {
+        id: giver
+
+        signal changed
+
+        function recentOf(program) {
+            return program !== "tester" ? [] : [{ key: "gdoc:plan", name: "Plan Doc" }];
+        }
     }
 
     // Shortcuts as a program's row asks it: Quiet has keys of its own.
@@ -84,14 +102,25 @@ ShellRoot {
             name: "applications",
             recents: [{
                 app: "quiet",
+                kind: "folder",
                 watch: root.recentFile,
                 list: [Quickshell.env("RECENT_LIST")],
                 open: ["quiet", "@", "--to", "unix:@quiet-{pid}", "launch", "{path}"],
                 start: ["quiet", "--directory", "{path}"]
+            }, {
+                // The list programs share, as recent-files prints it.
+                watch: `${root.home}/shared`,
+                list: [Quickshell.env("SHARED_LIST")]
+            }, {
+                // Sites, read as the browser is stepped into.
+                app: "browser",
+                kind: "site",
+                asked: true,
+                list: [Quickshell.env("SITES_LIST")]
             }]
         })
         // Desktop entries and what quiet had open are read in the
-        // background, so the cases wait for all three and the list.
+        // background, so the cases wait for all three and both lists.
         onThingsChanged: root.ready()
     }
 
@@ -101,8 +130,16 @@ ShellRoot {
         function onLatelyChanged() {
             if (root.waiting === "the recents to change")
                 root.changed();
+            else if (root.waiting === "the sites")
+                root.browsed(1);
+            else if (root.waiting === "the sites again")
+                root.browsed(2);
             else
                 root.ready();
+        }
+
+        function onSharedChanged() {
+            root.ready();
         }
     }
 
@@ -116,9 +153,22 @@ ShellRoot {
 
     function ready() {
         if (root.waiting === "the programs"
-                && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined)
-                && applications.recents.of("quiet").length === 2)
+                && ["tester", "quiet", "radio", "browser"].every(id => root.program(id) !== undefined)
+                && applications.recents.of("quiet").length === 2
+                && applications.recents.of("tester").length === 2
+                && applications.recents.of("radio").length === 1)
             Qt.callLater(root.cases);
+    }
+
+    // How often the launcher heard the programs changed, as it would redraw.
+    property int redrawn: 0
+
+    Connections {
+        target: applications
+
+        function onChanged() {
+            root.redrawn += 1;
+        }
     }
 
     // Once its file changes, Recent says what's in it now, nine at most.
@@ -131,7 +181,68 @@ ShellRoot {
             same("Recent follows its file, nine at most", `${recent.count} ${names(recent.targets())}`,
                 "9 folder 1, folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9");
             same("each in the folder it's in", recent.targets()[0].side, "~");
-            Qt.callLater(() => Qt.exit(0));
+            // Read once every handler of the change has run.
+            Qt.callLater(() => {
+                try {
+                    expect("a program held as its list changes is drawn again",
+                        root.redrawn > 0, root.redrawn);
+                    root.redrawn = 0;
+                    giver.changed();
+                    Qt.callLater(() => {
+                        try {
+                            expect("a program held as another provider's Recent for it changes is drawn again",
+                                root.redrawn > 0, root.redrawn);
+                            root.browse();
+                        } catch (error) {
+                            fail(error.message);
+                        }
+                    });
+                } catch (error) {
+                    fail(error.message);
+                }
+            });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // A program whose sites are read as it's stepped into: not before,
+    // once an opening, and again the next time the launcher opens.
+    function browse() {
+        launcher.open = false;
+        launcher.open = true;
+        same("sites aren't read before their program is stepped into",
+            applications.recents.of("browser").length, 0);
+        root.waiting = "the sites";
+        program("browser").verbs();
+    }
+
+    function browsed(reading) {
+        if (applications.recents.of("browser").length === 0)
+            return;
+        try {
+            const rows = program("browser").verbs();
+            same("stepped into, it reads its sites as its Recent", names(rows),
+                "New Window, New Window Below, Recent");
+            const sites = rows[2].targets();
+            same("each site by its title beside its host, keyed by the page, newest first",
+                `${names(sites)} ${sites.map(row => row.side).join(" ")} ${sites[0].key}`,
+                `Page ${reading}, Older page example.org other.example.net site:https://example.org/${reading}`);
+            same("read once an opening, however often it's stepped into",
+                JSON.stringify(applications.recents.asked), '{"browser":true}');
+            if (reading === 2) {
+                Qt.exit(0);
+                return;
+            }
+            sites[0].run();
+            same("Return opens the page by the program's own command", JSON.stringify(Niri.spawned),
+                JSON.stringify(["browser", "https://example.org/1"]));
+            launcher.open = false;
+            same("closing the launcher lets the next opening read them again",
+                JSON.stringify(applications.recents.asked), "{}");
+            launcher.open = true;
+            root.waiting = "the sites again";
+            program("browser").verbs();
         } catch (error) {
             fail(error.message);
         }
@@ -176,10 +287,17 @@ ShellRoot {
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();
-            same("acts first, then parts, each where it applies", names(tester),
-                "Switch, New Window, New Window Below, Draft, Private window, "
-                + "Open the logbook, Quit, Media, Sound, Notices");
-            const [switching, , , draft, secret, logbook, quit, media, sound, told] = tester;
+            same("in the program's order, each part where it applies", names(tester),
+                "Switch, New Window, New Window Below, Private window, Open the logbook, "
+                + "Recent, Draft, Notices, Quit, Media, Sound");
+            const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
+            const files = shared.targets();
+            same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",
+                `${names(files)} ${files.map(row => row.key).join(" ")}`,
+                `notes.md, plan.md, Plan Doc file:${root.home}/notes.md file:${root.home}/plan.md gdoc:plan`);
+            files[0].run();
+            same("one opens by the program's own command", JSON.stringify(Niri.spawned),
+                JSON.stringify(["tester", `${root.home}/notes.md`]));
             same("Switch names the window used last", switching.side, "Logbook");
             switching.run();
             same("Switch goes to it", acted(), '[{"FocusWindow":{"id":11}}]');
@@ -282,9 +400,12 @@ ShellRoot {
 
             const radio = program("radio").verbs();
             same("a player found by its identity, and a program recording", names(radio),
-                "New Window, New Window Below, Media, Sound");
-            same("Media holds only what the player can do", names(radio[2].targets()), "Play");
-            const recording = radio[3];
+                "New Window, New Window Below, Recent, Media, Sound");
+            radio[2].targets()[0].run();
+            same("a file given to a program that opens none opens as the desktop opens it",
+                JSON.stringify(Niri.spawned), JSON.stringify(["xdg-open", `${root.home}/song.ogg`]));
+            same("Media holds only what the player can do", names(radio[3].targets()), "Play");
+            const recording = radio[4];
             same("Sound says it records, with nothing to draw",
                 `${recording.side} ${recording.graph}`, "recording undefined");
             const [microphone] = recording.targets();
@@ -320,6 +441,10 @@ ShellRoot {
                 found(typed);
             }
             root.waiting = "the recents to change";
+            // Held inside a program, as Joel would be, while its list changes.
+            launcher.open = true;
+            launcher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
+            root.redrawn = 0;
             writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
                 .join("\n") + "\n");
         } catch (error) {

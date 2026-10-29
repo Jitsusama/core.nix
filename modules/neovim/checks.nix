@@ -207,6 +207,39 @@ onLinux {
         touch $out
       '';
 
+  # Neovim says each file it opens to the desktop's list of files opened
+  # lately, through recent-files where the desktop has it, stood in here:
+  # each as it comes into view, going back to one too, and nothing that
+  # isn't a file on disk, such as its help.
+  neovim-says-the-files-it-opens =
+    let
+      home = account workstation;
+      # It keeps what it was asked, so a call it refuses reads as it was.
+      recent-files = pkgs.writeShellScriptBin "recent-files" ''
+        [ "$1 $2" = "add nvim" ] || { echo "recent-files $*" >> "$SAID"; exit 1; }
+        shift 2
+        printf '%s\n' "$@" >> "$SAID"
+      '';
+      heard = "vim.fn.filereadable(vim.env.SAID) == 1 and #vim.fn.readfile(vim.env.SAID) >= 3";
+      said = "vim.wait(10000, function() return ${heard} end); io.stdout:write(vim.fn.filereadable(vim.env.SAID) == 1 and table.concat(vim.fn.readfile(vim.env.SAID), ' ') or 'nothing said')";
+    in
+    pkgs.runCommandLocal "neovim-says-the-files-it-opens"
+      {
+        nativeBuildInputs = [
+          recent-files
+          home.home.path
+        ];
+      }
+      ''
+        ${neovimAt home}
+        export SAID=$PWD/said
+        echo one > one.txt
+        echo two > two.txt
+        ${probed} "$PWD/one.txt $PWD/two.txt $PWD/one.txt" one.txt -c 'edit two.txt' -c 'help' \
+          -c 'edit one.txt' -c "lua ${said}" -c 'qa!'
+        touch $out
+      '';
+
   # The account's Neovim binds every key in the map, and only those: each
   # action a key names is one a file registered, or one a plugin that
   # waits provides, each key is bound as it says, a scope's in a buffer it

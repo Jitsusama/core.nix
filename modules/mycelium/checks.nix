@@ -41,7 +41,8 @@ let
   apart = linux { };
 
   declaring = {
-    reach = [ "home" ];
+    reach = [ "internet" ];
+    probes.home = "192.0.2.1:53";
     taints = [
       {
         key = "person-works";
@@ -86,10 +87,11 @@ in
   # declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares isn't written in mycelium's shape, a held session's outlives isn't each system's, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes included, isn't written in mycelium's shape, a held session's outlives isn't each system's, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
-          reach = [ "home" ];
+          reach = [ "internet" ];
+          probes.home.connect = "192.0.2.1:53";
           outlives = [
             "window_close"
             "node_restart"

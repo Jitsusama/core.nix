@@ -176,9 +176,12 @@ ShellRoot {
             location.note === "it keeps America/Toronto, not the clock's America/Halifax"
                 && location.hue === "strong", `${location.note} ${location.hue}`);
         const inside = location.verbs();
-        expect("inside, its position and the clock's zone",
+        // Setting it by hand leads, as the one thing to do there; Find It
+        // Again only once a place was set by hand.
+        expect("inside, setting it by hand, its position and the clock's zone",
             JSON.stringify(inside.map(row => [row.name, row.side]))
-                === JSON.stringify([["Position", "43.67, -79.38"], ["Zone", "America/Halifax"]]),
+                === JSON.stringify([["Set It by Hand", ""], ["Position", "43.67, -79.38"],
+                    ["Zone", "America/Halifax"]]),
             JSON.stringify(inside.map(row => [row.name, row.side])));
         expect("it's found by its name too, Now being its home",
             now.things.some(row => row.key === "on:location"),

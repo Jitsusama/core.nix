@@ -543,7 +543,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
 ) -> None:
     """The launcher's Sound opens an output's and a microphone's parts."""
     machine = desktop.machine
-    # The speakers, in use, hold Return's own Mute, then their Level,
+    # The speakers, chosen, hold Return's own Mute, then their Level,
     # Volume, whether they're Muted, and Channels, named first; the null
     # sink has no card, so nothing more.
     sound_device(desktop, "speakers", "speakers")
@@ -576,7 +576,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     # The part says what it was set to.
     sound_device(desktop, "speakers", "speakers")
     desktop.launcher_until(sound_reads("Volume", "50%"))
-    # The right arrow on Muted holds Mute and Unmute, Unmute in use, and
+    # The right arrow on Muted holds Mute and Unmute, Unmute chosen, and
     # Return on Mute mutes the speakers; then Unmute, its Return, unmutes.
     # Muted is the fourth row, after Return's own Mute, Level and Volume.
     for _down in range(3):
@@ -584,7 +584,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_selected("Muted"))
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Mute", "Unmute"])
-    desktop.launcher_until(sound_reads("Unmute", "in use"))
+    desktop.launcher_until(sound_reads("Unmute", "chosen"))
     desktop.photograph("launcher-sound-muted")
     desktop.launcher_until(sound_selected("Mute"))
     machine.send_key("ret")
@@ -940,7 +940,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     machine = desktop.machine
     # By its name, power saver last, where what follows starts from. Setting
     # it changes something, so Return keeps the launcher, the row saying
-    # it's in use, and Ctrl+Return sets it and closes.
+    # it's chosen, and Ctrl+Return sets it and closes.
     for typed, profile, name, key in [
         ("balanced power", "balanced", "Balanced Power", "ret"),
         ("power saver", "power-saver", "Power Saver", "ctrl-ret"),
@@ -957,7 +957,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         )
         if key == "ret":
             desktop.launcher_until(
-                lambda shown: shown["open"] and (shown["selected"] or {}).get("side") == "in use"
+                lambda shown: shown["open"] and (shown["selected"] or {}).get("side") == "chosen"
             )
             machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
@@ -975,7 +975,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    # And as the setting it is: one part saying which is in use, its
+    # And as the setting it is: one part saying which is chosen, its
     # choices a step in by Return or the right arrow, each named there as
     # the part reads it.
     for key, profile, name, was in [
@@ -994,7 +994,7 @@ def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
         machine.wait_until_succeeds(
             f"powerprofilesctl get | grep -qx {profile}", timeout=timedelta(seconds=10)
         )
-        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "in use")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "chosen")
         machine.send_key("esc")
         machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 

@@ -696,6 +696,7 @@ in
   imports = [
     ../theme/home.nix
     ../keys/home.nix
+    ./recents.nix
     ../camera/home.nix
     # The brightness bar shows the picks the backlight daemon tells it of.
     ../backlight/home.nix
@@ -964,36 +965,8 @@ in
         order = 20;
         source = "applications";
         # What each program had open lately, for its Recent
-        # (launcher/Recents.qml): kitty's folders as zoxide ranks them, by
-        # how often and how lately each was visited, read as zoxide's
-        # database changes. Return opens a kitty window there, through the
-        # kitty behind the window used last while one is open. It shows only
-        # inside kitty's own row, so where kitty isn't installed it's never
-        # seen.
-        recents = lib.optional config.programs.zoxide.enable {
-          app = "kitty";
-          watch = "${config.xdg.dataHome}/zoxide/db.zo";
-          list = [
-            (lib.getExe config.programs.zoxide.package)
-            "query"
-            "--list"
-          ];
-          open = [
-            "kitty"
-            "@"
-            "--to"
-            "unix:@kitty-{pid}"
-            "launch"
-            "--type=os-window"
-            "--cwd"
-            "{path}"
-          ];
-          start = [
-            "kitty"
-            "--directory"
-            "{path}"
-          ];
-        };
+        # (launcher/Recents.qml), as each program's module says (recents.nix).
+        inherit (config.jitsusama.quickshell.launcher) recents;
       };
       actions = {
         order = 30;
@@ -1426,7 +1399,7 @@ in
     # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
     # run's answer through pi-runs too. The clipboard's Paste presses its
     # window's paste keys through wtype (launcher/Copies.qml).
-    home.packages = [
+    home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
       launcherSay
       piWants
@@ -1653,6 +1626,10 @@ in
                     medium
                     long
                     ;
+                  # How much slower than written everything moves, for motion
+                  # timed by its distance rather than by a duration, as a
+                  # long row's scroll is.
+                  slowdown = builtins.fromJSON motion.slowdown;
                   # Easing.BezierSpline's form: the two control points, then the end.
                   curve = map builtins.fromJSON motion.curve ++ [
                     1
@@ -1698,12 +1675,8 @@ in
     # lists the first two, and a folder that isn't there can't be listed,
     # so they're made at login, before the shell, with the other two
     # beside them so the shell's first look finds each. So are the
-    # folders WaitingOnYou.qml watches for what waits on Joel, and the one
-    # kitty's Recent reads zoxide's database in (launcher/Recents.qml
-    # watches a list from inside its folder), which zoxide makes only at
-    # its first cd, so that cd counts.
+    # folders WaitingOnYou.qml watches for what waits on Joel.
     systemd.user.tmpfiles.rules = [
-      "d ${config.xdg.dataHome}/zoxide 0700 - - -"
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
@@ -1742,8 +1715,12 @@ in
         PartOf = [ "graphical-session.target" ];
         After = [ "graphical-session.target" ];
       };
+      # A place Joel sets himself is pinned in its state folder, and Now's
+      # Location sets and takes the pin away through the same program, on
+      # the shell's path.
       Service = {
-        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json";
+        StateDirectory = "whereabouts";
+        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json %S/whereabouts/pin.json";
         Restart = "on-failure";
         RestartSec = 60;
       };

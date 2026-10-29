@@ -119,6 +119,8 @@ first in the queue and conclude.
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
+| version | one commit of a pi package installed on the machine, which a pi runs | | `versions/<commit>` |
+| sweep | pi-packages removing the versions no pi runs, keeping current and the one before, at each pi's start or end | | `pi-packages sweep` |
 | background command | a command a session runs without waiting on it | background job | the `jobs` tool |
 | background work | a session's background commands, fleets and review rounds together | | `/jobs` |
 | fleet | subagents run at once on one piece of work | fan-out, batch | the `subagent` tool |
@@ -234,6 +236,8 @@ off.
 | queue | heavy work, such as builds and VM tests, waiting its turn on the machine | machine queue | |
 | slice | a share of the machine's processor, memory and disk that a group of programs runs in | | a systemd `.slice` |
 | power profile | how hard the processor and firmware run: performance, balanced or power saver | thermal mode, platform profile | power-profiles-daemon |
+| chosen | of a setting's choices, the one it's at, whoever picked it: Joel, the charger or a profile | | |
+| in use | held by a program, as a camera Chrome has open or a microphone in a call | | |
 | charger | the power cable, and what it's plugged into | mains | AC |
 | Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
@@ -294,7 +298,7 @@ now, and keep or stop keeping a folder.
 | forecast | how long a filesystem has until it's full, at the rate it's filling | | |
 | holder | a folder the disk guard names as taking a filesystem's room, with whose it is | | `holders` |
 | keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
-| clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe, prune | `disk-guard clear` |
+| clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe | `disk-guard clear` |
 
 ## Keyboards
 

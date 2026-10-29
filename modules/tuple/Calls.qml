@@ -21,6 +21,8 @@ Provider {
     hiddenPrograms: ["tuple"]
 
     things: Tuple.controls.map(control => thing(control))
+    // So Programs › Tuple, held while a call starts or ends, is drawn again.
+    onThingsChanged: changed()
 
     // Where each of Tuple's rows goes inside it, by its key.
     readonly property var places: ["tuple:open", "tuple:ringing", "tuple:mute", "tuple:share",

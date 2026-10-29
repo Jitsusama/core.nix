@@ -34,7 +34,7 @@ Piece {
     markGlyph: Words.of(current.words).glyph ?? ""
     value: Words.of(current.words).part
     title: "Power Profile"
-    hint: `${value} is in use`
+    hint: `${value} is chosen`
     context: `picked by hand over ${Words.of(machine.words).part}`
     // Back to what the machine chose, which it then follows again.
     actions: active ? [{

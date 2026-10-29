@@ -31,6 +31,10 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-refused-profile-is-said-once = ''
+    a power profile the daemon refuses is said once as a warning, tried again at each change of the
+    battery without repeating it, and said once it takes
+  '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
@@ -147,6 +151,13 @@
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
+  '';
+  chrome-recent-sites-passes-clippy = ''
+    clippy finds nothing in what reads Chrome's sites for the launcher, or its tests
+  '';
+  chrome-recent-sites-reads-a-history-mid-write = ''
+    Chrome's sites are read whole from a history caught halfway through a write, its last whole
+    write listed, Chrome's files left alone and no copy left behind
   '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
@@ -521,6 +532,10 @@
     Neovim spell-checks markdown without flagging niri, Quickshell, YubiKey, TPM or monospace, and
     still flags a misspelt word
   '';
+  neovim-says-the-files-it-opens = ''
+    Neovim says each file it opens to the desktop's list of files opened lately, as each comes into
+    view and going back to one too, and nothing that isn't a file on disk
+  '';
   neovim-starts-in-the-theme = ''
     Neovim starts in bamboo, transparent, without a complaint
   '';
@@ -657,11 +672,13 @@
   '';
   pi-packages-passes-clippy = ''
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
-    through an update and never swap in a build that fails or leaves a native module unbuilt
+    through an update, keep the version before current and the one a live pi says it loaded, and
+    never swap in a build that fails or leaves a native module unbuilt
   '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
-    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac
+    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
+    or end, watched in each package's loaded folder, removes the versions no pi runs
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
@@ -1590,6 +1607,10 @@
   zathura-keys-go-where-they-say = ''
     zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
     and the question mark key asks the launcher for the keys
+  '';
+  zoxide-lists-the-folder-visited-last-first = ''
+    the account's zoxide lists the folder visited last first when asked, though another was visited
+    more often, without writing its database
   '';
   zoxide-lists-without-writing = ''
     the account's zoxide lists its folders, the most visited first, without writing its database,

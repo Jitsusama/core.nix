@@ -5,8 +5,10 @@
 // while it's picked. They're listed in Now's groups, what wants Joel first,
 // then what reaches other people, what's playing and the modes left on, and
 // by name within each (Now.js), so what can need him leads and one keeps
-// its place while its group stands; the time, the date, the weather and
-// the next meeting are always last, Now's own rows. What each asks
+// its place while its group stands. Now's top never changes (docs/design.md,
+// home is a few places): what waits on Joel first, then Now's own rows, the
+// time, the date, the location, the weather and the next meeting, and only
+// then what else is on, which comes and goes below them. What each asks
 // of Joel shows in its glyph's colour too. Return does a piece's first
 // action, and the
 // right arrow steps into the rest.
@@ -31,7 +33,7 @@ Provider {
     // What waits on Joel is found by its words too, since Now is its one
     // home: the rest of what's on each has a place of its own to be found
     // in, which is why the collection adds no row to a search.
-    things: (waiting === null ? [] : [waiting]).concat([location])
+    things: [waiting, location]
 
     // What the thing is where the launcher has a row of its own for it, by
     // its mark, so one found in both is listed once (Rank.identity).
@@ -44,22 +46,22 @@ Provider {
 
     readonly property var all: {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
-            && fact.piece.present && fact.piece.active);
-        // By group, what wants Joel first, and by name within each, so a
-        // row keeps its place while its group stands (Now.js); this
-        // moment's rows, its own, always last.
+            && fact.piece.present && fact.piece.active && !shownAbove(fact));
+        // What waits on Joel, then this moment's rows, which are always
+        // there, so the top never moves; then the rest by group, what
+        // wants Joel first, and by name within each, so a row keeps its
+        // place while its group stands (Now.js).
         const rows = lit.map(fact => ({
             group: fact.piece.group,
             name: fact.piece.title,
             row: made(fact)
         }));
-        if (waiting !== null)
-            rows.push({ group: "wants", name: waiting.name, row: waiting });
-        return Now.ordered(rows).map(each => each.row).concat(moment);
+        return [waiting].concat(moment, Now.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()
 
-    // This moment, Now's own rows, always its last, after what's on: the
+    // This moment, Now's own rows, right after what waits on Joel and
+    // before what else is on: the
     // Time, the Date, the Weather here and the next meeting today, each
     // a row of Now itself rather than inside a Today to step into (Joel,
     // 2026-10-28: "what is the difference between top level now and
@@ -160,16 +162,42 @@ Provider {
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
-        const within = here ? `within ${Math.ceil(here.accuracy / 1000)} km` : "";
+        // A place Joel set himself says so, since GeoClue no longer moves it.
+        const byHand = here?.hand === true;
+        const within = !here ? "" : byHand ? "set by hand"
+            : `within ${Math.ceil(here.accuracy / 1000)} km`;
         const side = here ? here.place ?? position : Location.read ? "unknown" : "\u2026";
         const differs = Location.zoneDiffers;
         // Said plainly where it's unknown, never guessed.
         const elsewhere = differs ? `it keeps ${here.zone}, not the clock's ${Location.clockZone}`
             : "";
         const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
-            : differs ? elsewhere : `${within}, found through GeoClue`;
+            : differs ? elsewhere : byHand ? within : `${within}, found through GeoClue`;
         const inside = () => {
             const rows = [];
+            // Where GeoClue can't find the laptop, or finds it wrong, Joel
+            // names its town, and asks GeoClue again once he's moved on.
+            rows.push(thing({
+                key: "verb:location:set",
+                verb: Words.verb("verb:location:set"),
+                name: Words.name("verb:location:set"),
+                glyph: Words.glyph("verb:location:set"),
+                ask: Words.of("verb:location:set").ask ?? "",
+                chip: Words.name("location"),
+                hue: "action",
+                state: () => Location.told,
+                given: words => Location.setByHand(words)
+            }));
+            if (byHand)
+                rows.push(thing({
+                    key: "verb:location:again",
+                    verb: Words.verb("verb:location:again"),
+                    name: Words.name("verb:location:again"),
+                    glyph: Words.glyph("verb:location:again"),
+                    hue: "action",
+                    stays: true,
+                    run: () => Location.findAgain()
+                }));
             if (here)
                 rows.push(copyRow({
                     key: "location:position",
@@ -264,14 +292,16 @@ Provider {
     }
 
     // One thing waiting on Joel, as the agents keep them (WaitingOnYou.qml):
-    // its title, how long it takes, and why it waits. Return goes to the
-    // window it's done in, or, with none open, steps in, so it's never a
-    // key that does nothing. One he can do now is strong and says its
-    // minutes; one for later is muted and says when, in its owner's words.
-    // The right arrow steps into it: going to its window, then Done and Not
-    // Now, which stay open as the item leaves its place, then copying it,
-    // never first (Joel, 2026-10-28: "having the separate copy option at the
-    // top is very confusing"), then what there is to know of it.
+    // its title, how long it takes, and why it waits. One he can do now is
+    // strong and says its minutes; one for later is muted and says when, in
+    // its owner's words. Return steps in, as the right arrow does, since it
+    // holds more than one act and which acts depends on whether its window
+    // is open (the launcher's shape, RSCH-20261028-2NK1E5: Return does a
+    // thing's one harmless act, and otherwise steps in with it first):
+    // going to its window, then Done and Not Now, which stay open as the
+    // item leaves its place, then copying it, never first (Joel, 2026-10-28:
+    // "having the separate copy option at the top is very confusing"), then
+    // what there is to know of it.
     function item(each) {
         const now = each.ready && !each.putOff;
         const where = whereOf(each);
@@ -294,9 +324,8 @@ Provider {
         ].filter(row => row !== null).concat(provider.facts(each));
         const row = member({
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
-            verb: does?.verb ?? "more",
-            stays: does === null,
-            later: does?.later ?? false,
+            verb: "more",
+            stays: true,
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,
             hue: now ? "strong" : "muted",
@@ -304,48 +333,48 @@ Provider {
                 : typeof each.minutes === "number"
                 ? waitingSaid("minutes", { minutes: each.minutes }) : "",
             note: typeof each.why === "string" ? each.why : "",
-            verbs: inside,
-            // With nowhere to go, Return steps in, as the right arrow does:
-            // its verbs and targets both make it a row holding rows, which
+            // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
-            targets: does === null ? inside : null,
-            run: () => does === null ? provider.launcher?.enter(row) : does.run()
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
         });
         return row;
     }
 
     // What the agents have waiting on Joel, one row however many: it counts
     // and colours only what he can do now, its note names the first of
-    // those, else the first for later, which Return goes to, and the right
-    // arrow lists what's for now and then what's for later, each in the
-    // agents' own order. With only later things, the row is muted and
-    // says how many; with nothing waiting, no row.
+    // those, else the first for later, and the right arrow lists what's for
+    // now and then what's for later, each in the agents' own order. With
+    // only later things, the row is muted and says how many. With nothing
+    // waiting it's still there, muted, saying so, since Now's top never
+    // changes shape (the launcher's shape, RSCH-20261028-2NK1E5, landing
+    // 5). It's a place, so Return steps in, as the right arrow does, to the
+    // most pressing first, or to a list saying nothing waits: the row acts
+    // the same whatever waits, so Super+O, Return, Return reaches the
+    // pressing thing and each press can be foreseen (VKCF3Z, 2026-10-29).
     readonly property string first: WaitingOnYou.foremost
         ? WaitingOnYou.titled(WaitingOnYou.foremost) : ""
-    readonly property var lead: WaitingOnYou.foremost === null ? null
-        : provider.item(WaitingOnYou.foremost)
-    readonly property var waiting: lead === null ? null : member({
+    readonly property var waiting: member({
         // Not `on:waiting`, which is the missed notices' row, by its mark
         // (pieces/Waiting.qml), so the two are never taken for one.
         key: "on:waitingOnYou",
-        verb: lead.verb,
-        stays: lead.stays ?? false,
-        later: lead.later,
+        verb: "more",
+        stays: true,
+        // What its list says when it holds nothing (Launcher.qml).
+        empty: Words.of("on:waiting").empty,
         name: Words.name("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
         hue: WaitingOnYou.now.length > 0 ? "strong" : "muted",
         side: WaitingOnYou.now.length > 0 ? String(WaitingOnYou.now.length)
-            : waitingSaid("later", { count: WaitingOnYou.later.length }),
+            : WaitingOnYou.later.length > 0
+                ? waitingSaid("later", { count: WaitingOnYou.later.length })
+                : waitingSaid("none", {}),
         note: first,
-        // Its rows are things with verbs of their own, so the right arrow
-        // steps into one and Return still does its act; a row giving
-        // targets would step in on Return instead.
         nested: true,
         verbs: () => WaitingOnYou.items.map(each => provider.item(each)),
-        // Where the first has nowhere to go, Return steps into this row's
-        // list, as the right arrow does, rather than into the first alone.
-        run: () => provider.lead.verb === "more" ? provider.launcher?.enter(provider.waiting)
-            : provider.lead.run()
+        targets: () => WaitingOnYou.items.map(each => provider.item(each)),
+        run: () => provider.launcher?.enter(provider.waiting)
     })
     // What home's Now leads with: the first thing waiting, after its row's
     // own name, or nothing.
@@ -404,10 +433,41 @@ Provider {
         return all.slice();
     }
 
-    // This moment's rows are always there, so what's counted is what's on
-    // beside them.
+    // What's on that wants Joel or reaches other people (Now.js's first two
+    // groups), by key: the rows Now may open on.
+    readonly property var pressing: Facts.all
+        .filter(fact => fact.entry.mark !== null && fact.piece && fact.piece.present
+            && fact.piece.active && Now.pressing(fact.piece.group))
+        .map(fact => shownAbove(fact) ? meeting.key : `on:${fact.entry.mark}`)
+
+    // Whether what's on is the meeting this moment's rows already hold: the
+    // meeting coming (Starting.qml) is the calendar's next one but for the
+    // few minutes one runs on past its start, and is then that one row,
+    // never a second beside it (Joel, 2026-10-28: "seeing multiples of the
+    // same thing gives me executive dysfunction").
+    function shownAbove(fact) {
+        return fact.entry.mark === "meeting" && meeting !== null
+            && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`;
+    }
+
+    // Where Now opens, among these rows: on the most pressing, so Super+O
+    // then Return does it. That's Waiting on You while something waits for
+    // now; else the first that wants Joel or is live, a call or a
+    // recording; else Waiting on You, at the top. Never a mode left on,
+    // since Return flips one and a habit must never turn it off, nor
+    // what's only for later (VKCF3Z, 2026-10-29).
+    function starts(rows) {
+        const waits = rows.findIndex(row => row.key === "on:waitingOnYou");
+        if (WaitingOnYou.now.length > 0)
+            return waits;
+        const urgent = rows.findIndex(row => provider.pressing.includes(row.key));
+        return urgent === -1 ? waits : urgent;
+    }
+
+    // This moment's rows and Waiting on You are always there, so what's
+    // counted is what's on beside them, and what waits only when it does.
     function counted() {
-        const on = all.length - moment.length;
+        const on = all.length - moment.length - (WaitingOnYou.foremost === null ? 1 : 0);
         return on === 0 ? "nothing" : String(on);
     }
 }

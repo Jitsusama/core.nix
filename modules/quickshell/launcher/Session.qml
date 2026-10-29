@@ -58,7 +58,7 @@ Provider {
             }))
     })
 
-    // The power profile is a setting: one part saying which is in use, its
+    // The power profile is a setting: one part saying which is chosen, its
     // choices a step in, each named there as the part's value reads
     // ("Balanced") and found from anywhere by its own name ("Balanced
     // power") or its words ("eco"), since the launcher lists a part of
@@ -75,7 +75,7 @@ Provider {
     readonly property var profiles: profileChoices.map(choice => {
         const key = `session:power:${choice.was}`;
         return said(key, "", {
-            side: PowerProfiles.profile === choice.profile ? "in use" : "",
+            side: PowerProfiles.profile === choice.profile ? "chosen" : "",
             hue: "machine",
             of: Words.of(key).of,
             part: Words.of(key).part,
@@ -83,15 +83,15 @@ Provider {
             run: () => PowerProfiles.profile = choice.profile
         });
     })
-    readonly property var profileInUse: {
+    readonly property var profileChosen: {
         const choice = profileChoices.find(each => each.profile === PowerProfiles.profile);
         return choice ? `session:power:${choice.was}` : "";
     }
     readonly property var profile: thingRow({
         key: "session:profile",
         name: Words.name("session:profile"),
-        side: profileInUse !== "" ? Words.of(profileInUse).part : "",
-        glyph: profileInUse !== "" ? Words.glyph(profileInUse) : Words.glyph("session:profile")
+        side: profileChosen !== "" ? Words.of(profileChosen).part : "",
+        glyph: profileChosen !== "" ? Words.glyph(profileChosen) : Words.glyph("session:profile")
     }, () => [])
 
     // Starting a recording is Capture's (Capture.qml). While anything

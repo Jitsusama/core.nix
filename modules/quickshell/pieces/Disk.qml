@@ -137,6 +137,12 @@ Piece {
         tell(["unkeep", path]);
     }
 
+    // Asks the account's guard to clear what it would take of a folder
+    // now, which it starts on its next step, marking the holder clearing.
+    function clear(path) {
+        tell(["clear", path]);
+    }
+
     function tell(words) {
         if (keeping.running)
             return;

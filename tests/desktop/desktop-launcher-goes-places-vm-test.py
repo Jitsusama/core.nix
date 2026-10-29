@@ -939,6 +939,62 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
     )
 
 
+def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
+    """A name too long for its row slides to show its end while selected, and only it moves."""
+    machine = desktop.machine
+    title = (
+        "Edgewise notes, and a title that runs on well past the edge of the launcher row"
+        " as the title of a web page often does"
+    )
+    long = desktop.opened(title)
+    short = desktop.opened("Edgewise")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("edgewise")
+    desktop.launcher_until(lambda shown: {title, "Edgewise"} <= set(shown["rows"]))
+    desktop.down_to(title)
+
+    def selected_words() -> list[Json]:
+        """Give the words the selected row draws, with where each is."""
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return next(row["words"] for row in laid["rows"] if row["selected"])
+
+    def named(words: list[Json], name: str = title) -> Json:
+        # A row not selected draws its name with the letters typed brought
+        # forward, as styled text, so its tags are set aside.
+        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == name)
+
+    # Where every name starts, read from the short one, which never moves:
+    # the long one may already be on its way, selected as the rows came.
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    start = next(
+        named(row["words"], "Edgewise")["x"]
+        for row in laid["rows"]
+        if row["reads"].startswith("Edgewise \u00b7")
+    )
+    first = selected_words()
+    rest = sorted((word["text"], word["x"]) for word in first if word["text"] != title)
+
+    def slid(_: bool) -> bool:
+        words = selected_words()
+        # Whatever else the row says holds still while its name moves.
+        others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
+        assert others == rest, words
+        return int(named(words)["x"]) < int(start)
+
+    retry(slid, timeout=dt.timedelta(seconds=30))
+    # Given up by the selection, it's back at its start at once.
+    machine.send_key("up" if desktop.showing()["rows"].index(title) > 0 else "down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    row = next(row for row in laid["rows"] if row["reads"].startswith(title))
+    assert named(row["words"])["x"] == start, row
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close(long)
+    desktop.close(short)
+
+
 # Super+Tab opens the launcher on every other window, the one used last
 # first, so Return goes back to it, and a few letters find any other,
 # among two dozen as easily as among two, with nothing held down. The
@@ -1397,12 +1453,24 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["now"] and shown["selected"])
-    # The meeting is Now's last row, after the time, the date and the
-    # weather, with no Today to step into.
+    # The meeting is the last of Now's own rows, after the time, the date,
+    # the location and the weather, with no Today to step into.
     assert "Today" not in desktop.showing()["rows"], desktop.showing()["rows"]
-    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Design Review"])
-    desktop.down_to("Design Review")
+
+    def after_the_moment(shown: Json) -> bool:
+        """Whether Design Review follows the location and the weather, when there is one."""
+        rows = cast("list[str]", shown["rows"])
+        if "Design Review" not in rows:
+            return False
+        at = rows.index("Design Review")
+        return at > 0 and rows[at - 1] in {"Location", "Weather"}
+
+    desktop.launcher_until(after_the_moment)
+    # It's the meeting coming too, which wants Joel, so Now opens on it,
+    # and it's that one row, never a second beside it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
     today = desktop.showing()
+    assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
@@ -1608,10 +1676,10 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 
 
 @pytest.mark.usefixtures("google")
-def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
+def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
     desktop: Desktop,
 ) -> None:
-    """Now lists what waits on Joel, then a call, a song and a mode, and the time last."""
+    """Now lists what waits on Joel, then the time and the date, then a call, a song and a mode."""
     queue = "$HOME/.local/state/mission/queue.json"
     kept(
         desktop,
@@ -1626,15 +1694,15 @@ def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
         f" {shlex.quote(desktop.values['track'])}"
     )
-    # Each by what it is, in the order Now lists its groups, the time and
-    # the date, Now's own, last.
+    # Each by what it is: what waits first, then the time and the date,
+    # Now's own, which never move, then the groups that come and go.
     groups = [
         "on:waitingOnYou",
+        "answer:time",
+        "answer:today",
         "on:call",
         "on:playing",
         "session:awake",
-        "answer:time",
-        "answer:today",
     ]
 
     def listed() -> list[str]:
@@ -1841,6 +1909,15 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Every mail and meeting row, wherever the walk from home finds one, is
+    # made by its one component, never drawn by the surface that lists it.
+    said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+    assert said["uncomposed"] == [], (
+        "A row drawn by the surface listing it, though a thing is one row"
+        " (docs/design.md, 'A row says its kind, and a thing is one row'):\n"
+        + "\n".join(said["uncomposed"])
+    )
+    assert said["composed"] > 0, "the walk found no mail to ask of"
 
 
 @pytest.mark.usefixtures("google")
@@ -2709,7 +2786,9 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     before = name_of(cast("Json", its_row("asks you")))
     assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
     # It goes back to work: "asks you" becomes the shorter "working", and
-    # the title is cut where it was rather than reaching one letter on.
+    # the title is cut where it was rather than reaching one letter on:
+    # its room holds, whether it's cut by an ellipsis or, selected, reads
+    # on inside it.
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
     retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
     after = name_of(cast("Json", its_row("working")))
@@ -2717,7 +2796,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
-    assert (after["x"], after["width"]) == (before["x"], before["width"]), (before, after)
+    assert after["room"] == before["room"], (before, after)
 
 
 # A window closed while Super+Tab shows it stays in its place, gone, until
@@ -3072,8 +3151,9 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.type_in("waiting on you", selecting="Waiting on You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
     # Inside, what's for now leads, then what's for later, each in the
-    # agents' order, and Return goes to where one is done.
-    desktop.step_in()
+    # agents' order. Return steps into one, as it steps into Waiting on
+    # You itself, with going to where it's done first.
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["Answer the ask", "Try the new home", "Pick a bucket"]
     )
@@ -3081,7 +3161,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Try the new home"
     )
-    machine.send_key("ret")
+    going_to(desktop)
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled("Waiting room")["is_focused"],
@@ -3095,7 +3175,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     machine.send_key("down")
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Pick a bucket")
-    machine.send_key("ret")
+    going_to(desktop)
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled(PI_WINDOW)["is_focused"],
@@ -3127,6 +3207,15 @@ def readme(desktop: Desktop, quest: str, status: str) -> None:
         f"mkdir -p {QUESTS}/{quest} && printf '%s\\n' '---' 'id: {quest}'"
         f" 'status: {status}' '---' '# {quest}' > {QUESTS}/{quest}/README.md"
     )
+
+
+def going_to(desktop: Desktop) -> None:
+    """Step into the waiting item selected with Return, and go to its window with Return."""
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Go to ")
+    )
+    desktop.machine.send_key("ret")
 
 
 def waiting_opened(desktop: Desktop) -> None:
@@ -3328,6 +3417,58 @@ def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
         )
     finally:
         desktop.as_account(f"rm -f {queue}")
+
+
+def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
+    """Waiting on You is in Now with nothing waiting, says so, and Now opens on it."""
+    machine = desktop.machine
+    # Nothing waits; Keep Awake is on, a mode left on, which Now never
+    # opens on, since Return would turn it off.
+    # The account's shell is zsh, which refuses a pattern matching nothing,
+    # so what waits is found rather than named by one.
+    desktop.as_account(
+        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
+        f" && find {MISSION}/waiting -name '*.json' -delete"
+    )
+    desktop.as_account("systemctl --user start caffeinate.service")
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now"]
+                and "Keep Awake" in shown["rows"]
+                and (shown["selected"] or {}).get("name") == "Waiting on You"
+            )
+        )
+        selected = desktop.showing()["selected"] or {}
+        assert (selected["side"], selected["verb"]) == ("nothing waits", "more"), selected
+        # Return steps in, as it does with things waiting, to a list saying
+        # nothing does, rather than closing as if the launcher vanished.
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "Waiting on You"]
+                and shown["rows"] == []
+                and shown["nothing"] == "Nothing waits on you."
+            )
+        )
+        launcher_closed(desktop)
+        # Home's Now leaves it out of what's on while it holds nothing.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: any(
+                thing["reads"].startswith("Now \u00b7 ") and "Keep Awake" in thing["reads"]
+                for thing in shown["things"]
+            )
+        )
+        now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
+        assert "Waiting on You" not in now["reads"], now
+        launcher_closed(desktop)
+    finally:
+        desktop.as_account("systemctl --user stop caffeinate.service")
 
 
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:
