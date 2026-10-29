@@ -39,6 +39,20 @@ let
   macNode = (mac links).launchd.agents.mycelium.config.ProgramArguments;
   answering = linux { realm = "personal"; };
   apart = linux { };
+
+  declaring = {
+    reach = [ "home" ];
+    taints = [
+      {
+        key = "person-works";
+        effect = "prefer_not";
+        why = "its person works here";
+      }
+    ];
+  };
+  declared =
+    bare:
+    builtins.fromJSON (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
 in
 {
   # A workstation that names machines to link with runs the node in its
@@ -64,5 +78,27 @@ in
         && answering.home.sessionVariables.MYCELIUM_REALM == "personal"
         && !(apart.home.sessionVariables ? MYCELIUM_REALM)
         && lib.any (package: (package.pname or "") == "mycelium") apart.home.packages
+      );
+
+  # A machine that declares what its node can't measure has it written where
+  # mycelium reads it, in mycelium's words; Linux's held sessions outlive
+  # their window, the node and a suspend, and a Mac claims none yet. One that
+  # declares nothing has no file, which mycelium reads as unknown.
+  mycelium-declares-what-a-machine-says =
+    holds "mycelium-declares-what-a-machine-says"
+      "What a machine declares isn't written in mycelium's shape, a held session's outlives isn't each system's, or a machine declaring nothing gets a file anyway."
+      (
+        declared linux == {
+          reach = [ "home" ];
+          outlives = [
+            "window_close"
+            "node_restart"
+            "sleep"
+          ];
+          costs_money = false;
+          inherit (declaring) taints;
+        }
+        && (declared mac).outlives == [ ]
+        && !(apart.xdg.configFile ? "mycelium/declared.json")
       );
 }
