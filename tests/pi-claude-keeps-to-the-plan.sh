@@ -6,13 +6,18 @@
 # something other than the plan; `pi-claude login` signs Claude Code in to
 # that folder and nowhere else. Claude Code's own folder is never named.
 # On a machine whose own login is the plan's, that login is the one read.
+# On a machine that joins a further realm for the plan, pi is that realm's
+# session, with the home realm's folders kept apart, rather than off the
+# mesh.
 # usage: pi-claude-keeps-to-the-plan.sh <pi-claude> <the stand-in Claude Code>
 #          <pi-claude on the machine's own login>
+#          <pi-claude in realm other, on a machine whose home realm is home>
 set -euo pipefail
 
 program=$1
 claude=$2
 own=$3
+in_other=$4
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/bin" "$work/home"
@@ -78,3 +83,11 @@ lacks "^env CLAUDE_CONFIG_DIR="
 has "env PI_CLAUDE_CODE_COMMAND=$claude"
 lacks "^env PI_CLAUDE_CODE_CONFIG_DIR="
 lacks "^env CLAUDE_CONFIG_DIR="
+
+: > "$said"
+"$in_other"
+has "env MYCELIUM_REALM=other"
+has "env PI_HOME_REALM=home"
+lacks "^env PI_MESH="
+lacks "^env PLAN_"
+lacks "^env MACHINE_REALM="

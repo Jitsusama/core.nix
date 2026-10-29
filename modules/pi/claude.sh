@@ -1,11 +1,13 @@
 # shellcheck shell=bash
 # pi-claude: pi on Joel's own Claude plan, through Claude Code signed in to
 # that plan (the claude-code provider, $PROVIDER). A plan's limits are small
-# for agent work, so it starts on $PLAN_MODEL unless given a --model, and
-# stays off the mesh (PI_MESH=off), where the machine's holds and questions
-# would start turns on that allowance. The login lives in a config folder
-# of its own, ~/.claude-personal, apart from any other Claude Code login in ~/.claude,
-# and `pi-claude login` signs it in. On a machine whose only login is the
+# for agent work, so it starts on $PLAN_MODEL unless given a --model. It is
+# never on the work mesh: on a machine that joins a realm for the plan
+# ($PLAN_REALM), it is that realm's session, keeping that realm's folders
+# apart from those of the machine's home realm ($MACHINE_REALM), and
+# elsewhere it is on no mesh (PI_MESH=off). The login lives in a config
+# folder of its own, ~/.claude-personal, apart from any other Claude Code
+# login in ~/.claude, and `pi-claude login` signs it in. On a machine whose only login is the
 # plan's ($OWN_LOGIN, or ~/.claude named in PI_CLAUDE_CONFIG_DIR), no folder
 # is named to Claude Code at all: on macOS a named folder is a keychain entry
 # of its own, so naming even the default one leaves its login unseen.
@@ -48,8 +50,13 @@ if [ "${1:-}" = login ]; then
 fi
 
 model=(--model "claude-code/$PLAN_MODEL")
-# Said to pi only by its argument.
-unset PLAN_MODEL
+if [ -n "$PLAN_REALM" ]; then
+  mesh=(MYCELIUM_REALM="$PLAN_REALM" PI_HOME_REALM="$MACHINE_REALM")
+else
+  mesh=(PI_MESH=off)
+fi
+# Said to pi only as what they mean.
+unset PLAN_MODEL PLAN_REALM MACHINE_REALM
 for argument in "$@"; do
   case $argument in
     --model | --model=*) model=() ;;
@@ -59,5 +66,5 @@ done
 exec env "${away[@]}" \
   PI_CLAUDE_CODE_COMMAND="$CLAUDE" \
   "${provided[@]}" \
-  PI_MESH=off \
+  "${mesh[@]}" \
   pi -e "$PROVIDER/src/index.ts" "${model[@]}" "$@"

@@ -164,8 +164,8 @@
     '';
 
   # pi-claude starts pi on the plan alone: the provider, Sonnet unless told
-  # otherwise, off the mesh, and nothing that would bill an API instead; and
-  # an account gets it.
+  # otherwise, off the mesh unless the machine joins a further realm for the
+  # plan, and nothing that would bill an API instead; and an account gets it.
   pi-claude-keeps-to-the-plan =
     let
       home = account workstation;
@@ -183,13 +183,20 @@
           ownLogin = true;
         }
       );
+      inOther = lib.getExe (
+        import ./claude.nix {
+          inherit pkgs claude model;
+          realm = "other";
+          homeRealm = "home";
+        }
+      );
     in
     assert lib.assertMsg (lib.any (
       package: lib.getName package == "pi-claude"
     ) home.home.packages) "An account with pi doesn't get pi-claude.";
     pkgs.runCommandLocal "pi-claude-keeps-to-the-plan" { } ''
       ${lib.getExe pkgs.bash} ${../../tests/pi-claude-keeps-to-the-plan.sh} ${program} \
-        ${lib.getExe claude} ${onOwnLogin}
+        ${lib.getExe claude} ${onOwnLogin} ${inOther}
       touch $out
     '';
 
