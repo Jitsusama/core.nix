@@ -381,10 +381,10 @@
     the documents of each kind he looked at lately, his last first, asking Drive again only every
     five minutes and keeping them while Drive fails, makes a Meet meeting for its link when asked,
     only once Joel's sign-in grants Meet's scope, lists a Drive folder only when asked, the last
-    few asked each told, folders first, a shortcut as what it points at, leaving out what it can't show and never asking of a
-    folder no id names, and downloads a Drive file to open, pick or save, Google's own kinds as
-    their office program's file, never opening one that runs, each download asked lately told,
-    and a file cut short leaving nothing behind
+    few asked each told, folders first, a shortcut as what it points at, leaving out what it
+    can't show and never asking of a folder no id names, and downloads a Drive file to open, pick
+    or save, Google's own kinds as their office program's file, never opening one that runs, each
+    download asked lately told, and a file cut short leaving nothing behind
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
