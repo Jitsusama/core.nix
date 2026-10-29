@@ -3319,6 +3319,13 @@
       "name": "A Video From the Camera"
     },
     {
+      "id": "capture:recent",
+      "in": "capture",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
+    },
+    {
       "id": "cameras",
       "name": "Cameras",
       "glyph": "camera",

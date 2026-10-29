@@ -51,6 +51,28 @@ def test_print_opens_capture_where_return_takes_the_whole_screen(desktop: Deskto
         desktop.machine.send_key("ret")
 
 
+def test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer(desktop: Desktop) -> None:
+    """Capture holds what it took lately, newest first, a picture shown in the drawer."""
+    desktop.capture()
+    with desktop.captured():
+        desktop.machine.send_key("ret")
+    newest = desktop.machine.succeed(f"ls -t {desktop.pictures}/*.png | head -1").strip()
+    desktop.capture()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == newest.rsplit("/", 1)[1]
+            and shown["selected"]["side"] == "~/Pictures/Screenshots"
+            and (shown["selected"]["drawer"] or {}).get("picture") == newest
+            and shown["drawer"]["out"]
+        )
+    )
+    desktop.photograph("capture-recent")
+    desktop.machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 def test_capture_takes_a_window_found_by_its_title_on_any_workspace(desktop: Desktop) -> None:
     """Capture takes a window found by its title, on any workspace."""
     desktop.opened("Seashells")
