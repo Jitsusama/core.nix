@@ -228,10 +228,14 @@ Provider {
     // What was taken lately, newest first.
     property var taken: []
 
-    // Stepped into, so what was taken is read again.
+    // Stepped into, so what was taken is read again. It's read once as the
+    // shell starts too, so the first step-in draws Recent where it stays
+    // rather than pushing the rows below it down once find answers.
     function opened() {
         taking.running = true;
     }
+
+    Component.onCompleted: taking.running = true
 
     // find's lines, a file's time and its path each, newest kept.
     function tookAll(lines) {
