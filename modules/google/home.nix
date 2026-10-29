@@ -117,6 +117,7 @@ in
       "quickshell/Calendar.js".source = ./Calendar.js;
       "quickshell/Mail.qml".source = ./Mail.qml;
       "quickshell/Mail.js".source = ./Mail.js;
+      "quickshell/Meet.js".source = ./Meet.js;
       "quickshell/Drive.qml".source = ./Drive.qml;
       "quickshell/Drive.js".source = ./Drive.js;
     };
