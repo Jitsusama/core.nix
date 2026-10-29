@@ -125,8 +125,17 @@ fn guard(root: &Path) -> Guard {
 /// one, which other work fills as the test runs, so at 100% the disk is
 /// critical and has no band past it for a forecast to start a pass for.
 fn guard_at(root: &Path, pressure: &str) -> Guard {
+    guard_from(root, pressure, "")
+}
+
+/// A guard whose disk is always healthy, with the budget `budget`.
+fn guard_over(root: &Path, budget: &str) -> Guard {
+    guard_from(root, "0%", &format!(r#""budget": "{budget}","#))
+}
+
+fn guard_from(root: &Path, pressure: &str, more: &str) -> Guard {
     let config = Config::parse(&format!(
-        r#"{{ "version": 1, "scope": "user", "status_file": true,
+        r#"{{ "version": 1, "scope": "user", "status_file": true, {more}
              "bands": {{ "pressure": "{pressure}", "urgent": "{pressure}", "critical": "{pressure}", "target": "{pressure}" }},
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{ "trash": {{ "kind": "trash", "path": "{0}" }} }} }}"#,
@@ -297,6 +306,43 @@ fn a_disk_below_healthy_has_what_holds_it_measured_on_a_thread_of_its_own() {
             .is_some_and(|bytes| bytes >= 64 * 1024),
         "{status}"
     );
+}
+
+/// The status file once its holders are measured, or as it stands when
+/// `within` passes first.
+fn measured(guard: &mut Guard, dir: &Path, within: Duration) -> serde_json::Value {
+    let mut desk = Fake::default();
+    let deadline = std::time::Instant::now() + within;
+    loop {
+        stepped(guard, 2, &mut desk);
+        let status: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(dir.join("status.json")).unwrap()).unwrap();
+        if status["holders_at"].is_number() || std::time::Instant::now() > deadline {
+            return status;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_healthy_disk_over_its_budget_has_what_holds_it_measured() {
+    // A disk can be far from filling and still hold far more than anything
+    // there has reason to: 385 GB of a terabyte, against a budget of 250,
+    // with no holder named.
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("kept"), vec![1u8; 64 * 1024]).unwrap();
+    let mut guard = guard_over(dir.path(), "1");
+    let status = measured(&mut guard, dir.path(), Duration::from_secs(20));
+    assert_eq!(status["filesystems"][0]["band"], "healthy", "{status}");
+    assert_eq!(status["holders"][0]["owner"]["name"], "trash", "{status}");
+}
+
+#[test]
+fn a_healthy_disk_within_its_budget_measures_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut guard = guard_over(dir.path(), "100%");
+    let status = measured(&mut guard, dir.path(), Duration::from_secs(2));
+    assert!(status["holders_at"].is_null(), "{status}");
 }
 
 #[test]

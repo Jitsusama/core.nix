@@ -561,6 +561,12 @@ pub struct Config {
     pub sources: BTreeMap<String, Source>,
     pub nix: Nix,
     pub system: Option<System>,
+    /// The space used past which the guard says what holds each disk, as
+    /// it does below healthy, though it takes nothing more for it: a disk
+    /// can be far from filling and still hold more than anything on it has
+    /// reason to, and a budget is a signal and a backstop, never a reason
+    /// to take what an owner still holds.
+    pub budget: Option<Size>,
 }
 
 #[derive(Deserialize)]
@@ -584,6 +590,7 @@ struct Rendered {
     garbage: Option<Garbage>,
     dedupe: Option<Dedupe>,
     boot: Option<PathBuf>,
+    budget: Option<Size>,
 }
 
 fn yes() -> bool {
@@ -661,6 +668,7 @@ impl Config {
             sources: rendered.sources,
             nix,
             system,
+            budget: rendered.budget,
         })
     }
 }
