@@ -55,8 +55,20 @@ Item {
     // aside first, a step into a thing whose rows have long notes cut every
     // step of the path to a letter (Joel, 2026-10-25: "the breadcrumb
     // quickly goes single letter per entry").
+    // What's typed with its completion comes before the aside too, so
+    // "weather tokyo" keeps "= no forecast" whole and the aside says less.
     property real asideMost: Math.max(0, Math.min(width * 0.4, width - 2 * Theme.space.l
-        - glyphWidth - Theme.space.m - pathWanted - typingRoom - Theme.space.xl - keysRoom))
+        - glyphWidth - Theme.space.m - pathWanted - Math.max(typingRoom, typedWidest)
+        - Theme.space.xl - keysRoom))
+    // The widest what's typed has been with its completion since forget(),
+    // so the aside gives way once as it grows, not back and forth with
+    // each letter.
+    property real typedWidest: 0
+    readonly property real typedWanted: chipFace.advanceWidth(input.text + ghost)
+    onTypedWantedChanged: {
+        if (typedWanted > typedWidest)
+            typedWidest = typedWanted;
+    }
     // Whether the aside keeps the room its widest has taken until forget():
     // the launcher's says the selected row's note, which changes with each
     // arrow, and an aside sized to each one moved where what's typed had to
@@ -76,6 +88,7 @@ Item {
     // Lets the aside's room go, as a new step starts, keeping what it says now.
     function forget() {
         crowded = false;
+        typedWidest = typedWanted;
         asideWidest = Math.min(asideText.implicitWidth, asideMost);
     }
 
@@ -105,7 +118,7 @@ Item {
         Math.max(chipFace.advanceWidth("\u2190 clear"), chipFace.advanceWidth("\u2192 restore"))]
     readonly property real asideWanted: Math.min(asideText.implicitWidth, width * 0.4)
     readonly property bool wordsFit: width - 2 * Theme.space.l - glyphWidth - Theme.space.m
-        - pathWanted - Math.max(typingRoom, chipFace.advanceWidth(input.text + ghost))
+        - pathWanted - Math.max(typingRoom, typedWanted)
         - Theme.space.xl - (asideWanted > 0 ? asideWanted + Theme.space.xl : 0)
         >= keysWorded[0] + fieldKeys.spacing + keysWorded[1] + Theme.space.xl
     // Set as the words stop fitting, and let go by forget(), as a step ends.

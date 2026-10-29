@@ -900,6 +900,11 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         desktop.answer(typed)
         machine.send_key("esc")
     desktop.answer("weather tokyo")
+    # What's typed and its answer come before the aside and the keys, so
+    # the answer is whole and the aside says less.
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    answer = next(word for word in field if "no forecast" in word["text"])
+    assert not answer["cut"], field
     desktop.photograph("launcher-offline")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))

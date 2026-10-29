@@ -727,7 +727,9 @@ works the same way everywhere.
   keys' words take a third of the field, so they're said only while the
   path, what's typed with its completion and the aside all fit whole
   beside them; otherwise the keys stand alone, and once a step runs out of
-  room they stay alone until it ends, rather than coming and going.
+  room they stay alone until it ends, rather than coming and going. What's
+  typed and its completion come before the aside, which says less as they
+  grow.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, so a few letters reach inside a thing from
   anywhere: what can be done to it,
