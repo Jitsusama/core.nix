@@ -1139,10 +1139,10 @@
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
-    whether Return joins it or shows it, whether it's today's and how Joel answered it, which may
-    be moved and to what later or typed time, what that clashes with and who's told, writes the
-    lines that answer, cancel and move it, and knows which Meet call a window is and whose meeting
-    it is
+    whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
+    details for the drawer, which may be moved and to what later or typed time, what that clashes
+    with and who's told, writes the lines that answer, cancel and move it, and knows which Meet
+    call a window is and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage

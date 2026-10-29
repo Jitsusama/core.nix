@@ -201,6 +201,34 @@ function invited(meeting) {
     return answered(meeting) !== "";
 }
 
+// Someone asked, by name, with how they answered when they did: "Grace
+// Hopper, not going". One with no name is said by their address.
+function asked(person) {
+    const name = person.name || person.email || "";
+    const said = ANSWERED[person.answer] ?? "";
+    return said === "" ? name : `${name}, ${said}`;
+}
+
+// Its details, as the launcher's drawer shows them beside its row: its
+// title, when and where it is, its call, his answer, who holds it and who
+// else is asked, and what it's about, every one plain text, since the
+// description is someone else's words.
+function details(meeting, untitled) {
+    const facts = [
+        { label: "When", value: dated(meeting) },
+        { label: "Where", value: meeting.place ?? "" },
+        { label: "Call", value: meeting.link ?? "" },
+        { label: "Your Answer", value: answered(meeting) },
+        { label: "Holds It", value: meeting.organizer ? asked(meeting.organizer) : "" },
+        { label: "Asked", value: (meeting.guests ?? []).map(asked).join("; ") }
+    ];
+    return {
+        title: meeting.title === "" ? untitled : meeting.title,
+        facts: facts.filter(fact => fact.value !== ""),
+        body: meeting.about ?? ""
+    };
+}
+
 // The line that asks the program to answer a meeting yes, maybe or no.
 function answer(meeting, said) {
     return `${JSON.stringify({ answer: { id: meeting.id, with: said } })}\n`;
