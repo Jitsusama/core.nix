@@ -3022,8 +3022,9 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.type_in("waiting on you", selecting="Waiting on You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
     # Inside, what's for now leads, then what's for later, each in the
-    # agents' order, and Return goes to where one is done.
-    desktop.step_in()
+    # agents' order. Return steps into one, as it steps into Waiting on
+    # You itself, with going to where it's done first.
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["Answer the ask", "Try the new home", "Pick a bucket"]
     )
@@ -3031,7 +3032,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Try the new home"
     )
-    machine.send_key("ret")
+    going_to(desktop)
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled("Waiting room")["is_focused"],
@@ -3045,7 +3046,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     machine.send_key("down")
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Pick a bucket")
-    machine.send_key("ret")
+    going_to(desktop)
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled(PI_WINDOW)["is_focused"],
@@ -3077,6 +3078,15 @@ def readme(desktop: Desktop, quest: str, status: str) -> None:
         f"mkdir -p {QUESTS}/{quest} && printf '%s\\n' '---' 'id: {quest}'"
         f" 'status: {status}' '---' '# {quest}' > {QUESTS}/{quest}/README.md"
     )
+
+
+def going_to(desktop: Desktop) -> None:
+    """Step into the waiting item selected with Return, and go to its window with Return."""
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Go to ")
+    )
+    desktop.machine.send_key("ret")
 
 
 def waiting_opened(desktop: Desktop) -> None:
@@ -3278,6 +3288,58 @@ def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
         )
     finally:
         desktop.as_account(f"rm -f {queue}")
+
+
+def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
+    """Waiting on You is in Now with nothing waiting, says so, and Now opens on it."""
+    machine = desktop.machine
+    # Nothing waits; Keep Awake is on, a mode left on, which Now never
+    # opens on, since Return would turn it off.
+    # The account's shell is zsh, which refuses a pattern matching nothing,
+    # so what waits is found rather than named by one.
+    desktop.as_account(
+        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
+        f" && find {MISSION}/waiting -name '*.json' -delete"
+    )
+    desktop.as_account("systemctl --user start caffeinate.service")
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now"]
+                and "Keep Awake" in shown["rows"]
+                and (shown["selected"] or {}).get("name") == "Waiting on You"
+            )
+        )
+        selected = desktop.showing()["selected"] or {}
+        assert (selected["side"], selected["verb"]) == ("nothing waits", "more"), selected
+        # Return steps in, as it does with things waiting, to a list saying
+        # nothing does, rather than closing as if the launcher vanished.
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "Waiting on You"]
+                and shown["rows"] == []
+                and shown["nothing"] == "Nothing waits on you."
+            )
+        )
+        launcher_closed(desktop)
+        # Home's Now leaves it out of what's on while it holds nothing.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: any(
+                thing["reads"].startswith("Now \u00b7 ") and "Keep Awake" in thing["reads"]
+                for thing in shown["things"]
+            )
+        )
+        now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
+        assert "Waiting on You" not in now["reads"], now
+        launcher_closed(desktop)
+    finally:
+        desktop.as_account("systemctl --user stop caffeinate.service")
 
 
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:

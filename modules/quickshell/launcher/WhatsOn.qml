@@ -31,7 +31,7 @@ Provider {
     // What waits on Joel is found by its words too, since Now is its one
     // home: the rest of what's on each has a place of its own to be found
     // in, which is why the collection adds no row to a search.
-    things: (waiting === null ? [] : [waiting]).concat([location])
+    things: [waiting, location]
 
     // What the thing is where the launcher has a row of its own for it, by
     // its mark, so one found in both is listed once (Rank.identity).
@@ -264,14 +264,16 @@ Provider {
     }
 
     // One thing waiting on Joel, as the agents keep them (WaitingOnYou.qml):
-    // its title, how long it takes, and why it waits. Return goes to the
-    // window it's done in, or, with none open, steps in, so it's never a
-    // key that does nothing. One he can do now is strong and says its
-    // minutes; one for later is muted and says when, in its owner's words.
-    // The right arrow steps into it: going to its window, then Done and Not
-    // Now, which stay open as the item leaves its place, then copying it,
-    // never first (Joel, 2026-10-28: "having the separate copy option at the
-    // top is very confusing"), then what there is to know of it.
+    // its title, how long it takes, and why it waits. One he can do now is
+    // strong and says its minutes; one for later is muted and says when, in
+    // its owner's words. Return steps in, as the right arrow does, since it
+    // holds more than one act and which acts depends on whether its window
+    // is open (the launcher's shape, RSCH-20261028-2NK1E5: Return does a
+    // thing's one harmless act, and otherwise steps in with it first):
+    // going to its window, then Done and Not Now, which stay open as the
+    // item leaves its place, then copying it, never first (Joel, 2026-10-28:
+    // "having the separate copy option at the top is very confusing"), then
+    // what there is to know of it.
     function item(each) {
         const now = each.ready && !each.putOff;
         const where = whereOf(each);
@@ -294,9 +296,8 @@ Provider {
         ].filter(row => row !== null).concat(provider.facts(each));
         const row = member({
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
-            verb: does?.verb ?? "more",
-            stays: does === null,
-            later: does?.later ?? false,
+            verb: "more",
+            stays: true,
             name: each.title,
             glyph: Theme.glyph.waitsOnJoel,
             hue: now ? "strong" : "muted",
@@ -304,48 +305,48 @@ Provider {
                 : typeof each.minutes === "number"
                 ? waitingSaid("minutes", { minutes: each.minutes }) : "",
             note: typeof each.why === "string" ? each.why : "",
-            verbs: inside,
-            // With nowhere to go, Return steps in, as the right arrow does:
-            // its verbs and targets both make it a row holding rows, which
+            // Its verbs and targets both make it a row holding rows, which
             // Return's own act never leads (Catalogue.js's leading).
-            targets: does === null ? inside : null,
-            run: () => does === null ? provider.launcher?.enter(row) : does.run()
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
         });
         return row;
     }
 
     // What the agents have waiting on Joel, one row however many: it counts
     // and colours only what he can do now, its note names the first of
-    // those, else the first for later, which Return goes to, and the right
-    // arrow lists what's for now and then what's for later, each in the
-    // agents' own order. With only later things, the row is muted and
-    // says how many; with nothing waiting, no row.
+    // those, else the first for later, and the right arrow lists what's for
+    // now and then what's for later, each in the agents' own order. With
+    // only later things, the row is muted and says how many. With nothing
+    // waiting it's still there, muted, saying so, since Now's top never
+    // changes shape (the launcher's shape, RSCH-20261028-2NK1E5, landing
+    // 5). It's a place, so Return steps in, as the right arrow does, to the
+    // most pressing first, or to a list saying nothing waits: the row acts
+    // the same whatever waits, so Super+O, Return, Return reaches the
+    // pressing thing and each press can be foreseen (VKCF3Z, 2026-10-29).
     readonly property string first: WaitingOnYou.foremost
         ? WaitingOnYou.titled(WaitingOnYou.foremost) : ""
-    readonly property var lead: WaitingOnYou.foremost === null ? null
-        : provider.item(WaitingOnYou.foremost)
-    readonly property var waiting: lead === null ? null : member({
+    readonly property var waiting: member({
         // Not `on:waiting`, which is the missed notices' row, by its mark
         // (pieces/Waiting.qml), so the two are never taken for one.
         key: "on:waitingOnYou",
-        verb: lead.verb,
-        stays: lead.stays ?? false,
-        later: lead.later,
+        verb: "more",
+        stays: true,
+        // What its list says when it holds nothing (Launcher.qml).
+        empty: Words.of("on:waiting").empty,
         name: Words.name("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
         hue: WaitingOnYou.now.length > 0 ? "strong" : "muted",
         side: WaitingOnYou.now.length > 0 ? String(WaitingOnYou.now.length)
-            : waitingSaid("later", { count: WaitingOnYou.later.length }),
+            : WaitingOnYou.later.length > 0
+                ? waitingSaid("later", { count: WaitingOnYou.later.length })
+                : waitingSaid("none", {}),
         note: first,
-        // Its rows are things with verbs of their own, so the right arrow
-        // steps into one and Return still does its act; a row giving
-        // targets would step in on Return instead.
         nested: true,
         verbs: () => WaitingOnYou.items.map(each => provider.item(each)),
-        // Where the first has nowhere to go, Return steps into this row's
-        // list, as the right arrow does, rather than into the first alone.
-        run: () => provider.lead.verb === "more" ? provider.launcher?.enter(provider.waiting)
-            : provider.lead.run()
+        targets: () => WaitingOnYou.items.map(each => provider.item(each)),
+        run: () => provider.launcher?.enter(provider.waiting)
     })
     // What home's Now leads with: the first thing waiting, after its row's
     // own name, or nothing.
@@ -404,10 +405,31 @@ Provider {
         return all.slice();
     }
 
-    // This moment's rows are always there, so what's counted is what's on
-    // beside them.
+    // What's on that wants Joel or reaches other people (Now.js's first two
+    // groups), by key: the rows Now may open on.
+    readonly property var pressing: Facts.all
+        .filter(fact => fact.entry.mark !== null && fact.piece && fact.piece.present
+            && fact.piece.active && Now.pressing(fact.piece.group))
+        .map(fact => `on:${fact.entry.mark}`)
+
+    // Where Now opens, among these rows: on the most pressing, so Super+O
+    // then Return does it. That's Waiting on You while something waits for
+    // now; else the first that wants Joel or is live, a call or a
+    // recording; else Waiting on You, at the top. Never a mode left on,
+    // since Return flips one and a habit must never turn it off, nor
+    // what's only for later (VKCF3Z, 2026-10-29).
+    function starts(rows) {
+        const waits = rows.findIndex(row => row.key === "on:waitingOnYou");
+        if (WaitingOnYou.now.length > 0)
+            return waits;
+        const urgent = rows.findIndex(row => provider.pressing.includes(row.key));
+        return urgent === -1 ? waits : urgent;
+    }
+
+    // This moment's rows and Waiting on You are always there, so what's
+    // counted is what's on beside them, and what waits only when it does.
     function counted() {
-        const on = all.length - moment.length;
+        const on = all.length - moment.length - (WaitingOnYou.foremost === null ? 1 : 0);
         return on === 0 ? "nothing" : String(on);
     }
 }

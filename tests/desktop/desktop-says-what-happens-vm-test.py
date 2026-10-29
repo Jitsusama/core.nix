@@ -49,6 +49,17 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 BESIDE_THE_MIDDLE = 2
 
 
+def now_down_to(desktop: Desktop, name: str) -> None:
+    """Open Now with Super+O, and move down to this row from Waiting on You.
+
+    Now opens on what wants Joel or is live, else on Waiting on You, never
+    on a mode left on, since Return turns one off and a habit mustn't.
+    """
+    desktop.machine.send_key("meta_l-o")
+    desktop.whats_on("Waiting on You")
+    desktop.down_to(name)
+
+
 def stays_showing_it_gone(desktop: Desktop, name: str) -> None:
     """Wait for the launcher to stay open showing a row gone, then close it.
 
@@ -638,12 +649,12 @@ def test_keep_awake_shows_in_the_margin_and_whats_on_says_it_and_lets_it_sleep(
     with desktop.told("drawn margin"):
         desktop.as_account("systemctl --user start caffeinate.service")
     desktop.reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
-    # Super+O opens What's on at its row, and while it's open the mark its
-    # keys are on wears the accent, nothing grown; closed, it's as it was.
+    # Super+O opens What's on, on Waiting on You, since a mode left on is
+    # never what it opens on; on its row, the mark its keys are on wears
+    # the accent, nothing grown; closed, it's as it was.
     glyph = changed_at_the_top(empty, desktop.settled_screen("margin-awake"))
     since = desktop.mark()
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Keep Awake")
+    now_down_to(desktop, "Keep Awake")
     desktop.reported("sets margin ", margin_points("awake"), since)
     # Settled, as Joel sees it.
     desktop.held_still()
@@ -701,8 +712,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.photograph("margin-quiet")
     # Its row ends it, and a step in offers the rest, what's held last:
     # An Hour More comes first only when it ends by itself.
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Do Not Disturb")
+    now_down_to(desktop, "Do Not Disturb")
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Show What's Held"])
     desktop.type_in("show", selecting="Show What's Held")
@@ -711,8 +721,7 @@ def test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin(
     desktop.photograph("launcher-held")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Do Not Disturb")
+    now_down_to(desktop, "Do Not Disturb")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
     desktop.as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
@@ -812,8 +821,7 @@ def test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it(desktop:
         desktop.in_session("niri msg layers | grep -q microphone"), timeout=timedelta(seconds=10)
     )
     desktop.photograph("margin-muted")
-    machine.send_key("meta_l-o")
-    desktop.whats_on("Microphone")
+    now_down_to(desktop, "Microphone")
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(desktop.in_session(muted), timeout=timedelta(seconds=10))
