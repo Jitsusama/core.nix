@@ -1484,11 +1484,13 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
-    # Inside Now, its details slide out in the drawer beside the card.
+    # Inside Now, its details slide out in the drawer beside the card, as
+    # the meeting's one component gives them, each a name and a figure.
     desktop.launcher_until(
         lambda shown: (
             (shown.get("drawer") or {}).get("title") == "Design Review"
             and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"][:1] == ["When"]
         )
     )
     desktop.photograph("launcher-meeting-drawer")
