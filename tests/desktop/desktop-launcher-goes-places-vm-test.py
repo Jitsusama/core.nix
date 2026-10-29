@@ -3328,9 +3328,7 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
                 for thing in shown["things"]
             )
         )
-        now = next(
-            thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on"
-        )
+        now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
         assert "Waiting on You" not in now["reads"], now
         launcher_closed(desktop)
     finally:
