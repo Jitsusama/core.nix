@@ -788,21 +788,6 @@ QtObject {
                 { n: 13, share: 0.3, by: "heat" }] });
         machine("held back by nothing", [Machine.heldBack({ heldBack: [], clusters: [
             { cpus: "0", heldBack: [] }] }), Machine.heldBack(null)], [null, null]);
-        // Held Back stays at nothing for nine readings after the last that
-        // held it, and goes on the tenth.
-        const holding = { share: 0.3, by: "heat", whole: false,
-            cores: [{ n: 12, share: 0.3, by: "heat" }] };
-        let still = Machine.stillHeld(holding, null);
-        const calmed = [];
-        for (let n = 0; n < 10; n++) {
-            still = Machine.stillHeld(null, still);
-            calmed.push(still === null ? null : [still.share, still.calm, still.cores[0].share]);
-        }
-        machine("held back, kept a while after", [calmed[0], calmed[8], calmed[9]],
-            [[0, 1, 0], [0, 9, 0], null]);
-        machine("held back again, said at once", Machine.stillHeld(holding,
-            { share: 0, by: "heat", whole: false, cores: [], calm: 4 }).share, 0.3);
-        machine("held back by nothing, nothing kept", Machine.stillHeld(null, null), null);
         machine("what held it back, as a note says it", ["pl1", "platformPl1", "prochot",
             "heat", "novel"].map(Machine.limit), ["its power limit, PL1",
             "the whole machine's power limit, PL1", "being told to slow down", "heat", "novel"]);
@@ -811,20 +796,20 @@ QtObject {
         // left out, longest first.
         const rested = [{ kept: 0.2, by: [{ by: "display", share: 0.2 }] },
             { kept: 0.1, by: [{ by: "display", share: 0.06 }, { by: "npu", share: 0.1 }] }];
-        const restedKept = Machine.kept(rested, false);
+        const restedKept = Machine.kept(rested);
         machine("kept from resting, on average", [restedKept.by.map(p => p.by),
             restedKept.by.map(p => Math.round(p.share * 100)), Math.round(restedKept.share * 100),
-            restedKept.shown], [["display", "npu"], [13, 5], 15, true]);
+            restedKept.quiet], [["display", "npu"], [13, 5], 15, false]);
+        // Under a twentieth on average, nothing keeps it from resting: one
+        // second's 30% among six quiet ones is just over 5%, among seven
+        // just under.
         const quiet = { kept: 0.01, by: [] };
         const once = { kept: 0.3, by: [{ by: "cores", share: 0.3 }] };
-        machine("kept from resting, shown once a twentieth on average", [
-            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, once], false).shown,
-            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, quiet, once], false).shown],
-            [true, false]);
-        machine("kept from resting, shown until every reading is under a twentieth", [
-            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, quiet, once], true).shown,
-            Machine.kept([quiet, quiet], true).shown], [true, false]);
-        machine("kept from resting, said by nothing", Machine.kept([], false), null);
+        machine("kept from resting, quiet under a twentieth on average", [
+            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, once]).quiet,
+            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, quiet, once]).quiet],
+            [false, true]);
+        machine("kept from resting, said by nothing", Machine.kept([]), null);
         machine("what kept it from resting, as a note says it", ["display", "internal",
             "novel"].map(by => Machine.keeper(by).said), ["the display engine",
             "the processor's own power controller", "novel"]);

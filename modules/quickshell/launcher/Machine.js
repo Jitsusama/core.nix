@@ -187,31 +187,6 @@ function heldBack(reading) {
     return most ? { share: most.share, by: most.by, whole: whole !== null, cores } : null;
 }
 
-// How many readings, a second each, Held Back stays once nothing holds the
-// processor back: as long as Kept From Resting's average, so a share near
-// a twentieth doesn't come and go each second under Joel's selection.
-const STEADY = 10;
-
-// What Held Back shows after a reading, given what held the processor back
-// in it (heldBack) and what it showed before: what holds it now, or, for
-// STEADY readings after the last that did, the same row and cores at
-// nothing, and then null. `calm` counts the readings since one held it.
-function stillHeld(now, was) {
-    if (now) {
-        return Object.assign({ calm: 0 }, now);
-    }
-    if (!was || was.calm + 1 >= STEADY) {
-        return null;
-    }
-    return {
-        share: 0,
-        by: was.by,
-        whole: was.whole,
-        cores: was.cores.map(core => ({ n: core.n, share: 0, by: core.by })),
-        calm: was.calm + 1
-    };
-}
-
 // Each part the processor's telemetry says kept the package from resting,
 // by the reader's name for it: its own word's id, under the part's row,
 // and how a note says it.
@@ -232,17 +207,17 @@ function keeper(by) {
 }
 
 // The least share the reader says a part kept the package from resting
-// for, a twentieth, and so the least that's shown.
+// for, a twentieth, and so the least a part is named for.
 const RESTLESS = 0.05;
 
 // What kept the package from resting over its last readings, oldest first,
 // each { kept, by } as the reader says a second (ProcessorTelemetry.qml
-// keeps about ten): the share of that time anything did, on average, each
-// part's share of it, longest first, leaving out those under a twentieth,
-// and whether it shows. It shows once its share reaches a twentieth, and
-// once shown stays until every reading held has been under one, so a share
-// near the line doesn't come and go each second. Null with no readings.
-function kept(readings, shown) {
+// keeps about ten): the share of that time anything did, on average, and
+// each part's share of it, longest first, leaving out those under a
+// twentieth, and whether it's under a twentieth as a whole, when nothing
+// is said to keep it from resting. Averaged, a share near a twentieth
+// doesn't jump each second. Null with no readings.
+function kept(readings) {
     if (readings.length === 0) {
         return null;
     }
@@ -257,8 +232,7 @@ function kept(readings, shown) {
         .map(part => ({ by: part, share: parts[part] / readings.length }))
         .filter(part => part.share >= RESTLESS)
         .sort((a, b) => b.share - a.share);
-    const still = shown && readings.some(each => each.kept >= RESTLESS);
-    return { share, by, shown: share >= RESTLESS || still };
+    return { share, by, quiet: share < RESTLESS };
 }
 
 // Each core's kind, by its number, on a processor of more than one kind:

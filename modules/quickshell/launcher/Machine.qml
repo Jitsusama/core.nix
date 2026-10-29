@@ -399,31 +399,30 @@ Provider {
                 note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
             }));
         }
-        // Held Back stays a few seconds after nothing holds the processor
-        // back (Machine.stillHeld), so the rows under it don't move each
-        // second; meanwhile it says so.
-        const held = ProcessorTelemetry.held;
-        const heldNote = by => held.calm > 0 ? "nothing holds it back now"
-            : `by ${Machine.limit(by)}, over the last second`;
+        // Held Back stands while the telemetry answers, held or not, so the
+        // rows under it never move under Joel's selection (VKCF3Z).
+        const telemetry = ProcessorTelemetry.reading;
+        const held = Machine.heldBack(telemetry);
         if (held && held.cores.length > 0)
             rows.push(holderRow({
                 name: named("cpu:held-back"),
                 side: percent(held.share),
                 graph: bar(held.share),
                 glyph: chip,
-                note: heldNote(held.by)
+                note: `by ${Machine.limit(held.by)}, over the last second`
             }, () => held.cores.map(core => figure({
                 name: named("cpu:held-back-core", { n: core.n }),
                 side: percent(core.share),
                 graph: bar(core.share),
-                note: held.calm > 0 ? "not held now" : `by ${Machine.limit(core.by)}`
+                note: `by ${Machine.limit(core.by)}`
             }))));
-        else if (held)
+        else if (telemetry)
             rows.push(figure({
                 name: named("cpu:held-back"),
-                side: percent(held.share),
-                graph: bar(held.share),
-                note: heldNote(held.by)
+                side: percent(held ? held.share : 0),
+                graph: bar(held ? held.share : 0),
+                note: held ? `by ${Machine.limit(held.by)}, over the last second`
+                    : "nothing holds it back now"
             }));
         if (now.heat)
             rows.push(heated("cpu:temperature", now.heat, "processor"));
@@ -480,15 +479,18 @@ Provider {
         }
         if (info.model !== "")
             rows.push(leaf({ name: named("cpu:model"), side: info.model }));
-        // A row that comes and goes, so it's last, where it moves nothing.
+        // Kept From Resting stands while the telemetry says it, kept from
+        // resting or not, as Held Back does; last, as VKCF3Z placed it.
         const resting = ProcessorTelemetry.kept;
-        if (resting?.shown) {
+        if (resting) {
             const most = resting.by[0];
             const fields = {
                 name: named("cpu:kept-from-resting"),
                 side: percent(resting.share),
                 graph: bar(resting.share),
-                note: most ? `by ${Machine.keeper(most.by).said}` : ""
+                note: most ? `by ${Machine.keeper(most.by).said}`
+                    : resting.quiet ? "nothing keeps it from resting now"
+                    : "by no one part for long"
             };
             rows.push(resting.by.length > 0 ? holderRow(Object.assign({ glyph: chip }, fields),
                 () => resting.by.map(part => figure({
