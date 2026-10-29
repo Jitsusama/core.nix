@@ -1181,8 +1181,9 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         """Open Location from the top and wait until its row passes the test."""
         desktop.answer("location")
         desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == "Location"
-            and test(shown["selected"])
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Location" and test(shown["selected"])
+            )
         )
 
     def close() -> None:
@@ -1211,7 +1212,9 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": 1000,
                 "when": int(time.time()), "place": "Lighthouse, Alberta",
                 "zone": "America/Edmonton", "hand": True}  # fmt: skip
-        desktop.as_account(f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}")
+        desktop.as_account(
+            f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
+        )
         desktop.as_account("systemctl --user restart whereabouts.service")
         machine.wait_until_succeeds(
             desktop.in_session(f"grep -q '\"hand\":true' {fix}"), timeout=dt.timedelta(seconds=30)
