@@ -56,8 +56,8 @@ LAG_LASTS = 3600
 def now_down_to(desktop: Desktop, name: str) -> None:
     """Open Now with Super+O, and move down to this row from Waiting on You.
 
-    Now opens on what wants Joel or is live, else on Waiting on You, never
-    on a mode left on, since Return turns one off and a habit mustn't.
+    Now opens on its first row, Waiting on You, as every place opens on
+    its first, so the same keys land in the same place each time.
     """
     desktop.machine.send_key("meta_l-o")
     desktop.whats_on("Waiting on You")
@@ -749,8 +749,11 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=15))
     desktop.reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
     desktop.photograph("margin-waiting")
+    # Now opens on Waiting on You, its first row, however much the notices
+    # want Joel; they're reached by moving down to them.
     machine.send_key("meta_l-o")
-    desktop.whats_on("Notices")
+    desktop.whats_on("Waiting on You")
+    desktop.down_to("Notices")
     # The time and the date are among Now's own rows, at its top before
     # what comes and goes, the notices among them, each its own answer as
     # it's placed anywhere; the VM has no forecast and no calendar, so the

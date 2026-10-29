@@ -2024,10 +2024,6 @@ Scope {
             if (matched >= 0) {
                 current = matched;
                 list.positionViewAtIndex(matched, ListView.Contain);
-            } else if (held.length === 1 && row.from.starts) {
-                // A collection stepped into from home opens on its most
-                // pressing row, as Super+O opens it (into).
-                current = Math.max(0, row.from.starts(matches));
             }
         }
         // Said as a key's are: making the step's lists, what each part of
@@ -2939,8 +2935,7 @@ Scope {
 
     // Opens straight into a collection, all of it shown until something's
     // typed; the left arrow steps out to the search. A name no collection
-    // has opens the search. A collection may lead with one member, which
-    // opens on its actions, as the notices do for one still on screen.
+    // has opens the search.
     function into(name) {
         open = true;
         const source = collections.find(s => s.settings.name === name);
@@ -2961,25 +2956,13 @@ Scope {
         })];
         source.opened();
         restart("");
+        // Every place opens on its first row, the same each time, so Joel
+        // knows where the keys are before he looks (VKCF3Z, 2026-10-29). A
+        // collection may lead into one of its parts, as Keyboard does into
+        // the program in use's keys, which opens on its first row too.
         const lead = source.leading ? source.leading() : null;
         if (lead)
             enter(lead);
-        // Or it says which row is the most pressing, where it isn't the
-        // first, as Now does when nothing waits (WhatsOn.qml's starts).
-        else if (source.starts)
-            current = Math.max(0, source.starts(matches));
-    }
-
-    // Where the pointer last was, in the window, so the selection follows
-    // it only when it moves: a launcher opening under a resting pointer, or
-    // a list scrolling under one, leaves the selection where the keys put it.
-    property point pointer: Qt.point(-1, -1)
-
-    function pointed(index, at) {
-        const moved = pointer.x >= 0 && (at.x !== pointer.x || at.y !== pointer.y);
-        pointer = at;
-        if (moved)
-            current = index;
     }
 
     onOpenChanged: {
@@ -2988,7 +2971,6 @@ Scope {
             partingLater.stop();
             fading = false;
             parting = "";
-            pointer = Qt.point(-1, -1);
             footReset();
             footStage = 0;
             factsWidest = {};
@@ -3570,7 +3552,6 @@ Scope {
                                     // in its place until a key (Steady.js).
                                     quiet: !!entry.modelData.gone
                                     onClicked: root.run(entry.modelData, false)
-                                    onPointed: at => root.pointed(entry.index, at)
                                 }
                             }
                         }

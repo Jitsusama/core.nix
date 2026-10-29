@@ -492,13 +492,6 @@ Provider {
         return all.slice();
     }
 
-    // What's on that wants Joel or reaches other people (Now.js's first two
-    // groups), by key: the rows Now may open on.
-    readonly property var pressing: Facts.all
-        .filter(fact => fact.entry.mark !== null && fact.piece && fact.piece.present
-            && fact.piece.active && Now.pressing(fact.piece.group))
-        .map(fact => above(fact) || `on:${fact.entry.mark}`)
-
     // The key of the row above, Now's top, that already stands for what's
     // on, or "": never a second row beside it (Joel, 2026-10-28: "seeing
     // multiples of the same thing gives me executive dysfunction"). The
@@ -512,20 +505,6 @@ Provider {
             && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`)
             return meeting.key;
         return "";
-    }
-
-    // Where Now opens, among these rows: on the most pressing, so Super+O
-    // then Return does it. That's Waiting on You while something waits for
-    // now; else the first that wants Joel or is live, a call or a
-    // recording; else Waiting on You, at the top. Never a mode left on,
-    // since Return flips one and a habit must never turn it off, nor
-    // what's only for later (VKCF3Z, 2026-10-29).
-    function starts(rows) {
-        const waits = rows.findIndex(row => row.key === "on:waitingOnYou");
-        if (provider.waitsNow > 0)
-            return waits;
-        const urgent = rows.findIndex(row => provider.pressing.includes(row.key));
-        return urgent === -1 ? waits : urgent;
     }
 
     // This moment's rows and Waiting on You are always there, so what's

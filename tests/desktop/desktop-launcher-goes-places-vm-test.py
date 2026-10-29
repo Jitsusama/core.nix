@@ -1596,9 +1596,11 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         return at > 0 and rows[at - 1] in {"Location", "Weather"}
 
     desktop.launcher_until(after_the_moment)
-    # It's the meeting coming too, which wants Joel, so Now opens on it,
-    # and it's that one row, never a second beside it.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
+    # It's the meeting coming too, which wants Joel, and it's that one
+    # row, never a second beside it. Now opens on its first row, as every
+    # place does, and the meeting is reached by moving down to it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You")
+    desktop.down_to("Design Review")
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
@@ -1625,8 +1627,9 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.answer("now")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
-    # Now opens on the meeting, below the time.
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
+    # Now opens on its first row, and the meeting is below the time.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You")
+    desktop.down_to("Design Review")
     rows = cast("list[str]", desktop.showing()["rows"])
     for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
         machine.send_key("up")
@@ -4115,6 +4118,34 @@ def test_the_selection_glides_to_its_row_and_typing_never_glides(desktop: Deskto
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert said.strip() == "", f"the selection glided as a letter made the rows: {said}"
+
+
+def test_the_pointer_over_the_rows_never_moves_the_selection(desktop: Desktop) -> None:
+    """The pointer over the rows, resting or passing, never moves the selection; the keys do."""
+    machine = desktop.machine
+    # Joel's pointer rests over the left of the card as he arrows (P9R1KI,
+    # 2026-10-29), and the launcher isn't pointer-navigated.
+    desktop.point(0.42, 0.45)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    first = desktop.showing()["rows"]
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[0])
+    # Passing down over every row, then resting.
+    for step in range(12):
+        desktop.point(0.42, 0.3 + step * 0.04)
+    desktop.held_still()
+    assert (desktop.showing()["selected"] or {}).get("name") == first[0], desktop.showing()
+    # The arrows go where they go, with the pointer resting over the rows
+    # as they glide under it.
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[1])
+    machine.send_key("down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first[2])
+    desktop.held_still()
+    assert (desktop.showing()["selected"] or {}).get("name") == first[2], desktop.showing()
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    desktop.point(0.99, 0.99)
 
 
 def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:

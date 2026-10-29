@@ -270,16 +270,6 @@ Provider {
         Notices.seen();
     }
 
-    // The newest notice still on screen that offers something to do, whose
-    // actions the collection's chord opens on (Launcher.qml's into), as its
-    // card says.
-    function leading() {
-        const index = Notices.history.findIndex(notice => notice.id in Notices.live
-            && !(notice.id in Notices.resting)
-            && Notices.live[notice.id].actions.some(action => action.identifier !== "default"));
-        return index < 0 ? null : all[index];
-    }
-
     // The notices on screen step aside while this is open, so each is in
     // one place: here, where the keys reach it.
     Binding {
