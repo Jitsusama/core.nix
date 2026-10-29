@@ -1191,18 +1191,23 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
     try:
-        # The VM has no network, so the town typed can't be asked about,
-        # and the foot says so rather than setting anything.
+        # A town no place is called sets nothing, and the foot says why:
+        # built as a check, the VM has no network to ask; run by hand it
+        # may reach Open-Meteo, which finds no such place.
+        nowhere = "Qzxv Fjordholm"
         location(lambda _: True)
         desktop.step_in()
         desktop.down_to("Set It by Hand")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["asking"])
-        machine.send_chars("Lighthouse")
-        desktop.launcher_until(lambda shown: shown["typed"] == "Lighthouse")
+        machine.send_chars(nowhere)
+        desktop.launcher_until(lambda shown: shown["typed"] == nowhere)
         machine.send_key("ret")
         desktop.launcher_until(
-            lambda shown: shown["footer"] == "couldn't ask where Lighthouse is",
+            lambda shown: (
+                shown["footer"]
+                in {f"couldn't ask where {nowhere} is", f"no place is called {nowhere}"}
+            ),
             timeout=dt.timedelta(seconds=30),
         )
         desktop.as_account(f"test ! -e {pin}")
