@@ -1020,18 +1020,23 @@ Scope {
     // what each name means, so words.json never carries code and a new
     // condition is one line here. Each is read as a place resolves, never
     // through a provider's answer, so nothing a provider says can loop
-    // back into what it's asked for.
+    // back into what it's asked for. What it says when it stops holding
+    // while the place is shown is its `otherwise` (VKCF3Z, 2026-10-29).
     readonly property var conditions: ({
-        "on battery": () => UPower.onBattery
+        "on battery": { holds: () => UPower.onBattery, otherwise: "on the charger" }
     })
 
+    // Whether a place holds this now. A condition with no meaning here
+    // holds its thing back, so a word missing from the table shows nothing.
+    function holdsNow(category, id) {
+        const named = (category.while ?? {})[id];
+        return named === undefined || (conditions[named]?.holds() ?? false);
+    }
+
     // What a place holds now, in its order: what its words name, less
-    // what a condition holds back. A condition with no meaning here holds
-    // its thing back, so a word missing from the table shows nothing.
+    // what a condition holds back.
     function holdings(category) {
-        const when = category.while ?? {};
-        return (category.holds ?? []).filter(id => when[id] === undefined
-            || (conditions[when[id]]?.() ?? false));
+        return (category.holds ?? []).filter(id => holdsNow(category, id));
     }
 
     // What the place shown holds now, by id: for a provider that reads
@@ -1055,9 +1060,21 @@ Scope {
     // importance and relation"): each thing as it's found anywhere, only
     // those this machine has, then the typed commands whose answers are
     // this place's, last, so they remind him what can be typed here.
-    function members(category) {
-        return holdings(category).map(id => resolved(id)).filter(row => row !== null)
-            .concat(commandsIn(category));
+    // Whether a thing is there is decided as the place is made: one whose
+    // condition stops holding while it's shown (`was`, the rows shown)
+    // stays where it was, dimmed, saying why, until the place is opened
+    // again, so the rows under Joel's selection never move.
+    function members(category, was) {
+        const shown = was ?? [];
+        return (category.holds ?? []).map(id => {
+            if (holdsNow(category, id))
+                return resolved(id);
+            const old = shown.find(row => row.is === `answer:${id}`);
+            return old ? Object.assign({}, old, {
+                gone: true,
+                note: conditions[category.while[id]]?.otherwise ?? ""
+            }) : null;
+        }).filter(row => row !== null).concat(commandsIn(category));
     }
 
     // The typed commands a place lists, in its order.
@@ -2210,6 +2227,28 @@ Scope {
         refreshing = refreshing.concat([source]);
         Qt.callLater(refreshDue);
     }
+    // A condition a shown place names has moved, as when the charger goes
+    // in: its rows are made again, so what it held stays dimmed and says
+    // why (members), rather than freezing as it was.
+    function conditionMoved() {
+        if (!open || asking || !held.some(step => !!step.row.category?.while))
+            return;
+        const steps = held.map(step => step.row.category?.while ? Object.assign({}, step, {
+            rows: Steady.kept(step.rows, members(step.row.category, step.rows), steadyId)
+        }) : step);
+        if (!remade(steps, held.length))
+            return;
+        held = steps;
+        reshow(steps.length);
+    }
+
+    Connections {
+        target: UPower
+        function onOnBatteryChanged() {
+            root.conditionMoved();
+        }
+    }
+
     function refreshDue() {
         if (open)
             freshen();
@@ -2249,7 +2288,7 @@ Scope {
         if (from < 0 && !top && !held.some(ofSource))
             return;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
-            rows: Steady.kept(step.rows, members(step.row.category), steadyId)
+            rows: Steady.kept(step.rows, members(step.row.category, step.rows), steadyId)
         }) : step);
         const above = top ? source.things : from < 0 ? [] : source.everything();
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))

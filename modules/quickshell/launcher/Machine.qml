@@ -130,14 +130,15 @@ Provider {
 
     // Kept From Resting before the telemetry has said it: the reading is
     // asked for only once something shows it, so it holds its place with
-    // nothing beside it until the first comes, a second or less, and
-    // nothing below it moves when it does. If the reader refuses, it stays
-    // there dimmed, saying so. On a machine with no reader it's left out.
+    // the fixed placeholder beside it until the first comes, a second or
+    // less, and nothing moves when it does. If the reader refuses, it
+    // stays there dimmed, saying so. On a machine with no reader it's left
+    // out.
     function awaited(whole, name) {
         if (ProcessorTelemetry.missing)
             return null;
         return {
-            headline: "",
+            headline: ProcessorTelemetry.refused ? "" : "\u2026",
             copy: "",
             glyph: whole.glyph,
             hue: "machine",

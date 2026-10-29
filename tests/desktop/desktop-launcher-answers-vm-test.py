@@ -1963,6 +1963,15 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         desktop.type_in("kept", "Kept From Resting")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "12%")
         desktop.photograph("launcher-kept-from-resting-on-battery")
+        # The charger going in while it's shown doesn't move it: it stays
+        # where it was, dimmed, saying why, until Power is opened again.
+        desktop.power("on")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][1:2] == ["Kept From Resting"]
+                and shown["footer"] == "on the charger"
+            )
+        )
         machine.send_key("esc")
         machine.wait_until_fails(
             desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
