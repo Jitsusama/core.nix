@@ -1027,9 +1027,11 @@ def test_now_lists_the_power_profile_only_when_picked_by_hand(desktop: Desktop) 
         """Open Now and wait until its power profile row reads so, or is gone for nothing."""
         machine.send_key("meta_l-o")
         desktop.launcher_until(
-            lambda shown: shown["held"] == ["now"] and listed(shown).startswith(reads)
-            if reads
-            else shown["held"] == ["now"] and listed(shown) == ""
+            lambda shown: (
+                shown["held"] == ["now"] and listed(shown).startswith(reads)
+                if reads
+                else shown["held"] == ["now"] and listed(shown) == ""
+            )
         )
 
     def close() -> None:
