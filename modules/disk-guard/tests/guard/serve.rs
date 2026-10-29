@@ -494,6 +494,75 @@ fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
 }
 
 #[test]
+fn a_clear_leaves_what_the_other_holders_could_clear_as_it_was() {
+    // A clear surveys only the sources around its folder, so the rest
+    // must keep what the last whole survey said of them.
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    for (trash, name) in [("asked", "asked.txt"), ("spare", "spare.txt")] {
+        let trash = root.join(trash);
+        fs::create_dir_all(trash.join("files")).unwrap();
+        fs::create_dir_all(trash.join("info")).unwrap();
+        fs::write(trash.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2099-01-01T08:00:00\n");
+        fs::write(trash.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user", "status_file": true, "budget": "1",
+             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{ "asked": {{ "kind": "trash", "path": "{0}/asked" }},
+                           "spare": {{ "kind": "trash", "path": "{0}/spare" }} }} }}"#,
+        root.display()
+    ))
+    .unwrap();
+    fs::create_dir_all(root.join("proc")).unwrap();
+    let mut guard = Guard::new(
+        crate::unpaced(config),
+        &Places {
+            state: root.clone(),
+            status: Some(root.join("status.json")),
+            processes: root.join("proc"),
+            system: None,
+            running: Vec::new(),
+        },
+    )
+    .unwrap();
+    let clears = |status: &serde_json::Value| {
+        status["holders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|holder| holder["owner"]["name"] == "spare")
+            .map(|holder| holder["clears"].clone())
+    };
+    let status = measured(&mut guard, &root, Duration::from_secs(20));
+    let before = clears(&status);
+    assert!(
+        before.as_ref().and_then(serde_json::Value::as_u64) > Some(0),
+        "the spare trash can be cleared: {}",
+        status["holders"]
+    );
+    disk_guard::clears::ask(&root, &root.join("asked/files/asked.txt"), 1.0).unwrap();
+    stepped(&mut guard, 2, &mut Fake::default());
+    assert!(
+        !root.join("asked/files/asked.txt").exists(),
+        "what was asked for goes"
+    );
+    assert!(
+        root.join("spare/files/spare.txt").exists(),
+        "nothing else does"
+    );
+    let status: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("status.json")).unwrap()).unwrap();
+    assert_eq!(
+        clears(&status),
+        before,
+        "the spare trash's Clear is as it was"
+    );
+}
+
+#[test]
 fn what_is_kept_is_never_cleared_even_on_a_critically_full_disk() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();

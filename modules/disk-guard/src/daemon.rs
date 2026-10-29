@@ -708,7 +708,7 @@ impl Guard {
     pub fn explain(&mut self, tick: &Tick, path: &Path) -> io::Result<Explained> {
         self.memory.awake.observe(tick);
         self.watch();
-        let (mut scan, offers) = self.offers(tick)?;
+        let (mut scan, offers) = self.offers(tick, None)?;
         let holds = |held: &Path| path.starts_with(held);
         let offered = offers
             .into_iter()
@@ -1134,7 +1134,8 @@ impl Guard {
             return Ok(false);
         }
         self.write_status(tick.wall)?;
-        let (mut scan, offers) = self.offers(tick)?;
+        let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
+        let (mut scan, offers) = self.offers(tick, Some(&folders))?;
         for (file, ask) in asks {
             // A source's root may be named through a link, and an ask's
             // folder never is.
@@ -1707,7 +1708,13 @@ impl Guard {
         let mut seen = BTreeMap::new();
         let store = (self.config.system.is_some() || self.config.nix.profiles.is_some())
             .then_some(self.config.nix.store.as_path());
-        for path in self.config.sources.values().flat_map(paths).chain(store) {
+        for path in self
+            .config
+            .sources
+            .values()
+            .flat_map(Source::under)
+            .chain(store)
+        {
             let (Ok(meta), Ok(device)) = (fs::metadata(path), pool(path)) else {
                 continue;
             };
@@ -1737,7 +1744,7 @@ impl Guard {
             let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
             (scan, self.garbage_offers(tick))
         } else {
-            self.offers(tick)?
+            self.offers(tick, None)?
         };
         for &(device, decision, thresholds) in due {
             if !self.watched.contains_key(&device) {
@@ -1770,7 +1777,14 @@ impl Guard {
 
     /// Every process, scanned for the pass to judge by, and what every
     /// source offers.
-    fn offers(&mut self, tick: &Tick) -> io::Result<(Scan, Vec<Offer>)> {
+    /// What the sources offer now, or with `folders`, only what the
+    /// sources that touch them offer, for a clear: a survey of that part
+    /// leaves what the holders say of the rest as the last whole one did.
+    fn offers(
+        &mut self,
+        tick: &Tick,
+        folders: Option<&[PathBuf]>,
+    ) -> io::Result<(Scan, Vec<Offer>)> {
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
         if let Some(socket) = &self.system {
@@ -1778,7 +1792,7 @@ impl Guard {
                 .config
                 .sources
                 .values()
-                .flat_map(paths)
+                .flat_map(Source::under)
                 .map(Path::to_owned)
                 .collect();
             scan = scan.vouched_by(socket, &roots);
@@ -1841,10 +1855,17 @@ impl Guard {
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
         };
-        let mut offers = survey(&self.config, &mut world);
+        let scoped;
+        let config = match folders {
+            Some(folders) => {
+                scoped = crate::survey::within(&self.config, folders);
+                &scoped
+            }
+            None => &self.config,
+        };
+        let mut offers = survey(config, &mut world);
         let kept = std::mem::take(&mut world.kept);
         drop(world);
-        self.kept = kept;
         // Read afresh each survey, so a keep holds from the next step. One
         // that won't read stops the survey rather than risk what it keeps.
         let keeps = crate::keeps::load(self.state())?;
@@ -1855,6 +1876,10 @@ impl Guard {
             let resolved = fs::canonicalize(path).unwrap_or_else(|_| path.clone());
             !crate::keeps::touches(&keeps, &resolved)
         });
+        if folders.is_some() {
+            return Ok((scan, offers));
+        }
+        self.kept = kept;
         self.offered = offers
             .iter()
             .map(|offer| crate::holders::Offered {
@@ -2006,7 +2031,7 @@ impl Guard {
     ) -> io::Result<Vec<Preview>> {
         self.memory.awake.observe(tick);
         self.watch();
-        let (_, offers) = self.offers(tick)?;
+        let (_, offers) = self.offers(tick, None)?;
         let mut previews = Vec::new();
         for (&device, watched) in &self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
@@ -2343,27 +2368,6 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
             state::save(path, &left)
         }
         _ => Ok(()),
-    }
-}
-
-/// The paths a source lies under, which say what filesystems it's on.
-fn paths(source: &Source) -> Vec<&Path> {
-    match source {
-        Source::Cargo { roots, .. }
-        | Source::Installs { roots, .. }
-        | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
-        Source::Cache { path, .. }
-        | Source::Scratch { path, .. }
-        | Source::Snapshots { path, .. }
-        | Source::Workspaces { path, .. }
-        | Source::Temp { path }
-        | Source::Trash { path }
-        | Source::Logs { path }
-        | Source::Coredumps { path }
-        | Source::NixBuilds { path }
-        | Source::Producer { path, .. }
-        | Source::Podman { path, .. } => vec![path.as_path()],
-        Source::Finished { .. } => Vec::new(),
     }
 }
 

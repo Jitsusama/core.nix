@@ -258,6 +258,28 @@ pub fn account_temp() -> PathBuf {
 }
 
 impl Source {
+    /// The paths it lies under, which say what filesystems it's on and
+    /// what folders it can offer from.
+    pub fn under(&self) -> Vec<&Path> {
+        match self {
+            Source::Cargo { roots, .. }
+            | Source::Installs { roots, .. }
+            | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
+            Source::Cache { path, .. }
+            | Source::Scratch { path, .. }
+            | Source::Snapshots { path, .. }
+            | Source::Workspaces { path, .. }
+            | Source::Temp { path }
+            | Source::Trash { path }
+            | Source::Logs { path }
+            | Source::Coredumps { path }
+            | Source::NixBuilds { path }
+            | Source::Producer { path, .. }
+            | Source::Podman { path, .. } => vec![path.as_path()],
+            Source::Finished { .. } => Vec::new(),
+        }
+    }
+
     fn kind(&self) -> &'static str {
         match self {
             Source::Cargo { .. } => "cargo",
