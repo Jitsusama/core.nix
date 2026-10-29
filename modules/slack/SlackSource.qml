@@ -15,8 +15,8 @@ import QtQuick
 PersonSource {
     id: source
 
-    // What Slack said of each address asked about: { id, team, name },
-    // with no id for one Slack knows nobody by.
+    // What Slack said of each address asked about: { id, team, name,
+    // zone }, with no id for one Slack knows nobody by.
     property var known: ({})
     // The addresses asked about and not yet answered.
     property var asking: ({})
