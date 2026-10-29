@@ -1504,7 +1504,13 @@ Scope {
     readonly property string stepsTaken: held.map(step => steadyId(step.row)).join("/")
     onStepsTakenChanged: prompt.forget()
 
+    // How many times the rows have been made, and how many rows drawn
+    // afresh, for the check that a refresh redraws only what changed.
+    property int rowsMade: 0
+    property int rowsDrawn: 0
+
     onMatchesChanged: {
+        rowsMade += 1;
         noteKeys();
         noteFigures();
     }
@@ -2664,7 +2670,7 @@ Scope {
                         .join(" \u00b7 "), words: wordsIn(drawn, card) });
         }
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
-            foot: wordsIn(foot, card), rows });
+            foot: wordsIn(foot, card), rows, made: root.rowsMade, drawn: root.rowsDrawn });
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
@@ -3081,7 +3087,51 @@ Scope {
                             readonly property int sides: root.sidesWidest
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            model: root.matches
+                            // The rows by what each is (steadyId), each
+                            // drawn once and kept while it's there: a refresh,
+                            // each second inside Machine and four times a
+                            // second while Sound's meter runs, made every row
+                            // afresh, restarting whatever moved on it (the
+                            // launcher audit's finding 30, Joel's yes on
+                            // 2026-10-26). A row kept reads what it says now
+                            // from root.matches by its place.
+                            model: ListModel {
+                                id: rowsKept
+                            }
+
+                            // Brings the kept rows into line with these, by
+                            // what each is: those the same at the start and
+                            // the end stay, and only those between are drawn
+                            // afresh. Says whether they were all the same.
+                            // The rows go in between the removing and the
+                            // adding, so no kept row ever reads past the end
+                            // of the rows it reads: the removing leaves none
+                            // past the old ones' end, and the new ones reach
+                            // as far as what's left and what's added.
+                            function keep(rows) {
+                                const keys = rows.map(row => root.steadyId(row));
+                                let start = 0;
+                                while (start < rowsKept.count && start < keys.length
+                                    && rowsKept.get(start).key === keys[start])
+                                    start += 1;
+                                if (start === rowsKept.count && start === keys.length) {
+                                    list.rows = rows;
+                                    return true;
+                                }
+                                let was = rowsKept.count;
+                                let now = keys.length;
+                                while (was > start && now > start
+                                    && rowsKept.get(was - 1).key === keys[now - 1]) {
+                                    was -= 1;
+                                    now -= 1;
+                                }
+                                if (was > start)
+                                    rowsKept.remove(start, was - start);
+                                list.rows = rows;
+                                for (let at = start; at < now; at += 1)
+                                    rowsKept.insert(at, { key: keys[at] });
+                                return false;
+                            }
 
                             // The launcher's one motion is the selection
                             // moving to its row, the list scrolling with it
@@ -3095,7 +3145,21 @@ Scope {
                             // never glides. Everything else stays instant.
                             property bool settled: false
                             readonly property var shown: root.matches
+                            property string typedWas: ""
+                            // The rows as the kept ones read them, set by
+                            // keep partway through, so none reads past the end.
+                            property var rows: []
                             onShownChanged: {
+                                const same = list.keep(root.matches);
+                                // The same rows read again leave a glide under
+                                // way; a letter typed never glides, even onto
+                                // the same rows.
+                                if (same && root.typed === list.typedWas) {
+                                    if (!picking.running)
+                                        list.pick(false);
+                                    return;
+                                }
+                                list.typedWas = root.typed;
                                 list.settled = false;
                                 // A glide under way ends where it was going,
                                 // never stopped short.
@@ -3189,8 +3253,22 @@ Scope {
                             delegate: Item {
                                 id: entry
 
-                                required property var modelData
                                 required property int index
+                                // What it says now, read by its place, so a
+                                // row kept across a refresh says the new. A
+                                // row let go has no place (Qt gives it -1)
+                                // until it's destroyed, a moment later, and
+                                // says what it last said till then, since
+                                // read by a place it hasn't, it said nothing
+                                // and every binding on it failed.
+                                readonly property var modelData: entry.index >= 0
+                                    ? list.rows[entry.index] : entry.said
+                                property var said: ({})
+                                onModelDataChanged: {
+                                    if (entry.index >= 0)
+                                        entry.said = entry.modelData;
+                                }
+                                Component.onCompleted: root.rowsDrawn += 1
                                 // What it's inside, whose glyph an act of its
                                 // own without one wears.
                                 readonly property var thing: root.held.length > 0
