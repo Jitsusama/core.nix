@@ -212,6 +212,26 @@ ShellRoot {
                 expect("Open the Marked answers every one marked, in the order they were",
                     answers[5] === JSON.stringify({ paths: [`${notes}/a.md`, `${home}/elsewhere/old.md`],
                         filter: null, choices: {} }), answers[5]);
+                chooser.chooseToSave({ name: "copy.pdf", folder: notes, title: "Save a Copy" },
+                    root.heardFromTheShell);
+            } else if (stage === 13 && chooser.shown.startsWith("shell:") && ready([notes])) {
+                stage = 14;
+                savingForTheShell();
+            } else if (stage === 14 && shellPicked !== null) {
+                stage = 15;
+                expect("an ask from inside the shell is answered with the path, never on a socket",
+                    JSON.stringify(shellPicked) === JSON.stringify([`${notes}/copy.pdf`])
+                        && answers.length === 6, `${JSON.stringify(shellPicked)}, ${answers.length} answers`);
+                shellPicked = null;
+                chooser.chooseToSave({ name: "copy.pdf", folder: notes }, root.heardFromTheShell);
+            } else if (stage === 15 && chooser.shown.startsWith("shell:")) {
+                stage = 16;
+                launcher.open = false;
+            } else if (stage === 16 && shellPicked !== null) {
+                stage = 17;
+                expect("closing the launcher on an ask from inside the shell answers none",
+                    shellPicked.length === 0 && chooser.asks.length === 0,
+                    `${JSON.stringify(shellPicked)}, ${chooser.asks.length} waiting`);
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -309,6 +329,24 @@ ShellRoot {
             && rows[0].side === "2" && rows[0].note === "", `${rows[0].name} ${rows[0].side}`);
         launcher.open = false;
         rows[0].run();
+    }
+
+    // What the shell's own ask was answered with, none until it is.
+    property var shellPicked: null
+
+    // The shell's own ask answered: kept, and the next case looked for, as
+    // an answer on a socket is.
+    function heardFromTheShell(paths) {
+        shellPicked = paths;
+        Qt.callLater(root.step);
+    }
+
+    function savingForTheShell() {
+        const given = rowsIn(notes)[0];
+        expect("asked from inside the shell, it leads with the name given, saved by Return",
+            given.name === "copy.pdf" && given.verb === "save", `${given.name} ${given.verb}`);
+        launcher.open = false;
+        given.run();
     }
 
     Component.onCompleted: {
