@@ -68,7 +68,11 @@ Rectangle {
     width: parent.width
     height: Theme.space.xxxl
     radius: Theme.inner
-    color: selected ? Qt.alpha(Theme.selection, Theme.floating.selection) : "transparent"
+    // Selected, it's filled, unless the list draws the selection itself so
+    // it can glide from row to row (Launcher.qml's list).
+    property bool fills: true
+    color: selected && fills ? Qt.alpha(Theme.selection, Theme.floating.selection)
+        : "transparent"
 
     Text {
         x: Theme.space.l

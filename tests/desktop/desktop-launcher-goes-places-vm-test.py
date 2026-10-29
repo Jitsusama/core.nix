@@ -3200,6 +3200,34 @@ def moved(before: Json, after: Json) -> list[str]:
     return shifts
 
 
+def test_the_selection_glides_to_its_row_and_typing_never_glides(desktop: Desktop) -> None:
+    """An arrow glides the selection to its row; a letter, making rows afresh, never does."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("o")
+    # A row to glide from and one to glide to.
+    desktop.launcher_until(lambda shown: len(shown["rows"]) > 1)
+    since = desktop.mark()
+    machine.send_key("down")
+
+    def down_a_row(rest: str) -> bool:
+        start, _, end = rest.split()
+        return int(end) > int(start)
+
+    desktop.reported("glides ", down_a_row, since)
+    since = desktop.mark()
+    machine.send_chars("u")
+    desktop.launcher_until(lambda shown: shown["typed"] == "ou")
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)} | grep -a glides || true"
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert said.strip() == "", f"the selection glided as a letter made the rows: {said}"
+
+
 def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:
     """Nothing on the launcher moves unless it changes, as letters, erasures and arrows go."""
     machine = desktop.machine
