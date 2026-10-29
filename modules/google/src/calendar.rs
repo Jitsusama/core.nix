@@ -9,8 +9,9 @@
 //!
 //! Each meeting says what the launcher shows of it: where, who holds it,
 //! who else is asked and how each answered, and what it's about, its
-//! description as plain text, when Joel is reminded of it, and the
-//! calendar he may change it through, when Google lets him.
+//! description as plain text, the files on it and the number it's dialled
+//! into by, when Joel is reminded of it, and the calendar he may change it
+//! through, when Google lets him.
 
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
@@ -18,6 +19,7 @@ use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::drive;
 use crate::link::{self, Kind};
 
 /// One meeting, as the shell is told it.
@@ -45,6 +47,11 @@ pub struct Meeting {
     /// What it's about: its description as plain text, at most
     /// `ABOUT_MOST` characters.
     pub about: Option<String>,
+    /// The files on it, as Google Calendar lists them under it: a doc, a
+    /// deck, an agenda.
+    pub attachments: Vec<Attachment>,
+    /// The number its call is dialled into by, when its conference has one.
+    pub dial: Option<Dial>,
     /// Whether Joel holds it, which makes it his to cancel.
     pub holds: bool,
     /// The calendar Joel changes it through, as moving it does, when
@@ -69,6 +76,25 @@ pub struct Meeting {
 pub struct Person {
     pub name: String,
     pub email: Option<String>,
+}
+
+/// A file on a meeting: its title, where it opens, and, for one of Docs,
+/// Sheets or Slides, Drive's id for it and its kind, which make it the
+/// document it is.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Attachment {
+    pub title: String,
+    pub link: String,
+    pub id: Option<String>,
+    pub kind: Option<drive::Kind>,
+}
+
+/// A call's number to dial into it by, as its conference shows it, and the
+/// PIN it then asks for, when it asks one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Dial {
+    pub number: String,
+    pub pin: Option<String>,
 }
 
 /// Someone asked to a meeting, and how they answered.
@@ -241,11 +267,73 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
         about: text("description")
             .map(plain)
             .filter(|about| !about.is_empty()),
+        attachments: attached(event),
+        dial: dialled(event),
         holds,
         through,
         organizer: organizer.filter(|_| !holds).map(person),
         guests,
         reminders: reminded(event, defaults),
+    })
+}
+
+/// The files on an event, each once by where it opens, in its order,
+/// leaving out any with no title to call it by or no link to open.
+fn attached(event: &Value) -> Vec<Attachment> {
+    let mut files: Vec<Attachment> = Vec::new();
+    let found = event
+        .get("attachments")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(attachment);
+    for file in found {
+        if !files.iter().any(|kept| kept.link == file.link) {
+            files.push(file);
+        }
+    }
+    files
+}
+
+fn attachment(file: &Value) -> Option<Attachment> {
+    let text = |field: &str| {
+        file.get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|said| !said.is_empty())
+    };
+    let kind = text("mimeType").and_then(|mime| {
+        drive::Kind::ALL
+            .into_iter()
+            .find(|kind| kind.mime() == mime)
+    });
+    Some(Attachment {
+        title: text("title")?.to_owned(),
+        link: text("fileUrl")?.to_owned(),
+        id: kind.and(text("fileId")).map(str::to_owned),
+        kind: kind.filter(|_| text("fileId").is_some()),
+    })
+}
+
+/// The first number an event's conference is dialled into by: its label
+/// as Google shows it, else its own `tel:` link's, and its PIN.
+fn dialled(event: &Value) -> Option<Dial> {
+    let point = event
+        .pointer("/conferenceData/entryPoints")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|point| point.get("entryPointType").and_then(Value::as_str) == Some("phone"))?;
+    let text = |field: &str| {
+        point
+            .get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|said| !said.is_empty())
+    };
+    let number = text("label").or_else(|| text("uri").map(|uri| uri.trim_start_matches("tel:")))?;
+    Some(Dial {
+        number: number.to_owned(),
+        pin: text("pin").map(str::to_owned),
     })
 }
 
@@ -398,6 +486,8 @@ mod tests {
                 page: Some("https://www.google.com/calendar/event?eid=e1".into()),
                 place: None,
                 about: None,
+                attachments: vec![],
+                dial: None,
                 holds: false,
                 through: None,
                 organizer: None,
@@ -452,6 +542,76 @@ mod tests {
                 answer: Answer::No,
             }]
         );
+    }
+
+    #[test]
+    fn a_meeting_names_its_files_and_the_number_its_call_is_dialled_into_by() {
+        let answer = json!({"items": [{"id": "e",
+        "start": {"dateTime": "2026-10-26T16:00:00Z"},
+        "end": {"dateTime": "2026-10-26T16:30:00Z"},
+        "attachments": [
+            {"fileUrl": "https://docs.google.com/document/d/1", "title": "Agenda",
+             "fileId": "1", "mimeType": "application/vnd.google-apps.document"},
+            {"fileUrl": "https://docs.google.com/document/d/1", "title": "Agenda",
+             "fileId": "1", "mimeType": "application/vnd.google-apps.document"},
+            {"fileUrl": "https://drive.google.com/file/d/2", "title": " "},
+            {"fileUrl": "https://drive.google.com/file/d/4", "title": "Menu",
+             "fileId": "4", "mimeType": "application/pdf"},
+            {"title": "Nowhere"}
+        ],
+        "conferenceData": {"entryPoints": [
+            {"entryPointType": "video", "uri": "https://meet.google.com/abc-defg-hij"},
+            {"entryPointType": "phone", "uri": "tel:+1-555-010-0199",
+             "label": "+1 555-010-0199", "pin": "123456789"},
+            {"entryPointType": "phone", "uri": "tel:+44-20-0000-0000"}
+        ]}}]});
+        let found = &meetings(&answer, &zone())[0];
+        assert_eq!(
+            found.attachments,
+            [
+                Attachment {
+                    title: "Agenda".into(),
+                    link: "https://docs.google.com/document/d/1".into(),
+                    id: Some("1".into()),
+                    kind: Some(drive::Kind::Document),
+                },
+                Attachment {
+                    title: "Menu".into(),
+                    link: "https://drive.google.com/file/d/4".into(),
+                    id: None,
+                    kind: None,
+                }
+            ]
+        );
+        assert_eq!(
+            found.dial,
+            Some(Dial {
+                number: "+1 555-010-0199".into(),
+                pin: Some("123456789".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn a_number_without_a_label_is_its_link_and_one_without_a_conference_is_none() {
+        let answer = json!({"items": [
+            {"id": "a", "start": {"dateTime": "2026-10-26T16:00:00Z"},
+             "end": {"dateTime": "2026-10-26T16:30:00Z"},
+             "conferenceData": {"entryPoints": [
+                {"entryPointType": "phone", "uri": "tel:+1-555-010-0199"}]}},
+            {"id": "b", "start": {"dateTime": "2026-10-26T17:00:00Z"},
+             "end": {"dateTime": "2026-10-26T17:30:00Z"}}
+        ]});
+        let found = meetings(&answer, &zone());
+        assert_eq!(
+            found[0].dial,
+            Some(Dial {
+                number: "+1-555-010-0199".into(),
+                pin: None,
+            })
+        );
+        assert_eq!(found[1].dial, None);
+        assert!(found[1].attachments.is_empty());
     }
 
     #[test]

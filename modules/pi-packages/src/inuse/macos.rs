@@ -89,19 +89,34 @@ const PROC_PIDREGIONPATHINFO2: c_int = 22;
 /// changing under the walk.
 const REGIONS_AT_MOST: usize = 100_000;
 
-/// Whether any process stands in, holds open or maps a path `inside` says
-/// is in the version.
-pub fn any_process(inside: &dyn Fn(&str) -> bool) -> bool {
+/// Whether any process uses the version by what it stands in, holds
+/// open or maps, at paths `inside` says are in it, and by what `said`
+/// says it loaded (`super::uses`). Its maps are walked only when it said
+/// nothing, since they can't change the answer otherwise.
+pub fn any_process(inside: &dyn Fn(&str) -> bool, said: &dyn Fn(u32) -> Option<bool>) -> bool {
     let within = |path: Option<PathBuf>| {
         path.as_deref()
             .and_then(|path| path.to_str())
             .is_some_and(inside)
     };
     pids().into_iter().filter(|&pid| pid > 0).any(|pid| {
-        within(cwd(pid))
-            || files(pid).into_iter().any(|file| within(Some(file)))
-            || maps(pid, &within)
+        let told = u32::try_from(pid).ok().and_then(said);
+        let seen = super::Seen {
+            stands: within(cwd(pid)),
+            holds: files(pid).into_iter().any(|file| within(Some(file))),
+            maps: told.is_none() && maps(pid, &within),
+        };
+        super::uses(seen, told)
     })
+}
+
+/// When process `pid` started, from its BSD information.
+pub fn started(pid: u32) -> Option<std::time::SystemTime> {
+    let pid = c_int::try_from(pid).ok()?;
+    let info = pidinfo::<libc::proc_bsdinfo>(pid, libc::PROC_PIDTBSDINFO, 0)?;
+    let since_epoch = std::time::Duration::from_secs(info.pbi_start_tvsec)
+        + std::time::Duration::from_micros(info.pbi_start_tvusec);
+    std::time::SystemTime::UNIX_EPOCH.checked_add(since_epoch)
 }
 
 /// The C string in a fixed buffer, which a NUL or its end closes.

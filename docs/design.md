@@ -309,6 +309,14 @@ said there since the last key and growing only, within each row's share,
 so where a name is cut holds still as "working" becomes "asks you" and
 back.
 
+**A long name reads on.** A name too long for its row ends in an ellipsis,
+and once selected it reads on in place: after a second's rest it slides at
+a steady reading pace, eight characters a second, until its end shows,
+rests, then glides back to its start and rests again, for as long as it's
+selected. Only the name moves, inside its own room, so nothing beside it
+does, and given up by the selection it's back at its start at once (Joel,
+2026-10-25: titles "get elipsed really quick").
+
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
 bar for a level (the charge, a light, the volume), filling from the left;
@@ -375,8 +383,8 @@ processor or niri, for a minute shows quietly, as something left on, from
 lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
-What each is, in words, is the launcher's Now, opened by Super+O or by
-clicking a mark, on that mark's row: a row each, its glyph, its name, how it
+What each is, in words, is the launcher's Now, opened by Super+O on its
+most pressing row or by clicking a mark, on that mark's row: a row each, its glyph, its name, how it
 stands at the right, and what more there is to know in the footer, grouped
 by how much it asks with what wants Joel first. Return does its first
 action and the right arrow steps into the rest. While it's open, the mark
@@ -611,7 +619,7 @@ works the same way everywhere.
   Shortcuts, any part of its own, such as the theme, and Quit, asked once
   since a window may hold unsaved work. Media while it has a player
   (Play or Pause, Next, Previous, and what's playing) and Sound while it
-  has a stream open (Mute or Unmute, Louder, Quieter, and its volume as a
+  has a stream open (Muted, Louder, Quieter, and its volume as a
   bar) come last, since they come and go. Next, Previous, Louder and Quieter keep the
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.
@@ -694,7 +702,13 @@ works the same way everywhere.
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
-  left on). Each place says what it holds
+  left on). Waiting on You is a place, so Return steps into it whatever waits, to
+  the most pressing first or to "Nothing waits on you.", and into each
+  thing waiting, going to its window first inside; Super+O, Return,
+  Return reaches the pressing thing, each press foreseen. Now opens on
+  its most pressing row: Waiting on You while something waits now, else
+  the first that wants Joel or is live, else Waiting on You; never a
+  mode left on, which Return would turn off. Each place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
   as fit, so a glance reminds Joel what there is; a place that measures
@@ -703,10 +717,19 @@ works the same way everywhere.
   and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
 - **Tab only completes.** It takes the grey completion the field shows, and
-  does nothing while none shows. Its key, ⇥, follows the completion in the
-  field, only then, rather than standing in the foot, where its coming and
+  does nothing while none shows. The field says so at its right edge,
+  "⇥ complete", only then, rather than the foot, where its coming and
   going with each letter moved the other keys or took room from how things
-  stand.
+  stand. Its place there is kept while nothing shows in it, so nothing in
+  the field moves as it comes and goes; flush after the completion, a bare
+  ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
+  text feels wrong and they are not super obvious what they mean"). The
+  keys' words take a third of the field, so they're said only while the
+  path, what's typed with its completion and the aside all fit whole
+  beside them; otherwise the keys stand alone, and once a step runs out of
+  room they stay alone until it ends, rather than coming and going. What's
+  typed and its completion come before the aside, which says less as they
+  grow.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, so a few letters reach inside a thing from
   anywhere: what can be done to it,
@@ -717,9 +740,10 @@ works the same way everywhere.
   by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
   the one before it (the Shortcuts category's Shortcuts) is said once, so
   it reads as a place, not as tags side by side. The left arrow takes
-  away what's typed, whole, where the field says so with ← after it, as
-  ⇥ follows a completion; what it took then stands in grey with → after
-  it, and the right arrow right after puts it back. Any other key lets it
+  away what's typed, whole, where the field says so, "← clear" at its
+  right edge after Tab's place; what it took then stands in grey, the
+  field saying "→ restore" in the same place, and the right arrow right
+  after puts it back. Any other key lets it
   go, and with Ctrl the left arrow moves the caret as in any field. With
   nothing typed it steps back out,
   putting back what was typed before with the same row selected;

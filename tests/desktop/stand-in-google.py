@@ -5,15 +5,18 @@ line of JSON, left in google.json beside the socket, which the shell reads, and 
 that connects. The account is ready, unless a test signs it out, with three meetings on Meet
 from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
 minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4,
-with Grace not going; and Planning two hours on, Joel's own with Grace asked. Joel may change
-his own, and Standup on Ada's calendar, which she shares with him. An answer a shell writes is
+with Grace not going and Ada's Quarterly Plan and an agenda attached; and Planning two hours
+on, Joel's own with Grace asked. Joel may change his own, and Standup on Ada's calendar, which
+she shares with him. An answer a shell writes is
 written down in google-asked beside the socket, for the test to read, and taken as Google would
 take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
 that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
 with three unread in the inbox; one marked read or archived is written down too, and taken
 out of the mail that wants him, as Gmail would, and one read and then marked unread again
-wants him once more. Joel looked at two documents lately: Ada's Quarterly Plan in Docs, and
+wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
+open, kept in google-files beside the socket, or to save, in Downloads, said as fetched as
+the program says it. Joel looked at two documents lately: Ada's Quarterly Plan in Docs, and
 Team Budget in Sheets, on a shared drive.
 """
 
@@ -58,6 +61,8 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "organizer": None,
         "guests": [],
         "reminders": [],
+        "attachments": [],
+        "dial": None,
         **more,
     }
 
@@ -85,6 +90,20 @@ class Account:
                 through="ada@example.com",
                 organizer={"name": "Ada Lovelace", "email": "ada@example.com"},
                 guests=[{"name": "Grace Hopper", "email": "grace@example.com", "answer": "no"}],
+                attachments=[
+                    {
+                        "title": "Quarterly Plan",
+                        "link": "https://docs.google.com/document/d/plan/edit",
+                        "id": "plan",
+                        "kind": "document",
+                    },
+                    {
+                        "title": "Agenda.pdf",
+                        "link": "https://drive.google.com/file/d/agenda/view",
+                        "id": None,
+                        "kind": None,
+                    },
+                ],
             ),
             meeting(
                 "planning",
@@ -104,7 +123,9 @@ class Account:
                 "at": now - 2 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/lunch",
                 "body": "Shall we try the place on the corner?\n\nAda",
-                "attachments": ["menu.pdf"],
+                "attachments": [
+                    {"name": "menu.pdf", "kind": "application/pdf", "size": 4, "runs": False}
+                ],
             },
             {
                 "id": "numbers",
@@ -142,6 +163,8 @@ class Account:
             },
         ]
         self.heard = now
+        # The file last asked to be fetched, as the program says it (src/files.rs).
+        self.fetched: dict[str, object] | None = None
         self.leave()
 
     def line(self) -> bytes:
@@ -154,6 +177,7 @@ class Account:
                 "unread": None,
                 "documents": [],
                 "heard": None,
+                "fetched": None,
             }
             return f"{json.dumps(gone)}\n".encode()
         said = {
@@ -163,6 +187,7 @@ class Account:
             "unread": self.unread,
             "documents": self.documents,
             "heard": self.heard,
+            "fetched": self.fetched,
         }
         return f"{json.dumps(said)}\n".encode()
 
@@ -184,7 +209,8 @@ class Account:
     def ask(self, line: str) -> None:
         """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
 
-        Or mail marked read or archived, or marked unread again after it was read.
+        Or mail marked read or archived, or marked unread again after it was read, or a file it
+        carries fetched.
         """
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
@@ -195,6 +221,8 @@ class Account:
         cancelled = said.get("cancel", {}).get("id")
         moved = said.get("move", {})
         with self.lock:
+            if "fetch" in said:
+                self.fetch(said["fetch"])
             for one in self.meetings:
                 if answer.get("id") == one["id"]:
                     one["answer"] = answer["with"]
@@ -220,6 +248,35 @@ class Account:
                     shell.sendall(self.line())
                 except OSError:
                     self.shells.remove(shell)
+
+    def fetch(self, asked: dict[str, object]) -> None:
+        """Write a file a piece of mail carries where the program would, and say where."""
+        mail = next((one for one in self.mail + self.read if one["id"] == asked["id"]), None)
+        files = mail["attachments"] if mail else []
+        at = int(str(asked["file"]))
+        file = files[at] if isinstance(files, list) and at < len(files) else None
+        path, failed = None, None
+        if not isinstance(file, dict):
+            failed = "gone"
+        elif file["runs"] and asked["how"] == "open":
+            failed = "runs"
+        else:
+            folder = (
+                self.told.with_name("google-files") / str(asked["id"])
+                if asked["how"] == "open"
+                else Path.home() / "Downloads"
+            )
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / str(file["name"])
+            path.write_bytes(b"menu")
+        self.fetched = {
+            "mail": asked["id"],
+            "file": at,
+            "how": asked["how"],
+            "asked": int(time.time() * 1000),
+            "path": str(path) if path else None,
+            "failed": failed,
+        }
 
 
 def keep(account: Account, shell: socket.socket) -> None:

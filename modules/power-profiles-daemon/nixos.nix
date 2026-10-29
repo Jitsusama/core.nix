@@ -81,7 +81,6 @@ in
       wantedBy = [ "power-profiles-daemon.service" ];
       path = [
         config.systemd.package
-        pkgs.power-profiles-daemon
         (lib.getBin pkgs.glib)
       ];
       serviceConfig = {

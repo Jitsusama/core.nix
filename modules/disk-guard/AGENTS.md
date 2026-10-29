@@ -146,12 +146,19 @@ or launchd, and [`home.nix`][2] the account's.
   sentence says so rather than that the guard is clearing. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the
-  space: the ten biggest
-  folders the sources name, each straight under a root or a cache whole,
+  space: the ten biggest folders the sources name, each straight under a
+  root or a cache whole, and each folder in the config's `holders.roots`,
   with whose it is (a quest, a worktree, a cache, containers or other),
   whether the guard may clear any of it and, when not, why. Sizing them
   reads millions of entries, so a thread at idle priority does it at most
   every half hour; `holders_at` says when. `src/holders.rs` holds it.
+- **The ledger.** Each measurement of the holders goes in the state
+  folder's `ledger.json`, kept two days. A holder's `grew` is how much it
+  grew since the earliest measurement within the last day that's at least
+  an hour old, said in its sentence from a gibibyte, and one that grew
+  5 GiB or more is listed beside the ten biggest, so a leak shows by name
+  before it's big. A folder that measurement didn't size isn't said to
+  grow. `src/ledger.rs` holds it.
 - **Keeps.** `disk-guard keep FOLDER REASON...` tells the account's guard
   never to clear anything in a folder, or holding one, for Joel's reason;
   `disk-guard unkeep FOLDER` lets go. They live in the state folder's
@@ -169,7 +176,11 @@ or launchd, and [`home.nix`][2] the account's.
   offers inside the folder that `plan::clears` allows, which is what a
   critically full disk would take, less anything occupied and the store's
   garbage, each judged for use again as it goes and paced by the disk's
-  own band. An ask ends with its pass, whatever the pass did, and until
+  own band. That survey reads only the sources lying inside an asked
+  folder or holding one (`survey::within`), so a clear starts in seconds
+  rather than after a walk of every source, and it leaves what the
+  holders say of the rest as the last whole survey found it. An ask ends
+  with its pass, whatever the pass did, and until
   then the holders it touches say `clearing`. A holder's `clears` counts
   the same set, so what a clear offers to free is what it takes, and a
   pass drops what it reclaimed from it at once. The command refuses a
@@ -197,6 +208,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/survey.rs`           | each source's candidates                                 |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
+| `src/ledger.rs`           | what held each disk over two days, and what grew         |
 | `src/clears.rs`           | the folders Joel asked cleared now                       |
 | `src/anchor.rs`           | removal that never leaves its root                       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |

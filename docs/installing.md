@@ -299,8 +299,13 @@ it with a recovery PIN it keeps sealed to the policy itself, so once the
 firmware no longer matches, nothing can rewrite it. Relax the policy before
 the change:
 
-- **Before a firmware update,** through fwupd or the firmware's own flash.
-  It changes PCR 0, so take PCR 0 out of the policy:
+- **A firmware update through fwupd** needs nothing: shut down with the
+  update waiting, the machine takes PCR 0 out of the policy by itself, since
+  the update changes it, and the first boot on the new firmware locks it
+  again. Updates through fwupd work with Secure Boot on, because lanzaboote
+  signs fwupd's EFI program with Joel's keys.
+- **Before a firmware update from the firmware's own flash,** take PCR 0 out
+  of the policy by hand:
 
   ```sh
   sudo systemd-pcrlock unlock-firmware-code
@@ -309,9 +314,7 @@ the change:
   ```
 
   The first boot on the new firmware locks it again by itself, and the PIN
-  opens the disk at every boot throughout. Updates through fwupd work with
-  Secure Boot on, because lanzaboote signs fwupd's EFI program with Joel's
-  keys.
+  opens the disk at every boot throughout.
 - **Before changing a Secure Boot setting or key.** It changes PCR 7; run
   `systemd-pcrlock unlock-secureboot-policy` first, in the same way.
 - **After too many wrong PINs.** The TPM locks itself for a while to stop

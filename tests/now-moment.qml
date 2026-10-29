@@ -176,9 +176,14 @@ ShellRoot {
             location.note === "it keeps America/Toronto, not the clock's America/Halifax"
                 && location.hue === "strong", `${location.note} ${location.hue}`);
         const inside = location.verbs();
-        expect("inside, its position and the clock's zone",
+        // In the design's order: its town, how it knows, setting it by
+        // hand, and Copy of its position last; Find It Again only once a
+        // place was set by hand. The zone is Time's.
+        expect("inside, its town, how it knows, setting it by hand, and Copy",
             JSON.stringify(inside.map(row => [row.name, row.side]))
-                === JSON.stringify([["Position", "43.67, -79.38"], ["Zone", "America/Halifax"]]),
+                === JSON.stringify([["Town", "Lighthouse, Ontario"],
+                    ["How It Knows", "GeoClue, within 26 km"], ["Set It by Hand", ""],
+                    ["Copy", "43.67, -79.38"]]),
             JSON.stringify(inside.map(row => [row.name, row.side])));
         expect("it's found by its name too, Now being its home",
             now.things.some(row => row.key === "on:location"),

@@ -12,6 +12,10 @@
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1 doesn't build
   '';
+  a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
+    the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
+    firmware updater, and leaves the policy alone for any other BootNext or none
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -30,6 +34,10 @@
   a-quiet-file-says-nothing = ''
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
+  '';
+  a-refused-profile-is-said-once = ''
+    a power profile the daemon refuses is said once as a warning, tried again at each change of the
+    battery without repeating it, and said once it takes
   '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
@@ -147,6 +155,13 @@
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
+  '';
+  chrome-recent-sites-passes-clippy = ''
+    clippy finds nothing in what reads Chrome's sites for the launcher, or its tests
+  '';
+  chrome-recent-sites-reads-a-history-mid-write = ''
+    Chrome's sites are read whole from a history caught halfway through a write, its last whole
+    write listed, Chrome's files left alone and no copy left behind
   '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
@@ -334,13 +349,14 @@
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
-    meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest first,
-    each asked for once, with who it went to, its text, never an attachment's, and the name of each
-    file it carries but what its HTML shows inline, marking it read or archiving it when asked,
-    marking it unread again, mail read here wanting Joel again at once, and the documents of each
-    kind he looked at lately, his last first, asking Drive again only every five minutes and
-    keeping them while Drive fails
+    meeting only when Joel holds it, telling every guest, moves one through the calendar Google lets
+    him change it on, telling everyone asked, tells it the mail that wants Joel, newest first, each
+    asked for once, with who it went to, its text, never an attachment's, and each file it carries,
+    by its name, kind and size, but what its HTML shows inline, fetching one only when asked, never
+    to open one that runs, into a folder only Joel reads or into Downloads, never over a file there,
+    marking it read or archiving it when asked, marking it unread again, mail read here wanting Joel
+    again at once, and the documents of each kind he looked at lately, his last first, asking Drive
+    again only every five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -386,6 +402,9 @@
   inlyne-reads-in-the-theme = ''
     inlyne draws a sheet and the keys page its settings name on the theme's background, headings in
     the strong text and none of its own colours, and markdown files open in it
+  '';
+  inlyne-says-the-files-it-opens = ''
+    inlyne says each file it's started with to the desktop's list of files opened lately, then runs
   '';
   ipu7-outlives-its-open-files = ''
     the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds
@@ -479,6 +498,9 @@
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
   '';
+  mpv-says-the-files-it-plays = ''
+    mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
+  '';
   mycelium-links-what-a-machine-names = ''
     a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
     as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
@@ -520,6 +542,10 @@
   neovim-knows-the-names-it-writes = ''
     Neovim spell-checks markdown without flagging niri, Quickshell, YubiKey, TPM or monospace, and
     still flags a misspelt word
+  '';
+  neovim-says-the-files-it-opens = ''
+    Neovim says each file it opens to the desktop's list of files opened lately, as each comes into
+    view and going back to one too, and nothing that isn't a file on disk
   '';
   neovim-starts-in-the-theme = ''
     Neovim starts in bamboo, transparent, without a complaint
@@ -584,6 +610,10 @@
   '';
   one-ssh-agent = ''
     a workstation with a screen answers SSH with the TPM only
+  '';
+  onepassword-offers-its-quick-acts = ''
+    the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
+    installed 1Password takes
   '';
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
@@ -651,17 +681,25 @@
     the harness's measure runs each morning in background.slice with the store's node, catching up on
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
   '';
+  pi-writes-what-the-last-boot-left = ''
+    the launcher's list of the pi sessions the last boot's end took away is written as the account's
+    session starts, in background.slice with the store's node, skipped where the harness isn't
+    installed, and never on a Mac
+  '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
     processes use a version
   '';
   pi-packages-passes-clippy = ''
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
-    through an update and never swap in a build that fails or leaves a native module unbuilt
+    through an update, keep the version before current and the one a live pi says it loaded, and
+    never swap in a build that fails or leaves a native module unbuilt
   '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
-    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac
+    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
+    or end, watched in each package's loaded folder, removes the versions no pi runs, however many
+    pis start or end at once
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
@@ -815,7 +853,8 @@
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
-    End and Home to the last and first
+    End and Home to the last and first, and the picture it opened with, and none after, is said to
+    the desktop's list of files opened lately
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -1158,10 +1197,10 @@
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
-    included, and nothing from half a line; says when mail came in words, and what its row and
-    its details say, the files it carries among them; writes a reply to who sent it, and a mail to
-    everyone else a meeting names; and writes the lines that mark mail read or unread again or
-    archive it
+    included, and nothing from half a line; says when mail came in words, and what its row and its
+    details say, the files it carries among them, each by its kind and size; writes a reply to who
+    sent it, and a mail to everyone else a meeting names; writes the lines that mark mail read or
+    unread again or archive it or fetch a file it carries; and says how that fetch stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1205,6 +1244,10 @@
   '';
   timed-work-goes-ahead-of-other-work = ''
     timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it
+  '';
+  timekeeping-passes-clippy = ''
+    clippy finds nothing in timekeeping, which works out the clock's offset and delay as
+    timedatectl does, or its tests
   '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
@@ -1315,14 +1358,15 @@
     a meeting about to start by its name, lists it in Now, counts one within the hour down as a
     want, marked from ten minutes off and said at its reminder and as it starts, shows one further
     off with who's asked and how each answered, its details beside it, answers its invitation,
-    writes to its guests and copies its call's link, cancels one Joel holds once he's sure, moves
-    one Google lets him change to a time he types once he's sure, and lists its Meet call in Now
-    while it's open, says Google signed out in Now with Return signing in again in pi, counts the
-    mail that wants Joel in Now with Return listing it as Mail does, details and all, opens mail by
-    its subject, keeping one Mail window, replies to it, flips its Read switch both ways and
-    archives it, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
-    its title finds, joins a Meet call by its code after Meet's New Meeting, sets the volume, loses
-    no letter typed after its chord, and shows the shortcuts
+    writes to its guests, copies its call's link and opens its attachments, cancels one Joel holds
+    once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
+    its Meet call in Now while it's open, says Google signed out in Now with Return signing in again
+    in pi, counts the mail that wants Joel in Now with Return listing it as Mail does, details and
+    all, opens mail by its subject, keeping one Mail window, replies to it, flips its Read switch
+    both ways, archives it, and opens a file it carries or saves a copy, lists the documents Joel
+    opened lately in Docs' Recent and opens one, the same row its title finds, joins a Meet call by
+    its code after Meet's New Meeting, sets the volume, loses no letter typed after its chord, and
+    shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1405,7 +1449,9 @@
     host's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
     that key's PIN and signs the stick's boot program with the machine's db key; written again, the
     stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
-    by its passphrase with the key still plugged in
+    by its passphrase with the key still plugged in; the first write is signed for the host's
+    machine alone, and the second, asked to sign for every machine whose bundle the person keeps,
+    opens another machine's bundle by its passphrase and is signed with both machines' db keys
   '';
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
@@ -1474,7 +1520,8 @@
     back
   '';
   vm-secure-boot-installs = ''
-    the whole install works, and the disk opens only for it
+    the whole install works, and the disk opens only for it; shut down with fwupd's firmware
+    update waiting, it frees PCR 0, and the boot after opens with the PIN and locks PCR 0 again
   '';
   vm-speakers-are-tuned = ''
     the XPS 14's speakers hear the tuning, headphones don't
@@ -1574,6 +1621,14 @@
   zathura-keys-go-where-they-say = ''
     zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
     and the question mark key asks the launcher for the keys
+  '';
+  zathura-says-the-files-it-opens = ''
+    zathura says each document it's started with to the desktop's list of files opened lately, then
+    runs
+  '';
+  zoxide-lists-the-folder-visited-last-first = ''
+    the account's zoxide lists the folder visited last first when asked, though another was visited
+    more often, without writing its database
   '';
   zoxide-lists-without-writing = ''
     the account's zoxide lists its folders, the most visited first, without writing its database,

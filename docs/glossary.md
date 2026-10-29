@@ -119,6 +119,8 @@ first in the queue and conclude.
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
+| version | one commit of a pi package installed on the machine, which a pi runs | | `versions/<commit>` |
+| sweep | pi-packages removing the versions no pi runs, keeping current and the one before, at each pi's start or end | | `pi-packages sweep` |
 | background command | a command a session runs without waiting on it | background job | the `jobs` tool |
 | background work | a session's background commands, fleets and review rounds together | | `/jobs` |
 | fleet | subagents run at once on one piece of work | fan-out, batch | the `subagent` tool |
@@ -295,6 +297,7 @@ now, and keep or stop keeping a folder.
 | critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | critical | `critical` |
 | forecast | how long a filesystem has until it's full, at the rate it's filling | | |
 | holder | a folder the disk guard names as taking a filesystem's room, with whose it is | | `holders` |
+| ledger | the disk guard's record of what held each filesystem over two days, so a holder says how much it grew | history | `ledger.json`, a holder's `grew` |
 | keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
 | clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe | `disk-guard clear` |
 

@@ -21,6 +21,8 @@
 // Programs is a collection too, home's row for them: every program, those
 // open first, each by name. It adds no row of its own to a search, where
 // each program is found by itself.
+pragma ComponentBehavior: Bound
+
 import Quickshell
 import qs
 import QtQuick
@@ -83,7 +85,9 @@ Provider {
             ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
         .join("\u241e")
 
-    onPlayingNowChanged: {
+    onPlayingNowChanged: redrawHeld()
+
+    function redrawHeld() {
         if (launcher?.open && launcher.held.length > 0)
             changed();
     }
@@ -381,7 +385,8 @@ Provider {
     }
 
     // Its Microphone, while it records: whether it's heard, saying so, and
-    // muting or unmuting what it records a step in.
+    // a step in whether what it records is Muted, one switch saying yes or
+    // no as a device's is (Sound.qml's mutedSwitch).
     function microphone(recorders) {
         const hears = () => provider.muted(recorders) ? provider.soundSaid("muted")
             : provider.soundSaid("recording");
@@ -390,6 +395,7 @@ Provider {
             targets: () => [provider.said("verb:program:mute",
                 provider.muted(recorders) ? "muted" : "", {
                     key: "verb:program:mute:microphone",
+                    side: provider.soundSaid(provider.muted(recorders) ? "yes" : "no"),
                     stays: true,
                     run: () => {
                         const hushed = provider.muted(recorders);
@@ -402,9 +408,9 @@ Provider {
         return row;
     }
 
-    // Sound: muting or unmuting, by how it stands, Louder and Quieter, which
-    // keep the launcher to be pressed again, and its volume, while it plays;
-    // then its Microphone, while it records.
+    // Sound: whether it's Muted, one switch saying yes or no, Louder and
+    // Quieter, which keep the launcher to be pressed again, and its volume,
+    // while it plays; then its Microphone, while it records.
     function sound(streams, recorders) {
         const row = said("program:sound", "", {
             hue: "program",
@@ -416,6 +422,7 @@ Provider {
                 });
                 const rows = streams.length === 0 ? [] : [provider.said("verb:program:mute",
                     provider.muted(streams) ? "muted" : "", {
+                        side: provider.soundSaid(provider.muted(streams) ? "yes" : "no"),
                         stays: true,
                         run: () => {
                             const hushed = provider.muted(streams);
@@ -485,19 +492,71 @@ Provider {
         sources: provider.settings.recents ?? []
     }
 
+    // A list read after a program was stepped into, or changing while it's
+    // shown, draws its Recent again, as Media does with what's playing.
+    Connections {
+        target: provider.recents
+
+        function onLatelyChanged() {
+            provider.redrawHeld();
+        }
+
+        function onSharedChanged() {
+            provider.redrawHeld();
+        }
+    }
+
+    // What another provider gives a program (recentOf, programActs)
+    // changing while it's shown draws it again too: the launcher remakes a
+    // step only for the provider its row came from, and a program's row
+    // is this one's.
+    Variants {
+        model: (provider.launcher?.sources ?? []).filter(other => other !== provider
+            && (typeof other.recentOf === "function" || typeof other.programActs === "function"))
+
+        Connections {
+            required property var modelData
+
+            target: modelData
+
+            function onChanged() {
+                provider.redrawHeld();
+            }
+        }
+    }
+
+    // A source read only as its program is stepped into is read again the
+    // next time the launcher opens.
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (!provider.launcher.open)
+                provider.recents.forget();
+        }
+    }
+
     // Recent: what it had open lately (Recents.qml), in the order it keeps
     // them, each a folder or a file by its name, beside the folder it's in.
-    // Return opens it through the program as its settings say: `open`
-    // while a window of it is open, through the process behind the window
-    // used last ({pid}), and `start` while none is. Any other provider may
-    // give a program's Recent its own things, each its one row, by
-    // `recentOf(program)`, newest first, as Docs' documents are given
-    // (Documents.qml); it says `changed` when they change, so a Recent
-    // shown is made again.
+    // Return opens it through the program as its own list's settings say:
+    // `open` while a window of it is open, through the process behind the
+    // window used last ({pid}), and `start` while none is. A file from the
+    // desktop's list programs share opens in the program, by its own
+    // command given the file, when its entry takes files; one given to a
+    // program that opens none, such as a chat's attachment, opens as the
+    // desktop opens it, which is what the list itself says of those.
+    // A site Chrome visited, its source's `site` kind, is the page's title
+    // beside its host, opened by the program's own command given the page
+    // when its source names no command of its own. Any other provider may
+    // give a program's Recent its own things after these, each its one
+    // row, by `recentOf(program)`, newest first, as Docs' documents are
+    // given (Documents.qml).
     function recent(entry) {
-        const source = (settings.recents ?? []).find(each => each.app === entry.id);
-        const listed = () => (source ? provider.recents.of(entry.id)
-            .map(path => provider.lately(entry, source, path)) : [])
+        const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+        provider.recents.ask(entry.id);
+        const listed = () => provider.recents.of(entry.id)
+            .map(path => source?.kind === "site"
+                ? provider.visited(entry, path) : provider.lately(entry, source, path))
             .concat(givenRecent(entry.id)).slice(0, provider.recents.most);
         const count = listed().length;
         if (count === 0)
@@ -541,19 +600,45 @@ Provider {
         // "~/src/core.nix" is core.nix in ~/src; "/etc" is etc in /.
         const cut = shown.lastIndexOf("/");
         const folder = cut < 0 || shown === "/" ? "" : cut === 0 ? "/" : shown.slice(0, cut);
+        // Keyed by the thing, not the program, so one file is one thing
+        // wherever it shows.
         return thing({
-            key: `recent:${entry.id}:${path}`,
+            key: `${source?.kind ?? "file"}:${path}`,
             verb: Words.verb("recent:path"),
             name: cut < 0 || shown === "/" ? shown : shown.slice(cut + 1),
             glyph: "path",
             hue: "program",
             side: folder,
             run: () => {
+                if (source === null) {
+                    Niri.spawn(/%[fFuU]/.test(entry.execString)
+                        ? provider.command(entry).concat([path]) : ["xdg-open", path]);
+                    return;
+                }
                 const window = (provider.running[entry.id] ?? [])[0] ?? null;
                 const command = window ? source.open : source.start;
                 Niri.spawn(command.map(part => part.replace("{path}", path)
                     .replace("{pid}", String(window?.pid ?? ""))));
             }
+        });
+    }
+
+    // One site a program visited lately, a line of its source's: the page's
+    // address, a tab and its title. Keyed by the page, as a site is wherever
+    // it shows.
+    function visited(entry, line) {
+        const tab = line.indexOf("\t");
+        const address = tab < 0 ? line : line.slice(0, tab);
+        const title = tab < 0 ? "" : line.slice(tab + 1);
+        const host = address.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "");
+        return thing({
+            key: `site:${address}`,
+            verb: Words.verb("recent:site"),
+            name: title !== "" ? title : host,
+            glyph: "web",
+            hue: "program",
+            side: host,
+            run: () => Niri.spawn(provider.command(entry).concat([address]))
         });
     }
 
@@ -566,7 +651,12 @@ Provider {
         return layer ? [Object.assign({}, layer, { name: Words.name("shortcuts") })] : [];
     }
 
-    // Everything the right arrow holds for a program, as it stands now.
+    // Everything the right arrow holds for a program, as it stands now, in
+    // one order for every program: Go To or Open, New Window, New Window
+    // Below, its own actions, Recent, its windows, its notices, Shortcuts
+    // and Quit, then Media and Sound while it plays. What it does comes
+    // first and what ends it near the bottom, so Return on a program never
+    // lands in its Recent.
     function controls(entry, start, below) {
         const looked = {};
         const same = given => provider.names(entry, given, looked);
@@ -576,18 +666,17 @@ Provider {
                 side: titled(latest, entry),
                 run: () => Niri.act({ FocusWindow: { id: latest.id } })
             })] : []).concat([said("verb:start", "", { run: start }),
-            said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })],
-            windowsOf(entry));
+            said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })]);
         const taken = ["verb:program:switch", "verb:start", "verb:below", "verb:program:quit"]
             .map(key => Words.name(key).toLowerCase());
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), keysOf(entry),
+        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), windowsOf(entry),
+            notices(same), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
-            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
-            notices(same));
+            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : []);
     }
 
     things: DesktopEntries.applications.values

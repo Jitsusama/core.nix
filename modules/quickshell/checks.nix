@@ -1035,6 +1035,7 @@ onLinux {
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Heat.js} launcher/Heat.js
+      cp ${./launcher/Interfaces.js} launcher/Interfaces.js
       cp ${./launcher/Machine.js} launcher/Machine.js
       cp ${./launcher/Machine.qml} launcher/Machine.qml
       cp ${./launcher/Sensors.qml} launcher/Sensors.qml
@@ -1297,7 +1298,7 @@ onLinux {
       tester = entry "tester" ''
         Name=Tester
         GenericName=Logbook
-        Exec=tester
+        Exec=tester %U
         Actions=private;new;logbook;
 
         [Desktop Action private]
@@ -1320,12 +1321,23 @@ onLinux {
         Name=Radio
         Exec=radio
       '';
+      browser = entry "browser" ''
+        Name=Browser
+        Exec=browser %U
+      '';
+      # A program whose entry's id isn't its command, as zathura's isn't.
+      viewer = entry "viewer" ''
+        Name=Viewer
+        Exec=viewer %U
+      '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
       mkdir -p launcher share/applications
       cp ${tester} share/applications/tester.desktop
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
+      cp ${browser} share/applications/browser.desktop
+      cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -1350,6 +1362,21 @@ onLinux {
       # that lists it.
       printf '%s\n' "$HOME/src/core.nix" /etc > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
+      # The list programs share, as recent-files prints it: the tester by
+      # its name and by its id, one file twice, one of no program here, and
+      # one the radio was given, which can't open a file itself, and one the
+      # viewer opened, named by its command as recent-files names it.
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\n' \
+        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" \
+        "$HOME/paper.pdf" > $HOME/shared
+      export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
+      # The browser's sites, as chrome-recent-sites prints them, each
+      # reading saying which it is.
+      export SITES_LIST=${pkgs.writeShellScript "sites-list" ''
+        echo . >> "$HOME/sites-read"
+        n=$(wc -l < "$HOME/sites-read")
+        printf 'https://example.org/%s\tPage %s\nhttps://other.example.net/a\tOlder page\n' "$n" "$n"
+      ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
@@ -1538,7 +1565,7 @@ onLinux {
       cp ${quiet} Quiet.qml
       cp ${notices} Notices.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -2282,6 +2309,11 @@ onLinux {
   # clippy finds nothing in clock-follows, its tests included.
   clock-follows-passes-clippy = passesClippy "clock-follows-passes-clippy" (
     pkgs.callPackage ./clock-follows/package.nix { }
+  );
+
+  # clippy finds nothing in timekeeping, its tests included.
+  timekeeping-passes-clippy = passesClippy "timekeeping-passes-clippy" (
+    pkgs.callPackage ./timekeeping/package.nix { }
   );
 
   # clippy finds nothing in whereabouts, its tests included.

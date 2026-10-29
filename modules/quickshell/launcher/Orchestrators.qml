@@ -39,8 +39,9 @@ Provider {
     // As the harness wrote them, or none before it has.
     property var listed: []
     // Where each quest starts a session, and the last session it had, as
-    // the quest index says.
-    property var starts: ({})
+    // the quest index says. Not named `starts`, which the launcher asks a
+    // source for as the function saying which row it opens on.
+    property var startFolders: ({})
     property var lastSessions: ({})
 
     readonly property string harness: Sessions.state
@@ -285,7 +286,7 @@ Provider {
     // started on its quest, in the folder the quest index says a new one
     // starts in, never the quest's own.
     function start(one) {
-        const folder = starts[one.quest] ?? Sessions.home;
+        const folder = startFolders[one.quest] ?? Sessions.home;
         const last = lastSessions[one.quest];
         if (last)
             Sessions.resume(last, one.quest, folder);
@@ -401,10 +402,10 @@ Provider {
                     if ((quest.sessions ?? []).length > 0)
                         last[quest.id] = quest.sessions[quest.sessions.length - 1];
                 }
-                provider.starts = out;
+                provider.startFolders = out;
                 provider.lastSessions = last;
             } catch (e) {
-                provider.starts = {};
+                provider.startFolders = {};
                 provider.lastSessions = {};
             }
         }

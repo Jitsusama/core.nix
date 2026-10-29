@@ -7,7 +7,9 @@
 // record's terminal or its process's environment, and among a kitty's
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
-// ends, takes its session with it. It exits 0 once every case holds, and
+// ends, takes its session with it. A machine's node that isn't listening
+// as the shell starts, as when a switch restarts it, is watched once it
+// listens, however long after. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -55,6 +57,8 @@ ShellRoot {
                 forgotten();
             else if (stage === "ended")
                 ended();
+            else if (stage === "node")
+                watched();
         } catch (error) {
             fail(error.message);
         }
@@ -114,8 +118,44 @@ ShellRoot {
     function ended() {
         if (addresses() !== "NOWIN6")
             return;
+        // Refused since the shell started, the node listens now.
+        stage = "node";
+        node.active = true;
+    }
+
+    // The node's sessions are heard once it listens: asked again, the
+    // shell watches it, and what it tells is held.
+    function watched() {
+        if (Sessions.node === null)
+            return;
         console.log("a session is known by its own record");
         Qt.callLater(() => Qt.exit(0));
+    }
+
+    Connections {
+        target: Sessions
+        function onNodeChanged() {
+            Qt.callLater(root.check);
+        }
+    }
+
+    // A stand-in for the machine's node, listening only once asked, which
+    // answers a watch with no sessions.
+    SocketServer {
+        id: node
+        active: false
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/harbour.sock`
+        handler: Socket {
+            id: asked
+            parser: SplitParser {
+                onRead: line => {
+                    if (!line.includes("Watch"))
+                        return;
+                    asked.write('{"SessionsChanged":{"sessions":[]}}\n');
+                    asked.flush();
+                }
+            }
+        }
     }
 
     Process {

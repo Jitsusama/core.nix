@@ -556,6 +556,11 @@
       "name": "Size"
     },
     {
+      "id": "machine:disk:holder:grew",
+      "in": "machine:disk:filling",
+      "name": "Grew"
+    },
+    {
       "id": "machine:disk:holder:clears",
       "in": "machine:disk:filling",
       "name": "Clearable"
@@ -1555,14 +1560,21 @@
       "name": "Location"
     },
     {
-      "id": "location:position",
+      "id": "location:town",
       "in": "location",
-      "name": "Position"
+      "name": "Town"
     },
     {
-      "id": "location:zone",
+      "id": "location:knows",
       "in": "location",
-      "name": "Zone"
+      "name": "How It Knows"
+    },
+    {
+      "id": "verb:location:copy",
+      "in": "location",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "verb:time:put-back",
@@ -1570,6 +1582,21 @@
       "name": "Put It Back",
       "verb": "put back",
       "glyph": "zone"
+    },
+    {
+      "id": "verb:location:set",
+      "in": "location",
+      "name": "Set It by Hand",
+      "verb": "set",
+      "ask": "where are you?",
+      "glyph": "location"
+    },
+    {
+      "id": "verb:location:again",
+      "in": "location",
+      "name": "Find It Again",
+      "verb": "find",
+      "glyph": "location"
     },
     {
       "id": "time:day",
@@ -1585,6 +1612,51 @@
       "id": "time:zone",
       "in": "time",
       "name": "Zone"
+    },
+    {
+      "id": "time:synchronised",
+      "in": "time",
+      "name": "Synchronised"
+    },
+    {
+      "id": "time:server",
+      "in": "time",
+      "name": "Server"
+    },
+    {
+      "id": "time:offset",
+      "in": "time",
+      "name": "Offset"
+    },
+    {
+      "id": "time:delay",
+      "in": "time",
+      "name": "Delay"
+    },
+    {
+      "id": "time:jitter",
+      "in": "time",
+      "name": "Jitter"
+    },
+    {
+      "id": "time:stratum",
+      "in": "time",
+      "name": "Stratum"
+    },
+    {
+      "id": "time:reference",
+      "in": "time",
+      "name": "Reference"
+    },
+    {
+      "id": "time:poll",
+      "in": "time",
+      "name": "Poll Interval"
+    },
+    {
+      "id": "time:leap",
+      "in": "time",
+      "name": "Leap Second"
     },
     {
       "id": "sound",
@@ -1662,7 +1734,13 @@
     {
       "id": "sound:mute",
       "in": "sound",
-      "name": "Muted"
+      "name": "Muted",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "verb": "unmute"
+        }
+      }
     },
     {
       "id": "sound:programs",
@@ -1845,18 +1923,6 @@
       "states": {
         "input": {
           "name": "Listen Through It"
-        }
-      }
-    },
-    {
-      "id": "verb:sound-mute",
-      "in": "sound",
-      "name": "Mute",
-      "verb": "mute",
-      "states": {
-        "muted": {
-          "name": "Unmute",
-          "verb": "unmute"
         }
       }
     },
@@ -2748,10 +2814,12 @@
       "name": "Waiting on You",
       "verb": "switch",
       "glyph": "waitsOnJoel",
+      "empty": "Nothing waits on you.",
       "said": {
         "first": "{title}, {minutes} min",
         "minutes": "{minutes} min",
-        "later": "{count} later"
+        "later": "{count} later",
+        "none": "nothing waits"
       }
     },
     {
@@ -4010,6 +4078,20 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:attachments",
+      "in": "calendar:meeting",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "calendar:attachment",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
       "id": "verb:calendar:cancel",
       "in": "calendar:meeting",
       "name": "Cancel the Meeting",
@@ -4099,6 +4181,34 @@
       "name": "Archive",
       "verb": "archive",
       "glyph": "archive"
+    },
+    {
+      "id": "verb:mail:attachments",
+      "in": "mail:message",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "mail:attachment",
+      "in": "mail:message",
+      "name": "File",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:open",
+      "in": "mail:attachment",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:save",
+      "in": "mail:attachment",
+      "name": "Save a Copy",
+      "verb": "save",
+      "glyph": "saveCopy"
     },
     {
       "id": "verb:meet:code",
@@ -4308,20 +4418,21 @@
       "said": {
         "muted": "muted",
         "now": "now {level}",
-        "recording": "recording"
+        "recording": "recording",
+        "yes": "yes",
+        "no": "no"
       }
     },
     {
       "id": "verb:program:mute",
       "in": "program:sound",
-      "name": "Mute",
+      "name": "Muted",
       "verb": "mute",
-      "glyph": "silent",
+      "glyph": "volume",
       "states": {
         "muted": {
-          "name": "Unmute",
           "verb": "unmute",
-          "glyph": "volume"
+          "glyph": "silent"
         }
       }
     },
@@ -4373,6 +4484,13 @@
       "in": "program:recent",
       "name": "Opened Lately",
       "verb": "open"
+    },
+    {
+      "id": "recent:site",
+      "in": "program:recent",
+      "name": "Site",
+      "verb": "open",
+      "glyph": "web"
     },
     {
       "id": "verb:float",

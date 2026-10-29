@@ -9,14 +9,22 @@ use crate::activity::Use;
 use crate::anchor::Dir;
 use crate::config::{Config, Source};
 use crate::keeps::{Keep, Keeps, covering};
+use crate::ledger::{Grown, Growth};
 use crate::units::shown;
-use crate::words::tilde;
+use crate::words::{span, tilde};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// How many holders a status file lists, biggest first.
 pub const SHOWN: usize = 10;
+
+/// How much a holder must have grown in a day to be listed beside the
+/// biggest, so a leak shows by name before it's big.
+const GROWING: u64 = 5 << 30;
+
+/// How much a holder must have grown in a day for its sentence to say so.
+const SAID_GROWING: u64 = 1 << 30;
 
 /// Whose a holder is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,12 +88,16 @@ pub struct Holder {
     pub why: Option<String>,
     /// Joel's keep on it, when he keeps it or a folder holding it.
     pub kept: Option<Keep>,
+    /// How much it grew within the last day, from the ledger, when it did.
+    #[serde(default)]
+    pub grew: Option<Growth>,
     pub says: String,
 }
 
-/// Every place the sources name. A folder two sources name is the kind
-/// that says more; a folder holding another place is left out, since the
-/// places beneath it say whose its space is and it would count them twice.
+/// Every place the sources name, and each folder in a holders root. A
+/// folder two of them name is the kind that says more; a folder holding
+/// another place is left out, since the places beneath it say whose its
+/// space is and it would count them twice.
 pub fn places(config: &Config) -> Vec<Place> {
     let mut found = Vec::new();
     for (name, source) in &config.sources {
@@ -121,6 +133,16 @@ pub fn places(config: &Config) -> Vec<Place> {
             })),
             _ => found.push(whole(Kind::Other)),
         }
+    }
+    // After the sources, so a folder one of them names too is named by it.
+    for root in &config.holders.roots {
+        found.extend(children(root, |child| {
+            if child.join(".git").is_file() {
+                Kind::Worktree
+            } else {
+                Kind::Other
+            }
+        }));
     }
     let mut places: Vec<Place> = Vec::new();
     for place in found {
@@ -206,9 +228,6 @@ pub fn measure(places: Vec<Place>) -> Vec<(Place, u64)> {
         .collect()
 }
 
-/// The biggest holders, from what was measured, what the last survey
-/// offered (each candidate's path and size) and the trees it kept for
-/// their use.
 /// One thing the last survey offered: where, how big, and whether a clear
 /// asked for now would take it.
 #[derive(Clone, Debug, PartialEq)]
@@ -218,10 +237,14 @@ pub struct Offered {
     pub now: bool,
 }
 
+/// The biggest holders, and any that grew fast, from what was measured,
+/// what the last survey offered, the trees it kept for their use, and how
+/// much each grew in the last day.
 pub fn holders(
     measured: &[(Place, u64)],
     offered: &[Offered],
     kept: &[(PathBuf, Use)],
+    grew: &Grown,
     home: Option<&Path>,
 ) -> Vec<Holder> {
     let mut holders: Vec<Holder> = measured
@@ -252,6 +275,7 @@ pub fn holders(
                 clearing: false,
                 why,
                 kept: None,
+                grew: grew.get(&place.path).copied(),
                 says: String::new(),
             };
             holder.says = says(&holder, home);
@@ -259,8 +283,14 @@ pub fn holders(
         })
         .collect();
     holders.sort_by_key(|holder| std::cmp::Reverse(holder.bytes));
-    holders.truncate(SHOWN);
     holders
+        .into_iter()
+        .enumerate()
+        .filter(|(rank, holder)| {
+            *rank < SHOWN || holder.grew.is_some_and(|grew| grew.bytes >= GROWING)
+        })
+        .map(|(_, holder)| holder)
+        .collect()
 }
 
 /// Marks each holder with the keep that covers it, or none, and with
@@ -277,9 +307,25 @@ pub fn mark(holders: &mut [Holder], keeps: &Keeps, clearing: &[PathBuf], home: O
     }
 }
 
+/// What a holder says: whose it is, how much it holds, what keeps it or
+/// how much of it the guard clears, and how much it grew in a day.
+fn says(holder: &Holder, home: Option<&Path>) -> String {
+    let said = held(holder, home);
+    match holder.grew {
+        Some(grew) if grew.bytes >= SAID_GROWING => {
+            format!(
+                "{said} It grew {} in {}.",
+                shown(grew.bytes),
+                span(grew.over)
+            )
+        }
+        _ => said,
+    }
+}
+
 /// One sentence for a holder: whose it is, how much it holds, and what
 /// keeps it or how much of it the guard clears.
-fn says(holder: &Holder, home: Option<&Path>) -> String {
+fn held(holder: &Holder, home: Option<&Path>) -> String {
     let name = called(&holder.owner, &holder.path, home);
     let bytes = shown(holder.bytes);
     match (&holder.kept, &holder.why) {

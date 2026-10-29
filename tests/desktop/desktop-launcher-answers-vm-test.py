@@ -33,6 +33,13 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
+def field_key(field: list[Json], mark: str, word: str) -> Json:
+    """Give the field's word for a key, its mark then what it does, failing if it isn't there."""
+    said = [one for one in field if mark in one["text"] and one["text"].endswith(f" {word}")]
+    assert len(said) == 1, (mark, word, field)
+    return said[0]
+
+
 def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: Desktop) -> None:
     """The launcher lists each thing once, for everything Joel types."""
     machine = desktop.machine
@@ -137,10 +144,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # into the answer's row.
     desktop.answer("charger")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    # The copy is listed last, after the facts, since nothing else inside
+    # does anything (Joel, 2026-10-28: never a copy at the top).
     desktop.step_in()
-    # Return's own Copy leads, then the charger.
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy", "Charger"])
-    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:1] == ["Charger"] and shown["rows"][-1:] == ["Copy"]
+    )
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Charger"
@@ -181,7 +190,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
         machine.send_key("esc")
     # Half a word asks its question too: "batt" is the battery, and
-    # Tab finishes the word, its key after the completion in the field.
+    # Tab finishes the word, the field saying so at its right edge.
     # A copy kept from before saying "battery", a later word, never takes
     # the answer's place, as the battery's own copied answer did when it
     # said "on battery".
@@ -199,13 +208,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
     )
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert any("\u21e5" in word["text"] for word in field), field
+    tab = field_key(field, "\u21e5", "complete")
     # The left arrow takes what's typed away only where the field says
-    # so, its mark after the completion's, and the right arrow right
-    # after puts it back, what it took standing in grey with the right
-    # arrow's mark meanwhile. With Ctrl it moves the caret, as in any
-    # field: a letter typed then lands at the start.
-    assert any("\u2190" in word["text"] for word in field), field
+    # so, after Tab's place, and the right arrow right after puts it
+    # back, what it took standing in grey, the field saying so in the
+    # left arrow's place meanwhile. With Ctrl it moves the caret, as in
+    # any field: a letter typed then lands at the start.
+    clear = field_key(field, "\u2190", "clear")
+    # Neither is flush against what's typed: both stand after it, Tab's
+    # first.
+    typed = next(word for word in field if word["text"] == "batt")
+    assert typed["x"] < tab["x"] < clear["x"], field
     machine.send_key("ctrl-left")
     machine.send_chars("x")
     desktop.launcher_until(lambda shown: shown["typed"] == "xbatt")
@@ -214,9 +227,14 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
     field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-    assert any(word["text"].startswith("batt ") and "\u2192" in word["text"] for word in field), (
-        field
-    )
+    # What it took stands in grey where it was typed, as any hint in an
+    # empty field starts where the first letter will.
+    took = next(word for word in field if word["text"] == "batt")
+    assert took["x"] == typed["x"], field
+    # The right arrow is said in the left arrow's place, which holds still,
+    # and Tab's place stays empty, since there's no completion.
+    assert field_key(field, "\u2192", "restore")["x"] == clear["x"], field
+    assert not any("\u21e5" in word["text"] for word in field), field
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -287,8 +305,13 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
     )
-    # A figure copies what it shows on Return, even one holding more
-    # (Joel, 2026-10-26: a row showing a value copies it, everywhere).
+    # A figure holding more steps in on Return, as the right arrow does,
+    # and copies what it shows from the Copy listed last inside (Joel,
+    # 2026-10-28: "hitting enter on the battery closes the window when
+    # right opens it").
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: in_battery(shown) and shown["rows"][-1:] == ["Copy"])
+    desktop.down_to("Copy")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     pasted = desktop.as_account("wl-paste --no-newline")
@@ -366,10 +389,11 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
             and (shown["selected"] or {}).get("name") == f"the keyboard's light is {kbd_said}"
         )
     )
-    # Return's own Copy leads the answer's step, then the levels.
+    # The levels lead the answer's step, then the copy, after what can be
+    # done and before what's said.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:4] == ["Copy", *kbd_levels])
-    for _ in range(kbd_levels.index("Light to 2 of 2") + 1):
+    desktop.launcher_until(lambda shown: shown["rows"][:4] == [*kbd_levels, "Copy"])
+    for _ in range(kbd_levels.index("Light to 2 of 2")):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")
@@ -486,8 +510,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # headline's disk has, and the disk's speed, how busy it is and its
     # latency come after.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy", "Space"])
-    machine.send_key("down")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Space"])
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Space"
@@ -510,15 +533,13 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # why not, its own sentence below.
     desktop.answer("disk")
     desktop.step_in()
-    desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Space", "What's Filling It"]
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's Filling It"])
     desktop.type_in("filling", selecting="What's Filling It")
     assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"] == ["Containers", "Nix cache"]
+            shown["rows"] == ["Containers", "Nix cache", "Copy"]
             and shown["selected"]["side"] == "12.0 GiB"
             and str(shown["selected"]["reads"]).startswith("Container storage holds")
         )
@@ -536,7 +557,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Reading", "Writing"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # What the network carries now, in and out, from the kernel's
@@ -574,12 +595,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.step_in()
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
-        lambda shown: (
-            shown["rows"][:6] == ["Copy", "In", "Out", "Connection", "Round Trip", "Dropped"]
-        )
+        lambda shown: shown["rows"][:5] == ["In", "Out", "Connection", "Round Trip", "Dropped"]
     )
     assert (
-        desktop.showing()["things"][3]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
+        desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
     )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
@@ -590,7 +609,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "8.8.8.8", "1.1.1.1", "9.9.9.9"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A guard that stops writing is asked about once its last heartbeat
@@ -789,6 +808,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     )
     desktop.photograph("launcher-keyboard-parts")
     assert desktop.showing()["selected"]["side"] == "off"
+    # A path this long leaves no room for the field's words for its keys,
+    # so a letter brings the left arrow's key alone, and the path is never
+    # cut to make room for them.
+    machine.send_chars("l")
+    desktop.launcher_until(lambda shown: shown["typed"] == "l")
+    field = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
+    assert not any(word["cut"] for word in field if board in word["text"]), field
+    assert any("\u2190" in word["text"] for word in field), field
+    assert not any(word["text"].endswith(" clear") for word in field), field
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: shown["typed"] == "")
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
     desktop.down_to("Light")
@@ -826,6 +856,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert re.search("^after \\d+ ms, \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
     desktop.answer("350 f in c")
+    answer_is_whole(desktop, "176.667 \u00b0C")
     desktop.photograph("launcher-units")
     machine.send_key("esc")
     # The zones come from the list built from tzdata, so this proves it's
@@ -891,6 +922,19 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     assert "Error:" not in log, "an answer raised an error"
 
 
+def answer_is_whole(desktop: Desktop, answer: str) -> None:
+    """Wait for the answer to come, and check it's drawn whole in the row it held.
+
+    The row says "Ask" until the answer comes, and is kept as it does, so what it then says
+    must not be cut to the room "Ask" took, as the gallery's launcher-units once showed it.
+    """
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == [answer])
+    assert desktop.held_still(), "the launcher never came to rest"
+    words = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"][0]["words"]
+    name = next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == answer)
+    assert not name["cut"], words
+
+
 def guard_says(desktop: Desktop, holders: list[Json]) -> None:
     """Write what the account's guard says, holding these, as it writes it, whole."""
     status = desktop.as_account("echo $XDG_RUNTIME_DIR").strip() + "/disk-guard/status.json"
@@ -921,6 +965,7 @@ def a_scratch_folder(desktop: Desktop) -> str:
                 "name": "~/scratch",
                 "bytes": 3 * 2**30,
                 "clears": 2**30,
+                "grew": {"bytes": 2 * 2**30, "over": 20 * 3600},
                 "owner": {"kind": "other", "name": "scratch"},
                 "clearable": True,
                 "why": None,
@@ -938,7 +983,8 @@ def into_whats_filling_it(desktop: Desktop) -> None:
     desktop.step_in()
     desktop.type_in("filling", selecting="What's Filling It")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch"])
+    # The folder, then the figure's own Copy, last as every step keeps it.
+    desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch", "Copy"])
 
 
 def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gives(
@@ -955,15 +1001,18 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
         desktop.step_in("ret")
 
     try:
-        # Return steps into it: what can be done, then what it reads,
-        # then Copy the Path.
+        # Return steps into it: what can be done, then what it reads, how
+        # much it grew among them, then Copy the Path.
         into_it()
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"]
-                == ["Open Its Folder", "Keep", "Clear", "Size", "Clearable", "Copy the Path"]
+                == ["Open Its Folder", "Keep", "Clear", "Size", "Grew", "Clearable",
+                    "Copy the Path"]
             )
-        )
+        )  # fmt: skip
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        assert "Grew \u00b7 2.0 GiB in 20 h" in reads, reads
         desktop.down_to("Keep")
         assert desktop.showing()["selected"]["side"] == "no"
         # Kept, it asks why, and the guard says so.
@@ -1167,6 +1216,155 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
         desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
         desktop.as_account("rm -rf ~/.local/state/clock-follows")
+
+
+def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desktop) -> None:
+    """A place set by hand holds over GeoClue until the laptop is found again."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    pin = "~/.local/state/whereabouts/pin.json"
+    began = machine.succeed("timedatectl show --property=Timezone --value").strip()
+
+    def location(test: Callable[[Json], bool]) -> None:
+        """Open Location from the top and wait until its row passes the test."""
+        desktop.answer("location")
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Location" and test(shown["selected"])
+            )
+        )
+
+    def close() -> None:
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    try:
+        # A town no place is called sets nothing, and the foot says why:
+        # built as a check, the VM has no network to ask; run by hand it
+        # may reach Open-Meteo, which finds no such place.
+        nowhere = "Qzxv Fjordholm"
+        location(lambda _: True)
+        desktop.step_in()
+        desktop.down_to("Set It by Hand")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["asking"])
+        machine.send_chars(nowhere)
+        desktop.launcher_until(lambda shown: shown["typed"] == nowhere)
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["footer"]
+                in {f"couldn't ask where {nowhere} is", f"no place is called {nowhere}"}
+            ),
+            timeout=dt.timedelta(seconds=30),
+        )
+        desktop.as_account(f"test ! -e {pin}")
+        close()
+        # A pin, as setting it writes one, is here from then on, whatever
+        # GeoClue says, and the clock follows it as it would any fix.
+        said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": 1000,
+                "when": int(time.time()), "place": "Lighthouse, Alberta",
+                "zone": "America/Edmonton", "hand": True}  # fmt: skip
+        desktop.as_account(
+            f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
+        )
+        desktop.as_account("systemctl --user restart whereabouts.service")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -q '\"hand\":true' {fix}"), timeout=dt.timedelta(seconds=30)
+        )
+        machine.wait_until_succeeds(
+            "test $(timedatectl show --property=Timezone --value) = America/Edmonton",
+            timeout=dt.timedelta(seconds=30),
+        )
+        location(lambda row: row["side"] == "Lighthouse, Alberta")
+        desktop.step_in()
+        # Inside, in the design's order, saying it was set by hand.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Town", "How It Knows", "Set It by Hand", "Find It Again", "Copy"]
+            )
+        )
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        assert "How It Knows \u00b7 set by hand" in reads, reads
+        # Found again, the pin goes, and here is what GeoClue says, which
+        # in the VM is nothing yet.
+        desktop.down_to("Find It Again")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"test ! -e {pin} && test \"$(cat {fix})\" = '{{}}'"),
+            timeout=dt.timedelta(seconds=30),
+        )
+        close()
+        location(lambda row: row["side"] == "unknown")
+        close()
+    finally:
+        machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
+        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.as_account(f"rm -rf {pin} ~/.local/state/clock-follows")
+
+
+def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
+    """The time here says how the clock is kept, as timesyncd last said."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    kept = "$XDG_RUNTIME_DIR/timekeeping.json"
+    # timekeeping runs, and timesyncd, asking a server that isn't there,
+    # has made no exchange, so the file says nothing, and the time says
+    # nothing of its keeping.
+    machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active timekeeping"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session(f"test \"$(cat {kept})\" = '{{}}'"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    keeping = [
+        "Synchronised", "Server", "Offset", "Delay", "Jitter", "Stratum", "Reference",
+        "Poll Interval", "Leap Second",
+    ]  # fmt: skip
+    desktop.answer("time")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
+    assert "Offset" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # An exchange made, written as timekeeping writes it, with it stopped
+    # so nothing writes over it.
+    desktop.as_account("systemctl --user stop timekeeping")
+    said = {
+        "version": 1, "synchronised": True, "server": "0.harbour.pool.ntp.org",
+        "address": "192.0.2.7", "stratum": 1, "reference": "GNSS", "offset": 388,
+        "delay": 36112, "jitter": 11888, "poll": 2048, "leap": "normal", "packets": 13,
+        "frequency": 6.267,
+    }  # fmt: skip
+    try:
+        desktop.as_account(f"echo '{json.dumps(said)}' > {kept}.new && mv {kept}.new {kept}")
+        desktop.answer("time")
+        desktop.step_in()
+
+        def kept_rows(shown: Json) -> bool:
+            rows = cast("list[str]", shown["rows"])
+            if "Synchronised" not in rows:
+                return False
+            at = rows.index("Synchronised")
+            return rows[at : at + len(keeping)] == keeping
+
+        desktop.launcher_until(kept_rows)
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        for read in (
+            "Synchronised \u00b7 yes",
+            "Server \u00b7 0.harbour.pool.ntp.org \u00b7 192.0.2.7",
+            "Offset \u00b7 +0.4 ms",
+            "Delay \u00b7 36.1 ms",
+            "Poll Interval \u00b7 every 34 min 8 s",
+        ):
+            assert any(str(it).startswith(read) for it in reads), (read, reads)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account("systemctl --user start timekeeping")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
@@ -1513,20 +1711,20 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     chosen = cores[min(1, len(cores) - 1)]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
     busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
+
+    def all_busy(shown: Json) -> bool:
+        """Whether every core reads busy, the step's Copy, after them, aside."""
+        each = [thing["reads"] for thing in shown["things"] if thing["reads"].startswith("Core ")]
+        return len(each) > 0 and all(busy.fullmatch(reads) for reads in each)
+
     # At rest not every core is busy, so every core saying it is below
     # is each read again.
-    cores_resting = desktop.showing()
-    assert not all(busy.fullmatch(thing["reads"]) for thing in cores_resting["things"]), (
-        "the cores were busy before anything made them so"
-    )
+    assert not all_busy(desktop.showing()), "the cores were busy before anything made them so"
     # A loop for each core, as the shell's own builtins, since a
     # transient unit's path has no coreutils.
     spinning = "(while :; do :; done) & " * int(machine.succeed("nproc"))
     machine.succeed(f"systemd-run --unit=busy-cores -p Nice=19 sh -c '{spinning}wait'")
-    desktop.launcher_until(
-        lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
-        timeout=dt.timedelta(seconds=60),
-    )
+    desktop.launcher_until(all_busy, timeout=dt.timedelta(seconds=60))
     shown = desktop.showing()
     assert shown["selected"]["name"] == chosen, "the selection left its row"
     assert re.search("^([89]\\d|100)%$", shown["selected"]["side"]), (

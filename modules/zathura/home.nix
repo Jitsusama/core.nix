@@ -15,7 +15,9 @@
 # both. Text selected goes to the
 # clipboard, where a paste looks for it, rather than only the primary
 # selection. zathura remembers where each document was left and opens it
-# there again.
+# there again. Each document it's started with is said to the desktop's
+# list of files opened lately (../open-with/says-what-it-opens.nix), so its
+# Recent in the launcher lists them.
 #
 # Its keys speak the keyboard's language: Left and Right turn the pages and
 # Up and Down scroll, Tab goes back to the place used last (a link followed,
@@ -39,6 +41,7 @@ let
     space
     ;
   rgba = import ../theme/rgba.nix { inherit lib; };
+  says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
   plugins = pkgs.zathuraPkgs;
 
   # zathura's jumplist goes back and forward, but only Ctrl+O and Ctrl+I
@@ -164,13 +167,16 @@ in
 
   programs.zathura = {
     enable = true;
-    package = pkgs.zathura.override {
-      zathura_core = core;
-      plugins = [
-        plugins.zathura_pdf_mupdf
-        plugins.zathura_djvu
-        plugins.zathura_ps
-      ];
+    package = says {
+      package = pkgs.zathura.override {
+        zathura_core = core;
+        plugins = [
+          plugins.zathura_pdf_mupdf
+          plugins.zathura_djvu
+          plugins.zathura_ps
+        ];
+      };
+      command = "zathura";
     };
     options = {
       font = "${font.sans.family} ${type.sans.body}";

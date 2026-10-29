@@ -464,6 +464,17 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       # the network, and the host's own position would stand in for the
       # test's.
       services.geoclue2.geoProviderUrl = lib.mkForce "http://127.0.0.1:9/v1/geolocate";
+      # A test VM turns timesyncd off, which would leave Time's keeping
+      # unheard, since it's read only where timesyncd runs. It runs here as
+      # on a laptop, asking a server that isn't there, so it makes no
+      # exchange even where the VM reaches the network, and the test
+      # writes one in its stead. The servers are forced, since a list is
+      # otherwise joined to the machine's own pool, which it would reach.
+      services.timesyncd = {
+        enable = lib.mkForce true;
+        servers = lib.mkForce [ "127.0.0.1" ];
+        fallbackServers = [ ];
+      };
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         # A cursor that holds still, so two runs photograph kitty the same
@@ -473,6 +484,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.
         jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
+        # The VM's disk is the host's, which waits for minutes on end while
+        # other builds share it, so lag-watch's real windows would put the
+        # Lag mark in the margin of every test that reads it. Waiting is
+        # marked only after an hour here, longer than any test runs, and
+        # the test of the mark writes a wait that long itself.
+        jitsusama.quickshell.overview.pieces.lag.lasts = 3600;
         # Something on air lingers in the margin once it goes; a moment is
         # enough to see it, and keeps the test's waits for it to go short.
         jitsusama.quickshell.margin.linger = 2;

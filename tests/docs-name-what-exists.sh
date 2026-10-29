@@ -63,7 +63,10 @@ done < <(find . -name '*.md' -not -path './.git/*' | sort)
 stale=()
 while IFS= read -r line; do
   [ -n "$line" ] || continue
-  printf '%s\n' "${named[@]}" | grep -qxF "$line" || stale+=("$line")
+  # Read from a file of its own rather than a pipe: grep -q stops at the
+  # first match, and with pipefail the printf it cut off would fail the
+  # pipe, so a mention that's there read as gone whenever the list was long.
+  grep -qxF "$line" <(printf '%s\n' "${named[@]}") || stale+=("$line")
 done <"$exempt"
 
 if [ "${#missing[@]}" -gt 0 ]; then

@@ -6,7 +6,9 @@
 # the TPM refuse. The TPM keeps no NvPCRs, so no boot or login waits on them.
 # Each generation is counted as it boots and blessed once it's up, and one
 # whose tries are spent is passed over for the last good one, the TPM still
-# opening the disk, with a word to the session. The machine is
+# opening the disk, with a word to the session. Shut down with fwupd's
+# firmware update waiting, it takes PCR 0 out of the policy, and the boot
+# after opens the disk with the PIN and locks PCR 0 again. The machine is
 # secure-boot-machine.nix's, and the tests are secure-boot-vm-test.py, run
 # through pytest.
 { self, pkgs }:
@@ -26,9 +28,18 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "secure-boot";
   globalTimeout = 40 * 60;
 
-  nodes.machine = import ./secure-boot-machine.nix {
-    inherit self pkgs passphrase;
-    packages = [ notices ];
+  nodes.machine = {
+    imports = [
+      (import ./secure-boot-machine.nix {
+        inherit self pkgs passphrase;
+        packages = [
+          notices
+          pkgs.efibootmgr
+        ];
+      })
+    ];
+    # Firmware updates come through fwupd, as on a laptop.
+    services.fwupd.enable = true;
   };
 
   # The driver runs on the host, so what the tests need from Nix, the image

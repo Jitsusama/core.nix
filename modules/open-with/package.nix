@@ -1,10 +1,15 @@
 # open-with, built from this directory's crate with its tests run as it
 # builds, and the portal's choosers it serves, of an app and of files: its
 # description for the portal, its D-Bus service and the account's unit that
-# runs it, which asks the shell through the given Quickshell's qs.
+# runs it, which asks the shell through the given Quickshell's qs; and
+# recent-files, which adds to the desktop's list of files opened lately and
+# reads it, through GLib as GTK does.
 {
   lib,
   rustPlatform,
+  pkg-config,
+  glib,
+  shared-mime-info,
   quickshell,
 }:
 rustPlatform.buildRustPackage (_finalAttrs: {
@@ -19,6 +24,15 @@ rustPlatform.buildRustPackage (_finalAttrs: {
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
+
+  nativeBuildInputs = [ pkg-config ];
+  buildInputs = [ glib ];
+  # A file's kind is guessed from the desktop's MIME database, which the
+  # build has only from here.
+  nativeCheckInputs = [ shared-mime-info ];
+  preCheck = ''
+    export XDG_DATA_DIRS=${shared-mime-info}/share
+  '';
 
   postInstall =
     let

@@ -3,7 +3,9 @@
 //! runs, and fails when one is missing. `guide host IMAGE` writes a stick
 //! on whatever machine runs it, as the person: given `--sign-with` and
 //! sbctl's db key directory, its boot program signed for that machine, and
-//! for each machine whose directory follows another `--sign-with`;
+//! for each machine whose directory follows another `--sign-with`; given
+//! `--every-machine`, signed too for every other machine whose rescue
+//! bundle the host keeps, each bundle opened in turn;
 //! given `--install` and a machine's payload (payload.nix), its vault
 //! holding everything to install it, sealed to the stick's passphrase;
 //! given `--rescue-bundle` too, the machine's Secure Boot keys, opened
@@ -40,7 +42,7 @@ use guide::vault::store::{Directory, Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover | guide github
-       guide host IMAGE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
+       guide host IMAGE [--sign-with DIRECTORY]... [--every-machine] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY]... [--install PAYLOAD [--rescue-bundle BUNDLE]]
        guide seal-keys TARGET BUNDLE";
 
@@ -88,7 +90,14 @@ fn main() -> ExitCode {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
                 reported(written.open().and_then(|(signers, payload, bundle)| {
-                    host(image, signers, payload, bundle, written.uses_kept())
+                    host(
+                        image,
+                        signers,
+                        payload,
+                        bundle,
+                        written.uses_kept(),
+                        written.every_machine,
+                    )
                 }))
             } else {
                 eprintln!("{USAGE}");
@@ -96,7 +105,9 @@ fn main() -> ExitCode {
             }
         }
         ["write-stick", image, target, ref options @ ..] => {
-            if let Some(written) = Written::parse(options) {
+            // It gathers no bundles, so it has none to sign for.
+            if let Some(written) = Written::parse(options).filter(|written| !written.every_machine)
+            {
                 let _awake = guide::awake::hold("writing a stick");
                 reported(written.open().and_then(|(signers, payload, bundle)| {
                     write_stick(image, target, signers, payload, bundle)
@@ -125,14 +136,22 @@ struct Written<'a> {
     rescue_bundle: Option<&'a str>,
     /// Whether no bundle the host keeps may be used.
     no_rescue_bundle: bool,
+    /// Whether the stick is signed for every machine whose bundle the host
+    /// keeps, besides any it's signed for already.
+    every_machine: bool,
 }
 
 impl<'a> Written<'a> {
     fn parse(mut options: &[&'a str]) -> Option<Written<'a>> {
         let mut written = Written::default();
         while !options.is_empty() {
-            if let ["--no-rescue-bundle", rest @ ..] = options {
-                if std::mem::replace(&mut written.no_rescue_bundle, true) {
+            if let [flag @ ("--no-rescue-bundle" | "--every-machine"), rest @ ..] = options {
+                let set = if *flag == "--every-machine" {
+                    &mut written.every_machine
+                } else {
+                    &mut written.no_rescue_bundle
+                };
+                if std::mem::replace(set, true) {
                     return None;
                 }
                 options = rest;
@@ -326,6 +345,7 @@ fn host(
     payload: Option<Payload>,
     bundle: Option<Bundle>,
     uses_kept: bool,
+    every_machine: bool,
 ) -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
@@ -380,44 +400,42 @@ fn host(
     } else {
         bundle
     };
-    // One the person didn't name that isn't opened says where it is, and
-    // how to write the stick without it.
-    let unopened = |machine: &str| match (given, &kept) {
-        (false, Some(kept)) => Err(Fault::Blocked {
-            step: "write-stick",
-            why: format!(
-                "the rescue bundle this host keeps for {machine}, {}, wasn't opened; to write the stick without it, run this again with --no-rescue-bundle",
-                kept.join(guide::rescue::carried_as(machine)).display()
-            ),
-        }),
-        _ => Ok(()),
-    };
+    let unopened = |machine: &str| unopened(given, kept.as_deref(), machine);
 
     // The rescue bundle opened next, its keys held only in memory.
-    let opened = Rc::new(RefCell::new(None));
-    let bundle_of = bundle.as_ref().map(|bundle| bundle.machine().to_string());
-    let steps: Vec<Box<dyn Step>> = match bundle {
-        Some(bundle) => vec![Box::new(OpenRescueBundle {
-            bundle,
-            opened: Rc::clone(&opened),
-        })],
-        None => vec![],
+    let opening = bundle.map(opening).transpose()?;
+    let own = match &opening {
+        Some((_, _, machine_of)) => Some(machine_of.as_str()),
+        None => machine_name.as_deref(),
     };
-    let opening = Journey::new(steps).map_err(|why| Fault::unreadable("the host's steps", why))?;
-    walk.journey = &opening;
-    let (signers, payload) = match bundle_of {
-        Some(machine_of) => {
+    let (mut signers, payload) = match &opening {
+        Some((journey, opened, machine_of)) => {
+            walk.journey = journey;
             // The terminal is put back as it was before this is said.
             if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
-                return unopened(&machine_of);
+                return unopened(machine_of);
             }
             let Some(keys) = opened.take() else {
-                return unopened(&machine_of);
+                return unopened(machine_of);
             };
-            carrying(signers, payload, &machine_of, keys)?
+            carrying(signers, payload, machine_of, keys)?
         }
         None => (signers, payload),
     };
+
+    // Every other machine whose bundle the host keeps, when asked, signing
+    // after the machine's own, so that one's signature stays the first.
+    let others = if every_machine {
+        others(&bundles, own)?
+    } else {
+        vec![]
+    };
+    signers.extend(signed_by_others(
+        &mut walk,
+        &others,
+        &mut machine,
+        &mut terminal,
+    )?);
 
     let next = match &payload {
         Some(payload) => payload.next(),
@@ -440,6 +458,72 @@ fn host(
     }
     walk.card(&mut terminal, "The stick is written", &next, "finish")?;
     Ok(())
+}
+
+/// What a bundle not opened leaves: one the person didn't name says where
+/// it is, and how to write the stick without it; one they named, nothing.
+fn unopened(given: bool, kept: Option<&Path>, machine: &str) -> Result<(), Fault> {
+    match (given, kept) {
+        (false, Some(kept)) => Err(Fault::Blocked {
+            step: "write-stick",
+            why: format!(
+                "the rescue bundle this host keeps for {machine}, {}, wasn't opened; to write the stick without it, run this again with --no-rescue-bundle",
+                kept.join(guide::rescue::carried_as(machine)).display()
+            ),
+        }),
+        _ => Ok(()),
+    }
+}
+
+/// A walk opening a machine's rescue bundle, the keys it opens to, and
+/// the machine's name.
+type Opening = (Journey, Rc<RefCell<Option<Keys>>>, String);
+
+fn opening(bundle: Bundle) -> Result<Opening, Fault> {
+    let machine = bundle.machine().to_string();
+    let opened = Rc::new(RefCell::new(None));
+    let step = OpenRescueBundle {
+        bundle,
+        opened: Rc::clone(&opened),
+    };
+    let journey = Journey::new(vec![Box::new(step) as Box<dyn Step>])
+        .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    Ok((journey, opened, machine))
+}
+
+/// A walk opening each bundle kept for a machine other than `own`.
+fn others(bundles: &[carried::Carried], own: Option<&str>) -> Result<Vec<Opening>, Fault> {
+    bundles
+        .iter()
+        .filter(|carried| own != Some(carried.machine.as_str()))
+        .map(|carried| opening(Bundle::read(&carried.bytes)?))
+        .collect()
+}
+
+/// The keys of each other machine's bundle, opened one after another.
+/// One not opened stops the write, and says how to write it without
+/// that machine.
+fn signed_by_others<'a>(
+    walk: &mut Walk<'a>,
+    others: &'a [Opening],
+    machine: &mut dyn Machine,
+    terminal: &mut Terminal,
+) -> Result<Vec<Signer>, Fault> {
+    let mut signers = vec![];
+    for (opening, opened, other) in others {
+        walk.journey = opening;
+        let finished = walk.walk(machine, terminal)? == Ended::Finished;
+        let Some(keys) = opened.take().filter(|_| finished) else {
+            return Err(Fault::Blocked {
+                step: "write-stick",
+                why: format!(
+                    "the rescue bundle this host keeps for {other} wasn't opened; to write the stick without signing it for {other}, run this again without --every-machine"
+                ),
+            });
+        };
+        signers.push(keys.signer()?);
+    }
+    Ok(signers)
 }
 
 /// A machine's rescue bundle, made on that machine from its payload's
@@ -1111,6 +1195,19 @@ mod tests {
         assert_eq!(
             uses_kept(&["--sign-with", "d", "--install", "p"]),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn every_machine_is_a_flag_given_once_that_leaves_the_kept_bundle_in_use() {
+        let every = |options: &[&str]| Written::parse(options).map(|written| written.every_machine);
+        assert_eq!(every(&["--every-machine"]), Some(true));
+        assert_eq!(every(&["--install", "p", "--every-machine"]), Some(true));
+        assert_eq!(every(&["--install", "p"]), Some(false));
+        assert_eq!(every(&["--every-machine", "--every-machine"]), None);
+        assert_eq!(
+            uses_kept(&["--every-machine", "--install", "p"]),
+            Some(true)
         );
     }
 

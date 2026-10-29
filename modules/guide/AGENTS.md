@@ -279,6 +279,10 @@ driven on; the installed machine's steps come later.
   written, and a stick for a machine it keeps a bundle for is signed from
   that bundle unless `--rescue-bundle`, `--sign-with` or
   `--no-rescue-bundle` is given; one that isn't opened says where it is.
+  Given `--every-machine`, the host opens every other bundle it keeps,
+  one after another, and signs the stick with each one's key after the
+  machine's own, so one stick boots on all of them; a bundle not opened
+  stops the write and says how to write it without that machine.
   Only the stick gathered from is written over. So a bundle reaches every
   laptop and stick by their being used. A forged one does no harm to a
   machine: an install puts keys back only when the firmware has a
@@ -420,7 +424,7 @@ driven on; the installed machine's steps come later.
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
-| `../../tests/vm/guide/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN |
+| `../../tests/vm/guide/guide-host.nix` | a stick written on a host through UDisks2, as the person, with a bundle sealed to a real key opened by its PIN, then written again for every machine whose bundle the person keeps |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
 | `tests/github.rs`     | the sign-in's code and token kept off command lines, and only missing keys added |
 | `../../tests/vm/guide/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |

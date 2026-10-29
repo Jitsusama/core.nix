@@ -146,6 +146,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
                 and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
             )
         )
+    # Scrolled down past its first rows, the selection is still drawn on
+    # its own row.
+    selection = laid_out(desktop)["selection"]
+    assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
@@ -426,13 +430,12 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     desktop.answer("what is a fjord?")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: str(shown["footer"]).startswith("answered in"))
-    # A step in leads with Return's own Copy, then talking it over with
-    # Lighthouse comes before asking in a session of its own.
+    # A step in leads with talking it over with Lighthouse, before asking
+    # in a session of its own, and the copy comes after them.
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Talk to Lighthouse", "Ask in a Session"]
+        lambda shown: shown["rows"][:3] == ["Talk to Lighthouse", "Ask in a Session", "Copy"]
     )
-    machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Talk to Lighthouse"
     )
@@ -787,6 +790,14 @@ def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
+    # The foot's time keeps only its own room, as the date gives way to the
+    # keys a letter brings: it kept the date's, a gap after it.
+    time = next(
+        word for word in laid_out(desktop)["foot"] if re.fullmatch(r"\d\d:\d\d", word["text"])
+    )
+    # Its room is measured as it's said and its ink as it's drawn, so they
+    # may round apart by a pixel.
+    assert abs(time["width"] - time["inked"]) <= 1, f"the time keeps more room: {time}"
     desktop.photograph("launcher")
     machine.send_key("ret")
     # The first window opened can take as long as the first GTK one.
@@ -937,6 +948,62 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
         desktop.in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
         timeout=dt.timedelta(seconds=10),
     )
+
+
+def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
+    """A name too long for its row slides to show its end while selected, and only it moves."""
+    machine = desktop.machine
+    title = (
+        "Edgewise notes, and a title that runs on well past the edge of the launcher row"
+        " as the title of a web page often does"
+    )
+    long = desktop.opened(title)
+    short = desktop.opened("Edgewise")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("edgewise")
+    desktop.launcher_until(lambda shown: {title, "Edgewise"} <= set(shown["rows"]))
+    desktop.down_to(title)
+
+    def selected_words() -> list[Json]:
+        """Give the words the selected row draws, with where each is."""
+        laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+        return next(row["words"] for row in laid["rows"] if row["selected"])
+
+    def named(words: list[Json], name: str = title) -> Json:
+        # A row not selected draws its name with the letters typed brought
+        # forward, as styled text, so its tags are set aside.
+        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == name)
+
+    # Where every name starts, read from the short one, which never moves:
+    # the long one may already be on its way, selected as the rows came.
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    start = next(
+        named(row["words"], "Edgewise")["x"]
+        for row in laid["rows"]
+        if row["reads"].startswith("Edgewise \u00b7")
+    )
+    first = selected_words()
+    rest = sorted((word["text"], word["x"]) for word in first if word["text"] != title)
+
+    def slid(_: bool) -> bool:
+        words = selected_words()
+        # Whatever else the row says holds still while its name moves.
+        others = sorted((word["text"], word["x"]) for word in words if word["text"] != title)
+        assert others == rest, words
+        return int(named(words)["x"]) < int(start)
+
+    retry(slid, timeout=dt.timedelta(seconds=30))
+    # Given up by the selection, it's back at its start at once.
+    machine.send_key("up" if desktop.showing()["rows"].index(title) > 0 else "down")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Edgewise")
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    row = next(row for row in laid["rows"] if row["reads"].startswith(title))
+    assert named(row["words"])["x"] == start, row
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.close(long)
+    desktop.close(short)
 
 
 # Super+Tab opens the launcher on every other window, the one used last
@@ -1397,19 +1464,65 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["now"] and shown["selected"])
-    # The meeting is Now's last row, after the time, the date and the
-    # weather, with no Today to step into.
+    # The meeting is the last of Now's own rows, after the time, the date,
+    # the location and the weather, with no Today to step into.
     assert "Today" not in desktop.showing()["rows"], desktop.showing()["rows"]
-    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Design Review"])
-    desktop.down_to("Design Review")
+
+    def after_the_moment(shown: Json) -> bool:
+        """Whether Design Review follows the location and the weather, when there is one."""
+        rows = cast("list[str]", shown["rows"])
+        if "Design Review" not in rows:
+            return False
+        at = rows.index("Design Review")
+        return at > 0 and rows[at - 1] in {"Location", "Weather"}
+
+    desktop.launcher_until(after_the_moment)
+    # It's the meeting coming too, which wants Joel, so Now opens on it,
+    # and it's that one row, never a second beside it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
     today = desktop.showing()
+    assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
+    # Inside Now, its details slide out in the drawer beside the card, as
+    # the meeting's one component gives them, each a name and a figure.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Design Review"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"][:1] == ["When"]
+        )
+    )
+    desktop.photograph("launcher-meeting-drawer")
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
         timeout=dt.timedelta(seconds=30),
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # In Now, where the drawer is out, a row with nothing more to show
+    # shows its name alone, never another row's details nor its own note,
+    # which the foot says.
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    # Now opens on the meeting, below the time.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
+    rows = cast("list[str]", desktop.showing()["rows"])
+    for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
+        machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
+        )
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Time"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"] == []
+            and shown["drawer"]["body"] == ""
+        )
+    )
+    machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -1439,6 +1552,10 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
+    # Found by a search typed at home, the drawer stays in: it slides only
+    # as Joel steps in or out (docs/design.md, "The drawer is the card
+    # continued").
+    assert (desktop.showing().get("drawer") or {}).get("out") is False, desktop.showing()
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")
@@ -1560,6 +1677,36 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
+def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
+    """A meeting's attachments open from inside it, a document as its own row."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Attachments comes before Copy the Link, which is always last.
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
+    rows = desktop.showing()["rows"]
+    assert rows[-2] == "Attachments", rows
+    desktop.down_to("Attachments")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan", "Agenda.pdf"])
+    # The plan is the document from Recent, saying who owns it.
+    plan = desktop.showing()["things"][0]
+    assert plan["is"] == "gdoc:plan", plan
+    assert "Ada Lovelace" in plan["reads"], plan
+    desktop.down_to("Agenda.pdf")
+    machine.send_key("ret")
+    agenda = "https://drive.google.com/file/d/agenda/view"
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(agenda)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def now_rows(desktop: Desktop) -> Json:
     """Open the launcher on Now, and give what it shows once it holds Now's rows."""
     desktop.answer("now")
@@ -1608,10 +1755,10 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 
 
 @pytest.mark.usefixtures("google")
-def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
+def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
     desktop: Desktop,
 ) -> None:
-    """Now lists what waits on Joel, then a call, a song and a mode, and the time last."""
+    """Now lists what waits on Joel, then the time and the date, then a call, a song and a mode."""
     queue = "$HOME/.local/state/mission/queue.json"
     kept(
         desktop,
@@ -1626,15 +1773,15 @@ def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
         f" {shlex.quote(desktop.values['track'])}"
     )
-    # Each by what it is, in the order Now lists its groups, the time and
-    # the date, Now's own, last.
+    # Each by what it is: what waits first, then the time and the date,
+    # Now's own, which never move, then the groups that come and go.
     groups = [
         "on:waitingOnYou",
+        "answer:time",
+        "answer:today",
         "on:call",
         "on:playing",
         "session:awake",
-        "answer:time",
-        "answer:today",
     ]
 
     def listed() -> list[str]:
@@ -1821,7 +1968,10 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.launcher_until(lunch_in_full)
     desktop.step_in()
     desktop.launcher_until(
-        lambda shown: shown["rows"] == ["Open in Mail", "Reply", "Archive", "Read", "Copy the Link"]
+        lambda shown: (
+            shown["rows"]
+            == ["Open in Mail", "Reply", "Archive", "Read", "Attachments", "Copy the Link"]
+        )
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
@@ -1841,6 +1991,15 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Every mail and meeting row, wherever the walk from home finds one, is
+    # made by its one component, never drawn by the surface that lists it.
+    said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+    assert said["uncomposed"] == [], (
+        "A row drawn by the surface listing it, though a thing is one row"
+        " (docs/design.md, 'A row says its kind, and a thing is one row'):\n"
+        + "\n".join(said["uncomposed"])
+    )
+    assert said["composed"] > 0, "the walk found no mail to ask of"
 
 
 @pytest.mark.usefixtures("google")
@@ -1862,6 +2021,52 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
+    desktop: Desktop,
+) -> None:
+    """A file mail carries is fetched only on Return, to open, closing, or to save in Downloads."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    kept = "/run/user/1000/google-files/lunch/menu.pdf"
+    saved = "/home/jitsusama/Downloads/menu.pdf"
+    machine.succeed(f"rm -f {asked} {kept} {saved}")
+
+    def into_the_menu() -> None:
+        """Step into Lunch on Friday's Attachments, its menu selected."""
+        desktop.answer("lunch on friday")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: "Attachments" in shown["rows"])
+        desktop.down_to("Attachments")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["menu.pdf"])
+
+    into_the_menu()
+    selected = desktop.showing()["selected"]
+    assert selected["side"] == "PDF \u00b7 4 B", selected
+    assert selected["drawer"]["facts"] == [
+        {"label": "Kind", "value": "PDF"},
+        {"label": "Size", "value": "4 B"},
+    ], selected
+    # Listing a file fetches nothing; Return fetches it, opens it and closes.
+    machine.fail(f"grep -qs fetch {asked}")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"test -f {kept}", timeout=dt.timedelta(seconds=30))
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Save a Copy keeps one in Downloads, the launcher staying to say so.
+    into_the_menu()
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
+    desktop.down_to("Save a Copy")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"test -f {saved}", timeout=dt.timedelta(seconds=30))
+    desktop.launcher_until(lambda shown: shown["footer"] == "saved in Downloads")
+    desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -2187,6 +2392,18 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.launcher_until(
         lambda shown: shown["path"] == ["Machine", "Power"] and shown["rows"][:8] == power
     )
+    # The battery's figure holds more, so Return steps into it, as the right
+    # arrow does, rather than copying and closing, and its copy is listed
+    # last inside (Joel, 2026-10-28).
+    desktop.down_to("Battery")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["path"] == ["Machine", "Power", "Battery"]
+            and shown["rows"][-1:] == ["Copy"]
+        )
+    )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Found by its name from the top, it opens where it lives, and the
@@ -2254,13 +2471,12 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
         desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
         timeout=dt.timedelta(seconds=10),
     )
+    # Run, it does what its Return does, opening it again where it's
+    # closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
+    assert lighthouse["kind"] == "action", lighthouse
     assert ran(lighthouse)["done"]
-    desktop.launcher_until(
-        lambda shown: shown["open"] and shown["path"] == ["Agents", "Orchestrators", "Lighthouse"]
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.fail(closed)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
@@ -2410,6 +2626,20 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     # weather are, shows as that row wherever it's listed, never as a
     # version a surface drew itself (Joel, 2026-10-28).
     assert said["ownVersions"] == [], "\n".join(said["ownVersions"])
+    # And no step leads with a copy where it holds more, as docs/design.md's
+    # Return rule has it: "Copy is never the first row of a step, unless
+    # it's the only one, and is always the last".
+    copy_first = cast("list[Json]", said["copyFirst"])
+    assert copy_first == [], "Copy leads a step, though it comes last:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in copy_first
+    )
+    # And a row whose Return steps in over an act of its own leads the step
+    # with that act, as docs/design.md's Return rule has it: "its likeliest
+    # act first inside, so Return twice does it".
+    skipped = cast("list[Json]", said["skipped"])
+    assert skipped == [], "A step doesn't lead with the act Return stepped over:\n" + "\n".join(
+        f"{row['in']} \u203a {row['words']}" for row in skipped
+    )
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(
@@ -2659,7 +2889,9 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     before = name_of(cast("Json", its_row("asks you")))
     assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
     # It goes back to work: "asks you" becomes the shorter "working", and
-    # the title is cut where it was rather than reaching one letter on.
+    # the title is cut where it was rather than reaching one letter on:
+    # its room holds, whether it's cut by an ellipsis or, selected, reads
+    # on inside it.
     desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
     retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
     after = name_of(cast("Json", its_row("working")))
@@ -2667,7 +2899,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     desktop.launcher_until(lambda shown: not shown["open"])
     desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
     desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
-    assert (after["x"], after["width"]) == (before["x"], before["width"]), (before, after)
+    assert after["room"] == before["room"], (before, after)
 
 
 # A window closed while Super+Tab shows it stays in its place, gone, until
@@ -3022,8 +3254,9 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.type_in("waiting on you", selecting="Waiting on You")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "1")
     # Inside, what's for now leads, then what's for later, each in the
-    # agents' order, and Return goes to where one is done.
-    desktop.step_in()
+    # agents' order. Return steps into one, as it steps into Waiting on
+    # You itself, with going to where it's done first.
+    machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: shown["rows"] == ["Answer the ask", "Try the new home", "Pick a bucket"]
     )
@@ -3031,7 +3264,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Try the new home"
     )
-    machine.send_key("ret")
+    going_to(desktop)
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled("Waiting room")["is_focused"],
@@ -3045,7 +3278,7 @@ def test_now_leads_with_what_waits_on_joel(desktop: Desktop) -> None:
     machine.send_key("down")
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Pick a bucket")
-    machine.send_key("ret")
+    going_to(desktop)
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     retry(
         lambda _: desktop.window_titled(PI_WINDOW)["is_focused"],
@@ -3077,6 +3310,15 @@ def readme(desktop: Desktop, quest: str, status: str) -> None:
         f"mkdir -p {QUESTS}/{quest} && printf '%s\\n' '---' 'id: {quest}'"
         f" 'status: {status}' '---' '# {quest}' > {QUESTS}/{quest}/README.md"
     )
+
+
+def going_to(desktop: Desktop) -> None:
+    """Step into the waiting item selected with Return, and go to its window with Return."""
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Go to ")
+    )
+    desktop.machine.send_key("ret")
 
 
 def waiting_opened(desktop: Desktop) -> None:
@@ -3278,6 +3520,75 @@ def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
         )
     finally:
         desktop.as_account(f"rm -f {queue}")
+
+
+def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
+    """Waiting on You is in Now with nothing waiting, says so, and Now opens on it."""
+    machine = desktop.machine
+    # Nothing waits; Keep Awake is on, a mode left on, which Now never
+    # opens on, since Return would turn it off.
+    # The account's shell is zsh, which refuses a pattern matching nothing,
+    # so what waits is found rather than named by one.
+    desktop.as_account(
+        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
+        f" && find {MISSION}/waiting -name '*.json' -delete"
+    )
+    desktop.as_account("systemctl --user start caffeinate.service")
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now"]
+                and "Keep Awake" in shown["rows"]
+                and (shown["selected"] or {}).get("name") == "Waiting on You"
+            )
+        )
+        selected = desktop.showing()["selected"] or {}
+        assert (selected["side"], selected["verb"]) == ("nothing waits", "more"), selected
+        # What's typed narrows Now to the rows it names, and clearing it
+        # brings them all back.
+        desktop.type_in("awake")
+        desktop.launcher_until(
+            lambda shown: shown["rows"][:1] == ["Keep Awake"] and not shown["nothing"]
+        )
+        machine.send_key("left")
+        desktop.launcher_until(
+            lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Waiting on You"]
+        )
+        # Clearing keeps the row typing chose, so the selection goes back up.
+        shown = desktop.showing()
+        for _ in range(shown["rows"].index(shown["selected"]["name"])):
+            machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You"
+        )
+        # Return steps in, as it does with things waiting, to a list saying
+        # nothing does, rather than closing as if the launcher vanished.
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["open"]
+                and shown["held"] == ["now", "Waiting on You"]
+                and shown["rows"] == []
+                and shown["nothing"] == "Nothing waits on you."
+            )
+        )
+        launcher_closed(desktop)
+        # Home's Now leaves it out of what's on while it holds nothing.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: any(
+                thing["reads"].startswith("Now \u00b7 ") and "Keep Awake" in thing["reads"]
+                for thing in shown["things"]
+            )
+        )
+        now = next(thing for thing in desktop.showing()["things"] if thing["is"] == "collection:on")
+        assert "Waiting on You" not in now["reads"], now
+        launcher_closed(desktop)
+    finally:
+        desktop.as_account("systemctl --user stop caffeinate.service")
 
 
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:

@@ -2,17 +2,20 @@
 //! power unit keeps and the kernel shows only to root, and answers the shell
 //! with what it says that nothing else does: the temperatures of the NPU,
 //! the image processor, the media and display engines, the system agent and
-//! the chipset, and what held the processor, each core cluster and the NPU
-//! back, by which limit, over the last second.
+//! the chipset, what held the processor, each core cluster and the NPU
+//! back, by which limit, and what kept the package out of its deep idle
+//! states, by which part, over the last second.
 //!
 //! systemd starts it when the shell first connects to its socket. It reads
-//! the region only while someone is watching, once a second, and otherwise
-//! waits, costing nothing. Its layout is Panther Lake's (src/layout.rs); on
-//! another processor it answers that it has no region it knows.
+//! the regions only while someone is watching, once a second, and otherwise
+//! waits, costing nothing. Their layouts are Panther Lake's (src/layout.rs
+//! and src/resting.rs); on another processor it answers that it has no
+//! region it knows.
 
 mod clusters;
 mod layout;
 mod reading;
+mod resting;
 mod service;
 
 use std::path::Path;
@@ -22,7 +25,9 @@ use zlink::Server;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    let region = service::find(Path::new("/sys/class/intel_pmt"));
+    let class = Path::new("/sys/class/intel_pmt");
+    let region = service::find(class, layout::GUID);
+    let resting = service::find(class, resting::GUID);
     let clusters = clusters::read(Path::new("/sys/devices/system/cpu"));
     match &region {
         Some(file) => println!(
@@ -31,6 +36,13 @@ async fn main() -> ExitCode {
             clusters.len()
         ),
         None => println!("<4>no telemetry region this reader knows the layout of"),
+    }
+    match &resting {
+        Some(file) => println!(
+            "<6>reads {} for what keeps the package from resting",
+            file.display()
+        ),
+        None => println!("<5>no region says what keeps the package from resting"),
     }
     let listener = match service::listener() {
         Ok(Some(listener)) => listener,
@@ -43,7 +55,11 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let telemetry = service::Telemetry { region, clusters };
+    let telemetry = service::Telemetry {
+        region,
+        resting,
+        clusters,
+    };
     match Server::new(listener, telemetry).run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

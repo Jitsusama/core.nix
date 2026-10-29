@@ -1,0 +1,16 @@
+# How the clock is kept, for the launcher's Time: one resident program that
+# hears systemd-timesyncd over D-Bus and writes what it last said to a file
+# the shell watches (src/main.rs says how).
+[package]
+name = "timekeeping"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.53", features = ["macros", "rt"] }
+zbus = { version = "5.19", default-features = false, features = ["tokio"] }
