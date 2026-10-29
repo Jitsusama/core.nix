@@ -10,7 +10,9 @@ pragma ComponentBehavior: Bound
 // `joinable` says whether Return on any of them joins it; and
 // `join` goes into a meeting's call through google-opens (opens.sh), which
 // joins a Tuple link through Tuple and opens Google's own in a window of
-// their own. `answer` answers an invitation through the program (ask.rs),
+// their own. `row` is a meeting's one row, with its acts and details,
+// which every surface showing a meeting takes as it is.
+// `answer` answers an invitation through the program (ask.rs),
 // which says the meeting answered as soon as Google takes it. `calls` are
 // the Meet calls open in windows of their own, each with its meeting,
 // which Call.qml says while one is.
@@ -157,6 +159,248 @@ Singleton {
     readonly property bool marked: Said.marked(wanting, now)
     // What its notice tells by now: its last reminder come, or its start.
     readonly property string telling: Said.telling(wanting, now)
+
+    // A meeting's row, made with the provider of the surface showing it,
+    // whose `thing`, `copyRow` and launcher it uses, so every surface shows
+    // the same one: its title, when it is at the right and its times
+    // below, with his answer to an invitation, and its details beside it.
+    // Return joins its call only when the call is on or starts within ten
+    // minutes (`joinable`), which takes Joel out of the launcher; otherwise
+    // it sees the meeting, a step in, keeping the launcher, so a meeting
+    // he only wants to look at is never joined. The right arrow lists
+    // every act. Its names and words are the vocabulary's (calendar:*).
+    function row(meeting, provider) {
+        const joins = root.joinable(meeting);
+        const name = root.titled(meeting);
+        return provider.thing({
+            key: `calendar:meeting:${meeting.id}`,
+            what: "meeting",
+            component: "meeting",
+            of: "program:google-calendar",
+            part: name,
+            name: name,
+            verb: joins ? Words.verb("verb:calendar:join") : Words.verb("verb:calendar:see"),
+            glyph: Words.glyph("calendar:meeting"),
+            hue: "program",
+            side: root.when(meeting),
+            note: root.about(meeting),
+            drawer: Said.details(meeting, Words.name("calendar:meeting", "untitled")),
+            later: joins,
+            stays: !joins,
+            run: joins ? () => root.join(meeting)
+                : () => provider.launcher?.enter(root.seeing(meeting, provider, name)),
+            verbs: () => root.acts(meeting, provider)
+        });
+    }
+
+    function titled(meeting) {
+        return meeting.title !== "" ? meeting.title : Words.name("calendar:meeting", "untitled");
+    }
+
+    // Its acts, in the one order every surface lists them: Join the
+    // Meeting when it has a call, See It, then, for an invitation, Answer
+    // Yes, Answer Maybe and Answer No, which keep the launcher, its foot
+    // saying the answer once Google has it; for one Google lets him
+    // change, Move the Meeting, to a later time or one typed there, which
+    // asks once, naming who Google tells; and for one Joel holds, Cancel
+    // the Meeting, which asks once, since Google mails everyone asked.
+    function acts(meeting, provider) {
+        const rows = [];
+        if (meeting.link)
+            rows.push(provider.thing({
+                key: "verb:calendar:join",
+                name: Words.name("verb:calendar:join"),
+                verb: Words.verb("verb:calendar:join"),
+                glyph: Words.glyph("verb:calendar:join"),
+                hue: "action",
+                later: true,
+                run: () => root.join(meeting)
+            }));
+        rows.push(root.seeing(meeting, provider));
+        if (root.invited(meeting))
+            for (const said of ["yes", "maybe", "no"])
+                rows.push(root.answering(meeting, provider, said));
+        if (root.movable(meeting))
+            rows.push(root.moving(meeting, provider));
+        if (meeting.holds)
+            rows.push(root.cancelling(meeting, provider));
+        return rows;
+    }
+
+    // Move the Meeting steps in to the later times it offers, each saying
+    // its day and times and the meeting it would clash with, and to one
+    // typed there, which Launcher.qml asks for (`typed`) and lists first.
+    // Return on a time steps in to a row naming who Google tells, and a
+    // second Return moves it, keeping the launcher, as Cancel does.
+    function moving(meeting, provider) {
+        const key = "verb:calendar:move";
+        return provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            targets: () => root.later(meeting)
+                .map(time => root.movingTo(meeting, provider, time.name, time.start, time.end)),
+            typed: letters => {
+                const time = root.typed(letters, meeting);
+                return time === null ? [] : [root.movingTo(meeting, provider,
+                    root.dated({ start: time.start, end: time.end, allDay: false }),
+                    time.start, time.end)];
+            }
+        });
+    }
+
+    // A time to move a meeting to, keyed by when it starts, so the row
+    // holds still as more is typed.
+    function movingTo(meeting, provider, name, start, end) {
+        const key = "verb:calendar:move";
+        const dated = root.dated({ start: start, end: end, allDay: false });
+        const clash = root.clashes(meeting, start, end);
+        return provider.thing({
+            key: `calendar:move:${new Date(start).toISOString()}`,
+            name: name,
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            side: clash === null ? "" : `clashes with ${clash.title
+                || Words.name("calendar:meeting", "untitled")}`,
+            // A typed time is named by its day and times already.
+            note: name === dated ? "" : dated,
+            targets: () => [provider.thing({
+                key: `${key}:sure`,
+                name: `${Words.of(key).sure} to ${dated}, ${root.tellingOfChanges(meeting)}`,
+                verb: Words.verb(key),
+                glyph: Words.glyph(key),
+                hue: "alert",
+                stays: true,
+                run: () => root.move(meeting, start, end)
+            })]
+        });
+    }
+
+    // Cancel asks once, as Quit does (Applications.qml): Return steps in
+    // to a row saying who's told, and a second Return cancels it and
+    // leaves the launcher open on what's left.
+    function cancelling(meeting, provider) {
+        const key = "verb:calendar:cancel";
+        const asked = (meeting.guests ?? []).length;
+        const told = asked === 0 ? "Telling Nobody Else"
+            : asked === 1 ? "Telling 1 Guest" : `Telling ${asked} Guests`;
+        return provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            targets: () => [provider.thing({
+                key: `${key}:sure`,
+                name: `${Words.of(key).sure}, ${told}`,
+                verb: Words.verb(key),
+                glyph: Words.glyph(key),
+                hue: "alert",
+                stays: true,
+                run: () => root.cancel(meeting)
+            })]
+        });
+    }
+
+    // See It: the meeting's details a step in, made as it's stepped into,
+    // so they're what the program last said. Stepped into by the meeting's
+    // own Return, it's named for the meeting, so the path says which.
+    function seeing(meeting, provider, name) {
+        const key = "verb:calendar:see";
+        const inside = () => root.facts(root.meeting(meeting.id) ?? meeting, provider);
+        const row = provider.thing({
+            key: key,
+            name: name ?? Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            stays: true,
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
+    }
+
+    // What's known of it, each a figure that copies what it says, a
+    // person their address, then its page in Google Calendar, where it's
+    // changed. What it's about is one line here, copied whole.
+    function facts(meeting, provider) {
+        const rows = [provider.copyRow({
+            key: "fact:meeting:when",
+            name: root.dated(meeting),
+            side: "when"
+        })];
+        if (meeting.place)
+            rows.push(provider.copyRow({
+                key: "fact:meeting:place",
+                name: meeting.place,
+                side: "where"
+            }));
+        if (root.invited(meeting))
+            rows.push(provider.copyRow({
+                key: "fact:meeting:answer",
+                name: root.answered(meeting),
+                copy: "",
+                side: "your answer"
+            }));
+        if (meeting.link)
+            rows.push(provider.copyRow({
+                key: "fact:meeting:call",
+                name: meeting.link,
+                side: "its call"
+            }));
+        if (meeting.organizer)
+            rows.push(provider.copyRow({
+                key: "fact:meeting:organizer",
+                name: meeting.organizer.name,
+                copy: meeting.organizer.email ?? meeting.organizer.name,
+                side: "holds it"
+            }));
+        (meeting.guests ?? []).forEach((guest, at) => rows.push(provider.copyRow({
+            key: `fact:meeting:guest:${at}`,
+            name: guest.name,
+            copy: guest.email ?? guest.name,
+            side: root.answered({ answer: guest.answer })
+        })));
+        if (meeting.about)
+            rows.push(provider.copyRow({
+                key: "fact:meeting:about",
+                name: meeting.about.replace(/\s*\n\s*/g, " "),
+                copy: meeting.about,
+                side: "what it's about"
+            }));
+        if (meeting.page)
+            rows.push(provider.thing({
+                key: "verb:calendar:open",
+                name: Words.name("verb:calendar:open"),
+                verb: Words.verb("verb:calendar:open"),
+                glyph: Words.glyph("verb:calendar:open"),
+                hue: "action",
+                later: true,
+                run: () => root.open(meeting)
+            }));
+        return rows;
+    }
+
+    // An answer keeps the launcher, since he's choosing among his
+    // meetings, and the foot says the answer the program last gave.
+    function answering(meeting, provider, said) {
+        const key = `verb:calendar:${said}`;
+        return provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            stays: true,
+            state: () => root.answered(root.meeting(meeting.id)),
+            run: () => root.answer(meeting, said)
+        });
+    }
 
     function join(meeting) {
         if (!meeting || !meeting.link)

@@ -1139,10 +1139,10 @@
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
-    whether Return joins it or shows it, whether it's today's and how Joel answered it, which may
-    be moved and to what later or typed time, what that clashes with and who's told, writes the
-    lines that answer, cancel and move it, and knows which Meet call a window is and whose meeting
-    it is
+    whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
+    details for the drawer, which may be moved and to what later or typed time, what that clashes
+    with and who's told, writes the lines that answer, cancel and move it, and knows which Meet
+    call a window is and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1287,7 +1287,8 @@
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
     a meeting about to start by its name, lists it in Now, counts one within the hour down as a
     want, marked from ten minutes off and said at its reminder and as it starts, shows one further
-    off with who's asked and how each answered, answers its invitation, cancels one Joel holds
+    off with who's asked and how each answered, its details beside it, answers its invitation,
+    cancels one Joel holds
     once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
     its Meet call in Now while it's open, says Google signed out in Now with Return signing in
     again in pi, counts the mail that wants Joel in Now with Return listing it as Mail does,

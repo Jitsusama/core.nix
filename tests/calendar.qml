@@ -1,7 +1,8 @@
 // Which meeting is next, when it is in words, whether it's about to start,
-// said as a notice or told already by another, and joined by Return, its day in full, how Joel answered it and
-// the line answering it, and which Meet call a window is and whose, from
-// meetings like the google program's, run in Qt's own JavaScript engine,
+// said as a notice or told already by another, and joined by Return, its day in full, how Joel
+// answered it, its details for the drawer and the line answering it, and
+// which Meet call a window is and whose, from meetings like the google
+// program's, run in Qt's own JavaScript engine,
 // the one the shell runs it in. The
 // `the-shell-tells-the-next-meeting` check copies Calendar.js beside this
 // file and runs `qml -platform offscreen calendar.qml`. Times are made on
@@ -215,6 +216,35 @@ QtObject {
             "14:00 to 14:30, maybe");
         check("a meeting he holds says its times alone", Calendar.about(
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: null })), "14:00 to 14:30");
+
+        // Its details, as the drawer shows them beside its row.
+        check("an invitation's details in full", Calendar.details(meeting("m", at(26, 14, 0),
+            at(26, 14, 30), {
+                title: "Standup",
+                answer: "maybe",
+                place: "Room 4",
+                about: "What we did.\nWhat we do.",
+                organizer: { name: "Ada Lovelace", email: "ada@example.com" },
+                guests: [{ name: "Grace Hopper", email: "grace@example.com", answer: "no" },
+                    { name: "", email: "alan@example.com", answer: null }]
+            }), "Untitled"), {
+            title: "Standup",
+            facts: [
+                { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+                { label: "Where", value: "Room 4" },
+                { label: "Call", value: "https://meet.google.com/abc-defg-hij" },
+                { label: "Your Answer", value: "maybe" },
+                { label: "Holds It", value: "Ada Lovelace" },
+                { label: "Asked", value: "Grace Hopper, not going; alan@example.com" }
+            ],
+            body: "What we did.\nWhat we do."
+        });
+        check("a bare one he holds says only when", Calendar.details(meeting("m", at(26, 14, 0),
+            at(26, 14, 30), { title: "", answer: null, link: null }), "Untitled"), {
+            title: "Untitled",
+            facts: [{ label: "When", value: "Monday 26 October, 14:00 to 14:30" }],
+            body: ""
+        });
         check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
             '{"answer":{"id":"abc_1","with":"no"}}\n');
         check("the line cancelling one", Calendar.cancel(meeting("abc_1", now, now)),
