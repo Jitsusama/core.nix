@@ -45,6 +45,7 @@ import QtQuick
 import QtQuick.Effects
 import "Levels.js" as Levels
 import "Stack.js" as Stack
+import "launcher/Notice.js" as Notice
 
 Scope {
     id: root
@@ -212,14 +213,13 @@ Scope {
     }
     onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
 
-    // What can be done with the front one, the same as its past self in
-    // the launcher (launcher/PastNotices.qml): opening what it's about,
-    // which Return does too, what it offers, copying what it said,
-    // forgetting it, forgetting them all, and the rest of the notices;
-    // each named as the vocabulary says it (launcher/words.json), with
-    // the key that does it straight away, where there is one. Forgetting
-    // one changes the stack
-    // rather than taking Joel anywhere, so it stays: the keys stay with
+    // What can be done with the front one: the same acts, in the same
+    // order, as its row among the notices in the launcher
+    // (launcher/Notice.js), and then what's done to the whole stack, with
+    // copying what it said last; each named as the vocabulary says it
+    // (launcher/words.json), with the key that does it straight away,
+    // where there is one. Whether it's read and forgetting it change the
+    // stack rather than taking Joel anywhere, so they stay: the keys stay with
     // the stack, which shows the next. The rest take him out, so they give
     // the keys back (Joel, 2026-10-26: Return closes only when the act
     // takes him out of where he is).
@@ -227,56 +227,97 @@ Scope {
         const notification = front;
         if (!notification)
             return [];
+        const window = Notices.senderWindow(notification.appName);
+        const kept = Notices.history.find(notice => notice.id === notification.id) ?? null;
+        const read = kept !== null && kept.read;
+        return Notice.acts({
+            live: true,
+            opens: Notice.opens(notification.actions),
+            offers: Notice.offers(notification.actions)
+        }, { window: window !== null, stack: true })
+            .map(act => root.verb(notification, act, window, read));
+    }
+
+    // One of the front notice's acts, as its card lists it.
+    function verb(notification, act, window, read) {
         const done = run => () => {
             Notices.mark(notification.id, true);
             run();
         };
-        const opening = opens(notification);
-        const open = opening === null ? [] : [{
-            glyph: Words.glyph("verb:notice:open"),
-            name: Words.name("verb:notice:open"),
-            chord: [{ text: "\u21b5" }],
-            run: () => {
-                Notices.mark(notification.id, true);
-                Notices.open(opening, notification.appName);
-            }
-        }];
-        return open.concat(offers(notification).map(offer => ({
-            glyph: /reply/i.test(offer.text) ? Theme.glyph.reply : Theme.glyph.offer,
-            name: offer.text,
-            chord: [],
-            run: done(() => offer.invoke())
-        }))).concat([{
-            glyph: Words.glyph("verb:notice:copy"),
-            name: Words.name("verb:notice:copy"),
-            chord: [],
-            run: done(() => {
-                Quickshell.clipboardText = root.said(notification);
-                root.copied = notification.id;
-                copiedFor.restart();
-            })
-        }, {
-            glyph: Words.glyph("verb:notice:forget"),
-            name: Words.name("verb:notice:forget"),
-            // Keys drawn as the desktop draws them (home.nix, keyFaces),
-            // Backspace by its name, since it has no glyph of its own.
-            chord: [{ text: "Backspace" }],
-            stays: true,
-            run: () => notification.dismiss()
-        }, {
-            glyph: Words.glyph("verb:notices:forget"),
-            name: Words.name("verb:notices:forget"),
-            chord: [{ text: "\u21e7" }, { text: "Backspace" }],
-            stays: true,
-            run: () => root.putAway()
-        }, {
-            glyph: Words.glyph("verb:notices:all"),
-            name: Words.name("verb:notices:all"),
-            // The chord that opens them, pressed again while the stack
-            // holds the keys; Tab only completes (Joel, 2026-10-26).
-            chord: root.reaching,
-            run: () => root.history()
-        }]);
+        const named = (id, state) => ({
+            glyph: Words.glyph(id, state ?? ""),
+            name: Words.name(id, state ?? ""),
+            chord: []
+        });
+        switch (act.act) {
+        case "open":
+            return Object.assign(named("verb:notice:open"), {
+                chord: [{ text: "\u21b5" }],
+                run: done(() => {
+                    const opening = root.opens(notification);
+                    if (opening)
+                        Notices.open(opening, notification.appName);
+                })
+            });
+        case "offer":
+            return {
+                glyph: /reply/i.test(act.text) ? Theme.glyph.reply : Theme.glyph.offer,
+                name: act.text,
+                chord: [],
+                run: done(() => {
+                    const offer = notification.actions
+                        .find(action => action.identifier === act.identifier) ?? null;
+                    if (offer)
+                        offer.invoke();
+                })
+            };
+        case "goTo": {
+            const entry = DesktopEntries.heuristicLookup(notification.appName);
+            return Object.assign(named("verb:notice:goTo"), {
+                name: Words.name("verb:notice:goTo", "",
+                    { program: entry ? entry.name : notification.appName }),
+                run: done(() => Niri.act({ FocusWindow: { id: window.id } }))
+            });
+        }
+        case "read":
+            // One switch, its name the same either way and what it is at
+            // its side, as in the launcher.
+            return Object.assign(named("verb:notice:read", read ? "read" : ""), {
+                side: read ? "yes" : "no",
+                stays: true,
+                run: () => Notices.mark(notification.id, !read)
+            });
+        case "forget":
+            return Object.assign(named("verb:notice:forget"), {
+                // Keys drawn as the desktop draws them (home.nix, keyFaces),
+                // Backspace by its name, since it has no glyph of its own.
+                chord: [{ text: "Backspace" }],
+                stays: true,
+                run: () => notification.dismiss()
+            });
+        case "forgetAll":
+            return Object.assign(named("verb:notices:forget"), {
+                chord: [{ text: "\u21e7" }, { text: "Backspace" }],
+                stays: true,
+                run: () => root.putAway()
+            });
+        case "all":
+            return Object.assign(named("verb:notices:all"), {
+                // The chord that opens them, pressed again while the stack
+                // holds the keys; Tab only completes (Joel, 2026-10-26).
+                chord: root.reaching,
+                run: () => root.history()
+            });
+        default:
+            // Copying what it said, always last.
+            return Object.assign(named("verb:notice:copy"), {
+                run: done(() => {
+                    Quickshell.clipboardText = root.said(notification);
+                    root.copied = notification.id;
+                    copiedFor.restart();
+                })
+            });
+        }
     }
 
     // What a notice said, as plain text: its summary, and its body without
@@ -997,6 +1038,20 @@ Scope {
                                         font.family: Theme.mono.family
                                         font.pointSize: Theme.mono.body
                                         font.weight: verb.chosen ? Font.Medium : Font.Normal
+                                    }
+
+                                    // What a switch is, at its right, as a
+                                    // launcher row says it.
+                                    Text {
+                                        anchors.right: chord.left
+                                        anchors.rightMargin: chord.width > 0 ? Theme.space.l : 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: text !== ""
+                                        text: verb.modelData.side ?? ""
+                                        textFormat: Text.PlainText
+                                        color: Theme.muted
+                                        font.family: Theme.mono.family
+                                        font.pointSize: Theme.mono.body
                                     }
 
                                     Chord {

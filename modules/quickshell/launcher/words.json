@@ -2939,14 +2939,13 @@
       "glyph": "copy"
     },
     {
-      "id": "verb:notice:mark",
+      "id": "verb:notice:read",
       "in": "notices",
-      "name": "Mark It Read",
+      "name": "Read",
       "verb": "mark",
       "glyph": "read",
       "states": {
         "read": {
-          "name": "Mark It Unread",
           "glyph": "unread"
         }
       }

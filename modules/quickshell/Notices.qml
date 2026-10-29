@@ -164,6 +164,16 @@ Singleton {
     // is found by.
     property var forwarding: []
 
+    // The window of the program that sent a notice, as windows are now, or
+    // null, found by its name and its desktop entry's, as its card and its
+    // row in the launcher both go to it.
+    function senderWindow(app) {
+        const entry = DesktopEntries.heuristicLookup(app);
+        const ids = [app.toLowerCase()].concat(entry ? [entry.id.toLowerCase()] : []);
+        return Object.values(Niri.windows)
+            .find(w => w.app_id && ids.includes(w.app_id.toLowerCase())) ?? null;
+    }
+
     Timer {
         id: forwarded
         interval: 1000

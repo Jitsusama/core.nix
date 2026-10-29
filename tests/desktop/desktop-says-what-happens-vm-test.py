@@ -173,8 +173,10 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # Tab does nothing, being only for completing. The newer notice
     # waits behind the older; letting the older go keeps the keys and
     # brings the newer to the front, the right arrow steps into its
-    # verbs, what it offers first, as a launcher row's are, Down
-    # chooses the next and Left steps back, and Return does the one
+    # verbs, forgetting it first, since Return forgets one with nothing to
+    # open, then what it offers, as a launcher row's are
+    # (launcher/Notice.js), Down chooses the next and Left steps
+    # back, and Return does the one
     # chosen, with a token to come forward, and gives the keys back.
     desktop.listen()
     with desktop.told("keys notices"):
@@ -186,15 +188,17 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # stepping in, through and out of them moves nothing.
     desktop.held_still()
     since = desktop.mark()
-    with desktop.told("notice verb Play it"):
+    with desktop.told("notice verb Forget It"):
         machine.send_key("right")
-    with desktop.told("notice verb Copy What It Said"):
+    with desktop.told("notice verb Play it"):
         machine.send_key("down")
     desktop.photograph("notices-held-verbs")
     with desktop.told("notice back"):
         machine.send_key("left")
-    with desktop.told("notice verb Play it"):
+    with desktop.told("notice verb Forget It"):
         machine.send_key("right")
+    with desktop.told("notice verb Play it"):
+        machine.send_key("down")
     moved = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)} | grep -F 'notice stands'; true"
@@ -225,9 +229,14 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
         desktop.as_account("notify-send --expire-time=60000 'Build log' 'all green'")
     with desktop.told("keys notices"):
         machine.send_key("meta_l-n")
-    # It offers nothing and opens nothing, so copying leads its verbs.
-    with desktop.told("notice verb Copy What It Said"):
+    # It offers nothing and opens nothing, so forgetting it leads its
+    # verbs, as Return does, then whether it's read, the stack's own, and
+    # copying what it said last (launcher/Notice.js).
+    with desktop.told("notice verb Forget It"):
         machine.send_key("right")
+    for verb in ["Read", "Forget Them All", "All the Notices", "Copy What It Said"]:
+        with desktop.told(f"notice verb {verb}"):
+            machine.send_key("down")
     with desktop.told("copied card Build log"):
         machine.send_key("ret")
     desktop.photograph("notice-copied")
