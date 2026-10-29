@@ -3518,6 +3518,15 @@ def test_waiting_with_nowhere_to_go_steps_in_and_copies_after_its_acts(
         )
     finally:
         desktop.as_account(f"rm -f {queue}")
+        # Its notice goes a moment after its item does; until then the
+        # margin holds it, and Now would open on it in the next subtest.
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                " | grep -o 'report\\[holds margin [^]]*' | tail -n 1 | grep -qvw waiting"
+            ),
+            timeout=dt.timedelta(seconds=10),
+        )
 
 
 def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
