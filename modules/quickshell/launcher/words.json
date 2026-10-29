@@ -140,7 +140,7 @@
       "verb": "reopen",
       "glyph": "resume",
       "said": {
-        "gone": "Not reopened: its folder, {cwd}, is gone."
+        "gone": "not reopened, since its folder, {cwd}, is gone"
       }
     },
     {
@@ -4792,9 +4792,9 @@
       "verb": "resume",
       "glyph": "resume",
       "said": {
-        "afresh": "Started afresh in {folder}: its last session's folder, {cwd}, is gone.",
-        "nowhere": "Not resumed: its last session's folder, {cwd}, is gone, and its quest names no folder to start in.",
-        "unfound": "Not resumed: its last session's record wasn't found, and its quest names no folder to start in."
+        "afresh": "started afresh in {folder}, since its last session's folder, {cwd}, is gone",
+        "nowhere": "not resumed, since its last session's folder, {cwd}, is gone and its quest names no folder to start in",
+        "unfound": "not resumed, since its last session's record wasn't found and its quest names no folder to start in"
       }
     },
     {
