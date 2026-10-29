@@ -3696,7 +3696,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
             lambda shown: (
                 shown["held"] == ["now", "Waiting on You"]
                 and shown["rows"][:1] == ["A quest of its own & whole"]
-                and (shown["selected"] or {}).get("verb") == "switch"
+                and (shown["selected"] or {}).get("verb") == "go"
             )
         )
         machine.send_key("ret")
