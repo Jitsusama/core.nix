@@ -29,7 +29,22 @@
     command = pkgs.lib.getExe (pkgs.callPackage ./tests/qt-javascript-lint.nix { });
     includes = [ "*.js" ];
     # The launcher is being redesigned, its matcher with it, which comes
-    # under biome as it's rewritten.
-    excludes = [ "modules/quickshell/Fuzzy.js" ];
+    # under biome as it's rewritten. Chrome's extension isn't QML's.
+    excludes = [
+      "modules/quickshell/Fuzzy.js"
+      "modules/chrome/open-tabs/extension/*.js"
+    ];
+  };
+
+  # Chrome's open-tabs extension, read by biome as the browser runs it.
+  settings.formatter.browser-javascript-lint = {
+    command = pkgs.lib.getExe pkgs.biome;
+    options = [
+      "lint"
+      "--error-on-warnings"
+      "--max-diagnostics=none"
+      "--config-path=biome.jsonc"
+    ];
+    includes = [ "modules/chrome/open-tabs/extension/*.js" ];
   };
 }

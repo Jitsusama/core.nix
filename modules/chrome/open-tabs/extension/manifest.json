@@ -2,6 +2,9 @@
   "manifest_version": 3,
   "name": "Open Tabs for the Launcher",
   "description": "Tells the desktop's launcher which tabs are open, and goes to or closes one it's asked to.",
-  "version": "1",
-  "permissions": ["tabs", "nativeMessaging"]
+  "version": "2",
+  "permissions": ["tabs", "nativeMessaging"],
+  "background": {
+    "service_worker": "background.js"
+  }
 }

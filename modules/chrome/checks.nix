@@ -9,8 +9,13 @@
 let
   recent-sites = pkgs.callPackage ./recent-sites/package.nix { };
   pack-extension = pkgs.callPackage ./pack-extension/package.nix { };
+  open-tabs = pkgs.callPackage ./open-tabs/host/package.nix { };
 in
 onLinux {
+  # clippy finds nothing in the host that tells the launcher Chrome's open
+  # tabs, its tests included.
+  chrome-open-tabs-passes-clippy = passesClippy "chrome-open-tabs-passes-clippy" open-tabs;
+
   # clippy finds nothing in what packs the launcher's Chrome extension, its
   # tests included.
   chrome-pack-extension-passes-clippy = passesClippy "chrome-pack-extension-passes-clippy" pack-extension;
