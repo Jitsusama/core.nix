@@ -31,4 +31,15 @@
     holds "booted-generation-stays-installed"
       "lanzaboote can remove the booted generation, which drops PCR 4 from the disk's policy."
       (machine.config.boot.lanzaboote.protectedSystem == "/run/booted-system");
+
+  # The wrappers unit stays active once it's run, so the units measured
+  # boot's wait for sysinit.target pulls in again can't run it past its
+  # start limit and leave it failed.
+  wrappers-run-once-a-boot =
+    let
+      machine = bareNixos [ self.nixosModules.lanzaboote ];
+    in
+    holds "wrappers-run-once-a-boot"
+      "the SUID wrappers' unit can run again while measured boot holds sysinit.target back, and end failed at its start limit."
+      (machine.config.systemd.services.suid-sgid-wrappers.serviceConfig.RemainAfterExit or false);
 }

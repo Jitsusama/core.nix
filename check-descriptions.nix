@@ -1606,6 +1606,10 @@
   work-yields-to-what-the-person-works-in = ''
     jobs is idle beside app.slice, pi finds it, and a window's scope is not idle
   '';
+  wrappers-run-once-a-boot = ''
+    a machine with measured boot keeps the SUID wrappers' unit active once it's run, so measured
+    boot's wait for sysinit.target can't run it past its start limit
+  '';
   writes-go-out-sooner = ''
     a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after
     idle, and asks for ECN with its fallback
