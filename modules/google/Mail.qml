@@ -82,6 +82,7 @@ Singleton {
         return thing({
             key: `mail:${mail.id}`,
             what: "mail",
+            component: "mail",
             of: "program:google-mail",
             part: titled(mail),
             name: titled(mail),
