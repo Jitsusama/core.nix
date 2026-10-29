@@ -233,11 +233,6 @@ class Account:
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
-        answer = said.get("answer", {})
-        tidied = (said.get("read") or said.get("archive") or {}).get("id")
-        unread = said.get("unread", {}).get("id")
-        cancelled = said.get("cancel", {}).get("id")
-        moved = said.get("move", {})
         with self.lock:
             if "fetch" in said:
                 self.fetch(said["fetch"])
@@ -247,31 +242,44 @@ class Account:
                     "link": "https://meet.google.com/new-abcd-efg",
                     "failed": False,
                 }
-            for one in self.meetings:
-                if answer.get("id") == one["id"]:
-                    one["answer"] = answer["with"]
-                if moved.get("id") == one["id"] and one["through"]:
-                    one["start"], one["end"] = moved["start"], moved["end"]
-            self.meetings = [
-                one for one in self.meetings if not (one["id"] == cancelled and one["holds"])
-            ]
-            held = [mail for mail in self.mail if mail["id"] != tidied]
-            if len(held) < len(self.mail):
-                if "read" in said:
-                    self.read += [mail for mail in self.mail if mail["id"] == tidied]
-                self.mail = held
-                self.unread -= 1
-            back = [mail for mail in self.read if mail["id"] == unread]
-            if back:
-                self.read = [mail for mail in self.read if mail["id"] != unread]
-                self.mail = sorted(self.mail + back, key=lambda mail: -int(str(mail["at"])))
-                self.unread += 1
+            self.schedule(said)
+            self.tidy(said)
             self.leave()
             for shell in list(self.shells):
                 try:
                     shell.sendall(self.line())
                 except OSError:
                     self.shells.remove(shell)
+
+    def schedule(self, said: dict[str, dict[str, object]]) -> None:
+        """Take what a shell asked of the meetings: one answered, moved or cancelled."""
+        answer = said.get("answer", {})
+        cancelled = said.get("cancel", {}).get("id")
+        moved = said.get("move", {})
+        for one in self.meetings:
+            if answer.get("id") == one["id"]:
+                one["answer"] = answer["with"]
+            if moved.get("id") == one["id"] and one["through"]:
+                one["start"], one["end"] = moved["start"], moved["end"]
+        self.meetings = [
+            one for one in self.meetings if not (one["id"] == cancelled and one["holds"])
+        ]
+
+    def tidy(self, said: dict[str, dict[str, object]]) -> None:
+        """Take what a shell asked of the mail: marked read, archived or marked unread again."""
+        tidied = (said.get("read") or said.get("archive") or {}).get("id")
+        unread = said.get("unread", {}).get("id")
+        held = [mail for mail in self.mail if mail["id"] != tidied]
+        if len(held) < len(self.mail):
+            if "read" in said:
+                self.read += [mail for mail in self.mail if mail["id"] == tidied]
+            self.mail = held
+            self.unread -= 1
+        back = [mail for mail in self.read if mail["id"] == unread]
+        if back:
+            self.read = [mail for mail in self.read if mail["id"] != unread]
+            self.mail = sorted(self.mail + back, key=lambda mail: -int(str(mail["at"])))
+            self.unread += 1
 
     def fetch(self, asked: dict[str, object]) -> None:
         """Write a file a piece of mail carries where the program would, and say where."""

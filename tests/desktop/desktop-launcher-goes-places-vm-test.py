@@ -2366,9 +2366,7 @@ def test_meet_copies_a_new_meetings_link_last_without_opening_meet(desktop: Desk
     desktop.answer("meet")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
     desktop.step_in()
-    desktop.launcher_until(
-        lambda shown: (shown["rows"] or [""])[-1] == "Copy a New Meeting's Link"
-    )
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy a New Meeting's Link")
     desktop.down_to("Copy a New Meeting's Link")
     machine.send_key("ret")
     link = "https://meet.google.com/new-abcd-efg"
