@@ -889,6 +889,7 @@ gather (
     ./modules/onepassword/checks.nix
     ./modules/open-with/checks.nix
     ./modules/panel/checks.nix
+    ./modules/people/checks.nix
     ./modules/pi/checks.nix
     ./modules/pi-packages/checks.nix
     ./modules/pipewire/checks.nix

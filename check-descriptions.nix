@@ -1083,6 +1083,12 @@
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
   '';
+  the-people-are-one-person-each = ''
+    every source's people join into one person per email address, a source that knows two
+    addresses for someone joining them, each standing as the first source that says, those dealt
+    with lately or favoured listed in order, with their details for the drawer and their acts in
+    the one order
+  '';
   the-picker-picks-what-the-keys-say = ''
     the region picker starts on the middle quarter, moves and sizes its box by arrows within the
     screen, and names a 16 by 10 grid's cells by two letters
