@@ -451,13 +451,13 @@ Scope {
         }
     }
 
-    // An application's own glyph, by its desktop entry's id or a window's
     // The programs this provider gives acts to (programActs) whose desktop
     // entries hide themselves, as Tuple's does, having no window to open:
     // Programs lists them all the same, each stepping in on Return rather
     // than starting (Applications.qml).
     property var hiddenPrograms: []
 
+    // An application's own glyph, by its desktop entry's id or a window's
     // app id, with a machine's own from `settings.glyphs`: its logo where
     // the icon font has one, as a hex code point, and otherwise the
     // theme's mark for what it is, as `mark:` and the mark's name, so no
