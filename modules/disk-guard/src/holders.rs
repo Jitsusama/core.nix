@@ -247,10 +247,22 @@ pub fn holders(
     grew: &Grown,
     home: Option<&Path>,
 ) -> Vec<Holder> {
-    let mut holders: Vec<Holder> = measured
-        .iter()
-        .filter(|(_, bytes)| *bytes > 0)
-        .map(|(place, bytes)| {
+    // The shown are chosen first, by size alone, and only they are matched
+    // with what's offered and worded: the status is built three times a
+    // step, every five seconds, and doing it for every place measured
+    // held 40% of a core on 29 October.
+    let mut sized: Vec<&(Place, u64)> = measured.iter().filter(|(_, bytes)| *bytes > 0).collect();
+    sized.sort_by_key(|(_, bytes)| std::cmp::Reverse(*bytes));
+    sized
+        .into_iter()
+        .enumerate()
+        .filter(|(rank, (place, _))| {
+            *rank < SHOWN
+                || grew
+                    .get(&place.path)
+                    .is_some_and(|grew| grew.bytes >= GROWING)
+        })
+        .map(|(_, (place, bytes))| {
             let inside: Vec<&Offered> = offered
                 .iter()
                 .filter(|offer| offer.path.starts_with(&place.path))
@@ -281,15 +293,6 @@ pub fn holders(
             holder.says = says(&holder, home);
             holder
         })
-        .collect();
-    holders.sort_by_key(|holder| std::cmp::Reverse(holder.bytes));
-    holders
-        .into_iter()
-        .enumerate()
-        .filter(|(rank, holder)| {
-            *rank < SHOWN || holder.grew.is_some_and(|grew| grew.bytes >= GROWING)
-        })
-        .map(|(_, holder)| holder)
         .collect()
 }
 
