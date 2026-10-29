@@ -1031,17 +1031,19 @@ with AMD: a Ryzen 5 Microsoft Surface Edition (six Zen 2 cores, Renoir) with
 Radeon graphics, Intel's AX200 Wi-Fi 6, a Nuvoton TPM 2.0, and Surface's own
 embedded controller, the Surface Aggregator Module, behind which sit the
 keyboard, the battery and the charger. The stock kernel drives all of what's
-below, so the module adds no patches.
+below but the thermal sensors and the fan, and amd-pstate for the CPU, which
+two patches add.
 
 | Part     | What the module does                                                      |
 | -------- | ------------------------------------------------------------------------- |
-| CPU      | the kernel compiled for `znver2`, microcode, KVM                          |
+| CPU      | the kernel compiled for `znver2`, microcode, KVM, amd-pstate guided       |
 | Keyboard | named as the built-in one, `045e:09ae`, and its drivers in the initrd     |
 | Boot     | NVMe and USB drivers in the initrd                                        |
 | Graphics | named as the GPU the desktop waits for, its driver in the initrd          |
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, the firmware's unreadable one kept from loading   |
+| Sensors  | the Aggregator's thermal sensors and fan, through a kernel patch          |
 | Mics     | their gain held at their own level, so a call doesn't clip                |
 | Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
 
@@ -1188,11 +1190,46 @@ so the desktop's full volume is the mics' own level. It's given through a
 profile set for the analog card alone; the headset jack and the outputs
 keep PipeWire's paths.
 
+### Temperatures and Fan
+
+The kernel's Surface Aggregator registry gives this model (ACPI MSHW0110)
+the Intel Laptop 3 and 4's devices, which have no thermal sensors or fan,
+so only the CPU's, the GPU's, the disk's and Wi-Fi's temperatures showed.
+Asked directly through `/dev/surface/aggregator`, the controller answers
+for both: its sensor list names eight sensors, I_RTS1, I_RTS3, I_RTS5,
+I_RTS6 and I_RTS8 and I_VTS1 to I_VTS3, at 26.6 °C to 34.2 °C on an idle
+laptop, and the fan reads 0 rpm. The module's kernel patch
+([`kernel/surface-laptop-amd-sensors-and-fan.patch`][23]) gives MSHW0110 a
+group of its own with both devices, so `surface_temp` and `surface_fan`
+bind and show them under hwmon; the device check expects both. The
+platform profile still doesn't drive the fan's own profile, since no fan
+profile command has been tried on this controller.
+
+### The CPU's Frequency Driver
+
+This CPU has no CPPC CPUID bit, so amd-pstate reaches CPPC through each
+CPU's ACPI `_CPC` package, and it sets the package's Autonomous Selection
+Enable for the chosen mode. On this laptop (firmware 4.355.140) that entry is
+the integer 1 rather than a register, so the write fails with -95 on every
+CPU, the driver doesn't register, and acpi-cpufreq runs instead. The
+module's kernel patch
+([`kernel/amd-pstate-fixed-autonomous-selection.patch`][24]) takes the
+refused write as success when the fixed value is what the mode wants.
+Passive mode is still refused, since this firmware always selects
+autonomously. Active mode, the kernel's default, would fail next: it writes
+the Energy Performance Preference, which the kernel does only when the
+platform `_OSC` grants CPPC's flexible address space, and this firmware
+grants only PR3 and APEI (`0x14`). Guided mode writes no preference, only
+CPPC Enable and the Desired, Minimum and Maximum Performance fields of MSR
+`C00102B3`, so the module boots with `amd_pstate=guided`. The CPU's range
+under CPPC runs from 400 MHz lowest to 2201 MHz nominal.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
+| CPU        | its clocks and temperatures under guided amd-pstate aren't measured yet        |
 | Sleep      | the drain on battery overnight isn't measured                                  |
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
@@ -1222,3 +1259,5 @@ keep PipeWire's paths.
 [20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
 [21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter
 [22]: ../hardware/microsoft-surface-laptop-4-1958/sound/paths/analog-input-internal-mic.conf
+[23]: ../hardware/microsoft-surface-laptop-4-1958/kernel/surface-laptop-amd-sensors-and-fan.patch
+[24]: ../hardware/microsoft-surface-laptop-4-1958/kernel/amd-pstate-fixed-autonomous-selection.patch

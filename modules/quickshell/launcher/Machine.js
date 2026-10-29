@@ -3,8 +3,8 @@
 // how busy the processors and each core were between two reads, which kind
 // each core is, how fast a disk read and wrote between two reads, which
 // programs use the processors and the memory, what held the processor
-// back and what kept it from resting as its own telemetry says, and the
-// memory modules the machine read at boot. Machine.qml reads the files
+// back and what kept it from resting as its own telemetry says, how busy
+// the NPU was, and the memory modules the machine read at boot. Machine.qml reads the files
 // and says the figures.
 .pragma library
 
@@ -233,6 +233,29 @@ function kept(readings) {
         .filter(part => part.share >= RESTLESS)
         .sort((a, b) => b.share - a.share);
     return { share, by, quiet: share < RESTLESS };
+}
+
+// The NPU's driver counts its busy time in microseconds and its clock in
+// megahertz, which is said in gigahertz to two decimals at most: 1400 is
+// "1.4", 2050 is "2.05".
+const MICROSECONDS = 1e6;
+const MEGAHERTZ = 1000;
+const CLOCK_DECIMALS = 2;
+
+// The NPU's load between two reads of its driver's counters, each
+// { busy, clock, top }: its busy time since boot in microseconds, and its
+// clock now and at most in megahertz. The share of the time between them
+// it was busy, or null with no read before to measure from, and what its
+// clock says, "resting" while it's powered down. Null with no NPU.
+function npuLoad(now, then, seconds) {
+    if (!now) {
+        return null;
+    }
+    const share = then !== null && seconds > 0
+        ? Math.min(1, Math.max(0, (now.busy - then.busy) / (seconds * MICROSECONDS))) : null;
+    const ghz = mhz => String(Number((mhz / MEGAHERTZ).toFixed(CLOCK_DECIMALS)));
+    const clock = now.clock > 0 ? `at ${ghz(now.clock)} GHz of ${ghz(now.top)} GHz` : "resting";
+    return { share, clock };
 }
 
 // Each core's kind, by its number, on a processor of more than one kind:

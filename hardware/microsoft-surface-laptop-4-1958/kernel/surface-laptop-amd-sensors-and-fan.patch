@@ -1,0 +1,50 @@
+platform/surface: aggregator_registry: Add sensors and fan for Laptop 3/4 AMD
+
+The Surface Laptop 3 and 4 with AMD (MSHW0110) share the Intel models'
+node group, which has no thermal sensors or fan. Their controller answers
+for both: on a Laptop 4 (13.5", AMD), target category 0x03 command 0x04
+lists sensors 1, 3, 5, 6, 8, 9, 10 and 11, named I_RTS1, I_RTS3, I_RTS5,
+I_RTS6, I_RTS8, I_VTS1, I_VTS2 and I_VTS3 (26.6 C to 34.2 C at idle), and
+the fan command (category 0x05, instance 1, command 0x01) reads its speed.
+Give MSHW0110 a group of its own with both nodes, so surface_temp and
+surface_fan bind. The platform profile keeps its fanless node: no fan
+profile command has been tried on this controller.
+
+diff --git a/drivers/platform/surface/surface_aggregator_registry.c b/drivers/platform/surface/surface_aggregator_registry.c
+--- a/drivers/platform/surface/surface_aggregator_registry.c
++++ b/drivers/platform/surface/surface_aggregator_registry.c
+@@ -261,6 +261,23 @@
+ 	NULL,
+ };
+ 
++/*
++ * Devices for Surface Laptop 3 and 4 with AMD. Their controller also answers
++ * for the thermal sensors and the fan speed, as later models' do.
++ */
++static const struct software_node *ssam_node_group_sl3_amd[] = {
++	&ssam_node_root,
++	&ssam_node_bat_ac,
++	&ssam_node_bat_main,
++	&ssam_node_tmp_perf_profile,
++	&ssam_node_tmp_sensors,
++	&ssam_node_fan_speed,
++	&ssam_node_hid_main_keyboard,
++	&ssam_node_hid_main_touchpad,
++	&ssam_node_hid_main_iid5,
++	NULL,
++};
++
+ /* Devices for Surface Laptop 5. */
+ static const struct software_node *ssam_node_group_sl5[] = {
+ 	&ssam_node_root,
+@@ -475,8 +492,8 @@
+ 	/* Surface Laptop 3 (13", Intel) */
+ 	{ "MSHW0114", (unsigned long)ssam_node_group_sl3 },
+ 
+-	/* Surface Laptop 3 (15", AMD) and 4 (15", AMD) */
+-	{ "MSHW0110", (unsigned long)ssam_node_group_sl3 },
++	/* Surface Laptop 3 (15", AMD) and 4 (13.5" and 15", AMD) */
++	{ "MSHW0110", (unsigned long)ssam_node_group_sl3_amd },
+ 
+ 	/* Surface Laptop 4 (13", Intel) */
+ 	{ "MSHW0250", (unsigned long)ssam_node_group_sl3 },

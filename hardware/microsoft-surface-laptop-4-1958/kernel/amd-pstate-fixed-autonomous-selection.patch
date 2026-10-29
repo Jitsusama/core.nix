@@ -1,0 +1,59 @@
+cpufreq/amd-pstate: Accept a fixed Autonomous Selection Enable that matches
+
+Without the CPPC CPUID bit, amd-pstate takes the shared-memory path,
+which sets _CPC's Autonomous Selection Enable for the chosen mode. On the
+Surface Laptop 4 (AMD, firmware 4.355.140) every CPU's _CPC gives that
+entry as the integer 1, not a register, so cppc_set_auto_sel() returns
+-EOPNOTSUPP. Each CPU logs "failed to set auto_sel, ret: -95", the driver
+fails to register, and acpi-cpufreq runs instead.
+
+Treat the refused write as success when the fixed value already holds
+what the mode needs. Passive mode, which wants autonomous selection off,
+is still refused, as it should be on firmware that is always autonomous.
+
+Of the modes that want it on, only guided mode runs on this firmware.
+Guided writes CPPC Enable (MSR C00102B1) and Desired, Min and Max
+Performance (C00102B3), all functional fixed hardware that
+cppc_set_perf() writes directly. Active mode also writes the Energy
+Performance Preference, and cppc_set_epp_perf() writes FFH registers only
+when the platform _OSC grants CPPC's flexible address space. This
+firmware grants 0x14 of 0x002e7eff (PR3 and APEI), so active mode's first
+EPP write returns -ENOTSUPP and its init fails all the same. The kernel
+is booted with amd_pstate=guided.
+
+A similar change (Akram Boulahia, 2026-10-08) was dropped after that
+machine's firmware update made the entry writable, and its author noted
+it didn't handle passive mode. This change checks the fixed value
+against the mode, so passive mode is refused as before.
+
+diff --git a/drivers/cpufreq/amd-pstate.c b/drivers/cpufreq/amd-pstate.c
+--- a/drivers/cpufreq/amd-pstate.c
++++ b/drivers/cpufreq/amd-pstate.c
+@@ -507,7 +507,7 @@
+ 	struct cppc_perf_caps cppc_perf;
+ 	union perf_cached perf = READ_ONCE(cpudata->perf);
+ 	u64 numerator;
+-	bool auto_sel;
++	bool auto_sel, want;
+ 
+ 	int ret = cppc_get_perf_caps(cpudata->cpu, &cppc_perf);
+ 	if (ret)
+@@ -532,8 +532,16 @@
+ 		return 0;
+ 	}
+ 
+-	ret = cppc_set_auto_sel(cpudata->cpu,
+-			(cppc_state == AMD_PSTATE_PASSIVE) ? 0 : 1);
++	want = cppc_state != AMD_PSTATE_PASSIVE;
++	ret = cppc_set_auto_sel(cpudata->cpu, want);
++
++	/*
++	 * Firmware may give Autonomous Selection Enable as a constant rather
++	 * than a register. A refused write is harmless when the constant
++	 * already holds what the requested mode needs.
++	 */
++	if (ret == -EOPNOTSUPP && auto_sel == want)
++		return 0;
+ 
+ 	if (ret)
+ 		pr_warn("failed to set auto_sel, ret: %d\n", ret);

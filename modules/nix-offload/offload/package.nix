@@ -10,6 +10,7 @@ rustPlatform.buildRustPackage {
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ./tests
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;

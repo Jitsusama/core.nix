@@ -23,12 +23,14 @@ fn starting() -> MutexGuard<'static, ()> {
 /// git as changed-checks asks it: where the repository is, the merge base
 /// with origin's main and nothing else, and no untracked files. The working
 /// tree has a change in it, until a test writes `clean`, and then it's its
-/// commit.
+/// commit; origin has that commit once a test writes `pushed`.
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
   rev-parse)
     if [ "$2" = HEAD ]; then echo fedcba9876543210fedc; else echo "$STAND_IN/repo"; fi ;;
   status) [ -e "$STAND_IN/clean" ] || echo " M flake.nix" ;;
+  branch) if [ -e "$STAND_IN/pushed" ]; then echo "  origin/topic"; fi ;;
+  remote) echo https://github.com/someone/thing.git ;;
   -C)
     case "$3" in
       merge-base) [ "$5" = refs/remotes/origin/main ] || exit 1; echo 0123456789abcdef0123 ;;
@@ -70,6 +72,17 @@ case "$5" in
 esac
 "#;
 
+/// nix-offload as changed-checks asks it to build there: it records what
+/// it was given, and journals the build as sent from the lent builder, as
+/// `nix-offload there` does.
+const NIX_OFFLOAD: &str = r#"#!/bin/sh
+[ -f "$STAND_IN/refuses" ] && exit 64
+printf '%s\n' "$@" > "$STAND_IN/sent"
+mkdir -p "$XDG_STATE_HOME/nix-offload"
+echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
+  >> "$XDG_STATE_HOME/nix-offload/there.jsonl"
+"#;
+
 /// A folder holding the stand-ins and what they read, emptied first.
 struct StandIn {
     folder: PathBuf,
@@ -82,7 +95,7 @@ impl StandIn {
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(folder.join("bin")).expect("a folder for the stand-ins");
         let _starting = starting();
-        for (name, script) in [("git", GIT), ("nix", NIX)] {
+        for (name, script) in [("git", GIT), ("nix", NIX), ("nix-offload", NIX_OFFLOAD)] {
             let path = folder.join("bin").join(name);
             fs::write(&path, script).expect("a stand-in");
             fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("it runs");
@@ -200,7 +213,7 @@ fn asked_to_build_it_builds_what_was_added_and_changed_but_the_vm_tests() {
 }
 
 #[test]
-fn it_builds_on_a_lent_builders_store_or_else_asks_for_standing_builders() {
+fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     let stand_in = StandIn::new("elsewhere");
     stand_in.checks("base", BASE);
     stand_in.checks("working", WORKING);
@@ -208,28 +221,57 @@ fn it_builds_on_a_lent_builders_store_or_else_asks_for_standing_builders() {
     fs::create_dir_all(&offload).expect("its folder");
     let repo = stand_in.path("repo");
     let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
-    let checks = format!("--no-link --keep-going -L {flake}.new {flake}.a\n");
-
-    fs::write(offload.join("machines-with-standing"), "").expect("written");
-    fs::write(offload.join("store"), "").expect("written");
-    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
-    assert!(ran.status.success(), "{}", text(&ran.stderr));
     let standing = offload.join("machines-with-standing");
-    let asked = format!("--builders @{} ", standing.display());
-    assert_eq!(
-        stand_in.built(),
-        checks.replacen("-L ", &format!("-L {asked}"), 1)
+    let here = format!(
+        "--no-link --keep-going -L --builders @{} {flake}.new {flake}.a\n",
+        standing.display()
     );
+    let asked = || stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+    fs::write(&standing, "").expect("written");
 
-    fs::write(offload.join("store"), "ssh-ng://lent?compress=true\n").expect("written");
-    fs::remove_file(stand_in.path("built")).expect("cleared");
-    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+    fs::write(offload.join("store"), "").expect("written");
+    let ran = asked();
     assert!(ran.status.success(), "{}", text(&ran.stderr));
-    let sent = "--eval-store auto --store ssh-ng://lent?compress=true ";
+    assert_eq!(stand_in.built(), here, "no builder is lent");
+
+    let lent = "ssh-ng://lent?compress=true&ssh-key=/the/key\n";
+    fs::write(offload.join("store"), lent).expect("written");
+    for (step, why) in [
+        ("clean", "the working tree differs from its commit"),
+        (
+            "pushed",
+            "origin doesn't have fedcba987654; push it to build there",
+        ),
+    ] {
+        fs::remove_file(stand_in.path("built")).expect("cleared");
+        let ran = asked();
+        assert!(ran.status.success(), "{}", text(&ran.stderr));
+        assert_eq!(stand_in.built(), here, "{why}");
+        assert!(text(&ran.stderr).contains(&format!("building here, since {why}")));
+        fs::write(stand_in.path(step), "").expect("written");
+    }
+
+    fs::remove_file(stand_in.path("built")).expect("cleared");
+    let ran = asked();
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(stand_in.built(), "", "nothing is built here");
     assert_eq!(
-        stand_in.built(),
-        checks.replacen("-L ", &format!("-L {sent}"), 1)
+        fs::read_to_string(stand_in.path("sent")).expect("it was sent"),
+        "there\n-L\n--keep-going\ngithub:someone/thing/fedcba9876543210fedc\n\
+         checks.x86_64-linux.new\nchecks.x86_64-linux.a\n"
     );
+    let runs = stand_in.runs();
+    let built = &runs.last().expect("the run")["built"];
+    assert_eq!(built["lent"], true, "{built}");
+    assert_eq!(built["sent"], 4321, "{built}");
+    assert_eq!(built["checks"], 2, "{built}");
+
+    // A nix-offload older than `there` refuses it, and it's built here.
+    fs::write(stand_in.path("refuses"), "").expect("written");
+    let ran = asked();
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(stand_in.built(), here, "refused there");
+    assert!(text(&ran.stderr).contains("since nix-offload couldn't take the build there"));
 }
 
 #[test]
