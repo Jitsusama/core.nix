@@ -1400,6 +1400,15 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
             and re.fullmatch(r"in (29|30) min", str(shown["selected"].get("side", "")))
         )
     )
+    # Its details are beside it in the drawer, as the meeting's own row
+    # gives them wherever it shows.
+    drawer = desktop.showing()["selected"].get("drawer") or {}
+    facts = {fact["label"]: fact["value"] for fact in drawer.get("facts", [])}
+    assert drawer.get("title") == "Standup", drawer
+    assert facts.get("Where") == "Room 4", drawer
+    assert facts.get("Holds It") == "Ada Lovelace", drawer
+    assert facts.get("Asked") == "Grace Hopper, not going", drawer
+    assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")

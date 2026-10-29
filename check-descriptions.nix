@@ -1287,7 +1287,8 @@
     the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, joins
     a meeting about to start by its name, lists it in Now, counts one within the hour down as a
     want, marked from ten minutes off and said at its reminder and as it starts, shows one further
-    off with who's asked and how each answered, answers its invitation, cancels one Joel holds
+    off with who's asked and how each answered, its details beside it, answers its invitation,
+    cancels one Joel holds
     once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
     its Meet call in Now while it's open, says Google signed out in Now with Return signing in
     again in pi, counts the mail that wants Joel in Now with Return listing it as Mail does,
