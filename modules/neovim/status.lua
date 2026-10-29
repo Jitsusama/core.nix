@@ -7,7 +7,8 @@
 -- right: what's selected or found, the file's errors and warnings, a
 -- language server at work, an agent paired with the editor, and the branch
 -- with its marks. Each shows only while it's true, and they give way a
--- step at a time as the window narrows.
+-- step at a time as the window narrows, without a trace; a name cut short
+-- keeps the more mark where it was cut.
 --
 -- Git's state comes from git-engine, the prompt's own, started once for
 -- the editor and asked again when something may have changed it: a buffer
@@ -461,7 +462,6 @@ end
 local function draw(on)
   local buf, above = shown()
   local left, right = {}, {}
-  local lost = false
 
   local here = placed(buf)
   if here.path then
@@ -555,9 +555,7 @@ local function draw(on)
     put(right, 'text', ' ' .. warnings)
   end
 
-  if on.right then
-    lost = lost or next(progress) ~= nil or paired() or (state and state.branch ~= nil)
-  else
+  if not on.right then
     local latest = nil
     for _, work in pairs(progress) do
       if not latest or work.at > latest.at then
@@ -578,9 +576,7 @@ local function draw(on)
     if state then
       gap()
       put(right, 'muted', glyph.branch)
-      if on.branchglyph then
-        lost = true
-      else
+      if not on.branchglyph then
         put(right, 'muted', ' ' .. (on.branchshort and middle(state.branch, 14) or state.branch))
       end
       if state.unsaved then
@@ -590,10 +586,6 @@ local function draw(on)
         put(right, 'text', ' ' .. glyph.unpushed)
       end
     end
-  end
-  if lost then
-    gap()
-    put(right, 'muted', glyph.more)
   end
   return left, right
 end

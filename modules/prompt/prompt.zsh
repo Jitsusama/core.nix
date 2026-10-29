@@ -8,8 +8,9 @@
 #
 # It's laid out once per prompt and again on a resize, never per keystroke.
 # When the window is too narrow the right side gives way a step at a time,
-# the least needed first, with the more mark wherever something is hidden,
-# and zsh clears it whole once typing reaches it. Once a command is entered
+# the least needed first, and what gives way goes without a trace; a name
+# cut short keeps the more mark where it was cut. zsh clears the right side
+# whole once typing reaches it. Once a command is entered
 # its prompt steps back to the folder and a muted glyph, so scrollback shows
 # the commands, and a blank line separates each command from the last.
 #
@@ -322,11 +323,6 @@ _prompt_build_left() {
       _prompt_put text $op
     fi
   fi
-  local right=${_prompt_state[branch]}${_prompt_state[shell]}${_prompt_took}
-  if _prompt_on right && { [[ -n $right ]] || (( ${_prompt_state[jobs]} )) }; then
-    REPLY+="  " _prompt_plain+="  "
-    _prompt_put muted ${_prompt_glyph[more]}
-  fi
   # As root the keys still go to the glyph, but they reach everything.
   local mark=${_prompt_glyph[prompt]} hue=accent
   (( EUID == 0 )) && mark=${_prompt_glyph[root]} hue=warning
@@ -339,35 +335,25 @@ _prompt_build_left() {
 }
 
 _prompt_build_right() {
-  local REPLY="" _prompt_plain="" lost=0
+  local REPLY="" _prompt_plain=""
   _prompt_r="" _prompt_rw=0
   _prompt_on right && return
-  if [[ -n ${_prompt_state[shell]} ]] || (( ${_prompt_state[jobs]} )); then
-    if _prompt_on shell; then
-      lost=1
-    else
-      [[ -n ${_prompt_state[shell]} ]] && _prompt_put program ${_prompt_glyph[shell]}
-      if (( ${_prompt_state[jobs]} )); then
-        [[ -n ${_prompt_state[shell]} ]] && REPLY+=" " _prompt_plain+=" "
-        _prompt_put voice ${_prompt_glyph[running]}
-      fi
+  if { [[ -n ${_prompt_state[shell]} ]] || (( ${_prompt_state[jobs]} )) } && ! _prompt_on shell; then
+    [[ -n ${_prompt_state[shell]} ]] && _prompt_put program ${_prompt_glyph[shell]}
+    if (( ${_prompt_state[jobs]} )); then
+      [[ -n ${_prompt_state[shell]} ]] && REPLY+=" " _prompt_plain+=" "
+      _prompt_put voice ${_prompt_glyph[running]}
     fi
   fi
-  if [[ -n $_prompt_took ]]; then
-    if _prompt_on time; then
-      lost=1
-    else
-      _prompt_gap
-      _prompt_put muted $_prompt_took
-    fi
+  if [[ -n $_prompt_took ]] && ! _prompt_on time; then
+    _prompt_gap
+    _prompt_put muted $_prompt_took
   fi
   local branch=${_prompt_state[branch]}
   if [[ -n $branch ]]; then
     _prompt_gap
     _prompt_put muted ${_prompt_glyph[branch]}
-    if _prompt_on branchglyph; then
-      lost=1
-    else
+    if ! _prompt_on branchglyph; then
       if _prompt_on branchshort; then
         local whole=$REPLY
         _prompt_middle $branch 14
@@ -384,10 +370,6 @@ _prompt_build_right() {
       REPLY+=" " _prompt_plain+=" "
       _prompt_put text ${_prompt_glyph[unpushed]}
     fi
-  fi
-  if (( lost )); then
-    _prompt_gap
-    _prompt_put muted ${_prompt_glyph[more]}
   fi
   _prompt_r=$REPLY
   _prompt_rw=${(m)#_prompt_plain}
