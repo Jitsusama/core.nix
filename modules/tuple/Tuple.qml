@@ -95,14 +95,18 @@ Singleton {
     // A link copied that isn't Joel's own room, which he opens instead.
     readonly property string joinable: calling || copied === room ? "" : copied
 
+    // Whether Tuple has a window to show, as a call it's in has.
+    readonly property bool windowed: Object.values(Niri.windows)
+        .some(window => window.app_id === "Tuple")
+
     // What can be done about Tuple's calls now, most wanted first, each
     // there only when it can be done, as the launcher's rows say them:
     // found anywhere by name and as Tuple's own acts in Programs › Tuple
     // (Calls.qml). A ringing call's window, where it's answered, comes
-    // first; in a call, being heard or not, sharing while nothing is
-    // shared, and leaving; out of one, opening Joel's room, or joining the
-    // call whose link was just copied; and copying his room's link once
-    // it's known.
+    // first; in a call, its window while it has one, whether Joel's Muted
+    // there, sharing while nothing is shared, and leaving; out of one,
+    // opening Joel's room, or joining the call whose link was just copied;
+    // and copying his room's link once it's known.
     readonly property var controls: {
         // Named and found as the launcher's vocabulary says (Words.qml),
         // never by the program's name, which only finds them.
@@ -120,10 +124,21 @@ Singleton {
                 run: () => root.show()
             }));
         if (calling) {
+            if (windowed)
+                rows.push(Object.assign(said("tuple:show"), {
+                    glyph: Theme.glyph.call,
+                    hue: "person",
+                    run: () => root.show()
+                }));
+            // Muted is a switch, one row whose name never changes (VKCF3Z's
+            // design, RSCH-20261028-2NK1E5, rule 8): it says yes or no,
+            // and Return flips it and keeps the launcher.
             const quiet = muted === true;
             rows.push(Object.assign(said("tuple:mute", quiet ? "muted" : ""), {
                 glyph: quiet ? Theme.glyph.microphone : Theme.glyph.muted,
                 hue: "action",
+                side: quiet ? "yes" : "no",
+                stays: true,
                 later: true,
                 run: () => root.mute(!quiet)
             }));

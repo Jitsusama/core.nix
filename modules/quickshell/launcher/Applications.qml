@@ -671,12 +671,17 @@ Provider {
     // and Quit, then Media and Sound while it plays. What it does comes
     // first and what ends it near the bottom, so Return on a program never
     // lands in its Recent. One that steps in has only what's given it,
-    // its Recent, its notices and Shortcuts, in that order, never starting.
+    // its Recent, its notices and Shortcuts, in that order, never starting,
+    // with what's given it to copy after everything, since Copy is last.
     function controls(entry, start, below) {
         const looked = {};
         const same = given => provider.names(entry, given, looked);
-        if (stepsIn(entry))
-            return givenActs(entry.id).concat(recent(entry), notices(same), keysOf(entry));
+        if (stepsIn(entry)) {
+            const given = givenActs(entry.id);
+            const copying = row => row.verb === "copy";
+            return given.filter(row => !copying(row)).concat(recent(entry), notices(same),
+                keysOf(entry), given.filter(copying));
+        }
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
         const acts = (latest ? [said("verb:program:switch", "", {

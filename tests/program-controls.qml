@@ -78,11 +78,15 @@ ShellRoot {
         property var hiddenPrograms: ["pair"]
 
         function programActs(program) {
-            return program !== "pair" ? [] : [{ key: "pair:room", name: "Open the Room" }];
+            return program !== "pair" ? [] : [
+                { key: "pair:link", name: "Copy the Room's Link", verb: "copy" },
+                { key: "pair:room", name: "Open the Room", verb: "open" }
+            ];
         }
 
         function recentOf(program) {
-            return program !== "tester" ? [] : [{ key: "gdoc:plan", name: "Plan Doc" }];
+            return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc" }]
+                : program === "pair" ? [{ key: "gdoc:notes", name: "Pair Notes" }] : [];
         }
     }
 
@@ -315,9 +319,11 @@ ShellRoot {
                 JSON.stringify(["tester", `${root.home}/notes.md`]));
             same("a hidden program nobody gives acts to isn't listed", program("ghost"), undefined);
             const pair = program("pair");
-            same("a hidden program another gives acts to steps in rather than starting",
-                `${pair.verb} ${pair.stays} ${names(pair.verbs())} ${names(pair.targets())}`,
-                "more true Open the Room Open the Room");
+            same("a hidden program another gives acts to steps in rather than starting, "
+                + "what it gives to copy after everything",
+                `${pair.verb} ${pair.stays} ${names(pair.verbs())} | ${names(pair.targets())}`,
+                "more true Open the Room, Recent, Copy the Room's Link "
+                + "| Open the Room, Recent, Copy the Room's Link");
             const spawnedBefore = JSON.stringify(Niri.spawned);
             pair.run();
             expect("and Return steps in, starting nothing", launcher.entered === pair

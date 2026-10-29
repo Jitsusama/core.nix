@@ -4597,12 +4597,17 @@
       "by": "tuple"
     },
     {
+      "id": "tuple:show",
+      "name": "Show the Call",
+      "verb": "show",
+      "by": "tuple"
+    },
+    {
       "id": "tuple:mute",
-      "name": "Mute Me in the Call",
+      "name": "Muted",
       "verb": "mute",
       "states": {
         "muted": {
-          "name": "Let Them Hear Me Again",
           "verb": "unmute"
         }
       },

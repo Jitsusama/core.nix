@@ -6,9 +6,10 @@
 // VKCF3Z's design orders them (RSCH-20261028-2NK1E5, Components): opening
 // Joel's room first, so Return twice does it on purpose, since Tuple has
 // no window of its own and its row steps in; then the call that rings or
-// is live, what can be done in it, and leaving it; then joining the call
-// whose link is copied; and copying his room's link last, as every Copy
-// is. A ringing or live call is in Now as well.
+// is live, showing it, whether Joel's Muted, sharing and leaving; then
+// joining the call whose link is copied; and copying his room's link
+// last of all, after Tuple's Recent, Notices and Shortcuts, as every Copy
+// is (Applications.qml). A ringing or live call is in Now as well.
 import qs
 import QtQuick
 
@@ -25,8 +26,8 @@ Provider {
     onThingsChanged: changed()
 
     // Where each of Tuple's rows goes inside it, by its key.
-    readonly property var places: ["tuple:open", "tuple:ringing", "tuple:mute", "tuple:share",
-        "tuple:leave", "tuple:join", "tuple:link"]
+    readonly property var places: ["tuple:open", "tuple:ringing", "tuple:show", "tuple:mute",
+        "tuple:share", "tuple:leave", "tuple:join", "tuple:link"]
 
     function programActs(program) {
         if (program !== "tuple")
