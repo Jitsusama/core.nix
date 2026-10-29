@@ -2553,6 +2553,34 @@ def test_the_machines_programs_are_there_the_first_time_its_asked(desktop: Deskt
         desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def test_programs_is_drawn_the_moment_return_steps_into_it(desktop: Desktop) -> None:
+    """Programs is drawn the moment Return steps into it, from home."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Programs")
+    since = desktop.mark()
+    machine.send_key("ret")
+    # Its programs drawn, not only the step taken: a step that threw once
+    # left Programs blank until something else redrew it (2026-10-28).
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["applications"] and len(shown["rows"]) > 0
+    )
+    # The launcher times a step to its frame as it does a key, and says it
+    # once it's felt (Trials.js).
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)} | grep -a -F '\u2192 Programs'; true"
+    )
+    print(f"stepping into Programs: {said.strip() or 'within a frame'}")
+    took = [int(ms) for ms in re.findall(r"took (\d+) ms to its frame", said)]
+    # Two frames at 60 a second, and a busy host's share.
+    most = 50
+    assert all(ms <= most for ms in took), said
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+
+
 def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
     """A word typed whole lands on what it says."""
     machine = desktop.machine

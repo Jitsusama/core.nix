@@ -1806,6 +1806,11 @@ Scope {
     function enter(row) {
         if (!row || row.gone)
             return false;
+        // A step is timed to its frame as a key is, named by the arrow and
+        // the row, so a slow place shows in the journal and the trials
+        // (Joel, 2026-10-28: "programs from the main launcher screen takes
+        // for fucking ever to load").
+        const began = Date.now();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -1842,6 +1847,8 @@ Scope {
                 list.positionViewAtIndex(matched, ListView.Contain);
             }
         }
+        searchParts = null;
+        keyTimed(`\u2192 ${row.name}`, began);
         return true;
     }
 
