@@ -4649,7 +4649,41 @@
       "in": "program:recent",
       "name": "Site",
       "verb": "open",
+      "glyph": "web",
+      "said": {
+        "open": "open",
+        "tabs": "open in {count} tabs",
+        "closes": "closes {count} tabs",
+        "closed": "closed"
+      }
+    },
+    {
+      "id": "verb:recent:site:go",
+      "in": "recent:site",
+      "name": "Go To",
+      "verb": "go",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:recent:site:open",
+      "in": "recent:site",
+      "name": "Open",
+      "verb": "open",
       "glyph": "web"
+    },
+    {
+      "id": "verb:recent:site:close",
+      "in": "recent:site",
+      "name": "Close It",
+      "verb": "close",
+      "glyph": "close"
+    },
+    {
+      "id": "verb:recent:site:link",
+      "in": "recent:site",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
     },
     {
       "id": "path:folder",

@@ -143,26 +143,25 @@ Provider {
     // does (Windows.qml's actsOf), so a window has one set of insides
     // wherever it shows.
     function windowsOf(entry) {
+        return (running[entry.id] ?? []).slice(1).map(window => windowRow(window, entry));
+    }
+
+    // One of a program's windows, as its row, by its title.
+    function windowRow(window, entry) {
         const listing = (provider.launcher?.sources ?? [])
             .find(source => typeof source.actsOf === "function") ?? null;
-        const windows = running[entry.id] ?? [];
-        const here = Niri.workspace();
-        const alike = {};
-        for (const window of windows)
-            alike[titled(window, entry)] = (alike[titled(window, entry)] ?? 0) + 1;
-        return windows.slice(1).map(window => {
-            const workspace = Niri.workspaces[window.workspace_id];
-            return thing({
-                key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
-                is: `window:${window.id}`,
-                verb: "go",
-                name: titled(window, entry),
-                glyph: programGlyph(entry.id),
-                hue: "program",
-                side: provider.placeOf(window, workspace, here, alike[titled(window, entry)]),
-                run: () => Niri.act({ FocusWindow: { id: window.id } }),
-                verbs: listing ? () => listing.actsOf(window, entry) : null
-            });
+        const alike = (running[entry.id] ?? [])
+            .filter(other => titled(other, entry) === titled(window, entry)).length;
+        return thing({
+            key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
+            is: `window:${window.id}`,
+            verb: "go",
+            name: titled(window, entry),
+            glyph: programGlyph(entry.id),
+            hue: "program",
+            side: provider.placeOf(window, Niri.workspaces[window.workspace_id], Niri.workspace(), alike),
+            run: () => Niri.act({ FocusWindow: { id: window.id } }),
+            verbs: listing ? () => listing.actsOf(window, entry) : null
         });
     }
 
@@ -510,6 +509,14 @@ Provider {
         function onSharedChanged() {
             provider.redrawHeld();
         }
+
+        function onOpenNowChanged() {
+            provider.redrawHeld();
+        }
+
+        function onClosedChanged() {
+            provider.redrawHeld();
+        }
     }
 
     // What another provider gives a program (recentOf, programActs)
@@ -553,17 +560,25 @@ Provider {
     // desktop opens it, which is what the list itself says of those.
     // A site Chrome visited, its source's `site` kind, is the page's title
     // beside its host, opened by the program's own command given the page
-    // when its source names no command of its own. Any other provider may
+    // when its source names no command of its own. What it has open now,
+    // where its source says (`opened`), leads, every one of it, and up to
+    // nine closed follow, a page open now never listed again as closed
+    // (openSites). Any other provider may
     // give a program's Recent its own things after these, each its one
     // row, by `recentOf(program)`, newest first, as Docs' documents are
     // given (Documents.qml).
     function recent(entry) {
         const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
         provider.recents.ask(entry.id);
-        const listed = () => provider.recents.of(entry.id)
-            .map(path => source?.kind === "site"
-                ? provider.visited(entry, path) : provider.lately(entry, source, path))
-            .concat(givenRecent(entry.id)).slice(0, provider.recents.most);
+        const listed = () => {
+            const open = source?.kind === "site" ? provider.openSites(entry, source) : [];
+            const shown = open.map(row => row.key);
+            return open.concat(provider.recents.of(entry.id)
+                .map(path => source?.kind === "site"
+                    ? provider.visited(entry, path) : provider.lately(entry, source, path))
+                .filter(row => !shown.includes(row.key))
+                .concat(givenRecent(entry.id)).slice(0, provider.recents.most));
+        };
         const count = listed().length;
         if (count === 0)
             return [];
@@ -632,16 +647,109 @@ Provider {
         const tab = line.indexOf("\t");
         const address = tab < 0 ? line : line.slice(0, tab);
         const title = tab < 0 ? "" : line.slice(tab + 1);
-        const host = address.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "");
-        return thing({
-            key: `site:${address}`,
-            verb: Words.verb("recent:site"),
-            name: title !== "" ? title : host,
-            glyph: "web",
-            hue: "program",
-            side: host,
+        const open = said("verb:recent:site:open", "", {
+            key: `verb:recent:site:open:${address}`,
+            hue: "action",
             run: () => Niri.spawn(provider.command(entry).concat([address]))
         });
+        return site(address, title, hostOf(address), [open]);
+    }
+
+    // A page's host, as said beside it.
+    function hostOf(address) {
+        return address.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "");
+    }
+
+    // A site's row, made here alone for every page wherever it shows (the
+    // launcher's components), keyed by the page: Return does the first of
+    // `acts`, and the right arrow lists them, then Copy the Link. One
+    // `gone` stays dimmed where it was, as the launcher keeps a row whose
+    // thing has gone.
+    function site(address, title, side, acts, gone) {
+        const all = acts.concat([said("verb:recent:site:link", "", {
+            key: `verb:recent:site:link:${address}`,
+            hue: "action",
+            copy: address,
+            run: () => Quickshell.clipboardText = address
+        })]);
+        return thing({
+            key: `site:${address}`,
+            what: "site",
+            component: "site",
+            verb: all[0].verb,
+            name: title !== "" ? title : hostOf(address),
+            glyph: Words.glyph("recent:site"),
+            hue: "program",
+            side: side,
+            gone: gone === true,
+            run: all[0].run,
+            verbs: () => all
+        });
+    }
+
+    // What a program has open now, as its source's `opened` prints it, a
+    // tab a line: its id, its window, whether it's in front there, when it
+    // was last looked at, its address and its title. One row a page, newest
+    // looked at first; two tabs on one page are one row, going to the one
+    // looked at last and saying how many.
+    function openSites(entry, source) {
+        const tabs = provider.recents.openIn(entry.id).map(line => {
+            const [id, window, front, last, address, title] = line.split("\t");
+            return { id, window, front: front === "true", last: Number(last), address, title };
+        }).filter(tab => (tab.address ?? "") !== "")
+            .sort((a, b) => b.last - a.last);
+        const pages = [];
+        for (const tab of tabs) {
+            const page = pages.find(one => one[0].address === tab.address);
+            if (page)
+                page.push(tab);
+            else
+                pages.push([tab]);
+        }
+        return pages.map(page => openSite(entry, source, page, tabs));
+    }
+
+    // One page open now: Return goes to the tab looked at last, inside Go
+    // To, Close It, its window, then Copy the Link. Its window is the one
+    // niri titles by what's in front of it, as Chrome titles its windows,
+    // of two the one used last. Close It keeps the launcher, its foot
+    // saying how many tabs it closes when it's more than one, and the page
+    // stays where it was, said closed and holding only Copy the Link, until
+    // the launcher opens again.
+    function openSite(entry, source, page, tabs) {
+        const [tab] = page;
+        const words = Words.of("recent:site").said ?? {};
+        const counted = said => (said ?? "").replace("{count}", String(page.length));
+        const host = hostOf(tab.address);
+        if ((provider.recents.closed[entry.id] ?? []).includes(tab.address))
+            return site(tab.address, tab.title, `${host} \u00b7 ${words.closed ?? ""}`, [], true);
+        const front = tabs.find(one => one.window === tab.window && one.front) ?? tab;
+        const window = (running[entry.id] ?? [])
+            .find(one => titled(one, entry) === front.title) ?? null;
+        const open = page.length > 1 ? counted(words.tabs) : words.open ?? "";
+        const ask = (command, id) => (command ?? []).map(part => part.replace("{id}", id));
+        const go = () => {
+            Niri.spawn(ask(source.go, tab.id));
+            if (window)
+                Niri.act({ FocusWindow: { id: window.id } });
+        };
+        const acts = [said("verb:recent:site:go", "", {
+            key: `verb:recent:site:go:${tab.address}`,
+            hue: "action",
+            side: window ? titled(window, entry) : "",
+            run: go
+        }), said("verb:recent:site:close", "", {
+            key: `verb:recent:site:close:${tab.address}`,
+            hue: "action",
+            stays: true,
+            note: page.length > 1 ? counted(words.closes) : "",
+            run: () => {
+                for (const one of page)
+                    Niri.spawn(ask(source.close, one.id));
+                provider.recents.closing(entry.id, tab.address);
+            }
+        })].concat(window ? [windowRow(window, entry)] : []);
+        return site(tab.address, tab.title, `${host} \u00b7 ${open}`, acts);
     }
 
     // Its own keys, where Shortcuts has a layer of them (KeyMap.qml's

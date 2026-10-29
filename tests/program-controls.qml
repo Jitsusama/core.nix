@@ -22,7 +22,12 @@
 // or name, and opened by its own command when it takes files, else as the
 // desktop opens them. A program whose sites are read only as it's stepped
 // into reads them then, once each time the launcher opens, each site by
-// its title beside its host, opened by its own command. A program whose
+// its title beside its host, opened by its own command, and Copy the Link
+// last. What it has open leads: every page open, one row a page newest
+// looked at first, saying it's open and in how many tabs, Return going to
+// it through its source's command and its window, Close It closing each of
+// its tabs and leaving the page where it was, dimmed, until the launcher
+// opens again; a page open is never listed again as closed. A program whose
 // entry hides itself is listed only when another provider gives it acts,
 // and then steps in on Return rather than starting. Typing on
 // looks only through what the last key found, and finds what looking
@@ -136,7 +141,10 @@ ShellRoot {
                 app: "browser",
                 kind: "site",
                 asked: true,
-                list: [Quickshell.env("SITES_LIST")]
+                list: [Quickshell.env("SITES_LIST")],
+                opened: [Quickshell.env("OPENED_LIST")],
+                go: ["tabs", "go", "{id}"],
+                close: ["tabs", "close", "{id}"]
             }]
         })
         // Desktop entries and what quiet had open are read in the
@@ -160,6 +168,11 @@ ShellRoot {
 
         function onSharedChanged() {
             root.ready();
+        }
+
+        function onOpenNowChanged() {
+            if (root.waiting === "the sites")
+                root.browsed(1);
         }
     }
 
@@ -230,6 +243,14 @@ ShellRoot {
     // A program whose sites are read as it's stepped into: not before,
     // once an opening, and again the next time the launcher opens.
     function browse() {
+        // Two of its windows, each titled by the tab in front of it.
+        Niri.windows = Object.assign({}, Niri.windows, {
+            "21": { id: 21, app_id: "browser", title: "Open A - Browser", workspace_id: 1,
+                focus_timestamp: { secs: 300, nanos: 0 } },
+            "22": { id: 22, app_id: "browser", title: "Another - Browser", workspace_id: 1,
+                focus_timestamp: { secs: 250, nanos: 0 } }
+        });
+        Niri.revision += 1;
         launcher.open = false;
         launcher.open = true;
         same("sites aren't read before their program is stepped into",
@@ -239,23 +260,68 @@ ShellRoot {
     }
 
     function browsed(reading) {
-        if (applications.recents.of("browser").length === 0)
+        if (applications.recents.of("browser").length === 0
+                || applications.recents.openIn("browser").length === 0)
             return;
         try {
             const rows = program("browser").verbs();
             same("stepped into, it reads its sites as its Recent", names(rows),
-                "New Window, New Window Below, Recent");
-            const sites = rows[2].targets();
-            same("each site by its title beside its host, keyed by the page, newest first",
-                `${names(sites)} ${sites.map(row => row.side).join(" ")} ${sites[0].key}`,
-                `Page ${reading}, Older page example.org other.example.net site:https://example.org/${reading}`);
+                "Go To, New Window, New Window Below, Recent, Another, Quit");
+            const sites = rows[3].targets();
+            same("what's open first, one row a page, newest looked at first, then what was "
+                + "open, never a page open now", names(sites),
+                `Open A, Older page, Another, Page ${reading}`);
+            same("each beside its host, saying it's open and in how many tabs",
+                sites.map(row => row.side).join(" | "),
+                "open.example.com \u00b7 open in 2 tabs | other.example.net \u00b7 open "
+                + "| another.example.com \u00b7 open | example.org");
+            same("each made as every site is, keyed by the page",
+                sites.map(row => `${row.component} ${row.key}`).join(" "),
+                "site site:https://open.example.com/a site site:https://other.example.net/a "
+                + "site site:https://another.example.com/b "
+                + `site site:https://example.org/${reading}`);
+            same("Return goes to one open, and opens one that was",
+                sites.map(row => row.verb).join(" "), "go go go open");
+            const inside = sites[0].verbs();
+            same("one open holds Go To, Close It, its window, then Copy the Link", names(inside),
+                "Go To, Close It, Open A, Copy the Link");
+            same("Go To says the window it goes to", inside[0].side, "Open A");
+            Niri.acted = [];
+            Niri.spawns = [];
+            sites[0].run();
+            same("Return goes to the tab looked at last, and to its window",
+                `${JSON.stringify(Niri.spawns)} ${acted()}`,
+                '[["tabs","go","7"]] [{"FocusWindow":{"id":21}}]');
+            Niri.acted = [];
+            sites[1].run();
+            same("a tab behind another goes to the window titled by the one in front", acted(),
+                '[{"FocusWindow":{"id":21}}]');
+            Niri.acted = [];
+            sites[2].run();
+            same("and one in front of the other window to that one", acted(),
+                '[{"FocusWindow":{"id":22}}]');
+            same("Close It keeps the launcher, saying how many tabs it closes",
+                `${inside[1].stays} ${inside[1].note}`, "true closes 2 tabs");
+            Niri.spawns = [];
+            inside[1].run();
+            same("Close It closes each of its tabs", JSON.stringify(Niri.spawns),
+                '[["tabs","close","7"],["tabs","close","9"]]');
+            const shut = program("browser").verbs()[3].targets()[0];
+            same("the page stays where it was, dimmed and said closed, holding only its link",
+                `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
+                "site:https://open.example.com/a true open.example.com \u00b7 closed | Copy the Link");
+            const copied = inside[3];
+            same("Copy the Link copies its address", `${copied.verb} ${copied.copy}`,
+                "copy https://open.example.com/a");
+            same("one that was open holds Open, then Copy the Link", names(sites[3].verbs()),
+                "Open, Copy the Link");
             same("read once an opening, however often it's stepped into",
                 JSON.stringify(applications.recents.asked), '{"browser":true}');
             if (reading === 2) {
                 Qt.exit(0);
                 return;
             }
-            sites[0].run();
+            sites[3].run();
             same("Return opens the page by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["browser", "https://example.org/1"]));
             launcher.open = false;
