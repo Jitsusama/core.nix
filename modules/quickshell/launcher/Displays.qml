@@ -175,8 +175,12 @@ Provider {
                 graph: level(Power.roomLevel(room), 1),
                 note: "as the screen's sensor hears it, from dark to daylight"
             }));
-        if (inTheRoom(output) && warmth !== null)
-            rows.splice(1, 0, warmthRow(output));
+        // Warmth sits right after Brightness, found by its key, so a row
+        // put above Brightness later can't move it.
+        if (inTheRoom(output) && warmth !== null) {
+            const brightness = `displays:${output.name}:brightness`;
+            rows.splice(rows.findIndex(row => row.key === brightness) + 1, 0, warmthRow(output));
+        }
         return rows;
     }
 
