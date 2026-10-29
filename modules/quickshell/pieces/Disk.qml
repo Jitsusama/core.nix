@@ -102,7 +102,7 @@ Piece {
                 : last.end === "stalled" ? "deleting stopped freeing space"
                 : `its last pass ${last.end}`);
         }
-        if (silent && !short)
+        if (silent)
             parts.push(stoppedFor((accountStopped ? accountUnit : machineUnit).result));
         return parts.join("; ");
     }
