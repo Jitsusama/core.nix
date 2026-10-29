@@ -847,8 +847,9 @@ onLinux {
         property var running: Array.from({ length: 120 },
           (_, at) => ({ address: "A" + String(at).padStart(3, "0") }))
         property var present: ({})
-        function resume(id, quest, folder) {}
+        function resume(id, quest, folder, gone) {}
         function start(quest, folder) {}
+        function sayUnopened(title, body) {}
       '';
       delivered = words: ''{"stage":"delivered","at":"2026-10-29T10:00:00Z","text":"${words}"}'';
     in

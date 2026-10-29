@@ -63,7 +63,7 @@ cat >"$state/pi/restore.json" <<'EOF'
   {"id":"s-given-back","address":"GIVENB","title":"Given Back","cwd":"/given-back","lostAt":1},
   {"id":"s-nowhere","address":"NOWHRE","title":"Nowhere","lostAt":1},
   {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1},
-  {"id":"s-far","address":"FARAWY","title":"Far","cwd":"/tmp","lostAt":"",
+  {"id":"s-far","address":"FARLST","title":"Far","cwd":"/tmp","lostAt":"",
    "machine":"lighthouse","attach":["ssh","-t","lighthouse","mycelium","attach","s-far"]},
   {"id":"s-said","address":"SAIDSO","title":"Said","cwd":"/tmp","lostAt":"",
    "machine":"lighthouse","attach":"ssh lighthouse mycelium attach s-said"}
