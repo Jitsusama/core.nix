@@ -184,8 +184,10 @@ Provider {
             stays: true,
             run: () => {
                 Sessions.talk(one.address, carried(question, answered));
-                launcher.goTo({ trail: ["collection:agents", "collection:orchestrators", row.key],
-                    spot: "" });
+                // By the id the launcher holds it by, which for a running
+                // one is its session's, not its key.
+                launcher.goTo({ trail: ["collection:agents", "collection:orchestrators",
+                    launcher.steadyId(row)], spot: "" });
             }
         })];
     }
