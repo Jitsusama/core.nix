@@ -1,8 +1,10 @@
 //! timekeeping says how the clock is kept, for the launcher's Time: the
 //! server systemd-timesyncd asks, how far the clock is from it, the round
-//! trip's delay and jitter, the server's stratum and what it keeps its time
-//! by, how often it's asked, the leap second announced, and whether the
-//! clock counts as synchronised (VKCF3Z's design, landing 6).
+//! trip's delay and jitter, the server's stratum, what it keeps its time
+//! by and how far it is from that, how often it's asked and between what
+//! bounds, the leap second announced, when it was last heard, the servers
+//! timesyncd is given, and whether the clock counts as synchronised
+//! (VKCF3Z's design, landing 6, and its Server, 2026-10-29).
 //!
 //! It hears timesyncd over D-Bus, so nothing runs `timedatectl` and
 //! nothing asks on a clock: timesyncd says each new exchange as a change of
@@ -10,6 +12,7 @@
 //! change of its server's name or address on its own. Each reading is
 //! written whole to the file it's given, a small JSON object the launcher
 //! watches, replaced through a rename so it's never seen half written.
+//! Before its first exchange the file says how it keeps the clock alone.
 //! While timesyncd isn't on the bus the file says nothing, as `{}`, and is
 //! never removed, since the shell stops watching a file once it's gone.
 
@@ -26,7 +29,7 @@ use zbus::names::{BusName, InterfaceName};
 use zbus::proxy::CacheProperties;
 use zbus::{Connection, proxy};
 
-use reading::{Message, Said};
+use reading::{Message, Said, Servers};
 
 const TIMESYNC: &str = "org.freedesktop.timesync1";
 const MANAGER: &str = "org.freedesktop.timesync1.Manager";
@@ -74,6 +77,24 @@ trait Manager {
     #[zbus(property, name = "PollIntervalUSec")]
     fn poll_interval(&self) -> zbus::Result<u64>;
 
+    #[zbus(property, name = "PollIntervalMinUSec")]
+    fn poll_interval_min(&self) -> zbus::Result<u64>;
+
+    #[zbus(property, name = "PollIntervalMaxUSec")]
+    fn poll_interval_max(&self) -> zbus::Result<u64>;
+
+    #[zbus(property, name = "SystemNTPServers")]
+    fn system_servers(&self) -> zbus::Result<Vec<String>>;
+
+    #[zbus(property, name = "LinkNTPServers")]
+    fn link_servers(&self) -> zbus::Result<Vec<String>>;
+
+    #[zbus(property, name = "RuntimeNTPServers")]
+    fn runtime_servers(&self) -> zbus::Result<Vec<String>>;
+
+    #[zbus(property, name = "FallbackNTPServers")]
+    fn fallback_servers(&self) -> zbus::Result<Vec<String>>;
+
     #[zbus(property, name = "Frequency")]
     fn frequency(&self) -> zbus::Result<i64>;
 }
@@ -114,13 +135,13 @@ async fn follow(path: &Path) -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
     let there = owners.name_has_owner(BusName::try_from(TIMESYNC)?).await?;
-    said(path, if there { read(&manager).await } else { None })?;
+    said(path, if there { Some(read(&manager).await) } else { None })?;
     let mine = InterfaceName::try_from(MANAGER)?;
     loop {
         tokio::select! {
             change = changes.next() => match change {
                 Some(change) if change.args()?.interface_name() == &mine => {
-                    said(path, read(&manager).await)?;
+                    said(path, Some(read(&manager).await))?;
                 }
                 Some(_) => {}
                 None => return Err("the bus stopped saying timesyncd's changes".into()),
@@ -128,7 +149,7 @@ async fn follow(path: &Path) -> Result<(), Box<dyn Error>> {
             coming = comings.next() => match coming {
                 Some(coming) => {
                     let back = coming.args()?.new_owner().is_some();
-                    said(path, if back { read(&manager).await } else { None })?;
+                    said(path, if back { Some(read(&manager).await) } else { None })?;
                 }
                 None => return Err("the bus stopped saying who owns timesyncd".into()),
             },
@@ -136,13 +157,38 @@ async fn follow(path: &Path) -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// What timesyncd says now, or None while it has nothing to say, as
-/// before its first exchange.
-async fn read(manager: &ManagerProxy<'_>) -> Option<reading::Reading> {
-    let exchange = manager.ntp_message().await.ok()?;
-    let message = Message {
+/// What timesyncd says now, its last exchange left out before its first.
+async fn read(manager: &ManagerProxy<'_>) -> reading::Reading {
+    let (family, bytes) = manager.server_address().await.unwrap_or_default();
+    let said = Said {
+        synchronised: Path::new(SYNCHRONISED).exists(),
+        server: manager.server_name().await.unwrap_or_default(),
+        address: reading::address(family, &bytes),
+        poll: manager.poll_interval().await.unwrap_or_default(),
+        poll_least: manager.poll_interval_min().await.unwrap_or_default(),
+        poll_most: manager.poll_interval_max().await.unwrap_or_default(),
+        frequency: manager.frequency().await.unwrap_or_default(),
+        servers: Servers {
+            system: manager.system_servers().await.unwrap_or_default(),
+            link: manager.link_servers().await.unwrap_or_default(),
+            runtime: manager.runtime_servers().await.unwrap_or_default(),
+            fallback: manager.fallback_servers().await.unwrap_or_default(),
+        },
+    };
+    let message = manager.ntp_message().await.ok().map(message_of);
+    // An exchange not yet made has no times.
+    said.reading(message.as_ref().filter(|message| message.destination != 0))
+}
+
+/// An exchange as D-Bus gives it, by its fields' names.
+fn message_of(exchange: Exchange) -> Message {
+    Message {
         leap: exchange.0,
+        version: exchange.1,
         stratum: exchange.3,
+        precision: exchange.4,
+        root_delay: exchange.5,
+        root_dispersion: exchange.6,
         reference: exchange.7,
         origin: exchange.8,
         receive: exchange.9,
@@ -150,19 +196,7 @@ async fn read(manager: &ManagerProxy<'_>) -> Option<reading::Reading> {
         destination: exchange.11,
         packets: exchange.13,
         jitter: exchange.14,
-    };
-    // An exchange not yet made has no times.
-    if message.destination == 0 {
-        return None;
     }
-    let (family, bytes) = manager.server_address().await.unwrap_or_default();
-    Some(message.reading(Said {
-        synchronised: Path::new(SYNCHRONISED).exists(),
-        server: manager.server_name().await.unwrap_or_default(),
-        address: reading::address(family, &bytes),
-        poll: manager.poll_interval().await.unwrap_or_default(),
-        frequency: manager.frequency().await.unwrap_or_default(),
-    }))
 }
 
 /// Writes what's read, or `{}` for nothing, whole, through a rename.

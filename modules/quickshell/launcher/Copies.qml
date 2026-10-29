@@ -21,6 +21,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Ago.js" as Ago
 
 Provider {
     id: provider
@@ -61,18 +62,6 @@ Provider {
     function shown(text) {
         const flat = text.replace(/\s+/g, " ").trim();
         return flat.length > 120 ? `${flat.slice(0, 119)}…` : flat;
-    }
-
-    // How long ago, in the fewest words.
-    function ago(at) {
-        const seconds = Math.max(0, (Date.now() - at) / 1000);
-        if (seconds < 60)
-            return "just now";
-        if (seconds < 3600)
-            return `${Math.floor(seconds / 60)} min ago`;
-        if (seconds < 86400)
-            return `${Math.floor(seconds / 3600)} h ago`;
-        return `${Math.floor(seconds / 86400)} d ago`;
     }
 
     // What a copy is, by the theme's mark for it, so a link, a path or a
@@ -179,8 +168,10 @@ Provider {
 
     // Each row's age, as of now, after what it is.
     function aged(rows) {
+        const now = Date.now();
         for (const row of rows)
-            row.side = row.about !== "" ? `${row.about} \u00b7 ${ago(row.at)}` : ago(row.at);
+            row.side = [row.about, Ago.ago(row.at, now)].filter(part => part !== "")
+                .join(" \u00b7 ");
         return rows;
     }
 

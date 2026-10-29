@@ -1,8 +1,10 @@
-//! What timesyncd's last exchange with its server says, worked out as
-//! `timedatectl timesync-status` works it out: the clock's offset from the
-//! server and the round trip's delay from the exchange's four times, the
-//! reference a stratum-one server keeps by its name, and the leap second
-//! it announces in words.
+//! What timesyncd says of how it keeps the clock, and what its last
+//! exchange with its server says, worked out as `timedatectl
+//! timesync-status` works it out: the clock's offset from the server and
+//! the round trip's delay from the exchange's four times, the reference a
+//! stratum-one server keeps by its name, and the leap second it announces
+//! in words. Everything Time's Server holds is here (VKCF3Z's design,
+//! 2026-10-29: Joel wants to dig into the NTP server's details).
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -10,7 +12,13 @@ use serde::Serialize;
 
 /// The version of what's written, which the shell reads only when it's
 /// this one.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
+
+/// Microseconds in a second, as D-Bus gives each poll interval.
+const MICROS: u64 = 1_000_000;
+
+/// Microseconds in a millisecond, as the shell's clock counts.
+const PER_MILLI: u64 = 1_000;
 
 /// timesyncd's frequency is in 2^-16 parts per million, as the kernel's
 /// adjtimex keeps it.
@@ -21,11 +29,17 @@ const INET: i32 = 2;
 const INET6: i32 = 10;
 
 /// timesyncd's last exchange with its server, as its `NTPMessage`
-/// property gives it, the times in microseconds of the realtime clock.
+/// property gives it, the times in microseconds of the realtime clock, the
+/// root delay and dispersion in microseconds, and the precision a power of
+/// two of a second.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Message {
     pub leap: u32,
+    pub version: u32,
     pub stratum: u32,
+    pub precision: i32,
+    pub root_delay: u64,
+    pub root_dispersion: u64,
     pub reference: Vec<u8>,
     pub origin: u64,
     pub receive: u64,
@@ -35,12 +49,45 @@ pub struct Message {
     pub jitter: u64,
 }
 
-/// What's written for the launcher: the server and how far the clock is
-/// from it, each time in microseconds, the poll in seconds.
+/// What's written for the launcher while timesyncd runs: whether the
+/// clock counts as synchronised, how often the server is asked, the
+/// clock's frequency, the servers it's given, and its last exchange, or
+/// none before the first.
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Reading {
     pub version: u32,
     pub synchronised: bool,
+    pub poll: Poll,
+    pub frequency: f64,
+    pub servers: Servers,
+    pub exchange: Option<Exchange>,
+}
+
+/// How often the server is asked, in seconds: now, and the least and most
+/// timesyncd lets it be.
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Poll {
+    pub now: u64,
+    pub least: u64,
+    pub most: u64,
+}
+
+/// The servers timesyncd is given, by where each list comes from: its own
+/// settings, the network's links, the runtime, and its fallbacks.
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Servers {
+    pub system: Vec<String>,
+    pub link: Vec<String>,
+    pub runtime: Vec<String>,
+    pub fallback: Vec<String>,
+}
+
+/// The last exchange with the server: each time in microseconds, the
+/// precision a power of two of a second, and when it was made in
+/// milliseconds since the epoch, as the shell's clock counts.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Exchange {
     pub server: String,
     pub address: String,
     pub stratum: u32,
@@ -48,19 +95,27 @@ pub struct Reading {
     pub offset: i64,
     pub delay: i64,
     pub jitter: u64,
-    pub poll: u64,
+    pub root_delay: u64,
+    pub root_dispersion: u64,
+    pub precision: i32,
     pub leap: &'static str,
+    pub ntp_version: u32,
+    pub last: u64,
     pub packets: u64,
-    pub frequency: f64,
 }
 
-/// What the rest of timesyncd says beside its last exchange.
+/// What the rest of timesyncd says beside its last exchange, each poll
+/// interval in microseconds, as D-Bus gives it.
+#[derive(Default)]
 pub struct Said {
     pub synchronised: bool,
     pub server: String,
     pub address: String,
     pub poll: u64,
+    pub poll_least: u64,
+    pub poll_most: u64,
     pub frequency: i64,
+    pub servers: Servers,
 }
 
 impl Message {
@@ -108,24 +163,43 @@ impl Message {
         }
     }
 
-    /// The whole reading, with what else timesyncd says.
-    pub fn reading(&self, said: Said) -> Reading {
-        #[expect(clippy::cast_precision_loss, reason = "a frequency is never near 2^52")]
-        let frequency = said.frequency as f64 / FREQUENCY_SCALE;
-        Reading {
-            version: VERSION,
-            synchronised: said.synchronised,
-            server: said.server,
-            address: said.address,
+    /// The exchange as it's written, with the server it was made with.
+    pub fn exchange(&self, server: String, address: String) -> Exchange {
+        Exchange {
+            server,
+            address,
             stratum: self.stratum,
             reference: self.reference(),
             offset: self.offset(),
             delay: self.delay(),
             jitter: self.jitter,
-            poll: said.poll / 1_000_000,
+            root_delay: self.root_delay,
+            root_dispersion: self.root_dispersion,
+            precision: self.precision,
             leap: self.leap(),
+            ntp_version: self.version,
+            last: self.destination / PER_MILLI,
             packets: self.packets,
+        }
+    }
+}
+
+impl Said {
+    /// The whole reading, with the last exchange when there's been one.
+    pub fn reading(self, message: Option<&Message>) -> Reading {
+        #[expect(clippy::cast_precision_loss, reason = "a frequency is never near 2^52")]
+        let frequency = self.frequency as f64 / FREQUENCY_SCALE;
+        Reading {
+            version: VERSION,
+            synchronised: self.synchronised,
+            poll: Poll {
+                now: self.poll / MICROS,
+                least: self.poll_least / MICROS,
+                most: self.poll_most / MICROS,
+            },
             frequency: (frequency * 1000.0).round() / 1000.0,
+            servers: self.servers,
+            exchange: message.map(|message| message.exchange(self.server, self.address)),
         }
     }
 }
@@ -154,7 +228,11 @@ mod tests {
     fn heard() -> Message {
         Message {
             leap: 0,
+            version: 4,
             stratum: 1,
+            precision: -25,
+            root_delay: 15,
+            root_dispersion: 457,
             reference: b"GNSS".to_vec(),
             origin: 1_793_248_675_277_792,
             receive: 1_793_248_675_296_236,
@@ -212,22 +290,77 @@ mod tests {
         assert_eq!(address(0, &[]), "", "no address yet says none");
     }
 
-    #[test]
-    fn the_reading_says_the_poll_in_seconds_and_the_frequency_in_ppm() {
-        let reading = heard().reading(Said {
+    fn said() -> Said {
+        Said {
             synchronised: true,
             server: "2.nixos.pool.ntp.org".to_owned(),
             address: "209.227.142.155".to_owned(),
             poll: 2_048_000_000,
+            poll_least: 32_000_000,
+            poll_most: 2_048_000_000,
             frequency: 410_704,
-        });
-        assert_eq!(reading.poll, 2048);
+            servers: Servers {
+                fallback: vec!["0.nixos.pool.ntp.org".to_owned()],
+                ..Servers::default()
+            },
+        }
+    }
+
+    #[test]
+    fn the_reading_says_the_polls_in_seconds_and_the_frequency_in_ppm() {
+        let reading = said().reading(Some(&heard()));
+        assert_eq!(
+            reading.poll,
+            Poll {
+                now: 2048,
+                least: 32,
+                most: 2048
+            }
+        );
         assert!(
             (reading.frequency - 6.267).abs() < 1e-9,
             "{}",
             reading.frequency
         );
-        assert_eq!(reading.leap, "normal");
+        assert_eq!(reading.servers.fallback, ["0.nixos.pool.ntp.org"]);
         assert_eq!(reading.version, VERSION);
+    }
+
+    #[test]
+    fn the_exchange_holds_all_the_server_says() {
+        let exchange = said()
+            .reading(Some(&heard()))
+            .exchange
+            .expect("an exchange was made");
+        assert_eq!(exchange.server, "2.nixos.pool.ntp.org");
+        assert_eq!(exchange.leap, "normal");
+        assert_eq!(
+            (exchange.root_delay, exchange.root_dispersion),
+            (15, 457)
+        );
+        assert_eq!((exchange.precision, exchange.ntp_version), (-25, 4));
+        assert_eq!(
+            exchange.last, 1_793_248_675_313,
+            "when it was heard back, in milliseconds"
+        );
+    }
+
+    #[test]
+    fn before_the_first_exchange_it_says_how_it_keeps_the_clock_alone() {
+        let reading = said().reading(None);
+        assert_eq!(reading.exchange, None);
+        assert_eq!(reading.poll.least, 32);
+    }
+
+    #[test]
+    fn it_is_written_as_the_shell_reads_it() {
+        let text = serde_json::to_string(&said().reading(Some(&heard()))).expect("it writes");
+        for key in [
+            "\"rootDelay\":15",
+            "\"ntpVersion\":4",
+            "\"poll\":{\"now\":2048",
+        ] {
+            assert!(text.contains(key), "{key} in {text}");
+        }
     }
 }
