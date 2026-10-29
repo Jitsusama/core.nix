@@ -916,7 +916,15 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     # whereabouts says where the laptop is. This writes the file in its
     # stead, as it does: whole, under another name, then renamed.
     asked(nowhere)
-    said = {"v": 1, "latitude": 10.123, "longitude": -20.456, "accuracy": 3000, "when": 1}
+    said = {
+        "v": 2,
+        "latitude": 10.123,
+        "longitude": -20.456,
+        "accuracy": 3000,
+        "when": 1,
+        "place": None,
+        "zone": None,
+    }
     desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
     # Here is the laptop's position now, heard as the file changes,
     # and its forecast is asked by it. Built as a check, the VM has no
@@ -932,9 +940,29 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
             or shown["footer"] == found
         )
     )
-    # And once the file goes, here is nowhere again.
+    # Now's Location says the same position, as the one place it's kept.
+    desktop.answer("location")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Location"
+            and (shown["selected"] or {}).get("side") == "10.12, -20.46"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # And once the file goes, here is nowhere again, and the location is
+    # said to be unknown rather than guessed.
     desktop.as_account(f"rm {fix}")
     asked(nowhere)
+    desktop.answer("location")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Location"
+            and (shown["selected"] or {}).get("side") == "unknown"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

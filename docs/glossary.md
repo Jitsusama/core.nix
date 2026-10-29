@@ -207,7 +207,8 @@ or a copy, can be opened, copied or forgotten.
 | clipboard | what was copied last, and what was copied before it | | |
 | capture | taking a picture or a recording of the screen | | |
 | screenshot | a picture Joel takes of the screen | screen shot | |
-| here | where the weather is when no town is typed: where the laptop is, else the town set, else the time zone's city | | the `whereabouts` program; the weather provider's `place` |
+| location | where the laptop is, its town and the zone it keeps, Now's row and the one place the weather and everything that depends on it read it from | | `Location.qml`, the `whereabouts` program |
+| here | where the weather is when no town is typed: the location, else the town set, else the clock's time zone's city | | the weather provider's `place` |
 
 ## Machine
 

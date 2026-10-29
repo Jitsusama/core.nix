@@ -91,6 +91,7 @@ let
     "Notices.qml"
     "Forward.js"
     "Sessions.qml"
+    "Location.qml"
     "WaitingOnYou.qml"
     "Waiting.js"
     "SpendWatch.qml"

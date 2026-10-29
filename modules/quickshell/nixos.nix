@@ -45,7 +45,8 @@
 # service, GeoClue's old default, has shut down. whereabouts is allowed
 # without asking, as a browser is: it only ever asks to a city's accuracy,
 # and what it learns stays in the account's runtime directory, leaving
-# only as the weather's question to Open-Meteo, to a hundredth of a degree.
+# only to a hundredth of a degree: to Nominatim, for its town, and to
+# Open-Meteo, for its zone and its weather.
 #
 # The mains supply is a device systemd tracks, ready only while it's
 # online, so keeping the machine running with its lid shut (home.nix's

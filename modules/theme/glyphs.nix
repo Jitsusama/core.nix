@@ -1139,6 +1139,11 @@ in
     console = "z";
     means = "a time zone";
   };
+  location = {
+    glyph = nerd "f034e";
+    console = "@";
+    means = "where the laptop is";
+  };
   # What's measured, for a measure from one unit to another.
   distance = {
     glyph = nerd "f046d";

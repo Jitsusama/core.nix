@@ -815,10 +815,13 @@ onLinux {
       touch $out
     '';
 
-  # Now's own rows, last: the time, the date, the weather read as the
-  # launcher opens and the next meeting, whose Return is the meeting's own
-  # (tests/now-moment.qml), with the margin's pieces, the agents' waiting
-  # list, the weather and the calendar stood in.
+  # Now's own rows, last: the time, the date, the location, the weather
+  # read as the launcher opens and the next meeting, whose Return is the
+  # meeting's own (tests/now-moment.qml), with the margin's pieces, the
+  # agents' waiting list, the weather and the calendar stood in. The
+  # location is Location.qml's own, reading the file whereabouts would
+  # write, written here, and a clock whose zone a stand-in timedatectl says
+  # is another than the place's.
   the-launcher-shows-the-moment-in-now =
     let
       facts = singleton "Facts.qml" ''
@@ -840,6 +843,7 @@ onLinux {
       sessions = singleton "Sessions.qml" ''
         property var running: []
       '';
+      timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in
     pkgs.runCommandLocal "the-launcher-shows-the-moment-in-now" { } ''
       mkdir launcher
@@ -857,8 +861,13 @@ onLinux {
       cp ${facts} Facts.qml
       cp ${waiting} WaitingOnYou.qml
       cp ${sessions} Sessions.qml
+      cp ${./Location.qml} Location.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PATH=${timedatectl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
+      echo '{"v":2,"latitude":43.6748,"longitude":-79.3794,"accuracy":26000,'\
+      '"when":1790000000,"place":"Lighthouse, Ontario","zone":"America/Toronto"}' \
+        > $XDG_RUNTIME_DIR/whereabouts.json
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
@@ -868,9 +877,8 @@ onLinux {
   # The launcher's weather answers now, its parts and the rain by the hour
   # from one forecast, and the rain's own words answer the next rain
   # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
-  # nothing leaves the sandbox; and here is where the laptop is, from the
-  # file whereabouts would write, written here, ahead of the place set and
-  # the time zone.
+  # nothing leaves the sandbox; and here is where the laptop is, as each
+  # case gives Location's here, ahead of the place set and the time zone.
   the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
     mkdir launcher
     cp ${./Fuzzy.js} Fuzzy.js
@@ -882,10 +890,12 @@ onLinux {
     cp ${./Words.qml} Words.qml
     cp ${./launcher/words.json} launcher/words.json
     cp ${../../tests/weather.qml} shell.qml
+    cp ${singleton "Location.qml" ''
+      property var here: null
+      property string clockZone: ""
+    ''} Location.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     mkdir -m 700 $XDG_RUNTIME_DIR
-    echo '{"v":1,"latitude":10.123,"longitude":-20.456,"accuracy":3000,"when":1790000000}' \
-      > $XDG_RUNTIME_DIR/laptop.json
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
     timeout 60 ${qs} -p shell.qml
