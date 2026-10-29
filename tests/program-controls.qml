@@ -54,7 +54,19 @@ ShellRoot {
         property bool open: false
         property var held: []
         property var belowChord: []
-        property var sources: [notices, keys]
+        property var sources: [notices, keys, giver]
+    }
+
+    // Another provider giving a program's Recent its own things, as Docs'
+    // documents are given.
+    QtObject {
+        id: giver
+
+        signal changed
+
+        function recentOf(program) {
+            return program !== "tester" ? [] : [{ key: "gdoc:plan", name: "Plan Doc" }];
+        }
     }
 
     // Shortcuts as a program's row asks it: Quiet has keys of its own.
@@ -161,7 +173,17 @@ ShellRoot {
                 try {
                     expect("a program held as its list changes is drawn again",
                         root.redrawn > 0, root.redrawn);
-                    Qt.exit(0);
+                    root.redrawn = 0;
+                    giver.changed();
+                    Qt.callLater(() => {
+                        try {
+                            expect("a program held as another provider's Recent for it changes is drawn again",
+                                root.redrawn > 0, root.redrawn);
+                            Qt.exit(0);
+                        } catch (error) {
+                            fail(error.message);
+                        }
+                    });
                 } catch (error) {
                     fail(error.message);
                 }
@@ -215,9 +237,9 @@ ShellRoot {
                 + "Recent, Draft, Notices, Quit, Media, Sound");
             const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
             const files = shared.targets();
-            same("its files from the list programs share, by its name or its id, newest first",
+            same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",
                 `${names(files)} ${files.map(row => row.key).join(" ")}`,
-                `notes.md, plan.md file:${root.home}/notes.md file:${root.home}/plan.md`);
+                `notes.md, plan.md, Plan Doc file:${root.home}/notes.md file:${root.home}/plan.md gdoc:plan`);
             files[0].run();
             same("one opens by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["tester", `${root.home}/notes.md`]));

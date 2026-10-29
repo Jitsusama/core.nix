@@ -21,6 +21,8 @@
 // Programs is a collection too, home's row for them: every program, those
 // open first, each by name. It adds no row of its own to a search, where
 // each program is found by itself.
+pragma ComponentBehavior: Bound
+
 import Quickshell
 import qs
 import QtQuick
@@ -498,6 +500,25 @@ Provider {
 
         function onSharedChanged() {
             provider.redrawHeld();
+        }
+    }
+
+    // What another provider gives a program (recentOf, programActs)
+    // changing while it's shown draws it again too: the launcher remakes a
+    // step only for the provider its row came from, and a program's row
+    // is this one's.
+    Variants {
+        model: (provider.launcher?.sources ?? []).filter(other => other !== provider
+            && (typeof other.recentOf === "function" || typeof other.programActs === "function"))
+
+        Connections {
+            required property var modelData
+
+            target: modelData
+
+            function onChanged() {
+                provider.redrawHeld();
+            }
         }
     }
 
