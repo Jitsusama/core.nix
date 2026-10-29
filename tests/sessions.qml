@@ -186,7 +186,12 @@ ShellRoot {
 
     Process {
         id: ending
-        command: ["kill", Quickshell.env("OTHER_PID")]
+        // Until it has ended, not only been told to: a window gone before
+        // its process is would leave the session listed, as nothing else
+        // asks again, which a busy machine's checks hit.
+        command: ["sh", "-c", 'kill "$1"; while kill -0 "$1" 2>/dev/null'
+            + ' && [ "$(cut -d " " -f 3 "/proc/$1/stat")" != Z ]; do sleep 0.05; done',
+            "end", Quickshell.env("OTHER_PID")]
         onExited: {
             const windows = Object.assign({}, Niri.windows);
             delete windows[21];
