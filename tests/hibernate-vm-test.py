@@ -54,9 +54,11 @@ def swapping(machine: BaseMachine) -> QemuMachine:
         "mount -o subvol=@swap /dev/mapper/disk /swap",
         "btrfs filesystem mkswapfile --size 1536m /swap/swapfile",
         "swapon /swap/swapfile",
-        # As a laptop's disk is enrolled: the TPM, with a PIN.
+        # As a laptop's disk is enrolled: the TPM, with a PIN, and a
+        # recovery key, which is typed too, so the lock is still let go.
         f"NEWPIN={PIN} systemd-cryptenroll --unlock-key-file=/etc/disk.key"
         " --tpm2-device=auto --tpm2-pcrs= --tpm2-with-pin=yes /dev/vdc",
+        "systemd-cryptenroll --unlock-key-file=/etc/disk.key --recovery-key /dev/vdc",
     )
     return machine
 

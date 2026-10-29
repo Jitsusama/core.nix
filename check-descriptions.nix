@@ -356,7 +356,8 @@
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
     firmware start for a resume through the disk prompt and a wake for none, counts a disk as
-    asking only when every token asks for something typed, and rescues a rolled-back hibernation:
+    asking only when every token asks for something typed (a recovery key among them) and names the
+    first that doesn't, and rescues a rolled-back hibernation:
     said with the lid open, tried once more with it shut, then powered off
   '';
   hibernate-unlock-passes-clippy = ''
