@@ -36,8 +36,11 @@ Provider {
 
     what: "file"
 
-    // Who's waiting, oldest first: { reply, request }.
+    // Who's waiting, oldest first: { reply, request }, and, for an ask from
+    // inside the shell, picked, called with the paths in place of a socket.
     property var asks: []
+    // How many asks have come from inside the shell, each one's key.
+    property int shellAsked: 0
     readonly property var asking: asks.length > 0 ? asks[0] : null
     readonly property var request: asking?.request ?? ({})
     // The socket of the ask the launcher holds, which closing it refuses.
@@ -477,9 +480,11 @@ Provider {
         }));
     }
 
-    // Says the answer, or none, on the ask's socket, and asks the next.
+    // Says the answer, or none, on the ask's socket, or to what the shell
+    // asked with, and asks the next.
     function settle(reply, said) {
-        if (!asks.some(other => other.reply === reply))
+        const settled = asks.find(other => other.reply === reply);
+        if (!settled)
             return;
         asks = asks.filter(other => other.reply !== reply);
         if (shown === reply)
@@ -488,11 +493,38 @@ Provider {
         // anywhere; while one waits, its folders are being read already.
         if (asking === null)
             listed = {};
-        // It connects only once made: a local socket can connect, say and
-        // close at once, and an object still being made can't be destroyed.
-        const answered = answering.createObject(provider, { path: reply, said: `${said}\n` });
-        answered.connected = true;
+        if (settled.picked) {
+            settled.picked(said === "" ? [] : JSON.parse(said).paths);
+        } else {
+            // It connects only once made: a local socket can connect, say
+            // and close at once, and an object still being made can't be
+            // destroyed.
+            const answered = answering.createObject(provider, { path: reply, said: `${said}\n` });
+            answered.connected = true;
+        }
         if (asking !== null)
+            Qt.callLater(provider.showNext);
+    }
+
+    // Asks, from inside the shell, where to save a file named name,
+    // starting in folder, titled as given, as Mail's Save a Copy does
+    // (427IH3, 2026-10-29). It waits its turn behind the portal's asks, and
+    // picked is called with the one path chosen, a name already there
+    // having been cleared to Replace It, or with none.
+    function chooseToSave(fields, picked) {
+        shellAsked += 1;
+        const first = asking === null;
+        asks = asks.concat([{
+            reply: `shell:${shellAsked}`,
+            request: {
+                mode: "save",
+                title: String(fields.title ?? ""),
+                name: String(fields.name ?? ""),
+                folder: String(fields.folder ?? "")
+            },
+            picked: picked
+        }]);
+        if (first)
             Qt.callLater(provider.showNext);
     }
 
