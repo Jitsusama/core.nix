@@ -18,7 +18,10 @@ wants him once more. Lunch on Friday carries a menu, which a shell may ask to be
 open, kept in google-files beside the socket, or to save, where the shell says or else in
 Downloads, said as fetched as the program says it. Joel looked at two documents lately: Ada's
 Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-in grants Meet's
-scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg.
+scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg. His
+Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
+Budget is shared with him, and the Team shared drive is empty. A shell may ask what a folder
+holds, and for a file in one, to open, pick or save, Google's own as their office files.
 """
 
 import json
@@ -41,6 +44,45 @@ SIGNED_OUT = os.environ.get("GOOGLE_STAND_IN_ACCOUNT") == "signedOut"
 AHEAD = 30 * MINUTE
 LATER = 120 * MINUTE
 LASTS = 30 * MINUTE
+
+
+def held(key: str, name: str, kind: str, mime: str, size: int | None) -> dict[str, object]:
+    """Give a file in Drive as the program lists one (src/drive.rs), changed an hour ago."""
+    return {
+        "id": key,
+        "name": name,
+        "kind": kind,
+        "mime": mime,
+        "size": size,
+        "changed": int(time.time() * 1000) - 60 * MINUTE,
+        "owner": "Ada Lovelace",
+        "link": f"https://drive.google.com/file/d/{key}/view",
+        "runs": False,
+    }
+
+
+FOLDER = "application/vnd.google-apps.folder"
+# What each Drive folder holds, as the program lists it: folders first, then by name.
+FOLDERS = {
+    "root": [
+        held("trips", "Trips", "folder", FOLDER, None),
+        held("menu", "menu.pdf", "file", "application/pdf", 4),
+        held("plan", "Quarterly Plan", "document", "application/vnd.google-apps.document", None),
+    ],
+    "shared": [
+        held(
+            "budget", "Team Budget", "spreadsheet", "application/vnd.google-apps.spreadsheet", None
+        ),
+    ],
+    "drives": [held("0Team", "Team", "folder", FOLDER, None)],
+    "trips": [held("itinerary", "itinerary.pdf", "file", "application/pdf", 9)],
+    "0Team": [],
+}
+# How many downloads and folders are told, as the program tells them.
+DOWNLOADS_KEPT = 20
+LISTINGS_KEPT = 4
+# The ending each of Google's own kinds is downloaded with, as their office program's file.
+EXPORTED = {"document": ".docx", "spreadsheet": ".xlsx", "presentation": ".pptx"}
 
 
 def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict[str, object]:
@@ -181,6 +223,9 @@ class Account:
         self.fetched: dict[str, object] | None = None
         # The Meet meeting last asked to be made, as the program says it (src/state.rs).
         self.made: dict[str, object] | None = None
+        # The Drive folders listed and the downloads asked lately, each newest first.
+        self.listings: list[dict[str, object]] = []
+        self.downloads: list[dict[str, object]] = []
         self.leave()
 
     def line(self) -> bytes:
@@ -206,6 +251,7 @@ class Account:
             "heard": self.heard,
             "fetched": self.fetched,
             "meet": {"granted": True, "made": self.made},
+            "drive": {"listings": self.listings, "downloads": self.downloads},
         }
         return f"{json.dumps(said)}\n".encode()
 
@@ -228,7 +274,8 @@ class Account:
         """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
 
         Or mail marked read or archived, or marked unread again after it was read, or a file it
-        carries fetched, or a new Meet meeting made, as new-abcd-efg.
+        carries fetched, or a new Meet meeting made, as new-abcd-efg, or a Drive folder listed
+        or a file in one downloaded.
         """
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
@@ -236,6 +283,10 @@ class Account:
         with self.lock:
             if "fetch" in said:
                 self.fetch(said["fetch"])
+            if "list" in said:
+                self.look_in(str(said["list"]["folder"]))
+            if "download" in said:
+                self.download(said["download"])
             if "make" in said:
                 self.made = {
                     "asked": int(time.time() * 1000),
@@ -311,6 +362,50 @@ class Account:
             "path": str(path) if path else None,
             "failed": failed,
         }
+
+    def look_in(self, folder: str) -> None:
+        """Say what a Drive folder holds, or that it's gone, first among those asked lately."""
+        files = FOLDERS.get(folder)
+        self.listings = [one for one in self.listings if one["folder"] != folder]
+        self.listings.insert(
+            0,
+            {
+                "folder": folder,
+                "asked": int(time.time() * 1000),
+                "files": files or [],
+                "more": False,
+                "failed": None if files is not None else "gone",
+            },
+        )
+        del self.listings[LISTINGS_KEPT:]
+
+    def download(self, asked: dict[str, object]) -> None:
+        """Write a Drive file where the program would, and say where, newest first."""
+        file = next(
+            (one for files in FOLDERS.values() for one in files if one["id"] == asked["file"]),
+            None,
+        )
+        path, failed = None, None
+        if file is None or file["kind"] == "folder":
+            failed = "gone"
+        else:
+            name = f"{file['name']}{EXPORTED.get(str(file['kind']), '')}"
+            path = self.told.with_name("google-files") / "drive" / str(file["id"]) / name
+            if asked["how"] == "save":
+                path = Path(str(asked.get("to") or Path.home() / "Downloads" / name))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(str(file["id"]).encode())
+        self.downloads.insert(
+            0,
+            {
+                "file": asked["file"],
+                "how": asked["how"],
+                "asked": int(time.time() * 1000),
+                "path": str(path) if path else None,
+                "failed": failed,
+            },
+        )
+        del self.downloads[DOWNLOADS_KEPT:]
 
 
 def keep(account: Account, shell: socket.socket) -> None:

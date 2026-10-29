@@ -4877,6 +4877,34 @@
       "glyph": "folder"
     },
     {
+      "id": "drive:drive",
+      "in": "path:folder",
+      "name": "Google Drive",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "drive:mine",
+      "in": "path:folder",
+      "name": "My Drive",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "drive:shared",
+      "in": "path:folder",
+      "name": "Shared with Me",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "drive:drives",
+      "in": "path:folder",
+      "name": "Shared Drives",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
       "id": "verb:file-chooser:folder",
       "in": "path:folder",
       "name": "Open This Folder",
