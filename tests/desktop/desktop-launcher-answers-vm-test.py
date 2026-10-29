@@ -1669,20 +1669,20 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
     chosen = cores[min(1, len(cores) - 1)]
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == chosen)
     busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
+
+    def all_busy(shown: Json) -> bool:
+        """Whether every core reads busy, the step's Copy, after them, aside."""
+        each = [thing["reads"] for thing in shown["things"] if thing["reads"].startswith("Core ")]
+        return len(each) > 0 and all(busy.fullmatch(reads) for reads in each)
+
     # At rest not every core is busy, so every core saying it is below
     # is each read again.
-    cores_resting = desktop.showing()
-    assert not all(busy.fullmatch(thing["reads"]) for thing in cores_resting["things"]), (
-        "the cores were busy before anything made them so"
-    )
+    assert not all_busy(desktop.showing()), "the cores were busy before anything made them so"
     # A loop for each core, as the shell's own builtins, since a
     # transient unit's path has no coreutils.
     spinning = "(while :; do :; done) & " * int(machine.succeed("nproc"))
     machine.succeed(f"systemd-run --unit=busy-cores -p Nice=19 sh -c '{spinning}wait'")
-    desktop.launcher_until(
-        lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
-        timeout=dt.timedelta(seconds=60),
-    )
+    desktop.launcher_until(all_busy, timeout=dt.timedelta(seconds=60))
     shown = desktop.showing()
     assert shown["selected"]["name"] == chosen, "the selection left its row"
     assert re.search("^([89]\\d|100)%$", shown["selected"]["side"]), (
