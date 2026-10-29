@@ -110,11 +110,7 @@ in
     Unit = {
       Description = "Sets the screen's brightness and warmth for the light";
       PartOf = [ "graphical-session.target" ];
-      After = [
-        "graphical-session.target"
-        "wl-gammarelay.service"
-      ];
-      Wants = [ "wl-gammarelay.service" ];
+      After = [ "graphical-session.target" ];
     };
     Service = {
       ExecStart = "${lib.getExe package} ${standard}";
