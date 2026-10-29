@@ -53,12 +53,15 @@ function merged(sources) {
         name: bare(person.name) ? person.email : person.name,
         facts: person.facts,
         recent: person.recent,
+        spans: person.spans,
         from: person.from
     }));
 }
 
 function fresh(email, persons) {
-    const person = { email, emails: [], name: "", facts: [], recent: false, from: [] };
+    const person = {
+        email, emails: [], name: "", facts: [], recent: false, spans: [], from: []
+    };
     persons.push(person);
     return person;
 }
@@ -80,6 +83,13 @@ function take(person, from, known, emails) {
         }
     }
     person.recent = person.recent || Boolean(known.recent);
+    // When each thing with them is, by any source, from its start to its
+    // end, in milliseconds since the epoch.
+    for (const span of known.spans ?? []) {
+        if (Number.isFinite(span.from) && Number.isFinite(span.to)) {
+            person.spans.push({ from: span.from, to: span.to });
+        }
+    }
     if (from !== null && !person.from.includes(from)) {
         person.from.push(from);
     }
@@ -121,11 +131,23 @@ function listed(person, stood) {
     return person.recent || stood.favourite || stood.recent;
 }
 
-// Those listed in order: favourites, then by how they stand, so whoever
-// can be reached comes first, then by name.
-function ordered(persons, standOf) {
+// How far from now the nearest thing with them is, one under way being
+// none; for nothing, further than anything.
+function apart(person, now) {
+    return Math.min(Number.MAX_SAFE_INTEGER,
+        ...(person.spans ?? []).map(span => Math.max(0, span.from - now, now - span.to)));
+}
+
+// Those listed in order: favourites, then whoever Joel has something with
+// nearest now (a meeting soon, mail just come), then by how they stand,
+// so whoever can be reached comes first, then by name. It's measured from
+// now only as they're ordered, so the minute passing moves nobody under
+// the keys.
+function ordered(persons, standOf, now) {
     const rank = person => (standOf(person).favourite ? 0 : 1);
+    const near = person => apart(person, now);
     return persons.slice().sort((a, b) => rank(a) - rank(b)
+        || near(a) - near(b)
         || standOf(a).order - standOf(b).order
         || a.name.localeCompare(b.name));
 }

@@ -50,10 +50,8 @@ Singleton {
         heard = said.heard;
     }
 
-    // The program gone, as it is once it stops, is no account: what it held
-    // may not be Joel's to see any more.
     // Everyone the meetings and mail name, by address, for People
-    // (GoogleSource.qml).
+    // (GoogleSource.qml), each saying when what's with them is.
     function people(meetings, mail) {
         return Said.people(meetings, mail);
     }
@@ -64,6 +62,8 @@ Singleton {
         return Said.withThem(thing, emails);
     }
 
+    // The program gone, as it is once it stops, is no account: what it held
+    // may not be Joel's to see any more.
     function forget() {
         account = "none";
         meetings = [];

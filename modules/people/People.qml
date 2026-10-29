@@ -65,10 +65,11 @@ Provider {
         return Person.standing(person, stands);
     }
 
-    // Those listed with nothing typed, as they stand now.
+    // Those listed with nothing typed, as they stand now, the nearest
+    // measured from when they're listed rather than kept up with the clock.
     readonly property var all: Person.ordered(
-        persons.filter(person => Person.listed(person, standOf(person))), person => standOf(person))
-        .map(person => made(person, standOf(person)))
+        persons.filter(person => Person.listed(person, standOf(person))), person => standOf(person),
+        Date.now()).map(person => made(person, standOf(person)))
     onAllChanged: changed()
 
     // The listed rows by key, so a search finds them as they stand.

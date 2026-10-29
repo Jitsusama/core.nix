@@ -81,8 +81,37 @@ QtObject {
             "ada@example.com": { said: "available", order: 0 },
             "ben@example.com": { said: "away", order: 2, favourite: true }
         }]);
-        check("favourites, then reachable, then by name", names(Person.ordered(everyone, standOf)),
+        check("favourites, then reachable, then by name",
+            names(Person.ordered(everyone, standOf, 0)),
             ["ben@example.com", "Ada Lovelace", "grace@example.com"]);
+
+        // Whoever Joel has something with nearest now comes first, by what
+        // every source says, before how they stand: A's meeting is under
+        // way, B's mail came a minute ago, and nothing's with C.
+        const minute = 60 * 1000;
+        const now = 100 * minute;
+        const near = Person.merged([
+            { name: "google", people: [
+                { emails: ["b@x"], name: "B", recent: true,
+                    spans: [{ from: now - minute, to: now - minute }] },
+                { emails: ["a@x"], name: "A", recent: true,
+                    spans: [{ from: now + 9 * minute, to: now + 9 * minute }] },
+                { emails: ["c@x"], name: "C", recent: true }] },
+            { name: "vault", people: [{ emails: ["a@x"], name: "A",
+                spans: [{ from: now - minute, to: now + minute }, { from: 0, to: NaN }] }] }
+        ]);
+        check("when everything with them is, by every source", near[1].spans, [
+            { from: now + 9 * minute, to: now + 9 * minute },
+            { from: now - minute, to: now + minute }
+        ]);
+        check("how far off the nearest is", near.map(person => Person.apart(person, now)),
+            [minute, 0, Number.MAX_SAFE_INTEGER]);
+        const cAvailable = [{ "c@x": { said: "available", order: 0 } }];
+        check("nearest first, then how they stand", names(Person.ordered(near,
+            person => Person.standing(person, cAvailable), now)), ["A", "B", "C"]);
+        const cFavourite = [{ "c@x": { said: "", order: 4, favourite: true } }];
+        check("a favourite before the nearest", names(Person.ordered(near,
+            person => Person.standing(person, cFavourite), now)), ["C", "A", "B"]);
 
         // The drawer.
         check("their details", Person.details(everyone[0]), {

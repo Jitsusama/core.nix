@@ -34,23 +34,34 @@ function heard(line) {
 // the name they're given. All of them are recent, since the meetings run
 // from today to a week on and the mail is what waits on him now. One with
 // no address can't be one person across sources, so is left out; who's
-// named more than once is said once, by the first name given.
+// named more than once is said once, by the first name given. Each says
+// when those things are, a meeting from its start to its end and mail at
+// when it came, so People can list whoever's nearest now first.
 function people(meetings, mail) {
     const found = new Map();
-    const add = (email, name) => {
+    const add = (email, name, span) => {
         const address = String(email ?? "").trim().toLowerCase();
-        if (address !== "" && !found.has(address)) {
-            found.set(address, { emails: [address], name: name ?? "", recent: true });
+        if (address === "") {
+            return;
+        }
+        const had = found.get(address);
+        if (had) {
+            had.spans.push(span);
+        } else {
+            found.set(address, {
+                emails: [address], name: name ?? "", recent: true, spans: [span]
+            });
         }
     };
     for (const meeting of meetings ?? []) {
-        add(meeting.organizer?.email, meeting.organizer?.name);
+        const span = { from: meeting.start, to: meeting.end };
+        add(meeting.organizer?.email, meeting.organizer?.name, span);
         for (const guest of meeting.guests ?? []) {
-            add(guest.email, guest.name);
+            add(guest.email, guest.name, span);
         }
     }
     for (const one of mail ?? []) {
-        add(one.address, one.from);
+        add(one.address, one.from, { from: one.at, to: one.at });
     }
     return [...found.values()];
 }
