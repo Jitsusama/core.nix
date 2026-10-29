@@ -524,6 +524,10 @@ def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
     """The lid is let go when the power goes, though the shell never hears it."""
     machine = desktop.machine
     held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    # The supplies were told of the rules once udev had settled, so the
+    # mains is a device systemd tracks, as it is after a switch.
+    machine.succeed("systemctl is-active power-supplies-seen.service")
+    machine.succeed("systemctl is-active sys-subsystem-power_supply-mains.device")
     desktop.as_account("systemctl --user start caffeinate.service caffeinate-lid.service")
     machine.wait_until_succeeds(
         f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
