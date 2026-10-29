@@ -48,6 +48,10 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 # a cell to the left, where the row was before it slid.
 BESIDE_THE_MIDDLE = 2
 
+# How long the same wait lasts before the VM's margin marks it, in seconds,
+# as tests/desktop.nix sets the Lag piece's `lasts`.
+LAG_LASTS = 3600
+
 
 def now_down_to(desktop: Desktop, name: str) -> None:
     """Open Now with Super+O, and move down to this row from Waiting on You.
@@ -552,9 +556,13 @@ def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
     machine.wait_until_succeeds(
         f"{held} | grep -q handle-lid-switch", timeout=timedelta(seconds=10)
     )
-    # The shell stopped stands in for one that missed the power going while
+    # The shell frozen stands in for one that missed the power going while
     # the machine slept, as on 2026-10-28, when a laptop ran flat in a bag.
-    desktop.as_account("systemctl --user stop quickshell.service")
+    # Frozen rather than stopped, it's the same shell once thawed: one
+    # started again took the moments after it as its first, saying no
+    # notice and showing the lag of its own start, which the subtests after
+    # this one saw.
+    desktop.as_account("systemctl --user freeze quickshell.service")
     try:
         desktop.power("off")
         machine.wait_until_fails(
@@ -564,9 +572,10 @@ def test_the_lid_is_let_go_when_the_power_goes_though_the_shell_never_hears(
     finally:
         desktop.power("on")
         desktop.as_account("systemctl --user stop caffeinate.service")
-        desktop.as_account("systemctl --user start quickshell.service")
+        desktop.as_account("systemctl --user thaw quickshell.service")
         machine.wait_until_succeeds(
-            desktop.in_session("qs ipc call launcher list"), timeout=timedelta(seconds=60)
+            desktop.in_session("qs ipc call launcher list > /dev/null"),
+            timeout=timedelta(seconds=30),
         )
 
 
@@ -797,11 +806,12 @@ def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Deskto
         f" --after-cursor={shlex.quote(since)}"
     )
     assert not re.search(r"holds margin [^\n]*\blag\b", said), "a moment's wait showed"
-    # A minute of it does, left on, so muted. A run that began a minute
-    # ago is another run, so the last one ends first.
+    # As long as the VM's Lag waits for (tests/desktop.nix's hour) it
+    # does, left on, so muted. A run that began that long ago is another
+    # run, so the last one ends first.
     with desktop.told("heard lag nothing"):
         lag_says("", "", 0)
-    lag_says("memory", "apps", 70)
+    lag_says("memory", "apps", LAG_LASTS + 10)
     desktop.reported("sets margin ", margin_sets(("lag", "leftOn", "muted")), since)
     desktop.photograph("margin-lag")
     # Over, it goes.
