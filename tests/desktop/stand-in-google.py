@@ -17,8 +17,8 @@ out of the mail that wants him, as Gmail would, and one read and then marked unr
 wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
 open, kept in google-files beside the socket, or to save, where the shell says or else in
 Downloads, said as fetched as the program says it. Joel looked at two documents lately: Ada's
-Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-in grants Meet's scope, so a shell may ask
-for a new Meet meeting, which is made at once as new-abcd-efg.
+Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive. His sign-in grants Meet's
+scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg.
 """
 
 import json
