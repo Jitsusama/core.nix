@@ -45,9 +45,10 @@ onLinux {
       timer = named.systemd.user.timers.session-backup.Timer;
     in
     holds "session-backup-stays-in-the-background"
-      "session-backup runs outside background.slice, misses an hour slept through, is restarted by a switch, or runs for an account that names no folder."
+      "session-backup runs outside background.slice, misses an hour slept through, gives up at its first failure, is restarted by a switch, or runs for an account that names no folder."
       (
         service.Slice == "background.slice"
+        && service.Restart == "on-failure"
         && unit.X-RestartIfChanged == false
         && timer.Persistent
         && !(unnamed.systemd.user.services ? session-backup)
