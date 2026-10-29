@@ -592,9 +592,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "8.8.8.8", "1.1.1.1", "9.9.9.9"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # A guard that stops writing is silent once its last heartbeat is
-    # two minutes old, by a deadline that heartbeat set, with nothing
-    # read again in between.
+    # A guard that stops writing is asked about once its last heartbeat
+    # is two minutes old, by a deadline that heartbeat set, with nothing
+    # read again in between, and this machine runs no guard's unit.
     status["heartbeat"] = float(machine.succeed("date +%s")) - 100
     machine.succeed(
         f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
@@ -606,7 +606,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # Held open, the answer is asked again each second, so it says so as
     # the deadline passes, about twenty seconds on.
     desktop.launcher_until(
-        lambda shown: shown["footer"] == "the disk guard has stopped saying",
+        lambda shown: shown["footer"] == "the machine's disk guard stopped; it was turned off",
         timeout=dt.timedelta(seconds=60),
     )
     machine.send_key("esc")

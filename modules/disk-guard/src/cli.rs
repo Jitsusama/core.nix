@@ -394,6 +394,7 @@ fn daemon(
         .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
     let freezes = config.freeze;
     let mut guard = Guard::new(config, &places).map_err(failed)?;
+    guard.beat_always().map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
