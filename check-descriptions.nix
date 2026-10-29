@@ -510,6 +510,11 @@
     commits with that key; one naming none runs it dialling nothing, and one in no realm has
     neither a realm nor a node
   '';
+  mycelium-keeps-each-realm-apart = ''
+    a machine joining a further realm runs a node of its own for it, with its own state, mesh and
+    steer folders under the harness's per-realm roots and its own link key, apart from the home
+    realm's agents key; its pis are told which realm is home
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints) has it written where mycelium reads it, in
