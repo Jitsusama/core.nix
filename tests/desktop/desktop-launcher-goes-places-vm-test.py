@@ -959,13 +959,20 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -
         laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
         return next(row["words"] for row in laid["rows"] if row["selected"])
 
-    def named(words: list[Json]) -> Json:
+    def named(words: list[Json], name: str = title) -> Json:
         # A row not selected draws its name with the letters typed brought
         # forward, as styled text, so its tags are set aside.
-        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == title)
+        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == name)
 
+    # Where every name starts, read from the short one, which never moves:
+    # the long one may already be on its way, selected as the rows came.
+    laid = json.loads(desktop.as_account("qs ipc call launcher laidOut"))
+    start = next(
+        named(row["words"], "Edgewise")["x"]
+        for row in laid["rows"]
+        if row["reads"].startswith("Edgewise \u00b7")
+    )
     first = selected_words()
-    start = named(first)["x"]
     rest = sorted((word["text"], word["x"]) for word in first if word["text"] != title)
 
     def slid(_: bool) -> bool:
