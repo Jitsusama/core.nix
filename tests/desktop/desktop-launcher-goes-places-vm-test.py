@@ -1601,8 +1601,7 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         desktop.down_to("Google")
         desktop.launcher_until(
             lambda shown: (
-                shown["selected"]["side"] == "signed out"
-                and shown["selected"]["verb"] == "sign in"
+                shown["selected"]["side"] == "signed out" and shown["selected"]["verb"] == "sign in"
             )
         )
         machine.send_key("ret")
