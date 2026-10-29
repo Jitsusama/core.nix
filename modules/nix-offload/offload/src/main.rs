@@ -45,6 +45,11 @@
 //!   to end (SIGTERM, to its whole process group). The seconds are counted
 //!   here, in the zone TZ names, so the helper needs no time zones of its
 //!   own: a shell without zoneinfo reads a zone's 20:00 as UTC's.
+//! - `helper hold NAME` holds the way to one already there, as `up` does
+//!   once it's made, saying the same lines; it ends at once when there's
+//!   none. A start takes back with it what a stop left, rather than give
+//!   it back and make another, so a switch costs no wait for a builder and
+//!   its store stays warm.
 //! - `helper down NAME` gives it back, and succeeds once it's gone,
 //!   whether or not it was there.
 //! - `helper alive PREFIX` names, a line each, the builders there now.
@@ -331,7 +336,7 @@ fn serve(settings: &Settings) {
     );
     machines.show(None);
     machines.asking(None);
-    let mut lent: Option<Lent> = None;
+    let mut lent = adopt(settings, &mut machines, into_day());
     let mut not_before = 0;
     let mut said_on = None;
     while !ENDING.load(Ordering::SeqCst) {
@@ -422,31 +427,7 @@ fn ask(
         eprintln!("nix-offload: journalling the ask: {error}; none is asked for");
         return None;
     }
-    let mut helper = Command::new(&settings.helper)
-        .args(["up", &name, &left.to_string()])
-        .stdout(Stdio::piped())
-        .process_group(0)
-        .spawn()
-        .map_err(|error| eprintln!("nix-offload: running the helper: {error}"))
-        .ok()?;
-    let (said, heard) = mpsc::channel();
-    let out = helper.stdout.take()?;
-    thread::spawn(move || {
-        let _ = said.send(heard_from(BufReader::new(out)));
-    });
-    // In short waits, so a stop is heard while the builder is being made.
-    let asked = Instant::now();
-    let mut said = Heard::default();
-    while asked.elapsed() < READY && !ENDING.load(Ordering::SeqCst) {
-        match heard.recv_timeout(Duration::from_secs(1)) {
-            Ok(heard) => {
-                said = heard;
-                break;
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-    }
+    let (mut helper, said) = hear(settings, &["up", &name, &left.to_string()])?;
     let Heard { rate, store, line } = said;
     let line = line.trim();
     match host_of(line) {
@@ -502,6 +483,82 @@ fn ask(
             None
         }
     }
+}
+
+/// Run the helper with `arguments`, and hear what it says until its
+/// machines line, for as long as a builder may take to be ready.
+fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard)> {
+    let mut helper = Command::new(&settings.helper)
+        .args(arguments)
+        .stdout(Stdio::piped())
+        .process_group(0)
+        .spawn()
+        .map_err(|error| eprintln!("nix-offload: running the helper: {error}"))
+        .ok()?;
+    let (said, heard) = mpsc::channel();
+    let out = helper.stdout.take()?;
+    thread::spawn(move || {
+        let _ = said.send(heard_from(BufReader::new(out)));
+    });
+    // In short waits, so a stop is heard while the builder is being made.
+    let asked = Instant::now();
+    let mut said = Heard::default();
+    while asked.elapsed() < READY && !ENDING.load(Ordering::SeqCst) {
+        match heard.recv_timeout(Duration::from_secs(1)) {
+            Ok(heard) => {
+                said = heard;
+                break;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    Some((helper, said))
+}
+
+/// Take back the builder the last stop left, before the deadline, rather
+/// than give it back and make another: a switch restarts this, and a new
+/// builder costs a minute's wait and a cold store, where a VM test took
+/// 201 s against 67 s on one already warm. It keeps the time it was asked
+/// for, so it's priced whole, and the time the stop left it as its last
+/// use, so its idle time runs on. One that can't be held is given back by
+/// the first tick, as any left builder is.
+fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<Lent> {
+    if into_day >= settings.hours.deadline {
+        return None;
+    }
+    let journal = fs::read_to_string(&settings.journal).unwrap_or_default();
+    let left = journal::unreturned(&journal)
+        .into_iter()
+        .rev()
+        .find(|builder| builder.ended.is_some())?;
+    let ended = left.ended?;
+    let name = left.name;
+    eprintln!("nix-offload: taking back {name}, which the last stop left");
+    let (mut helper, said) = hear(settings, &["hold", &name])?;
+    let Heard { rate, store, line } = said;
+    let line = line.trim();
+    let Some(host) = host_of(line).filter(|_| helper.try_wait().ok().flatten().is_none()) else {
+        eprintln!("nix-offload: {name} couldn't be taken back, so it's given back");
+        end(&mut helper);
+        return None;
+    };
+    machines.show(Some(machines::Lending {
+        line,
+        store: store.as_deref(),
+    }));
+    let _ = journal::note(&settings.journal, now(), Event::Held, &name, None);
+    eprintln!("nix-offload: {name} is taken back; Nix may send it builds");
+    Some(Lent {
+        name,
+        helper,
+        line: line.to_owned(),
+        store,
+        host,
+        rate: rate.or(left.rate),
+        since: left.asked,
+        used: ended.at,
+    })
 }
 
 /// Take the builder from Nix, then give it back, noting how long it ran.
@@ -759,5 +816,96 @@ mod tests {
                 ..Heard::default()
             }
         );
+    }
+
+    /// A helper that holds `lend-5` when asked and has nothing else.
+    const HOLDS: &str = r#"#!/bin/sh
+if [ "$1 $2" = "hold lend-5" ]; then
+  echo "price 0.68"
+  echo "store ssh-ng://far?ssh-key=/k"
+  echo "ssh-ng://far x86_64-linux /k 8 1 big-parallel - -"
+  exec sleep 60
+fi
+exit 1
+"#;
+
+    fn holding(folder: &Path, journal: &str) -> (Settings, Machines) {
+        use std::os::unix::fs::PermissionsExt;
+        let helper = folder.join("helper");
+        fs::write(&helper, HOLDS).unwrap();
+        fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(folder.join("journal.jsonl"), journal).unwrap();
+        let settings = Settings {
+            helper,
+            prefix: "lend-".to_owned(),
+            hours: Hours {
+                first: 0,
+                last: 80_000,
+                deadline: 86_000,
+            },
+            queue: folder.join("queue.json"),
+            standing: None,
+            journal: folder.join("journal.jsonl"),
+        };
+        let file = |name: &str| folder.join(name);
+        let machines = Machines::new(
+            file("machines"),
+            file("with-standing"),
+            file("store"),
+            file("lending"),
+            Vec::new(),
+        );
+        (settings, machines)
+    }
+
+    #[test]
+    fn a_start_takes_back_what_the_last_stop_left() {
+        let folder = tempfile::tempdir().unwrap();
+        let journal = [
+            r#"{"at":5,"event":"asked","name":"lend-5"}"#,
+            r#"{"at":9,"event":"ended","name":"lend-5","seconds":4,"rate":890}"#,
+        ]
+        .join("\n")
+            + "\n";
+        let (settings, mut machines) = holding(folder.path(), &journal);
+        let mut lent = adopt(&settings, &mut machines, 3600).expect("taken back");
+        assert_eq!(
+            (
+                lent.name.as_str(),
+                lent.host.as_str(),
+                lent.since,
+                lent.used
+            ),
+            ("lend-5", "far", 5, 9)
+        );
+        assert_eq!(lent.rate, Some(680));
+        let machines_line = fs::read_to_string(folder.path().join("machines")).unwrap();
+        assert!(
+            machines_line.starts_with("ssh-ng://far "),
+            "{machines_line}"
+        );
+        end(&mut lent.helper);
+        let journal = fs::read_to_string(&settings.journal).unwrap();
+        assert!(
+            journal::unreturned(&journal)[0].ended.is_none(),
+            "{journal}"
+        );
+    }
+
+    #[test]
+    fn nothing_is_taken_back_after_the_deadline_or_when_it_is_gone() {
+        let folder = tempfile::tempdir().unwrap();
+        let left = |name: &str| {
+            format!(
+                "{{\"at\":5,\"event\":\"asked\",\"name\":\"{name}\"}}\n\
+                 {{\"at\":9,\"event\":\"ended\",\"name\":\"{name}\",\"seconds\":4}}\n"
+            )
+        };
+        let (settings, mut machines) = holding(folder.path(), &left("lend-5"));
+        assert!(adopt(&settings, &mut machines, 86_000).is_none());
+        let (settings, mut machines) = holding(folder.path(), &left("lend-6"));
+        assert!(adopt(&settings, &mut machines, 3600).is_none());
+        let (settings, mut machines) = holding(folder.path(), "");
+        assert!(adopt(&settings, &mut machines, 3600).is_none());
     }
 }

@@ -20,6 +20,9 @@ pub enum Event {
     /// `seconds`. It's given back by the next start rather than now, since
     /// a switch starts nothing until every stop has ended.
     Ended,
+    /// A start took back what a stop left, so it's lent again rather than
+    /// left.
+    Held,
     /// It was given back, having run `seconds`.
     Stopped,
     /// It went on its own, having run `seconds`, and was given back.
@@ -40,6 +43,7 @@ impl Event {
             Self::Asked => "asked",
             Self::Started => "started",
             Self::Ended => "ended",
+            Self::Held => "held",
             Self::Stopped => "stopped",
             Self::Lost => "lost",
             Self::Failed => "failed",
@@ -129,7 +133,7 @@ pub fn unreturned(journal: &str) -> Vec<Unreturned> {
             out.retain(|known| known.name != name);
             continue;
         }
-        if !matches!(event, "asked" | "started" | "ended") {
+        if !matches!(event, "asked" | "started" | "ended" | "held") {
             continue;
         }
         if !out.iter().any(|known| known.name == name) {
@@ -147,6 +151,8 @@ pub fn unreturned(journal: &str) -> Vec<Unreturned> {
                     at: line["at"].as_u64().unwrap_or(known.asked),
                     seconds: line["seconds"].as_u64().unwrap_or(0),
                 });
+            } else if event == "held" {
+                known.ended = None;
             }
         }
     }
@@ -280,6 +286,9 @@ mod tests {
             r#"{"at":6,"event":"started","name":"lend-5","seconds":1,"rate":890}"#,
             r#"{"at":9,"event":"ended","name":"lend-5","seconds":4,"rate":890}"#,
             r#"{"at":7,"event":"left","name":"someone-elses"}"#,
+            r#"{"at":10,"event":"asked","name":"lend-10"}"#,
+            r#"{"at":11,"event":"ended","name":"lend-10","seconds":1}"#,
+            r#"{"at":12,"event":"held","name":"lend-10"}"#,
         ]
         .join("\n");
         assert_eq!(
@@ -296,6 +305,13 @@ mod tests {
                     asked: 5,
                     rate: Some(890),
                     ended: Some(Ended { at: 9, seconds: 4 }),
+                },
+                // Taken back by a start, it's lent, not left.
+                Unreturned {
+                    name: "lend-10".to_owned(),
+                    asked: 10,
+                    rate: None,
+                    ended: None,
                 },
             ]
         );
