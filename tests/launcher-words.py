@@ -372,7 +372,7 @@ def refuses() -> list[str]:
 
 # Names read as sentences, which titled refuses, and titles beside them it
 # takes: small words inside, a placeholder, a capital inside, two sides.
-SENTENCES = ["Keep awake", "Waiting on you", "Power saver \u00b7 in use", "Turn it on"]
+SENTENCES = ["Keep awake", "Waiting on you", "Power saver \u00b7 chosen", "Turn it on"]
 TITLES = [
     "Keep Awake",
     "Waiting on You",

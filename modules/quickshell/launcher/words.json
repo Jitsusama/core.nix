@@ -1600,7 +1600,7 @@
       ],
       "said": {
         "volume": "volume {level}",
-        "in-use": "in use",
+        "chosen": "chosen",
         "muted": "muted",
         "none": "none",
         "on": "on",

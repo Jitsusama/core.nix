@@ -290,7 +290,7 @@ Provider {
         }, fields ?? {}), choices);
     }
 
-    function choice(id, inUse, mark, run) {
+    function choice(id, chosen, mark, run) {
         return thing({
             key: `verb:${id}`,
             name: Words.name(`verb:${id}`),
@@ -299,7 +299,7 @@ Provider {
             verb: Words.verb(`verb:${id}`) ?? "",
             glyph: mark,
             hue: "action",
-            side: inUse ? "in use" : "",
+            side: chosen ? "chosen" : "",
             stays: true,
             run: run
         });

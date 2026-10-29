@@ -147,7 +147,7 @@ ShellRoot {
         expect("each offers its choices beside it", parts[0].offers && parts[1].offers,
             `${parts[0].offers} ${parts[1].offers}`);
         // Their choices: a step either way first, then the levels, the
-        // one it's at in use.
+        // one it's at chosen.
         const brighter = parts[0].verbs();
         const warmer = parts[1].verbs();
         const steps = brighter.slice(0, 2).concat(warmer.slice(0, 2), [parts[2]]);
@@ -157,9 +157,9 @@ ShellRoot {
         expect("each its one word",
             steps.map(verb => verb.verb).join(" ") === "brighter dimmer warmer cooler off",
             steps.map(verb => verb.verb).join(" "));
-        const inUse = brighter.concat(warmer).filter(choice => choice.side === "in use")
+        const chosen = brighter.concat(warmer).filter(choice => choice.side === "chosen")
             .map(choice => choice.name);
-        expect("the levels in use", inUse.join(", ") === "Brightness to 60%", inUse.join(", "));
+        expect("the levels chosen", chosen.join(", ") === "Brightness to 60%", chosen.join(", "));
         expect("a warmth to choose", warmer.some(choice => choice.name === "Warmth to 2700 K"),
             warmer.map(choice => choice.name).join(", "));
         brighter[0].run();

@@ -43,14 +43,14 @@ Provider {
     }
 
     // A choice a step into a setting, as the vocabulary names it.
-    function choice(key, fill, inUse, glyph, run) {
+    function choice(key, fill, chosen, glyph, run) {
         return thing({
             key: key,
             verb: Words.verb(key),
             name: Words.name(key, "", fill),
             glyph: glyph,
             hue: "action",
-            side: inUse ? "in use" : "",
+            side: chosen ? "chosen" : "",
             stays: true,
             run: run
         });
@@ -103,7 +103,7 @@ Provider {
     }
 
     // A step into the desk light's Brightness: a step brighter or dimmer,
-    // then each level, the one it's at in use.
+    // then each level, the one it's at chosen.
     function brightnesses() {
         const at = () => DeskLight.light.percent;
         return [
