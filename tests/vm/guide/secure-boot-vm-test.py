@@ -327,6 +327,9 @@ def test_a_firmware_update_frees_pcr_0_until_the_next_boot(updated: QemuMachine)
     said = updated.succeed("journalctl -b -1 -o cat -u tpm-follows-a-firmware-update")
     print(said)
     assert FREED in said, said
+    # The firmware here doesn't change, so the disk would open either way;
+    # the policy made at shutdown is what shows PCR 0 left it.
+    assert "PCRs dropped from protection mask: 0 (" in said, said
     # Opened with the PIN alone, then locked to this boot's firmware again.
     print(updated.succeed("journalctl -b -o cat -u systemd-cryptsetup@system.service"))
     updated.wait_for_unit("systemd-pcrlock-make-policy.service")
