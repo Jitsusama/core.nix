@@ -681,6 +681,11 @@
     the harness's measure runs each morning in background.slice with the store's node, catching up on
     a morning slept through, skipped where the harness isn't installed, and never on a Mac
   '';
+  pi-writes-what-the-last-boot-left = ''
+    the launcher's list of the pi sessions the last boot's end took away is written as the account's
+    session starts, in background.slice with the store's node, skipped where the harness isn't
+    installed, and never on a Mac
+  '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
     processes use a version

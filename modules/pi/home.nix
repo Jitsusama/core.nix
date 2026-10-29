@@ -124,6 +124,7 @@ let
   # Where pi-packages keeps the harness's current version, and the script in
   # it a timer runs.
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
+  restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
@@ -343,6 +344,24 @@ in
         Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
+    };
+
+    # The launcher's list of the sessions the last boot's end took away,
+    # written as the account's session starts, before any pi has: each pi
+    # rewrites it as it starts, but until one does the file would still
+    # describe an older boot. It reads only the harness's session records,
+    # and a machine without the harness skips it.
+    systemd.user.services.pi-restore-file = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Writes which pi sessions the last boot's end took away";
+        ConditionPathExists = restoreFile;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe pkgs.nodejs} ${restoreFile}";
+        Slice = "background.slice";
+      };
+      Install.WantedBy = [ "default.target" ];
     };
 
     jitsusama.keys.pi = map (key: {
