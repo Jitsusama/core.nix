@@ -1319,22 +1319,31 @@ Scope {
         // A row whose thing has gone does nothing, so it says no key.
         if (!choice || choice.gone)
             return [];
-        // Going elsewhere says where Return takes it, as one word for both.
-        const more = leadsElsewhere(choice) ? verbOf(choice)
-            : choice.from && !choice.lands ? "see all" : "more";
+        // The arrows are said by their marks alone, which Joel knows: the
+        // right arrow steps in and the left one steps back wherever they
+        // work, so their words only took room from the marks beside them
+        // (Joel, 2026-10-28: "i want icons to be able to be there as much
+        // as possible"). Going elsewhere keeps Return's own word, where it
+        // takes him.
+        const more = leadsElsewhere(choice) ? verbOf(choice) : "";
         const stepping = stepsIn(choice);
         const keys = [stepping ? ["\u21b5 \u2192", more] : ["\u21b5", verbOf(choice)]];
         // One that keeps the launcher can be done and closed at once, the
         // font having no Ctrl key's mark, so it's spelled as chords are.
         if (keepsOpen(choice))
-            keys.push(["Ctrl+\u21b5", "and close"]);
+            keys.push(["Ctrl+\u21b5", "close"]);
         if (choice.below)
             keys.push(["\u21e7\u21b5", "below"]);
         if (!stepping && holdsMore(choice))
-            keys.push(["\u2192", more]);
+            keys.push(["\u2192", ""]);
         if (typed === "" && held.length > 0)
-            keys.push(["\u2190", "back"]);
+            keys.push(["\u2190", ""]);
         return keys;
+    }
+
+    // A key as the foot says it: its mark, then its word where it has one.
+    function saidKey(key) {
+        return key[1] === "" ? key[0] : `${key[0]} ${key[1]}`;
     }
 
     // How far in the foot's keys may reach and how wide Return's place is,
@@ -1358,8 +1367,8 @@ Scope {
     readonly property string footVerbRoom: "connect"
     // A row opened below never stays, so Ctrl+Return's place is the wider
     // of the two it could have.
-    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "and close"],
-        ["\u2192", "see all"]]
+    readonly property var footKeysRoom: [["\u21b5", footVerbRoom], ["Ctrl+\u21b5", "close"],
+        ["\u2192", ""]]
     // Return's place, as wide as the widest Return said since the launcher
     // opened, its marks and its word whole: kept by its word alone, a
     // Return said with the right arrow beside it, as a collection's "see
@@ -1378,19 +1387,19 @@ Scope {
         if (told.length === 0)
             return 0;
         return told.slice(1).reduce((sum, key) => sum + keys.spacing
-            + measure.advanceWidth(`${key[0]} ${key[1]}`), returnPlace(told[0]));
+            + measure.advanceWidth(saidKey(key)), returnPlace(told[0]));
     }
 
     // How wide Return's place is beside what it says now.
     function returnPlace(key) {
-        return Math.max(measure.advanceWidth(`${key[0]} ${key[1]}`), footReturnWidest);
+        return Math.max(measure.advanceWidth(saidKey(key)), footReturnWidest);
     }
 
     function noteKeys() {
         const rows = asking ? matches.concat([asking]) : matches;
         const said = rows.map(row => keysFor(row)).filter(keys => keys.length > 0);
         const place = Math.max(footReturnWidest,
-            ...said.map(keys => measure.advanceWidth(`${keys[0][0]} ${keys[0][1]}`)));
+            ...said.map(keys => measure.advanceWidth(saidKey(keys[0]))));
         if (place > footReturnWidest)
             footReturnWidest = place;
         const wide = Math.max(footKeysWidest, ...said.map(keys => keysWide(keys)));
@@ -2596,7 +2605,7 @@ Scope {
                 // What the drawer beside the rows shows of it, if anything.
                 drawer: row.drawer ?? null,
                 // The keys the foot says for it, each a mark and its word.
-                told: root.keysFor(row).map(key => key.join(" ")),
+                told: root.keysFor(row).map(key => root.saidKey(key)),
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },

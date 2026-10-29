@@ -3,9 +3,11 @@
 // day's AI spend, the agents) reads first as it glances, then as the least
 // that tells Joel something; short of room still, the facts shrink to
 // their glyph alone by collapse rank, lowest first, so each still shows
-// it's there; and only once every one is its glyph do they give way, in
-// the same order. A fact with no glyph, the date, gives way where it would
-// have shrunk, and one with no rank, the time, never does. Apart from the
+// it's there. A glyph never gives way: the marks have first claim on the
+// foot, and what else is there makes room for them (Joel, 2026-10-28: "i
+// want icons to be able to be there as much as possible"). A fact with
+// no glyph, the date, gives way where it would have shrunk, and one with
+// no rank, the time, never does. Apart from the
 // launcher, so tests/answers.qml can hold it in Qt's own engine.
 .pragma library
 
@@ -44,8 +46,8 @@ function ranks(facts) {
 }
 
 // Each way the facts can read, longest first: at a glance, then the
-// least, then with each rank shrunk to its glyph, then with each rank
-// given way.
+// least, then with each rank shrunk to its glyph, the last of which is
+// the floor.
 function stages(facts) {
     const order = ranks(facts);
     const out = [told(reading(facts, GLANCE))];
@@ -55,10 +57,6 @@ function stages(facts) {
         left = left
             .filter((fact) => rankOf(fact) !== rank || fact.sign !== "")
             .map((fact) => (rankOf(fact) === rank ? Object.assign({}, fact, { way: GLYPH }) : fact));
-    }
-    for (const rank of order) {
-        out.push(told(left));
-        left = left.filter((fact) => rankOf(fact) !== rank);
     }
     out.push(told(left));
     return out;

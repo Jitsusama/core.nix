@@ -14,6 +14,7 @@ import json
 import re
 import shlex
 import time
+import unicodedata
 from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
@@ -338,7 +339,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting="Lighthouse")
     told = desktop.showing()["selected"]["told"]
-    assert told == ["\u21b5 \u2192 more"], told
+    assert told == ["\u21b5 \u2192"], told
     machine.send_key("right")
     desktop.launcher_until(
         lambda shown: (
@@ -992,7 +993,7 @@ def test_super_tab_goes_back_to_the_window_before_and_finds_any_by_typing(deskto
     desktop.step_in("right")
     desktop.type_in("scratch 08", selecting="Scratch 08")
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u2192 more" in told, told
+    assert "\u2192" in told, told
     desktop.step_in("right")
     desktop.launcher_until(lambda shown: {"Size", "Float"} <= set(shown["rows"]))
     machine.send_key("esc")
@@ -1125,7 +1126,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     # Return steps in, to what can be done to it, all but going to it,
     # since it's the one he's in. It steps in as the right arrow does, so
     # the foot says the two as one, by the one word for stepping in.
-    assert selected["told"] == ["\u21b5 \u2192 more"], selected
+    assert selected["told"] == ["\u21b5 \u2192"], selected
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
@@ -1152,7 +1153,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.type_in("size", selecting="Size")
     # Its sizes are a step in by the right arrow too, and the foot says so.
     told = (desktop.showing()["selected"] or {}).get("told", [])
-    assert "\u21b5 \u2192 more" in told, told
+    assert "\u21b5 \u2192" in told, told
     desktop.step_in("ret")
     desktop.type_in("half", selecting="Half the Screen")
     machine.send_key("ret")
@@ -2178,6 +2179,51 @@ def test_escape_closes_only_the_launcher_and_never_reaches_the_window_behind(
         assert not re.search(r"state: 1 \(pressed\)\s*\n\s*sym: Escape", heard), heard
     finally:
         desktop.as_account("systemctl --user stop wev-escape")
+
+
+def marks_in(glance: str) -> list[str]:
+    """Give the glyphs the foot's glance wears, in order: its marks, never its words."""
+    # The theme's marks all sit in Unicode's private use areas.
+    return [mark for mark in glance if unicodedata.category(mark) == "Co"]
+
+
+def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
+    desktop: Desktop,
+) -> None:
+    """The foot's marks never give way to the keys, and are all there as the shell starts."""
+    machine = desktop.machine
+    desktop.pi_session()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # The battery, the network, the volume and the agents, at least.
+    fewest = 4
+    desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
+    home = marks_in(desktop.showing()["glance"])
+    # A step's row with the most keys: Return, Ctrl+Return, the right
+    # arrow and the left. Every mark stays beside them (Joel, 2026-10-28:
+    # "i want icons to be able to be there as much as possible").
+    machine.send_chars("desktop ")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
+    )
+    desktop.down_to("Do Not Disturb")
+    shown = desktop.showing()
+    assert "Ctrl+\u21b5 close" in shown["selected"]["told"], shown["selected"]
+    assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # A switch restarts the shell: the first foot it draws has every mark,
+    # each read from its source as it starts, none waited on.
+    desktop.as_account("systemctl --user restart quickshell")
+    machine.wait_until_succeeds(
+        desktop.in_session("qs ipc call launcher showing"), timeout=dt.timedelta(seconds=60)
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    first = desktop.showing()["glance"]
+    assert marks_in(first) == home, (first, home)
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
 
 
 def test_every_row_has_a_return_act(desktop: Desktop) -> None:

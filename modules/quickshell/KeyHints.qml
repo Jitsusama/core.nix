@@ -36,9 +36,10 @@ Row {
             width: Math.max(implicitWidth, hints.widths[index] ?? 0)
             horizontalAlignment: hints.endsRight && index === hints.keys.length - 1
                 ? Text.AlignRight : Text.AlignLeft
+            // A key Joel knows by its mark alone, as the arrows, says no word.
             text: modelData[0] === "" ? ""
-                : `<font color="${modelData[2] ?? Theme.text}">${modelData[0]}</font> `
-                    + modelData[1]
+                : `<font color="${modelData[2] ?? Theme.text}">${modelData[0]}</font>`
+                    + ((modelData[1] ?? "") === "" ? "" : ` ${modelData[1]}`)
             textFormat: Text.StyledText
             color: Theme.muted
             font.family: Theme.mono.family

@@ -791,8 +791,8 @@ QtObject {
             Heat.labelled("SODIMM")], ["", "", "memory"]);
 
         // How things stand in the foot, as room runs short: the least of
-        // each, then each its glyph by rank, then each gives way, each a
-        // character wide here, two between.
+        // each, then each its glyph by rank, and no glyph ever gives way,
+        // each a character wide here, two between.
         const fact = (sign, glance, least, collapse) => ({ sign, glance, least, entry: { collapse } });
         const facts = [fact("", "17:30", "17:30", null), fact("", "Sat 24 Oct", "Sat 24 Oct", 3),
             fact("B", "50% 0:02 left", "50%", 20), fact("N", "", "", 10), fact("V", "40%", "", 0),
@@ -808,9 +808,9 @@ QtObject {
             // The day's spend and the agents as their glyph are one robot.
             [22, "17:30  B 50%  N  V  R"],
             [17, "17:30  B  N  V  R"],
-            [12, "17:30  B  N"],
-            // The time never gives way.
-            [3, "17:30"]
+            // Every glyph stays, however short the room, as the time does.
+            [12, "17:30  B  N  V  R"],
+            [3, "17:30  B  N  V  R"]
         ])
             machine(`how things stand in ${room}`, footFor(room), said);
         // Once the foot has had to read shorter, it reads no longer until
@@ -826,7 +826,7 @@ QtObject {
         machine("from the first way, as long as there's room", Standing.fittedFrom(facts, roomy, 0)
             .stage, 0);
         machine("a way past the last is the last", Standing.fittedFrom(facts, roomy, 99)
-            .told.map(one => one.said).join("  "), "17:30");
+            .told.map(one => one.said).join("  "), "17:30  B  N  V  R");
 
         // The network's figures, from /proc/net/dev and the shaper's file.
         const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"
