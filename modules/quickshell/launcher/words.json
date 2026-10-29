@@ -4394,7 +4394,7 @@
     {
       "id": "recent:site",
       "in": "program:recent",
-      "name": "Visited Lately",
+      "name": "Site",
       "verb": "open",
       "glyph": "web"
     },
