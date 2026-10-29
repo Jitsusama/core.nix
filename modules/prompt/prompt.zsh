@@ -3,8 +3,8 @@
 # pick under way, drawn as its steps where it has them. The glyph is where
 # his keys go: the accent, red after a failure, # in the warning's gold as
 # root. After it, receding: a development shell and background jobs as bare
-# glyphs, how long a long command ran, and the branch with a mark for
-# unsaved work and one for commits not yet pushed.
+# glyphs, how long a long command ran, and the branch with git's notation
+# for its changes and its upstream.
 #
 # It's laid out once per prompt and again on a resize, never per keystroke.
 # When the window is too narrow the right side gives way a step at a time,
@@ -240,17 +240,43 @@ _prompt_head() {
 
 # What the daemon answered, when it answered for this folder.
 _prompt_git() {
-  _prompt_state[unsaved]=0 _prompt_state[ahead]=0 _prompt_state[conflicted]=0
+  _prompt_clean
   [[ $VCS_STATUS_RESULT == ok-* ]] || return
   if [[ -n $VCS_STATUS_LOCAL_BRANCH ]]; then
     _prompt_state[branch]=$VCS_STATUS_LOCAL_BRANCH
   else
     _prompt_state[branch]=${VCS_STATUS_COMMIT[1,7]}
   fi
-  (( VCS_STATUS_HAS_STAGED || VCS_STATUS_HAS_UNSTAGED || VCS_STATUS_HAS_UNTRACKED )) &&
-    _prompt_state[unsaved]=1
-  (( VCS_STATUS_COMMITS_AHEAD > 0 )) && _prompt_state[ahead]=1
+  (( VCS_STATUS_HAS_UNSTAGED )) && _prompt_state[unstaged]=1
+  (( VCS_STATUS_HAS_STAGED )) && _prompt_state[staged]=1
+  (( VCS_STATUS_HAS_UNTRACKED )) && _prompt_state[untracked]=1
+  (( VCS_STATUS_COMMITS_AHEAD > 0 )) && _prompt_state[ahead]=$VCS_STATUS_COMMITS_AHEAD
+  (( VCS_STATUS_COMMITS_BEHIND > 0 )) && _prompt_state[behind]=$VCS_STATUS_COMMITS_BEHIND
   (( VCS_STATUS_HAS_CONFLICTED )) && _prompt_state[conflicted]=1
+}
+
+# A tree with nothing to tell: clean, in step, no conflict.
+_prompt_clean() {
+  _prompt_state[unstaged]=0 _prompt_state[staged]=0 _prompt_state[untracked]=0
+  _prompt_state[ahead]=0 _prompt_state[behind]=0 _prompt_state[conflicted]=0
+}
+
+# The tree's changes and the upstream after the branch, in the notation
+# git's own short status and the usual prompts use: * not staged, + staged,
+# ? untracked, together, then ↑N ahead and ↓N behind, together. A tree
+# clean and in step adds nothing.
+_prompt_notation() {
+  local changes="" upstream=""
+  (( ${_prompt_state[unstaged]} )) && changes+='*'
+  (( ${_prompt_state[staged]} )) && changes+='+'
+  (( ${_prompt_state[untracked]} )) && changes+='?'
+  (( ${_prompt_state[ahead]} )) && upstream+="↑${_prompt_state[ahead]}"
+  (( ${_prompt_state[behind]} )) && upstream+="↓${_prompt_state[behind]}"
+  local group
+  for group in $changes $upstream; do
+    REPLY+=" " _prompt_plain+=" "
+    _prompt_put text $group
+  done
 }
 
 # Where Joel is: the root's name in text, the folders between muted, the one
@@ -362,14 +388,7 @@ _prompt_build_right() {
       REPLY+=" " _prompt_plain+=" "
       _prompt_put muted $branch
     fi
-    if (( ${_prompt_state[unsaved]} )); then
-      REPLY+=" " _prompt_plain+=" "
-      _prompt_put text ${_prompt_glyph[unsaved]}
-    fi
-    if (( ${_prompt_state[ahead]} )); then
-      REPLY+=" " _prompt_plain+=" "
-      _prompt_put text ${_prompt_glyph[unpushed]}
-    fi
+    _prompt_notation
   fi
   _prompt_r=$REPLY
   _prompt_rw=${(m)#_prompt_plain}
@@ -453,7 +472,7 @@ _prompt_precmd() {
   _prompt_where
   _prompt_operation ${_prompt_state[gitdir]}
   _prompt_head
-  _prompt_state[unsaved]=0 _prompt_state[ahead]=0 _prompt_state[conflicted]=0
+  _prompt_clean
   _prompt_asked=0
   # The daemon was started without waiting for it; the first prompt takes its
   # hello, which the rest of the shell's start has usually given it time for.

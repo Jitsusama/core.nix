@@ -150,10 +150,10 @@ onLinux {
         touch $out
       '';
 
-  # Neovim's status line, drawn for a file in a repository with changes
-  # not yet committed, with git's state from the engine: the file told
-  # from its root, the branch with its unsaved mark, a mark once the
-  # buffer changes, an error counted, the mode once it isn't Normal, and
+  # Neovim's status line, drawn for a file in a repository with a change
+  # not staged and a file untracked, with git's state from the engine: the
+  # file told from its root, the branch with git's `*?` after it, Vim's
+  # [+] once the buffer changes, an error counted, the mode once it isn't Normal, and
   # all of it fitting a narrow window.
   neovim-draws-its-status-line =
     let
@@ -170,6 +170,7 @@ onLinux {
       git -C project -c user.name=check -c user.email=check@localhost -c commit.gpgsign=false \
         commit -q -m first
       echo 'a second line' >> project/sub/notes.txt
+      echo 'not yet added' > project/new.txt
       ${probed} 'as designed' project/sub/notes.txt -c 'luafile ${probe}'
       touch $out
     '';
