@@ -125,6 +125,7 @@ let
   # it a timer runs.
   measure = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/measure.ts";
   restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
+  windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
   piClaude = import ./claude.nix {
@@ -358,10 +359,38 @@ in
       };
       Service = {
         Type = "oneshot";
-        ExecStart = "${lib.getExe pkgs.nodejs} ${restoreFile}";
+        # The harness's package.json names no module type, on purpose: two
+        # of its modules load with require. Node warns about that on every
+        # run, which said nothing at each switch.
+        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${restoreFile}";
         Slice = "background.slice";
       };
       Install.WantedBy = [ "default.target" ];
+    };
+
+    # A session another machine holds runs on through this machine's
+    # power-off, so what the boot takes away is only the window here
+    # joined to it, and only this machine knows it was here. Each minute
+    # the harness notes those windows, from kitty's and the mycelium
+    # node's answers, so the next boot's list can offer them back.
+    systemd.user.services.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Notes the windows joined to sessions other machines hold";
+        ConditionPathExists = windowsElsewhere;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${windowsElsewhere}";
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Notes each minute the windows joined to sessions other machines hold";
+      Timer = {
+        OnCalendar = "minutely";
+        AccuracySec = "10s";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
 
     jitsusama.keys.pi = map (key: {
