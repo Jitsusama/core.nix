@@ -13,8 +13,13 @@ pub enum Event {
     /// The helper was asked to make it, before it ran, so a builder half
     /// made when this stops is still known to be this one's.
     Asked,
-    /// It was made and Nix was given it.
+    /// It was made and Nix was given it, `seconds` after it was asked for,
+    /// at the price the helper said.
     Started,
+    /// The service was told to end while it was lent, having run
+    /// `seconds`. It's given back by the next start rather than now, since
+    /// a switch starts nothing until every stop has ended.
+    Ended,
     /// It was given back, having run `seconds`.
     Stopped,
     /// It went on its own, having run `seconds`, and was given back.
@@ -34,6 +39,7 @@ impl Event {
         match self {
             Self::Asked => "asked",
             Self::Started => "started",
+            Self::Ended => "ended",
             Self::Stopped => "stopped",
             Self::Lost => "lost",
             Self::Failed => "failed",
@@ -67,11 +73,51 @@ pub fn note(path: &Path, at: u64, event: Event, name: &str, ran: Option<Ran>) ->
     writeln!(journal, "{line}")
 }
 
+/// A builder this asked for and hasn't seen gone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unreturned {
+    pub name: String,
+    /// When it was asked for.
+    pub asked: u64,
+    /// Its price an hour, where the helper said one.
+    pub rate: Option<u64>,
+    /// When a stop left it for the next start to give back, and how long
+    /// it had run then; none where it was lost track of instead.
+    pub ended: Option<Ended>,
+}
+
+/// When a stop left a builder, and how long it had run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ended {
+    pub at: u64,
+    pub seconds: u64,
+}
+
+impl Unreturned {
+    /// How it's journalled once given back at `now`. One a stop left ran on
+    /// until now, or until its own delete took it `idle` seconds after Nix
+    /// let it be, whichever came first. One lost track of is found left
+    /// over, having run for a time nothing here knows.
+    pub fn given_back(&self, now: u64, idle: u64) -> (Event, Option<Ran>) {
+        match self.ended {
+            Some(ended) => {
+                let after = now.saturating_sub(ended.at).min(idle);
+                let ran = Ran {
+                    seconds: ended.seconds + after,
+                    rate: self.rate,
+                };
+                (Event::Stopped, Some(ran))
+            }
+            None => (Event::Left, None),
+        }
+    }
+}
+
 /// The builders this asked for and hasn't seen gone, oldest first. They're
 /// the only ones it may give back: whatever else shares their prefix is
 /// someone else's.
-pub fn unreturned(journal: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+pub fn unreturned(journal: &str) -> Vec<Unreturned> {
+    let mut out: Vec<Unreturned> = Vec::new();
     for line in journal.lines() {
         let Ok(line) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -79,12 +125,29 @@ pub fn unreturned(journal: &str) -> Vec<String> {
         let (Some(event), Some(name)) = (line["event"].as_str(), line["name"].as_str()) else {
             continue;
         };
-        if matches!(event, "asked" | "started") {
-            if !out.iter().any(|known| known == name) {
-                out.push(name.to_owned());
+        if GONE.contains(&event) {
+            out.retain(|known| known.name != name);
+            continue;
+        }
+        if !matches!(event, "asked" | "started" | "ended") {
+            continue;
+        }
+        if !out.iter().any(|known| known.name == name) {
+            out.push(Unreturned {
+                name: name.to_owned(),
+                asked: line["at"].as_u64().unwrap_or(0),
+                rate: None,
+                ended: None,
+            });
+        }
+        if let Some(known) = out.iter_mut().find(|known| known.name == name) {
+            known.rate = line["rate"].as_u64().or(known.rate);
+            if event == "ended" {
+                known.ended = Some(Ended {
+                    at: line["at"].as_u64().unwrap_or(known.asked),
+                    seconds: line["seconds"].as_u64().unwrap_or(0),
+                });
             }
-        } else if GONE.contains(&event) {
-            out.retain(|known| known != name);
         }
     }
     out
@@ -119,12 +182,12 @@ pub fn day(journal: &str, from: u64, rate: u64) -> Day {
         }
         match line["event"].as_str() {
             Some("asked") => day.started += 1,
-            Some("stopped" | "lost" | "failed") => {
+            Some(event @ ("stopped" | "lost" | "failed" | "left")) => {
                 let seconds = line["seconds"].as_u64().unwrap_or(0);
                 day.seconds += seconds;
                 day.spent += seconds * line["rate"].as_u64().unwrap_or(rate);
+                day.left += u64::from(event == "left");
             }
-            Some("left") => day.left += 1,
             _ => {}
         }
     }
@@ -214,12 +277,55 @@ mod tests {
             r#"{"at":3,"event":"stopped","name":"lend-1","seconds":2}"#,
             r#"{"at":4,"event":"asked","name":"lend-4"}"#,
             r#"{"at":5,"event":"asked","name":"lend-5"}"#,
-            r#"{"at":6,"event":"started","name":"lend-5"}"#,
+            r#"{"at":6,"event":"started","name":"lend-5","seconds":1,"rate":890}"#,
+            r#"{"at":9,"event":"ended","name":"lend-5","seconds":4,"rate":890}"#,
             r#"{"at":7,"event":"left","name":"someone-elses"}"#,
         ]
         .join("\n");
-        assert_eq!(unreturned(&journal), ["lend-4", "lend-5"]);
+        assert_eq!(
+            unreturned(&journal),
+            [
+                Unreturned {
+                    name: "lend-4".to_owned(),
+                    asked: 4,
+                    rate: None,
+                    ended: None,
+                },
+                Unreturned {
+                    name: "lend-5".to_owned(),
+                    asked: 5,
+                    rate: Some(890),
+                    ended: Some(Ended { at: 9, seconds: 4 }),
+                },
+            ]
+        );
         assert!(unreturned("").is_empty());
+    }
+
+    #[test]
+    fn one_a_stop_left_is_priced_to_its_return_or_its_own_delete() {
+        let left = Unreturned {
+            name: "lend-5".to_owned(),
+            asked: 5,
+            rate: Some(890),
+            ended: Some(Ended {
+                at: 100,
+                seconds: 95,
+            }),
+        };
+        let ran = |seconds| {
+            Some(Ran {
+                seconds,
+                rate: Some(890),
+            })
+        };
+        assert_eq!(left.given_back(130, 900), (Event::Stopped, ran(125)));
+        assert_eq!(left.given_back(90_000, 900), (Event::Stopped, ran(995)));
+        let lost = Unreturned {
+            ended: None,
+            ..left
+        };
+        assert_eq!(lost.given_back(130, 900), (Event::Left, None));
     }
 
     #[test]
