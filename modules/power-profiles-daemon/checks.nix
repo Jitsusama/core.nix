@@ -68,7 +68,8 @@
   # holds, and a line from UPower that isn't a change does nothing. UPower and
   # the daemon are stand-ins: each time the service asks whether the machine
   # is on battery, UPower answers with the next of the states listed below
-  # (tests/battery-stand-ins).
+  # (tests/battery-stand-ins). Its last choice is the one it says it chose,
+  # for the shell to tell a profile picked by hand from it.
   the-profile-saves-power-on-a-low-battery =
     let
       inherit ((bareNixos [ self.nixosModules.power-profiles-daemon ]).config) services systemd;
@@ -79,7 +80,7 @@
         echo "UPower's low mark isn't the 20% the steps below expect." >&2
         exit 1
       ''}
-      ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+      WANTED=balanced ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
         lib.escapeShellArgs [
           (unit.serviceConfig.ExecStart or "false")
           # On battery or not, and its percentage, as UPower gives them.
@@ -92,6 +93,7 @@
             false 21
             true 15
             false 15
+            true 50
           '')
           (pkgs.writeText "expected" ''
             false 79: performance
@@ -100,6 +102,7 @@
             false 21: performance
             true 15: power-saver
             false 15: performance
+            true 50: balanced
           '')
           "The power profile"
           (lib.makeBinPath [

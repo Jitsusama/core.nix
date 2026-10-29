@@ -1290,8 +1290,9 @@ in
         tier = "when";
         mark = "awake";
       };
-      # A mode too, only while the profile isn't balanced, its mark drawn
-      # with the profile's own glyph.
+      # A mode too, only while the profile isn't the one the machine chose
+      # for the charger and the battery, its mark drawn with the profile's
+      # own glyph.
       profile = {
         order = 61;
         source = "profile";
