@@ -1036,9 +1036,14 @@ Scope {
 
     // Whether a place holds this now. A condition with no meaning here
     // holds its thing back, so a word missing from the table shows nothing.
+    // The condition is looked up and then called, never called through
+    // ?.() on the lookup, which Qt 6's QML compiler crashes compiling.
     function holdsNow(category, id) {
         const named = (category.while ?? {})[id];
-        return named === undefined || (conditions[named]?.() ?? false);
+        if (named === undefined)
+            return true;
+        const condition = conditions[named];
+        return typeof condition === "function" && condition() === true;
     }
 
     // What a place holds now, in its order: what its words name, less
