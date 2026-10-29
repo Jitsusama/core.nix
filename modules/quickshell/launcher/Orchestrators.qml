@@ -18,8 +18,16 @@
 // every orchestrator listed: his words, and beside them how it went,
 // in one word that changes in place (delivered, reading, replying,
 // replied, not delivered). The right arrow reads one: his words, how it
-// went, and the reply below. The newest 20 are read, and watched while the
-// shell runs, so a reply being written is seen as it's written.
+// went, and the reply below. The newest 20 are read, the newest of them
+// watched while the shell runs, so a reply being written is seen as it's
+// written, and all read again as the launcher opens.
+//
+// Only an inbox that holds talks is read: which do is listed once as the
+// shell starts and again as the launcher opens, by one command over the
+// steer folder. Each reader costs Qt a thread and a file watcher of its
+// own, and on 2026-10-29 a reader for every session and orchestrator,
+// made again whenever a window was focused, ran the shell out of files
+// once a few dozen sessions had started, crashing it every half minute.
 pragma ComponentBehavior: Bound
 import qs
 import Qt.labs.folderlistmodel
@@ -253,18 +261,46 @@ Provider {
     // again each time.
     property int looked: 0
 
+    // The inboxes holding talks, by address, as the steer folder was last
+    // listed.
+    property var holdingTalks: []
+
     // Whose talks are read: every orchestrator listed and every session
-    // running, each once. Said as one line first, which changes only when
-    // who it is does: the sessions running are made again as any window
-    // changes, and a new list each time would make every inbox's readers
-    // again before their files had loaded.
+    // running whose inbox holds talks, each once, in the order of their
+    // addresses. Said as one line first, which changes only when who it
+    // is does: the sessions running are made again and reordered as any
+    // window is focused, and a new list each time would make every
+    // inbox's readers again.
     readonly property string talkingSaid: {
         const addresses = listed.map(one => String(one.address ?? "").toUpperCase())
             .concat(Sessions.running.map(session => String(session.address).toUpperCase()));
         return addresses.filter((address, at) => address !== "" && addresses.indexOf(address)
-            === at).join(" ");
+            === at && holdingTalks.includes(address)).sort().join(" ");
     }
     readonly property var talking: talkingSaid === "" ? [] : talkingSaid.split(" ")
+
+    // Lists which inboxes hold talks, unless it already is.
+    function lookForTalks() {
+        if (!talkFolders.running)
+            talkFolders.running = true;
+    }
+
+    Process {
+        id: talkFolders
+        command: ["sh", "-c",
+            'for d in "$1"/*/replies; do [ -d "$d" ] && basename "${d%/replies}"; done; true',
+            "talks", provider.inboxes]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const found = text.split("\n").filter(line => line !== "")
+                    .map(line => line.toUpperCase()).sort();
+                if (found.join(" ") !== provider.holdingTalks.join(" "))
+                    provider.holdingTalks = found;
+            }
+        }
+    }
+
+    Component.onCompleted: lookForTalks()
 
     // Each orchestrator not running as a row whose Return starts its
     // session, for Agents' Start a Session, named as its own row is.
@@ -317,8 +353,8 @@ Provider {
         return { rows: found.map(f => f.row), grade: 0 };
     }
 
-    // Each orchestrator's talks: its replies folder listed, and its newest
-    // files read and watched.
+    // Each inbox's talks: its replies folder listed, its newest files
+    // read, and the newest watched.
     Instantiator {
         model: provider.talking
 
@@ -347,12 +383,27 @@ Provider {
                 model: inbox.newest
 
                 delegate: FileView {
+                    id: talkFile
+
                     required property var modelData
+                    required property int index
                     path: String(modelData)
-                    watchChanges: true
+                    // The newest alone, where a reply is being written.
+                    watchChanges: index === 0
                     printErrors: false
                     onFileChanged: reload()
                     onLoaded: provider.heardTalk(inbox.address, path, text())
+
+                    // Read again as the launcher opens, the newest's
+                    // watch aside, since an older talk may still be
+                    // answered.
+                    readonly property Connections reopened: Connections {
+                        target: provider
+
+                        function onLookedChanged() {
+                            talkFile.reload();
+                        }
+                    }
                 }
             }
         }
@@ -369,6 +420,7 @@ Provider {
                 orchestrators.reload();
                 questIndex.reload();
                 provider.looked += 1;
+                provider.lookForTalks();
             }
         }
     }

@@ -1005,6 +1005,10 @@
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
   '';
+  the-launcher-reads-talks-boundedly = ''
+    the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
+    moving among 120 sessions makes no reader again, so the shell's threads stay bounded
+  '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
     run or what it waits for, its quest and memory, and goes to its session or copies its name
