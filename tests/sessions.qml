@@ -277,10 +277,13 @@ ShellRoot {
             id: asked
             parser: SplitParser {
                 onRead: line => {
-                    // Asked as mycelium's node takes a watch, its groups one
-                    // pattern of group names, or refused as it refuses one.
+                    // Asked as mycelium's node takes a watch, its groups, if
+                    // any, one pattern of group names, or refused as it
+                    // refuses one. The shell hears the sessions alone, so a
+                    // watch naming groups, whose messages it never reads, is
+                    // a failure too.
                     const watch = JSON.parse(line).Watch;
-                    if (!watch || !root.pattern(watch.groups) || typeof watch.recent !== "number") {
+                    if (!watch || !root.takes(watch)) {
                         root.fail(`a watch the node would refuse: ${line}`);
                         asked.write('{"Err":"not a request"}\n');
                         asked.flush();
@@ -298,6 +301,23 @@ ShellRoot {
     function pattern(groups) {
         return typeof groups === "string"
             && /^([a-z0-9_-]+|\*)(\.([a-z0-9_-]+|\*))*(\.>)?$|^>$/.test(groups);
+    }
+
+    // Whether the node takes this watch, and it asks for the sessions
+    // alone: no groups (absent or null, as the node reads both), and a
+    // `recent`, if given, a number.
+    function takes(watch) {
+        const groups = watch.groups ?? null;
+        if (groups !== null && !root.pattern(groups)) {
+            return false;
+        }
+        if (watch.recent !== undefined && typeof watch.recent !== "number") {
+            return false;
+        }
+        if (groups !== null) {
+            root.fail(`a watch asking for the messages of ${groups}, which the shell never reads`);
+        }
+        return true;
     }
 
     function elsewhere() {

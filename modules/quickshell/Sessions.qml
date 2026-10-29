@@ -1071,11 +1071,9 @@ Singleton {
     // before it listens; then Now read the folder until the shell restarted.
     property bool linking: true
     // A watch always carries the sessions; the groups it names are those
-    // whose messages it carries too, as one pattern of group names
-    // (mycelium's Pattern), and the shell wants none of them, so it names
-    // a group nobody is in. Every pattern names some group, so none hears
-    // nothing at all.
-    readonly property string unheard: "quickshell.sessions-alone"
+    // whose messages it carries too, and the shell wants none of them, so
+    // it names none: a watch with no groups hears the sessions alone, and
+    // with no `recent`, nothing from before it (mycelium#47).
     LazyLoader {
         active: root.linking && root.nodePath !== ""
 
@@ -1085,7 +1083,7 @@ Singleton {
             connected: true
             onConnectionStateChanged: {
                 if (mycelium.connected) {
-                    mycelium.write(`${JSON.stringify({ Watch: { groups: root.unheard, recent: 0 } })}\n`);
+                    mycelium.write(`${JSON.stringify({ Watch: {} })}\n`);
                     mycelium.flush();
                     return;
                 }
