@@ -85,6 +85,9 @@ const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
 /// Where a build sent whole to the lent builder (`--store`) reads its
 /// store's URI, while one stands.
 const STORE: &str = "/run/nix-offload/store";
+/// Where the machine queue reads the builder being made, to hold the
+/// builds it could take until Nix can see it.
+const LENDING: &str = "/run/nix-offload/lending";
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
@@ -277,6 +280,7 @@ fn stand(standing: &[machines::Standing]) {
         MACHINES.into(),
         WITH_STANDING.into(),
         STORE.into(),
+        LENDING.into(),
         standing.to_vec(),
     );
     while !ENDING.load(Ordering::SeqCst) {
@@ -296,9 +300,11 @@ fn serve(settings: &Settings) {
         MACHINES.into(),
         WITH_STANDING.into(),
         STORE.into(),
+        LENDING.into(),
         standing,
     );
     machines.show(None);
+    machines.asking(None);
     let mut lent: Option<Lent> = None;
     let mut not_before = 0;
     let mut said_on = None;
@@ -366,9 +372,24 @@ fn leave(settings: &Settings, name: &str, asked: u64, rate: Option<u64>) {
     eprintln!("nix-offload: told to end, so {name} is left for the next start to give back");
 }
 
-/// Ask the helper for a builder, and give Nix its line once it's ready.
+/// Ask for a builder, naming it as being made until it stands or won't, so
+/// the machine queue holds the builds it could take until Nix can see it.
 fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Option<Lent> {
     let name = format!("{}{now}", settings.prefix);
+    machines.asking(Some(&name));
+    let builder = ask(settings, machines, name, now, left);
+    machines.asking(None);
+    builder
+}
+
+/// Ask the helper for a builder, and give Nix its line once it's ready.
+fn ask(
+    settings: &Settings,
+    machines: &mut Machines,
+    name: String,
+    now: u64,
+    left: u64,
+) -> Option<Lent> {
     eprintln!("nix-offload: asking for {name}, since the queue has builds a builder could take");
     if let Err(error) = journal::note(&settings.journal, now, Event::Asked, &name, None) {
         // Unjournalled, it couldn't be known as this one's to give back.

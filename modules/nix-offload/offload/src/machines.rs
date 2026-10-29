@@ -115,11 +115,15 @@ pub struct Lending<'a> {
 /// lent, and `with_standing` for a build that names it, holding the
 /// standing builders that answer as well; and `store`, the lent builder's
 /// store, for a build sent there whole (`--store`), so only its
-/// derivations cross a slow connection rather than what's built here.
+/// derivations cross a slow connection rather than what's built here; and
+/// `lending`, the builder being made, for the machine queue to hold builds
+/// for. Nix's build hook reads its builders once, when a build starts, and
+/// an empty list keeps that whole build here, even once a builder stands.
 pub struct Machines {
     every: File,
     with_standing: File,
     store: File,
+    lending: File,
     standing: Vec<Standing>,
 }
 
@@ -128,6 +132,7 @@ impl Machines {
         every: PathBuf,
         with_standing: PathBuf,
         store: PathBuf,
+        lending: PathBuf,
         standing: Vec<Standing>,
     ) -> Self {
         let file = |path| File {
@@ -138,8 +143,16 @@ impl Machines {
             every: file(every),
             with_standing: file(with_standing),
             store: file(store),
+            lending: file(lending),
             standing,
         }
+    }
+
+    /// Say the builder being made, a line of its own, or nothing once it
+    /// stands or won't.
+    pub fn asking(&mut self, name: Option<&str>) {
+        self.lending
+            .say(name.map_or_else(String::new, |name| format!("{name}\n")));
     }
 
     /// Say the one lent to every build, for its big work, and it with the
@@ -238,6 +251,7 @@ mod tests {
             every.clone(),
             asked.clone(),
             store.clone(),
+            dir.path().join("lending"),
             vec![Standing {
                 address,
                 line: "ssh-ng://home".to_owned(),
@@ -259,5 +273,23 @@ mod tests {
         machines.show(None);
         assert_eq!(read(&every), "");
         assert_eq!(read(&asked), "");
+    }
+
+    #[test]
+    fn the_builder_being_made_is_named_until_it_stands_or_wont() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let lending = dir.path().join("lending");
+        let mut machines = Machines::new(
+            dir.path().join("machines"),
+            dir.path().join("machines-with-standing"),
+            dir.path().join("store"),
+            lending.clone(),
+            Vec::new(),
+        );
+        let read = |path| fs::read_to_string(path).expect("read");
+        machines.asking(Some("lend-1"));
+        assert_eq!(read(&lending), "lend-1\n");
+        machines.asking(None);
+        assert_eq!(read(&lending), "", "emptied, not removed, once it stands");
     }
 }
