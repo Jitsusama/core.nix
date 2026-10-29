@@ -2682,7 +2682,7 @@ Scope {
             const box = clipper.mapToItem(into, 0, 0);
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
-                cut: item.truncated === true
+                inked: Math.round(item.contentWidth), cut: item.truncated === true
                     || (clipper !== item && item.implicitWidth > clipper.width),
                 room: { x: Math.round(box.x), width: Math.round(clipper.width) } });
         }
@@ -2706,8 +2706,16 @@ Scope {
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card) });
         }
+        // Where the selection is drawn, and where its row is, so a test can
+        // say it's drawn on its row.
+        const chosen = list.itemAtIndex(root.current);
+        const selection = !picked.visible || !chosen ? null : {
+            y: Math.round(picked.mapToItem(card, 0, 0).y),
+            row: Math.round(chosen.mapToItem(card, 0, chosen.height - Theme.space.xxxl).y)
+        };
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
-            foot: wordsIn(foot, card), rows, made: root.rowsMade, drawn: root.rowsDrawn });
+            foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
+            drawn: root.rowsDrawn });
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
@@ -3284,6 +3292,13 @@ Scope {
                             // The selection itself, under the rows, which
                             // draw no fill of their own here (Choice's fills).
                             Rectangle {
+                                id: picked
+
+                                // Among the rows, so it scrolls with them:
+                                // a child of the list itself stayed put as
+                                // the list scrolled, and sat as far below
+                                // its row as the list had gone down.
+                                parent: list.contentItem
                                 z: -1
                                 width: list.width
                                 height: Theme.space.xxxl
@@ -3588,7 +3603,7 @@ Scope {
                             // opened (root.factsWidest).
                             function place(fact) {
                                 return Math.max(measure.advanceWidth(fact.said),
-                                    root.factsWidest[`${fact.entry.label}:${fact.way}`] ?? 0);
+                                    root.factsWidest[`${fact.entry.name}:${fact.way}`] ?? 0);
                             }
 
                             readonly property var fit: {
@@ -3611,7 +3626,12 @@ Scope {
                                 const widest = Object.assign({}, root.factsWidest);
                                 let grew = false;
                                 for (const fact of kept) {
-                                    const key = `${fact.entry.label}:${fact.way}`;
+                                    // By its name, which each has and
+                                    // none shares: by its label, the time
+                                    // and the date, which have none, kept
+                                    // one room, and the time kept the
+                                    // date's once the date gave way.
+                                    const key = `${fact.entry.name}:${fact.way}`;
                                     const now = measure.advanceWidth(fact.said);
                                     if (now > (widest[key] ?? 0)) {
                                         widest[key] = now;

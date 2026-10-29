@@ -146,6 +146,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
                 and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
             )
         )
+    # Scrolled down past its first rows, the selection is still drawn on
+    # its own row.
+    selection = laid_out(desktop)["selection"]
+    assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
@@ -787,6 +791,14 @@ def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
+    # The foot's time keeps only its own room, as the date gives way to the
+    # keys a letter brings: it kept the date's, a gap after it.
+    time = next(
+        word for word in laid_out(desktop)["foot"] if re.fullmatch(r"\d\d:\d\d", word["text"])
+    )
+    # Its room is measured as it's said and its ink as it's drawn, so they
+    # may round apart by a pixel.
+    assert abs(time["width"] - time["inked"]) <= 1, f"the time keeps more room: {time}"
     desktop.photograph("launcher")
     machine.send_key("ret")
     # The first window opened can take as long as the first GTK one.
