@@ -9,7 +9,7 @@
 //!
 //! Each meeting says what the launcher shows of it: where, who holds it,
 //! who else is asked and how each answered, and what it's about, its
-//! description as plain text.
+//! description as plain text, and when Joel is reminded of it.
 
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
@@ -51,6 +51,10 @@ pub struct Meeting {
     /// Everyone else asked, as the event lists them: neither Joel, nor
     /// who holds it, nor a room.
     pub guests: Vec<Guest>,
+    /// When Google Calendar reminds Joel of it, in minutes before its
+    /// start, furthest first: its own reminders, or the calendar's when it
+    /// keeps those, and only those that pop up, since one by email is mail.
+    pub reminders: Vec<i64>,
 }
 
 /// Someone on a meeting, by the name the calendar gives, or their address
@@ -113,16 +117,44 @@ fn midnight(day: Date, zone: &TimeZone) -> Timestamp {
 /// The meetings in one page of the API's answer, in its order, which is
 /// by start.
 pub fn meetings(answer: &Value, zone: &TimeZone) -> Vec<Meeting> {
+    let defaults = popups(answer.get("defaultReminders"));
     answer
         .get("items")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|event| meeting(event, zone))
+        .filter_map(|event| meeting(event, zone, &defaults))
         .collect()
 }
 
-fn meeting(event: &Value, zone: &TimeZone) -> Option<Meeting> {
+/// The minutes before its start each reminder in a list pops up, furthest
+/// first, each once.
+fn popups(reminders: Option<&Value>) -> Vec<i64> {
+    let mut minutes: Vec<i64> = reminders
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|reminder| reminder.get("method").and_then(Value::as_str) == Some("popup"))
+        .filter_map(|reminder| reminder.get("minutes").and_then(Value::as_i64))
+        .filter(|minutes| *minutes >= 0)
+        .collect();
+    minutes.sort_unstable_by(|a, b| b.cmp(a));
+    minutes.dedup();
+    minutes
+}
+
+/// An event's reminders: its own overrides, or the calendar's defaults
+/// when it keeps those, as it does when it says nothing of them.
+fn reminded(event: &Value, defaults: &[i64]) -> Vec<i64> {
+    match event.get("reminders") {
+        Some(reminders) if reminders.get("useDefault").and_then(Value::as_bool) == Some(false) => {
+            popups(reminders.get("overrides"))
+        }
+        _ => defaults.to_vec(),
+    }
+}
+
+fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64]) -> Option<Meeting> {
     let text = |field: &str| event.get(field).and_then(Value::as_str);
     if text("status") == Some("cancelled") {
         return None;
@@ -188,6 +220,7 @@ fn meeting(event: &Value, zone: &TimeZone) -> Option<Meeting> {
         holds,
         organizer: organizer.filter(|_| !holds).map(person),
         guests,
+        reminders: reminded(event, defaults),
     })
 }
 
@@ -342,6 +375,7 @@ mod tests {
                     email: Some("a@example.com".into()),
                     answer: Answer::Yes,
                 }],
+                reminders: vec![],
             }]
         );
     }
@@ -502,5 +536,50 @@ mod tests {
         assert_eq!(found.title, "");
         assert_eq!(found.link, None);
         assert_eq!(found.kind, None);
+    }
+
+    #[test]
+    fn a_meeting_reminds_joel_as_it_or_its_calendar_says_by_popup_alone() {
+        let at = json!({"dateTime": "2026-10-26T16:00:00Z"});
+        let answer = json!({
+            "defaultReminders": [
+                {"method": "popup", "minutes": 10},
+                {"method": "email", "minutes": 60},
+                {"method": "popup", "minutes": 30}
+            ],
+            "items": [
+                {"id": "keeps", "start": at, "end": at, "reminders": {"useDefault": true}},
+                {"id": "silent", "start": at, "end": at},
+                {"id": "own", "start": at, "end": at, "reminders": {"useDefault": false,
+                    "overrides": [{"method": "popup", "minutes": 5},
+                        {"method": "popup", "minutes": 1440},
+                        {"method": "popup", "minutes": 5},
+                        {"method": "email", "minutes": 15}]}},
+                {"id": "none", "start": at, "end": at, "reminders": {"useDefault": false}}
+            ]
+        });
+        let reminders: Vec<_> = meetings(&answer, &zone())
+            .into_iter()
+            .map(|m| (m.id, m.reminders))
+            .collect();
+        assert_eq!(
+            reminders,
+            vec![
+                ("keeps".into(), vec![30, 10]),
+                ("silent".into(), vec![30, 10]),
+                ("own".into(), vec![1440, 5]),
+                ("none".into(), vec![]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_calendar_with_no_reminders_reminds_of_nothing() {
+        let at = json!({"dateTime": "2026-10-26T16:00:00Z"});
+        let found = &meetings(
+            &json!({"items": [{"id": "x", "start": at, "end": at}]}),
+            &zone(),
+        )[0];
+        assert_eq!(found.reminders, Vec::<i64>::new());
     }
 }

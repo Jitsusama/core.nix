@@ -203,11 +203,13 @@ impl Google {
 
     /// Every event on the primary calendar between two times, each
     /// repeating one as its occurrences, by start, every page joined into
-    /// one answer's `items`.
+    /// one answer's `items`, beside the calendar's `defaultReminders`,
+    /// which the first page says.
     pub fn events(&self, token: &str, from: Timestamp, to: Timestamp) -> Result<Value, Refused> {
         let url = format!("{}/calendar/v3/calendars/primary/events", self.origins.api);
         let (from, to) = (from.to_string(), to.to_string());
         let mut items = Vec::new();
+        let mut defaults: Option<Value> = None;
         let mut page: Option<String> = None;
         loop {
             let mut request = self
@@ -233,12 +235,18 @@ impl Google {
             if let Some(Value::Array(more)) = body.get_mut("items").map(Value::take) {
                 items.extend(more);
             }
+            if defaults.is_none() {
+                defaults = body.get_mut("defaultReminders").map(Value::take);
+            }
             page = body
                 .get("nextPageToken")
                 .and_then(Value::as_str)
                 .map(str::to_owned);
             if page.is_none() {
-                return Ok(serde_json::json!({ "items": items }));
+                return Ok(serde_json::json!({
+                    "items": items,
+                    "defaultReminders": defaults.unwrap_or(Value::Array(Vec::new())),
+                }));
             }
         }
     }

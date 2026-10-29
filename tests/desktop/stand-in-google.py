@@ -3,14 +3,14 @@
 It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the whole state as one
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
 that connects. The account is ready, unless a test signs it out, with three meetings on Meet
-from when the stand-in starts: Design Review five minutes on, about to start, Joel's own, or
-nearer as a test asks; Standup half an hour on, Ada's in Room 4, with Grace not going; and
-Planning two hours on, Joel's own with Grace asked. An answer a shell writes is written down in
-google-asked beside the socket, for the test to read, and taken as Google would take it, so the
-file and every shell say the meeting answered; a meeting Joel holds that's cancelled is written
-down and let go, as Google would. Two pieces of mail want Joel, Lunch on Friday and Quarterly
-Numbers, with three unread in the inbox; one marked read or archived is written down too, and
-taken out of the mail that wants him, as Gmail would.
+from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
+minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4,
+with Grace not going; and Planning two hours on, Joel's own with Grace asked. An answer a shell
+writes is written down in google-asked beside the socket, for the test to read, and taken as
+Google would take it, so the file and every shell say the meeting answered; a meeting Joel holds
+that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
+Lunch on Friday and Quarterly Numbers, with three unread in the inbox; one marked read or
+archived is written down too, and taken out of the mail that wants him, as Gmail would.
 """
 
 import json
@@ -23,9 +23,9 @@ from pathlib import Path
 
 # Milliseconds in a minute, as the program counts times.
 MINUTE = 60_000
-# How far ahead each meeting starts, and how long one lasts. A test may bring
-# Design Review nearer, in milliseconds, through the user manager's
-# environment, to see it come to want Joel.
+# How far ahead each meeting starts, and how long one lasts. A test may set
+# Design Review nearer or further, in milliseconds, through the user
+# manager's environment, to see it want Joel and be said.
 SOON = int(os.environ.get("GOOGLE_STAND_IN_SOON", str(5 * MINUTE)))
 # Whether the account is ready, or signed out as a test asks, when it holds
 # nothing, as the program says it (state.rs).
@@ -36,7 +36,7 @@ LASTS = 30 * MINUTE
 
 
 def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict[str, object]:
-    """Give a meeting as the program says one, answered yes, its call on Meet, Joel's own."""
+    """Give a meeting as the program says one: answered yes, on Meet, Joel's, with no reminder."""
     return {
         "id": key,
         "title": title,
@@ -52,6 +52,7 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "holds": True,
         "organizer": None,
         "guests": [],
+        "reminders": [],
         **more,
     }
 
@@ -67,7 +68,7 @@ class Account:
         self.lock = threading.Lock()
         self.shells: list[socket.socket] = []
         self.meetings = [
-            meeting("review", "Design Review", now + SOON, "pqr-stuv-wxy"),
+            meeting("review", "Design Review", now + SOON, "pqr-stuv-wxy", reminders=[1]),
             meeting(
                 "standup",
                 "Standup",
