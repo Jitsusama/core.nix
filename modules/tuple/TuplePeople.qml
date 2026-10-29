@@ -112,7 +112,8 @@ Singleton {
         for (const id in standing) {
             const stands = standing[id];
             if (stands.favourite || stands.recent)
-                kept[id] = { status: "unknown", favourite: stands.favourite, recent: stands.recent };
+                kept[id] = { status: "unknown", favourite: stands.favourite,
+                    recent: stands.recent };
         }
         standing = kept;
         stopped = code === notRunning;

@@ -22,7 +22,9 @@
 // or name, and opened by its own command when it takes files, else as the
 // desktop opens them. A program whose sites are read only as it's stepped
 // into reads them then, once each time the launcher opens, each site by
-// its title beside its host, opened by its own command. Typing on
+// its title beside its host, opened by its own command. A program whose
+// entry hides itself is listed only when another provider gives it acts,
+// and then steps in on Return rather than starting. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -58,14 +60,26 @@ ShellRoot {
         property var held: []
         property var belowChord: []
         property var sources: [notices, keys, giver]
+        property var entered: null
+
+        function enter(row) {
+            entered = row;
+        }
     }
 
     // Another provider giving a program's Recent its own things, as Docs'
-    // documents are given.
+    // documents are given, and the acts of a program whose entry hides
+    // itself, as Tuple's are.
     QtObject {
         id: giver
 
         signal changed
+
+        property var hiddenPrograms: ["pair"]
+
+        function programActs(program) {
+            return program !== "pair" ? [] : [{ key: "pair:room", name: "Open the Room" }];
+        }
 
         function recentOf(program) {
             return program !== "tester" ? [] : [{ key: "gdoc:plan", name: "Plan Doc" }];
@@ -153,7 +167,8 @@ ShellRoot {
 
     function ready() {
         if (root.waiting === "the programs"
-                && ["tester", "quiet", "radio", "browser"].every(id => root.program(id) !== undefined)
+                && ["tester", "quiet", "radio", "browser", "pair"]
+                    .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 2
                 && applications.recents.of("radio").length === 1)
@@ -298,6 +313,16 @@ ShellRoot {
             files[0].run();
             same("one opens by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["tester", `${root.home}/notes.md`]));
+            same("a hidden program nobody gives acts to isn't listed", program("ghost"), undefined);
+            const pair = program("pair");
+            same("a hidden program another gives acts to steps in rather than starting",
+                `${pair.verb} ${pair.stays} ${names(pair.verbs())} ${names(pair.targets())}`,
+                "more true Open the Room Open the Room");
+            const before = JSON.stringify(Niri.spawned);
+            pair.run();
+            expect("and Return steps in, starting nothing", launcher.entered === pair
+                && JSON.stringify(Niri.spawned) === before, JSON.stringify(Niri.spawned));
+            same("one closed still starts", program("radio").verb, "start");
             same("Switch names the window used last", switching.side, "Logbook");
             switching.run();
             same("Switch goes to it", acted(), '[{"FocusWindow":{"id":11}}]');

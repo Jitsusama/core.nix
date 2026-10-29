@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Says who Slack knows by an email address, for People in the shell, only ever reading";
+    description = "Says who Slack knows by an email address, for the shell's People, only reading";
     license = lib.licenses.mit;
     mainProgram = "slack-people";
     platforms = lib.platforms.linux;

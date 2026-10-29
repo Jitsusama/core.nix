@@ -997,7 +997,8 @@
   '';
   the-launcher-holds-a-programs-controls = ''
     a program's step holds its windows, its own actions, Quit asked once, then Media, Sound and
-    Notifications, in order and only where they apply, each reaching only that program
+    Notifications, in order and only where they apply, each reaching only that program, and a
+    hidden program another provider gives acts to is listed and steps in rather than starting
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes

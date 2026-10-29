@@ -225,7 +225,8 @@ Provider {
         // Those listed first, then the best match, and among equals the
         // order the sources know them in.
         const kept = found.filter(each => each.grade === grade)
-            .sort((a, b) => Number(b.listed) - Number(a.listed) || b.score - a.score || a.at - b.at);
+            .sort((a, b) => Number(b.listed) - Number(a.listed) || b.score - a.score
+                || a.at - b.at);
         return { rows: kept.map(each => each.row), grade: grade };
     }
 

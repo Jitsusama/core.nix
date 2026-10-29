@@ -1324,6 +1324,18 @@ onLinux {
         Name=Browser
         Exec=browser %U
       '';
+      # Hidden, as Tuple's is: one another provider gives acts to, and one
+      # nobody does.
+      pair = entry "pair" ''
+        Name=Pair
+        Exec=pair
+        NoDisplay=true
+      '';
+      ghost = entry "ghost" ''
+        Name=Ghost
+        Exec=ghost
+        NoDisplay=true
+      '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
       mkdir -p launcher share/applications
@@ -1331,6 +1343,8 @@ onLinux {
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
       cp ${browser} share/applications/browser.desktop
+      cp ${pair} share/applications/pair.desktop
+      cp ${ghost} share/applications/ghost.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml

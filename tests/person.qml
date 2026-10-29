@@ -24,7 +24,8 @@ QtObject {
         const check = (what, said, meant) => {
             asked += 1;
             if (JSON.stringify(said) !== JSON.stringify(meant))
-                failures.push(`${what}: said ${JSON.stringify(said)}, meant ${JSON.stringify(meant)}`);
+                failures.push(
+                    `${what}: said ${JSON.stringify(said)}, meant ${JSON.stringify(meant)}`);
         };
         const names = persons => persons.map(person => person.name);
 
@@ -55,11 +56,13 @@ QtObject {
 
         // A source that learns two are one joins them.
         const joining = Person.merged([
-            { name: "google", people: [{ emails: ["a@x"], name: "A" }, { emails: ["b@x"], name: "B" }] },
+            { name: "google", people: [{ emails: ["a@x"], name: "A" },
+                { emails: ["b@x"], name: "B" }] },
             { name: "vault", people: [{ emails: ["b@x", "a@x"], name: "Alex",
                 facts: [{ label: "Team", value: "Shell" }] }] }
         ]);
-        check("two found to be one", joining.map(person => [person.name, person.emails, person.from]),
+        check("two found to be one",
+            joining.map(person => [person.name, person.emails, person.from]),
             [["A", ["a@x", "b@x"], ["google", "vault"]]]);
         check("their facts kept", joining[0].facts, [{ label: "Team", value: "Shell" }]);
 
