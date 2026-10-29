@@ -162,11 +162,13 @@ Floating {
             }
 
             // A picture in its own shape, as wide as the drawer at most,
-            // its corners a part's, the raised colour until it's drawn.
+            // its corners a part's, the raised colour until it's drawn. One
+            // whose size isn't given is as wide as the drawer, and square:
+            // never its own width, which is worked out from it.
             Rectangle {
                 id: frame
                 readonly property real across: drawer.shown?.across > 0
-                    ? drawer.shown.across : width
+                    ? drawer.shown.across : parent.width
                 readonly property real down: drawer.shown?.down > 0 ? drawer.shown.down : across
                 readonly property real shrunk: Math.min(1, parent.width / across)
 
