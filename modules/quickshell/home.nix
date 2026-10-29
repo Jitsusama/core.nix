@@ -127,6 +127,7 @@ let
     "launcher/Power.js"
     "launcher/Traffic.js"
     "launcher/Cameras.js"
+    "launcher/Firmware.js"
     "launcher/Interfaces.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
@@ -534,6 +535,7 @@ let
     heat = ./launcher/Heat.qml;
     traffic = ./launcher/Traffic.qml;
     waits = ./launcher/Waits.qml;
+    firmware = ./launcher/Firmware.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
     keyboards = ./launcher/Keyboards.qml;
@@ -1078,6 +1080,19 @@ in
       waits = {
         order = 93;
         source = "waits";
+      };
+      # Each device's firmware and any update offered for it, from fwupd,
+      # only where the system runs it, so a machine without it names no
+      # Firmware in Machine.
+      firmware = {
+        order = 91;
+        source = "firmware";
+        enable = osConfig.services.fwupd.enable or false;
+        fwupdmgr =
+          if osConfig.services.fwupd.enable or false then
+            lib.getExe' osConfig.services.fwupd.package "fwupdmgr"
+          else
+            "";
       };
       # The date's week, day of the year, UTC, zone and epoch.
       today = {

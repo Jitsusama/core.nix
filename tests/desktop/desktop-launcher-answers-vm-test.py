@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING
+from desktop_session import KEY_PACE, LAUNCHER_OPEN, ROWS_LOOKED_AT, STARTING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1414,6 +1414,86 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
         desktop.as_account("systemctl --user start timekeeping")
+
+
+def firmware_reads(shown: Json) -> str:
+    """Give what Firmware's row reads where the launcher lists it, or nothing."""
+    reads = [str(thing["reads"]) for thing in shown["things"]]
+    return next((read for read in reads if read.startswith("Firmware \u00b7")), "")
+
+
+def last_place(shown: Json) -> str:
+    """Give the last row the launcher lists that isn't a command, or nothing."""
+    places = [str(thing["is"]) for thing in shown["things"]]
+    held = [place for place in places if not place.startswith("command:")]
+    return held[-1] if held else ""
+
+
+def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Desktop) -> None:
+    """Firmware says whether an update is offered, last in Machine, and each device's version."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    said = "$XDG_RUNTIME_DIR/fwupd"
+    # With nothing offered, as the laptop's fwupd says, it's up to date,
+    # Machine's last place, after Lag where Lag is shown (only once
+    # something has lagged), and before its commands.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("machine ", delay=KEY_PACE)
+    desktop.launcher_until(
+        lambda shown: (
+            last_place(shown) == "answer:firmware"
+            and firmware_reads(shown).startswith("Firmware \u00b7 up to date")
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # LVFS offers the BIOS an update: Firmware says so, and the BIOS is
+    # listed first, its version and what's offered a step in and in its
+    # drawer.
+    offered = {
+        "Devices": [
+            {
+                "DeviceId": "bios",
+                "Releases": [
+                    {"Version": "1.13.0", "Description": "<p>Fixes the keyboard's light.</p>"}
+                ],
+            }
+        ]
+    }
+    # Quoted whole, since a release's words may hold an apostrophe.
+    written = shlex.quote(json.dumps(offered))
+    desktop.as_account(f"mkdir -p {said} && echo {written} > {said}/get-updates.json")
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        machine.send_chars("machine ", delay=KEY_PACE)
+        desktop.launcher_until(
+            lambda shown: firmware_reads(shown).startswith("Firmware \u00b7 1 update ready")
+        )
+        desktop.type_in("firm", "Firmware")
+        desktop.photograph("launcher-firmware-in-machine")
+        desktop.step_in()
+        # A device is a thing, so the drawer is out for the BIOS: who makes
+        # it, its version, what's offered and the release's own words.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][:2] == ["System Firmware", "PVC10 SK hynix 1024GB"]
+                and (shown.get("drawer") or {}).get("out") is True
+                and shown["drawer"]["facts"] == ["Vendor", "Version", "Offered"]
+                and "Fixes the keyboard's light." in str(shown["drawer"]["body"])
+            )
+        )
+        reads = [str(thing["reads"]) for thing in desktop.showing()["things"]]
+        assert reads[0].startswith("System Firmware \u00b7 1.12.0"), reads
+        assert reads[1].startswith("PVC10 SK hynix 1024GB \u00b7 61001171"), reads
+        desktop.photograph("launcher-firmware")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Version"])
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account(f"rm -rf {said}")
 
 
 def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: Desktop) -> None:
