@@ -18,24 +18,41 @@ const ANSWER: Duration = Duration::from_secs(2);
 /// sent to it first. Anything else stays here, since copying its inputs
 /// out and its output back takes longer than building it: on 29 October a
 /// system build that takes 34 s to 2.5 min here ran past ten minutes once
-/// its small derivations went out.
-const BIG: [&str; 2] = ["big-parallel", "nixos-test"];
+/// its small derivations went out. VM tests stay too: their machines are
+/// built here, and copying those out is most of their time over a slow
+/// upload. On 29 October one took 17 minutes there, its test 55 s of it,
+/// against 60 s here. Sent whole to the builder's store instead, they're
+/// built there and only their derivations cross.
+const BIG: [&str; 1] = ["big-parallel"];
+
+/// What a VM test needs, kept out of what the lent line offers, so neither
+/// Nix nor the machine queue, which counts a builder's VM room by them,
+/// takes it for a place to run one.
+const VM: [&str; 2] = ["kvm", "nixos-test"];
 
 /// A lent builder's machines line written once for each kind of big work
-/// it supports, with that kind mandatory, so Nix sends it only that work.
-/// Nix counts a builder's slots by its URI, so the lines share one set. A
-/// line supporting none of them is kept as it is.
+/// it supports, with that kind mandatory, so Nix sends it only that work,
+/// and offering nothing a VM test needs. Nix counts a builder's slots by
+/// its URI, so the lines share one set. A line supporting none of them is
+/// kept as it is.
 pub fn for_big_work(line: &str) -> String {
     let mut fields: Vec<&str> = line.split_whitespace().collect();
     if fields.len() < 8 {
         fields.resize(8, "-");
     }
     let supported: Vec<&str> = fields[5].split(',').collect();
+    let offered = supported
+        .iter()
+        .filter(|feature| !VM.contains(feature))
+        .copied()
+        .collect::<Vec<_>>()
+        .join(",");
     let lines: Vec<String> = BIG
         .iter()
         .filter(|kind| supported.contains(kind))
         .map(|kind| {
             let mut fields = fields.clone();
+            fields[5] = &offered;
             fields[6] = kind;
             fields.join(" ")
         })
@@ -208,10 +225,7 @@ mod tests {
             "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark - KEY";
         assert_eq!(
             for_big_work(line),
-            "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark \
-             big-parallel KEY\n\
-             ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark \
-             nixos-test KEY"
+            "ssh-ng://lent x86_64-linux /key 8 1 big-parallel,benchmark big-parallel KEY"
         );
         assert_eq!(
             for_big_work("ssh-ng://lent x86_64-linux - 4 1 big-parallel"),
