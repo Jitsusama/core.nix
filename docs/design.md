@@ -619,7 +619,7 @@ works the same way everywhere.
   Shortcuts, any part of its own, such as the theme, and Quit, asked once
   since a window may hold unsaved work. Media while it has a player
   (Play or Pause, Next, Previous, and what's playing) and Sound while it
-  has a stream open (Mute or Unmute, Louder, Quieter, and its volume as a
+  has a stream open (Muted, Louder, Quieter, and its volume as a
   bar) come last, since they come and go. Next, Previous, Louder and Quieter keep the
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.

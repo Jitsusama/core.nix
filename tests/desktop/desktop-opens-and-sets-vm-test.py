@@ -183,11 +183,29 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
         desktop.as_account("echo -n 'something after the picture' | wl-copy > /dev/null 2>&1")
     machine.send_key("meta_l-v")
     desktop.launcher_ready()
+    tall = desktop.showing()["drawer"]["cardHeight"]
     with desktop.told("showed Image 256 \u00d7 256"):
         desktop.type_in("image", selecting="Image 256 \u00d7 256")
+    # The picture shows in the drawer, out of the card's right side and
+    # within the screen, and the card keeps its height for it.
+    drawer = desktop.showing()["drawer"]
+    assert drawer["out"], drawer
+    assert drawer["title"] == "Image 256 \u00d7 256", drawer
+    assert drawer["cardHeight"] == tall, f"the card grew for the picture: {drawer}, from {tall}"
+    assert drawer["height"] == tall, drawer
+    screen = json.loads(desktop.as_account("niri msg --json focused-output"))
+    assert drawer["cardAt"] < drawer["at"], drawer
+    assert drawer["at"] + drawer["width"] <= screen["logical"]["width"], (drawer, screen)
     desktop.photograph("launcher-copies-picture")
     machine.send_key("ret")
     retry(desktop.pasted_the_picture, timeout=timedelta(seconds=10))
+    # A search typed at home opens no drawer, whatever it finds.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("image")
+    assert not desktop.showing()["drawer"]["out"], desktop.showing()["drawer"]
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
 
 
 def test_a_picture_outlives_the_program_that_copied_it(desktop: Desktop) -> None:
@@ -471,6 +489,10 @@ def test_the_launchers_sound_moves_sound_to_another_output_and_back(desktop: Des
         desktop.photograph(f"launcher-sound-{output}")
         kind = output.removeprefix("stand-in-")
         desktop.type_in(kind, selecting=kind)
+        # Return steps in, as on every device, its use first, so Return
+        # twice plays sound through it.
+        desktop.step_in("ret")
+        desktop.launcher_until(sound_selected("Play Sound Through It"))
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(desktop.in_session(used), timeout=timedelta(seconds=10))
@@ -543,11 +565,12 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
 ) -> None:
     """The launcher's Sound opens an output's and a microphone's parts."""
     machine = desktop.machine
-    # The speakers, chosen, hold Return's own Mute, then their Level,
-    # Volume, whether they're Muted, and Channels, named first; the null
-    # sink has no card, so nothing more.
+    # The speakers, chosen, hold whether they're Muted first, one switch,
+    # then their Level, Volume and Channels, named first; the null sink
+    # has no card, so nothing more.
     sound_device(desktop, "speakers", "speakers")
-    desktop.launcher_until(lambda shown: shown["rows"][:4] == ["Mute", "Level", "Volume", "Muted"])
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Muted", "Level", "Volume"])
+    assert "Mute" not in desktop.showing()["rows"], desktop.showing()["rows"]
     desktop.launcher_until(lambda shown: "Channels" in shown["rows"])
     desktop.launcher_until(sound_reads("Channels", "stereo"))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -555,7 +578,7 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     desktop.launcher_until(sound_reads("Level", "silent"))
     assert "Playing" not in desktop.showing()["rows"]
     desktop.photograph("launcher-sound-output-parts")
-    # Return on Volume, past Mute and the Level, steps into its choices,
+    # Return on Volume, past Muted and the Level, steps into its choices,
     # each level saying its decibels in the footer.
     machine.send_key("down")
     desktop.launcher_until(sound_selected("Level"))
@@ -576,38 +599,31 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     # The part says what it was set to.
     sound_device(desktop, "speakers", "speakers")
     desktop.launcher_until(sound_reads("Volume", "50%"))
-    # The right arrow on Muted holds Mute and Unmute, Unmute chosen, and
-    # Return on Mute mutes the speakers; then Unmute, its Return, unmutes.
-    # Muted is the fourth row, after Return's own Mute, Level and Volume.
-    for _down in range(3):
-        machine.send_key("down")
+    # Muted, first, is one switch keeping its name: Return mutes the
+    # speakers and it says yes, the launcher staying; Return again unmutes.
     desktop.launcher_until(sound_selected("Muted"))
-    desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Mute", "Unmute"])
-    desktop.launcher_until(sound_reads("Unmute", "chosen"))
-    desktop.photograph("launcher-sound-muted")
-    desktop.launcher_until(sound_selected("Mute"))
     machine.send_key("ret")
     hushed_sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"
     machine.wait_until_succeeds(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
-    # It changed something, so the launcher stays until it's closed.
-    machine.send_key("esc")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
-    sound_device(desktop, "speakers", "speakers")
-    desktop.launcher_until(sound_reads("Muted", "yes"))
-    desktop.type_in("unmute", selecting="Unmute")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["open"] and sound_selected("Muted")(shown) and sound_reads("Muted", "yes")(shown)
+        )
+    )
+    desktop.photograph("launcher-sound-muted")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
+    desktop.launcher_until(sound_reads("Muted", "no"))
     # It changed something, so the launcher stays until it's closed.
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
 
-    # The microphone holds its own after Return's Mute: a live Level, its
-    # Gain, whether it's Muted, and who's Recording, which is nobody,
-    # though the Level's own stream is reading it while it shows.
+    # The microphone holds its own: whether it's Muted, a live Level, its
+    # Gain, and who's Recording, which is nobody, though the Level's own
+    # stream is reading it while it shows.
     sound_device(desktop, "microphone", "stand-in microphone")
     desktop.launcher_until(
-        lambda shown: shown["rows"][:5] == ["Mute", "Level", "Gain", "Muted", "Recording"],
+        lambda shown: shown["rows"][:4] == ["Muted", "Level", "Gain", "Recording"],
     )
     desktop.launcher_until(sound_reads("Level", "%"))
     desktop.launcher_until(sound_reads("Muted", "no"))
@@ -631,16 +647,16 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     sound_device(desktop, "microphone", "stand-in microphone")
     desktop.launcher_until(lambda shown: "Recording" in shown["rows"])
     desktop.launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
-    # The right arrow on Recording, then on the program, and Return mutes
-    # what it records. Return's own Mute leads, so Recording is counted to.
+    # The right arrow on Recording, then on the program, and Return on
+    # its Muted mutes what it records. Recording is counted to.
     for _down in range(desktop.showing()["rows"].index("Recording")):
         machine.send_key("down")
     desktop.launcher_until(sound_selected("Recording"))
     desktop.step_in()
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Mute", "Louder", "Quieter"])
+    desktop.launcher_until(lambda shown: shown["rows"][:3] == ["Muted", "Louder", "Quieter"])
     desktop.photograph("launcher-sound-recording")
-    desktop.launcher_until(sound_selected("Mute"))
+    desktop.launcher_until(sound_selected("Muted"))
     machine.send_key("ret")
     hushed = f"wpctl get-volume {recording} | grep -q MUTED"
     machine.wait_until_succeeds(desktop.in_session(hushed), timeout=timedelta(seconds=10))
@@ -810,7 +826,7 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     # to mend, not the launcher's.
     controls("Sound")
     desktop.photograph("launcher-program-sound")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Mute", "Louder", "Quieter", "Volume"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Muted", "Louder", "Quieter", "Volume"])
     desktop.launcher_until(reads("Volume", "100%"))
     press("Quieter", then="now 95%")
     heard("0.95")
@@ -818,15 +834,21 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     press("Louder", then="now 100%")
     heard("1.00")
     desktop.launcher_until(reads("Volume", "100%"))
-    # Mute keeps the launcher, and the stream is muted; it says Unmute at
-    # once, and the program's Sound says it's muted.
-    press("Mute", becomes="Unmute")
+    # Muted is one switch keeping its name: Return mutes the stream, the
+    # launcher staying, and it says yes; the program's Sound says muted.
+    desktop.launcher_until(reads("Muted", "no"))
+    desktop.type_in("muted", selecting="Muted")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["open"] and reads("Muted", "yes")(shown))
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=WAIT)
     heard("1.00 [MUTED]")
     controls()
     desktop.launcher_until(reads("Sound", "muted"))
     desktop.type_in("sound", selecting="Sound")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][0] == "Unmute")
+    desktop.launcher_until(lambda shown: shown["rows"][0] == "Muted")
+    desktop.launcher_until(reads("Muted", "yes"))
     desktop.launcher_until(reads("Volume", "muted"))
     # Louder is meant to be heard, so it unmutes.
     press("Louder", then="now 100%")

@@ -371,7 +371,8 @@ ShellRoot {
             same("Sound holds more, saying how loud", `${sound.verb} ${sound.side}`, "more 40%");
             expect("as a bar", near(sound.graph.values[0], 0.4), sound.graph.values[0]);
             const heard = sound.targets();
-            same("Sound's acts, then its volume", names(heard), "Mute, Louder, Quieter, Volume");
+            same("Sound's acts, then its volume", names(heard), "Muted, Louder, Quieter, Volume");
+            same("Muted a switch saying no", heard[0].side, "no");
             const volume = heard[3];
             same("its volume is a figure", `${volume.side} ${volume.figure}`, "40% true");
             same("with a bar", volume.graph.shape, "bar");
@@ -388,7 +389,8 @@ ShellRoot {
             same("Mute mutes its streams, and no one else's",
                 [first, second, other].map(node => node.audio.muted).join(" "), "true true false");
             same("its volume says so", `${volume.side} ${sound.graph.values[0]}`, "muted 0");
-            same("then it says Unmute", sound.targets()[0].name, "Unmute");
+            same("then Muted, keeping its name, says yes",
+                `${sound.targets()[0].name} ${sound.targets()[0].side}`, "Muted yes");
 
             same("Notices counts its own", `${told.count} ${told.side}`, "2 1 unread");
             same("and holds more", told.nested, true);
@@ -444,13 +446,15 @@ ShellRoot {
                 "Microphone");
             same("saying it's heard", microphone.side, "recording");
             const [hush] = microphone.targets();
-            same("its Microphone holds Mute", hush.name, "Mute");
+            same("its Microphone holds Muted, saying no", `${hush.name} ${hush.side}`,
+                "Muted no");
             hush.run();
             const [listening, meter] = Launcher.Playing.recorders;
             same("Mute mutes what it records, and not a level meter",
                 `${listening.muted} ${meter.muted}`, "true false");
             same("its Microphone says so", `${microphone.side} ${recording.side}`, "muted muted");
-            same("then it says Unmute", microphone.targets()[0].name, "Unmute");
+            same("then Muted says yes",
+                `${microphone.targets()[0].name} ${microphone.targets()[0].side}`, "Muted yes");
 
             // Typing on looks only through what the last key found
             // (Provider.qml's poolFor), and finds just what looking

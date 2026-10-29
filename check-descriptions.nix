@@ -600,6 +600,10 @@
   one-ssh-agent = ''
     a workstation with a screen answers SSH with the TPM only
   '';
+  onepassword-offers-its-quick-acts = ''
+    the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
+    installed 1Password takes
+  '';
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
   '';
@@ -1238,6 +1242,10 @@
   '';
   timed-work-goes-ahead-of-other-work = ''
     timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it
+  '';
+  timekeeping-passes-clippy = ''
+    clippy finds nothing in timekeeping, which works out the clock's offset and delay as
+    timedatectl does, or its tests
   '';
   tuple-completes-in-zsh = ''
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real

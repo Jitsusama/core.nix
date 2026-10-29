@@ -43,7 +43,6 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
-import QtQuick.Effects
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
@@ -1410,6 +1409,10 @@ Scope {
             keys.push(["\u2192", ""]);
         if (typed === "" && held.length > 0)
             keys.push(["\u2190", ""]);
+        // The drawer's keys, only while it holds more than fits, keeping
+        // their word as Ctrl+Return does, since a chord isn't an arrow.
+        if (choice === selected && drawerOut && drawerCard.more)
+            keys.push(["Ctrl+\u2191\u2193", "scroll"]);
         return keys;
     }
 
@@ -2264,6 +2267,11 @@ Scope {
                         row.offers && row.verbs ? row.verbs() : []), []), letters));
             found = found.concat(stillActed(found));
             answer = null;
+            // Whether the drawer is out is the level's, read from all of
+            // it as it's stepped into, so narrowing it by typing never
+            // slides the drawer in or out.
+            if (words.length === 0)
+                levelHasDrawer = found.some(row => hasDrawer(row));
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
@@ -2682,7 +2690,7 @@ Scope {
             const box = clipper.mapToItem(into, 0, 0);
             words.push({ text: item.text, x: Math.round(at.x), y: Math.round(at.y),
                 starts: Math.round(at.x + inset), width: Math.round(item.width),
-                cut: item.truncated === true
+                inked: Math.round(item.contentWidth), cut: item.truncated === true
                     || (clipper !== item && item.implicitWidth > clipper.width),
                 room: { x: Math.round(box.x), width: Math.round(clipper.width) } });
         }
@@ -2706,9 +2714,70 @@ Scope {
                     reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
                         .join(" \u00b7 "), words: wordsIn(drawn, card) });
         }
+        // Where the selection is drawn, and where its row is, so a test can
+        // say it's drawn on its row.
+        const chosen = list.itemAtIndex(root.current);
+        const selection = !picked.visible || !chosen ? null : {
+            y: Math.round(picked.mapToItem(card, 0, 0).y),
+            row: Math.round(chosen.mapToItem(card, 0, chosen.height - Theme.space.xxxl).y)
+        };
         return JSON.stringify({ typed: root.typed, field: wordsIn(prompt, card),
-            foot: wordsIn(foot, card), rows, made: root.rowsMade, drawn: root.rowsDrawn });
+            foot: wordsIn(foot, card), rows, selection, made: root.rowsMade,
+            drawn: root.rowsDrawn });
     }
+
+    // The drawer beside the card (Drawer.qml): what the selected row shows
+    // beyond its line, its own or one made of the picture and the whole
+    // words it has. It's out only inside a place, never for a search typed
+    // at home, where three letters and Return is the habit and a drawer at
+    // every query would be noise; and out for the whole level while any of
+    // its rows has one, so it slides only as Joel steps in or out, never as
+    // he moves. A row of such a level with none of its own shows its name
+    // and note there.
+    function drawerOf(row) {
+        if (!row)
+            return null;
+        const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
+        if (own)
+            return own;
+        if ((row.picture ?? "") === "" && (row.reads ?? "") === "")
+            return null;
+        return { title: row.name, body: row.reads ?? "", picture: row.picture ?? "",
+            across: row.across ?? 0, down: row.down ?? 0 };
+    }
+    function hasDrawer(row) {
+        return !!row.drawer || (row.picture ?? "") !== "" || (row.reads ?? "") !== "";
+    }
+    property bool levelHasDrawer: false
+    // Typed to nothing, it goes in rather than stay out empty or keep the
+    // last row's details.
+    readonly property bool drawerOut: open && held.length > 0 && levelHasDrawer && !!selected
+    // A row with nothing more to show, in a level where the drawer is out,
+    // shows its own name alone (VKCF3Z): never the last row's details, never
+    // an empty slide-in, and never its note, which the foot already says.
+    readonly property var drawerShows: !drawerOut || !selected ? null
+        : drawerOf(selected) ?? { title: selected.name }
+
+    // The drawer's room beside the card, and where the card sits (VKCF3Z's
+    // ruling, after Joel's "never passes the bound of the screen and
+    // resizes to fit there"): the card stays centred, where Super+Space has
+    // always opened it, and the drawer takes what's left on its right, up
+    // to drawerMost. Only where that's less than drawerLeast, too narrow to
+    // hold a line of mail, does the card sit left of centre, the drawer
+    // given drawerLeast or what the screen has. Both are worked out for the
+    // screen alone, never for what's shown, so the card never moves.
+    readonly property int drawerMost: 520
+    readonly property int drawerLeast: 280
+    readonly property real drawerGap: Theme.space.m
+    readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
+    readonly property real drawerRoom: !screenHere ? 0
+        : screenHere.width - centred - width - drawerGap - Theme.space.xl
+    readonly property real drawerWidth: !screenHere ? 0
+        : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom)
+        : Math.min(drawerLeast,
+            Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
+    readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
+        Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a
@@ -2756,7 +2825,23 @@ Scope {
             // Where Return's key starts, which holds still as the arrows go.
             keysAt: Math.round(foot.returnAt),
             // How far the list is scrolled, which only a key changes.
-            scrolled: Math.round(list.contentY)
+            scrolled: Math.round(list.contentY),
+            // The drawer: whether it's out, what it's titled and says,
+            // whether it holds more than fits, and where it and the card sit.
+            drawer: {
+                out: root.drawerOut,
+                title: root.drawerShows?.title ?? "",
+                facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
+                    .map(fact => fact.label ?? ""),
+                body: root.drawerShows?.body ?? "",
+                more: drawerCard.more,
+                scrolled: Math.round(drawerCard.scrolled),
+                cardAt: Math.round(card.mapToGlobal(0, 0).x),
+                at: Math.round(drawerCard.mapToGlobal(0, 0).x),
+                width: Math.round(drawerCard.width),
+                height: Math.round(drawerCard.height),
+                cardHeight: Math.round(card.height)
+            }
         });
     }
 
@@ -2916,6 +3001,12 @@ Scope {
         id: nowhere
     }
 
+    // The card and the drawer out beside it, for the pointer and the blur.
+    Region {
+        id: cardAndDrawer
+        regions: [card.area, drawerCard.area]
+    }
+
     // Mapped all along, so opening makes no surface and draws no first
     // frame before niri hands over the keys. While closed it's one pixel at
     // the screen's top edge rather than the card's size, since niri draws a
@@ -2925,16 +3016,22 @@ Scope {
         id: surface
         visible: true
         screen: root.screenHere
+        // Placed from the left, so the card sits where cardLeft says with
+        // the drawer's room on its right, sized once for the screen.
         anchors.top: true
+        anchors.left: true
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.open && screen // qmllint disable unqualified
             ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.open ? root.width + 2 * card.reach : 1
+        margins.left: root.open ? root.cardLeft - card.reach : 0 // qmllint disable unqualified
+        implicitWidth: root.open
+            ? root.width + root.drawerGap + root.drawerWidth + 2 * card.reach : 1
         implicitHeight: root.open ? card.height + 2 * card.reach : 1
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: root.open ? card.area : nowhere
-        BackgroundEffect.blurRegion: root.open ? card.area : nowhere
+        mask: !root.open ? nowhere : root.drawerOut ? cardAndDrawer : card.area
+        BackgroundEffect.blurRegion: !root.open ? nowhere
+            : root.drawerOut ? cardAndDrawer : card.area
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
@@ -3072,11 +3169,21 @@ Scope {
                         // sits above the rows, at -1.
                         readonly property int highest: root.answer && !root.parted(root.answer)
                             ? -1 : 0
-                        Keys.onUpPressed: {
+                        // With Ctrl, the arrows scroll the drawer instead,
+                        // since Page Up and Page Down page the list.
+                        Keys.onUpPressed: event => {
+                            if (event.modifiers & Qt.ControlModifier) {
+                                drawerCard.scroll(-1);
+                                return;
+                            }
                             trials.pressed("arrows");
                             root.current = Math.max(root.current - 1, highest);
                         }
-                        Keys.onDownPressed: {
+                        Keys.onDownPressed: event => {
+                            if (event.modifiers & Qt.ControlModifier) {
+                                drawerCard.scroll(1);
+                                return;
+                            }
                             trials.pressed("arrows");
                             root.current = Math.max(highest,
                                 Math.min(root.current + 1, root.matches.length - 1));
@@ -3284,6 +3391,13 @@ Scope {
                             // The selection itself, under the rows, which
                             // draw no fill of their own here (Choice's fills).
                             Rectangle {
+                                id: picked
+
+                                // Among the rows, so it scrolls with them:
+                                // a child of the list itself stayed put as
+                                // the list scrolled, and sat as far below
+                                // its row as the list had gone down.
+                                parent: list.contentItem
                                 z: -1
                                 width: list.width
                                 height: Theme.space.xxxl
@@ -3389,93 +3503,9 @@ Scope {
                         }
                     }
 
-                    // A picture copied, as it is, while its row is selected:
-                    // in its own shape, no wider than the rows nor taller
-                    // than six of them, aligned with the footer's words, its
-                    // corners a part's, and the raised colour until it's
-                    // drawn, as a song's cover is in a notice.
-                    Item {
-                        id: preview
-
-                        readonly property var row: root.selected
-                        readonly property string picture: row ? row.picture ?? "" : ""
-                        readonly property real room: width - 2 * Theme.space.l
-                        readonly property real most: 6 * Theme.space.xxxl
-                        // Its own width and height, or a square for one whose
-                        // type didn't say them.
-                        readonly property real across: row && row.across > 0 ? row.across : most
-                        readonly property real down: row && row.down > 0 ? row.down : most
-                        readonly property real shrunk: Math.min(1, room / across, most / down)
-
-                        width: parent.width
-                        height: visible ? frame.height + Theme.space.m : 0
-                        visible: picture !== ""
-
-                        Rectangle {
-                            id: frame
-                            x: Theme.space.l
-                            y: Theme.space.m
-                            width: Math.round(preview.across * preview.shrunk)
-                            height: Math.round(preview.down * preview.shrunk)
-                            radius: Theme.inner
-                            color: drawn.status === Image.Ready ? "transparent" : Theme.raised
-
-                            Image {
-                                id: drawn
-                                anchors.fill: parent
-                                source: preview.picture === "" ? "" : `file://${preview.picture}`
-                                asynchronous: true
-                                fillMode: Image.PreserveAspectFit
-                                sourceSize.width: 2 * width
-                                sourceSize.height: 2 * height
-                                layer.enabled: true
-                                layer.effect: MultiEffect {
-                                    maskEnabled: true
-                                    maskSource: corners
-                                }
-                                onStatusChanged: {
-                                    if (status === Image.Ready)
-                                        Report.say(`showed ${preview.row.name}`);
-                                }
-                            }
-
-                            Rectangle {
-                                id: corners
-                                anchors.fill: parent
-                                radius: Theme.inner
-                                visible: false
-                                layer.enabled: true
-                            }
-                        }
-                    }
-
-                    // A row's whole words, while it's selected, when one line
-                    // cuts them short: a past notice's summary and body, wrapped
-                    // below the rows as a picture is shown, at most six lines,
-                    // aligned with the footer's words. Joel couldn't tell what
-                    // a notice had said from its one line.
-                    Text {
-                        id: reading
-
-                        readonly property string said: root.selected
-                            ? root.selected.reads ?? "" : ""
-
-                        x: Theme.space.l
-                        width: parent.width - 2 * Theme.space.l
-                        topPadding: Theme.space.m
-                        // The column skips it while it's hidden. A height bound
-                        // to its own layout would loop, since elided text lays
-                        // out to the height it's given.
-                        visible: said !== ""
-                        text: said
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 6
-                        elide: Text.ElideRight
-                        color: Theme.text
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.large
-                    }
+                    // A picture, or a row's whole words, show in the drawer
+                    // beside the card, never below the rows, so the card's
+                    // height never changes with the selection.
 
                     // The foot, one line, the one place that teaches, so the
                     // rows stay clean. On the right, what Return does here,
@@ -3588,7 +3618,7 @@ Scope {
                             // opened (root.factsWidest).
                             function place(fact) {
                                 return Math.max(measure.advanceWidth(fact.said),
-                                    root.factsWidest[`${fact.entry.label}:${fact.way}`] ?? 0);
+                                    root.factsWidest[`${fact.entry.name}:${fact.way}`] ?? 0);
                             }
 
                             readonly property var fit: {
@@ -3611,7 +3641,12 @@ Scope {
                                 const widest = Object.assign({}, root.factsWidest);
                                 let grew = false;
                                 for (const fact of kept) {
-                                    const key = `${fact.entry.label}:${fact.way}`;
+                                    // By its name, which each has and
+                                    // none shares: by its label, the time
+                                    // and the date, which have none, kept
+                                    // one room, and the time kept the
+                                    // date's once the date gave way.
+                                    const key = `${fact.entry.name}:${fact.way}`;
                                     const now = measure.advanceWidth(fact.said);
                                     if (now > (widest[key] ?? 0)) {
                                         widest[key] = now;
@@ -3667,6 +3702,17 @@ Scope {
                     }
                 }
             }
+        }
+
+        // Out of the card's right side, top aligned and as tall as it.
+        Drawer {
+            id: drawerCard
+            x: card.reach + root.width + root.drawerGap
+            y: card.reach
+            width: root.drawerWidth
+            tall: card.height
+            out: root.drawerOut
+            given: root.drawerShows
         }
     }
 }

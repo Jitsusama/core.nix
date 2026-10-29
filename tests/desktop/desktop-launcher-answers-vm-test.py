@@ -921,6 +921,7 @@ def a_scratch_folder(desktop: Desktop) -> str:
                 "name": "~/scratch",
                 "bytes": 3 * 2**30,
                 "clears": 2**30,
+                "grew": {"bytes": 2 * 2**30, "over": 20 * 3600},
                 "owner": {"kind": "other", "name": "scratch"},
                 "clearable": True,
                 "why": None,
@@ -955,15 +956,18 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
         desktop.step_in("ret")
 
     try:
-        # Return steps into it: what can be done, then what it reads,
-        # then Copy the Path.
+        # Return steps into it: what can be done, then what it reads, how
+        # much it grew among them, then Copy the Path.
         into_it()
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"]
-                == ["Open Its Folder", "Keep", "Clear", "Size", "Clearable", "Copy the Path"]
+                == ["Open Its Folder", "Keep", "Clear", "Size", "Grew", "Clearable",
+                    "Copy the Path"]
             )
-        )
+        )  # fmt: skip
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        assert "Grew \u00b7 2.0 GiB in 20 h" in reads, reads
         desktop.down_to("Keep")
         assert desktop.showing()["selected"]["side"] == "no"
         # Kept, it asks why, and the guard says so.
@@ -1230,6 +1234,14 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         )
         location(lambda row: row["side"] == "Lighthouse, Alberta")
         desktop.step_in()
+        # Inside, in the design's order, saying it was set by hand.
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Town", "How It Knows", "Set It by Hand", "Find It Again", "Copy"]
+            )
+        )
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        assert "How It Knows \u00b7 set by hand" in reads, reads
         # Found again, the pin goes, and here is what GeoClue says, which
         # in the VM is nothing yet.
         desktop.down_to("Find It Again")
@@ -1245,6 +1257,69 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
         desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
         desktop.as_account(f"rm -rf {pin} ~/.local/state/clock-follows")
+
+
+def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
+    """The time here says how the clock is kept, as timesyncd last said."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    kept = "$XDG_RUNTIME_DIR/timekeeping.json"
+    # timekeeping runs, and timesyncd, asking a server that isn't there,
+    # has made no exchange, so the file says nothing, and the time says
+    # nothing of its keeping.
+    machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active timekeeping"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session(f"test \"$(cat {kept})\" = '{{}}'"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    keeping = [
+        "Synchronised", "Server", "Offset", "Delay", "Jitter", "Stratum", "Reference",
+        "Poll Interval", "Leap Second",
+    ]  # fmt: skip
+    desktop.answer("time")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
+    assert "Offset" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # An exchange made, written as timekeeping writes it, with it stopped
+    # so nothing writes over it.
+    desktop.as_account("systemctl --user stop timekeeping")
+    said = {
+        "version": 1, "synchronised": True, "server": "0.harbour.pool.ntp.org",
+        "address": "192.0.2.7", "stratum": 1, "reference": "GNSS", "offset": 388,
+        "delay": 36112, "jitter": 11888, "poll": 2048, "leap": "normal", "packets": 13,
+        "frequency": 6.267,
+    }  # fmt: skip
+    try:
+        desktop.as_account(f"echo '{json.dumps(said)}' > {kept}.new && mv {kept}.new {kept}")
+        desktop.answer("time")
+        desktop.step_in()
+
+        def kept_rows(shown: Json) -> bool:
+            rows = cast("list[str]", shown["rows"])
+            if "Synchronised" not in rows:
+                return False
+            at = rows.index("Synchronised")
+            return rows[at : at + len(keeping)] == keeping
+
+        desktop.launcher_until(kept_rows)
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        for read in (
+            "Synchronised \u00b7 yes",
+            "Server \u00b7 0.harbour.pool.ntp.org \u00b7 192.0.2.7",
+            "Offset \u00b7 +0.4 ms",
+            "Delay \u00b7 36.1 ms",
+            "Poll Interval \u00b7 every 34 min 8 s",
+        ):
+            assert any(str(it).startswith(read) for it in reads), (read, reads)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account("systemctl --user start timekeeping")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

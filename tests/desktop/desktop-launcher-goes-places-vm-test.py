@@ -146,6 +146,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
                 and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
             )
         )
+    # Scrolled down past its first rows, the selection is still drawn on
+    # its own row.
+    selection = laid_out(desktop)["selection"]
+    assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
     desktop.photograph("launcher-agent-facts")
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
@@ -787,6 +791,14 @@ def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
+    # The foot's time keeps only its own room, as the date gives way to the
+    # keys a letter brings: it kept the date's, a gap after it.
+    time = next(
+        word for word in laid_out(desktop)["foot"] if re.fullmatch(r"\d\d:\d\d", word["text"])
+    )
+    # Its room is measured as it's said and its ink as it's drawn, so they
+    # may round apart by a pixel.
+    assert abs(time["width"] - time["inked"]) <= 1, f"the time keeps more room: {time}"
     desktop.photograph("launcher")
     machine.send_key("ret")
     # The first window opened can take as long as the first GTK one.
@@ -1472,12 +1484,46 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
+    # Inside Now, its details slide out in the drawer beside the card, as
+    # the meeting's one component gives them, each a name and a figure.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Design Review"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"][:1] == ["When"]
+        )
+    )
+    desktop.photograph("launcher-meeting-drawer")
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
         timeout=dt.timedelta(seconds=30),
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # In Now, where the drawer is out, a row with nothing more to show
+    # shows its name alone, never another row's details nor its own note,
+    # which the foot says.
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    # Now opens on the meeting, below the time.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
+    rows = cast("list[str]", desktop.showing()["rows"])
+    for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
+        machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
+        )
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Time"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"] == []
+            and shown["drawer"]["body"] == ""
+        )
+    )
+    machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -1507,6 +1553,10 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
+    # Found by a search typed at home, the drawer stays in: it slides only
+    # as Joel steps in or out (docs/design.md, "The drawer is the card
+    # continued").
+    assert (desktop.showing().get("drawer") or {}).get("out") is False, desktop.showing()
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")
@@ -2379,13 +2429,12 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
         desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
         timeout=dt.timedelta(seconds=10),
     )
+    # Run, it does what its Return does, opening it again where it's
+    # closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
+    assert lighthouse["kind"] == "action", lighthouse
     assert ran(lighthouse)["done"]
-    desktop.launcher_until(
-        lambda shown: shown["open"] and shown["path"] == ["Agents", "Orchestrators", "Lighthouse"]
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.fail(closed)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
@@ -3443,6 +3492,23 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         )
         selected = desktop.showing()["selected"] or {}
         assert (selected["side"], selected["verb"]) == ("nothing waits", "more"), selected
+        # What's typed narrows Now to the rows it names, and clearing it
+        # brings them all back.
+        desktop.type_in("awake")
+        desktop.launcher_until(
+            lambda shown: shown["rows"][:1] == ["Keep Awake"] and not shown["nothing"]
+        )
+        machine.send_key("left")
+        desktop.launcher_until(
+            lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Waiting on You"]
+        )
+        # Clearing keeps the row typing chose, so the selection goes back up.
+        shown = desktop.showing()
+        for _ in range(shown["rows"].index(shown["selected"]["name"])):
+            machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You"
+        )
         # Return steps in, as it does with things waiting, to a list saying
         # nothing does, rather than closing as if the launcher vanished.
         machine.send_key("ret")

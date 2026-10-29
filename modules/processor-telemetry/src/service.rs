@@ -23,13 +23,26 @@ use zlink::{Reply, introspect, service};
 
 use crate::layout::{self, Kind, Limit, Sensor};
 use crate::reading::{self, Cause, Held, Region};
+use crate::resting;
 
 /// How long apart the two readings each answer compares are.
 pub const EVERY: Duration = Duration::from_secs(1);
 
+/// What a watch keeps between its answers: the last of each region, when it
+/// was read, and whether the watch is done.
+type Watched = (
+    Option<Result<Region, Unread>>,
+    Option<resting::Region>,
+    Instant,
+    bool,
+);
+
 pub struct Telemetry {
     /// The region's `telem` file, if the machine has the region.
     pub region: Option<PathBuf>,
+    /// The region that says what kept the package from resting, if the
+    /// machine has it.
+    pub resting: Option<PathBuf>,
     /// Each core cluster's CPUs, in the region's order.
     pub clusters: Vec<String>,
 }
@@ -75,6 +88,39 @@ pub enum Why {
     Other,
 }
 
+/// A part that can keep the package from resting.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub enum Keeper {
+    Npu,
+    ImageProcessor,
+    Media,
+    Graphics,
+    Display,
+    Chipset,
+    Cores,
+    Internal,
+    Other,
+}
+
+/// What kept the package from resting, and for what share of the last
+/// second.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+pub struct Kept {
+    pub by: Keeper,
+    pub share: f64,
+}
+
+/// The share of the last second anything kept the package out of its deep
+/// idle states, and each part that did for at least a twentieth, the
+/// longest first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+pub struct Resting {
+    pub kept: f64,
+    pub by: Vec<Kept>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
 pub struct Temperature {
     pub part: Part,
@@ -99,7 +145,8 @@ pub struct Cluster {
 
 /// The temperatures now, and what held the processor, each core cluster
 /// and the NPU back over the last second, each list the longest-holding
-/// first and empty when nothing did.
+/// first and empty when nothing did, and what kept the package from
+/// resting, none where the machine has no region that says.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
 #[serde(rename_all = "camelCase")]
 #[zlink(rename_all = "camelCase")]
@@ -108,6 +155,7 @@ pub struct Reading {
     pub held_back: Vec<Hold>,
     pub clusters: Vec<Cluster>,
     pub npu: Vec<Hold>,
+    pub kept_from_resting: Option<Resting>,
 }
 
 fn part(sensor: Sensor) -> Part {
@@ -140,6 +188,37 @@ fn limit(limit: Limit) -> Why {
         Limit::PlatformPl3 => Why::PlatformPl3,
         Limit::Prochot => Why::Prochot,
         Limit::RegulatorHot => Why::RegulatorHot,
+    }
+}
+
+fn keeper(keeper: resting::Keeper) -> Keeper {
+    match keeper {
+        resting::Keeper::Npu => Keeper::Npu,
+        resting::Keeper::ImageProcessor => Keeper::ImageProcessor,
+        resting::Keeper::Media => Keeper::Media,
+        resting::Keeper::Graphics => Keeper::Graphics,
+        resting::Keeper::Display => Keeper::Display,
+        resting::Keeper::Chipset => Keeper::Chipset,
+        resting::Keeper::Cores => Keeper::Cores,
+        resting::Keeper::Internal => Keeper::Internal,
+        resting::Keeper::Other => Keeper::Other,
+    }
+}
+
+/// What kept the package from resting between two of its regions `seconds`
+/// apart.
+pub fn kept(before: &resting::Region, after: &resting::Region, seconds: f64) -> Resting {
+    let rested = resting::resting(before, after, seconds);
+    Resting {
+        kept: rested.kept,
+        by: rested
+            .by
+            .iter()
+            .map(|kept| Kept {
+                by: keeper(kept.by),
+                share: kept.share,
+            })
+            .collect(),
     }
 }
 
@@ -186,13 +265,14 @@ pub fn reading(before: &Region, after: &Region, seconds: f64, cpus: &[String]) -
         }),
         clusters,
         npu: holds(&held.npu, kind),
+        kept_from_resting: None,
     }
 }
 
-/// The region's `telem` file among Intel PMT's, by its guid, from `class`
+/// A region's `telem` file among Intel PMT's, by its guid, from `class`
 /// (the kernel's `/sys/class/intel_pmt`).
-pub fn find(class: &Path) -> Option<PathBuf> {
-    let wanted = format!("{:#x}", layout::GUID);
+pub fn find(class: &Path, guid: u32) -> Option<PathBuf> {
+    let wanted = format!("{guid:#x}");
     fs::read_dir(class)
         .ok()?
         .flatten()
@@ -216,18 +296,25 @@ fn read(file: &Path) -> Result<Region, Unread> {
     })
 }
 
+/// The resting region, or none where it can't be read whole, so the rest of
+/// a reading still comes.
+fn read_resting(file: Option<&Path>) -> Option<resting::Region> {
+    resting::Region::from_bytes(&fs::read(file?).ok()?)
+}
+
 #[service(
     interface = "io.jitsusama.ProcessorTelemetry",
-    types = [Cluster, Hold, Part, Reading, Temperature, Why],
+    types = [Cluster, Hold, Keeper, Kept, Part, Reading, Resting, Temperature, Why],
     vendor = "jitsusama",
     product = "processor-telemetry",
     version = env!("CARGO_PKG_VERSION"),
     url = "https://github.com/Jitsusama/core.nix"
 )]
 impl Telemetry {
-    /// The temperatures, and what held everything back over the next
-    /// second. Called with more, it answers again each second until the
-    /// call ends, reading the region only while someone is asking.
+    /// The temperatures, and what held everything back and kept the
+    /// package from resting over the next second. Called with more, it
+    /// answers again each second until the call ends, reading the regions
+    /// only while someone is asking.
     #[zlink(more)]
     #[expect(
         clippy::unused_async,
@@ -239,33 +326,41 @@ impl Telemetry {
         more: bool,
     ) -> impl Stream<Item = Result<Reply<Reading>, Unread>> + Unpin {
         let file = self.region.clone();
+        let rests = self.resting.clone();
         let cpus = self.clusters.clone();
         let first = file.as_deref().map(read);
+        let first_rest = read_resting(rests.as_deref());
         let replies = stream::unfold(
-            (first, Instant::now(), false),
-            move |(last, at, done): (Option<Result<Region, Unread>>, Instant, bool)| {
+            (first, first_rest, Instant::now(), false),
+            move |(last, last_rest, at, done): Watched| {
                 let file = file.clone();
+                let rests = rests.clone();
                 let cpus = cpus.clone();
                 async move {
                     if done {
                         return None;
                     }
                     let before = match last {
-                        None => return Some((Err(Unread::NoRegion), (None, at, true))),
-                        Some(Err(unread)) => return Some((Err(unread), (None, at, true))),
+                        None => return Some((Err(Unread::NoRegion), (None, None, at, true))),
+                        Some(Err(unread)) => return Some((Err(unread), (None, None, at, true))),
                         Some(Ok(region)) => region,
                     };
                     time::sleep_until(at + EVERY).await;
                     let now = Instant::now();
                     let after = match file.as_deref().map(read) {
                         Some(Ok(region)) => region,
-                        Some(Err(unread)) => return Some((Err(unread), (None, now, true))),
-                        None => return Some((Err(Unread::NoRegion), (None, now, true))),
+                        Some(Err(unread)) => return Some((Err(unread), (None, None, now, true))),
+                        None => return Some((Err(Unread::NoRegion), (None, None, now, true))),
                     };
+                    let rest = read_resting(rests.as_deref());
                     let seconds = (now - at).as_secs_f64();
-                    let reading = reading(&before, &after, seconds, &cpus);
+                    let mut reading = reading(&before, &after, seconds, &cpus);
+                    reading.kept_from_resting = match (&last_rest, &rest) {
+                        (Some(before), Some(after)) => Some(kept(before, after, seconds)),
+                        _ => None,
+                    };
                     let reply = Reply::new(Some(reading)).set_continues(Some(more));
-                    Some((Ok(reply), (Some(Ok(after)), now, !more)))
+                    Some((Ok(reply), (Some(Ok(after)), rest, now, !more)))
                 }
             },
         );
@@ -304,30 +399,48 @@ mod tests {
         words.iter().flat_map(|word| word.to_le_bytes()).collect()
     }
 
+    /// The resting region, with the display engine and anything at all
+    /// having kept the package from resting for `display` milliseconds.
+    fn resting_bytes(display: u32) -> Vec<u8> {
+        let mut words = vec![0_u64; resting::WORDS];
+        words[1] = u64::from(display);
+        words[9] = u64::from(display);
+        words.iter().flat_map(|word| word.to_le_bytes()).collect()
+    }
+
     fn sysfs(guid: &str) -> tempfile::TempDir {
         let dir =
             tempfile::tempdir().unwrap_or_else(|error| panic!("no temporary folder: {error}"));
-        for (name, id) in [("telem1", "0x3086100"), ("telem2", guid)] {
+        for (name, id, bytes) in [
+            ("telem1", "0x3086100", resting_bytes(0)),
+            ("telem2", guid, region_bytes(0, 40)),
+        ] {
             let region = dir.path().join(name);
             fs::create_dir(&region).unwrap_or_else(|error| panic!("{error}"));
             fs::write(region.join("guid"), format!("{id}\n"))
                 .unwrap_or_else(|error| panic!("{error}"));
-            fs::write(region.join("telem"), region_bytes(0, 40))
-                .unwrap_or_else(|error| panic!("{error}"));
+            fs::write(region.join("telem"), bytes).unwrap_or_else(|error| panic!("{error}"));
         }
         dir
     }
 
     #[test]
-    fn the_region_is_found_by_its_guid() {
+    fn each_region_is_found_by_its_guid() {
         let dir = sysfs("0x3086000");
-        assert_eq!(find(dir.path()), Some(dir.path().join("telem2/telem")));
+        assert_eq!(
+            find(dir.path(), layout::GUID),
+            Some(dir.path().join("telem2/telem"))
+        );
+        assert_eq!(
+            find(dir.path(), resting::GUID),
+            Some(dir.path().join("telem1/telem"))
+        );
     }
 
     #[test]
     fn another_processors_regions_arent_taken() {
         let dir = sysfs("0x1234");
-        assert_eq!(find(dir.path()), None);
+        assert_eq!(find(dir.path(), layout::GUID), None);
     }
 
     #[test]
@@ -377,7 +490,8 @@ mod tests {
     async fn asked_once_it_answers_once_after_a_second() {
         let dir = sysfs("0x3086000");
         let telemetry = Telemetry {
-            region: find(dir.path()),
+            region: find(dir.path(), layout::GUID),
+            resting: None,
             clusters: Vec::new(),
         };
         let mut replies = telemetry.watch(false).await;
@@ -390,6 +504,7 @@ mod tests {
     async fn without_the_region_it_says_so() {
         let telemetry = Telemetry {
             region: None,
+            resting: None,
             clusters: Vec::new(),
         };
         let mut replies = telemetry.watch(true).await;
@@ -401,24 +516,49 @@ mod tests {
     async fn watched_it_answers_each_second_with_what_changed() {
         let dir = sysfs("0x3086000");
         let file = dir.path().join("telem2/telem");
+        let rests = dir.path().join("telem1/telem");
         let telemetry = Telemetry {
             region: Some(file.clone()),
+            resting: Some(rests.clone()),
             clusters: Vec::new(),
         };
         let mut replies = telemetry.watch(true).await;
         assert!(matches!(replies.next().await, Some(Ok(_))));
         fs::write(&file, region_bytes(SECOND / 2, 52)).unwrap_or_else(|error| panic!("{error}"));
+        fs::write(&rests, resting_bytes(250)).unwrap_or_else(|error| panic!("{error}"));
         let Some(Ok(reply)) = replies.next().await else {
             panic!("no second reading");
         };
-        let reading = reply.into_parameters();
-        let held = reading.map(|r| r.held_back);
+        let Some(reading) = reply.into_parameters() else {
+            panic!("the second reply says nothing");
+        };
         assert_eq!(
-            held,
-            Some(vec![Hold {
+            reading.held_back,
+            [Hold {
                 by: Why::Pl1,
                 share: 0.5
-            }])
+            }]
         );
+        let kept = reading
+            .kept_from_resting
+            .unwrap_or_else(|| panic!("nothing said of resting"));
+        assert!((kept.kept - 0.25).abs() < 1e-3);
+        assert_eq!(kept.by.first().map(|kept| kept.by), Some(Keeper::Display));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn without_the_resting_region_the_rest_still_comes() {
+        let dir = sysfs("0x3086000");
+        let telemetry = Telemetry {
+            region: find(dir.path(), layout::GUID),
+            resting: Some(dir.path().join("nowhere")),
+            clusters: Vec::new(),
+        };
+        let mut replies = telemetry.watch(false).await;
+        let Some(Ok(reply)) = replies.next().await else {
+            panic!("no reading");
+        };
+        let reading = reply.into_parameters();
+        assert!(reading.is_some_and(|reading| reading.kept_from_resting.is_none()));
     }
 }

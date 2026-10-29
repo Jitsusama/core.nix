@@ -556,6 +556,11 @@
       "name": "Size"
     },
     {
+      "id": "machine:disk:holder:grew",
+      "in": "machine:disk:filling",
+      "name": "Grew"
+    },
+    {
       "id": "machine:disk:holder:clears",
       "in": "machine:disk:filling",
       "name": "Clearable"
@@ -1555,14 +1560,21 @@
       "name": "Location"
     },
     {
-      "id": "location:position",
+      "id": "location:town",
       "in": "location",
-      "name": "Position"
+      "name": "Town"
     },
     {
-      "id": "location:zone",
+      "id": "location:knows",
       "in": "location",
-      "name": "Zone"
+      "name": "How It Knows"
+    },
+    {
+      "id": "verb:location:copy",
+      "in": "location",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "verb:time:put-back",
@@ -1600,6 +1612,51 @@
       "id": "time:zone",
       "in": "time",
       "name": "Zone"
+    },
+    {
+      "id": "time:synchronised",
+      "in": "time",
+      "name": "Synchronised"
+    },
+    {
+      "id": "time:server",
+      "in": "time",
+      "name": "Server"
+    },
+    {
+      "id": "time:offset",
+      "in": "time",
+      "name": "Offset"
+    },
+    {
+      "id": "time:delay",
+      "in": "time",
+      "name": "Delay"
+    },
+    {
+      "id": "time:jitter",
+      "in": "time",
+      "name": "Jitter"
+    },
+    {
+      "id": "time:stratum",
+      "in": "time",
+      "name": "Stratum"
+    },
+    {
+      "id": "time:reference",
+      "in": "time",
+      "name": "Reference"
+    },
+    {
+      "id": "time:poll",
+      "in": "time",
+      "name": "Poll Interval"
+    },
+    {
+      "id": "time:leap",
+      "in": "time",
+      "name": "Leap Second"
     },
     {
       "id": "sound",
@@ -1677,7 +1734,13 @@
     {
       "id": "sound:mute",
       "in": "sound",
-      "name": "Muted"
+      "name": "Muted",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "verb": "unmute"
+        }
+      }
     },
     {
       "id": "sound:programs",
@@ -1860,18 +1923,6 @@
       "states": {
         "input": {
           "name": "Listen Through It"
-        }
-      }
-    },
-    {
-      "id": "verb:sound-mute",
-      "in": "sound",
-      "name": "Mute",
-      "verb": "mute",
-      "states": {
-        "muted": {
-          "name": "Unmute",
-          "verb": "unmute"
         }
       }
     },
@@ -4372,20 +4423,21 @@
       "said": {
         "muted": "muted",
         "now": "now {level}",
-        "recording": "recording"
+        "recording": "recording",
+        "yes": "yes",
+        "no": "no"
       }
     },
     {
       "id": "verb:program:mute",
       "in": "program:sound",
-      "name": "Mute",
+      "name": "Muted",
       "verb": "mute",
-      "glyph": "silent",
+      "glyph": "volume",
       "states": {
         "muted": {
-          "name": "Unmute",
           "verb": "unmute",
-          "glyph": "volume"
+          "glyph": "silent"
         }
       }
     },

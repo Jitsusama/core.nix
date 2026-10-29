@@ -2311,6 +2311,11 @@ onLinux {
     pkgs.callPackage ./clock-follows/package.nix { }
   );
 
+  # clippy finds nothing in timekeeping, its tests included.
+  timekeeping-passes-clippy = passesClippy "timekeeping-passes-clippy" (
+    pkgs.callPackage ./timekeeping/package.nix { }
+  );
+
   # clippy finds nothing in whereabouts, its tests included.
   whereabouts-passes-clippy = passesClippy "whereabouts-passes-clippy" (
     pkgs.callPackage ./whereabouts/package.nix { }

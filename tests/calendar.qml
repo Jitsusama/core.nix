@@ -226,19 +226,31 @@ QtObject {
                 about: "What we did.\nWhat we do.",
                 organizer: { name: "Ada Lovelace", email: "ada@example.com" },
                 guests: [{ name: "Grace Hopper", email: "grace@example.com", answer: "no" },
-                    { name: "", email: "alan@example.com", answer: null }]
+                    { name: "", email: "alan@example.com", answer: null }],
+                dial: { number: "+1 555-010-0199", pin: "123456789" },
+                attachments: ["Agenda", "Numbers"]
             }), "Untitled"), {
             title: "Standup",
             facts: [
                 { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
                 { label: "Where", value: "Room 4" },
                 { label: "Call", value: "https://meet.google.com/abc-defg-hij" },
+                { label: "Dial In", value: "+1 555-010-0199, PIN 123456789" },
                 { label: "Your Answer", value: "maybe" },
                 { label: "Holds It", value: "Ada Lovelace" },
-                { label: "Asked", value: "Grace Hopper, not going; alan@example.com" }
+                { label: "Asked", value: "Grace Hopper, not going; alan@example.com" },
+                { label: "Attachments", value: "Agenda, Numbers" }
             ],
             body: "What we did.\nWhat we do."
         });
+        check("one file, and a number with no PIN", Calendar.details(meeting("m",
+            at(26, 14, 0), at(26, 14, 30), {
+                answer: null, link: null, dial: { number: "+1 555-010-0199", pin: null },
+                attachments: ["Agenda"]
+            }), "Untitled").facts.slice(1), [
+            { label: "Dial In", value: "+1 555-010-0199" },
+            { label: "Attachment", value: "Agenda" }
+        ]);
         check("a bare one he holds says only when", Calendar.details(meeting("m", at(26, 14, 0),
             at(26, 14, 30), { title: "", answer: null, link: null }), "Untitled"), {
             title: "Untitled",

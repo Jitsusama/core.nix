@@ -129,6 +129,26 @@ pub struct World<'a> {
 const WRITE_DEPTH: usize = 4;
 const WRITE_BUDGET: usize = 50_000;
 
+/// The config with only the sources that could offer something inside
+/// one of `folders`: those lying inside one, or holding one. A clear
+/// surveys only these, so it starts in seconds rather than after a walk
+/// of everything. A source that offers from no folder of its own stays.
+pub fn within(config: &Config, folders: &[PathBuf]) -> Config {
+    let touches = |source: &Source| {
+        let paths = source.under();
+        paths.is_empty()
+            || paths.iter().any(|path| {
+                let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+                folders
+                    .iter()
+                    .any(|folder| folder.starts_with(&path) || path.starts_with(folder))
+            })
+    };
+    let mut scoped = config.clone();
+    scoped.sources.retain(|_, source| touches(source));
+    scoped
+}
+
 /// Every candidate the sources offer now.
 pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
     let mut offers = Vec::new();
