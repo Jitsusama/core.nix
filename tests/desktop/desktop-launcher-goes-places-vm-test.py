@@ -602,6 +602,70 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     )
 
 
+def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:
+    """Agents reopens what the last boot's end took away, Return twice, or puts it off."""
+    machine = desktop.machine
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    # The harness kept one session live as an earlier boot ended.
+    lost = {
+        "v": 1,
+        "boot": "an-earlier-boot",
+        "sessions": [
+            {
+                "id": "01b2-harbour",
+                "address": "HARBOR",
+                "title": "Harbour",
+                "cwd": "/home/jitsusama/harbour",
+                "lostAt": 1,
+            },
+        ],
+    }
+    desktop.as_account(f"rm -f {opened} && mkdir -p ~/harbour")
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    # Its row comes after the sessions running, its count beside it.
+    desktop.launcher_until(lambda shown: "Reopen Last Boot's Sessions" in shown["rows"])
+    desktop.down_to("Reopen Last Boot's Sessions")
+    assert desktop.showing()["selected"]["side"] == "1 session", desktop.showing()
+    # Return steps in, all of them first, so Return twice reopens them.
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
+    desktop.photograph("launcher-agents-last-boot")
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/harbour " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01b2-harbour"], said
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # Put off, it's gone for this boot, as no harness here drops it.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
+    desktop.down_to("Not Now")
+    machine.send_key("ret")
+    # Nothing is left to reopen, so the launcher closes.
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
+    )
+    assert "Reopen Last Boot's Sessions" not in desktop.showing()["rows"], desktop.showing()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm -rf {opened} ~/harbour")
+
+
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(
     desktop: Desktop,
 ) -> None:

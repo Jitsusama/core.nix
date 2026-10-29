@@ -116,6 +116,38 @@
       "name": "Quest"
     },
     {
+      "id": "agents:last-boot",
+      "in": "agents",
+      "name": "Reopen Last Boot's Sessions",
+      "verb": "more",
+      "glyph": "resume",
+      "said": {
+        "one": "1 session",
+        "many": "{count} sessions"
+      }
+    },
+    {
+      "id": "verb:agents:last-boot:all",
+      "in": "agents:last-boot",
+      "name": "Reopen Them All",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:one",
+      "in": "agents:last-boot",
+      "name": "Reopen",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:notNow",
+      "in": "agents:last-boot",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
       "id": "agents:start",
       "in": "agents",
       "name": "Start a Session",

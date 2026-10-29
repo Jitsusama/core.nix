@@ -57,6 +57,12 @@ Provider {
             name: fact.piece.title,
             row: made(fact)
         }));
+        // The sessions the last boot's end took away, Agents' own row,
+        // among what else wants Joel while any are left to reopen (VKCF3Z's
+        // design, [fce929da]), drawn the same as there.
+        const lost = source("agents")?.lastBoot ?? null;
+        if (lost)
+            rows.push({ group: "wants", name: lost.name, row: lost });
         return [waiting].concat(moment, Now.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()
