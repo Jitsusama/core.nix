@@ -16,6 +16,10 @@
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
   '';
+  a-long-name-reads-at-one-pace = ''
+    a selected name too long for its row slides at one reading pace, gathering speed from rest and
+    settling back to it in at most a fifth of a second at each end, never stepping back
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';

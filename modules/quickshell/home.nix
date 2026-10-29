@@ -58,6 +58,7 @@ let
     "Drawer.qml"
     "Launcher.qml"
     "Choice.qml"
+    "Reading.js"
     "Graph.qml"
     "Chord.qml"
     "Margin.qml"
