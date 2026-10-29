@@ -3202,7 +3202,8 @@ def test_the_selection_glides_to_its_row_and_typing_never_glides(desktop: Deskto
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("o")
-    desktop.launcher_until(lambda shown: len(shown["rows"]) > 2)
+    # A row to glide from and one to glide to.
+    desktop.launcher_until(lambda shown: len(shown["rows"]) > 1)
     since = desktop.mark()
     machine.send_key("down")
 
