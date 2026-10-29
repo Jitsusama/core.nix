@@ -326,6 +326,9 @@ mod tests {
     #[test]
     fn keeps_a_repository_nothing_changed_in() {
         let dir = repository("still");
+        // Asked once its files have settled, since one just made may yet
+        // change within the tick it was made in.
+        crate::stamp::tests::ahead(3);
         let mut engine = Engine::default();
         engine.ask(&dir, &options(&[]), false);
         engine.let_go_of_changed();
