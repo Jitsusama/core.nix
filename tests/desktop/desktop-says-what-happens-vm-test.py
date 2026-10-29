@@ -742,12 +742,17 @@ def test_a_missed_notice_shows_its_glyph_and_whats_on_shows_the_notices(desktop:
     desktop.photograph("margin-waiting")
     machine.send_key("meta_l-o")
     desktop.whats_on("Notices")
-    # The time and the date are among Now's own rows, always last, each its
-    # own answer as it's placed anywhere; the VM has no forecast and no
-    # calendar, so the location ends them.
+    # The time and the date are among Now's own rows, at its top before
+    # what comes and goes, the notices among them, each its own answer as
+    # it's placed anywhere; the VM has no forecast and no calendar, so the
+    # location follows them.
     things = desktop.showing()["things"]
-    time, today = things[-3:-1]
-    assert things[-1]["is"] == "on:location", things
+    kinds = [thing["is"] for thing in things]
+    at = kinds.index("answer:time")
+    time, today = things[at : at + 2]
+    assert kinds[at + 2] == "on:location", things
+    notices = next(n for n, thing in enumerate(things) if thing["reads"].startswith("Notices"))
+    assert at < notices, things
     date = machine.succeed("date '+%A %-d %B %Y'").strip()
     assert time["is"] == "answer:time", time
     assert re.match(r"Time \u00b7 \d\d:\d\d", time["reads"]), time

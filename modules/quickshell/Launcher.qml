@@ -686,9 +686,26 @@ Scope {
             && row.key !== `place:${id}`;
     }
 
+    // The kinds made by one component each, by how their rows are keyed,
+    // and the component that makes them (docs/design.md, one component per
+    // thing): a mail or a meeting row made anywhere but by its component
+    // is a version a surface drew of it.
+    readonly property var components: [
+        { keyed: /^mail:/, made: "mail" },
+        { keyed: /^calendar:meeting:/, made: "meeting" }
+    ]
+
+    // A row of a kind its component makes, made otherwise, or null.
+    function uncomposed(row) {
+        const kind = components.find(one => one.keyed.test(row.key ?? ""));
+        return kind && row.component !== kind.made ? kind.made : null;
+    }
+
     function actless() {
         const out = [];
         const own = [];
+        const loose = [];
+        let composed = 0;
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -701,6 +718,12 @@ Scope {
                     if (ownVersion(row, above))
                         own.push(`${names.concat([row.name]).join(" \u203a ")}`
                             + ` (${row.is ?? row.key})`);
+                    const kind = uncomposed(row);
+                    if (kind !== null)
+                        loose.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.key}, not made as a ${kind})`);
+                    else if (row.component)
+                        composed += 1;
                     if (depth < actlessDeepest && !(row.opens && Catalogue.long(row.opens)))
                         walk(catalogueHolds(row, above === null || collects({ row: above })),
                             row, path, names.concat([row.name]), depth + 1);
@@ -710,7 +733,8 @@ Scope {
         walk(home(), null, [], [], 0);
         // How many it walked too, so a check that finds none knows it
         // looked.
-        return { walked: seen.size, rows: out, ownVersions: own };
+        return { walked: seen.size, rows: out, ownVersions: own, uncomposed: loose,
+            composed: composed };
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a

@@ -1397,12 +1397,24 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["now"] and shown["selected"])
-    # The meeting is Now's last row, after the time, the date and the
-    # weather, with no Today to step into.
+    # The meeting is the last of Now's own rows, after the time, the date,
+    # the location and the weather, with no Today to step into.
     assert "Today" not in desktop.showing()["rows"], desktop.showing()["rows"]
-    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Design Review"])
-    desktop.down_to("Design Review")
+
+    def after_the_moment(shown: Json) -> bool:
+        """Whether Design Review follows the location and the weather, when there is one."""
+        rows = cast("list[str]", shown["rows"])
+        if "Design Review" not in rows:
+            return False
+        at = rows.index("Design Review")
+        return at > 0 and rows[at - 1] in {"Location", "Weather"}
+
+    desktop.launcher_until(after_the_moment)
+    # It's the meeting coming too, which wants Joel, so Now opens on it,
+    # and it's that one row, never a second beside it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
     today = desktop.showing()
+    assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
@@ -1608,10 +1620,10 @@ def test_a_meetings_call_open_in_meet_is_in_now_named_for_it(desktop: Desktop) -
 
 
 @pytest.mark.usefixtures("google")
-def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
+def test_now_lists_what_waits_then_the_time_then_a_call_a_song_and_a_mode(
     desktop: Desktop,
 ) -> None:
-    """Now lists what waits on Joel, then a call, a song and a mode, and the time last."""
+    """Now lists what waits on Joel, then the time and the date, then a call, a song and a mode."""
     queue = "$HOME/.local/state/mission/queue.json"
     kept(
         desktop,
@@ -1626,15 +1638,15 @@ def test_now_lists_what_waits_then_a_call_a_song_and_a_mode_and_the_time_last(
         "systemd-run --user --unit=player mpv --ao=null --no-video --loop"
         f" {shlex.quote(desktop.values['track'])}"
     )
-    # Each by what it is, in the order Now lists its groups, the time and
-    # the date, Now's own, last.
+    # Each by what it is: what waits first, then the time and the date,
+    # Now's own, which never move, then the groups that come and go.
     groups = [
         "on:waitingOnYou",
+        "answer:time",
+        "answer:today",
         "on:call",
         "on:playing",
         "session:awake",
-        "answer:time",
-        "answer:today",
     ]
 
     def listed() -> list[str]:
@@ -1841,6 +1853,15 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Every mail and meeting row, wherever the walk from home finds one, is
+    # made by its one component, never drawn by the surface that lists it.
+    said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
+    assert said["uncomposed"] == [], (
+        "A row drawn by the surface listing it, though a thing is one row"
+        " (docs/design.md, 'A row says its kind, and a thing is one row'):\n"
+        + "\n".join(said["uncomposed"])
+    )
+    assert said["composed"] > 0, "the walk found no mail to ask of"
 
 
 @pytest.mark.usefixtures("google")
