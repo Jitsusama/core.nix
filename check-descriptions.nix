@@ -688,7 +688,8 @@
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
     fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
-    or end, watched in each package's loaded folder, removes the versions no pi runs
+    or end, watched in each package's loaded folder, removes the versions no pi runs, however many
+    pis start or end at once
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
