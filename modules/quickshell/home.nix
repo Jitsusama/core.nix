@@ -571,6 +571,10 @@ let
   whereabouts = pkgs.callPackage ./whereabouts/package.nix { };
   clockFollows = pkgs.callPackage ./clock-follows/package.nix { };
   timedatectl = lib.getExe' pkgs.systemd "timedatectl";
+  # The program that says how the clock is kept, for Time's insides, where
+  # the machine keeps it with systemd-timesyncd.
+  timekeeping = pkgs.callPackage ./timekeeping/package.nix { };
+  keepsTime = osConfig.services.timesyncd.enable or false;
   followsTheLaptop =
     (launcher.providers.weather.enable or false)
     && (launcher.providers.weather.lookups or launcher.lookups)
@@ -1752,6 +1756,22 @@ in
         StateDirectory = "clock-follows";
         ExecStart = "${lib.getExe clockFollows} put-back %S/clock-follows ${timedatectl}";
       };
+    };
+    # How the clock is kept, as timesyncd last said, in the runtime
+    # directory for Time to watch: heard over D-Bus as each exchange with
+    # the server is made, never asked on a clock nor through timedatectl.
+    systemd.user.services.timekeeping = lib.mkIf keepsTime {
+      Unit = {
+        Description = "Says how the clock is kept, for the launcher's Time";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${lib.getExe timekeeping} %t/timekeeping.json";
+        Restart = "on-failure";
+        RestartSec = 60;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
     };
 
     # Keeping awake, from the launcher (Caffeinate.qml): one service holds

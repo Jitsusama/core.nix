@@ -1602,6 +1602,51 @@
       "name": "Zone"
     },
     {
+      "id": "time:synchronised",
+      "in": "time",
+      "name": "Synchronised"
+    },
+    {
+      "id": "time:server",
+      "in": "time",
+      "name": "Server"
+    },
+    {
+      "id": "time:offset",
+      "in": "time",
+      "name": "Offset"
+    },
+    {
+      "id": "time:delay",
+      "in": "time",
+      "name": "Delay"
+    },
+    {
+      "id": "time:jitter",
+      "in": "time",
+      "name": "Jitter"
+    },
+    {
+      "id": "time:stratum",
+      "in": "time",
+      "name": "Stratum"
+    },
+    {
+      "id": "time:reference",
+      "in": "time",
+      "name": "Reference"
+    },
+    {
+      "id": "time:poll",
+      "in": "time",
+      "name": "Poll Interval"
+    },
+    {
+      "id": "time:leap",
+      "in": "time",
+      "name": "Leap Second"
+    },
+    {
       "id": "sound",
       "name": "Sound",
       "noun": "devices",

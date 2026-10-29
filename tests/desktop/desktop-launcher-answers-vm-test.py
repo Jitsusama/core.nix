@@ -1247,6 +1247,62 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
         desktop.as_account(f"rm -rf {pin} ~/.local/state/clock-follows")
 
 
+def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
+    """The time here says how the clock is kept, as timesyncd last said."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    kept = "$XDG_RUNTIME_DIR/timekeeping.json"
+    # timekeeping runs, and with no network timesyncd has made no exchange,
+    # so the file says nothing, and the time says nothing of its keeping.
+    machine.wait_until_succeeds(desktop.in_session("systemctl --user is-active timekeeping"))
+    machine.wait_until_succeeds(desktop.in_session(f"test \"$(cat {kept})\" = '{{}}'"))
+    keeping = [
+        "Synchronised", "Server", "Offset", "Delay", "Jitter", "Stratum", "Reference",
+        "Poll Interval", "Leap Second",
+    ]  # fmt: skip
+    desktop.answer("time")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Zone" in shown["rows"])
+    assert "Offset" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # An exchange made, written as timekeeping writes it, with it stopped
+    # so nothing writes over it.
+    desktop.as_account("systemctl --user stop timekeeping")
+    said = {
+        "version": 1, "synchronised": True, "server": "0.harbour.pool.ntp.org",
+        "address": "192.0.2.7", "stratum": 1, "reference": "GNSS", "offset": 388,
+        "delay": 36112, "jitter": 11888, "poll": 2048, "leap": "normal", "packets": 13,
+        "frequency": 6.267,
+    }  # fmt: skip
+    try:
+        desktop.as_account(f"echo '{json.dumps(said)}' > {kept}.new && mv {kept}.new {kept}")
+        desktop.answer("time")
+        desktop.step_in()
+
+        def kept_rows(shown: Json) -> bool:
+            rows = cast("list[str]", shown["rows"])
+            if "Synchronised" not in rows:
+                return False
+            at = rows.index("Synchronised")
+            return rows[at : at + len(keeping)] == keeping
+
+        desktop.launcher_until(kept_rows)
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        for read in (
+            "Synchronised \u00b7 yes",
+            "Server \u00b7 0.harbour.pool.ntp.org \u00b7 192.0.2.7",
+            "Offset \u00b7 +0.4 ms",
+            "Delay \u00b7 36.1 ms",
+            "Poll Interval \u00b7 every 34 min 8 s",
+        ):
+            assert any(str(it).startswith(read) for it in reads), (read, reads)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account("systemctl --user start timekeeping")
+
+
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
     """The launcher finds emoji in their own place, and only there."""
     machine = desktop.machine
