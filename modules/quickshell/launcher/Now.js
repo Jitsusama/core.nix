@@ -13,13 +13,6 @@
 // for one that has a group of its own, as what's playing does.
 const GROUPS = ["wants", "onAir", "playing", "leftOn"];
 
-// Whether a group is one Now may open on: what wants Joel, or what
-// reaches other people, but never a mode he left on, which Return would
-// turn off, nor what's playing (WhatsOn.qml's starts).
-function pressing(group) {
-    return group === "wants" || group === "onAir";
-}
-
 // Where a row's group comes: one Now doesn't know goes after them all,
 // rather than ahead of what wants Joel.
 function rank(row) {

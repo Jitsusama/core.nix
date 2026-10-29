@@ -67,8 +67,6 @@ Rectangle {
     readonly property real ends: graphed ? drawing.x : right.x
 
     signal clicked
-    // The pointer is over the row, at this place in the window.
-    signal pointed(point at)
 
     width: parent.width
     height: Theme.space.xxxl
@@ -271,11 +269,13 @@ Rectangle {
         }
     }
 
+    // A click does what Return would; the pointer resting or passing over
+    // a row never selects it, since the launcher is driven by the keys
+    // (Joel, 2026-10-29: "the launcher window is not meant to be mouse
+    // navigated").
     MouseArea {
         anchors.fill: parent
         enabled: !row.quiet
-        hoverEnabled: true
         onClicked: row.clicked()
-        onPositionChanged: mouse => row.pointed(mapToItem(null, mouse.x, mouse.y))
     }
 }

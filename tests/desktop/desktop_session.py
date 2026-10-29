@@ -515,8 +515,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Move the selection to the row named, and wait until it's there.
 
         Rows are counted by name, since what leads a step (Return's own act) moves the rest,
-        and from the row selected, since a place may open on its most pressing row rather
-        than its first, as Now does on a meeting about to start.
+        and from the row selected, which a step in from a match keeps rather than the first.
         """
         shown = self.showing()
         rows = shown["rows"]
@@ -830,26 +829,30 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         assert max(ys) - min(ys) < ONE_GLYPH, f"more than one glyph: {drawn}"
         return sum(xs) / len(xs) / size[0], sum(ys) / len(ys) / size[1]
 
-    def click(self, x: float, y: float) -> None:
-        """Click there, by QEMU's tablet, which spans the screen from 0 to 32767.
+    def tablet(self, *events: Json) -> None:
+        """Send QEMU's tablet these events, its axes spanning the screen from 0 to 32767.
 
         The driver says a command's arguments are strings, so the events go through JSON to
         reach it as they are.
         """
         client = self.machine.qmp_client
         assert client is not None
+        client.send("input-send-event", json.loads(json.dumps({"events": events})))
 
-        def tablet(*events: Json) -> None:
-            client.send("input-send-event", json.loads(json.dumps({"events": events})))
-
-        tablet(
+    def point(self, x: float, y: float) -> None:
+        """Move the pointer there, as a fraction of the screen across and down."""
+        self.tablet(
             {"type": "abs", "data": {"axis": "x", "value": int(x * 32767)}},
             {"type": "abs", "data": {"axis": "y", "value": int(y * 32767)}},
         )
+
+    def click(self, x: float, y: float) -> None:
+        """Click there, as a fraction of the screen across and down."""
+        self.point(x, y)
         # QEMU hands the guest each batch in the order sent, so the press
         # lands where the pointer went.
-        tablet({"type": "btn", "data": {"down": True, "button": "left"}})
-        tablet({"type": "btn", "data": {"down": False, "button": "left"}})
+        self.tablet({"type": "btn", "data": {"down": True, "button": "left"}})
+        self.tablet({"type": "btn", "data": {"down": False, "button": "left"}})
 
     def answered(self) -> str:
         """Give what notify-send said once its notice closed.

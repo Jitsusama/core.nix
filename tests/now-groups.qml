@@ -61,12 +61,6 @@ QtObject {
         Now.ordered(given);
         expect("the rows given stay as they were", names(given), "B, A");
 
-        // Now opens on what wants Joel or reaches other people, never on
-        // what's playing or a mode left on, which Return would turn off.
-        expect("the groups Now may open on",
-            ["wants", "onAir", "playing", "leftOn", "elsewhere"].filter(Now.pressing).join(", "),
-            "wants, onAir");
-
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
