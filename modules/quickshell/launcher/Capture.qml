@@ -270,7 +270,7 @@ Provider {
     // One thing taken: Return opens it in its program, the picture viewer
     // or mpv, and a picture is shown in the drawer.
     function takenRow(path) {
-        const key = "verb:recent:open";
+        const key = "verb:path:file:open";
         const act = thing({
             key: `${key}:${path}`,
             name: Words.name(key),
