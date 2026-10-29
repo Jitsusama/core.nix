@@ -8,6 +8,9 @@
 //! with the position to a hundredth of a degree, about a kilometre, which
 //! is all either needs. Nominatim asks that a program say who it is, and
 //! ask no more than once a second; this asks once each time here moves.
+//!
+//! A place Joel names himself is found the other way, from its name, by
+//! Open-Meteo's geocoding, which says its town, province and zone at once.
 
 use std::time::Duration;
 
@@ -40,6 +43,66 @@ pub async fn name(latitude: f64, longitude: f64) -> Named {
     })
     .await
     .unwrap_or_default()
+}
+
+/// A place found by its name: where it is, what it's called and its zone.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Found {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub place: String,
+    pub zone: Option<String>,
+}
+
+/// Why a place named couldn't be found.
+#[derive(Debug, PartialEq)]
+pub enum Unfound {
+    /// The geocoding couldn't be asked, as with no network.
+    Unasked,
+    /// It was asked, and knows no place by that name.
+    Nowhere,
+}
+
+/// Finds the place named, the likeliest first, on a thread of its own.
+pub async fn find(words: String) -> Result<Found, Unfound> {
+    tokio::task::spawn_blocking(move || {
+        let said = agent()
+            .get("https://geocoding-api.open-meteo.com/v1/search")
+            .query("name", &words)
+            .query("count", "1")
+            .query("language", "en")
+            .query("format", "json")
+            .call()
+            .ok()
+            .and_then(|mut answer| answer.body_mut().read_to_string().ok())
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .ok_or(Unfound::Unasked)?;
+        found(&said).ok_or(Unfound::Nowhere)
+    })
+    .await
+    .unwrap_or(Err(Unfound::Unasked))
+}
+
+/// The first place a geocoding answer gives, by its town and province as
+/// `place` says them, or nothing when it gives none.
+pub fn found(said: &Value) -> Option<Found> {
+    let first = said.get("results")?.get(0)?;
+    let text = |key: &str| {
+        first
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+    };
+    let town = text("name")?;
+    Some(Found {
+        latitude: first.get("latitude")?.as_f64()?,
+        longitude: first.get("longitude")?.as_f64()?,
+        place: match text("admin1") {
+            Some(state) if state != town => format!("{town}, {state}"),
+            _ => town.to_owned(),
+        },
+        zone: zone(first),
+    })
 }
 
 fn hundredths(degrees: f64) -> f64 {
@@ -155,6 +218,37 @@ mod tests {
         // GMT is what it says where it couldn't tell, which is no zone.
         assert_eq!(zone(&json!({"timezone": "GMT"})), None);
         assert_eq!(zone(&json!({})), None);
+    }
+
+    #[test]
+    fn a_place_named_is_its_first_answer() {
+        let said = json!({"results": [
+            {"name": "Lighthouse", "latitude": 51.05, "longitude": -114.07,
+             "admin1": "Alberta", "timezone": "America/Edmonton"},
+            {"name": "Lighthouse", "latitude": 1.0, "longitude": 2.0, "admin1": "Elsewhere"}
+        ]});
+        assert_eq!(
+            found(&said),
+            Some(Found {
+                latitude: 51.05,
+                longitude: -114.07,
+                place: "Lighthouse, Alberta".into(),
+                zone: Some("America/Edmonton".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn a_name_nowhere_has_is_no_place() {
+        assert_eq!(found(&json!({"generationtime_ms": 0.5})), None);
+        assert_eq!(found(&json!({"results": []})), None);
+        assert_eq!(found(&json!({"results": [{"name": "Cove"}]})), None);
+        let said = json!({"results": [{"name": "Berlin", "admin1": "Berlin",
+                                       "latitude": 52.5, "longitude": 13.4}]});
+        assert_eq!(
+            found(&said).map(|place| place.place).as_deref(),
+            Some("Berlin")
+        );
     }
 
     #[test]

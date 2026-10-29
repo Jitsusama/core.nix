@@ -68,6 +68,53 @@ Singleton {
         return typeof said?.from === "string" && typeof said.to === "string" ? said : null;
     }
 
+    // Where Joel's own place is pinned (whereabouts' state folder), which
+    // whereabouts writes as here in place of GeoClue's while it's there.
+    readonly property string pin: `${Quickshell.env("XDG_STATE_HOME")
+        || `${Quickshell.env("HOME")}/.local/state`}/whereabouts/pin.json`
+
+    // How setting it by hand went, for the foot: "" until asked, then
+    // what's being found, what was, or why it wasn't.
+    property string told: ""
+
+    // Sets where the laptop is to the town Joel names, found by the web.
+    function setByHand(words) {
+        if (setter.running)
+            return;
+        told = `finding ${words}\u2026`;
+        setter.asked = words;
+        setter.command = ["whereabouts", "set", root.file, root.pin, words];
+        setter.running = true;
+    }
+
+    // Takes Joel's place away, so GeoClue finds the laptop again.
+    function findAgain() {
+        told = "";
+        findingAgain.running = true;
+    }
+
+    Process {
+        id: findingAgain
+        command: ["sh", "-c",
+            'whereabouts again "$0" "$1" && systemctl --user restart whereabouts.service',
+            root.file, root.pin]
+    }
+
+    Process {
+        id: setter
+        property string asked: ""
+        // As whereabouts' sysexits say: no such place, or no network.
+        readonly property int nowhere: 65
+        readonly property int unasked: 69
+        onExited: code => {
+            const asked = setter.asked;
+            root.told = code === 0 ? ""
+                : code === setter.nowhere ? `no place is called ${asked}`
+                : code === setter.unasked ? `couldn't ask where ${asked} is`
+                : `${asked} couldn't be set`;
+        }
+    }
+
     // Puts the clock back in the zone it kept before it followed the
     // laptop, where it's held until the laptop is somewhere else.
     function putBack() {
