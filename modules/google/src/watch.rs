@@ -6,7 +6,7 @@
 //! archived, are asked the same way, and change what's held at once.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use jiff::{Timestamp, Zoned};
 use serde_json::Value;
@@ -335,12 +335,21 @@ impl Watch {
     }
 
     /// Says the mail `id`'s file `file` is being fetched to open or save,
-    /// which `fetch` then does, so the shell can say so while it waits.
-    pub fn fetching(&mut self, id: &str, file: usize, how: How, now: &Zoned) -> &State {
+    /// `to` a path Joel picked when he picked one, which `fetch` then does,
+    /// so the shell can say so while it waits.
+    pub fn fetching(
+        &mut self,
+        id: &str,
+        file: usize,
+        how: How,
+        to: Option<String>,
+        now: &Zoned,
+    ) -> &State {
         self.state.fetched = Some(Fetched {
             mail: id.to_owned(),
             file,
             how,
+            to,
             asked: now.timestamp().as_millisecond(),
             path: None,
             failed: None,
@@ -399,7 +408,10 @@ impl Watch {
         let bytes = mail::bytes(&data);
         match asked.how {
             How::Open => files::kept(&places.kept, &asked.mail, &file.name, &bytes),
-            How::Save => files::saved(&places.saves, &file.name, &bytes),
+            How::Save => match &asked.to {
+                Some(to) => files::put(Path::new(to), &bytes),
+                None => files::saved(&places.saves, &file.name, &bytes),
+            },
         }
         .map_err(|error| {
             eprintln!("<4>couldn't write a file mail carries: {error}");

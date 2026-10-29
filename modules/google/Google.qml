@@ -54,6 +54,13 @@ Singleton {
         return people ? people.personOf(email) : null;
     }
 
+    // The launcher's chooser of files (open-with's FileChooser.qml), which
+    // asks where to save, or null on a machine without it.
+    function chooserOf(launcher) {
+        return (launcher?.sources ?? []).find(source => typeof source.chooseToSave
+            === "function") ?? null;
+    }
+
     // How the meeting asked for at `since` stands (Google.js).
     function making(since) {
         return Said.making(meet, since);
