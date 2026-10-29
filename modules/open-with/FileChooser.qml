@@ -347,10 +347,12 @@ Provider {
             const [, kind, glob] = line.split(":");
             if (!kind || !glob)
                 continue;
-            if (/^\*\.[^*?[]+$/.test(glob))
-                endings[glob.slice(1).toLowerCase()] ??= kind;
-            else if (!/[*?[]/.test(glob))
-                names[glob] ??= kind;
+            // The first a name or an ending is given is the heaviest.
+            const ending = glob.slice(1).toLowerCase();
+            if (/^\*\.[^*?[]+$/.test(glob) && !(ending in endings))
+                endings[ending] = kind;
+            else if (!/[*?[]/.test(glob) && !(glob in names))
+                names[glob] = kind;
         }
         return Object.assign({}, kinds, { names: names, endings: endings });
     }
