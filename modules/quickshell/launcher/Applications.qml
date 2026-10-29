@@ -654,6 +654,11 @@ Provider {
     // first and what ends it near the bottom, so Return on a program never
     // lands in its Recent.
     function controls(entry, start, below) {
+        // A program held open as its desktop entries are read again, as on
+        // a switch, keeps the entry that's gone, which has no id or name;
+        // it offers nothing until the step is drawn from the new one.
+        if (entry.id === undefined || entry.name === undefined)
+            return [];
         const looked = {};
         const same = given => provider.names(entry, given, looked);
         const windows = running[entry.id] ?? [];
