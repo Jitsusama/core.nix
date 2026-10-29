@@ -49,14 +49,20 @@ QtObject {
                 }),
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], heard: 1793042446024
+                    documents: [], heard: 1793042446024, fetched: null
                 }],
             ["a state with nothing heard yet",
                 '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
-                { account: "none", meetings: [], mail: [], unread: null, documents: [], heard: null }],
+                {
+                    account: "none", meetings: [], mail: [], unread: null, documents: [],
+                    heard: null, fetched: null
+                }],
             ["a state from before mail",
                 '{"account":"ready","meetings":[],"heard":1}',
-                { account: "ready", meetings: [], mail: [], unread: null, documents: [], heard: 1 }],
+                {
+                    account: "ready", meetings: [], mail: [], unread: null, documents: [],
+                    heard: 1, fetched: null
+                }],
             ["half a line", '{"account":"rea', null],
             ["a line that isn't the state", '{"hello":1}', null],
             ["an account with no meetings said", '{"account":"ready"}', null]
