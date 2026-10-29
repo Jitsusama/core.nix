@@ -1945,6 +1945,39 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # On battery, Power holds it too, right after Battery, where Joel looks
+    # when the battery drains; nothing else shown asks for the reading, so
+    # Power's holding it is what has it read. On mains it isn't there.
+    desktop.power("off")
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        machine.send_chars("power ")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["power"]
+                and shown["rows"][1:2] == ["Kept From Resting"]
+                and shown["rows"][0] == "Battery"
+            )
+        )
+        desktop.type_in("kept", "Kept From Resting")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "12%")
+        desktop.photograph("launcher-kept-from-resting-on-battery")
+        machine.send_key("esc")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+    finally:
+        desktop.power("on")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("power ")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["power"] and "Battery" in shown["rows"]
+    )
+    assert "Kept From Resting" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # With the launcher shut nothing watches, so the reader is let go: the
     # stand-in's one shell for the connection ends, leaving it listening alone.
     machine.wait_until_succeeds(

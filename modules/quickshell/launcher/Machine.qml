@@ -107,9 +107,15 @@ Provider {
     function alone(kind, name) {
         const whole = told(kind);
         const part = whole ? whole.rows.find(row => row.name === name) : null;
+        const resting = kind === "cpu" && name === named("cpu:kept-from-resting");
         if (!part)
-            return null;
+            return resting && whole ? awaited(whole, name) : null;
         return {
+            // Kept From Resting stands in a place whether or not anything
+            // keeps it from resting, so it's kept there with no parts too;
+            // and asked alone, it's what makes the telemetry be read.
+            whole: resting,
+            about: resting ? kinds.cpu : undefined,
             headline: part.side,
             copy: part.copied ?? part.side ?? "",
             graph: part.graph,
@@ -118,6 +124,30 @@ Provider {
             title: part.name,
             rows: part.verbs ? part.verbs() : [],
             note: part.note !== "" ? part.note : whole.note,
+            live: provider
+        };
+    }
+
+    // Kept From Resting before the telemetry has said it: the reading is
+    // asked for only once something shows it, so it holds its place with
+    // nothing beside it until the first comes, a second or less, and
+    // nothing below it moves when it does. If the reader refuses, it stays
+    // there dimmed, saying so. On a machine with no reader it's left out.
+    function awaited(whole, name) {
+        if (ProcessorTelemetry.missing)
+            return null;
+        return {
+            headline: "",
+            copy: "",
+            glyph: whole.glyph,
+            hue: "machine",
+            title: name,
+            rows: [],
+            note: ProcessorTelemetry.refused ? "can't be read" : "",
+            asking: !ProcessorTelemetry.refused,
+            gone: ProcessorTelemetry.refused,
+            whole: true,
+            about: kinds.cpu,
             live: provider
         };
     }
@@ -1052,12 +1082,14 @@ Provider {
     // The processor's telemetry is watched while a Processor answer is
     // listed, shown or stepped into, so what held it back is there once its
     // parts are opened, and it's read for nothing else Machine answers.
-    // Held Back and Kept From Resting have no words of their own: asked
-    // alone, each would wait on the reading that only its being shown asks
-    // for.
-    readonly property bool watched: shown && [launcher.answer,
+    // Kept From Resting is asked alone too, and a place may hold it, as
+    // Power does on battery: what the place holds now is the launcher's
+    // `placed`, read from its words and the battery alone, so reading it
+    // here can't loop back through an answer.
+    readonly property bool watched: shown && ([launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.about === kinds.cpu)
+        || launcher.placed.includes("machine:cpu:kept-from-resting"))
     onWatchedChanged: ProcessorTelemetry.watching += watched ? 1 : -1
 
     Timer {

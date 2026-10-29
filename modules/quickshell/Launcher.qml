@@ -41,6 +41,7 @@
 // every row a glyph in its column, a name, and its chord or what it is.
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.UPower
 import Quickshell.Wayland
 import QtQuick
 // Quickshell makes a folder's files types only once something imports it,
@@ -356,13 +357,15 @@ Scope {
     // and how its step is named, or null when it no longer answers.
     function again(row) {
         const said = row.asker ? row.asker.answer(row.heard) : null;
-        if (!parted(said))
+        // Held whole or with its parts, as resolved() holds it.
+        if (!parted(said) && said?.whole !== true)
             return null;
         return inPlace(Object.assign(answered(heard(said, row.asker, row.heard)), {
             key: row.key,
             is: row.is,
             chip: row.chip,
-            title: row.title
+            title: row.title,
+            gone: said.gone === true
         }), row.placed);
     }
 
@@ -1011,6 +1014,32 @@ Scope {
     readonly property var category: held.length > 0 ? held[held.length - 1].row.category ?? null
         : null
 
+    // When a place holds something only some of the time, as Power holds
+    // Kept From Resting only on battery: the vocabulary names the
+    // condition (a category's `while`, by what it holds), and this says
+    // what each name means, so words.json never carries code and a new
+    // condition is one line here. Each is read as a place resolves, never
+    // through a provider's answer, so nothing a provider says can loop
+    // back into what it's asked for.
+    readonly property var conditions: ({
+        "on battery": () => UPower.onBattery
+    })
+
+    // What a place holds now, in its order: what its words name, less
+    // what a condition holds back. A condition with no meaning here holds
+    // its thing back, so a word missing from the table shows nothing.
+    function holdings(category) {
+        const when = category.while ?? {};
+        return (category.holds ?? []).filter(id => when[id] === undefined
+            || (conditions[when[id]]?.() ?? false));
+    }
+
+    // What the place shown holds now, by id: for a provider that reads
+    // something only while it's shown, as Machine reads the processor's
+    // telemetry for Kept From Resting. It's made from the words and the
+    // conditions alone, never from an answer.
+    readonly property var placed: category === null ? [] : holdings(category)
+
     // The category a word and a space step into: its own word, or one of
     // its others typed whole.
     // A place by its name, its one word, so its name and a space step into
@@ -1027,7 +1056,7 @@ Scope {
     // those this machine has, then the typed commands whose answers are
     // this place's, last, so they remind him what can be typed here.
     function members(category) {
-        return (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null)
+        return holdings(category).map(id => resolved(id)).filter(row => row !== null)
             .concat(commandsIn(category));
     }
 
@@ -1048,7 +1077,7 @@ Scope {
         const stands = standsOf(category);
         if (stands !== "")
             return stands;
-        const names = (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "")
+        const names = holdings(category).map(id => heldName(id)).filter(name => name !== "")
             .concat(commandsIn(category).map(row => row.start.trim()
                 || row.key.replace(/^command:/, "")));
         const own = (category.name ?? category.id).toLowerCase();
@@ -1127,10 +1156,16 @@ Scope {
         const question = entry.question ?? source.questions[0];
         if (question !== undefined) {
             const said = source.answer(question);
-            return parted(said) ? inPlace(Object.assign(answered(heard(said, source, question)), {
-                is: `answer:${id}`,
-                chip: question
-            }), entry.name.includes("{") ? "" : entry.name) : null;
+            // An answer is held with its parts, or whole where it says it
+            // stands on its own, as Kept From Resting does in Power with
+            // nothing keeping it from resting. One that can't be read now
+            // stays where it is, dimmed, so the rows under it don't move.
+            return parted(said) || said?.whole === true
+                ? inPlace(Object.assign(answered(heard(said, source, question)), {
+                    is: `answer:${id}`,
+                    chip: question,
+                    gone: said.gone === true
+                }), entry.name.includes("{") ? "" : entry.name) : null;
         }
         const things = source.things.filter(row => !(row.key.startsWith("action:")
             && standIns.includes(row.name)));
@@ -1266,7 +1301,10 @@ Scope {
     function answeringIn(category, letters) {
         if (letters.trim() === "")
             return null;
-        const names = (category.holds ?? []).map(id => Words.of(id).provider ?? id);
+        // A part another thing holds, as Power holds Processor's Kept From
+        // Resting, doesn't make the place answer all its provider's words.
+        const names = holdings(category).filter(id => Words.of(id).in === undefined)
+            .map(id => Words.of(id).provider ?? id);
         for (const source of sources.filter(one => names.includes(one.settings.name))) {
             const said = source.answer(letters);
             if (said)
@@ -2305,7 +2343,7 @@ Scope {
     // when one of theirs changed.
     function holdsFrom(category, source) {
         const name = source.settings.name;
-        return (category.holds ?? []).some(id => (Words.of(id).provider ?? id) === name);
+        return holdings(category).some(id => (Words.of(id).provider ?? id) === name);
     }
 
     function back() {
