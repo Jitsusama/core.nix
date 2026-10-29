@@ -32,7 +32,9 @@ onLinux {
       "A realm's link key isn't served on its own socket by an agent holding only it, it's kept where the account's own agent loads it, it asks for a PIN, or an account naming no realm gets one."
       (
         home.systemd.user.sockets.personal-link.Socket.ListenStream == "%t/personal-link.sock"
-        && lib.hasSuffix "--key-dir ${folder}" home.systemd.user.services.personal-link.Service.ExecStart
+        && lib.any (lib.hasSuffix "/bin/ssh-tpm-agent --key-dir ${folder}") (
+          lib.toList home.systemd.user.services.personal-link.Service.ExecStart
+        )
         && keys == [
           {
             file = "${folder}/personal-link";
