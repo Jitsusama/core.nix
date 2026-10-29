@@ -3339,7 +3339,11 @@
       "in": "capture",
       "name": "Recent",
       "verb": "more",
-      "glyph": "recent"
+      "glyph": "recent",
+      "empty": "Nothing taken yet.",
+      "said": {
+        "none": "none"
+      }
     },
     {
       "id": "cameras",
