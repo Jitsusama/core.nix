@@ -621,10 +621,10 @@
   nix-offload-decides-when = ''
     a builder is asked for the moment a build or VM check is queued or running, by a queue
     still writing, within the day's hours and never beside one not yet seen gone; it's named
-    for big-parallel and nixos-test work alone, so small builds stay, with its store named for
-    a build sent there whole when the helper gives one, and it's named as being made until it
-    stands or won't; it's given back once idle, at the deadline or once gone, with a wait after
-    a failure;
+    for big-parallel work alone, offering nothing a VM test needs, so small builds and VM
+    tests stay, with its store named for a build sent there whole when the helper gives one,
+    and it's named as being made until it stands or won't; it's given back once idle, at the
+    deadline or once gone, with a wait after a failure;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
     for the next start, which prices it to then or its own idle delete; standing builders are
     named while they answer, and only to builds that ask for them, never in the file every

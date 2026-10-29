@@ -1807,6 +1807,109 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
 # the rows below it never move down when it comes, or when it doesn't.
 
 
+def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
+    desktop: Desktop,
+) -> None:
+    """The processor's telemetry shows its own parts in Heat, what held it back and kept it up."""
+    machine = desktop.machine
+    held = "/run/processor-telemetry"
+    socket = f"{held}/io.jitsusama.ProcessorTelemetry"
+    own = ["NPU", "Image Processor", "Media Engine", "Display Engine"]
+    # The reader's reading, as it gives one on the laptop, a part Heat
+    # doesn't list among them; a stand-in says it each second, as it does.
+    reading = {
+        "temperatures": [
+            {"part": "npu", "celsius": 62},
+            {"part": "imageProcessor", "celsius": 63},
+            {"part": "media", "celsius": 59},
+            {"part": "display", "celsius": 60},
+            {"part": "systemAgent", "celsius": 65},
+        ],
+        "heldBack": [{"by": "pl1", "share": 1.0}],
+        "clusters": [
+            {"cpus": "0", "heldBack": [{"by": "power", "share": 0.98}]},
+            {"cpus": "1", "heldBack": []},
+        ],
+        "npu": [],
+        "keptFromResting": {"kept": 0.12, "by": [{"by": "display", "share": 0.12}]},
+    }
+    # Heat is looked at before the reader is there, so its connection is
+    # refused first, as when the reader's socket is missing on a machine.
+    desktop.answer("heat")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    machine.succeed(f"install -d -o 1000 {held}")
+    told = json.dumps({"parameters": reading})
+    desktop.as_account(f"printf '%s\\0' '{told}' > /tmp/telemetry-said")
+    desktop.as_account(
+        "systemd-run --user --collect --quiet --unit=telemetry-stand-in -- "
+        f"systemd-socket-activate --inetd --accept --listen={socket} "
+        "sh -c 'while cat /tmp/telemetry-said; do sleep 1; done'"
+    )
+    machine.wait_until_succeeds(f"test -S {socket}", timeout=dt.timedelta(seconds=10))
+    # Listed once the first reading comes, stepped in already, in order:
+    # the refused connection is made afresh while Heat is still shown.
+    desktop.launcher_until(
+        lambda shown: (
+            [row for row in shown["rows"] if row in own] == own
+            and "System Agent" not in shown["rows"]
+        )
+    )
+    desktop.type_in("npu", "NPU")
+    assert desktop.showing()["selected"]["side"] == "62 \u00b0C"
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # The Processor says what held it back, after its Clock, and each core
+    # held, a step in; the core its cluster didn't hold isn't listed.
+    desktop.answer("processor")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Held Back" in shown["rows"])
+    # Clock is there only where the kernel says the cores' clocks.
+    rows = desktop.showing()["rows"]
+    assert rows[rows.index("Held Back") - 1] in ("Clock", "Maxed"), rows
+    desktop.type_in("held", "Held Back")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("side") == "100%"
+            and shown["footer"] == "by its power limit, PL1, over the last second"
+        )
+    )
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0", "Copy"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # What kept it from resting comes and goes, so it's the last part, before
+    # the step's Copy, saying the part that kept it most, and each part that
+    # did a step in.
+    desktop.answer("processor")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Kept From Resting", "Copy"])
+    desktop.type_in("kept", "Kept From Resting")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("side") == "12%"
+            and shown["footer"] == "by the display engine"
+        )
+    )
+    desktop.photograph("launcher-kept-from-resting")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # With the launcher shut nothing watches, so the reader is let go: the
+    # stand-in's one shell for the connection ends, leaving it listening alone.
+    machine.wait_until_succeeds(
+        desktop.in_session(
+            'test "$(systemctl --user show -P TasksCurrent telemetry-stand-in)" = 1'
+        ),
+        timeout=dt.timedelta(seconds=10),
+    )
+    desktop.as_account("systemctl --user stop telemetry-stand-in")
+    machine.succeed(f"rm -rf {held}")
+
+
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(desktop: Desktop) -> None:
     """An answer asked for holds its row from the keystroke."""
     machine = desktop.machine

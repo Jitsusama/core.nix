@@ -1,12 +1,13 @@
 // What the launcher's Heat makes of the machine's sensors, in plain
 // JavaScript so a check can run it in Qt's own engine, as the shell does:
 // the kernel's hwmon chips, as Sensors.qml reads them, gathered into the
-// parts Joel knows (the processor and its cores, the disk and its other
-// sensors, the memory, the air inside, each fan), how near each is to the
-// most it's meant to reach, and how often the processor has slowed itself
-// to cool down. Heat.qml reads the files and draws the rows; Machine.qml
-// draws its processor's and disk's temperature with the same level, so the
-// two say them alike.
+// parts Joel knows (the processor and its cores, its NPU, image processor
+// and media and display engines as its own telemetry says them, the disk
+// and its other sensors, the memory, the air inside, each fan), how near
+// each is to the most it's meant to reach, and how often the processor has
+// slowed itself to cool down. Heat.qml reads the files and draws the rows;
+// Machine.qml draws its processor's and disk's temperature with the same
+// level, so the two say them alike.
 .pragma library
 .import "Machine.js" as Machine
 
@@ -31,10 +32,19 @@ const ZONES = [
     [/^pch_/, "chipset"]
 ];
 
+// The processor's own parts no hwmon chip measures, as its telemetry
+// reader (ProcessorTelemetry.qml) says them, by the part Heat calls each.
+const TELEMETRY = [
+    ["npu", "npu"],
+    ["imageProcessor", "image-processor"],
+    ["media", "media-engine"],
+    ["display", "display-engine"]
+];
+
 // The parts in the order they're listed, the processor first as what's
-// asked most.
-const ORDER = ["processor", "graphics", "disk", "memory", "wifi", "chipset", "board", "battery",
-    "air"];
+// asked most, and its own parts after its graphics.
+const ORDER = ["processor", "graphics", "npu", "image-processor", "media-engine",
+    "display-engine", "disk", "memory", "wifi", "chipset", "board", "battery", "air"];
 
 // What a part is drawn against when its chip says no most: the disk's
 // usual most, and a battery's, which wants to stay well below a
@@ -209,18 +219,35 @@ function placed(parts) {
     return sorted;
 }
 
+// The processor's own parts, from its telemetry reader's temperatures,
+// each { part, celsius }: those Heat lists, each held to the processor's
+// high and critical points, as they sit on the same die and it slows them
+// all at once. A part it names that Heat doesn't list is left out.
+function ownParts(telemetry, processor) {
+    return (telemetry ?? []).map(each => [TELEMETRY.find(one => one[0] === each.part), each])
+        .filter(pair => pair[0] !== undefined)
+        .map(pair => entry(pair[0][1], {
+            value: pair[1].celsius,
+            high: processor ? processor.high : null,
+            crit: processor ? processor.crit : null
+        }, [], []));
+}
+
 // The parts, from each chip as Heat.qml reads them, { part, temps, fans },
 // each temperature { n, label, value, high, crit } in degrees and each fan
-// { n, label, value, max, target, power }, and the thermal zones, each
-// { part, value }, the first of a part no chip gives added. Gives { temps,
-// fans }.
-function gather(chips, zones, cpuOfCore) {
+// { n, label, value, max, target, power }, the thermal zones, each
+// { part, value }, the first of a part no chip gives added, and the
+// processor's telemetry's temperatures, each { part, celsius }. Gives
+// { temps, fans }.
+function gather(chips, zones, cpuOfCore, telemetry) {
     const temps = chips.reduce((all, chip) => all.concat(chipParts(chip, cpuOfCore ?? {})), []);
     const added = (zones ?? []).filter((zone, at, all) => zone.part !== ""
         && !temps.some(each => each.id === zone.part)
         && all.findIndex(other => other.part === zone.part) === at)
         .map(zone => entry(zone.part, zone, [], []));
-    return { temps: placed(temps.concat(added)), fans: fans(chips) };
+    const zoned = temps.concat(added);
+    const own = ownParts(telemetry, zoned.find(each => each.id === "processor"));
+    return { temps: placed(zoned.concat(own)), fans: fans(chips) };
 }
 
 function fanOf(fan) {

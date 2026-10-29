@@ -289,10 +289,13 @@ Scope {
             hue: said.hue ?? first.hue,
             swatch: first.swatch,
             // Who answered, to what, and whether it moves, so a step held
-            // in it is asked again as it changes.
+            // in it is asked again as it changes; and what it's about,
+            // so a provider with several answers, as Machine's Processor
+            // and Memory, knows which is held.
             asker: said.asker ?? null,
             heard: said.heard ?? "",
             live: said.live ?? null,
+            about: said.about ?? "",
             side: "",
             chord: [],
             verb: said.verb ?? ((said.copy ?? said.headline) === "" ? "close" : "copy"),

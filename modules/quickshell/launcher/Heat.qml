@@ -2,8 +2,9 @@
 // ("temperature", "heat", "hot", "thermal", "sensors" or "fans", as
 // words.json lists them). The headline is the hottest part and the fans;
 // the rows are each part by its name first, then what it reads: the
-// Processor, how often it's Throttled, the Disk, the Memory, the Wi-Fi
-// card, the Battery, the Air inside and each fan. Each temperature is drawn
+// Processor, how often it's Throttled, its NPU, Image Processor, Media
+// Engine and Display Engine, the Disk, the Memory, the Wi-Fi card, the
+// Battery, the Air inside and each fan. Each temperature is drawn
 // against the most its chip says it may reach, warning near it, and holds,
 // a step in, what it's read Lately while shown, its other sensors (a
 // disk's second, hottest one), the processor's Cores, and its High and
@@ -14,7 +15,11 @@
 //
 // The readings are the kernel's hwmon files (Sensors.qml, Heat.js), read
 // when asked and once a second while the answer is shown, never for a key,
-// the same way the machine's answers read the processor and the disk.
+// the same way the machine's answers read the processor and the disk. The
+// processor's NPU, image processor and media and display engines are
+// measured by no hwmon chip, so they come from its own telemetry
+// (ProcessorTelemetry.qml), asked only while an answer is shown and listed
+// from its first reading, a second after.
 // Machine's processor and disk each say their temperature as one figure,
 // the same reading drawn the same way (Heat.js's level); every finer
 // detail, the cores, the disk's other sensors, the limits, the history and
@@ -170,7 +175,8 @@ Provider {
             .map(each => ({ part: each.part, value: Sensors.zoneDegrees(each.zone) }))
             .filter(each => each.value !== null);
         return {
-            parts: Heat.gather(chips, zones, Heat.coreCpus(Sensors.cpus())),
+            parts: Heat.gather(chips, zones, Heat.coreCpus(Sensors.cpus()),
+                ProcessorTelemetry.reading?.temperatures),
             throttled: Heat.throttled(Sensors.throttles())
         };
     }
@@ -442,6 +448,35 @@ Provider {
     // so a spark has two reads as soon as it can.
     readonly property bool shown: launcher !== null && launcher.open && launcher.held.length === 0
         && launcher.answer?.live === provider
+    // The processor's telemetry is watched for as long as its answer is up,
+    // stepped into or not, so a part is there however soon it's opened.
+    // Stepped in, the answer is held as a step rather than being the
+    // launcher's answer, so the held steps are looked at too, as
+    // Machine.qml's are.
+    readonly property bool watched: launcher !== null && launcher.open
+        && (launcher.answer?.live === provider
+            || launcher.held.some(step => step.row?.live === provider))
+    onWatchedChanged: {
+        ProcessorTelemetry.watching += watched ? 1 : -1;
+        if (!watched)
+            ownHeard = false;
+    }
+    // Whether its first reading has come since the answer went up: that
+    // one is read at once, stepped into or not, so the processor's own
+    // parts are listed a moment after it's asked, and after it they move
+    // with the rest.
+    property bool ownHeard: false
+
+    Connections {
+        target: ProcessorTelemetry
+        function onReadingChanged() {
+            if (!provider.watched || provider.ownHeard || ProcessorTelemetry.reading === null)
+                return;
+            provider.ownHeard = true;
+            provider.reads = null;
+            provider.answered();
+        }
+    }
 
     Timer {
         interval: provider.second
