@@ -114,4 +114,47 @@
       }
       touch $out
     '';
+
+  # On 2026-10-28 the kernel refused power saver for an hour on battery, and
+  # the service asked again twice a minute without a word. A refused profile
+  # is now said once, as a warning, tried again at each change without
+  # repeating it, and said once it takes. The steps' third column names the
+  # profile the daemon refuses in that state.
+  a-refused-profile-is-said-once =
+    let
+      unit =
+        (bareNixos [ self.nixosModules.power-profiles-daemon ])
+        .config.systemd.services.power-profile-follows-the-charger;
+    in
+    pkgs.runCommandLocal "a-refused-profile-is-said-once" { } ''
+      ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+        lib.escapeShellArgs [
+          (unit.serviceConfig.ExecStart or "false")
+          (pkgs.writeText "steps" ''
+            false 79
+            true 19 power-saver
+            true 18 power-saver
+            true 17
+          '')
+          (pkgs.writeText "expected" ''
+            false 79: performance
+            true 19 power-saver: refused power-saver
+            true 18 power-saver: refused power-saver
+            true 17: power-saver
+          '')
+          "The power profile"
+          (lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.diffutils
+            pkgs.gnugrep
+          ])
+          (pkgs.writeText "said" ''
+            power profile: performance, on mains power
+            <4>power profile: power-saver wasn't taken: Operation not supported
+            power profile: power-saver, the battery at 17%
+          '')
+        ]
+      }
+      touch $out
+    '';
 }

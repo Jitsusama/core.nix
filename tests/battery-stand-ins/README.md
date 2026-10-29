@@ -8,7 +8,6 @@ checked this way, from their modules' checks.
 | File                  | Stands in for, or does                                         |
 | --------------------- | -------------------------------------------------------------- |
 | `run.sh`              | runs the service against the others and checks the calls it made |
-| `busctl.sh`           | busctl asking UPower whether the machine is on battery         |
+| `busctl.sh`           | busctl asking UPower about the battery, and the profile daemon |
 | `gdbus.sh`            | gdbus watching UPower for the battery's changes                |
 | `niri.sh`             | niri listing its outputs and setting their modes               |
-| `powerprofilesctl.sh` | power-profiles-daemon listing and setting profiles             |
