@@ -1479,7 +1479,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
 def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop: Desktop,
 ) -> None:
-    """An invitation is answered from a meeting's acts, its foot says the answer, and it stays."""
+    """An invitation is answered from a meeting's acts, the one given noted, and it stays."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
@@ -1489,14 +1489,22 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.step_in()
     # Its acts: seeing it, Return's own, and joining first, then the three
-    # answers.
-    desktop.down_to("Answer Maybe")
+    # answers, each by its value, the one Joel gave noted as his.
+    desktop.launcher_until(lambda shown: "Not Going" in shown["rows"])
+    sides = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
+    assert sides["verb:calendar:yes"] == "Going \u00b7 your answer", sides
+    assert sides["verb:calendar:maybe"] == "Maybe", sides
+    desktop.down_to("Maybe")
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Answer Maybe" and shown["footer"] == "going"
+            (shown["selected"] or {}).get("name") == "Maybe" and shown["footer"] == "going"
         )
     )
     machine.send_key("ret")
+    # Its note moves at once, before Google answers.
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("side") == "your answer"
+    )
     line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
@@ -1505,7 +1513,7 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.launcher_until(
         lambda shown: (
             shown["open"]
-            and (shown["selected"] or {}).get("name") == "Answer Maybe"
+            and (shown["selected"] or {}).get("name") == "Maybe"
             and shown["footer"] == "maybe"
         )
     )
@@ -1530,8 +1538,9 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     desktop.down_to("Copy the Link")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "its call")
     machine.send_key("ret")
+    call = "https://meet.google.com/abc-defg-hij"
     machine.wait_until_succeeds(
-        desktop.in_session('[ "$(wl-paste --no-newline)" = "https://meet.google.com/abc-defg-hij" ]'),
+        desktop.in_session(f'[ "$(wl-paste --no-newline)" = "{call}" ]'),
         timeout=dt.timedelta(seconds=30),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

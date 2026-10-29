@@ -3983,21 +3983,23 @@
     {
       "id": "verb:calendar:yes",
       "in": "calendar:meeting",
-      "name": "Answer Yes",
+      "name": "Going",
+      "words": ["yes"],
       "verb": "answer",
       "glyph": "going"
     },
     {
       "id": "verb:calendar:maybe",
       "in": "calendar:meeting",
-      "name": "Answer Maybe",
+      "name": "Maybe",
       "verb": "answer",
       "glyph": "maybeGoing"
     },
     {
       "id": "verb:calendar:no",
       "in": "calendar:meeting",
-      "name": "Answer No",
+      "name": "Not Going",
+      "words": ["no"],
       "verb": "answer",
       "glyph": "notGoing"
     },

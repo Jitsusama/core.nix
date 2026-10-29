@@ -34,7 +34,15 @@ Singleton {
     // meetings change, so one heard after a while away isn't reckoned by
     // the minute before.
     property real now: Date.now()
-    onMeetingsChanged: now = Date.now()
+    onMeetingsChanged: {
+        now = Date.now();
+        gave = {};
+    }
+
+    // The answer Joel gave each meeting here, by its id, said at once
+    // until the program next says how the meetings stand, as Mail's Read
+    // is.
+    property var gave: ({})
 
     Timer {
         interval: 60 * 1000 - Date.now() % (60 * 1000)
@@ -201,9 +209,9 @@ Singleton {
     // Its acts, in the one order every surface lists them (VKCF3Z's
     // design, RSCH-20261028-2NK1E5): Join the Meeting when it has a call,
     // Write to the Guests when anyone else is asked, See It, then, for an
-    // invitation, Answer
-    // Yes, Answer Maybe and Answer No, which keep the launcher, its foot
-    // saying the answer once Google has it; for one Google lets him
+    // invitation, Going, Maybe and Not Going, inline since answering is
+    // what's done most after joining, each keeping the launcher, the one
+    // he gave noted as his answer; for one Google lets him
     // change, Move the Meeting, to a later time or one typed there, which
     // asks once, naming who Google tells; and for one Joel holds, Cancel
     // the Meeting, which asks once, since Google mails everyone asked; and
@@ -423,11 +431,14 @@ Singleton {
         return rows;
     }
 
-    // An answer keeps the launcher, since he's choosing among his
-    // meetings, and the foot says the answer the program last gave.
+    // An answer is said by its value alone, the one he gave noted "your
+    // answer" and none while he hasn't answered (VKCF3Z, 8e3e0a3e). It
+    // keeps the launcher, since he's choosing among his meetings, its
+    // note moving at once, and the foot says the answer the program last
+    // gave.
     function answering(meeting, provider, said) {
         const key = `verb:calendar:${said}`;
-        return provider.thing({
+        const row = provider.thing({
             key: key,
             name: Words.name(key),
             verb: Words.verb(key),
@@ -435,7 +446,18 @@ Singleton {
             hue: "action",
             stays: true,
             state: () => root.answered(root.meeting(meeting.id)),
-            run: () => root.answer(meeting, said)
+            run: () => {
+                root.gave = Object.assign({}, root.gave, { [meeting.id]: said });
+                root.answer(meeting, said);
+            }
+        });
+        // Read as it's shown, since thing() would copy it once.
+        return Object.defineProperty(row, "side", {
+            enumerable: true,
+            get: () => {
+                const given = root.gave[meeting.id] ?? root.meeting(meeting.id)?.answer;
+                return given === said ? "your answer" : "";
+            }
         });
     }
 
