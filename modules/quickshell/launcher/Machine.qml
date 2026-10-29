@@ -735,7 +735,8 @@ Provider {
                 name: called(holder),
                 side: guard.shown(holder.bytes),
                 graph: disk ? bar(holder.bytes / disk.total) : undefined,
-                note: holder.clearable && !holder.kept ? said.clears ?? "" : holder.why ?? "",
+                note: holder.clearing ? said.clearing ?? ""
+                    : holder.clearable && !holder.kept ? said.clears ?? "" : holder.why ?? "",
                 reads: holder.says ?? ""
             }, () => holderParts(guard, holder, called(holder)));
         };
@@ -753,7 +754,8 @@ Provider {
     // (VKCF3Z's design, the disk guard's acts): open its folder; keep it
     // from the guard's clearing, a switch that asks Joel why as it's
     // turned on, where the account's guard measured it, since only that
-    // guard keeps; its size and what the guard would clear of it.
+    // guard keeps; clear what the guard would take of it now, asking once,
+    // since it can't be taken back; its size and what a clear would take.
     function holderParts(guard, holder, name) {
         const act = (id, fields) => (fields.copy ? copyRow : thing)(Object.assign({
             key: `verb:disk:${id}:${holder.path}`,
@@ -780,6 +782,24 @@ Provider {
                     chip: name,
                     given: reason => guard.keep(holder.path, reason)
                 })));
+        }
+        // Only what a clear takes now, never what waits to sit idle, and
+        // never what Joel keeps; gone while the guard clears it, the
+        // holder's note saying so.
+        if (holder.ours && (holder.clears ?? 0) > 0 && !holder.kept && !holder.clearing) {
+            const amount = guard.shown(holder.clears);
+            const sure = () => [thing({
+                key: `verb:disk:clear:sure:${holder.path}`,
+                name: (Words.of("verb:disk:clear").sure ?? "").replace("{amount}", amount)
+                    .replace("{name}", name),
+                verb: Words.verb("verb:disk:clear"),
+                glyph: Words.glyph("verb:disk:clear"),
+                hue: "alert",
+                stays: true,
+                state: () => guard.told,
+                run: () => guard.clear(holder.path)
+            })];
+            rows.push(act("clear", { side: amount, verbs: sure, targets: sure }));
         }
         rows.push(figure({
             key: `machine:disk:holder:size:${holder.path}`,

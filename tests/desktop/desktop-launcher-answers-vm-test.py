@@ -891,42 +891,30 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     assert "Error:" not in log, "an answer raised an error"
 
 
-def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gives(
-    desktop: Desktop,
-) -> None:
-    """A folder filling the disk is kept from the guard's clearing, for the reason Joel gives."""
-    machine = desktop.machine
-    closed = desktop.in_session(LAUNCHER_OPEN)
-    folder = desktop.as_account("mkdir -p ~/scratch && realpath ~/scratch").strip()
+def guard_says(desktop: Desktop, holders: list[Json]) -> None:
+    """Write what the account's guard says, holding these, as it writes it, whole."""
     status = desktop.as_account("echo $XDG_RUNTIME_DIR").strip() + "/disk-guard/status.json"
+    whole = {
+        "version": 1,
+        "heartbeat": time.time() + 3600,
+        "filesystems": [
+            {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30},
+        ],
+        "frozen": [],
+        "holders": holders,
+        "holders_at": time.time(),
+    }
+    desktop.as_account(
+        f"mkdir -p $(dirname {status}) && echo '{json.dumps(whole)}' > {status}.new"
+        f" && mv {status}.new {status}"
+    )
 
-    def said(holders: list[Json]) -> None:
-        """Write what the account's guard says, holding these, as it writes it, whole."""
-        whole = {
-            "version": 1,
-            "heartbeat": time.time() + 3600,
-            "filesystems": [
-                {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30},
-            ],
-            "frozen": [],
-            "holders": holders,
-            "holders_at": time.time(),
-        }
-        desktop.as_account(
-            f"mkdir -p $(dirname {status}) && echo '{json.dumps(whole)}' > {status}.new"
-            f" && mv {status}.new {status}"
-        )
 
-    def into_it() -> None:
-        """Open Disk's What's Filling It, and step into the folder."""
-        desktop.answer("disk")
-        desktop.step_in()
-        desktop.type_in("filling", selecting="What's Filling It")
-        desktop.step_in()
-        desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch"])
-        desktop.step_in("ret")
-
-    said(
+def a_scratch_folder(desktop: Desktop) -> str:
+    """Make ~/scratch, and have the guard say it holds 3 GiB, 1 GiB of it clearable now."""
+    folder = desktop.as_account("mkdir -p ~/scratch && realpath ~/scratch").strip()
+    guard_says(
+        desktop,
         [
             {
                 "path": folder,
@@ -937,17 +925,43 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
                 "clearable": True,
                 "why": None,
                 "kept": None,
-                "says": "~/scratch holds 3.0 GiB.",
+                "says": "~/scratch holds 3.0 GiB, of which 1.0 GiB can be cleared now.",
             }
-        ]
+        ],
     )
+    return folder
+
+
+def into_whats_filling_it(desktop: Desktop) -> None:
+    """Open Disk's What's Filling It, with the scratch folder alone in it."""
+    desktop.answer("disk")
+    desktop.step_in()
+    desktop.type_in("filling", selecting="What's Filling It")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch"])
+
+
+def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gives(
+    desktop: Desktop,
+) -> None:
+    """A folder filling the disk is kept from the guard's clearing, for the reason Joel gives."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    folder = a_scratch_folder(desktop)
+
+    def into_it() -> None:
+        """Step into the folder."""
+        into_whats_filling_it(desktop)
+        desktop.step_in("ret")
+
     try:
         # Return steps into it: what can be done, then what it reads,
         # then Copy the Path.
         into_it()
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"] == ["Open Its Folder", "Keep", "Size", "Clearable", "Copy the Path"]
+                shown["rows"]
+                == ["Open Its Folder", "Keep", "Clear", "Size", "Clearable", "Copy the Path"]
             )
         )
         desktop.down_to("Keep")
@@ -975,7 +989,43 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
-        said([])
+        guard_says(desktop, [])
+        desktop.as_account("rm -rf ~/scratch ~/.local/state/disk-guard")
+
+
+def test_a_folder_filling_the_disk_is_cleared_once_joel_is_sure(desktop: Desktop) -> None:
+    """A folder filling the disk is cleared of what the guard takes now, asked once."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    folder = a_scratch_folder(desktop)
+    try:
+        # Clear says what it takes, and asks once, since it can't be taken
+        # back; the guard then says it starts, and the folder says it's
+        # clearing, with nothing left to clear while it does.
+        into_whats_filling_it(desktop)
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: "Clear" in shown["rows"])
+        desktop.down_to("Clear")
+        assert desktop.showing()["selected"]["side"] == "1.0 GiB", desktop.showing()["selected"]
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Clear 1.0 GiB of ~/scratch"])
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["footer"] == f"Clearing {folder}; the guard starts on its next step."
+            )
+        )
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        into_whats_filling_it(desktop)
+        desktop.launcher_until(lambda shown: shown["footer"] == "the guard is clearing it now")
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: "Copy the Path" in shown["rows"])
+        assert "Clear" not in desktop.showing()["rows"], desktop.showing()["rows"]
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        guard_says(desktop, [])
         desktop.as_account("rm -rf ~/scratch ~/.local/state/disk-guard")
 
 
