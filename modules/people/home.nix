@@ -55,7 +55,8 @@ in
     }
     // lib.listToAttrs (
       map (
-        source: lib.nameValuePair "quickshell/launcher/people/${source.name}.qml" {
+        source:
+        lib.nameValuePair "quickshell/launcher/people/${source.name}.qml" {
           inherit (source) source;
         }
       ) sources
