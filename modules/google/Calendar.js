@@ -273,7 +273,8 @@ function listed(words) {
     if (words.length < 2) {
         return words.join("");
     }
-    return `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
+    // Qt's engine has no Array's at.
+    return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
 // How a meeting repeats, as its details say it: "Every weekday", "Every 2
