@@ -19,15 +19,18 @@ in
 {
   options.jitsusama.nix-offload = {
     helper = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.nullOr lib.types.path;
+      default = null;
       description = ''
         The program that makes a builder (`up NAME SECONDS`, printing its Nix
         machines line once ready and running while it's there), gives one back
-        (`down NAME`), and names those there (`alive PREFIX`).
+        (`down NAME`), and names those there (`alive PREFIX`). Without one,
+        none is lent, and only the standing builders are named.
       '';
     };
     prefix = lib.mkOption {
       type = lib.types.str;
+      default = "nix-offload-";
       description = ''
         What every builder's name starts with. Only those it asked for are ever
         given back, but one of its own keeps others' apart from its.
@@ -35,6 +38,7 @@ in
     };
     rate = lib.mkOption {
       type = lib.types.strMatching "[0-9]+(\\.[0-9]{1,3})?";
+      default = "0";
       description = "A builder's price an hour, in dollars, for the day's line.";
     };
     firstStart = lib.mkOption {
@@ -80,20 +84,26 @@ in
     };
   };
 
-  config = {
+  config = lib.mkIf (cfg.helper != null || cfg.standing != [ ]) {
     home.packages = [ offload ];
 
     systemd.user.services.nix-offload = {
-      Unit.Description = "Lends this machine a builder while its queue holds builds back";
+      Unit.Description = "Names this machine's builders, lending one while its queue holds builds back";
       Service = {
         ExecStart = lib.concatStringsSep " " (
-          [
-          (lib.getExe offload)
-          "serve --helper ${cfg.helper} --prefix ${cfg.prefix} --rate ${cfg.rate}"
-          "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
-            "--deadline ${cfg.deadline}"
-          ]
-          ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
+          if cfg.helper == null then
+            [
+              (lib.getExe offload)
+              "stand --standing ${standing}"
+            ]
+          else
+            [
+              (lib.getExe offload)
+              "serve --helper ${cfg.helper} --prefix ${cfg.prefix} --rate ${cfg.rate}"
+              "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
+              "--deadline ${cfg.deadline}"
+            ]
+            ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
         );
         # Named here, since glibc without it reads a zone it can't find as
         # UTC, and says nothing.

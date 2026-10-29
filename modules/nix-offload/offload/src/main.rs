@@ -3,7 +3,9 @@
 //!
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
-//! PATH]`, or `nix-offload report --rate DOLLARS` for today's line.
+//! PATH]`, or `nix-offload stand --standing PATH` to name standing
+//! builders alone and lend none, or `nix-offload report --rate DOLLARS` for
+//! today's line.
 //!
 //! Every 20 seconds it reads the machine queue. Once a build or a VM check
 //! has waited three minutes for a slot this machine doesn't have, it asks
@@ -71,7 +73,8 @@ const MACHINES: &str = "/run/nix-offload/machines";
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
-                    [--standing PATH] | nix-offload report --rate DOLLARS";
+                    [--standing PATH] | nix-offload stand --standing PATH \
+                    | nix-offload report --rate DOLLARS";
 
 /// Set when the service is told to end, so the builder is given back first.
 static ENDING: AtomicBool = AtomicBool::new(false);
@@ -109,6 +112,14 @@ fn main() -> ExitCode {
             .and_then(|at| arguments.get(at + 1))
             .cloned()
     };
+    if arguments.first().map(String::as_str) == Some("stand") {
+        let Some(standing) = given("--standing") else {
+            eprintln!("nix-offload: stand needs --standing\n{USED}");
+            return ExitCode::from(64);
+        };
+        stand(&read_standing(Path::new(&standing)));
+        return ExitCode::SUCCESS;
+    }
     let Some(rate) = given("--rate").as_deref().and_then(journal::price) else {
         eprintln!("nix-offload: --rate takes a price, such as 0.68\n{USED}");
         return ExitCode::from(64);
@@ -170,20 +181,40 @@ fn main() -> ExitCode {
     }
 }
 
-/// Lend a builder while the queue wants one, until told to end.
-fn serve(settings: &Settings) {
+/// Hear a stop, so what's lent is given back first.
+fn hear_stops() {
     // SAFETY: the handler only stores to an atomic.
     unsafe {
         let handler = ending as *const () as libc::sighandler_t;
         libc::signal(libc::SIGTERM, handler);
         libc::signal(libc::SIGINT, handler);
     }
-    let standing = settings.standing.as_ref().map_or_else(Vec::new, |path| {
-        machines::standing(&fs::read_to_string(path).unwrap_or_else(|error| {
-            eprintln!("nix-offload: reading {}: {error}", path.display());
-            String::new()
-        }))
-    });
+}
+
+fn read_standing(path: &Path) -> Vec<machines::Standing> {
+    machines::standing(&fs::read_to_string(path).unwrap_or_else(|error| {
+        eprintln!("nix-offload: reading {}: {error}", path.display());
+        String::new()
+    }))
+}
+
+/// Name the standing builders that answer, lending none, until told to end.
+fn stand(standing: &[machines::Standing]) {
+    hear_stops();
+    let mut machines = Machines::new(MACHINES.into(), standing.to_vec());
+    while !ENDING.load(Ordering::SeqCst) {
+        machines.show(None);
+        thread::sleep(TICK);
+    }
+}
+
+/// Lend a builder while the queue wants one, until told to end.
+fn serve(settings: &Settings) {
+    hear_stops();
+    let standing = settings
+        .standing
+        .as_deref()
+        .map_or_else(Vec::new, read_standing);
     let mut machines = Machines::new(MACHINES.into(), standing);
     machines.show(None);
     let mut lent: Option<Lent> = None;

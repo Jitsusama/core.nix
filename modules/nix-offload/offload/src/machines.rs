@@ -11,7 +11,7 @@ const ANSWER: Duration = Duration::from_secs(2);
 
 /// A builder always there to lend, such as another machine at home, named
 /// by the address that says whether it answers and its Nix machines line.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Standing {
     pub address: String,
     pub line: String,
