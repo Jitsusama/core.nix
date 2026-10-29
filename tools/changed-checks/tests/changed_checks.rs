@@ -72,22 +72,15 @@ case "$5" in
 esac
 "#;
 
-/// ssh as changed-checks asks it: it records the host and the command it
-/// was given, and what the known hosts file it was given holds, and logs
-/// what it sent as ssh's verbose log does.
-const SSH: &str = r#"#!/bin/sh
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -E) log=$2; shift 2 ;;
-    -o)
-      case "$2" in UserKnownHostsFile=*) cp "${2#*=}" "$STAND_IN/known" ;; esac
-      shift 2 ;;
-    -i) echo "$2" > "$STAND_IN/key"; shift 2 ;;
-    *) break ;;
-  esac
-done
+/// nix-offload as changed-checks asks it to build there: it records what
+/// it was given, and journals the build as sent from the lent builder, as
+/// `nix-offload there` does.
+const NIX_OFFLOAD: &str = r#"#!/bin/sh
+[ -f "$STAND_IN/refuses" ] && exit 64
 printf '%s\n' "$@" > "$STAND_IN/sent"
-echo "Transferred: sent 4321, received 98765 bytes, in 3.2 seconds" >> "$log"
+mkdir -p "$XDG_STATE_HOME/nix-offload"
+echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
+  >> "$XDG_STATE_HOME/nix-offload/there.jsonl"
 "#;
 
 /// A folder holding the stand-ins and what they read, emptied first.
@@ -102,7 +95,7 @@ impl StandIn {
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(folder.join("bin")).expect("a folder for the stand-ins");
         let _starting = starting();
-        for (name, script) in [("git", GIT), ("nix", NIX), ("ssh", SSH)] {
+        for (name, script) in [("git", GIT), ("nix", NIX), ("nix-offload", NIX_OFFLOAD)] {
             let path = folder.join("bin").join(name);
             fs::write(&path, script).expect("a stand-in");
             fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("it runs");
@@ -241,9 +234,7 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(stand_in.built(), here, "no builder is lent");
 
-    // c3NoLWVkMjU1MTkgQUFBQQ== is "ssh-ed25519 AAAA".
-    let lent = "ssh-ng://lent?compress=true&ssh-key=/the/key&\
-                base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n";
+    let lent = "ssh-ng://lent?compress=true&ssh-key=/the/key\n";
     fs::write(offload.join("store"), lent).expect("written");
     for (step, why) in [
         ("clean", "the working tree differs from its commit"),
@@ -264,24 +255,23 @@ fn a_pushed_commit_is_built_on_the_lent_builder_and_anything_else_here() {
     let ran = asked();
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(stand_in.built(), "", "nothing is built here");
-    let fetched = "github:someone/thing/fedcba9876543210fedc#checks.x86_64-linux";
     assert_eq!(
         fs::read_to_string(stand_in.path("sent")).expect("it was sent"),
-        format!("lent\nnix build --no-link --keep-going -L '{fetched}.new' '{fetched}.a'\n")
-    );
-    assert_eq!(
-        fs::read_to_string(stand_in.path("known")).expect("its host key"),
-        "lent ssh-ed25519 AAAA\n"
-    );
-    assert_eq!(
-        fs::read_to_string(stand_in.path("key")).expect("its key"),
-        "/the/key\n"
+        "there\n-L\n--keep-going\ngithub:someone/thing/fedcba9876543210fedc\n\
+         checks.x86_64-linux.new\nchecks.x86_64-linux.a\n"
     );
     let runs = stand_in.runs();
     let built = &runs.last().expect("the run")["built"];
     assert_eq!(built["lent"], true, "{built}");
     assert_eq!(built["sent"], 4321, "{built}");
     assert_eq!(built["checks"], 2, "{built}");
+
+    // A nix-offload older than `there` refuses it, and it's built here.
+    fs::write(stand_in.path("refuses"), "").expect("written");
+    let ran = asked();
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(stand_in.built(), here, "refused there");
+    assert!(text(&ran.stderr).contains("since nix-offload couldn't take the build there"));
 }
 
 #[test]

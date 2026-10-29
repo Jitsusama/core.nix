@@ -208,12 +208,14 @@ fn compare(
         return Ok(ExitCode::SUCCESS);
     }
     let began = Instant::now();
-    if let Some(builder) = there::lent(&offload_dir()) {
-        match published() {
-            Ok(fetched) => {
-                let sent = builder.build(&fetched, system, &targets, &cache())?;
+    if there::lent(&offload_dir()) {
+        let journal = state().join("nix-offload/there.jsonl");
+        match published().and_then(|fetched| there::build(&fetched, system, &targets, &journal)) {
+            Ok(sent) => {
                 noted.built(targets.len(), began.elapsed(), sent.passed);
-                noted.lent(sent.bytes);
+                if sent.there {
+                    noted.lent(sent.bytes);
+                }
                 return Ok(if sent.passed {
                     ExitCode::SUCCESS
                 } else {
