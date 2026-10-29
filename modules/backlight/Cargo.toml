@@ -1,5 +1,5 @@
-# backlight: sets the screen's brightness for the light in the room, and
-# learns from the brightness Joel picks (src/main.rs says how).
+# backlight: sets the screen's brightness and warmth for the light in the
+# room, and learns from the brightness Joel picks (src/main.rs says how).
 [package]
 name = "backlight"
 version = "0.1.0"
@@ -8,5 +8,5 @@ license = "MIT"
 publish = false
 
 [dependencies]
-tokio = { version = "1.53", features = ["macros", "net", "rt", "time"] }
+tokio = { version = "1.53", features = ["macros", "net", "rt", "sync", "time"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }

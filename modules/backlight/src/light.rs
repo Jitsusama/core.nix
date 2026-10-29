@@ -1,4 +1,5 @@
-//! The light in the room, heard from an ambient light sensor's IIO buffer.
+//! The light in the room, heard from an ambient light sensor's IIO buffer:
+//! how bright it is, and, from a sensor that sees colour, how warm.
 //!
 //! udev turns the buffer on for each light sensor that has one and lets the
 //! seat's user read it (nixos.nix). A sensor hub then puts a sample in the
@@ -16,6 +17,24 @@ use tokio::io::unix::AsyncFd;
 
 /// Linux's `O_NONBLOCK`, the same on every architecture core builds for.
 const O_NONBLOCK: i32 = 0o4000;
+
+/// What a sensor is heard for, each a channel of its buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Heard {
+    /// How bright the room is, in lux.
+    Light,
+    /// How warm the room's light is, in kelvin.
+    Warmth,
+}
+
+impl Heard {
+    fn channel(self) -> &'static str {
+        match self {
+            Heard::Light => "in_illuminance",
+            Heard::Warmth => "in_colortemp",
+        }
+    }
+}
 
 /// Where one channel sits in a buffered sample, and how it's written there.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,7 +99,7 @@ impl Field {
     }
 }
 
-/// Where the illuminance sits in each sample, among the channels turned on.
+/// Where the channel heard sits in each sample, among the channels turned on.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Layout {
     size: usize,
@@ -90,7 +109,7 @@ struct Layout {
 
 impl Layout {
     /// The layout of the channels, as their index and field, given which of
-    /// them is the light. Each sits after the one before at a multiple of
+    /// them is heard. Each sits after the one before at a multiple of
     /// its own size, and a sample is a multiple of the largest.
     fn of(mut channels: Vec<(u32, Field, bool)>) -> Option<Layout> {
         channels.sort_by_key(|&(index, _, _)| index);
@@ -114,7 +133,7 @@ impl Layout {
     }
 }
 
-/// How a sample's illuminance turns into lux.
+/// How a sample's channel turns into lux or kelvin.
 #[derive(Clone, Copy, Debug)]
 struct Units {
     layout: Layout,
@@ -123,7 +142,7 @@ struct Units {
 }
 
 impl Units {
-    fn lux(self, raw: i64) -> f64 {
+    fn value(self, raw: i64) -> f64 {
         #[expect(
             clippy::cast_precision_loss,
             reason = "a light sensor's readings are far below 2⁵³, so the float is exact"
@@ -132,18 +151,19 @@ impl Units {
         ((raw + self.offset) * self.scale).max(0.0)
     }
 
-    /// The latest light among whole samples, or none when there's none.
+    /// The latest reading among whole samples, or none when there's none.
     fn latest(self, samples: &[u8]) -> Option<f64> {
         let Layout { size, at, field } = self.layout;
         let last = (samples.len() / size).checked_sub(1)?;
         let at = last * size + at;
-        Some(self.lux(field.value(&samples[at..at + field.bytes])))
+        Some(self.value(field.value(&samples[at..at + field.bytes])))
     }
 }
 
 pub struct Sensor {
     dir: PathBuf,
     node: PathBuf,
+    heard: Heard,
     units: Units,
 }
 
@@ -168,8 +188,8 @@ fn number_or(path: &Path, default: f64) -> io::Result<f64> {
 }
 
 /// The channels turned on in a device's buffer, as their index, field and
-/// whether each is the light, or none when one isn't understood.
-fn channels(dir: &Path) -> io::Result<Option<Vec<(u32, Field, bool)>>> {
+/// whether each is the one heard, or none when one isn't understood.
+fn channels(dir: &Path, heard: Heard) -> io::Result<Option<Vec<(u32, Field, bool)>>> {
     let scan = dir.join("scan_elements");
     let mut channels = Vec::new();
     for entry in fs::read_dir(&scan)? {
@@ -189,15 +209,16 @@ fn channels(dir: &Path) -> io::Result<Option<Vec<(u32, Field, bool)>>> {
             );
             return Ok(None);
         };
-        channels.push((index, field, channel == "in_illuminance"));
+        channels.push((index, field, channel == heard.channel()));
     }
     Ok(Some(channels))
 }
 
 impl Sensor {
-    /// The first light sensor under `root` whose buffer is on with its
-    /// illuminance in it, and its device node under `dev`.
-    pub fn find(root: &Path, dev: &Path) -> io::Result<Option<Sensor>> {
+    /// The first light sensor under `root` whose buffer is on with what's
+    /// heard in it, and its device node under `dev`.
+    pub fn find(root: &Path, dev: &Path, heard: Heard) -> io::Result<Option<Sensor>> {
+        let channel = heard.channel();
         let entries = match fs::read_dir(root) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -209,10 +230,10 @@ impl Sensor {
         dirs.sort();
         for dir in dirs {
             let on = |path: &str| text(&dir.join(path)).is_ok_and(|text| text == "1");
-            if !on("buffer/enable") || !on("scan_elements/in_illuminance_en") {
+            if !on("buffer/enable") || !on(&format!("scan_elements/{channel}_en")) {
                 continue;
             }
-            let Some(layout) = channels(&dir)?.and_then(Layout::of) else {
+            let Some(layout) = channels(&dir, heard)?.and_then(Layout::of) else {
                 continue;
             };
             let Some(name) = dir.file_name() else {
@@ -220,12 +241,13 @@ impl Sensor {
             };
             let units = Units {
                 layout,
-                scale: number_or(&dir.join("in_illuminance_scale"), 1.0)?,
-                offset: number_or(&dir.join("in_illuminance_offset"), 0.0)?,
+                scale: number_or(&dir.join(format!("{channel}_scale")), 1.0)?,
+                offset: number_or(&dir.join(format!("{channel}_offset")), 0.0)?,
             };
             return Ok(Some(Sensor {
                 node: dev.join(name),
                 dir,
+                heard,
                 units,
             }));
         }
@@ -241,7 +263,7 @@ impl Sensor {
     }
 
     /// Opens the buffer, emptied of what it held while nobody read it, and
-    /// the light now, read once.
+    /// the reading now, read once.
     pub fn open(&self) -> io::Result<(Readings, f64)> {
         let mut file = OpenOptions::new()
             .read(true)
@@ -256,11 +278,11 @@ impl Sensor {
                 Err(error) => return Err(error),
             }
         }
-        let raw = self.dir.join("in_illuminance_raw");
+        let raw = self.dir.join(format!("{}_raw", self.heard.channel()));
         let now = text(&raw)?;
         let now = self
             .units
-            .lux(now.parse().map_err(|_| unreadable(&raw, &now))?);
+            .value(now.parse().map_err(|_| unreadable(&raw, &now))?);
         // SAFETY: the File is moved into the AsyncFd, which owns it until
         // it's dropped, and a File keeps one descriptor open for its life.
         let file = unsafe { AsyncFd::register_with_interest(file, Interest::READABLE) }
@@ -283,7 +305,7 @@ pub struct Readings {
 }
 
 impl Readings {
-    /// Waits for the light to change, and says what it changed to.
+    /// Waits for the reading to change, and says what it changed to.
     pub async fn changed(&mut self) -> io::Result<f64> {
         loop {
             let mut ready = self.file.readable_mut().await?;
@@ -296,8 +318,8 @@ impl Readings {
                     ));
                 }
                 Ok(Ok(read)) => {
-                    if let Some(lux) = self.units.latest(&self.samples[..read]) {
-                        return Ok(lux);
+                    if let Some(reading) = self.units.latest(&self.samples[..read]) {
+                        return Ok(reading);
                     }
                 }
                 Ok(Err(error)) => return Err(error),
@@ -466,13 +488,40 @@ mod tests {
             ],
         );
         fs::write(light.join("in_illuminance_scale"), "0.001000\n").unwrap();
-        let sensor = Sensor::find(&devices.0, Path::new("/dev"))
+        let sensor = Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
             .unwrap()
             .unwrap();
         assert_eq!(sensor.name(), "iio:device2");
         assert_eq!(sensor.node, Path::new("/dev/iio:device2"));
         assert_eq!(sensor.units.layout.at, 0);
-        assert!((sensor.units.lux(25_000) - 25.0).abs() < 1e-9);
+        assert!((sensor.units.value(25_000) - 25.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_warmth_is_heard_from_the_sensor_that_sees_colour() {
+        let devices = Devices::new("warmth");
+        let s32 = "le:s32/32>>0";
+        devices.add("iio:device1", "1", &[("illuminance", "1", 1, s32)]);
+        let colour = devices.add(
+            "iio:device2",
+            "1",
+            &[("colortemp", "1", 2, s32), ("illuminance", "1", 4, s32)],
+        );
+        fs::write(colour.join("in_colortemp_scale"), "0.001000\n").unwrap();
+        let sensor = Sensor::find(&devices.0, Path::new("/dev"), Heard::Warmth)
+            .unwrap()
+            .unwrap();
+        assert_eq!(sensor.name(), "iio:device2");
+        assert_eq!(sensor.units.layout.at, 0);
+        assert!((sensor.units.value(2_609_000) - 2609.0).abs() < 1e-9);
+        let light = Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            light.name(),
+            "iio:device1",
+            "the light's sensor is the first"
+        );
     }
 
     #[test]
@@ -487,7 +536,7 @@ mod tests {
             ],
         );
         assert!(
-            Sensor::find(&devices.0, Path::new("/dev"))
+            Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
                 .unwrap()
                 .is_none()
         );
@@ -497,7 +546,7 @@ mod tests {
     fn no_sensors_is_none_found() {
         let devices = Devices::new("missing");
         assert!(
-            Sensor::find(&devices.0.join("gone"), Path::new("/dev"))
+            Sensor::find(&devices.0.join("gone"), Path::new("/dev"), Heard::Light)
                 .unwrap()
                 .is_none()
         );
@@ -511,9 +560,9 @@ mod tests {
             "1",
             &[("illuminance", "1", 0, "le:s32/32>>0")],
         );
-        let sensor = Sensor::find(&devices.0, Path::new("/dev"))
+        let sensor = Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
             .unwrap()
             .unwrap();
-        assert!(sensor.units.lux(-40).abs() < f64::EPSILON);
+        assert!(sensor.units.value(-40).abs() < f64::EPSILON);
     }
 }

@@ -69,6 +69,16 @@ impl Screen {
             .map(|(_, name, dir, max)| Screen { name, dir, max }))
     }
 
+    /// The connector of the panel this backlight lights, such as eDP-1, when
+    /// the backlight is the graphics driver's own: its device is the
+    /// connector, named for its card, as card0-eDP-1.
+    pub fn connector(&self) -> Option<String> {
+        let device = fs::read_link(self.dir.join("device")).ok()?;
+        let name = device.file_name()?.to_str()?;
+        let (card, connector) = name.split_once('-')?;
+        card.starts_with("card").then(|| connector.to_owned())
+    }
+
     /// The brightness now, in the backlight's own steps.
     pub fn brightness(&self) -> io::Result<u32> {
         number(&self.dir.join("brightness"))
@@ -183,6 +193,33 @@ mod tests {
         assert!((screen.level_of(256) - 0.5).abs() < 1e-9);
         assert_eq!(screen.steps_for(0.5), 256);
         assert_eq!(screen.steps_for(2.0), 512);
+    }
+
+    #[test]
+    fn the_panel_is_named_by_its_connector_only_when_the_driver_lights_it() {
+        let backlights = Backlights::new("connector");
+        backlights.add("intel_backlight", "raw", 512, 208);
+        let screen = Screen::find(&backlights.0).unwrap().unwrap();
+        assert_eq!(screen.connector(), None, "no device");
+        std::os::unix::fs::symlink(
+            "../../devices/pci0000:00/0000:00:02.0/drm/card0/card0-eDP-1",
+            backlights.0.join("intel_backlight/device"),
+        )
+        .unwrap();
+        assert_eq!(screen.connector().as_deref(), Some("eDP-1"));
+
+        backlights.add("dell_backlight", "firmware", 15, 7);
+        std::os::unix::fs::symlink(
+            "../../devices/platform/dell-laptop",
+            backlights.0.join("dell_backlight/device"),
+        )
+        .unwrap();
+        let firmware = Screen::find(&backlights.0).unwrap().unwrap();
+        assert_eq!(
+            firmware.connector(),
+            None,
+            "a platform's light names no panel"
+        );
     }
 
     #[test]
