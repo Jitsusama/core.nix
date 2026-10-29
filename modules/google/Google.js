@@ -28,7 +28,7 @@ function heard(line) {
         fetched: said.fetched ?? null,
         meet: { granted: said.meet?.granted === true, made: said.meet?.made ?? null },
         drive: {
-            listed: said.drive?.listed ?? null,
+            listings: Array.isArray(said.drive?.listings) ? said.drive.listings : [],
             downloads: Array.isArray(said.drive?.downloads) ? said.drive.downloads : []
         }
     };
@@ -50,6 +50,13 @@ function download(file, how, to) {
         asked.to = to;
     }
     return `${JSON.stringify({ download: asked })}\n`;
+}
+
+// What the Drive folder asked for at `since` holds, as the program last
+// listed it, { folder, asked, files, more, failed }; null until it's said.
+function listing(drive, folder, since) {
+    return (drive?.listings ?? []).find(each => each.folder === folder && each.asked >= since)
+        ?? null;
 }
 
 // How the Drive file asked for at `since` stands, as { state, path,

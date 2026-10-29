@@ -26,6 +26,12 @@ pub const LISTED_MOST: usize = 1000;
 /// together are each still told when the shell next reads.
 pub const DOWNLOADS_KEPT: usize = 20;
 
+/// How many of the folders asked lately are told, each its last listing,
+/// so two asked together, as a picker stepping in asks them, are each
+/// still told when the shell next reads; few, since each may hold a
+/// thousand files and the whole state is written on every change.
+pub const LISTINGS_KEPT: usize = 4;
+
 /// Drive's type for a folder.
 const FOLDER: &str = "application/vnd.google-apps.folder";
 /// Drive's type for a shortcut, which stands for the file it points at.
@@ -332,7 +338,7 @@ pub fn entry(file: &Value) -> Option<Entry> {
     })
 }
 
-/// The folder last asked to be listed, as it stands.
+/// A folder asked to be listed, as it stands.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Listed {
     /// The folder, as the shell named it.
@@ -372,11 +378,11 @@ pub struct Downloaded {
     pub failed: Option<Failed>,
 }
 
-/// What's held of Drive's folders: the last listed, and the downloads
-/// asked lately, newest first.
+/// What's held of Drive's folders: the folders and the downloads asked
+/// lately, each newest first.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct Drive {
-    pub listed: Option<Listed>,
+    pub listings: Vec<Listed>,
     pub downloads: Vec<Downloaded>,
 }
 

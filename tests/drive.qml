@@ -78,19 +78,29 @@ QtObject {
             { title: "Untitled", facts: [], body: "" });
 
         // Drive's folders and downloads, as the picker and Files read them.
-        const listed = { folder: "root", asked: now, files: [], more: false, failed: null };
+        // Two folders asked together, both written before the shell read.
+        const listings = [
+            { folder: "root", asked: now + 2, files: [{ id: "f1" }], more: false, failed: null },
+            { folder: "drives", asked: now + 1, files: [], more: false, failed: null }
+        ];
         const downloads = [
             { file: "f1", how: "pick", asked: now + 5, path: null, failed: null },
             { file: "f2", how: "open", asked: now + 3, path: null, failed: "runs" },
             { file: "f1", how: "pick", asked: now + 1, path: "/run/f1/old.pdf", failed: null }
         ];
-        const drive = { listed, downloads };
+        const drive = { listings, downloads };
         check("a folder listed and the downloads, read", Google.heard(JSON.stringify({
             account: "ready", meetings: [], drive
         })).drive, drive);
         check("no Drive said, none held", Google.heard(JSON.stringify({
             account: "ready", meetings: []
-        })).drive, { listed: null, downloads: [] });
+        })).drive, { listings: [], downloads: [] });
+        check("each folder asked together is found, none asked before", [
+            Google.listing(drive, "drives", now),
+            Google.listing(drive, "root", now),
+            Google.listing(drive, "root", now + 3),
+            Google.listing(drive, "shared", now)
+        ], [listings[1], listings[0], null, null]);
         check("the line listing a folder", Google.list("shared"),
             '{"list":{"folder":"shared"}}\n');
         check("the lines downloading, a save saying where and no other", [
