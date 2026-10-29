@@ -138,11 +138,11 @@ Provider {
     // measuring many, only those it can name) and fans, a thermal zone
     // for a part no chip gives, and the throttling counts.
     function sensed() {
-        const chips = sensors.chips().map(chip => ({
+        const chips = Sensors.chips().map(chip => ({
             part: chip.part,
-            temps: sensors.readings(chip, "temp",
+            temps: Sensors.readings(chip, "temp",
                 chip.part === "" ? label => Heat.labelled(label) !== "" : null).map(s => {
-                const said = sensors.degrees(chip, s);
+                const said = Sensors.degrees(chip, s);
                 return {
                     n: s.n,
                     label: s.label,
@@ -151,20 +151,20 @@ Provider {
                     crit: said.most
                 };
             }),
-            fans: sensors.readings(chip, "fan").map(s => Object.assign({
+            fans: Sensors.readings(chip, "fan").map(s => Object.assign({
                 n: s.n,
                 label: s.label,
                 value: s.value
-            }, sensors.fan(chip, s)))
+            }, Sensors.fan(chip, s)))
         }));
-        const zones = sensors.zones()
+        const zones = Sensors.zones()
             .map(zone => ({ part: Heat.zonePart(zone.type), zone: zone }))
             .filter(each => each.part !== "" && !Heat.gives(chips, each.part))
-            .map(each => ({ part: each.part, value: sensors.zoneDegrees(each.zone) }))
+            .map(each => ({ part: each.part, value: Sensors.zoneDegrees(each.zone) }))
             .filter(each => each.value !== null);
         return {
-            parts: Heat.gather(chips, zones, Heat.coreCpus(sensors.cpus())),
-            throttled: Heat.throttled(sensors.throttles())
+            parts: Heat.gather(chips, zones, Heat.coreCpus(Sensors.cpus())),
+            throttled: Heat.throttled(Sensors.throttles())
         };
     }
 
@@ -450,9 +450,5 @@ Provider {
             if (provider.shown)
                 provider.answered();
         }
-    }
-
-    Sensors {
-        id: sensors
     }
 }

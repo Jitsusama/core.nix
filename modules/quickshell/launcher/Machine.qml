@@ -333,11 +333,11 @@ Provider {
     // alone where its chip has one, rather than every core's read to find
     // it, and every sensor only where it hasn't.
     function processorHeat() {
-        const chip = sensors.chips().find(each => each.part === "processor");
+        const chip = Sensors.chips().find(each => each.part === "processor");
         if (!chip)
             return null;
-        const whole = sensors.readings(chip, "temp", label => Machine.namesWhole(label));
-        return whole.length > 0 ? sensors.degrees(chip, whole[0]) : sensors.processor();
+        const whole = Sensors.readings(chip, "temp", label => Machine.namesWhole(label));
+        return whole.length > 0 ? Sensors.degrees(chip, whole[0]) : Sensors.processor();
     }
 
     function cpu() {
@@ -613,7 +613,7 @@ Provider {
         const kept = sampled("disks", () => ({
             counters: Machine.disk(said(`/sys/block/${name}/stat`)),
             up: Number(read(up).trim().split(/\s+/)[0]),
-            heat: sensors.disk(name)
+            heat: Sensors.disk(name)
         }));
         if (kept.last.said.counters === null)
             return kept;
@@ -983,10 +983,6 @@ Provider {
             if (provider.shown)
                 provider.answered();
         }
-    }
-
-    Sensors {
-        id: sensors
     }
 
     // The disks the kernel lists, listed once.
