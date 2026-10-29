@@ -942,7 +942,8 @@ def into_whats_filling_it(desktop: Desktop) -> None:
     desktop.step_in()
     desktop.type_in("filling", selecting="What's Filling It")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch"])
+    # The folder, then the figure's own Copy, last as every step keeps it.
+    desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch", "Copy"])
 
 
 def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gives(
