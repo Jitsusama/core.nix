@@ -317,10 +317,11 @@ arrow never sets one going. The slide is a reading motion, not an
 arrival: a steady twelve characters a second with soft ends, gathering
 speed from rest and settling back in at most a fifth of a second each, so
 the eye follows one speed and nothing starts or stops hard. It moves on
-the render thread, so a busy shell never stutters it. Only the name moves, inside its own room, so nothing beside it does,
-and given up by the selection it's back at its start at once (Joel,
-2026-10-25: titles "get elipsed really quick"; 2026-10-29: the slide
-stuttered, was too slow and started and stopped abruptly).
+the render thread, so a busy shell never stutters it. Only the name
+moves, inside its own room, so nothing beside it does, and given up by
+the selection it's back at its start at once (Joel, 2026-10-25: titles
+"get elipsed really quick"; 2026-10-29: the slide stuttered, was too
+slow and started and stopped abruptly).
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
