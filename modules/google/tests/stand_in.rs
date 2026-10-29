@@ -380,7 +380,7 @@ fn a_file_mail_carries_is_fetched_only_when_asked_and_a_program_never_to_open() 
     );
     // While Gmail answers, the file is said to be on its way.
     let waiting = watch
-        .fetching("m", 0, How::Open, &now())
+        .fetching("m", 0, How::Open, None, &now())
         .fetched
         .clone()
         .unwrap();
@@ -389,22 +389,32 @@ fn a_file_mail_carries_is_fetched_only_when_asked_and_a_program_never_to_open() 
     let opened = PathBuf::from(opened.path.unwrap());
     assert_eq!(opened, places.kept.join("m").join("menu.pdf"));
     assert_eq!(fs::read(&opened).unwrap(), b"hello");
-    watch.fetching("m", 0, How::Save, &now());
+    watch.fetching("m", 0, How::Save, None, &now());
     let saved = watch.fetch(&places, &now()).fetched.clone().unwrap();
     assert_eq!(
         saved.path.map(PathBuf::from),
         Some(places.saves.join("menu.pdf"))
     );
     assert_eq!(files(&stand_in), 2);
+    // A copy goes where Joel picked when he picked somewhere, over what's
+    // there, since the chooser asked him first.
+    let picked = folder.join("picked.pdf");
+    fs::write(&picked, b"old").unwrap();
+    let to = Some(picked.display().to_string());
+    watch.fetching("m", 0, How::Save, to, &now());
+    let put = watch.fetch(&places, &now()).fetched.clone().unwrap();
+    assert_eq!(put.path.map(PathBuf::from), Some(picked.clone()));
+    assert_eq!(fs::read(&picked).unwrap(), b"hello");
+    assert_eq!(files(&stand_in), 3);
     // A program is never fetched to open, and a file no mail holds isn't
     // asked for.
-    watch.fetching("m", 1, How::Open, &now());
+    watch.fetching("m", 1, How::Open, None, &now());
     let program = watch.fetch(&places, &now()).fetched.clone().unwrap();
     assert_eq!((program.path, program.failed), (None, Some(Failed::Runs)));
-    watch.fetching("m", 5, How::Open, &now());
+    watch.fetching("m", 5, How::Open, None, &now());
     let gone = watch.fetch(&places, &now()).fetched.clone().unwrap();
     assert_eq!(gone.failed, Some(Failed::Gone));
-    assert_eq!(files(&stand_in), 2);
+    assert_eq!(files(&stand_in), 3);
     fs::remove_dir_all(&folder).unwrap();
 }
 

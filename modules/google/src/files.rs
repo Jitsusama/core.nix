@@ -1,8 +1,10 @@
 //! Where a file mail carries goes once it's fetched: into a folder only
 //! Joel can read, under the session's runtime folder, to be opened from
-//! there and gone when he logs out; or into his Downloads, to keep. A name
-//! is the sender's, so it's made safe to be a file's name, and a saved
-//! copy never writes over a file already there.
+//! there and gone when he logs out; or, to keep, where he picked in the
+//! launcher's chooser, else into his Downloads. A name is the sender's, so
+//! it's made safe to be a file's name, and a copy saved into Downloads
+//! never writes over a file already there; one put where he picked does,
+//! since the chooser asked him first.
 
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{self, Write};
@@ -21,7 +23,7 @@ const NAME_MOST: usize = 200;
 pub enum How {
     /// Open it in the program the desktop opens its kind with.
     Open,
-    /// Keep a copy in Downloads.
+    /// Keep a copy where Joel picked, else in Downloads.
     Save,
 }
 
@@ -42,6 +44,10 @@ pub struct Fetched {
     /// Which of the mail's files, from 0.
     pub file: usize,
     pub how: How,
+    /// Where Joel picked to save it, kept from the shell's ask; the shell
+    /// knows it already, so it isn't said back.
+    #[serde(skip)]
+    pub to: Option<String>,
     /// When it was asked, in milliseconds since the epoch, which tells
     /// one ask from the next of the same file.
     pub asked: i64,
@@ -111,6 +117,26 @@ pub fn kept(folder: &Path, mail: &str, name: &str, bytes: &[u8]) -> io::Result<P
     file.write_all(bytes)?;
     fs::rename(&new, &path)?;
     Ok(path)
+}
+
+/// Writes `bytes` as the file `path`, replacing one there, whole or not at
+/// all, and says where.
+pub fn put(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
+    let Some(name) = path.file_name() else {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "no file named"));
+    };
+    let mut new = std::ffi::OsString::from(".");
+    new.push(name);
+    new.push(".new");
+    let new = path.with_file_name(new);
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&new)?;
+    file.write_all(bytes)?;
+    fs::rename(&new, path)?;
+    Ok(path.to_owned())
 }
 
 /// Writes `bytes` as `name` in `folder`, or, when that's taken, as the
@@ -197,6 +223,19 @@ mod tests {
             folder.join("notes (2)")
         );
         assert_eq!(fs::read(folder.join("menu.pdf")).unwrap(), b"1");
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_copy_put_where_joel_picked_replaces_what_was_there_and_leaves_nothing_beside() {
+        let folder = folder("put");
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("plan.pdf");
+        fs::write(&path, b"old").unwrap();
+        assert_eq!(put(&path, b"new").unwrap(), path);
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 1);
+        assert!(put(&folder.join("gone").join("plan.pdf"), b"x").is_err());
         fs::remove_dir_all(&folder).unwrap();
     }
 }
