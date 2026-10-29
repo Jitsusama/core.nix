@@ -122,6 +122,10 @@ in
         # A run takes most of an hour, so a switch leaves a run going; the
         # next hour's starts on the new program.
         X-RestartIfChanged = false;
+        # Tried four times in half an hour before it counts as failed, as
+        # set out under Restart.
+        StartLimitIntervalSec = "30min";
+        StartLimitBurst = 4;
       };
       Service = {
         # Started once it runs, not once it's done: a oneshot's start job
@@ -134,6 +138,13 @@ in
         # Whatever the account runs comes first: the slice gives it the
         # disk's idle priority and a small share of the processor.
         Slice = "background.slice";
+        # The hour a resume catches up on starts before Wi-Fi is back, and
+        # a user's unit can't wait on the machine's network, so a run that
+        # fails is tried again a few minutes on. One still failing half an
+        # hour later, a login refused or no connection at all, is a failed
+        # unit.
+        Restart = "on-failure";
+        RestartSec = "5min";
       };
     };
     systemd.user.timers.session-backup = {
