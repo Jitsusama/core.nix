@@ -668,7 +668,21 @@ Scope {
     // steps' steady ids joined by a "\u203a", which no key holds.
     readonly property string catalogueStep: "\u203a"
 
+    // Set while the catalogue is walked from outside, so a collection that
+    // makes its rows only while the launcher is open (Agents) makes them
+    // for the walk too.
+    property bool cataloguing: false
+
     function catalogue() {
+        cataloguing = true;
+        try {
+            return catalogueWalked();
+        } finally {
+            cataloguing = false;
+        }
+    }
+
+    function catalogueWalked() {
         freshen();
         const out = [];
         const seen = new Set();
@@ -858,6 +872,15 @@ Scope {
     // ready, selected, for Joel's own Return. Said in the journal too, as
     // the launcher's picks are.
     function catalogueRun(id, words) {
+        cataloguing = true;
+        try {
+            return catalogueRunWalked(id, words);
+        } finally {
+            cataloguing = false;
+        }
+    }
+
+    function catalogueRunWalked(id, words) {
         freshen();
         const path = catalogued(id);
         if (path === null)
