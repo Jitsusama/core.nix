@@ -10,6 +10,7 @@
 // isn't, so nothing stale is ever shown. A processor with no such telemetry
 // answers NoRegion, and nothing is said.
 pragma Singleton
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -37,35 +38,67 @@ Singleton {
 
     readonly property string path: "/run/processor-telemetry/io.jitsusama.ProcessorTelemetry"
 
-    Socket {
-        path: root.path
-        connected: root.watching > 0
-        onConnectionStateChanged: {
-            if (connected) {
-                // zlink closes the connection on empty parameters given to
-                // a method that takes none, as Wifi.qml says of wifid.
-                write(JSON.stringify({
-                    method: "io.jitsusama.ProcessorTelemetry.Watch",
-                    more: true
-                }) + "\u0000");
-                flush();
-            } else {
-                root.reading = null;
-                root.rested = [];
-                root.kept = null;
-            }
-        }
-        parser: SplitParser {
-            splitMarker: "\u0000"
-            onRead: data => {
-                const reply = JSON.parse(data);
-                root.reading = reply.error ? null : reply.parameters ?? null;
-                const resting = root.reading?.keptFromResting ?? null;
-                if (resting !== null) {
-                    root.rested = root.rested.concat([resting]).slice(-root.remembered);
-                    root.kept = Machine.kept(root.rested, root.kept?.shown ?? false);
+    // Whether a connection may be made now: false for a moment after one
+    // was refused or dropped, so a fresh one is made.
+    property bool trying: true
+
+    function dropped() {
+        reading = null;
+        rested = [];
+        kept = null;
+    }
+
+    onWatchingChanged: {
+        if (watching === 0)
+            dropped();
+    }
+
+    // A fresh connection each time, as Copies.qml makes its own: a socket
+    // refused once, as when the reader's isn't there yet, never connects
+    // again, so it's made anew while something still watches.
+    LazyLoader {
+        active: root.watching > 0 && root.trying
+
+        Socket {
+            path: root.path
+            connected: true
+            onConnectionStateChanged: {
+                if (connected) {
+                    // zlink closes the connection on empty parameters
+                    // given to a method that takes none, as Wifi.qml says
+                    // of wifid.
+                    write(JSON.stringify({
+                        method: "io.jitsusama.ProcessorTelemetry.Watch",
+                        more: true
+                    }) + "\u0000");
+                    flush();
+                } else {
+                    root.dropped();
+                    again.restart();
                 }
             }
+            onError: again.restart()
+            parser: SplitParser {
+                splitMarker: "\u0000"
+                onRead: data => {
+                    const reply = JSON.parse(data);
+                    root.reading = reply.error ? null : reply.parameters ?? null;
+                    const resting = root.reading?.keptFromResting ?? null;
+                    if (resting !== null) {
+                        root.rested = root.rested.concat([resting]).slice(-root.remembered);
+                        root.kept = Machine.kept(root.rested, root.kept?.shown ?? false);
+                    }
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: again
+        interval: 1000
+        onTriggered: {
+            root.trying = false;
+            root.trying = true;
         }
     }
 }

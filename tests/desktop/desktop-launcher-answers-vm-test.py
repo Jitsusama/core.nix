@@ -1833,6 +1833,11 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         "npu": [],
         "keptFromResting": {"kept": 0.12, "by": [{"by": "display", "share": 0.12}]},
     }
+    # Heat is looked at before the reader is there, so its connection is
+    # refused first, as when the reader's socket is missing on a machine.
+    desktop.answer("heat")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
     machine.succeed(f"install -d -o 1000 {held}")
     told = json.dumps({"parameters": reading})
     desktop.as_account(f"printf '%s\\0' '{told}' > /tmp/telemetry-said")
@@ -1842,10 +1847,8 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         "sh -c 'while cat /tmp/telemetry-said; do sleep 1; done'"
     )
     machine.wait_until_succeeds(f"test -S {socket}", timeout=dt.timedelta(seconds=10))
-    desktop.answer("heat")
-    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.step_in()
-    # Listed once the first reading comes, stepped in already, in order.
+    # Listed once the first reading comes, stepped in already, in order:
+    # the refused connection is made afresh while Heat is still shown.
     desktop.launcher_until(
         lambda shown: (
             [row for row in shown["rows"] if row in own] == own
