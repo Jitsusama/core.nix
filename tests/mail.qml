@@ -187,8 +187,8 @@ QtObject {
         ], ["fetching", "opened", "saved", "unreachable", "", "", ""]);
         check("what its row says",
             ["fetching", "saved", "savedThere", "runs", "opened"].map(Mail.fetchedSaid),
-            ["fetching\u2026", "saved in Downloads", "saved", "a program or a script, so only saved",
-                ""]);
+            ["fetching\u2026", "saved in Downloads", "saved",
+                "a program or a script, so only saved", ""]);
         const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
             at: lunch.at };
         check("the details of mail saying little", Mail.details(bare, "No Subject"), {
