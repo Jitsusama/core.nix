@@ -1,5 +1,5 @@
-//! Asking Google: the token endpoint, and the Calendar and Gmail APIs as
-//! the account.
+//! Asking Google: the token endpoint, and the Calendar, Gmail and Drive
+//! APIs as the account.
 //!
 //! Both origins are given rather than fixed, so the tests can ask a stand-in
 //! on this machine instead (`tests/stand_in.rs`).
@@ -12,13 +12,14 @@ use ureq::Agent;
 
 use crate::account::Account;
 use crate::calendar::Answer;
+use crate::drive;
 use crate::mail;
 
 /// Where Google answers.
 pub struct Origins {
     /// The OAuth token endpoint.
     pub token: String,
-    /// The APIs' root, before `/calendar/v3` and `/gmail/v1`.
+    /// The APIs' root, before `/calendar/v3`, `/gmail/v1` and `/drive/v3`.
     pub api: String,
 }
 
@@ -204,6 +205,30 @@ impl Google {
             return Err(refused(status, "marking mail"));
         }
         Ok(())
+    }
+
+    /// The documents of one kind Joel looked at lately, the last first,
+    /// from his own drive, what's shared with him and shared drives alike,
+    /// with only what Recent says of each.
+    pub fn documents(&self, token: &str, kind: drive::Kind) -> Result<Value, Refused> {
+        let shown = drive::SHOWN.to_string();
+        self.get(
+            token,
+            "/drive/v3/files",
+            &[
+                ("q", &kind.search()),
+                ("orderBy", "viewedByMeTime desc"),
+                ("pageSize", &shown),
+                ("corpora", "allDrives"),
+                ("includeItemsFromAllDrives", "true"),
+                ("supportsAllDrives", "true"),
+                (
+                    "fields",
+                    "files(id,name,webViewLink,viewedByMeTime,modifiedTime,owners(displayName))",
+                ),
+            ],
+            "the documents",
+        )
     }
 
     /// The inbox, for how many in it are unread.
