@@ -4044,7 +4044,7 @@
       "id": "docs:document",
       "of": "program:google-docs",
       "name": "Document",
-      "glyph": "document",
+      "glyph": "googleDocument",
       "verb": "open",
       "states": {
         "untitled": {
@@ -4057,7 +4057,7 @@
       "in": "docs:document",
       "name": "Open in Docs",
       "verb": "open",
-      "glyph": "document"
+      "glyph": "googleDocument"
     },
     {
       "id": "verb:docs:link",
@@ -4070,7 +4070,7 @@
       "id": "sheets:spreadsheet",
       "of": "program:google-sheets",
       "name": "Spreadsheet",
-      "glyph": "spreadsheet",
+      "glyph": "googleSpreadsheet",
       "verb": "open",
       "states": {
         "untitled": {
@@ -4083,7 +4083,7 @@
       "in": "sheets:spreadsheet",
       "name": "Open in Sheets",
       "verb": "open",
-      "glyph": "spreadsheet"
+      "glyph": "googleSpreadsheet"
     },
     {
       "id": "verb:sheets:link",
@@ -4096,7 +4096,7 @@
       "id": "slides:presentation",
       "of": "program:google-slides",
       "name": "Presentation",
-      "glyph": "presentation",
+      "glyph": "googlePresentation",
       "verb": "open",
       "states": {
         "untitled": {
@@ -4109,7 +4109,7 @@
       "in": "slides:presentation",
       "name": "Open in Slides",
       "verb": "open",
-      "glyph": "presentation"
+      "glyph": "googlePresentation"
     },
     {
       "id": "verb:slides:link",

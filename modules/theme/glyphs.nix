@@ -1136,17 +1136,17 @@ in
     console = "a";
     means = "archiving mail, out of the inbox";
   };
-  document = {
+  googleDocument = {
     glyph = nerd "f0dc8";
     console = "d";
     means = "a document in Joel's Google account, and Docs, which opens it";
   };
-  spreadsheet = {
+  googleSpreadsheet = {
     glyph = nerd "f09f7";
     console = "s";
     means = "a spreadsheet in Joel's Google account, and Sheets, which opens it";
   };
-  presentation = {
+  googlePresentation = {
     glyph = nerd "f0428";
     console = "p";
     means = "a presentation in Joel's Google account, and Slides, which opens it";
