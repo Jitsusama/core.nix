@@ -50,7 +50,10 @@ pub fn asked(state: &Path) -> io::Result<Vec<(PathBuf, Ask)>> {
         let file = entry?.path();
         // A half-written ask is named with a dot, and isn't one yet.
         let named = file.file_name().and_then(|name| name.to_str());
-        if named.is_none_or(|name| name.starts_with('.') || !name.ends_with(".json")) {
+        let json = file
+            .extension()
+            .is_some_and(|extension| extension == "json");
+        if !json || named.is_none_or(|name| name.starts_with('.')) {
             continue;
         }
         if let Ok(Some(ask)) = state::load::<Ask>(&file) {
