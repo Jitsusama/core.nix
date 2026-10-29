@@ -1369,7 +1369,8 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
             "Synchronised \u00b7 yes, 2 min ago",
             "0.harbour.pool.ntp.org \u00b7 stratum 1, +0.4 ms",
             "Service \u00b7 systemd-timesyncd",
-            "Other Servers \u00b7 2",
+            # The other fallback, the server in use not being another.
+            "Other Servers \u00b7 1",
         ):
             assert any(it.startswith(read) for it in reads), (read, reads)
         # The server is a thing: its drawer says all it holds, and a step
