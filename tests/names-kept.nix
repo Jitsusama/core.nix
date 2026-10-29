@@ -8,6 +8,8 @@
     a-quiet-file-says-nothing = "quiet is FileView printing no errors, not Do not disturb";
     backlight-passes-clippy = "the backlight program sets a screen's brightness";
     bluetooth-keeps-its-power-limits = "the limits are a radio's SAR table, not an allowance";
+    chrome-recent-sites-reads-a-history-mid-write = "Chrome's History database, by its name";
+    clipboard-history-passes-clippy = "the clipboard-history program, by its name";
     "jitsusama.backlight" = "the backlight program's options, for a screen's brightness";
     "jitsusama.kernel.cpu" = "the CPU Clang's -march and -mtune name, in Clang's word";
     "jitsusama.kernel.packageOverlays" = "an overlay is Nix's, not a meter";
