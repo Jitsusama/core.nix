@@ -258,6 +258,41 @@ QtObject {
             facts: [{ label: "When", value: "Monday 26 October, 14:00 to 14:30" }],
             body: ""
         });
+        // How one of a series repeats, said after when it is.
+        const day = (n, nth) => ({ day: n, nth: nth ?? null });
+        const rule = fields => Object.assign({ every: "week", interval: 1, days: [],
+            monthDays: [], times: null, until: null }, fields);
+        check("one of a series says how it repeats after when", Calendar.details(meeting("m",
+            at(26, 14, 0), at(26, 14, 30), { answer: null, link: null,
+                repeats: rule({ days: [day(1)] }) }), "Untitled").facts, [
+            { label: "When", value: "Monday 26 October, 14:00 to 14:30" },
+            { label: "Repeats", value: "Every week on Monday" }
+        ]);
+        check("how a series repeats, in words", [
+            rule({ days: [1, 2, 3, 4, 5].map(n => day(n)) }),
+            rule({ days: [day(1), day(3)], interval: 2 }),
+            rule({ every: "day" }),
+            rule({ every: "day", interval: 3 }),
+            rule({ every: "month", days: [day(5, -1)] }),
+            rule({ every: "month", days: [day(2, 1)], times: 6 }),
+            rule({ every: "month", monthDays: [1, 22, 13, -1, -2] }),
+            rule({ every: "year", until: new Date(2026, 11, 31).getTime() }),
+            rule({ days: [day(1), day(3), day(5)] }),
+            null,
+            rule({ every: "hour" })
+        ].map(Calendar.repeated), [
+            "Every weekday",
+            "Every 2 weeks on Monday and Wednesday",
+            "Every day",
+            "Every 3 days",
+            "Every month on the last Friday",
+            "Every month on the first Tuesday, 6 times",
+            "Every month on the 1st, the 22nd, the 13th, the last day and the second last day",
+            "Every year, until 31 December 2026",
+            "Every week on Monday, Wednesday and Friday",
+            "",
+            ""
+        ]);
         check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
             '{"answer":{"id":"abc_1","with":"no"}}\n');
         check("the line cancelling one", Calendar.cancel(meeting("abc_1", now, now)),

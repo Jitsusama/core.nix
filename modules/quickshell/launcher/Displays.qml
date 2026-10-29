@@ -30,6 +30,12 @@
 // the sensor takes a tenth of a second to say, is read in the background
 // and shown once it's come. While its answer shows, it's asked again once
 // a second, never more, so the screen following the room moves as it does.
+//
+// Where the backlight daemon warms the built-in screen toward the room's
+// light, it says how that stands in a file (modules/backlight), and the
+// Warmth follows the Brightness there: on or off, its note the warmth and
+// whether it follows the room, and Return switching it, which the daemon
+// is told over the session's bus and keeps. "screen warmth" asks it.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -169,7 +175,62 @@ Provider {
                 graph: level(Power.roomLevel(room), 1),
                 note: "as the screen's sensor hears it, from dark to daylight"
             }));
+        // Warmth sits right after Brightness, found by its key, so a row
+        // put above Brightness later can't move it.
+        if (inTheRoom(output) && warmth !== null) {
+            const brightness = `displays:${output.name}:brightness`;
+            rows.splice(rows.findIndex(row => row.key === brightness) + 1, 0, warmthRow(output));
+        }
         return rows;
+    }
+
+    // How the screen's warmth stands, as the backlight daemon says it, or
+    // null where nothing warms the screen: no file, or `{}`, which the
+    // daemon leaves when it stops, since a file watched here is never
+    // seen again once it's removed.
+    property var warmth: null
+    onWarmthChanged: changed()
+
+    function warmed(text) {
+        const said = parsed(text);
+        return typeof said.kelvin === "number" && typeof said.followsTheRoom === "boolean"
+            ? said : null;
+    }
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/backlight-warmth`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.warmth = provider.warmed(text())
+        onLoadFailed: provider.warmth = null
+    }
+
+    // The Warmth, a switch: Return turns its following the room off or
+    // back on, the launcher staying to show it change.
+    function warmthRow(output) {
+        const follows = warmth.followsTheRoom;
+        const stands = follows ? `${warmth.kelvin} K, following the room`
+            : `${warmth.kelvin} K, the screen's own white`;
+        return thing({
+            key: `displays:${output.name}:warmth`,
+            name: partName("warmth"),
+            verb: Words.verb("displays:warmth", follows ? "" : "off"),
+            glyph: Theme.glyph.warmth,
+            hue: "machine",
+            side: follows ? "on" : "off",
+            said: stands,
+            note: stands,
+            stays: true,
+            run: () => provider.followTheRoom(!follows)
+        });
+    }
+
+    // Tells the backlight daemon whether the screen follows the room.
+    function followTheRoom(follows) {
+        Niri.spawn(["busctl", "--user", "set-property", "io.jitsusama.Backlight",
+            "/io/jitsusama/Backlight", "io.jitsusama.Backlight", "FollowsTheRoom", "b",
+            follows ? "true" : "false"]);
     }
 
     // The room's light, as the first ambient light sensor the kernel lists
@@ -480,8 +541,8 @@ Provider {
     // rate": the focused one's, or each one's when several are on.
     readonly property var partsAsked: {
         const out = {};
-        for (const id of ["brightness", "room", "scale", "refresh", "resolution", "rotation",
-            "depth", "colours", "hdr"])
+        for (const id of ["brightness", "warmth", "room", "scale", "refresh", "resolution",
+            "rotation", "depth", "colours", "hdr"])
             for (const question of Words.answers(`displays:${id}`))
                 out[question] = id;
         return out;
@@ -514,7 +575,8 @@ Provider {
             // asked again each second.
             asking: light && !roomTried && sensor() !== "",
             live: light ? provider : null,
-            headline: part.side,
+            // A switch says how it stands in full, as its note does.
+            headline: part.said ?? part.side,
             glyph: Theme.glyph.display,
             note: named(focused),
             rows: others.length === 0 ? (part.verbs ? part.verbs() : [])

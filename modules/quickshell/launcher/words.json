@@ -3115,6 +3115,20 @@
       "verb": "set"
     },
     {
+      "id": "displays:warmth",
+      "in": "displays",
+      "name": "Warmth",
+      "verb": "turn off",
+      "answers": [
+        "screen warmth"
+      ],
+      "states": {
+        "off": {
+          "verb": "turn on"
+        }
+      }
+    },
+    {
       "id": "displays:room",
       "in": "displays",
       "name": "Room Light",
@@ -4490,9 +4504,10 @@
       "glyph": "recent"
     },
     {
-      "id": "recent:path",
+      "id": "path:file",
       "in": "program:recent",
-      "name": "Opened Lately",
+      "name": "File",
+      "glyph": "path",
       "verb": "open"
     },
     {
@@ -4501,6 +4516,41 @@
       "name": "Site",
       "verb": "open",
       "glyph": "web"
+    },
+    {
+      "id": "path:folder",
+      "in": "program:recent",
+      "name": "Folder",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "verb:path:file:copy",
+      "in": "path:file",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:path:folder:copy",
+      "in": "path:folder",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:recent:open",
+      "in": "path:file",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "verb:recent:window",
+      "in": "path:folder",
+      "name": "New Window Here",
+      "verb": "open",
+      "glyph": "folder"
     },
     {
       "id": "verb:float",

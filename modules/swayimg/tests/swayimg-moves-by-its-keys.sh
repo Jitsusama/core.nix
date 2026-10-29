@@ -22,13 +22,13 @@ swayimg --execute='swayimg.on_redrawn(function()
 end)' a.ppm b.ppm c.ppm > said 2>&1 &
 viewer=$!
 
-# Until swayimg has drawn the picture wanted, or ten seconds pass with no
-# frame drawn. A frame drawn between the look and the wait is looked at
-# once more before giving up.
+# Until swayimg has drawn the picture wanted, or so many seconds pass with
+# no frame drawn: ten, or as many as the third word says. A frame drawn
+# between the look and the wait is looked at once more before giving up.
 until_shown() {
   touch shown
   until grep -q -x "$1" shown; do
-    if ! inotifywait -q -q -t 10 -e close_write shown && ! grep -q -x "$1" shown; then
+    if ! inotifywait -q -q -t "${3:-10}" -e close_write shown && ! grep -q -x "$1" shown; then
       echo "swayimg showed $(cat shown) where $2 should show $1"
       cat said
       exit 1
@@ -36,7 +36,10 @@ until_shown() {
   done
 }
 
-until_shown a.ppm "opening the first"
+# The first frame waits on cage and swayimg starting, which on a machine
+# busy with other builds took past ten seconds (2026-10-29), so it's given
+# a minute; a press, once both are running, keeps its ten.
+until_shown a.ppm "opening the first" 60
 # cage gives swayimg the keyboard a moment after its first frame, and a key
 # pressed before that goes nowhere, so the first is pressed until it lands.
 # swayimg can't say when it has the keyboard; a press it hears moves it

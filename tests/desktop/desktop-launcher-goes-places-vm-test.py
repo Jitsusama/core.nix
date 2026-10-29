@@ -1549,6 +1549,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     facts = {fact["label"]: fact["value"] for fact in drawer.get("facts", [])}
     assert drawer.get("title") == "Standup", drawer
     assert facts.get("Where") == "Room 4", drawer
+    assert facts.get("Repeats") == "Every weekday", drawer
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
