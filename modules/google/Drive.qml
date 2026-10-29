@@ -61,6 +61,12 @@ Singleton {
         })];
     }
 
+    // The kind a program's desktop entry opens, or "" for one that opens
+    // none.
+    function kindOf(program) {
+        return Said.kindOf(program);
+    }
+
     function open(document) {
         if (document && document.link)
             Niri.spawn(["google-opens", document.link]);

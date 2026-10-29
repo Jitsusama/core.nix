@@ -4,7 +4,6 @@
 // provider that has it), the same row in both (Drive.row).
 import qs
 import QtQuick
-import "Drive.js" as Said
 
 Provider {
     id: provider
@@ -17,7 +16,7 @@ Provider {
     // A program's Recent: its kind's documents, the one he opened last
     // first, or none for a program that opens no document.
     function recentOf(program) {
-        const kind = Said.kindOf(program);
+        const kind = Drive.kindOf(program);
         return kind === "" ? [] : things.filter(row => row.kind === kind);
     }
 }

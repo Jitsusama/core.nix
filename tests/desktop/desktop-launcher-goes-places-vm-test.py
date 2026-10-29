@@ -1935,6 +1935,34 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
 
 
 @pytest.mark.usefixtures("google")
+def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> None:
+    """Meet's acts start a new meeting or join one by its code, however it's typed."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("meet")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
+    desktop.step_in()
+    # New Meeting, its desktop entry's, then Join by Code, Meet's own.
+    desktop.launcher_until(
+        lambda shown: {"New Meeting", "Join by Code"} <= set(shown["rows"])
+        and shown["rows"].index("New Meeting") < shown["rows"].index("Join by Code")
+    )
+    # A code with neither dashes nor lower case is still Meet's.
+    desktop.type_in("join by code", selecting="Join by Code")
+    desktop.step_in("ret")
+    machine.send_chars("ABC DEFG HIJ")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://meet.google.com/abc-defg-hij' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:

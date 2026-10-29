@@ -248,6 +248,19 @@ function meetCall(appId) {
     return found ? found[1] : "";
 }
 
+// A Meet code as Joel types or pastes it, three letters, four and three,
+// with or without its dashes and spaces, or its whole link, written as
+// Meet writes it: "abc-defg-hij"; or "" for anything else, which Meet
+// wouldn't know.
+const MEET_CODE = /^([a-z]{3})-?([a-z]{4})-?([a-z]{3})$/;
+const SPACES = /\s+/g;
+
+function meetCode(typed) {
+    const plain = String(typed ?? "").trim().toLowerCase().replace(SPACES, "");
+    const found = MEET_CODE.exec(MEET_LINK.exec(plain)?.[1] ?? plain);
+    return found ? `${found[1]}-${found[2]}-${found[3]}` : "";
+}
+
 // The meeting whose call has that code, or null for one nobody asked
 // Joel to, such as a link someone pasted.
 function calledBy(meetings, code) {

@@ -4033,6 +4033,14 @@
       "glyph": "archive"
     },
     {
+      "id": "verb:meet:code",
+      "in": "applications",
+      "name": "Join by Code",
+      "verb": "join",
+      "glyph": "joinCall",
+      "ask": "which code?"
+    },
+    {
       "id": "docs:document",
       "of": "program:google-docs",
       "name": "Document",

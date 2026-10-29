@@ -402,6 +402,12 @@ Singleton {
         });
     }
 
+    // A Meet code as Joel types or pastes it, written as Meet writes it, or
+    // "" for anything Meet wouldn't know.
+    function meetCode(typed) {
+        return Said.meetCode(typed);
+    }
+
     function join(meeting) {
         if (!meeting || !meeting.link)
             return;

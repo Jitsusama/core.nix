@@ -498,7 +498,7 @@ Provider {
         const source = (settings.recents ?? []).find(each => each.app === entry.id);
         const listed = () => (source ? provider.recents.of(entry.id)
             .map(path => provider.lately(entry, source, path)) : [])
-            .concat(given(entry.id)).slice(0, provider.recents.most);
+            .concat(givenRecent(entry.id)).slice(0, provider.recents.most);
         const count = listed().length;
         if (count === 0)
             return [];
@@ -512,10 +512,23 @@ Provider {
     }
 
     // What other providers give a program's Recent.
-    function given(program) {
+    function givenRecent(program) {
+        return hooked("recentOf", program);
+    }
+
+    // The acts other providers give a program beside its desktop entry's
+    // own (`programActs(program)`), as Meet's Join by Code is given
+    // (Meet.qml), listed after its desktop entry's actions and before its
+    // Recent.
+    function givenActs(program) {
+        return hooked("programActs", program);
+    }
+
+    // What every other provider with the hook `hook` gives `program`.
+    function hooked(hook, program) {
         return (provider.launcher?.sources ?? [])
-            .filter(other => other !== provider && typeof other.recentOf === "function")
-            .reduce((rows, other) => rows.concat(other.recentOf(program)), []);
+            .filter(other => other !== provider && typeof other[hook] === "function")
+            .reduce((rows, other) => rows.concat(other[hook](program)), []);
     }
 
     // One path a program had open lately, as Recent's row. Not named
@@ -570,7 +583,7 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), recent(entry), keysOf(entry),
+        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],

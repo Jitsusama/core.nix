@@ -104,6 +104,13 @@ in
           "https://docs.google.com/presentation/";
       google-drive = program "Drive" "Files in the Google account" "https://drive.google.com/";
       google-meet = program "Meet" "Video calls in the Google account" "https://meet.google.com/";
+    }
+    // {
+      # A new meeting, opened in Meet's window, where its link is copied.
+      google-meet.actions.new = {
+        name = "New Meeting";
+        exec = "${lib.getExe opens} https://meet.google.com/new";
+      };
     };
 
     xdg.configFile = {
@@ -172,6 +179,11 @@ in
     jitsusama.quickshell.launcher.providers.documents = {
       order = 49;
       source = ./Documents.qml;
+    };
+    # Meet's own acts beside its New Meeting: Join by Code.
+    jitsusama.quickshell.launcher.providers.meet = {
+      order = 50;
+      source = ./Meet.qml;
     };
     # Each wears a mark of its own in Programs rather than the program
     # mark every window without a logo shares: Calendar the meeting's,
