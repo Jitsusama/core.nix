@@ -472,7 +472,7 @@ fn what_a_killed_git_left_staged_is_offered_once_no_git_works_there() {
         readable: true,
         ..Default::default()
     };
-    assert!(offers(&config, &[fetch], &|_| false).is_empty());
+    assert_eq!(offers(&config, &[fetch], &|_| false), []);
 }
 
 #[test]
