@@ -33,6 +33,26 @@
         && !(mac.systemd.user.services ? pi-measure)
       );
 
+  # The launcher's list of what the last boot's end took away is written as
+  # the account's session starts, with the store's node, only where the
+  # harness is installed; a Mac, with no systemd, gets none.
+  pi-writes-what-the-last-boot-left =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      service = home.systemd.user.services.pi-restore-file;
+      first = value: lib.head (lib.toList value);
+    in
+    holds "pi-writes-what-the-last-boot-left"
+      "pi's list of the sessions the last boot's end took away isn't written as the session starts, runs outside background.slice or a node off the PATH, fails where the harness isn't installed, or reaches a Mac."
+      (
+        lib.elem "default.target" service.Install.WantedBy
+        && service.Service.Slice == "background.slice"
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} " (first service.Service.ExecStart)
+        && lib.hasSuffix "/scripts/restore-file.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.services ? pi-restore-file)
+      );
+
   # pi's theme is the machine's: its text, its code and its thinking levels
   # are the theme's colours, and every colour it names is one pi reads.
   pi-wears-the-theme =

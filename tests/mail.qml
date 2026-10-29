@@ -113,6 +113,12 @@ QtObject {
             ],
             body: "Friday?\n\nAda"
         });
+        check("the details of mail copied to someone, after who it went to",
+            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject")
+                .facts.map(fact => fact.label), ["From", "To", "Cc", "Date"]);
+        check("who it was copied to",
+            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject")
+                .facts[2], { label: "Cc", value: "Grace Hopper" });
         const menu = { name: "menu.pdf", kind: "application/pdf", size: 48213, runs: false };
         const patio = { name: "patio.jpg", kind: "image/jpeg", size: 812, runs: false };
         check("the details of mail carrying files",

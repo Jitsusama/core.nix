@@ -15,6 +15,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Numbers.js" as Numbers
+import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
@@ -54,6 +55,7 @@ Provider {
             ? SpendWatch.sessions[presence.session] ?? "" : "";
         return member({
             key: `agent:${session.address}`,
+            kind: SessionRow.KIND,
             // The session is its window, which the windows and its quest
             // also find, and it says the most of the three, so it's the
             // one row left of them (Launcher.qml's compose).
@@ -72,8 +74,56 @@ Provider {
                 : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
             run: () => Sessions.goTo(session),
-            verbs: () => provider.verbs(session, quest, spent)
+            verbs: () => provider.verbs(session, quest, spent),
+            drawer: () => provider.drawerOf(session, quest, spent)
         });
+    }
+
+    // What a session's drawer says (SessionRow.js), read as it's shown.
+    function drawerOf(session, quest, spent) {
+        const presence = session.presence ?? {};
+        return SessionRow.drawer(session.title, presence, {
+            spent: spent,
+            started: presence.owner?.startedAt ? started(presence.owner.startedAt) : "",
+            address: session.address,
+            named: id => Words.name(`agents:${id}`)
+        });
+    }
+
+    // What the foot says once words have gone to a session.
+    property string told: ""
+
+    // A session's own acts, in the one order every session keeps
+    // (SessionRow.js), each steering it through its inbox but Switch; an
+    // orchestrator's row offers the same ones (Orchestrators.qml).
+    function sessionActs(session) {
+        const act = (id, fields) => thing(Object.assign({
+            key: `verb:agent:${id}`,
+            verb: Words.verb(`verb:agent:${id}`),
+            name: Words.name(`verb:agent:${id}`),
+            glyph: Words.glyph(`verb:agent:${id}`),
+            hue: "action"
+        }, fields));
+        const steered = what => () => Sessions.steer(session.address, { act: what });
+        const made = {
+            switch: () => act("switch", { later: true, run: () => Sessions.goTo(session) }),
+            talk: () => act("talk", {
+                ask: Words.of("verb:agent:talk").ask ?? "",
+                chip: session.title,
+                state: () => provider.told,
+                given: words => {
+                    if (Sessions.talk(session.address, words))
+                        provider.told = (Words.of("orchestrators").said ?? {}).sent
+                            ?.replace("{name}", session.title) ?? "";
+                }
+            }),
+            pause: () => act("pause", { run: steered("pause") }),
+            resume: () => act("resume", { run: steered("resume") }),
+            stop: () => act("stop", { run: steered("stop") })
+        };
+        const windowed = !!(session.window || session.kitty);
+        return SessionRow.acts(SessionRow.stands(session.presence), windowed)
+            .map(id => made[id]());
     }
 
     // When a session started, as a clock says it, with its day when that
@@ -122,15 +172,10 @@ Provider {
             (presence.groups ?? []).length > 0
                 ? fact("hears", named("hears"), presence.groups.join(", ")) : null
         ]).filter(row => row !== null);
-        return [thing({
-            key: "verb:agent:switch",
-            verb: Words.verb("verb:agent:switch"),
-            name: Words.name("verb:agent:switch"),
-            glyph: Words.glyph("verb:agent:switch"),
-            hue: "action",
-            later: true,
-            run: () => Sessions.goTo(session)
-        })].concat(facts);
+        // Its acts, then what's known of it, then what Joel said to it and
+        // what came of each, newest first.
+        const talks = source("orchestrators")?.talksOf(session.address) ?? [];
+        return sessionActs(session).concat(facts, talks);
     }
 
     function search(typed) {

@@ -83,11 +83,13 @@ in
       file = joelKey;
       label = "signing";
       pin = true;
+      github = "signing";
     }
     {
       file = agentKey;
       label = "agents";
       pin = false;
+      github = "signing";
     }
   ];
 

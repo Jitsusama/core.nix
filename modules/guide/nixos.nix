@@ -24,6 +24,12 @@ let
         comment = lib.concatStringsSep " " (
           [ "${account}@${config.networking.hostName}" ] ++ lib.optional (key.label != "") key.label
         );
+        # Titled on GitHub by the machine and what the key is for, the
+        # login key as the TPM's.
+        github = lib.mapNullable (kind: {
+          inherit kind;
+          title = "${config.networking.hostName} ${if key.label != "" then key.label else "TPM"}";
+        }) (key.github or null);
       }) (home.jitsusama.tpmKeys or [ ])
     ) (config.home-manager.users or { })
   );
@@ -88,6 +94,27 @@ in
           pin = lib.mkOption {
             type = lib.types.bool;
             description = "Whether it asks for a PIN before it's used.";
+          };
+          github = lib.mkOption {
+            type = lib.types.nullOr (
+              lib.types.submodule {
+                options = {
+                  kind = lib.mkOption {
+                    type = lib.types.enum [
+                      "authentication"
+                      "signing"
+                    ];
+                    description = "What GitHub takes it as: a key that signs in, or one that signs commits.";
+                  };
+                  title = lib.mkOption {
+                    type = lib.types.str;
+                    description = "What GitHub shows it as.";
+                  };
+                };
+              }
+            );
+            default = null;
+            description = "How `guide github` adds it to GitHub, or null to leave it off.";
           };
         };
       }

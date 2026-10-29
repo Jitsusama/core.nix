@@ -135,6 +135,7 @@ let
     "launcher/Rank.js"
     "launcher/Standing.js"
     "launcher/Steady.js"
+    "launcher/SessionRow.js"
     "launcher/Trials.js"
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
