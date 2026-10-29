@@ -2495,6 +2495,44 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     )
 
 
+def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: Desktop) -> None:
+    """Where an agent's long title is cut holds still as what it says at its right shortens."""
+    machine = desktop.machine
+    desktop.pi_session()
+    long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
+    desktop.pi_window("TESTQC", long)
+    question = {"kind": "question", "since": "2000-01-01T00:00:00Z", "said": "Which?"}
+    desktop.presence_says({"addresses": ["TESTQC"], "busy": False, "wants": question}, "TESTQC")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("agents")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+    machine.send_key("ret")
+
+    def its_row(says: str) -> Json | None:
+        """Give the long session's row as it's drawn, once its right says this."""
+        laid = laid_out(desktop)
+        row = next((row for row in laid["rows"] if "TESTQC" in " ".join(row["reads"])), None)
+        return row if row and says in " ".join(row["reads"]) else None
+
+    def name_of(row: Json) -> Json:
+        return max(row["words"], key=lambda word: len(word["text"]))
+
+    retry(lambda _: its_row("asks you") is not None, timeout=dt.timedelta(seconds=20))
+    before = name_of(cast("Json", its_row("asks you")))
+    assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
+    # It goes back to work: "asks you" becomes the shorter "working", and
+    # the title is cut where it was rather than reaching one letter on.
+    desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
+    retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
+    after = name_of(cast("Json", its_row("working")))
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
+    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
+    assert (after["x"], after["width"]) == (before["x"], before["width"]), (before, after)
+
+
 # A window closed while Super+Tab shows it stays in its place, gone, until
 # a key: rows closing up under the cursor was one of the ways the launcher
 # moved with nothing pressed.
