@@ -16,7 +16,8 @@
 // keeps what it had open lately holds Recent, each path by its name beside
 // its folder, opened by its start command while none of its windows is
 // open and through the process behind its last window while one is, and
-// read again as its file changes, nine at most. A program's files on the
+// read again as its file changes, nine at most, a program held then drawn
+// again. A program's files on the
 // list programs share are its Recent too, found by its desktop entry's id
 // or name, and opened by its own command. Typing on
 // looks only through what the last key found, and finds what looking
@@ -133,6 +134,17 @@ ShellRoot {
             Qt.callLater(root.cases);
     }
 
+    // How often the launcher heard the programs changed, as it would redraw.
+    property int redrawn: 0
+
+    Connections {
+        target: applications
+
+        function onChanged() {
+            root.redrawn += 1;
+        }
+    }
+
     // Once its file changes, Recent says what's in it now, nine at most.
     function changed() {
         const now = applications.recents.of("quiet");
@@ -143,7 +155,16 @@ ShellRoot {
             same("Recent follows its file, nine at most", `${recent.count} ${names(recent.targets())}`,
                 "9 folder 1, folder 2, folder 3, folder 4, folder 5, folder 6, folder 7, folder 8, folder 9");
             same("each in the folder it's in", recent.targets()[0].side, "~");
-            Qt.callLater(() => Qt.exit(0));
+            // Read once every handler of the change has run.
+            Qt.callLater(() => {
+                try {
+                    expect("a program held as its list changes is drawn again",
+                        root.redrawn > 0, root.redrawn);
+                    Qt.exit(0);
+                } catch (error) {
+                    fail(error.message);
+                }
+            });
         } catch (error) {
             fail(error.message);
         }
@@ -339,6 +360,10 @@ ShellRoot {
                 found(typed);
             }
             root.waiting = "the recents to change";
+            // Held inside a program, as Joel would be, while its list changes.
+            launcher.open = true;
+            launcher.held = ["quiet"];
+            root.redrawn = 0;
             writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
                 .join("\n") + "\n");
         } catch (error) {

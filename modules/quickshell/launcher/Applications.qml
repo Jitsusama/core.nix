@@ -83,7 +83,9 @@ Provider {
             ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
         .join("\u241e")
 
-    onPlayingNowChanged: {
+    onPlayingNowChanged: redrawHeld()
+
+    function redrawHeld() {
         if (launcher?.open && launcher.held.length > 0)
             changed();
     }
@@ -483,6 +485,20 @@ Provider {
     // What each program had open lately, from the files they write.
     readonly property Recents recents: Recents {
         sources: provider.settings.recents ?? []
+    }
+
+    // A list read after a program was stepped into, or changing while it's
+    // shown, draws its Recent again, as Media does with what's playing.
+    Connections {
+        target: provider.recents
+
+        function onLatelyChanged() {
+            provider.redrawHeld();
+        }
+
+        function onSharedChanged() {
+            provider.redrawHeld();
+        }
     }
 
     // Recent: what it had open lately (Recents.qml), in the order it keeps
