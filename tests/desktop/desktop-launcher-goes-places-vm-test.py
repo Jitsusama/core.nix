@@ -1924,16 +1924,12 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     desktop.down_to("Recent")
     desktop.step_in()
     # The meeting and the mail with her, each its own component's row.
-    desktop.launcher_until(
-        lambda shown: {"Standup", "Lunch on Friday"} <= set(shown["rows"])
-    )
+    desktop.launcher_until(lambda shown: {"Standup", "Lunch on Friday"} <= set(shown["rows"]))
     machine.send_key("left")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
     machine.send_key("up")
     machine.send_key("up")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")
     machine.send_key("ret")
     writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
     machine.wait_until_succeeds(
