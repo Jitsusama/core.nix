@@ -78,7 +78,9 @@ ShellRoot {
         property var hiddenPrograms: ["pair"]
 
         function programActs(program) {
-            return program !== "pair" ? [] : [
+            return program === "tester" ? [
+                { key: "tester:link", name: "Copy a New Log's Link", verb: "copy" }
+            ] : program !== "pair" ? [] : [
                 { key: "pair:link", name: "Copy the Room's Link", verb: "copy" },
                 { key: "pair:room", name: "Open the Room", verb: "open" }
             ];
@@ -306,9 +308,10 @@ ShellRoot {
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();
-            same("in the program's order, each part where it applies", names(tester),
+            same("in the program's order, each part where it applies, what's given it to copy last",
+                names(tester),
                 "Go To, New Window, New Window Below, Private window, Open the logbook, "
-                + "Recent, Draft, Notices, Quit, Media, Sound");
+                + "Recent, Draft, Notices, Quit, Media, Sound, Copy a New Log's Link");
             const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
             const files = shared.targets();
             same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",

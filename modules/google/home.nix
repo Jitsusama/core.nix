@@ -188,7 +188,8 @@ in
       order = 49;
       source = ./Documents.qml;
     };
-    # Meet's own acts beside its New Meeting: Join by Code.
+    # Meet's own acts beside its New Meeting: Join by Code, and Copy a New
+    # Meeting's Link once Joel's sign-in grants Meet's scope.
     jitsusama.quickshell.launcher.providers.meet = {
       order = 50;
       source = ./Meet.qml;

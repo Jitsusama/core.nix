@@ -93,7 +93,8 @@ mod tests {
         assert_eq!(
             line,
             "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
-             \"documents\":[],\"heard\":null,\"fetched\":null,\"meet\":{\"granted\":false,\"made\":null}}\n"
+             \"documents\":[],\"heard\":null,\"fetched\":null,\
+             \"meet\":{\"granted\":false,\"made\":null}}\n"
         );
     }
 }
