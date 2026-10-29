@@ -71,8 +71,11 @@ pub struct Holder {
     /// idle long enough for the disk's band. A keep leaves this as the
     /// guard judged it, so letting go of the keep needs no new judging.
     pub clearable: bool,
-    /// How much of it the guard would clear.
+    /// How much of it a clear asked for now would take.
     pub clears: u64,
+    /// Whether a clear of it, or of part of it, is waiting or under way.
+    #[serde(default)]
+    pub clearing: bool,
     /// Why the guard may clear none of it, when it may not.
     pub why: Option<String>,
     /// Joel's keep on it, when he keeps it or a folder holding it.
@@ -206,9 +209,18 @@ pub fn measure(places: Vec<Place>) -> Vec<(Place, u64)> {
 /// The biggest holders, from what was measured, what the last survey
 /// offered (each candidate's path and size) and the trees it kept for
 /// their use.
+/// One thing the last survey offered: where, how big, and whether a clear
+/// asked for now would take it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Offered {
+    pub path: PathBuf,
+    pub size: u64,
+    pub now: bool,
+}
+
 pub fn holders(
     measured: &[(Place, u64)],
-    offered: &[(PathBuf, u64)],
+    offered: &[Offered],
     kept: &[(PathBuf, Use)],
     home: Option<&Path>,
 ) -> Vec<Holder> {
@@ -216,12 +228,17 @@ pub fn holders(
         .iter()
         .filter(|(_, bytes)| *bytes > 0)
         .map(|(place, bytes)| {
-            let clears: u64 = offered
+            let inside: Vec<&Offered> = offered
                 .iter()
-                .filter(|(path, _)| path.starts_with(&place.path))
-                .map(|(_, size)| size)
+                .filter(|offer| offer.path.starts_with(&place.path))
+                .collect();
+            let clears: u64 = inside
+                .iter()
+                .filter(|offer| offer.now)
+                .map(|offer| offer.size)
                 .sum();
-            let why = (clears == 0).then(|| why(place, kept));
+            let offered: u64 = inside.iter().map(|offer| offer.size).sum();
+            let why = (offered == 0).then(|| why(place, kept));
             let mut holder = Holder {
                 path: place.path.clone(),
                 bytes: *bytes,
@@ -232,6 +249,7 @@ pub fn holders(
                 },
                 clearable: why.is_none(),
                 clears: clears.min(*bytes),
+                clearing: false,
                 why,
                 kept: None,
                 says: String::new(),
@@ -245,12 +263,16 @@ pub fn holders(
     holders
 }
 
-/// Marks each holder with the keep that covers it, or none, and says it
-/// again. Marking is the same however often it's done, so each writer of
-/// the status file marks what it writes with the keeps as they are then.
-pub fn mark(holders: &mut [Holder], keeps: &Keeps, home: Option<&Path>) {
+/// Marks each holder with the keep that covers it, or none, and with
+/// whether a clear of it, or of part of it, is asked, and says it again.
+/// Marking is the same however often it's done, so each writer of the
+/// status file marks what it writes with the keeps and asks as they are.
+pub fn mark(holders: &mut [Holder], keeps: &Keeps, clearing: &[PathBuf], home: Option<&Path>) {
     for holder in holders {
         holder.kept = covering(keeps, &holder.path).cloned();
+        holder.clearing = clearing
+            .iter()
+            .any(|asked| asked.starts_with(&holder.path) || holder.path.starts_with(asked));
         holder.says = says(holder, home);
     }
 }
@@ -263,9 +285,12 @@ fn says(holder: &Holder, home: Option<&Path>) -> String {
     match (&holder.kept, &holder.why) {
         (Some(keep), _) => format!("{name} holds {bytes}; you keep it: {}.", keep.reason),
         (None, Some(why)) => format!("{name} holds {bytes}; {why}."),
+        (None, None) if holder.clears == 0 => format!(
+            "{name} holds {bytes}; the guard clears some of it once it has sat idle long \
+             enough."
+        ),
         (None, None) => format!(
-            "{name} holds {bytes}, of which {} is builds or caches the guard clears once \
-             they sit idle long enough.",
+            "{name} holds {bytes}, of which {} can be cleared now.",
             shown(holder.clears)
         ),
     }

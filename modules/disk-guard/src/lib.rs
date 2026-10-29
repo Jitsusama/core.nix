@@ -5,6 +5,7 @@ pub mod age;
 pub mod anchor;
 pub mod band;
 pub mod caches;
+pub mod clears;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod cli;
 pub mod clock;

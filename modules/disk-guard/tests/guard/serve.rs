@@ -432,6 +432,41 @@ fn this_machine_can_be_sensed() {
 }
 
 #[test]
+fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    // Trashed just now, as a date past now reads, so a healthy disk's
+    // upkeep would keep both a month.
+    for name in ["asked.txt", "other.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2099-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let asked = fs::canonicalize(root.join("files/asked.txt")).unwrap();
+    disk_guard::clears::ask(root, &asked, 1.0).unwrap();
+    assert_eq!(
+        disk_guard::clears::clearing(root),
+        std::slice::from_ref(&asked)
+    );
+    let mut guard = guard_at(root, "0%");
+    stepped(&mut guard, 2, &mut Fake::default());
+    assert!(!asked.exists(), "what was asked for goes");
+    assert!(root.join("files/other.txt").exists(), "nothing else does");
+    assert_eq!(
+        disk_guard::clears::clearing(root),
+        Vec::<std::path::PathBuf>::new(),
+        "the ask ends with its pass"
+    );
+    let journal = fs::read_to_string(root.join("journal.jsonl")).unwrap();
+    assert!(
+        journal.contains("asked.txt") && journal.contains("reclaimed"),
+        "the journal says what went: {journal}"
+    );
+}
+
+#[test]
 fn what_is_kept_is_never_cleared_even_on_a_critically_full_disk() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();

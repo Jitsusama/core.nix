@@ -55,6 +55,10 @@ pub enum Command {
     Unkeep {
         path: PathBuf,
     },
+    /// Clear what the guard would take of a folder now, without waiting.
+    Clear {
+        path: PathBuf,
+    },
 }
 
 /// Where the commands find things, worked out once from the environment.
@@ -88,6 +92,7 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE]
        disk-guard keep FOLDER REASON...
        disk-guard unkeep FOLDER
+       disk-guard clear FOLDER
        disk-guard journal [--since SPAN] [--json]
        disk-guard check-config FILE
        disk-guard explain PATH [--config FILE]
@@ -202,6 +207,14 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
                 Command::Unkeep { path }
             }
             _ => return Err(format!("unkeep takes one path\n{USAGE}")),
+        },
+        Some("clear") => match options.positional.as_slice() {
+            [path] => {
+                let path = PathBuf::from(path);
+                options.positional.clear();
+                Command::Clear { path }
+            }
+            _ => return Err(format!("clear takes one folder\n{USAGE}")),
         },
         Some("explain") => {
             let config = options.path("--config");
@@ -346,6 +359,7 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
         Command::Explain { path, config } => explain(env, &path, config.as_deref(), out),
         Command::Keep { path, reason } => keep(env, &path, &reason, out),
         Command::Unkeep { path } => unkeep(env, &path, out),
+        Command::Clear { path } => clear(env, &path, out),
     };
     match done {
         Ok(code) => code,
@@ -572,9 +586,42 @@ fn unkeep(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
     Ok(FINE)
 }
 
-/// Marks the status file's holders with the keeps as they are now. The
-/// daemon marks each status it writes the same way, so whichever writes
-/// last, the file says what's kept.
+/// Asks the account's guard to clear what it would take of a folder now,
+/// and says so in the status file before it ends. A kept folder is
+/// refused here, though the guard would take nothing kept anyway, since
+/// asking to clear what Joel keeps is a slip worth saying.
+fn clear(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
+    let path = fs::canonicalize(path)
+        .map_err(|_| (REFUSED, format!("{} isn't there to clear", path.display())))?;
+    let keeps = crate::keeps::load(&env.state)
+        .map_err(|error| (REFUSED, format!("reading the keeps: {error}")))?;
+    if let Some(keep) = crate::keeps::covering(&keeps, &path) {
+        return Err((
+            REFUSED,
+            format!("{} stays: you keep it: {}", path.display(), keep.reason),
+        ));
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    crate::clears::ask(&env.state, &path, now).map_err(|error| {
+        (
+            REFUSED,
+            format!("asking to clear {}: {error}", path.display()),
+        )
+    })?;
+    marked(env)?;
+    let _ = writeln!(
+        out,
+        "Clearing {}; the guard starts on its next step.",
+        path.display()
+    );
+    Ok(FINE)
+}
+
+/// Marks the status file's holders with the keeps and clears as they are
+/// now. The daemon marks each status it writes the same way, so whichever
+/// writes last, the file says what's kept and what's clearing.
 fn marked(env: &Env) -> Result<(), (i32, String)> {
     let refused = |error: io::Error| (REFUSED, format!("marking the status: {error}"));
     let Some(mut status) = crate::state::load::<Value>(&env.status).map_err(refused)? else {
@@ -587,7 +634,8 @@ fn marked(env: &Env) -> Result<(), (i32, String)> {
     };
     let keeps = crate::keeps::load(&env.state).map_err(refused)?;
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    crate::holders::mark(&mut holders, &keeps, home.as_deref());
+    let clearing = crate::clears::clearing(&env.state);
+    crate::holders::mark(&mut holders, &keeps, &clearing, home.as_deref());
     status["holders"] =
         serde_json::to_value(holders).map_err(|error| refused(io::Error::other(error)))?;
     crate::state::save(&env.status, &status).map_err(refused)
