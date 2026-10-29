@@ -36,13 +36,19 @@ Provider {
     // Programs › Meet lists the copy only while it's granted.
     onGrantedChanged: changed()
 
+    // Once made, it's copied after made's change is done: forgetting since,
+    // or closing the launcher (which forgets it too), inside that change
+    // would work made out again within its own change, a binding loop.
     onMadeChanged: {
-        if (made.state !== "made")
-            return;
+        if (made.state === "made")
+            Qt.callLater(provider.copy, made.link);
+    }
+
+    function copy(link) {
         since = null;
         if (!provider.launcher?.open)
             return;
-        Quickshell.clipboardText = made.link;
+        Quickshell.clipboardText = link;
         provider.launcher.leaveSaying("copied");
         provider.launcher.open = false;
     }
