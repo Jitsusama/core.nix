@@ -787,6 +787,14 @@ onLinux {
         function goTo(session) { Niri.act({ FocusWindow: { id: session.window.id } }); }
         property var started: null
         function start(quest, folder) { started = [quest, folder]; }
+        readonly property string machine: "alpha"
+        property var places: []
+        property string fits: ""
+        readonly property bool choosesMachine: places.length > 1
+        property int lookedAround: 0
+        function lookAround() { lookedAround += 1; }
+        property var startedOn: null
+        function startOn(on, quest, folder) { startedOn = [on, quest, folder]; }
       '';
       quests = pkgs.callPackage ./pi-helper.nix {
         name = "pi-quests";

@@ -4784,6 +4784,13 @@
       "glyph": "agent"
     },
     {
+      "id": "verb:quest:start-anywhere",
+      "in": "verb:quest:open",
+      "name": "Wherever It Fits",
+      "verb": "start",
+      "glyph": "agent"
+    },
+    {
       "id": "verb:run:switch",
       "in": "runs",
       "name": "Go To",
