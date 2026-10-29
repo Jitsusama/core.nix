@@ -1678,12 +1678,38 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
 
 
 @pytest.mark.usefixtures("google")
-def test_the_mail_that_wants_joel_is_counted_in_now_and_return_shows_it(
+def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_does(
     desktop: Desktop,
 ) -> None:
-    """The mail that wants Joel is counted in Now, and Return shows it in the Mail program."""
+    """The mail that wants Joel is counted in Now, and Return lists it as Mail does.
+
+    Each piece is the same row as in Programs \u203a Mail, with its details beside it, and Show
+    the Mail after them goes there.
+    """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
+    lunch = {
+        "title": "Lunch on Friday",
+        "facts": [
+            {"label": "From", "value": "Ada Lovelace <ada@example.com>"},
+            {"label": "To", "value": "Joel Gerber"},
+        ],
+        "body": "Shall we try the place on the corner?\n\nAda",
+    }
+
+    def lunch_in_full(shown: dict[str, Any]) -> bool:
+        """Whether Lunch on Friday is selected, its row and details as Mail gives them."""
+        selected = shown["selected"] or {}
+        drawer = selected.get("drawer") or {}
+        return (
+            selected.get("is") == "mail:lunch"
+            and re.fullmatch(r"Ada Lovelace \u00b7 \d\d:\d\d", selected["side"]) is not None
+            and drawer.get("title") == lunch["title"]
+            and drawer.get("facts", [])[:2] == lunch["facts"]
+            and drawer.get("facts", [{}] * 3)[2].get("label") == "Date"
+            and drawer.get("body") == lunch["body"]
+        )
+
     now_rows(desktop)
     desktop.launcher_until(lambda shown: "Mail" in shown["rows"])
     desktop.down_to("Mail")
@@ -1696,11 +1722,58 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_shows_it(
     desktop.launcher_until(
         lambda shown: (
             shown["held"][-1:] == ["Mail"]
+            and shown["rows"] == ["Lunch on Friday", "Quarterly Numbers", "Show the Mail"]
+        )
+    )
+    desktop.launcher_until(lunch_in_full)
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Mail's own place lists the very same row.
+    desktop.answer("lunch on friday")
+    desktop.launcher_until(lunch_in_full)
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"] == ["Open in Mail", "Reply", "Archive", "Mark As Read"]
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Show the Mail, after the mail, goes to Mail in Programs.
+    now_rows(desktop)
+    desktop.down_to("Mail")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: "Show the Mail" in shown["rows"])
+    desktop.down_to("Show the Mail")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"][-1:] == ["Mail"]
             and "Lunch on Friday" in shown["rows"]
-            and "Quarterly Numbers" in shown["rows"]
+            and "Show the Mail" not in shown["rows"]
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> None:
+    """Reply writes a new message in Mail to who sent the mail, its subject marked a reply."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("lunch on friday")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:lunch")
+    desktop.step_in()
+    desktop.down_to("Reply")
+    machine.send_key("ret")
+    link = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+        "&to=ada%40example.com&su=Re%3A%20Lunch%20on%20Friday"
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -1797,7 +1870,10 @@ def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lunch on Friday"
-            and re.fullmatch(r"\d\d:\d\d|yesterday", str(shown["selected"].get("side", "")))
+            and re.fullmatch(
+                r"Ada Lovelace \u00b7 (\d\d:\d\d|yesterday)",
+                str(shown["selected"].get("side", "")),
+            )
         )
     )
     # Return opens it in Mail, in a window of its own, and the launcher
@@ -1859,8 +1935,8 @@ def tidy_from_its_acts(desktop: Desktop, subject: str, act: str, became: str) ->
     desktop.answer(subject.lower())
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == subject)
     desktop.step_in()
-    # Its acts: opening it, then marking it read and archiving it.
-    for _ in range(3):
+    # Its acts: opening it, replying, archiving it and marking it read.
+    for _ in range(4):
         if (desktop.showing()["selected"] or {}).get("name") == act:
             break
         before = (desktop.showing()["selected"] or {}).get("name")

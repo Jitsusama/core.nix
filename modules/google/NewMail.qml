@@ -1,9 +1,9 @@
 // The mail that wants Joel (Mail.qml), as one of what wants him in Now and
 // the margin: how many, and the newest's sender. It's never a notice, since
 // Gmail's own says each one as it comes. Return lists them in Now, each
-// Mail.row's, the row every surface shows, with its details beside it;
-// the right arrow also shows them in Programs › Mail, or opens the newest
-// in Mail. It goes once none want him.
+// Mail.row's, the row every surface shows, with its details beside it,
+// and after them Show the Mail, which goes to Programs › Mail. It goes
+// once none want him.
 import qs
 import QtQuick
 
@@ -31,10 +31,5 @@ Piece {
                 spot: ""
             });
         }
-    }, {
-        glyph: Words.glyph("verb:mail:open"),
-        name: "Open the Newest in Mail",
-        verb: "open",
-        run: () => Mail.open(newest)
     }]
 }

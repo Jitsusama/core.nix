@@ -84,6 +84,44 @@ QtObject {
         check("archived, once it's gone", Mail.tidied("archive"), "archived");
         check("nothing for what isn't asked", Mail.tidied("delete"), "");
 
+        // What a piece of mail's row and its details say.
+        const lunch = {
+            id: "m_2", from: "Ada Lovelace", address: "ada@example.com",
+            to: "Joel Gerber, Grace Hopper", subject: "Lunch & a walk?", at: at(9, 26, 14, 2),
+            page: "https://mail.google.com/mail/u/0/#inbox/t_2", body: "Friday?\n\nAda"
+        };
+        check("its side, who it's from and when", Mail.beside(lunch, now),
+            "Ada Lovelace \u00b7 14:02");
+        check("its side, when alone, with no name", Mail.beside({ from: "", at: now }, now),
+            "15:20");
+        check("when it came, in full", Mail.dated(lunch.at), "Monday 26 October, 14:02");
+        check("its details", Mail.details(lunch, "No Subject"), {
+            title: "Lunch & a walk?",
+            facts: [
+                { label: "From", value: "Ada Lovelace <ada@example.com>" },
+                { label: "To", value: "Joel Gerber, Grace Hopper" },
+                { label: "Date", value: "Monday 26 October, 14:02" }
+            ],
+            body: "Friday?\n\nAda"
+        });
+        const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
+            at: lunch.at };
+        check("the details of mail saying little", Mail.details(bare, "No Subject"), {
+            title: "No Subject",
+            facts: [
+                { label: "From", value: "ada@example.com" },
+                { label: "Date", value: "Monday 26 October, 14:02" }
+            ],
+            body: ""
+        });
+        check("a reply, to who sent it", Mail.replying(lunch),
+            "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
+                + "&su=Re%3A%20Lunch%20%26%20a%20walk%3F");
+        check("a reply to a reply, marked once",
+            Mail.replying(Object.assign({}, lunch, { subject: "RE: Lunch" })),
+            "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com&su=RE%3A%20Lunch");
+        check("no reply with no address", Mail.replying({ address: "", subject: "Lunch" }), "");
+
         // Which windows are Mail's, as Chrome names them.
         const listed = [
             { id: 1, app_id: "chrome-mail.google.com__-Default" },
