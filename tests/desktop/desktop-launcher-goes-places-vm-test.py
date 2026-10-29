@@ -1856,7 +1856,11 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     # Every mail and meeting row, wherever the walk from home finds one, is
     # made by its one component, never drawn by the surface that lists it.
     said = cast("Json", json.loads(desktop.as_account("qs ipc call launcher actless")))
-    assert said["uncomposed"] == [], "\n".join(said["uncomposed"])
+    assert said["uncomposed"] == [], (
+        "A row drawn by the surface listing it, though a thing is one row"
+        " (docs/design.md, 'A row says its kind, and a thing is one row'):\n"
+        + "\n".join(said["uncomposed"])
+    )
     assert said["composed"] > 0, "the walk found no mail to ask of"
 
 
