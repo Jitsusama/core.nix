@@ -523,7 +523,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"] == ["Containers", "Nix cache"]
+            shown["rows"] == ["Containers", "Nix cache", "Copy"]
             and shown["selected"]["side"] == "12.0 GiB"
             and str(shown["selected"]["reads"]).startswith("Container storage holds")
         )
