@@ -602,8 +602,9 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
     hushed_sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED"
     machine.wait_until_succeeds(desktop.in_session(hushed_sink), timeout=timedelta(seconds=10))
     desktop.launcher_until(
-        lambda shown: shown["open"] and sound_selected("Muted")(shown)
-        and sound_reads("Muted", "yes")(shown)
+        lambda shown: (
+            shown["open"] and sound_selected("Muted")(shown) and sound_reads("Muted", "yes")(shown)
+        )
     )
     desktop.photograph("launcher-sound-muted")
     machine.send_key("ret")

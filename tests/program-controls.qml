@@ -340,7 +340,8 @@ ShellRoot {
             same("Sound holds more, saying how loud", `${sound.verb} ${sound.side}`, "more 40%");
             expect("as a bar", near(sound.graph.values[0], 0.4), sound.graph.values[0]);
             const heard = sound.targets();
-            same("Sound's acts, then its volume", names(heard), "Mute, Louder, Quieter, Volume");
+            same("Sound's acts, then its volume", names(heard), "Muted, Louder, Quieter, Volume");
+            same("Muted a switch saying no", heard[0].side, "no");
             const volume = heard[3];
             same("its volume is a figure", `${volume.side} ${volume.figure}`, "40% true");
             same("with a bar", volume.graph.shape, "bar");
