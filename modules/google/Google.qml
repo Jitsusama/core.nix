@@ -32,6 +32,9 @@ Singleton {
     property var mail: []
     // How many in the inbox are unread, or null until Gmail says.
     property var unread: null
+    // The documents Joel looked at lately, each kind's last first: each
+    // { id, title, kind, link, viewed, changed, owner }.
+    property var documents: []
     // When Google last answered, or null.
     property var heard: null
 
@@ -43,6 +46,7 @@ Singleton {
         meetings = said.meetings;
         mail = said.mail;
         unread = said.unread;
+        documents = said.documents;
         heard = said.heard;
     }
 
@@ -53,6 +57,7 @@ Singleton {
         meetings = [];
         mail = [];
         unread = null;
+        documents = [];
         heard = null;
     }
 

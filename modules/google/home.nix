@@ -81,11 +81,33 @@ in
   config = {
     home.packages = [ opens ];
 
+    # Google's programs, every one opened as jitsusama.google.window says,
+    # so they're one family wherever they run. Docs, Sheets, Slides, Drive
+    # and Meet were a machine's own entries before core made them, so a
+    # machine's entry of the same name still wins over these until it's
+    # gone.
     xdg.desktopEntries = {
       google-calendar =
         program "Calendar" "Meetings in the Google account"
           "https://calendar.google.com/";
       google-mail = program "Mail" "Mail in the Google account" "https://mail.google.com/";
+    }
+    // lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
+      google-docs = program "Docs" "Documents in the Google account" "https://docs.google.com/document/";
+      google-sheets =
+        program "Sheets" "Spreadsheets in the Google account"
+          "https://docs.google.com/spreadsheets/";
+      google-slides =
+        program "Slides" "Presentations in the Google account"
+          "https://docs.google.com/presentation/";
+      google-drive = program "Drive" "Files in the Google account" "https://drive.google.com/";
+      google-meet = program "Meet" "Video calls in the Google account" "https://meet.google.com/" // {
+        # A new meeting, opened in Meet's window, where its link is copied.
+        actions.new = {
+          name = "New Meeting";
+          exec = "${lib.getExe opens} https://meet.google.com/new";
+        };
+      };
     };
 
     xdg.configFile = {
@@ -95,6 +117,8 @@ in
       "quickshell/Calendar.js".source = ./Calendar.js;
       "quickshell/Mail.qml".source = ./Mail.qml;
       "quickshell/Mail.js".source = ./Mail.js;
+      "quickshell/Drive.qml".source = ./Drive.qml;
+      "quickshell/Drive.js".source = ./Drive.js;
     };
 
     # The account signed out, which wants Joel to sign in again, wearing
@@ -146,6 +170,17 @@ in
     jitsusama.quickshell.launcher.providers.mail = {
       order = 48;
       source = ./Messages.qml;
+    };
+    # The documents Joel looked at lately, as each program's Recent, and
+    # found by title.
+    jitsusama.quickshell.launcher.providers.documents = {
+      order = 49;
+      source = ./Documents.qml;
+    };
+    # Meet's own acts beside its New Meeting: Join by Code.
+    jitsusama.quickshell.launcher.providers.meet = {
+      order = 50;
+      source = ./Meet.qml;
     };
     # Each wears a mark of its own in Programs rather than the program
     # mark every window without a logo shares: Calendar the meeting's,

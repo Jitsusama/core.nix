@@ -1,6 +1,6 @@
 //! The account as it stands: one look reads who's signed in, gets a token,
-//! asks for the meetings and the mail that wants Joel, and says how it all
-//! stands; an answer to an invitation, a meeting cancelled or moved, and
+//! asks for the meetings and the mail that wants Joel, and every few
+//! minutes the documents he looked at lately, and says how it all stands; an answer to an invitation, a meeting cancelled or moved, and
 //! mail marked read or archived, are asked the same way, and change what's
 //! held at once.
 
@@ -12,6 +12,7 @@ use serde_json::Value;
 use crate::account::{self, Missing};
 use crate::api::{Google, Refused};
 use crate::calendar::{self, Answer};
+use crate::drive::{self, Document, Kind};
 use crate::mail::{self, Mail, Tidy};
 use crate::state::{Standing, State};
 use crate::token::Keeper;
@@ -28,7 +29,15 @@ pub struct Watch {
     /// The mail marked read since it was last looked at, so marking one
     /// unread again brings it back at once, before Gmail lists it again.
     read: Vec<Mail>,
+    /// When the documents were last heard, in milliseconds since the
+    /// epoch, or none since the account was last gone.
+    documented: Option<i64>,
 }
+
+/// How long the documents are kept before Drive is asked again: what Joel
+/// looked at lately moves when he opens one, seldom within minutes, and
+/// it's three asks each time.
+const DOCUMENTS_EVERY: i64 = 5 * 60 * 1000;
 
 impl Watch {
     pub fn new(google: Google, credentials: PathBuf, account: Option<String>) -> Watch {
@@ -40,6 +49,7 @@ impl Watch {
             state: State::default(),
             writable: Vec::new(),
             read: Vec::new(),
+            documented: None,
         }
     }
 
@@ -84,7 +94,26 @@ impl Watch {
                 eprintln!("<4>{why}");
                 self.state.mail = held;
             }
-            Err(looked) => self.fell(looked, Standing::Unreachable),
+            Err(looked) => {
+                self.fell(looked, Standing::Unreachable);
+                return &self.state;
+            }
+        }
+        let at = now.timestamp().as_millisecond();
+        if self
+            .documented
+            .is_none_or(|heard| at - heard >= DOCUMENTS_EVERY)
+        {
+            match self.asking(now, recently) {
+                Ok(found) => {
+                    self.state.documents = found;
+                    self.documented = Some(at);
+                }
+                // Drive failing alone keeps the documents held, and costs
+                // the meetings and the mail nothing.
+                Err(Looked::Refused(Refused::Unreachable(why))) => eprintln!("<4>{why}"),
+                Err(looked) => self.fell(looked, Standing::Unreachable),
+            }
         }
         &self.state
     }
@@ -220,9 +249,13 @@ impl Watch {
     /// reached.
     fn fell(&mut self, looked: Looked, unreachable: Standing) {
         match looked {
-            Looked::Missing => self.state = State::without(Standing::None),
+            Looked::Missing => {
+                self.state = State::without(Standing::None);
+                self.documented = None;
+            }
             Looked::Refused(Refused::SignedOut) => {
                 self.state = State::without(Standing::SignedOut);
+                self.documented = None;
             }
             Looked::Refused(Refused::Unreachable(why)) => {
                 eprintln!("<4>{why}");
@@ -263,6 +296,16 @@ impl Watch {
             answer => Ok(answer?),
         }
     }
+}
+
+/// The documents of every kind Joel looked at lately, each kind's last
+/// first.
+fn recently(google: &Google, token: &str) -> Result<Vec<Document>, Refused> {
+    let mut found = Vec::new();
+    for kind in Kind::ALL {
+        found.extend(drive::documents(&google.documents(token, kind)?, kind));
+    }
+    Ok(found)
 }
 
 /// The mail that wants Joel, newest first, and how many in the inbox are

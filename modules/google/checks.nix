@@ -31,9 +31,10 @@ onLinux {
   # mail that wants Joel is told newest first, each asked for once and kept
   # while Gmail fails, mail marked read or archived takes one label off and
   # wants Joel no more, mail read here and marked unread again wants him
-  # again at once, the shell asks only what's read strictly, and it hears
-  # the state on connecting and each change once. A stand-in on the machine answers for
-  # Google.
+  # again at once, the documents of each kind are told, Drive asked again
+  # only after a while and kept while it fails, the shell asks only what's
+  # read strictly, and it hears the state on connecting and each change
+  # once. A stand-in on the machine answers for Google.
   google-reads-the-calendar = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in google, its tests included.
   google-passes-clippy = passesClippy "google-passes-clippy" (pkgs.callPackage ./package.nix { });
@@ -52,6 +53,26 @@ onLinux {
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml calendar.qml
+      touch $out
+    '';
+
+  # The documents read from the program's file, which program opens each
+  # kind, what a document's row says and its details are Drive.js's, run in
+  # Qt's own engine (tests/drive.qml).
+  the-shell-reads-the-documents =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-shell-reads-the-documents" { } ''
+      cp ${../../tests/drive.qml} drive.qml
+      cp ${./Drive.js} Drive.js
+      cp ${./Mail.js} Mail.js
+      cp ${./Calendar.js} Calendar.js
+      cp ${./Google.js} Google.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml drive.qml
       touch $out
     '';
 

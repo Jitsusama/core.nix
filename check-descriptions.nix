@@ -314,8 +314,9 @@
     programs write git's settings and the declared ones still win
   '';
   google-opens-its-links = ''
-    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages open
-    in a window of their own, any other link in the browser, and what isn't a link nowhere
+    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages,
+    documents included, open in a window of their own, any other link in the browser, and what
+    isn't a link nowhere
   '';
   google-passes-clippy = ''
     clippy finds nothing in google or its tests
@@ -326,10 +327,11 @@
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
     meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, and tells it the mail that wants Joel, newest
+    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
     first, each asked for once, with who it went to and its text, never an attachment's, marking
-    it read or archiving it when asked, and marking it unread again, mail read here wanting Joel
-    again at once
+    it read or archiving it when asked, marking it unread again, mail read here wanting Joel again
+    at once, and the documents of each kind he looked at lately, his last first, asking Drive again
+    only every five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1140,6 +1142,11 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-reads-the-documents = ''
+    the shell reads the documents from the google program's file, none from a line from before
+    them, knows which Google program opens each kind, and says who owns a document and when Joel
+    last opened it beside its title, with its details for the drawer
+  '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and
@@ -1302,8 +1309,10 @@
     he's sure, and lists its Meet call in Now while it's open, says Google signed out in Now with
     Return signing in again in pi, counts the mail that wants Joel in Now with Return listing it
     as Mail does, details and all, opens mail by its subject, keeping one Mail window, replies to
-    it, flips its Read switch both ways and archives it, sets the volume, loses no letter typed
-    after its chord, and shows the shortcuts
+    it, flips its Read switch both ways and archives it, lists the documents Joel opened lately in
+    Docs' Recent and opens one, the same row its title finds, joins a Meet call by its code after
+    Meet's New Meeting, sets the volume, loses no letter typed after its chord, and shows the
+    shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
