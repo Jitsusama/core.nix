@@ -77,6 +77,57 @@ QtObject {
         check("an untitled one's, bare", Drive.details({ title: "", kind: "document" }, "Untitled"),
             { title: "Untitled", facts: [], body: "" });
 
+        // Drive's folders and downloads, as the picker and Files read them.
+        // Two folders asked together, both written before the shell read.
+        const listings = [
+            { folder: "root", asked: now + 2, files: [{ id: "f1" }], more: false, failed: null },
+            { folder: "drives", asked: now + 1, files: [], more: false, failed: null }
+        ];
+        const downloads = [
+            { file: "f1", how: "pick", asked: now + 5, path: null, failed: null },
+            { file: "f2", how: "open", asked: now + 3, path: null, failed: "runs" },
+            { file: "f1", how: "pick", asked: now + 1, path: "/run/f1/old.pdf", failed: null }
+        ];
+        const drive = { listings, downloads };
+        check("a folder listed and the downloads, read", Google.heard(JSON.stringify({
+            account: "ready", meetings: [], drive
+        })).drive, drive);
+        check("no Drive said, none held", Google.heard(JSON.stringify({
+            account: "ready", meetings: []
+        })).drive, { listings: [], downloads: [] });
+        check("each folder asked together is found, none asked before", [
+            Google.listing(drive, "drives", now),
+            Google.listing(drive, "root", now),
+            Google.listing(drive, "root", now + 3),
+            Google.listing(drive, "shared", now)
+        ], [listings[1], listings[0], null, null]);
+        check("the line listing a folder", Google.list("shared"),
+            '{"list":{"folder":"shared"}}\n');
+        check("the lines downloading, a save saying where and no other", [
+            Google.download("f1", "pick", "/home/a/x.pdf"),
+            Google.download("f1", "save", "/home/a/x.pdf"),
+            Google.download("f1", "save", "")
+        ], [
+            '{"download":{"file":"f1","how":"pick"}}\n',
+            '{"download":{"file":"f1","how":"save","to":"/home/a/x.pdf"}}\n',
+            '{"download":{"file":"f1","how":"save"}}\n'
+        ]);
+        check("a download stands by the newest asked since", [
+            Google.downloading(drive, "f1", null),
+            Google.downloading(drive, "f1", now),
+            Google.downloading(drive, "f1", now + 6),
+            Google.downloading(drive, "f2", now),
+            Google.downloading({
+                downloads: [{ file: "f1", asked: now + 5, path: "/run/f1/new.pdf", failed: null }]
+            }, "f1", now + 2)
+        ], [
+            { state: "", path: "", failed: "" },
+            { state: "fetching", path: "", failed: "" },
+            { state: "fetching", path: "", failed: "" },
+            { state: "failed", path: "", failed: "runs" },
+            { state: "done", path: "/run/f1/new.pdf", failed: "" }
+        ]);
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);

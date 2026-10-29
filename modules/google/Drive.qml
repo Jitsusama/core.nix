@@ -9,6 +9,13 @@ pragma ComponentBehavior: Bound
 // search: its title, who owns it and when he last opened it, its details
 // beside it, Return opening it through google-opens (opens.sh) in a
 // window of its own, and the right arrow listing Open and Copy the Link.
+//
+// And Drive's folders, for the launcher's picker and Files, which draw
+// them: `list` asks what one holds and `listing` gives it; `download`
+// asks for a file, kept in the session's runtime folder to open or to
+// hand the program that asked the picker, or saved where Joel picked, and
+// `downloading` says how the one asked stands. Nothing is listed or
+// fetched until asked.
 import qs
 import Quickshell
 import QtQuick
@@ -19,6 +26,37 @@ Singleton {
 
     // Each { id, title, kind, link, viewed, changed, owner }.
     readonly property var documents: Google.documents
+
+    // Drive's folders, for the picker and Files: what each folder asked
+    // lately holds, newest first, { folder, asked, files, more, failed },
+    // each file { id, name, kind, mime, size, changed, owner, link, runs },
+    // kind being folder, document, spreadsheet, presentation or file.
+    readonly property var listings: Google.drive.listings
+    // The downloads asked lately, newest first, each { file, how, asked,
+    // path, failed }.
+    readonly property var downloads: Google.drive.downloads
+
+    // Asks what a folder holds: "root", "shared", "drives" or an id.
+    function list(folder) {
+        Google.list(folder);
+    }
+
+    // What the folder asked for at `since` holds, or null until it's said.
+    function listing(folder, since) {
+        return Google.listing(folder, since);
+    }
+
+    // Asks for a file to "open", "pick" or "save" (`to` where Joel picked).
+    // Google's own kinds are opened by their link instead, never this way.
+    function download(file, how, to) {
+        Google.download(file, how, to ?? "");
+    }
+
+    // How the file asked for at `since` stands: { state, path, failed },
+    // state "fetching", "done" or "failed".
+    function downloading(file, since) {
+        return Google.downloading(file, since);
+    }
 
     function row(document, provider) {
         const words = Said.kind(document);

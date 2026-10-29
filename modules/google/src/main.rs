@@ -16,12 +16,15 @@
 //! nobody signed in, the file is looked at, and Google never asked.
 //!
 //! The shell asks it to answer an invitation, to mark mail read or
-//! archive it, to fetch a file mail carries, and to make a Meet meeting
-//! for its link, which Joel's sign-in must grant, on the same socket
-//! (ask.rs), which it does at once, telling every shell what changed. A
-//! file to open is kept in google-files beside the socket, in the
-//! session's runtime folder; one to save goes to Downloads
-//! (`$XDG_DOWNLOAD_DIR`, or `~/Downloads`) (files.rs).
+//! archive it, to fetch a file mail carries, to make a Meet meeting for
+//! its link, which Joel's sign-in must grant, and to list a Drive folder
+//! or download a file in one, on the same socket (ask.rs), which it does
+//! at once, telling every shell what changed. A file to open, or to hand
+//! a program through the picker, is kept in google-files beside the
+//! socket, in the session's runtime folder; one to save goes where Joel
+//! picked, else to Downloads (`$XDG_DOWNLOAD_DIR`, or `~/Downloads`)
+//! (files.rs). One ask is done at a time, so a large download holds the
+//! next until it's written.
 //!
 //! It says in the journal when Google can't be reached, and never a
 //! token, a meeting or anything else the account holds.
@@ -121,6 +124,11 @@ fn main() -> ExitCode {
                     Some(Ask::Make {}) => {
                         socket.say(watch.making(&now).line());
                         watch.make(&now)
+                    }
+                    Some(Ask::List { folder }) => watch.list(&folder, &now),
+                    Some(Ask::Download { file, how, to }) => {
+                        socket.say(watch.downloading(&file, how, to, &now).line());
+                        watch.download(&places, &now)
                     }
                     None => continue,
                 };

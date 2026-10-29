@@ -12,6 +12,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
+use google::drive::{DOWNLOADS_KEPT, Is, LISTINGS_KEPT, Unlisted};
 use google::files::{Failed, How, Places};
 use google::mail::Tidy;
 use google::state::Standing;
@@ -528,6 +529,200 @@ fn drive_failing_keeps_the_documents_held_and_the_rest_told() {
     assert_eq!(state.meetings.len(), 1);
     assert_eq!(state.documents, held);
     assert_eq!(held.len(), 3);
+}
+
+/// The stand-in's Drive folders: My Drive holds a folder, a PDF, a
+/// document, a shortcut to a sheet, a form and a program; one shared drive;
+/// and each file's bytes, or a document's exported copy.
+fn folders(path: &str, body: &str) -> (u16, String) {
+    const MINE: &str = r#"{"files": [
+        {"id": "pdf1", "name": "menu.pdf", "mimeType": "application/pdf", "size": "4",
+            "modifiedTime": "2026-10-26T18:00:00Z", "webViewLink": "https://x/pdf1",
+            "owners": [{"displayName": "Ada Lovelace"}]},
+        {"id": "doc1", "name": "Plan", "mimeType": "application/vnd.google-apps.document",
+            "webViewLink": "https://docs.google.com/document/d/doc1/edit"},
+        {"id": "cut1", "name": "Numbers", "mimeType": "application/vnd.google-apps.shortcut",
+            "shortcutDetails": {"targetId": "sheet1",
+                "targetMimeType": "application/vnd.google-apps.spreadsheet"}},
+        {"id": "form1", "name": "Survey", "mimeType": "application/vnd.google-apps.form"},
+        {"id": "exe1", "name": "setup.exe", "mimeType": "application/octet-stream",
+            "size": "9"},
+        {"id": "dir1", "name": "Trips", "mimeType": "application/vnd.google-apps.folder"}
+    ]}"#;
+    let file = |id: &str, name: &str, mime: &str| {
+        (
+            200,
+            format!(r#"{{"id": "{id}", "name": "{name}", "mimeType": "{mime}"}}"#),
+        )
+    };
+    match path.split_once(' ').map_or("", |(_, rest)| rest) {
+        rest if rest.starts_with("/drive/v3/files?") && rest.contains("root") => (200, MINE.into()),
+        rest if rest.starts_with("/drive/v3/files?") => (404, "{}".into()),
+        rest if rest.starts_with("/drive/v3/drives?") => (
+            200,
+            r#"{"drives": [{"id": "0Team-1", "name": "Team"}]}"#.into(),
+        ),
+        rest if rest.starts_with("/drive/v3/files/pdf1?alt=media") => (200, "menu".into()),
+        rest if rest.starts_with("/drive/v3/files/exe1?alt=media") => (200, "setup".into()),
+        rest if rest.starts_with("/drive/v3/files/doc1/export?") => (200, "docx".into()),
+        rest if rest.starts_with("/drive/v3/files/pdf1?") => {
+            file("pdf1", "menu.pdf", "application/pdf")
+        }
+        rest if rest.starts_with("/drive/v3/files/exe1?") => {
+            file("exe1", "setup.exe", "application/octet-stream")
+        }
+        rest if rest.starts_with("/drive/v3/files/doc1?") => {
+            file("doc1", "Plan", "application/vnd.google-apps.document")
+        }
+        rest if rest.starts_with("/drive/v3/files/dir1?") => {
+            file("dir1", "Trips", "application/vnd.google-apps.folder")
+        }
+        rest if rest.starts_with("/drive/v3/files/") => (404, "{}".into()),
+        _ => google(path, body),
+    }
+}
+
+#[test]
+fn a_drive_folder_is_listed_only_when_asked_folders_first_and_what_cant_be_shown_left_out() {
+    let stand_in = StandIn::new(folders);
+    let path = credentials("folders", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let listed = watch.list("root", &now()).drive.listings[0].clone();
+    assert_eq!(listed.folder, "root");
+    assert_eq!((listed.more, listed.failed), (false, None));
+    let names: Vec<(&str, Is, Option<u64>, bool)> = listed
+        .files
+        .iter()
+        .map(|entry| (entry.name.as_str(), entry.kind, entry.size, entry.runs))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("Trips", Is::Folder, None, false),
+            ("menu.pdf", Is::File, Some(4), false),
+            ("Numbers", Is::Spreadsheet, None, false),
+            ("Plan", Is::Document, None, false),
+            ("setup.exe", Is::File, Some(9), true),
+        ]
+    );
+    assert_eq!(
+        listed.files[2].id, "sheet1",
+        "a shortcut isn't what it points at"
+    );
+    assert_eq!(listed.files[1].owner.as_deref(), Some("Ada Lovelace"));
+    let searched = &stand_in.heard()[0];
+    assert!(searched.line.contains("trashed"), "{}", searched.line);
+    assert!(
+        searched.line.contains("supportsAllDrives=true"),
+        "{}",
+        searched.line
+    );
+    assert_eq!(searched.authorization, "Bearer pis");
+
+    // Two asked together are each told, the newest first, as the shell
+    // may read only once both are written.
+    let both = watch.list("drives", &now()).drive.listings.clone();
+    let folders: Vec<&str> = both.iter().map(|each| each.folder.as_str()).collect();
+    assert_eq!(folders, ["drives", "root"]);
+    let drives = &both[0];
+    assert_eq!(drives.files.len(), 1);
+    assert_eq!(
+        (drives.files[0].id.as_str(), drives.files[0].kind),
+        ("0Team-1", Is::Folder)
+    );
+    let gone = watch.list("nowhere", &now()).drive.listings[0].clone();
+    assert_eq!((gone.files.len(), gone.failed), (0, Some(Unlisted::Gone)));
+    // A folder asked again is told once, by its newest listing, and only
+    // the last few asked are kept.
+    watch.list("root", &now());
+    for folder in ["dir1", "dir2", "dir3"] {
+        watch.list(folder, &now());
+    }
+    let kept: Vec<String> = watch
+        .list("drives", &now())
+        .drive
+        .listings
+        .iter()
+        .map(|each| each.folder.clone())
+        .collect();
+    assert_eq!(kept, ["drives", "dir3", "dir2", "dir1"]);
+    assert_eq!(kept.len(), LISTINGS_KEPT);
+    // A folder no id could name is never asked about.
+    let asked = stand_in.heard().len();
+    watch.list("x' or '1'='1", &now());
+    assert_eq!(stand_in.heard().len(), asked);
+}
+
+#[test]
+fn a_drive_file_is_downloaded_to_open_pick_or_save_and_googles_own_exported() {
+    let stand_in = StandIn::new(folders);
+    let path = credentials("downloads", now().timestamp().as_millisecond() + 3_600_000);
+    let folder = path.with_file_name("files");
+    let places = Places {
+        kept: folder.join("kept"),
+        saves: folder.join("Downloads"),
+    };
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let mut download = |file: &str, how: How, to: Option<String>| {
+        let waiting = watch.downloading(file, how, to, &now()).drive.downloads[0].clone();
+        assert_eq!((waiting.path, waiting.failed), (None, None));
+        let done = watch.download(&places, &now()).drive.downloads[0].clone();
+        assert_eq!(done.file, file);
+        (done.path.map(PathBuf::from), done.failed)
+    };
+    let (opened, _) = download("pdf1", How::Open, None);
+    let opened = opened.unwrap();
+    assert_eq!(
+        opened,
+        places.kept.join("drive").join("pdf1").join("menu.pdf")
+    );
+    assert_eq!(fs::read(&opened).unwrap(), b"menu");
+    // Google's own kind comes as its office program's file.
+    let (saved, _) = download("doc1", How::Save, None);
+    assert_eq!(saved, Some(places.saves.join("Plan.docx")));
+    assert!(
+        stand_in
+            .heard()
+            .iter()
+            .any(|heard| heard.line.contains("/doc1/export?mimeType=")
+                && heard.line.contains("wordprocessingml")),
+        "the document wasn't exported"
+    );
+    let picked = folder.join("Picked.docx");
+    let (put, _) = download("doc1", How::Save, Some(picked.display().to_string()));
+    assert_eq!(put, Some(picked.clone()));
+    assert_eq!(fs::read(&picked).unwrap(), b"docx");
+    // A program is never opened, but may be handed to the one that
+    // picked it.
+    assert_eq!(
+        download("exe1", How::Open, None),
+        (None, Some(Failed::Runs))
+    );
+    let (handed, _) = download("exe1", How::Pick, None);
+    assert_eq!(fs::read(handed.unwrap()).unwrap(), b"setup");
+    assert_eq!(
+        download("dir1", How::Pick, None),
+        (None, Some(Failed::Gone))
+    );
+    assert_eq!(
+        download("lost1", How::Pick, None),
+        (None, Some(Failed::Gone))
+    );
+    // Each asked lately is told, newest first, so several asked together
+    // are each still told.
+    let downloads = watch
+        .downloading("pdf1", How::Pick, None, &now())
+        .drive
+        .downloads
+        .clone();
+    assert_eq!(downloads.len(), 8);
+    assert_eq!(downloads[1].file, "lost1");
+    for _ in 0..30 {
+        watch.downloading("pdf1", How::Pick, None, &now());
+    }
+    let state = watch.downloading("pdf1", How::Pick, None, &now()).clone();
+    assert_eq!(state.drive.downloads.len(), DOWNLOADS_KEPT);
+    fs::remove_dir_all(&folder).unwrap();
 }
 
 #[test]

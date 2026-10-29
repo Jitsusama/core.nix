@@ -8,15 +8,23 @@
 //! `{"archive": {"id": "…"}}`; to fetch one of the files it carries,
 //! from 0, to open or save, `{"fetch": {"id": "…", "file": 0, "how": "open"}}`,
 //! a save naming where with `"to": "/…"` once Joel has picked a place;
-//! and to make a new Meet meeting, `{"make": {}}`.
+//! to make a new Meet meeting, `{"make": {}}`; to list a Drive folder,
+//! `{"list": {"folder": "root"}}`, by `root`, `shared`, `drives` or its
+//! id; and to download one of Drive's files to open, pick or save,
+//! `{"download": {"file": "…", "how": "pick"}}`, a save naming where as
+//! a fetch's does.
 //!
 //! A line that isn't one of these is let go. The id goes into the path
 //! of a request to Google, so only the letters, digits and underscores
-//! Google's event and message ids are made of are taken.
+//! Google's event and message ids are made of are taken, and the dashes
+//! Drive's have too.
+
+use std::path::Path;
 
 use serde::Deserialize;
 
 use crate::calendar::Answer;
+use crate::drive::{self, Folder};
 use crate::files::How;
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -46,6 +54,16 @@ pub enum Ask {
     },
     /// Make a new Meet meeting, to copy its link.
     Make {},
+    /// List what the Drive folder `folder` holds.
+    List { folder: String },
+    /// Download the Drive file `file` to open, pick or save, as `how`
+    /// says; a save goes `to` the path Joel picked, else into Downloads.
+    Download {
+        file: String,
+        how: How,
+        #[serde(default)]
+        to: Option<String>,
+    },
 }
 
 /// What a line asks, or none when it asks nothing this program does.
@@ -56,20 +74,20 @@ pub fn read(line: &str) -> Option<Ask> {
         Ask::Cancel { id } | Ask::Read { id } | Ask::Unread { id } | Ask::Archive { id } => {
             named(id)
         }
-        // Only a save is put somewhere, and only where a path says whole.
-        Ask::Fetch { id, how, to, .. } => {
-            named(id)
-                && to.as_ref().is_none_or(|to| {
-                    *how == How::Save
-                        && std::path::Path::new(to).is_absolute()
-                        && !to.ends_with('/')
-                })
-        }
+        Ask::Fetch { id, how, to, .. } => named(id) && placed(*how, to.as_deref()),
+        Ask::Download { file, how, to } => drive::is_id(file) && placed(*how, to.as_deref()),
+        Ask::List { folder } => Folder::named(folder).is_some(),
         // A meeting ends after it starts, and both are after 1970.
         Ask::Move { id, start, end } => named(id) && 0 < *start && start < end,
         Ask::Make {} => true,
     };
     taken.then_some(ask)
+}
+
+/// Whether where a file goes is one this program puts it: only a save is
+/// put somewhere named, and only where a path says whole.
+fn placed(how: How, to: Option<&str>) -> bool {
+    to.is_none_or(|to| how == How::Save && Path::new(to).is_absolute() && !to.ends_with('/'))
 }
 
 /// Whether an id is one Google could have made.
@@ -208,6 +226,52 @@ mod tests {
             assert_eq!(read(&line), None, "{id}");
             let line = serde_json::json!({"move": {"id": id, "start": 1, "end": 2}}).to_string();
             assert_eq!(read(&line), None, "{id}");
+        }
+    }
+
+    #[test]
+    fn a_drive_folder_is_listed_by_its_place_or_its_id() {
+        for folder in ["root", "shared", "drives", "0AbC-d_9"] {
+            let line = serde_json::json!({"list": {"folder": folder}}).to_string();
+            assert_eq!(
+                read(&line),
+                Some(Ask::List {
+                    folder: folder.into()
+                }),
+                "{folder}"
+            );
+        }
+        for folder in ["", "x' or '1'='1", "../files", "a b"] {
+            let line = serde_json::json!({"list": {"folder": folder}}).to_string();
+            assert_eq!(read(&line), None, "{folder}");
+        }
+    }
+
+    #[test]
+    fn a_drive_file_is_downloaded_to_open_pick_or_save_where_a_whole_path_says() {
+        assert_eq!(
+            read(r#"{"download": {"file": "1a-B_c", "how": "pick"}}"#),
+            Some(Ask::Download {
+                file: "1a-B_c".into(),
+                how: How::Pick,
+                to: None
+            })
+        );
+        assert_eq!(
+            read(r#"{"download": {"file": "f1", "how": "save", "to": "/home/a/plan.pdf"}}"#),
+            Some(Ask::Download {
+                file: "f1".into(),
+                how: How::Save,
+                to: Some("/home/a/plan.pdf".into())
+            })
+        );
+        for line in [
+            r#"{"download": {"file": "f1", "how": "pick", "to": "/home/a/plan.pdf"}}"#,
+            r#"{"download": {"file": "f1", "how": "save", "to": "plan.pdf"}}"#,
+            r#"{"download": {"file": "../f1", "how": "open"}}"#,
+            r#"{"download": {"file": "f1?alt=media", "how": "open"}}"#,
+        ] {
+            assert_eq!(read(line), None, "{line}");
         }
     }
 

@@ -43,6 +43,10 @@ Singleton {
     // Making a Meet meeting: whether Joel's sign-in grants it, and the one
     // last asked for, { asked, link, failed }, or null.
     property var meet: ({ granted: false, made: null })
+    // Drive's folders and downloads asked lately, each newest first: each
+    // folder's last listing { folder, asked, files, more, failed }, and
+    // each download { file, how, asked, path, failed }.
+    property var drive: ({ listings: [], downloads: [] })
 
     // The person an address is, as People's row for them, from the
     // launcher's provider that knows people (People.qml's personOf), so a
@@ -71,6 +75,26 @@ Singleton {
         ask(Said.make());
     }
 
+    // Asks the program what a Drive folder holds, which comes in
+    // `drive.listings`.
+    function list(folder) {
+        ask(Said.list(folder));
+    }
+
+    function listing(folder, since) {
+        return Said.listing(drive, folder, since);
+    }
+
+    // Asks the program to download a Drive file, which comes in
+    // `drive.downloads`.
+    function download(file, how, to) {
+        ask(Said.download(file, how, to));
+    }
+
+    function downloading(file, since) {
+        return Said.downloading(drive, file, since);
+    }
+
     function hear(line) {
         const said = Said.heard(line);
         if (!said)
@@ -83,6 +107,7 @@ Singleton {
         heard = said.heard;
         fetched = said.fetched;
         meet = said.meet;
+        drive = said.drive;
     }
 
     // Everyone the meetings and mail name, by address, for People
@@ -108,6 +133,7 @@ Singleton {
         heard = null;
         fetched = null;
         meet = { granted: false, made: null };
+        drive = { listings: [], downloads: [] };
     }
 
     // Asks the program one thing, a line its ask.rs reads. It's running
