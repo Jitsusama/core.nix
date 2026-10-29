@@ -123,13 +123,13 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Switch"
-            and shown["selected"]["verb"] == "switch"
+            (shown["selected"] or {}).get("name") == "Go To"
+            and shown["selected"]["verb"] == "go"
         )
     )
     # Its acts in the order every session keeps them, then what's known of
     # it, each named first, as every part is, then what it says.
-    assert desktop.showing()["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
+    assert desktop.showing()["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
     desktop.down_to("Stop")
     for name, side in [
         ("Quest", r"QEST-20261022-TESTQA"),
@@ -334,7 +334,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Lighthouse"
             and str(shown["selected"]["side"]).startswith("TESTQA \u00b7 ")
-            and shown["selected"]["verb"] == "switch"
+            and shown["selected"]["verb"] == "go"
         )
     )
     machine.send_key("esc")
@@ -371,7 +371,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     desktop.launcher_until(
         lambda shown: (
             shown["path"] == ["Orchestrators", "Lighthouse"]
-            and shown["rows"][:4] == ["Switch", "Talk", "Pause", "Stop"]
+            and shown["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
         )
     )
     # Talk asks for words, which go to its session's inbox as Joel's,
@@ -667,7 +667,7 @@ def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_r
     desktop.photograph("launcher-runs")
     # Stepped into, its members after the way to its session.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Switch")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     machine.send_key("down")
     desktop.launcher_until(
         lambda shown: (
@@ -1226,7 +1226,7 @@ def test_the_window_joel_is_in_holds_what_can_be_done_to_it(desktop: Desktop) ->
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Close" in shown["rows"])
     rows = desktop.showing()["rows"]
-    assert "Switch" not in rows, rows
+    assert "Go To" not in rows, rows
     assert "Bring Here" not in rows, rows
     # Full width makes its column the screen's width, as niri says.
     before = desktop.window_titled("Notes for Tuesday")
@@ -3317,7 +3317,7 @@ def going_to(desktop: Desktop) -> None:
     """Step into the waiting item selected with Return, and go to its window with Return."""
     desktop.machine.send_key("ret")
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Go to ")
+        lambda shown: (shown["selected"] or {}).get("name") == "Go To"
     )
     desktop.machine.send_key("ret")
 

@@ -75,7 +75,7 @@ Provider {
         const verbs = () => provider.verbs(notice, said);
         const row = member({
             key: `notice:${notice.app}:${notice.summary}`,
-            verb: nowhere ? "more" : opened || !from.window ? "open" : "switch",
+            verb: nowhere ? "more" : opened || !from.window ? "open" : "go",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
             // The whole of what it said, summary over body.
@@ -180,8 +180,7 @@ Provider {
             // it, as opening it does, and as Go To on its card does.
             return thing(Object.assign(named("verb:notice:goTo"), {
                 verb: Words.verb("verb:notice:goTo"),
-                name: Words.name("verb:notice:goTo", "",
-                    { program: from.entry ? from.entry.name : notice.app }),
+                side: from.entry ? from.entry.name : notice.app,
                 later: true,
                 run: () => {
                     Notices.mark(notice.id, true);
