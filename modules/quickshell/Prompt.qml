@@ -307,7 +307,10 @@ Item {
         }
 
         // The caret in the accent, since it's where the keys go. It takes
-        // no room of its own, so a ghost reads on as one word.
+        // no room of its own, so a ghost reads on as one word. Qt leaves
+        // blinking to a caret drawn as its own delegate, so this one holds
+        // steady and a launcher left still draws nothing (the launcher
+        // audit's finding 34, held by goes-places' frame count).
         cursorDelegate: Rectangle {
             width: 2
             color: Theme.accent

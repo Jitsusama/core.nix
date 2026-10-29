@@ -3235,6 +3235,33 @@ def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> No
     assert not shifts, "words moved without changing:\n" + "\n".join(shifts)
 
 
+def test_the_launcher_left_still_draws_nothing(desktop: Desktop) -> None:
+    """The launcher left open and still draws nothing, its caret steady rather than blinking."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("sou")
+    desktop.launcher_until(lambda shown: shown["typed"] == "sou")
+    # Let the last letter's frame land, then count three seconds of
+    # stillness, in which a blinking caret draws six times. The foot's
+    # clock may turn its minute in them, once.
+    desktop.as_account("qs ipc call launcher frames")
+    time.sleep(1)
+    began = int(desktop.as_account("qs ipc call launcher frames"))
+    time.sleep(3)
+    drawn = int(desktop.as_account("qs ipc call launcher frames")) - began
+    # A letter draws, so the count sees frames at all.
+    machine.send_chars("n")
+    desktop.launcher_until(lambda shown: shown["typed"] == "soun")
+    retry(
+        lambda _: int(desktop.as_account("qs ipc call launcher frames")) > began + drawn,
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert drawn <= 1, f"the launcher drew {drawn} frames in three seconds left still"
+
+
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
 
