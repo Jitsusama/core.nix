@@ -131,16 +131,17 @@
     in
     "${hook}/bin/watchdog-wakes-again";
 
-  # The Surface Aggregator answers for eight thermal sensors and the fan's
-  # speed, but the kernel's registry gives this model the Intel models'
-  # devices, which have neither. The patch says what the controller answered.
-  # The firmware fixes _CPC's Autonomous Selection Enable at 1, which
-  # amd-pstate refused to accept, so the CPU fell back to acpi-cpufreq.
   boot.kernelPatches = [
+    # The Surface Aggregator answers for eight thermal sensors and the fan's
+    # speed, but the kernel's registry gives this model the Intel models'
+    # devices, which have neither. The patch says what the controller
+    # answered.
     {
       name = "surface-laptop-amd-sensors-and-fan";
       patch = ./kernel/surface-laptop-amd-sensors-and-fan.patch;
     }
+    # The firmware fixes _CPC's Autonomous Selection Enable at 1, which
+    # amd-pstate refused to accept, so the CPU fell back to acpi-cpufreq.
     {
       name = "amd-pstate-fixed-autonomous-selection";
       patch = ./kernel/amd-pstate-fixed-autonomous-selection.patch;
