@@ -2,7 +2,9 @@
 // Quickshell itself while its folder comes and goes, as a guard's runtime
 // folder does when systemd restarts it: missing when the shell starts, then
 // made with a status in it, then removed, then made again. Each status is
-// heard as it's written, and none while the folder is gone. It exits 0 once
+// heard as it's written, and none while the folder is gone. A write saying
+// only a new heartbeat moves the heartbeat and leaves what's said as it
+// was, so nothing reading it runs again. It exits 0 once
 // every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
 import Quickshell.Io
@@ -18,11 +20,24 @@ ShellRoot {
         path: `${root.folder}/status.json`
     }
 
+    // How many times what's said has changed, and the heartbeat last written.
+    property int told: 0
+    property int toldBefore: 0
+    property real wrote: 0
+
+    Connections {
+        target: status
+        function onSaidChanged() {
+            root.told += 1;
+        }
+    }
+
     // Each case: what's done to the folder (null: nothing), and what the
     // status file makes of it. A status is written beside the file and moved
     // over it, as the guards write theirs.
-    function written(n) {
-        const said = JSON.stringify({ heartbeat: Math.floor(Date.now() / 1000), n: n });
+    function written(n, ahead) {
+        wrote = Math.floor(Date.now() / 1000) + (ahead ?? 0);
+        const said = JSON.stringify({ heartbeat: wrote, n: n });
         return `mkdir -p ${folder} && echo '${said}' > ${folder}/.status && mv ${folder}/.status ${folder}/status.json`;
     }
 
@@ -42,6 +57,17 @@ ShellRoot {
         what: "the next status heard once the folder is made again",
         does: () => root.written(2),
         holds: () => status.said?.n === 2
+    }, {
+        what: "a new heartbeat alone heard without saying anything new",
+        does: () => {
+            root.toldBefore = root.told;
+            return root.written(2, 5);
+        },
+        holds: () => status.beat === root.wrote && root.told === root.toldBefore
+    }, {
+        what: "something new said once after it",
+        does: () => root.written(3),
+        holds: () => status.said?.n === 3 && root.told === root.toldBefore + 1
     }]
 
     property int at: 0
@@ -84,7 +110,8 @@ ShellRoot {
                 }
             } else if (--root.left === 0) {
                 stop();
-                console.warn(`FAIL ${step.what}: said ${JSON.stringify(status.said)}`);
+                console.warn(`FAIL ${step.what}: said ${JSON.stringify(status.said)}, `
+                    + `changed ${root.told - root.toldBefore} times since`);
                 Qt.exit(1);
             }
         }
