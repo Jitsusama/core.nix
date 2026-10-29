@@ -133,14 +133,20 @@ let
   # to 338 ms, against 24 ms and 26 ms with memory free. A soft floor of
   # 8 GiB, MemoryLow, brought that to 32 ms and 143 ms: the kernel still took
   # it back. A hard one, MemoryMin, to 26 ms and 68 ms, and nothing was
-  # ended. The floor is a share of memory, about 8 GiB there, so it scales
-  # with the machine. Every slice above app.slice claims a little more, to
-  # cover session.slice's 1.5 GiB beside it: 9.96 GiB there, against 9.6 GiB
-  # below. What the floors below leave unused the kernel shares among the
+  # ended. The floor is a share of memory, so it scales with the machine.
+  # At 13%, 8.1 GiB, it held too little of what Joel works in: on 29 October,
+  # with about 17 agents' sessions open, app.slice held 17.6 GiB, 8.4 of it in
+  # swap. Under builds it read 1 GiB of that back from swap every two minutes
+  # and waited on memory 2.6% of the time, over the 1% past which the machine
+  # queue holds builds, so the builds waited too. 20%, 12.5 GiB there, holds
+  # what it kept in memory and what it read back. A floor its programs
+  # don't fill costs work only what they leave unused. Every slice above
+  # app.slice claims a little more, to cover session.slice's 1.5 GiB beside
+  # it. What the floors below leave unused the kernel shares among the
   # account's other slices. Work in jobs, background and containers has the
   # rest of memory, and when that runs out, it's what swaps.
-  apps = "13%";
-  account = "16%";
+  apps = "20%";
+  account = "23%";
 in
 {
   options.jitsusama.slices.disks = lib.mkOption {
