@@ -998,7 +998,14 @@ onLinux {
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
         cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
-        cp ${singleton "Location.qml" ''property string clockZone: ""''} Location.qml
+        cp ${singleton "Location.qml" ''
+          property string clockZone: ""
+          property bool clockMoved: false
+          property var moved: null
+          property string movedSaid: ""
+          function city(zone) { return zone; }
+          function putBack() {}
+        ''} Location.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo

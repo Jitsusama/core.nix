@@ -4,7 +4,11 @@
 // zones, built at build time
 // into `list` and read a moment after the shell starts. A place tzdata
 // doesn't name is found by Open-Meteo, only when it's asked for as "time
-// in" it, and never with `lookups` off. `zone` is the machine's own.
+// in" it, and never with `lookups` off. The time here is in the zone the
+// clock keeps (Location.qml), or `zone`, the machine's own, before that's
+// read. Once the clock has followed the laptop into another zone, the time
+// here says so, and Put It Back leads what's inside (Joel, 2026-10-28: "i
+// really want my timezone to automatically change if possible").
 import qs
 import Quickshell.Io
 import QtQuick
@@ -68,17 +72,32 @@ Provider {
             const where = [place.name, place.country].filter(part => part).join(", ");
             note = `${where} \u00b7 Open-Meteo`;
         }
+        // Only the time here is the clock's own, so only it says the clock
+        // followed the laptop, with Put It Back first inside, which puts it
+        // in the zone it kept before and holds it there.
+        const ours = told.unknown === undefined && Zones.asked(typed).place === "";
+        const moved = ours && Location.clockMoved;
+        const back = moved ? [thing({
+            key: "verb:time:put-back",
+            verb: Words.verb("verb:time:put-back"),
+            name: Words.name("verb:time:put-back"),
+            glyph: Words.glyph("verb:time:put-back"),
+            side: Location.city(Location.moved.from),
+            hue: "action",
+            stays: true,
+            run: () => Location.putBack()
+        })] : [];
         return {
             headline: told.headline,
             copy: told.copy,
-            rows: told.rows.map(row => copyRow({
+            rows: back.concat(told.rows.map(row => copyRow({
                 name: Words.name(`time:${row.part}`),
                 side: row.text,
                 note: row.note,
                 copy: row.copy,
                 glyph: Theme.glyph[row.glyph]
-            })),
-            note: note
+            }))),
+            note: moved ? Location.movedSaid : note
         };
     }
 

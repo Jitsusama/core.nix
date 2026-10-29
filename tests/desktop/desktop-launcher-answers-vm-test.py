@@ -951,9 +951,10 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # And once the file goes, here is nowhere again, and the location is
-    # said to be unknown rather than guessed.
-    desktop.as_account(f"rm {fix}")
+    # And once the file says nowhere, here is nowhere again, and the
+    # location is said to be unknown rather than guessed. It's never
+    # removed, since the shell can't see a removed file come back.
+    desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
     asked(nowhere)
     desktop.answer("location")
     desktop.launcher_until(
@@ -967,7 +968,7 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
 
 
 def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
-    """The clock follows the laptop into another zone, says so in Now, and is put back."""
+    """The clock follows the laptop into another zone, says so in Time, and is put back."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     fix = "$XDG_RUNTIME_DIR/whereabouts.json"
@@ -993,16 +994,23 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
 
     try:
         # Found by Wi-Fi, to within 300 m, in another zone: the clock moves,
-        # and Now's Location says so.
+        # and the time here says so, the zone being the clock's.
         found("America/Edmonton", 300, "Lighthouse, Alberta")
         keeps("America/Edmonton")
-        desktop.answer("location")
+        desktop.answer("time")
         desktop.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == "Location"
-            and "clock moved to Edmonton time, from Lighthouse" in json.dumps(shown["selected"])
+            lambda shown: (
+                shown["footer"] == "clock moved to Edmonton time, as the laptop is in Lighthouse"
+            )
         )
         desktop.step_in()
-        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Put It Back"])
+        # Put It Back leads what can be done; Copy, which isn't an act on
+        # the clock, may stand before or after it.
+        desktop.launcher_until(
+            lambda shown: [row for row in shown["rows"] if row != "Copy"][:1] == ["Put It Back"]
+        )
+        desktop.down_to("Put It Back")
+        assert desktop.showing()["selected"]["side"] == began.split("/")[-1].replace("_", " ")
         # Put back, it's held where it was while the laptop stays there.
         machine.send_key("ret")
         keeps(began)
@@ -1019,7 +1027,8 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         assert machine.succeed(zone).strip() == "America/Vancouver"
     finally:
         machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
-        desktop.as_account(f"rm -rf {fix} ~/.local/state/clock-follows")
+        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.as_account("rm -rf ~/.local/state/clock-follows")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

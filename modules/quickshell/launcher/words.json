@@ -1519,8 +1519,8 @@
       "name": "Zone"
     },
     {
-      "id": "verb:location:put-back",
-      "in": "location",
+      "id": "verb:time:put-back",
+      "in": "time",
       "name": "Put It Back",
       "verb": "put back",
       "glyph": "zone"

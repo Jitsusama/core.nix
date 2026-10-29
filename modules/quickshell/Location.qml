@@ -17,7 +17,9 @@ Singleton {
     id: root
 
     // The position whereabouts writes, replaced whole each time here
-    // moves or is named. A test points it at a file of its own.
+    // moves or is named. A test points it at a file of its own. It's
+    // never removed, only written as `{}` for nowhere: a file removed is
+    // one this can't see come back, so here would stay unknown.
     property string file: `${Quickshell.env("XDG_RUNTIME_DIR")}/whereabouts.json`
 
     // Here, as the file says it: { latitude, longitude, accuracy, when,
@@ -42,6 +44,17 @@ Singleton {
     property var moved: null
     readonly property bool clockMoved: moved !== null && moved.to === clockZone
 
+    // A zone by its city, as people say a zone's time: "Edmonton".
+    function city(zone) {
+        return String(zone).split("/").pop().split("_").join(" ");
+    }
+
+    // What's said of the clock's move while it keeps the zone it moved to,
+    // or "": "clock moved to Edmonton time, as the laptop is in Lighthouse".
+    readonly property string movedSaid: !clockMoved ? ""
+        : `clock moved to ${city(moved.to)} time`
+            + (moved.place ? `, as the laptop is in ${moved.place.split(",")[0]}` : "")
+
     readonly property string kept: `${Quickshell.env("XDG_STATE_HOME")
         || `${Quickshell.env("HOME")}/.local/state`}/clock-follows`
 
@@ -58,8 +71,12 @@ Singleton {
     // Puts the clock back in the zone it kept before it followed the
     // laptop, where it's held until the laptop is somewhere else.
     function putBack() {
-        Quickshell.execDetached(["systemctl", "--user", "start", "--no-block",
-            "clock-put-back.service"]);
+        puttingBack.running = true;
+    }
+
+    Process {
+        id: puttingBack
+        command: ["systemctl", "--user", "start", "--no-block", "clock-put-back.service"]
     }
 
     FileView {
