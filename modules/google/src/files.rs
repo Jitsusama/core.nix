@@ -120,7 +120,8 @@ pub fn kept(folder: &Path, mail: &str, name: &str, bytes: &[u8]) -> io::Result<P
 }
 
 /// Writes `bytes` as the file `path`, replacing one there, whole or not at
-/// all, and says where.
+/// all, and says where. Its folder is made when it's missing, as the
+/// chooser offers Downloads before anything was ever saved there.
 pub fn put(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
     let Some(name) = path.file_name() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no file named"));
@@ -129,13 +130,18 @@ pub fn put(path: &Path, bytes: &[u8]) -> io::Result<PathBuf> {
     new.push(name);
     new.push(".new");
     let new = path.with_file_name(new);
+    if let Some(folder) = path.parent() {
+        fs::create_dir_all(folder)?;
+    }
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .open(&new)?;
     file.write_all(bytes)?;
-    fs::rename(&new, path)?;
+    fs::rename(&new, path).inspect_err(|_| {
+        let _ = fs::remove_file(&new);
+    })?;
     Ok(path.to_owned())
 }
 
@@ -235,7 +241,12 @@ mod tests {
         assert_eq!(put(&path, b"new").unwrap(), path);
         assert_eq!(fs::read(&path).unwrap(), b"new");
         assert_eq!(fs::read_dir(&folder).unwrap().count(), 1);
-        assert!(put(&folder.join("gone").join("plan.pdf"), b"x").is_err());
+        let unmade = folder.join("unmade").join("plan.pdf");
+        assert_eq!(put(&unmade, b"x").unwrap(), unmade);
+        let held = folder.join("held");
+        fs::create_dir(&held).unwrap();
+        assert!(put(&held, b"x").is_err(), "a folder was written over");
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 3);
         fs::remove_dir_all(&folder).unwrap();
     }
 }
