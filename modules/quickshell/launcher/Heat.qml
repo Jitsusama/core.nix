@@ -450,8 +450,12 @@ Provider {
         && launcher.answer?.live === provider
     // The processor's telemetry is watched for as long as its answer is up,
     // stepped into or not, so a part is there however soon it's opened.
+    // Stepped in, the answer is held as a step rather than being the
+    // launcher's answer, so the held steps are looked at too, as
+    // Machine.qml's are.
     readonly property bool watched: launcher !== null && launcher.open
-        && launcher.answer?.live === provider
+        && (launcher.answer?.live === provider
+            || launcher.held.some(step => step.row?.live === provider))
     onWatchedChanged: {
         ProcessorTelemetry.watching += watched ? 1 : -1;
         if (!watched)
