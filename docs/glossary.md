@@ -93,6 +93,7 @@ first in the queue and conclude.
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
+| reopen | opening a closed session again where it left off, in its own window and folder | restore | `restore.json` |
 | waiting on | what a session can't go on without: Joel, an answer, or its turn in the queue | | |
 | Working on | the line a session tells its peers about its work | Works on | `worksOn` |
 | peer | another session on the same machine, reached over the mesh | instance, swarm | |
