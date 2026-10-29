@@ -1356,6 +1356,7 @@ def test_the_screens_warmth_follows_brightness_and_return_switches_it(desktop: D
     desktop.launcher_until(lambda shown: shown["rows"][1:3] == ["Brightness", "Warmth"])
     desktop.down_to("Warmth")
     desktop.launcher_until(warmth_selected("on", "off", "5200 K, following the room"))
+    desktop.photograph("launcher-warmth")
     # Return tells the daemon over the session's bus, which is heard here.
     desktop.as_account(
         "systemd-run --user --collect --quiet --unit=warmth-heard -- sh -c "
