@@ -489,19 +489,33 @@ Provider {
     // them, each a folder or a file by its name, beside the folder it's in.
     // Return opens it through the program as its settings say: `open`
     // while a window of it is open, through the process behind the window
-    // used last ({pid}), and `start` while none is.
+    // used last ({pid}), and `start` while none is. Any other provider may
+    // give a program's Recent its own things, each its one row, by
+    // `recentOf(program)`, newest first, as Docs' documents are given
+    // (Documents.qml); it says `changed` when they change, so a Recent
+    // shown is made again.
     function recent(entry) {
         const source = (settings.recents ?? []).find(each => each.app === entry.id);
-        const paths = source ? provider.recents.of(entry.id) : [];
-        if (paths.length === 0)
+        const listed = () => (source ? provider.recents.of(entry.id)
+            .map(path => provider.lately(entry, source, path)) : [])
+            .concat(given(entry.id)).slice(0, provider.recents.most);
+        const count = listed().length;
+        if (count === 0)
             return [];
         return [said("program:recent", "", {
             hue: "program",
-            count: String(paths.length),
+            count: String(count),
             ask: "which?",
             nested: true,
-            targets: () => provider.recents.of(entry.id).map(path => provider.lately(entry, source, path))
+            targets: listed
         })];
+    }
+
+    // What other providers give a program's Recent.
+    function given(program) {
+        return (provider.launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other.recentOf === "function")
+            .reduce((rows, other) => rows.concat(other.recentOf(program)), []);
     }
 
     // One path a program had open lately, as Recent's row. Not named

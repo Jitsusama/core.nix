@@ -326,10 +326,11 @@
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
     meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, and tells it the mail that wants Joel, newest
+    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
     first, each asked for once, with who it went to and its text, never an attachment's, marking
-    it read or archiving it when asked, and marking it unread again, mail read here wanting Joel
-    again at once
+    it read or archiving it when asked, marking it unread again, mail read here wanting Joel again
+    at once, and the documents of each kind he looked at lately, his last first, asking Drive again
+    only every five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1139,6 +1140,11 @@
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
+  '';
+  the-shell-reads-the-documents = ''
+    the shell reads the documents from the google program's file, none from a line from before
+    them, knows which Google program opens each kind, and says who owns a document and when Joel
+    last opened it beside its title, with its details for the drawer
   '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail

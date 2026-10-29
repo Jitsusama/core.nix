@@ -4033,6 +4033,84 @@
       "glyph": "archive"
     },
     {
+      "id": "docs:document",
+      "of": "program:google-docs",
+      "name": "Document",
+      "glyph": "document",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Document Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:docs:open",
+      "in": "docs:document",
+      "name": "Open in Docs",
+      "verb": "open",
+      "glyph": "document"
+    },
+    {
+      "id": "verb:docs:link",
+      "in": "docs:document",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "sheets:spreadsheet",
+      "of": "program:google-sheets",
+      "name": "Spreadsheet",
+      "glyph": "spreadsheet",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Spreadsheet Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:sheets:open",
+      "in": "sheets:spreadsheet",
+      "name": "Open in Sheets",
+      "verb": "open",
+      "glyph": "spreadsheet"
+    },
+    {
+      "id": "verb:sheets:link",
+      "in": "sheets:spreadsheet",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "slides:presentation",
+      "of": "program:google-slides",
+      "name": "Presentation",
+      "glyph": "presentation",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Presentation Without a Title"
+        }
+      }
+    },
+    {
+      "id": "verb:slides:open",
+      "in": "slides:presentation",
+      "name": "Open in Slides",
+      "verb": "open",
+      "glyph": "presentation"
+    },
+    {
+      "id": "verb:slides:link",
+      "in": "slides:presentation",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
       "id": "verb:switch",
       "in": "windows",
       "name": "Switch",

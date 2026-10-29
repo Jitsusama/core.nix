@@ -1896,6 +1896,45 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
 
 
 @pytest.mark.usefixtures("google")
+def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: Desktop) -> None:
+    """Docs' Recent lists what Joel opened lately, the same row search finds, and Return opens it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Quarterly Plan is Docs' alone; Team Budget is Sheets'.
+    desktop.answer("docs")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Docs")
+    desktop.step_in()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
+    plan = desktop.showing()["selected"]
+    assert plan["is"] == "gdoc:plan", plan
+    assert re.fullmatch(r"Ada Lovelace \u00b7 \d\d:\d\d", plan["side"]), plan
+    facts = (plan.get("drawer") or {}).get("facts") or [{}]
+    assert facts[0] == {"label": "Owner", "value": "Ada Lovelace"}, plan
+    # Return opens it in a window of its own, leaving the launcher.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://docs.google.com/document/d/plan/edit' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Its title finds the same row from anywhere, one on a shared drive saying
+    # only when it was opened.
+    desktop.answer("team budget")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "gdoc:budget"
+            and re.fullmatch(r"\d\d:\d\d", str(shown["selected"].get("side", ""))) is not None
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_mail_that_wants_joel_is_found_by_its_subject_and_return_opens_it(
     desktop: Desktop,
 ) -> None:
