@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // Drives pi's sessions (modules/quickshell/Sessions.qml) through Quickshell
 // itself, over the records and processes tests/sessions-state.sh lays out,
 // with niri, kitty's kitten and the notices stood in. Every window niri

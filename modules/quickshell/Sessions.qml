@@ -674,7 +674,7 @@ Singleton {
     function relive() {
         const next = [];
         // A node from before it passed records on says too little to show.
-        if (node !== null && Object.values(node).every(session => session.presence)) {
+        if (!fromFolder) {
             for (const id of Object.keys(node).sort()) {
                 const session = node[id];
                 const presence = session.presence;
@@ -1001,14 +1001,24 @@ Singleton {
         nameFilters: ["*.json"]
     }
 
+    // Each record is read from its file, watched, only while the folder is
+    // where sessions are known from: while the node answers, it carries
+    // every record itself, so a watcher per session would only cost the
+    // shell a file each (the 2026-10-29 crash came of readers per
+    // session). A node lost makes them once, as many as there are records.
+    readonly property bool fromFolder: node === null
+        || !Object.values(node).every(session => session.presence)
     Instantiator {
-        model: presences
+        model: root.fromFolder ? presences : null
         // A session that ends takes its file with it, and its state goes too.
         onObjectRemoved: (index, object) => root.forget(object.path)
 
         FileView {
             required property string filePath
             path: filePath
+            // Read as it's made, so a node lost leaves no moment with no
+            // sessions.
+            blockLoading: true
             watchChanges: true
             printErrors: false
             onFileChanged: reload()
