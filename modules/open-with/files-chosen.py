@@ -1,11 +1,11 @@
-"""Whether open-with chooses a file in the shell, or in GTK's portal while the shell can't.
+"""Whether open-with chooses a file in the shell alone, and none while the shell can't be asked.
 
-The files-are-chosen-with-or-without-the-picker check runs it on a session bus of its own, as
+The files-are-chosen-in-the-launcher-alone check runs it on a session bus of its own, as
 `files-chosen.py <open-with> <a qs that refuses> <a qs that answers> <the path it answers>`.
 A stand-in for GTK's portal answers every file chooser call with a file of its own. open-with is
 started with each qs in turn and asked to open a file: given the qs that refuses, as a shell
-with no picker does, the answer has to be GTK's, for the call GTK was given; given the one that
-answers, it has to be the shell's path, with GTK never asked.
+that's restarting does, nothing is chosen; given the one that answers, it has to be the shell's
+path. GTK's portal is never asked either way.
 """
 
 import os
@@ -86,15 +86,15 @@ def main(argv: list[str]) -> None:
     connection = open_dbus_connection(bus="SESSION")
 
     code, results = opened(connection, open_with, refusing)
-    if (code, results.get("uris")) != (0, ("as", [GTKS_FILE])):
-        sys.exit(f"With no picker in the shell, GTK's portal didn't choose: {code} {results}")
-    if [(asked[0], asked[3]) for asked in gtk.asked] != [(HANDLE, TITLE)]:
-        sys.exit(f"GTK's portal wasn't given the call as it was asked: {gtk.asked}")
+    if code == 0 or "uris" in results:
+        sys.exit(f"With the shell unasked, a file was still chosen: {code} {results}")
+    if gtk.asked:
+        sys.exit(f"GTK's portal was asked while the shell couldn't be: {gtk.asked}")
 
     code, results = opened(connection, open_with, answering)
     if (code, results.get("uris")) != (0, ("as", [f"file://{answered}"])):
         sys.exit(f"The shell's pick didn't reach the program: {code} {results}")
-    if len(gtk.asked) != 1:
+    if gtk.asked:
         sys.exit("GTK's portal was asked as well as the shell.")
 
 

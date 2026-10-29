@@ -14,9 +14,8 @@
 # rest as niri's own module sets them.
 #
 # A program choosing a file to open or save asks the launcher too: open-with
-# answers the portal's FileChooser (src/files.rs), and while the shell has no
-# picker to ask, it hands the request to GTK's portal, whose dialog opens as
-# before. Chromium's and Electron's dialogs and GTK 4's ask the portal on
+# answers the portal's FileChooser (src/files.rs), and no other dialog ever
+# opens: while the shell can't be asked, nothing is chosen. Chromium's and Electron's dialogs and GTK 4's ask the portal on
 # their own; GTK 3's native chooser asks it only when GTK_USE_PORTAL says
 # to, and its own dialog never does, so a GTK 3 module
 # (dialogs-ask-the-portal.c) asks the native chooser in that dialog's place,
@@ -43,8 +42,7 @@
     extraPortals = [ (pkgs.callPackage ./package.nix { }) ];
     config.niri = {
       "org.freedesktop.impl.portal.AppChooser" = "launcher";
-      # nixpkgs' niri module gives it to GTK's portal, which open-with
-      # asks in turn.
+      # nixpkgs' niri module gives it to GTK's portal.
       "org.freedesktop.impl.portal.FileChooser" = lib.mkForce "launcher";
     };
   };

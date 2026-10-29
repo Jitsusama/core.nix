@@ -1,5 +1,5 @@
 # GTK programs in the theme: libadwaita's, such as GNOME's portal dialogs, and
-# GTK 3's, such as the file chooser the GTK portal opens for Chrome and Slack.
+# GTK 3's, such as GIMP's and Inkscape's windows.
 # Both read their colours from a stylesheet of Joel's that outranks their
 # theme, written here from jitsusama.theme. The desktop says whether it
 # prefers dark or light, as the theme is, which every program that asks the
