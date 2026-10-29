@@ -2542,7 +2542,19 @@ Scope {
         function actless(): string {
             return JSON.stringify(root.actless());
         }
+
+        // How many frames the card has drawn since this was first asked,
+        // for the check that a launcher left still draws nothing.
+        function frames(): string {
+            root.framesCounted = true;
+            return String(root.framesDrawn);
+        }
     }
+
+    // Frames drawn, counted only once a check asks, so a launcher in use
+    // pays nothing for it.
+    property bool framesCounted: false
+    property int framesDrawn: 0
 
     // Every word drawn in an item, the item itself and all inside it, each
     // with where it's drawn on the card: its box's left and top and where
@@ -2812,6 +2824,15 @@ Scope {
 
             function onFrameSwapped() {
                 root.keyDrawn();
+            }
+        }
+
+        Connections {
+            target: card.Window.window
+            enabled: root.framesCounted
+
+            function onFrameSwapped() {
+                root.framesDrawn += 1;
             }
         }
 
