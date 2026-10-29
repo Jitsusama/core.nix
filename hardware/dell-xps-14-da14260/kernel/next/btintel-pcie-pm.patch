@@ -1,28 +1,28 @@
 Bluetooth: btintel_pcie: power transitions that hold (mainline)
 
-From mainline's merge of 2026-10-14, for 7.4, onto 7.2 with the 7.3
-backports. In order:
+From mainline's merge of 2026-10-14, for 7.4, onto 7.3. In order:
 
 12997a385f71 Bluetooth: btintel_pcie: fix stale cache in set_dxstate fallback check
 2926eb396711 Bluetooth: btintel_pcie: fix PM flow for S0ix, S3 and S4
 4f6ead67b93b Bluetooth: btintel_pcie: verify and serialize D-state transitions
 f2cee6e2aa35 Bluetooth: btintel_pcie: clear the GP0 cause with a W1C write
 
-At a hibernate's thaw, 7.2 reset the controller and probed it again, though
-freeze never cut its power. That probe waited on its firmware while user
-space was frozen, so .poweroff asked a controller still in its bootloader
-for D3, missed the alive interrupt three times and returned -EBUSY, and
-the hibernate rolled back. Thaw is now a plain D0 transition, and only
-restore and S3's resume reset. When the alive interrupt is missed, the
-fallback reads the boot stage register rather than the cache only the
-interrupt handler updates, and finishes what the handler would have done.
+At a hibernate's thaw, 7.3 resets the controller and probes it again,
+though freeze never cut its power. That probe waits on its firmware while
+user space is frozen, so .poweroff asks a controller still in its
+bootloader for D3, misses the alive interrupt three times and returns
+-EBUSY, and the hibernate rolls back. Thaw is now a plain D0 transition,
+and only restore and S3's resume reset. When the alive interrupt is
+missed, the fallback reads the boot stage register rather than the cache
+only the interrupt handler updates, and finishes what the handler would
+have done.
 
-This kernel lacks the mailbox handshake 4f6ead67b93b completes in the D0
-fallback (a504dcdb0b57 and d572ea4b621c), so that step is left out. The header's
+7.3 lacks the mailbox handshake 4f6ead67b93b completes in the D0 fallback
+(a504dcdb0b57 and d572ea4b621c), so that step is left out. The header's
 hunks are placed by hand, since the struct differs from mainline's.
 
 diff --git a/drivers/bluetooth/btintel_pcie.c b/drivers/bluetooth/btintel_pcie.c
-index 2d5102406..930e5476b 100644
+index ac71934..3c33e90 100644
 --- a/drivers/bluetooth/btintel_pcie.c
 +++ b/drivers/bluetooth/btintel_pcie.c
 @@ -16,6 +16,7 @@
@@ -52,7 +52,7 @@ index 2d5102406..930e5476b 100644
  
  	if (submit_rx) {
  		btintel_pcie_reset_ia(data);
-@@ -3183,7 +3189,8 @@ static void btintel_pcie_coredump(struct device *dev)
+@@ -3182,7 +3188,8 @@ static void btintel_pcie_coredump(struct device *dev)
  
  static int btintel_pcie_set_dxstate(struct btintel_pcie_data *data, u32 dxstate)
  {
@@ -62,7 +62,7 @@ index 2d5102406..930e5476b 100644
  	u32 dx_intr_timeout_ms = 200;
  
  	do {
-@@ -3194,28 +3201,68 @@ static int btintel_pcie_set_dxstate(struct btintel_pcie_data *data, u32 dxstate)
+@@ -3193,28 +3200,68 @@ static int btintel_pcie_set_dxstate(struct btintel_pcie_data *data, u32 dxstate)
  		status = wait_event_timeout(data->gp0_wait_q, data->gp0_received,
  			msecs_to_jiffies(dx_intr_timeout_ms));
  
@@ -146,7 +146,7 @@ index 2d5102406..930e5476b 100644
  		}
  
  	} while (++retry < BTINTEL_PCIE_DX_TRANSITION_MAX_RETRIES);
-@@ -3233,18 +3280,23 @@ static int btintel_pcie_suspend_late(struct device *dev, pm_message_t mesg)
+@@ -3232,18 +3279,23 @@ static int btintel_pcie_suspend_late(struct device *dev, pm_message_t mesg)
  
  	data = pci_get_drvdata(pdev);
  
@@ -175,7 +175,7 @@ index 2d5102406..930e5476b 100644
  
  	bt_dev_dbg(data->hdev,
  		   "device entered into d3 state from d0 in %lld us",
-@@ -3267,7 +3319,7 @@ static int btintel_pcie_freeze(struct device *dev)
+@@ -3266,7 +3318,7 @@ static int btintel_pcie_freeze(struct device *dev)
  	return btintel_pcie_suspend_late(dev, PMSG_FREEZE);
  }
  
@@ -184,7 +184,7 @@ index 2d5102406..930e5476b 100644
  {
  	struct pci_dev *pdev = to_pci_dev(dev);
  	struct btintel_pcie_data *data;
-@@ -3275,19 +3327,15 @@ static int btintel_pcie_resume(struct device *dev)
+@@ -3274,19 +3326,15 @@ static int btintel_pcie_resume(struct device *dev)
  	int err;
  
  	data = pci_get_drvdata(pdev);
@@ -209,7 +209,7 @@ index 2d5102406..930e5476b 100644
  		set_bit(BTINTEL_PCIE_CORE_HALTED, &data->flags);
  		btintel_pcie_request_reset(data, BTINTEL_PCIE_IOSF_PRR_FLR);
  		return 0;
-@@ -3296,7 +3344,9 @@ static int btintel_pcie_resume(struct device *dev)
+@@ -3295,7 +3343,9 @@ static int btintel_pcie_resume(struct device *dev)
  	/* Refer: 6.4.11.7 -> Platform power management */
  	err = btintel_pcie_set_dxstate(data, BTINTEL_PCIE_STATE_D0);
  
@@ -220,7 +220,7 @@ index 2d5102406..930e5476b 100644
  		bt_dev_dbg(data->hdev,
  			   "device entered into d0 state from d3 in %lld us",
  			   ktime_to_us(ktime_get() - start));
-@@ -3321,13 +3371,28 @@ static int btintel_pcie_resume(struct device *dev)
+@@ -3320,13 +3370,28 @@ static int btintel_pcie_resume(struct device *dev)
  	return err;
  }
  
@@ -252,7 +252,7 @@ index 2d5102406..930e5476b 100644
  
  static struct pci_driver btintel_pcie_driver = {
 diff --git a/drivers/bluetooth/btintel_pcie.h b/drivers/bluetooth/btintel_pcie.h
-index 749369b24..efebec96d 100644
+index 749369b..efebec9 100644
 --- a/drivers/bluetooth/btintel_pcie.h
 +++ b/drivers/bluetooth/btintel_pcie.h
 @@ -50,6 +50,7 @@

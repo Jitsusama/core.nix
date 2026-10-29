@@ -204,8 +204,8 @@ through is to drop `kernel/backports.nix` and its directory.
 ### linux-next's Fixes, Taken Early
 
 Some fixes this laptop needs are in no release yet, and two are in no tree
-at all. `kernel/next.nix` carries them in `kernel/next/`, applied after the
-backports from 7.3 with no offset or fuzz, each patch's header naming where
+at all. `kernel/next.nix` carries them in `kernel/next/`, applied to 7.3
+with no offset or fuzz, each patch's header naming where
 it comes from: linux-next's commits and their series, a posting to a list,
 or a local fix.
 
@@ -215,7 +215,6 @@ or a local fix.
 | `dp-byte-reads-only-when-longer`     | a failed 1-byte DPCD read isn't sent again             |
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
-| `xe-shared-buffers-keep-their-place` | buffers shared between programs aren't reclaimed first |
 | `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
@@ -248,15 +247,13 @@ connector, and a panel left asleep at power on can fail those reads however
 often they're retried. It now sets the panel to D0 first; The Panel's
 Brightness says what a failed read cost here.
 
-`xe-shared-buffers-keep-their-place` is linux-next's d2ce8fcd778e, marked
-for stable from 6.8. Each draw moved a program's private buffers to the
-fresh end of the list reclaim works from, but never the buffers it shares
-with another program, so the windows a compositor imports from its clients
-looked unused however often they were drawn, and went first. Bringing
-one back happens with its lock held. A trace of niri overnight caught its
-draws waiting on a client's buffer lock for 122 to 250 ms, three times in
-five minutes, and the section below, The Write-Combined Buffers Under
-Reclaim, says what held them.
+linux-next's d2ce8fcd778e came with 7.3, so it left `kernel/next/`. Each
+draw had moved a program's private buffers to the fresh end of the list
+reclaim works from, but never the buffers it shares with another program,
+so the windows a compositor imports from its clients went first. A trace
+of niri overnight caught its draws waiting on a client's buffer lock for
+122 to 250 ms, three times in five minutes, and the section below, The
+Write-Combined Buffers Under Reclaim, says what held them.
 
 `btintel-pcie-pm` is four of mainline's commits from 2026-10-14:
 12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35. At a
@@ -276,7 +273,7 @@ through is to drop each patch that kernel has, then `kernel/next.nix`.
 
 ### The Write-Combined Buffers Under Reclaim
 
-Even with linux-next's two buffer fixes and seeks at 64, niri still
+Even with the two buffer fixes above and seeks at 64, niri still
 missed frames under a heavy load. Its tracer caught why: niri waited on a
 buffer lock for 57 to 304 ms, held by Quickshell's render thread or
 Chrome, each in its own submission reading back buffers the shrinker had

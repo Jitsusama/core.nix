@@ -1,6 +1,6 @@
 drm/xe: spare costly buffers from the shrinker (linux-next)
 
-From drm-xe-next, in linux-next for 7.4, for 7.2, which lacks them. The
+From drm-xe-next, in linux-next for 7.4, for 7.3, which lacks them. The
 series posted as 20261019095655.3501 (patches 1 to 4), in order:
 
 846f333b3e0b drm/xe: Don't abort the shrinker walk on -EBUSY
@@ -9,10 +9,10 @@ series posted as 20261019095655.3501 (patches 1 to 4), in order:
 f4e86e1f5ab5 drm/xe: Update non-purgeable shrinker batch size based on a
 
 diff --git a/drivers/gpu/drm/xe/Kconfig.profile b/drivers/gpu/drm/xe/Kconfig.profile
-index 7530df9..f06ab1d 100644
+index e07517d..23045ed 100644
 --- a/drivers/gpu/drm/xe/Kconfig.profile
 +++ b/drivers/gpu/drm/xe/Kconfig.profile
-@@ -53,3 +53,15 @@ config DRM_XE_ENABLE_SCHEDTIMEOUT_LIMIT
+@@ -74,3 +74,15 @@ config DRM_XE_ENABLE_SCHEDTIMEOUT_LIMIT
  	  to apply to applicable user. For elevated user, all above MIN
  	  and MAX values will apply when this configuration is enable to
  	  apply limitation. By default limitation is applied.
@@ -29,10 +29,10 @@ index 7530df9..f06ab1d 100644
 +	  GPU idling and writeback to be reclaimed, in favour of purgeable
 +	  ones and other kernel caches.
 diff --git a/drivers/gpu/drm/xe/xe_bo.c b/drivers/gpu/drm/xe/xe_bo.c
-index 8db3c11..70aaa04 100644
+index 93554c3..92d6294 100644
 --- a/drivers/gpu/drm/xe/xe_bo.c
 +++ b/drivers/gpu/drm/xe/xe_bo.c
-@@ -428,9 +428,9 @@ static void xe_ttm_tt_account_add(struct xe_device *xe, struct ttm_tt *tt)
+@@ -446,9 +446,9 @@ static void xe_ttm_tt_account_add(struct xe_device *xe, struct ttm_tt *tt)
  	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
  
  	if (xe_tt->purgeable)
@@ -44,7 +44,7 @@ index 8db3c11..70aaa04 100644
  }
  
  static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt)
-@@ -438,9 +438,9 @@ static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt)
+@@ -456,9 +456,9 @@ static void xe_ttm_tt_account_subtract(struct xe_device *xe, struct ttm_tt *tt)
  	struct xe_ttm_tt *xe_tt = container_of(tt, struct xe_ttm_tt, ttm);
  
  	if (xe_tt->purgeable)
@@ -56,7 +56,7 @@ index 8db3c11..70aaa04 100644
  }
  
  static bool xe_ttm_bo_is_imported(struct ttm_buffer_object *tbo)
-@@ -956,11 +956,11 @@ static void xe_bo_set_purgeable_shrinker(struct xe_bo *bo,
+@@ -974,11 +974,11 @@ static void xe_bo_set_purgeable_shrinker(struct xe_bo *bo,
  	if (!xe_tt->purgeable && new_state == XE_MADV_PURGEABLE_DONTNEED) {
  		xe_tt->purgeable = true;
  		/* Transfer pages from shrinkable to purgeable count */

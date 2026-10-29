@@ -9,12 +9,17 @@ and a panel left asleep at power on can fail those reads however often
 they are retried. Read DP_SET_POWER first, and when the read fails or
 says D3, set D0, wait 1 ms and set it again before reading the caps.
 
+7.3 lacks the forward declaration of intel_dp_detect_sdp_caps() the
+first hunk sits after, so the new function goes directly before
+intel_edp_init_dpcd().
+
 diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/display/intel_dp.c
+index 3152122..26c4535 100644
 --- a/drivers/gpu/drm/i915/display/intel_dp.c
 +++ b/drivers/gpu/drm/i915/display/intel_dp.c
-@@ -4891,6 +4891,38 @@
- 
- static void intel_dp_detect_sdp_caps(struct intel_dp *intel_dp);
+@@ -4785,6 +4785,38 @@ intel_edp_set_sink_rates(struct intel_dp *intel_dp)
+ 	intel_edp_set_data_override_rates(intel_dp);
+ }
  
 +static void intel_edp_wake_sink(struct intel_dp *intel_dp)
 +{
@@ -51,7 +56,7 @@ diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/disp
  static bool
  intel_edp_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *connector)
  {
-@@ -4901,6 +4933,12 @@
+@@ -4795,6 +4827,12 @@ intel_edp_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *connector
  	/* this function is meant to be called only once */
  	drm_WARN_ON(display->drm, intel_dp->dpcd[DP_DPCD_REV] != 0);
  
