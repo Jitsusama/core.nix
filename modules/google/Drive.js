@@ -77,7 +77,7 @@ function placed(file, now) {
     const folder = file.kind === "folder";
     // Drive says a size only of a file it holds as it is.
     const size = typeof file.size === "number" ? Mail.weighed(file.size) : "";
-    const beside = exported ? [`as ${exported.ending}`]
+    const said = exported ? [`as ${exported.ending}`]
         : [size, file.changed ? Mail.came(file.changed, now) : ""];
     const facts = [
         { label: "Owner", value: file.owner ?? "" },
@@ -87,7 +87,7 @@ function placed(file, now) {
     return {
         key: folder ? `drive:folder:${file.id}` : `drive:${file.id}`,
         name: file.name,
-        note: beside.filter(part => part !== "").join(" \u00b7 "),
+        note: said.filter(part => part !== "").join(" \u00b7 "),
         drawer: { title: file.name, facts: facts.filter(fact => fact.value !== ""), body: "" }
     };
 }
