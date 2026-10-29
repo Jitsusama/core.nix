@@ -165,14 +165,8 @@ Singleton {
     // that boot). The harness keeps them in restore.json (its #866),
     // rewritten whole as each pi starts and ends, with the boot they ran
     // in, so a reopened one leaves the list within seconds. Only another
-    // boot's are offered, and only until Joel puts that boot off.
-    readonly property string thisBoot: bootId.text().trim()
-    FileView {
-        id: bootId
-        path: "/proc/sys/kernel/random/boot_id"
-        blockLoading: true
-        printErrors: false
-    }
+    // boot's are offered, and only until Joel puts that boot off. This
+    // boot is `bootId`, as the records are read by.
     readonly property var restoring: restoreOf(restoreFile.text())
     FileView {
         id: restoreFile
@@ -219,8 +213,8 @@ Singleton {
         printErrors: false
     }
 
-    readonly property var lastBoot: restoring.boot !== "" && thisBoot !== ""
-        && restoring.boot !== thisBoot && restoring.boot !== putOff ? restoring.sessions : []
+    readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
+        && restoring.boot !== bootId && restoring.boot !== putOff ? restoring.sessions : []
 
     function reopen(lost) {
         reopened(lost.id, lost.cwd);
