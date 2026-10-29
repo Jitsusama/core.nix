@@ -123,8 +123,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(  #
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Go To"
-            and shown["selected"]["verb"] == "go"
+            (shown["selected"] or {}).get("name") == "Go To" and shown["selected"]["verb"] == "go"
         )
     )
     # Its acts in the order every session keeps them, then what's known of
@@ -3316,9 +3315,7 @@ def readme(desktop: Desktop, quest: str, status: str) -> None:
 def going_to(desktop: Desktop) -> None:
     """Step into the waiting item selected with Return, and go to its window with Return."""
     desktop.machine.send_key("ret")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Go To"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     desktop.machine.send_key("ret")
 
 
