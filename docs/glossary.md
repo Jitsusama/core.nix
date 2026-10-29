@@ -132,15 +132,16 @@ first in the queue and conclude.
 | AI proxy | the service a work machine's model calls go through, whose feed gives spend-watch its bill | model gateway, LLM gateway, LLM proxy | |
 | Claude plan | Joel's Claude subscription, whose allowances stop turns when spent | subscription | `claude-plan` |
 | allowance | how much of a Claude plan one window allows: five hours, or a week | limit | `5h`, `wk` |
-| person | the human a session works for | user, human, operator | |
+| Joel | the human every session works for | user, human, operator | |
 | status line | the line under a session saying how it stands | status bar | |
 
 ## Programs
 
 What Joel runs, and the terminal he types commands into, and the mail,
-meetings and calls he has through them. A program can be opened, opened below,
-given a new window and quit. A meeting can be joined or seen, and an invitation
-answered yes, maybe or no; mail can be read, marked unread and archived.
+meetings and calls he has through them, and the people they're with. A
+program can be opened, opened below, given a new window and quit. A meeting
+can be joined or seen, and an invitation answered yes, maybe or no; mail can
+be read, marked unread and archived.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
@@ -160,6 +161,7 @@ answered yes, maybe or no; mail can be read, marked unread and archived.
 | maybe | an invitation Joel answered maybe | tentative | |
 | not going | an invitation Joel answered no | declined | `no` |
 | not answered | an invitation Joel hasn't answered yet | needs action | `waiting` |
+| person | someone Joel deals with, the same one by their email across mail, meetings, calls and chat | | |
 | call | a talk with others over Meet or Tuple, with sound and sometimes pictures | | Meet, Tuple |
 | join | going into a meeting's call, or a call another sends | | |
 | see | looking at a meeting's details in the launcher: when, its call, who's going | | |
