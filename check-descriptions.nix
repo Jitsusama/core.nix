@@ -472,6 +472,11 @@
     as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
     none only has the program, and one in no realm has no realm set
   '';
+  mycelium-declares-what-a-machine-says = ''
+    a machine declaring what mycelium's node can't measure (its reach, what a held session
+    outlives, whether work costs money, its taints) has it written where mycelium reads it, in
+    mycelium's words; one declaring nothing has no file
+  '';
   neovim-binds-every-key = ''
     Neovim binds every key keys.nix names and only those, each action provided, in its scope's
     buffer or plugin window, completion and the command line included
