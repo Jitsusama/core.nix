@@ -11,11 +11,14 @@ const DAY = 86_400;
 // How long before `now` the moment `at` was, both in milliseconds.
 function ago(at, now) {
     const seconds = Math.max(0, (now - at) / SECOND);
-    if (seconds < MINUTE)
+    if (seconds < MINUTE) {
         return "just now";
-    if (seconds < HOUR)
+    }
+    if (seconds < HOUR) {
         return `${Math.floor(seconds / MINUTE)} min ago`;
-    if (seconds < DAY)
+    }
+    if (seconds < DAY) {
         return `${Math.floor(seconds / HOUR)} h ago`;
+    }
     return `${Math.floor(seconds / DAY)} d ago`;
 }

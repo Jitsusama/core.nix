@@ -334,10 +334,7 @@ mod tests {
             .expect("an exchange was made");
         assert_eq!(exchange.server, "2.nixos.pool.ntp.org");
         assert_eq!(exchange.leap, "normal");
-        assert_eq!(
-            (exchange.root_delay, exchange.root_dispersion),
-            (15, 457)
-        );
+        assert_eq!((exchange.root_delay, exchange.root_dispersion), (15, 457));
         assert_eq!((exchange.precision, exchange.ntp_version), (-25, 4));
         assert_eq!(
             exchange.last, 1_793_248_675_313,

@@ -135,7 +135,14 @@ async fn follow(path: &Path) -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
     let there = owners.name_has_owner(BusName::try_from(TIMESYNC)?).await?;
-    said(path, if there { Some(read(&manager).await) } else { None })?;
+    said(
+        path,
+        if there {
+            Some(read(&manager).await)
+        } else {
+            None
+        },
+    )?;
     let mine = InterfaceName::try_from(MANAGER)?;
     loop {
         tokio::select! {
