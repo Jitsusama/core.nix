@@ -14,6 +14,39 @@ use std::time::Duration;
 /// How long a standing builder has to answer before it's left out.
 const ANSWER: Duration = Duration::from_secs(2);
 
+/// The work a lent builder is for: a derivation needing one of these is
+/// sent to it first. Anything else stays here, since copying its inputs
+/// out and its output back takes longer than building it: on 29 October a
+/// system build that takes 34 s to 2.5 min here ran past ten minutes once
+/// its small derivations went out.
+const BIG: [&str; 2] = ["big-parallel", "nixos-test"];
+
+/// A lent builder's machines line written once for each kind of big work
+/// it supports, with that kind mandatory, so Nix sends it only that work.
+/// Nix counts a builder's slots by its URI, so the lines share one set. A
+/// line supporting none of them is kept as it is.
+pub fn for_big_work(line: &str) -> String {
+    let mut fields: Vec<&str> = line.split_whitespace().collect();
+    if fields.len() < 8 {
+        fields.resize(8, "-");
+    }
+    let supported: Vec<&str> = fields[5].split(',').collect();
+    let lines: Vec<String> = BIG
+        .iter()
+        .filter(|kind| supported.contains(kind))
+        .map(|kind| {
+            let mut fields = fields.clone();
+            fields[6] = kind;
+            fields.join(" ")
+        })
+        .collect();
+    if lines.is_empty() {
+        line.to_owned()
+    } else {
+        lines.join("\n")
+    }
+}
+
 /// A builder always there to lend, such as another machine at home, named
 /// by the address that says whether it answers and its Nix machines line.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,9 +125,11 @@ impl Machines {
         }
     }
 
-    /// Say the one lent to every build, and it with the standing builders
-    /// that answer to a build that asks for them.
+    /// Say the one lent to every build, for its big work, and it with the
+    /// standing builders that answer to a build that asks for them.
     pub fn show(&mut self, lent: Option<&str>) {
+        let lent = lent.map(for_big_work);
+        let lent = lent.as_deref();
         let answering = self
             .standing
             .iter()
@@ -128,6 +163,27 @@ mod tests {
                 address: "192.168.4.46:22".to_owned(),
                 line: "ssh-ng://builder@home x86_64-linux - 2".to_owned(),
             }]
+        );
+    }
+
+    #[test]
+    fn a_lent_builder_is_named_for_its_big_work_alone() {
+        let line =
+            "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark - KEY";
+        assert_eq!(
+            for_big_work(line),
+            "ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark \
+             big-parallel KEY\n\
+             ssh-ng://lent x86_64-linux /key 8 1 kvm,nixos-test,big-parallel,benchmark \
+             nixos-test KEY"
+        );
+        assert_eq!(
+            for_big_work("ssh-ng://lent x86_64-linux - 4 1 big-parallel"),
+            "ssh-ng://lent x86_64-linux - 4 1 big-parallel big-parallel -"
+        );
+        assert_eq!(
+            for_big_work("ssh-ng://small x86_64-linux"),
+            "ssh-ng://small x86_64-linux"
         );
     }
 

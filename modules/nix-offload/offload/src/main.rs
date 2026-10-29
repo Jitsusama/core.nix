@@ -1,5 +1,5 @@
-//! Lends the machine a builder elsewhere while its machine queue holds
-//! builds back, and gives it back once it's idle.
+//! Lends the machine a builder elsewhere while its machine queue has builds
+//! a builder could take, and gives it back once it's idle.
 //!
 //! Usage: `nix-offload serve --helper PATH --prefix NAME --rate DOLLARS
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
@@ -7,16 +7,18 @@
 //! builders alone and lend none, or `nix-offload report --rate DOLLARS` for
 //! today's line.
 //!
-//! Every 20 seconds it reads the machine queue. Once a build or a VM check
-//! has waited three minutes for a slot this machine doesn't have, or one
-//! runs or waits while the queue says the machine is stalling, it asks
-//! the helper for a builder, names it `NAME<seconds>`, and writes the Nix
-//! machines line the helper gives into /run/nix-offload/machines, which
-//! nix-daemon reads at each build (`builders = @` it) and the queue reads
-//! to count the builder's room. Standing builders that answer go only into
-//! /run/nix-offload/machines-with-standing, beside the lent one, for a
-//! build that names that file (`--builders @...`), never every build. Once nothing has reached it for fifteen
-//! minutes, or the deadline comes, it takes the line out first, so no build
+//! Every 20 seconds it reads the machine queue. The moment a build or a VM
+//! check is queued or running, it asks the helper for a builder, names it
+//! `NAME<seconds>`, and writes the Nix machines line the helper gives into
+//! /run/nix-offload/machines, which nix-daemon reads at each build
+//! (`builders = @` it) and the queue reads to count the builder's room.
+//! The line is written twice, once making big-parallel mandatory and once
+//! nixos-test, so VM tests and big builds go to the builder first and
+//! small ones, quicker here than copied out, stay. Standing builders that
+//! answer go only into /run/nix-offload/machines-with-standing, beside the
+//! lent one, for a build that names that file (`--builders @...`), never
+//! every build. Once nothing has reached it for fifteen minutes, or the
+//! deadline comes, it takes the line out first, so no build
 //! is sent to a builder that's going, then gives the builder back. It
 //! starts none outside the day's hours, so none is made overnight or to
 //! live only minutes.
@@ -67,8 +69,6 @@ use decide::{Hours, Tick};
 use journal::{Event, Ran};
 use machines::Machines;
 
-/// How long a job waits before a builder is asked for.
-const WAIT: u64 = 180;
 /// How long a builder may take to be ready before it's given up on.
 const READY: Duration = Duration::from_mins(15);
 /// How often the queue is read.
@@ -269,7 +269,7 @@ fn serve(settings: &Settings) {
             now: now(),
             into_day: into_day(),
             wants: fs::read_to_string(&settings.queue)
-                .is_ok_and(|queue| queue::wants(&queue, now(), WAIT)),
+                .is_ok_and(|queue| queue::wants(&queue, now())),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref());
         lent = match lent.take() {
@@ -331,7 +331,7 @@ fn leave(settings: &Settings, name: &str, asked: u64, rate: Option<u64>) {
 /// Ask the helper for a builder, and give Nix its line once it's ready.
 fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Option<Lent> {
     let name = format!("{}{now}", settings.prefix);
-    eprintln!("nix-offload: asking for {name}, since the queue holds builds back");
+    eprintln!("nix-offload: asking for {name}, since the queue has builds a builder could take");
     if let Err(error) = journal::note(&settings.journal, now, Event::Asked, &name, None) {
         // Unjournalled, it couldn't be known as this one's to give back.
         eprintln!("nix-offload: journalling the ask: {error}; none is asked for");

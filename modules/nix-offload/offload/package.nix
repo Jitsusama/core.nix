@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Lends the machine a builder while its queue holds builds back";
+    description = "Lends the machine a builder while its queue has builds one could take";
     license = lib.licenses.mit;
     mainProgram = "nix-offload";
   };

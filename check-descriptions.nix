@@ -615,9 +615,9 @@
     Nix collects garbage during a build that fills the disk
   '';
   nix-offload-decides-when = ''
-    a builder is asked for only for builds and VM checks held three minutes for room a builder
-    gives, or running or waiting while the queue says the machine is over a pressure line, by
-    a queue still writing, within the day's hours and never beside one not yet seen gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
+    a builder is asked for the moment a build or VM check is queued or running, by a queue
+    still writing, within the day's hours and never beside one not yet seen gone; it's named
+    for big-parallel and nixos-test work alone, so small builds stay; it's given back once idle, at the deadline or once gone, with a wait after a failure;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
     for the next start, which prices it to then or its own idle delete; standing builders are
     named while they answer, and only to builds that ask for them, never in the file every
