@@ -14,7 +14,12 @@
 // what's typed names it instead, saved in the folder it's typed in. Asked
 // for a folder, it lists no files and each folder leads with Open This
 // Folder. Closing the launcher answers nothing, a request that isn't JSON
-// is refused at once, and a withdrawn one closes the launcher. It exits 0
+// is refused at once, and a withdrawn one closes the launcher. Where several
+// may be opened, Open the Marked leads from the start, saying none and
+// opening nothing; Return marks a file, the launcher staying, and its row
+// wears the mark, says what Return does now and holds Marked, yes; Return
+// again unmarks it; and Open the Marked answers every one marked, in the
+// order they were, wherever each was. It exits 0
 // once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 
@@ -78,7 +83,7 @@ ShellRoot {
 
     // A socket of open-with's, by its number: each answer it's given.
     Variants {
-        model: [1, 2, 3, 4, 5, 6]
+        model: [1, 2, 3, 4, 5, 6, 7]
 
         SocketServer {
             id: socket
@@ -198,6 +203,15 @@ ShellRoot {
                 chooser.withdrawn(`${runtime}/open-with/6.sock`);
                 expect("a withdrawn request closes the launcher", !launcher.open
                     && chooser.asks.length === 0, `${launcher.open}, ${chooser.asks.length} waiting`);
+                ask(7, { mode: "open", title: "Open Several", multiple: true, folder: notes });
+            } else if (stage === 11 && chooser.asking?.reply.endsWith("/7.sock") && ready([notes])) {
+                stage = 12;
+                marking();
+            } else if (stage === 12 && answers.length === 6) {
+                stage = 13;
+                expect("Open the Marked answers every one marked, in the order they were",
+                    answers[5] === JSON.stringify({ paths: [`${notes}/a.md`, `${home}/elsewhere/old.md`],
+                        filter: null, choices: {} }), answers[5]);
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -261,6 +275,40 @@ ShellRoot {
             names(inside));
         launcher.open = false;
         inside[0].run();
+    }
+
+    function marking() {
+        let rows = rowsIn(notes);
+        expect("Open the Marked leads from the start, then lately, folders and files",
+            names(rows) === "Open the Marked, | old.md, | sub, a.md, b.png, notes.txt", names(rows));
+        const lead = rows[0];
+        expect("with none marked, it says none and why, and Return keeps the launcher",
+            lead.side === "none" && lead.note !== "" && lead.stays === true,
+            `${lead.side} ${lead.note} ${lead.stays}`);
+        lead.run();
+        expect("with none marked, Open the Marked opens nothing", answers.length === 5
+            && chooser.asking?.reply.endsWith("/7.sock"), `${answers.length} answers`);
+        const a = named(rows, "a.md");
+        const unmarked = a.glyph;
+        expect("Return marks a file, the launcher staying", a.verb === "mark" && a.stays === true,
+            `${a.verb} ${a.stays}`);
+        a.run();
+        expect("a file marked wears the mark and says Return unmarks it", a.glyph !== unmarked
+            && a.verb === "unmark", `${a.glyph} ${a.verb}`);
+        expect("inside, Marked says yes, then Open for it alone, then Copy the Path",
+            names(a.verbs()) === "Marked, Open, Copy the Path" && a.verbs()[0].side === "yes",
+            `${names(a.verbs())} ${a.verbs()[0].side}`);
+        named(rows, "old.md").run();
+        const b = named(rows, "b.png");
+        b.run();
+        b.run();
+        expect("Return again unmarks it", b.verb === "mark" && b.glyph === unmarked
+            && b.verbs()[0].side === "no", `${b.verb} ${b.verbs()[0].side}`);
+        rows = rowsIn(notes);
+        expect("Open the Marked says how many are", rows[0].name === "Open the Marked"
+            && rows[0].side === "2" && rows[0].note === "", `${rows[0].name} ${rows[0].side}`);
+        launcher.open = false;
+        rows[0].run();
     }
 
     Component.onCompleted: {
