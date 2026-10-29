@@ -676,7 +676,7 @@ pub fn subvolume_beneath(parent: &std::os::fd::OwnedFd, child: &std::os::fd::Own
 
 /// Whether a filesystem's statistics say it's Btrfs. The kernel's type is
 /// signed, so its bits are read as the unsigned magic number they are.
-fn is_btrfs(stats: &rustix::fs::StatFs) -> bool {
+pub fn is_btrfs(stats: &rustix::fs::StatFs) -> bool {
     stats.f_type.cast_unsigned() == BTRFS_SUPER_MAGIC
 }
 
