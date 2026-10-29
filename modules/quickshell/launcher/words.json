@@ -4392,6 +4392,13 @@
       "verb": "open"
     },
     {
+      "id": "recent:site",
+      "in": "program:recent",
+      "name": "Site",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
       "id": "verb:float",
       "in": "windows",
       "name": "Float",

@@ -9,7 +9,10 @@
 // line, a tab between, newest first, and each program is matched to its
 // desktop entry by its id or its window's class, as heuristicLookup does,
 // or else by its name, which is how GTK names a program there. At most
-// nine are kept a program, so 1 to 9 pick one.
+// nine are kept a program, so 1 to 9 pick one. A source that's `asked`
+// watches nothing and is read only as its program is stepped into, once
+// each time the launcher opens (`ask`), for a program such as Chrome whose
+// history changes with every page.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -29,6 +32,24 @@ Scope {
     readonly property var shared: sharedFrom(sharedLines, DesktopEntries.applications.values)
 
     readonly property int most: 9
+
+    // The programs whose asked sources were read since the launcher opened.
+    property var asked: ({})
+
+    // Reads the asked sources of a program stepped into, once an opening.
+    function ask(app) {
+        if (recents.asked[app])
+            return;
+        recents.asked = Object.assign({}, recents.asked, { [app]: true });
+        for (const source of each.instances)
+            if (source.modelData.asked && source.modelData.app === app)
+                source.read();
+    }
+
+    // The launcher closed, so the next opening reads them again.
+    function forget() {
+        recents.asked = {};
+    }
 
     function of(app) {
         return lately[app] ?? shared[app] ?? [];
@@ -58,6 +79,8 @@ Scope {
     }
 
     Variants {
+        id: each
+
         model: recents.sources
 
         Scope {
@@ -77,7 +100,7 @@ Scope {
             }
 
             FileView {
-                path: source.modelData.watch
+                path: source.modelData.asked ? "" : source.modelData.watch ?? ""
                 watchChanges: true
                 printErrors: false
                 onFileChanged: source.read()
@@ -87,7 +110,7 @@ Scope {
                 id: listing
 
                 command: source.modelData.list
-                running: true
+                running: !source.modelData.asked
                 onExited: {
                     if (source.again) {
                         source.again = false;

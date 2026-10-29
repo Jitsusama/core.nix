@@ -1320,12 +1320,17 @@ onLinux {
         Name=Radio
         Exec=radio
       '';
+      browser = entry "browser" ''
+        Name=Browser
+        Exec=browser %U
+      '';
     in
     pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
       mkdir -p launcher share/applications
       cp ${tester} share/applications/tester.desktop
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
+      cp ${browser} share/applications/browser.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -1356,6 +1361,13 @@ onLinux {
       printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\n' \
         "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
+      # The browser's sites, as chrome-recent-sites prints them, each
+      # reading saying which it is.
+      export SITES_LIST=${pkgs.writeShellScript "sites-list" ''
+        echo . >> "$HOME/sites-read"
+        n=$(wc -l < "$HOME/sites-read")
+        printf 'https://example.org/%s\tPage %s\nhttps://other.example.net/a\tOlder page\n' "$n" "$n"
+      ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out

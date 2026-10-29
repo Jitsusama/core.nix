@@ -152,6 +152,13 @@
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
   '';
+  chrome-recent-sites-passes-clippy = ''
+    clippy finds nothing in what reads Chrome's sites for the launcher, or its tests
+  '';
+  chrome-recent-sites-reads-a-history-mid-write = ''
+    Chrome's sites are read whole from a history caught halfway through a write, its last whole
+    write listed, Chrome's files left alone and no copy left behind
+  '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
   '';

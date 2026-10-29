@@ -1,0 +1,12 @@
+# chrome-recent-sites prints the sites Chrome visited lately, for Chrome's
+# Recent inside the launcher (src/main.rs says how).
+[package]
+name = "chrome-recent-sites"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Chrome's history, with SQLite built in, as spend-watch has it.
+rusqlite = { version = "0.37", features = ["bundled"] }

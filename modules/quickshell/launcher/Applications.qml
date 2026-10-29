@@ -522,6 +522,17 @@ Provider {
         }
     }
 
+    // A source read only as its program is stepped into is read again the
+    // next time the launcher opens.
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (!provider.launcher.open)
+                provider.recents.forget();
+        }
+    }
+
     // Recent: what it had open lately (Recents.qml), in the order it keeps
     // them, each a folder or a file by its name, beside the folder it's in.
     // Return opens it through the program as its own list's settings say:
@@ -530,14 +541,19 @@ Provider {
     // desktop's list programs share opens in the program, by its own
     // command given the file, when its entry takes files; one given to a
     // program that opens none, such as a chat's attachment, opens as the
-    // desktop opens it, which is what the list itself says of those. Any
-    // other provider may give a program's Recent its own things after
-    // these, each its one row, by `recentOf(program)`, newest first, as
-    // Docs' documents are given (Documents.qml).
+    // desktop opens it, which is what the list itself says of those.
+    // A site Chrome visited, its source's `site` kind, is the page's title
+    // beside its host, opened by the program's own command given the page
+    // when its source names no command of its own. Any other provider may
+    // give a program's Recent its own things after these, each its one
+    // row, by `recentOf(program)`, newest first, as Docs' documents are
+    // given (Documents.qml).
     function recent(entry) {
         const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+        provider.recents.ask(entry.id);
         const listed = () => provider.recents.of(entry.id)
-            .map(path => provider.lately(entry, source, path))
+            .map(path => source?.kind === "site"
+                ? provider.visited(entry, path) : provider.lately(entry, source, path))
             .concat(givenRecent(entry.id)).slice(0, provider.recents.most);
         const count = listed().length;
         if (count === 0)
@@ -601,6 +617,25 @@ Provider {
                 Niri.spawn(command.map(part => part.replace("{path}", path)
                     .replace("{pid}", String(window?.pid ?? ""))));
             }
+        });
+    }
+
+    // One site a program visited lately, a line of its source's: the page's
+    // address, a tab and its title. Keyed by the page, as a site is wherever
+    // it shows.
+    function visited(entry, line) {
+        const tab = line.indexOf("\t");
+        const address = tab < 0 ? line : line.slice(0, tab);
+        const title = tab < 0 ? "" : line.slice(tab + 1);
+        const host = address.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "");
+        return thing({
+            key: `site:${address}`,
+            verb: Words.verb("recent:site"),
+            name: title !== "" ? title : host,
+            glyph: "web",
+            hue: "program",
+            side: host,
+            run: () => Niri.spawn(provider.command(entry).concat([address]))
         });
     }
 

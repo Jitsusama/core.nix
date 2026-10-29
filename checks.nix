@@ -846,6 +846,7 @@ gather (
     ./modules/btrfs/checks.nix
     ./modules/camera/checks.nix
     ./modules/cargo/checks.nix
+    ./modules/chrome/checks.nix
     ./modules/claude/checks.nix
     ./modules/clippy/checks.nix
     ./modules/console/checks.nix
