@@ -32,6 +32,13 @@ Provider {
 
     examples: ["temperature", "fans"]
 
+    // Sensors is made at its first use, and lists the machine's chips a
+    // moment after; asked first as Machine is stepped into, it would have
+    // none yet, and Machine, made once, would list no Heat (15J7N3,
+    // 2026-10-29). So it's made as Heat is, with the shell, as each of
+    // Heat's and Machine's own was before they shared one.
+    Component.onCompleted: Sensors.chips()
+
     // The words it answers whole, and by their start (Provider.qml).
     questions: Words.answers("heat")
 
