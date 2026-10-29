@@ -550,6 +550,43 @@
       }
     },
     {
+      "id": "machine:disk:holder:size",
+      "in": "machine:disk:filling",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:holder:clears",
+      "in": "machine:disk:filling",
+      "name": "Clearable"
+    },
+    {
+      "id": "verb:disk:open",
+      "in": "machine:disk:filling",
+      "name": "Open Its Folder",
+      "verb": "open",
+      "glyph": "offer"
+    },
+    {
+      "id": "verb:disk:keep",
+      "in": "machine:disk:filling",
+      "name": "Keep",
+      "verb": "keep",
+      "glyph": "locked",
+      "ask": "why keep it?",
+      "states": {
+        "kept": {
+          "verb": "release"
+        }
+      }
+    },
+    {
+      "id": "verb:disk:copy-path",
+      "in": "machine:disk:filling",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
       "id": "machine:disk:speed",
       "in": "machine:disk",
       "name": "Speed",
