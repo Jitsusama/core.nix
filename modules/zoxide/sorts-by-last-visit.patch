@@ -1,0 +1,138 @@
+`zoxide query` prints folders only in its own ranking, which weighs how
+often against how lately, so a folder visited a hundred times last month
+outranks the one visited a minute ago. The launcher's Recent lists a
+program's things newest first, so it asks for `--sort-by last-accessed`:
+the newest visit first. It follows upstream's own proposal for the flag
+(ajeetdsouza/zoxide#857, closed unreviewed; #784 asks for it), with the
+path and score orders it offered beside it. It goes on after
+queries-leave-the-database-alone.patch and, like the sorts there, marks
+nothing changed, since every reader sorts again.
+
+--- a/src/cmd/cmd.rs
++++ b/src/cmd/cmd.rs
+@@ -186,6 +186,10 @@
+     #[clap(long, short, conflicts_with = "interactive")]
+     pub list: bool,
+ 
++    /// Sort result
++    #[clap(long)]
++    pub sort_by: Option<Ordering>,
++
+     /// Print score with results
+     #[clap(long, short)]
+     pub score: bool,
+@@ -199,6 +203,13 @@
+     pub base_dir: Option<String>,
+ }
+ 
++#[derive(ValueEnum, Debug, Clone, Copy)]
++pub enum Ordering {
++    Path,
++    Score,
++    LastAccessed,
++}
++
+ /// Remove a directory from the database
+ #[derive(Debug, Parser)]
+ #[clap(
+--- a/src/cmd/query.rs
++++ b/src/cmd/query.rs
+@@ -80,7 +80,8 @@
+         let mut options = StreamOptions::new(now)
+             .with_keywords(self.keywords.iter().map(|s| s.as_str()))
+             .with_exclude(config::exclude_dirs()?)
+-            .with_base_dir(self.base_dir.clone());
++            .with_base_dir(self.base_dir.clone())
++            .sort_by(self.sort_by);
+         if !self.all {
+             let resolve_symlinks = config::resolve_symlinks();
+             options = options.with_exists(true).with_resolve_symlinks(resolve_symlinks);
+--- a/src/db/mod.rs
++++ b/src/db/mod.rs
+@@ -169,6 +169,10 @@
+     pub fn sort_by_path(&mut self) {
+         self.with_dirs_mut(|dirs| dirs.sort_unstable_by(|dir1, dir2| dir1.path.cmp(&dir2.path)));
+     }
+ 
++    pub fn sort_by_last_accessed(&mut self) {
++        self.with_dirs_mut(|dirs| dirs.sort_unstable_by_key(|dir| dir.last_accessed));
++    }
++
+     pub fn sort_by_score(&mut self, now: Epoch) {
+         self.with_dirs_mut(|dirs| {
+             dirs.sort_unstable_by(|dir1: &Dir, dir2: &Dir| {
+--- a/src/db/stream.rs
++++ b/src/db/stream.rs
+@@ -5,6 +5,7 @@
+ 
+ use glob::Pattern;
+ 
++use crate::cmd::Ordering;
+ use crate::db::{Database, Dir, Epoch};
+ use crate::util::{self, MONTH};
+ 
+@@ -16,7 +17,11 @@
+ 
+ impl<'a> Stream<'a> {
+     pub fn new(db: &'a mut Database, options: StreamOptions) -> Self {
+-        db.sort_by_score(options.now);
++        match options.sort_by {
++            Ordering::Path => db.sort_by_path(),
++            Ordering::Score => db.sort_by_score(options.now),
++            Ordering::LastAccessed => db.sort_by_last_accessed(),
++        }
+         let idxs = (0..db.dirs().len()).rev();
+         Stream { db, idxs, options }
+     }
+@@ -129,6 +134,9 @@
+     /// Only return directories within this parent directory
+     /// Does not check if the path exists
+     base_dir: Option<String>,
++
++    /// Ordering of the stream entries
++    sort_by: Ordering,
+ }
+ 
+ impl StreamOptions {
+@@ -141,6 +149,7 @@
+             resolve_symlinks: false,
+             ttl: now.saturating_sub(3 * MONTH),
+             base_dir: None,
++            sort_by: Ordering::Score,
+         }
+     }
+ 
+@@ -172,6 +181,13 @@
+         self.base_dir = base_dir;
+         self
+     }
++
++    pub fn sort_by(mut self, ordering: Option<Ordering>) -> Self {
++        if let Some(ordering) = ordering {
++            self.sort_by = ordering;
++        }
++        self
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -208,4 +224,19 @@
+         let stream = Stream::new(db, options);
+         assert_eq!(is_match, stream.filter_by_keywords(path));
+     }
++
++    #[test]
++    fn last_accessed_lists_the_newest_first() {
++        let db = &mut Database::new(PathBuf::new(), Vec::new(), |_| Vec::new(), false);
++        db.add("/often", 100.0, 10);
++        db.add("/lately", 1.0, 30);
++        db.add("/once", 1.0, 20);
++        let options = StreamOptions::new(40).sort_by(Some(Ordering::LastAccessed));
++        let mut stream = Stream::new(db, options);
++        let mut paths = Vec::new();
++        while let Some(dir) = stream.next() {
++            paths.push(dir.path.to_string());
++        }
++        assert_eq!(paths, ["/lately", "/once", "/often"]);
++    }
+ }

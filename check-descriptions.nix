@@ -1583,6 +1583,10 @@
     zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
     and the question mark key asks the launcher for the keys
   '';
+  zoxide-lists-the-folder-visited-last-first = ''
+    the account's zoxide lists the folder visited last first when asked, though another was visited
+    more often, without writing its database
+  '';
   zoxide-lists-without-writing = ''
     the account's zoxide lists its folders, the most visited first, without writing its database,
     and a visit still writes it
