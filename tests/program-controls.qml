@@ -366,7 +366,7 @@ ShellRoot {
             root.waiting = "the recents to change";
             // Held inside a program, as Joel would be, while its list changes.
             launcher.open = true;
-            launcher.held = ["quiet"];
+            launcher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
             root.redrawn = 0;
             writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)
                 .join("\n") + "\n");

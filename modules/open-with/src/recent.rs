@@ -1,6 +1,6 @@
 //! The desktop's list of files opened lately: recently-used.xbel in the data
 //! folder, as the freedesktop desktop bookmark spec lays it out. It's read
-//! and written through GLib's own `BookmarkFile`, as GTK's `RecentManager`
+//! and written through `glib::BookmarkFile`, as GTK's `RecentManager`
 //! does, so a file is kept the way every GTK program reads it: its kind,
 //! when it was added, changed and visited, and each program that opened it,
 //! how often and when last. GIMP and Inkscape add to it themselves; Neovim
@@ -16,7 +16,7 @@ use glib::{BookmarkFile, DateTime};
 /// GTK's own default (gtk-recent-files-max-age), thirty days.
 pub const KEPT: i64 = 30 * 24 * 60 * 60;
 
-/// Why the list couldn't be read or written: GLib's reason, or the disk's.
+/// Why the list couldn't be read or written: the reason `GLib` gives, or the disk's.
 pub type Failed = Box<dyn Error>;
 
 /// Where the list is: recently-used.xbel in the data folder.
@@ -44,13 +44,19 @@ fn read(list: &Path) -> Result<BookmarkFile, glib::Error> {
 
 /// Says that `program` opened each of `paths` at `at` (now, when none), as
 /// the command `exec` runs it, `%u` standing for the file (given as it
-/// runs, since GLib quotes it as it stores it), each a
+/// runs, since `GLib` quotes it as it stores it), each a
 /// microsecond after the one before, so the last is the newest. A file already
 /// listed gains one to the program's count; one that isn't is added with
 /// its kind as GIO guesses it from its name. Anything nothing has opened in
 /// `KEPT` goes, and the list is written anew and moved over the old one,
-/// as GLib writes it, so a reader never sees half of it.
-pub fn add(list: &Path, program: &str, exec: &str, paths: &[PathBuf], at: Option<&DateTime>) -> Result<(), Failed> {
+/// as `GLib` writes it, so a reader never sees half of it.
+pub fn add(
+    list: &Path,
+    program: &str,
+    exec: &str,
+    paths: &[PathBuf],
+    at: Option<&DateTime>,
+) -> Result<(), Failed> {
     let mut bookmarks = read(list)?;
     let start = match at {
         Some(at) => at.clone(),
@@ -61,7 +67,8 @@ pub fn add(list: &Path, program: &str, exec: &str, paths: &[PathBuf], at: Option
         let stamp = start.add(glib::TimeSpan::from_microseconds(step))?;
         if !bookmarks.has_item(&uri) {
             let (kind, _) = gio::content_type_guess(Some(path), None);
-            let mime = gio::content_type_get_mime_type(&kind).unwrap_or_else(|| "application/octet-stream".into());
+            let mime = gio::content_type_get_mime_type(&kind)
+                .unwrap_or_else(|| "application/octet-stream".into());
             bookmarks.set_mime_type(&uri, &mime);
         }
         bookmarks.set_application_info(&uri, program, exec, -1, Some(&stamp))?;
@@ -71,13 +78,13 @@ pub fn add(list: &Path, program: &str, exec: &str, paths: &[PathBuf], at: Option
     // modified time, which GLib sets from the clock as anything changes.
     let now = start.to_unix();
     for uri in bookmarks.uris() {
-        let last = bookmarks
+        let newest = bookmarks
             .applications(&uri)?
             .iter()
             .filter_map(|program| bookmarks.application_info(&uri, program).ok())
             .map(|(_, _, stamp)| stamp.to_unix())
             .max();
-        if last.is_none_or(|last| now - last > KEPT) {
+        if newest.is_none_or(|newest| now - newest > KEPT) {
             bookmarks.remove_item(&uri)?;
         }
     }
@@ -107,7 +114,12 @@ pub fn list(list: &Path) -> Result<Vec<Opened>, Failed> {
             });
         }
     }
-    opened.sort_by(|one, other| other.at.cmp(&one.at).then_with(|| one.path.cmp(&other.path)));
+    opened.sort_by(|one, other| {
+        other
+            .at
+            .cmp(&one.at)
+            .then_with(|| one.path.cmp(&other.path))
+    });
     Ok(opened)
 }
 
@@ -120,7 +132,11 @@ mod tests {
     }
 
     fn folder() -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("recent-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let folder = std::env::temp_dir().join(format!(
+            "recent-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
         folder
@@ -130,7 +146,17 @@ mod tests {
         super::list(list)
             .unwrap()
             .into_iter()
-            .map(|each| (each.program, each.path.file_name().unwrap().to_string_lossy().into_owned(), each.at))
+            .map(|each| {
+                (
+                    each.program,
+                    each.path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    each.at,
+                )
+            })
             .collect()
     }
 
@@ -138,9 +164,30 @@ mod tests {
     fn each_file_a_program_opens_is_listed_newest_first() {
         let here = folder();
         let list = here.join("data/recently-used.xbel");
-        add(&list, "nvim", "nvim %u", &[here.join("one.txt")], Some(&at(1_000_000))).unwrap();
-        add(&list, "nvim", "nvim %u", &[here.join("two.md")], Some(&at(1_000_100))).unwrap();
-        add(&list, "gimp", "gimp %u", &[here.join("one.txt")], Some(&at(1_000_050))).unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("one.txt")],
+            Some(&at(1_000_000)),
+        )
+        .unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("two.md")],
+            Some(&at(1_000_100)),
+        )
+        .unwrap();
+        add(
+            &list,
+            "gimp",
+            "gimp %u",
+            &[here.join("one.txt")],
+            Some(&at(1_000_050)),
+        )
+        .unwrap();
         assert_eq!(
             seen(&list),
             [
@@ -166,19 +213,52 @@ mod tests {
         let here = folder();
         let list = here.join("recently-used.xbel");
         let one = here.join("one.txt");
-        add(&list, "nvim", "nvim %u", std::slice::from_ref(&one), Some(&at(1_000_000))).unwrap();
-        add(&list, "nvim", "nvim %u", &[here.join("two.txt")], Some(&at(1_000_010))).unwrap();
-        add(&list, "nvim", "nvim %u", std::slice::from_ref(&one), Some(&at(1_000_020))).unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            std::slice::from_ref(&one),
+            Some(&at(1_000_000)),
+        )
+        .unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("two.txt")],
+            Some(&at(1_000_010)),
+        )
+        .unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            std::slice::from_ref(&one),
+            Some(&at(1_000_020)),
+        )
+        .unwrap();
         let read = read(&list).unwrap();
         let uri = glib::filename_to_uri(&one, None).unwrap();
-        assert_eq!(read.application_info(&uri, "nvim").unwrap().1, 2, "counted twice");
+        assert_eq!(
+            read.application_info(&uri, "nvim").unwrap().1,
+            2,
+            "counted twice"
+        );
         assert_eq!(
             read.application_info(&uri, "nvim").unwrap().0,
             format!("nvim {uri}"),
             "its command as it was given, for GLib quotes it itself"
         );
-        assert_eq!(read.mime_type(&uri).unwrap(), "text/plain", "its kind, from its name");
-        assert_eq!(read.visited_date_time(&uri).unwrap().to_unix(), 1_000_020, "visited as it was opened");
+        assert_eq!(
+            read.mime_type(&uri).unwrap(),
+            "text/plain",
+            "its kind, from its name"
+        );
+        assert_eq!(
+            read.visited_date_time(&uri).unwrap().to_unix(),
+            1_000_020,
+            "visited as it was opened"
+        );
         assert_eq!(seen(&list)[0].1, "one.txt");
     }
 
@@ -209,17 +289,35 @@ mod tests {
         )
         .unwrap();
         let october = DateTime::from_iso8601("2026-10-10T00:00:00Z", None).unwrap();
-        add(&list, "nvim", "nvim %u", &[here.join("notes.md")], Some(&october)).unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("notes.md")],
+            Some(&october),
+        )
+        .unwrap();
         let read = read(&list).unwrap();
         let picture = "file:///home/someone/a%20picture.png";
-        assert_eq!(read.application_info(picture, "GNU Image Manipulation Program").unwrap().1, 3);
+        assert_eq!(
+            read.application_info(picture, "GNU Image Manipulation Program")
+                .unwrap()
+                .1,
+            3
+        );
         assert_eq!(read.groups(picture).unwrap(), ["gimp"]);
         assert_eq!(read.mime_type(picture).unwrap(), "image/png");
         assert_eq!(
-            seen(&list).into_iter().map(|each| (each.0, each.1)).collect::<Vec<_>>(),
+            seen(&list)
+                .into_iter()
+                .map(|each| (each.0, each.1))
+                .collect::<Vec<_>>(),
             [
                 ("nvim".to_owned(), "notes.md".to_owned()),
-                ("GNU Image Manipulation Program".to_owned(), "a picture.png".to_owned())
+                (
+                    "GNU Image Manipulation Program".to_owned(),
+                    "a picture.png".to_owned()
+                )
             ],
             "a web page names no file, so only files are listed"
         );
@@ -230,9 +328,30 @@ mod tests {
         let here = folder();
         let list = here.join("recently-used.xbel");
         let day = 24 * 60 * 60;
-        add(&list, "nvim", "nvim %u", &[here.join("old.txt")], Some(&at(1_000_000))).unwrap();
-        add(&list, "nvim", "nvim %u", &[here.join("kept.txt")], Some(&at(1_000_000 + 2 * day))).unwrap();
-        add(&list, "nvim", "nvim %u", &[here.join("new.txt")], Some(&at(1_000_000 + 31 * day))).unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("old.txt")],
+            Some(&at(1_000_000)),
+        )
+        .unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("kept.txt")],
+            Some(&at(1_000_000 + 2 * day)),
+        )
+        .unwrap();
+        add(
+            &list,
+            "nvim",
+            "nvim %u",
+            &[here.join("new.txt")],
+            Some(&at(1_000_000 + 31 * day)),
+        )
+        .unwrap();
         let names: Vec<_> = seen(&list).into_iter().map(|each| each.1).collect();
         assert_eq!(names, ["new.txt", "kept.txt"]);
     }

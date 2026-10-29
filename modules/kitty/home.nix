@@ -114,7 +114,8 @@ in
   # behind the window used last while one is open. The launcher watches the
   # list from inside its folder, which zoxide makes only at its first cd, so
   # it's made at sign-in and that cd counts.
-  config.systemd.user.tmpfiles.rules = lib.optional config.programs.zoxide.enable "d ${config.xdg.dataHome}/zoxide 0700 - - -";
+  config.systemd.user.tmpfiles.rules =
+    lib.optional config.programs.zoxide.enable "d ${config.xdg.dataHome}/zoxide 0700 - - -";
 
   config.jitsusama.quickshell.launcher.recents = lib.optional config.programs.zoxide.enable {
     app = "kitty";

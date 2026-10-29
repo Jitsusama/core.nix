@@ -593,10 +593,11 @@ Provider {
     }
 
     // Everything the right arrow holds for a program, as it stands now, in
-    // the program's order (the launcher's design, RSCH-20261028-2NK1E5):
-    // Go To or Open, New Window, New Window Below, its own actions, Recent,
-    // its windows, its notices, Shortcuts and Quit, then Media and Sound
-    // while it plays.
+    // one order for every program: Go To or Open, New Window, New Window
+    // Below, its own actions, Recent, its windows, its notices, Shortcuts
+    // and Quit, then Media and Sound while it plays. What it does comes
+    // first and what ends it near the bottom, so Return on a program never
+    // lands in its Recent.
     function controls(entry, start, below) {
         const looked = {};
         const same = given => provider.names(entry, given, looked);

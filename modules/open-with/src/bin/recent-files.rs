@@ -24,16 +24,19 @@ fn main() -> ExitCode {
             let (program, files) = rest.split_first().expect("two or more");
             let here = env::current_dir().unwrap_or_default();
             let paths: Vec<PathBuf> = files.iter().map(|file| here.join(file)).collect();
-            recent::add(&list, program, &format!("{program} %u"), &paths, None).map_err(|error| error.to_string())
-        }
-        Some((verb, [])) if verb == "list" => recent::list(&list).map_err(|error| error.to_string()).and_then(|opened| {
-            let mut out = io::stdout().lock();
-            opened
-                .iter()
-                .filter(|each| each.path.exists())
-                .try_for_each(|each| writeln!(out, "{}\t{}", each.program, each.path.display()))
+            recent::add(&list, program, &format!("{program} %u"), &paths, None)
                 .map_err(|error| error.to_string())
-        }),
+        }
+        Some((verb, [])) if verb == "list" => recent::list(&list)
+            .map_err(|error| error.to_string())
+            .and_then(|opened| {
+                let mut out = io::stdout().lock();
+                opened
+                    .iter()
+                    .filter(|each| each.path.exists())
+                    .try_for_each(|each| writeln!(out, "{}\t{}", each.program, each.path.display()))
+                    .map_err(|error| error.to_string())
+            }),
         _ => Err(USAGE.to_owned()),
     };
     match done {
