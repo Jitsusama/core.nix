@@ -18,13 +18,25 @@ let
   asked = lib.optionals (lib.all (disk: disk.keyFile == null) disks) (map (disk: disk.device) disks);
 in
 {
-  # The kernel compresses the image on at most three threads, so the
-  # compressor sets how long going down and coming back take. lz4 compresses
-  # a little faster than lzo, the kernel's default, and decompresses several
-  # times faster, for a slightly larger image. The image's header says which
-  # wrote it, so a resume reads it with the same one, whatever the starting
-  # kernel was told.
-  boot.kernelParams = [ "hibernate.compressor=lz4" ];
+  # Compressing the image is most of how long going down and coming back
+  # take. lz4 compresses a little faster than lzo, the kernel's default, and
+  # decompresses several times faster, for a slightly larger image. The
+  # image's header says which wrote it, so a resume reads it with the same
+  # one, whatever the starting kernel was told.
+  #
+  # The kernel compresses and decompresses on at most
+  # hibernate_compression_threads threads, three unless told, and never more
+  # than every CPU but one; three wrote 22 GB in 41 s. Asking for 64 gives
+  # every CPU but one, whatever the laptop, and each thread needs only two
+  # small buffers. On the command line it reaches the starting kernel too,
+  # which reads the image back.
+  boot.kernelParams = [
+    "hibernate.compressor=lz4"
+    "hibernate_compression_threads=64"
+  ];
+  # The same, written to the running kernel, so a switch needs no restart.
+  # A kernel without the file is left alone.
+  systemd.tmpfiles.settings.hibernate."/sys/power/hibernate_compression_threads".w.argument = "64";
   # The image is read in the initrd, so lz4 has to be there before the disk
   # opens. Where a kernel builds it in, as the laptops' does, this asks for
   # nothing more.
