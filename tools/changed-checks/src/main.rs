@@ -32,6 +32,7 @@
 //! (`runs.rs` says what it holds).
 
 mod checks;
+mod pressure;
 mod runs;
 
 use std::env;
@@ -266,18 +267,25 @@ fn derivations(
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
     let chunks = checks::chunks(&names);
-    let evaluated = checks::each_at_once(&chunks, checks::AT_ONCE, |chunk| {
-        let selecting = checks::selecting(chunk)?;
-        let began = Instant::now();
-        let evaluated = run(
-            "nix",
-            &["eval", "--json", &checks, "--apply", &selecting, UNCACHED],
-        )?;
-        let took = began.elapsed();
-        let derivations: Derivations = serde_json::from_str(&evaluated)
-            .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
-        Ok::<_, String>((chunk.len(), took, derivations))
-    })?;
+    // A further chunk begins only while memory isn't stalling: two at once
+    // while it was full stalled Joel's launcher on 29 October.
+    let evaluated = checks::each_at_once(
+        &chunks,
+        checks::AT_ONCE,
+        || !pressure::memory_stalled(),
+        |chunk| {
+            let selecting = checks::selecting(chunk)?;
+            let began = Instant::now();
+            let evaluated = run(
+                "nix",
+                &["eval", "--json", &checks, "--apply", &selecting, UNCACHED],
+            )?;
+            let took = began.elapsed();
+            let derivations: Derivations = serde_json::from_str(&evaluated)
+                .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
+            Ok::<_, String>((chunk.len(), took, derivations))
+        },
+    )?;
     let mut found = Derivations::new();
     for (checks, took, derivations) in evaluated {
         evaluation.chunk(checks, took);
