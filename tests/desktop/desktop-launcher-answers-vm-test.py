@@ -33,6 +33,15 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
+def back_to_the_first_row(desktop: Desktop) -> None:
+    """Move the selection up to the first row, where down_to counts from."""
+    shown = desktop.showing()
+    for _ in range(shown["rows"].index(shown["selected"]["name"])):
+        desktop.machine.send_key("up")
+    first = shown["rows"][0]
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == first)
+
+
 def field_key(field: list[Json], mark: str, word: str) -> Json:
     """Give the field's word for a key, its mark then what it does, failing if it isn't there."""
     said = [one for one in field if mark in one["text"] and one["text"].endswith(f" {word}")]
@@ -819,6 +828,9 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     assert not any(word["text"].endswith(" clear") for word in field), field
     machine.send_key("left")
     desktop.launcher_until(lambda shown: shown["typed"] == "")
+    # Clearing keeps the row the letter chose, and what follows counts
+    # down from the first, so the selection goes back up to it.
+    back_to_the_first_row(desktop)
     # Its Light is a setting saying how lit it is, the level set
     # above; Return steps into its levels, and on one, sets it.
     desktop.down_to("Light")
