@@ -1734,7 +1734,13 @@
     {
       "id": "sound:mute",
       "in": "sound",
-      "name": "Muted"
+      "name": "Muted",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "verb": "unmute"
+        }
+      }
     },
     {
       "id": "sound:programs",
@@ -1917,18 +1923,6 @@
       "states": {
         "input": {
           "name": "Listen Through It"
-        }
-      }
-    },
-    {
-      "id": "verb:sound-mute",
-      "in": "sound",
-      "name": "Mute",
-      "verb": "mute",
-      "states": {
-        "muted": {
-          "name": "Unmute",
-          "verb": "unmute"
         }
       }
     },
@@ -4382,20 +4376,21 @@
       "said": {
         "muted": "muted",
         "now": "now {level}",
-        "recording": "recording"
+        "recording": "recording",
+        "yes": "yes",
+        "no": "no"
       }
     },
     {
       "id": "verb:program:mute",
       "in": "program:sound",
-      "name": "Mute",
+      "name": "Muted",
       "verb": "mute",
-      "glyph": "silent",
+      "glyph": "volume",
       "states": {
         "muted": {
-          "name": "Unmute",
           "verb": "unmute",
-          "glyph": "volume"
+          "glyph": "silent"
         }
       }
     },
