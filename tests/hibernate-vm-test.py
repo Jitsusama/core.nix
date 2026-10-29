@@ -25,6 +25,9 @@ PIN = "2468"
 ASKED = r"[Ee]nter .*PIN"
 # What hibernate-unlock says once it has let the lock go.
 LET_GO = "hibernate-unlock: back through the disk prompt; the lock is let go"
+# The hook systemd-sleep runs, and what its rescue says with no lid shut.
+HOOK = "/etc/systemd/system-sleep/hibernate-unlock"
+SAID_SO = "hibernate-unlock: the lid is open, so it says so"
 
 
 def start_through_the_disk_prompt(machine: QemuMachine) -> None:
@@ -94,3 +97,14 @@ def test_a_boot_after_it_starts_afresh(swapping: QemuMachine) -> None:
     start_through_the_disk_prompt(swapping)
     swapping.wait_for_unit("default.target")
     swapping.fail(f"test -e {MARK}")
+
+
+def test_a_hibernation_that_rolls_back_is_rescued(swapping: QemuMachine) -> None:
+    """Back from a hibernation with no start between is a rollback, and a rescue follows.
+
+    The hook is run as systemd-sleep runs it around a hibernation the kernel rolled back:
+    before, then after, with the TPM's counts unmoved. The machine has no lid, so the
+    rescue, ten seconds on and on its own, says so rather than hibernating again.
+    """
+    swapping.succeed(f"{HOOK} pre hibernate", f"{HOOK} post hibernate")
+    swapping.wait_until_succeeds(f"journalctl --boot --grep '{SAID_SO}'", timeout=60)

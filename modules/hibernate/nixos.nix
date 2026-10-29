@@ -2,7 +2,8 @@
 # and read back at the next start. Where the image went is kept by systemd in
 # an EFI variable, so nothing here names a disk (tests/hibernate.nix proves
 # the machine comes back). Coming back asks once, at the disk prompt: the
-# lock screen lets go by itself (unlock/src/main.rs says when).
+# lock screen lets go by itself. A hibernation that rolled back, leaving the
+# machine on, is tried again or said (unlock/src/main.rs says when).
 {
   config,
   lib,
@@ -36,6 +37,7 @@ in
       PATH=${
         lib.makeBinPath [
           pkgs.cryptsetup
+          pkgs.libnotify
           pkgs.systemd
           pkgs.tpm2-tools
         ]
