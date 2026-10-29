@@ -289,6 +289,7 @@
         plymouth = moduleFrom ./modules/plymouth/nixos.nix { inherit wallpapers; };
         podman = ./modules/podman/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
+        processor-telemetry = ./modules/processor-telemetry/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
         shaper = ./modules/shaper/nixos.nix;
         shure-mv7 = ./modules/shure-mv7/nixos.nix;

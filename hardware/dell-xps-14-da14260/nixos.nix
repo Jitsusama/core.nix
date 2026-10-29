@@ -68,6 +68,7 @@ in
     ../../modules/mic-mute-light/nixos.nix
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
+    ../../modules/processor-telemetry/nixos.nix
     ../../modules/touchpad/nixos.nix
     ./camera/camera.nix
     ./kernel/backports.nix
