@@ -53,6 +53,10 @@ Rectangle {
     property bool swatch: false
     // Its graph, as Graph.qml draws one, or null.
     property var graph: null
+    // Whether what it says warns, as an update waiting does: what it says
+    // at its right takes the warning colour, and its graph all of it, one
+    // flag for both so they never disagree (docs/design.md, Kinds).
+    property bool warns: false
     // How many characters the widest of what the list's graphed rows say
     // at their right runs to, so every graph in the list stands in one
     // column clear of them all.
@@ -208,7 +212,7 @@ Rectangle {
         id: drawing
         x: right.x - width - (right.width > 0 ? Theme.space.xl : 0)
         anchors.verticalCenter: parent.verticalCenter
-        reading: row.graph
+        reading: row.warns && row.graphed ? Object.assign({}, row.graph, { warn: true }) : row.graph
         selected: row.selected
     }
 
@@ -263,7 +267,7 @@ Rectangle {
             width: Math.min(implicitWidth, right.share)
             elide: Text.ElideRight
             text: right.said
-            color: Theme.muted
+            color: row.warns && row.kind === "" ? Theme.warning : Theme.muted
             font.family: Theme.mono.family
             font.pointSize: Theme.mono.large
         }

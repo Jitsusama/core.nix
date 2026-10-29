@@ -335,7 +335,11 @@ the left. Every dot lies under it in the edge colour at half its opacity,
 so an empty graph and a full one both show where they'd end. It's muted,
 text on the selected row, and the warning colour goes on a reading of 95%
 or more, or all of it when the row says it warns; a row that's never a
-warning however high, as a full battery isn't, says so. A row's graph sits
+warning however high, as a full battery isn't, says so. While a row says it
+warns, what it says at its right takes the warning colour with its graph, one
+rule for every such row: an update waiting, a device's charge running low, a
+short disk. Its mark keeps its kind's hue, or it stops saying what it is, and
+its note in the foot stays plain, since the words already say it. A row's graph sits
 between its words and what it says at the right, and the graphs in a list
 stand in one column, clear of the widest of those, the name giving way to
 it before anything else does.
