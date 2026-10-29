@@ -5,8 +5,9 @@
 # (home.nix) writes it, and the queue reads it to count the builder's room.
 # The file is empty while nothing is lent, so Nix never waits on a builder
 # that isn't there. Standing builders are in machines-with-standing alone,
-# which only a build that names it reads. The lent builder's store, for a
-# build sent there whole, is named in /run/nix-offload/store, and the
+# which only a build that names it reads. The lent builder's store, which
+# a build sent there as a command reaches it by, is named in
+# /run/nix-offload/store, and the
 # builder being made in /run/nix-offload/lending, so the queue holds the
 # builds it could take until the line is there.
 #
