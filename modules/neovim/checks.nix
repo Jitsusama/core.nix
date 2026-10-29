@@ -214,13 +214,14 @@ onLinux {
   neovim-says-the-files-it-opens =
     let
       home = account workstation;
+      # It keeps what it was asked, so a call it refuses reads as it was.
       recent-files = pkgs.writeShellScriptBin "recent-files" ''
-        [ "$1 $2" = "add nvim" ] || { echo "recent-files was asked: $*" >&2; exit 1; }
+        [ "$1 $2" = "add nvim" ] || { echo "recent-files $*" >> "$SAID"; exit 1; }
         shift 2
         printf '%s\n' "$@" >> "$SAID"
       '';
       heard = "vim.fn.filereadable(vim.env.SAID) == 1 and #vim.fn.readfile(vim.env.SAID) >= 3";
-      said = "vim.wait(10000, function() return ${heard} end); io.stdout:write(table.concat(vim.fn.readfile(vim.env.SAID), ' '))";
+      said = "vim.wait(10000, function() return ${heard} end); io.stdout:write(vim.fn.filereadable(vim.env.SAID) == 1 and table.concat(vim.fn.readfile(vim.env.SAID), ' ') or 'nothing said')";
     in
     pkgs.runCommandLocal "neovim-says-the-files-it-opens"
       {
