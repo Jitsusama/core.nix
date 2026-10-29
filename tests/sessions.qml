@@ -277,13 +277,27 @@ ShellRoot {
             id: asked
             parser: SplitParser {
                 onRead: line => {
-                    if (!line.includes("Watch"))
+                    // Asked as mycelium's node takes a watch, its groups one
+                    // pattern of group names, or refused as it refuses one.
+                    const watch = JSON.parse(line).Watch;
+                    if (!watch || !root.pattern(watch.groups) || typeof watch.recent !== "number") {
+                        root.fail(`a watch the node would refuse: ${line}`);
+                        asked.write('{"Err":"not a request"}\n');
+                        asked.flush();
                         return;
+                    }
                     asked.write(`${JSON.stringify({ SessionsChanged: { sessions: root.elsewhere() } })}\n`);
                     asked.flush();
                 }
             }
         }
+    }
+
+    // A pattern of groups as mycelium takes one (its group.rs): tokens of
+    // a-z, 0-9, `-` and `_` between dots, any one `*`, and `>` last only.
+    function pattern(groups) {
+        return typeof groups === "string"
+            && /^([a-z0-9_-]+|\*)(\.([a-z0-9_-]+|\*))*(\.>)?$|^>$/.test(groups);
     }
 
     function elsewhere() {
