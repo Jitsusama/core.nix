@@ -198,8 +198,9 @@ Singleton {
     }
 
     // The boot Joel said Not Now to, kept by the shell, so its sessions
-    // stay put off however often the shell starts on this boot.
-    readonly property string putOff: {
+    // stay put off however often the shell starts on this boot. Putting
+    // one off says so at once, as its file is written behind.
+    property string putOff: {
         try {
             return String(JSON.parse(putOffFile.text()).boot ?? "");
         } catch (error) {
@@ -221,7 +222,8 @@ Singleton {
     }
 
     function putOffLastBoot() {
-        putOffFile.setText(JSON.stringify({ boot: restoring.boot }));
+        putOff = restoring.boot;
+        putOffFile.setText(JSON.stringify({ boot: putOff }));
     }
 
     // Go to a session: its window, or, when niri's isn't known, kitty's,
