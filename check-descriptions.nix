@@ -267,6 +267,9 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-program-wears-its-own-mark = ''
+    every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
+  '';
   example-darwin = ''
     a Mac workstation evaluates
   '';

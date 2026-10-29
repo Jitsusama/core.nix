@@ -1318,6 +1318,37 @@ onLinux {
       touch $out
     '';
 
+  # Every program an account lists in the launcher, each desktop entry it
+  # shows, wears a mark of its own in launcher/Provider.qml's table, its
+  # logo or the theme's mark for it, never the program mark the rest share,
+  # and each theme mark it names is one the theme has.
+  every-program-wears-its-own-mark =
+    let
+      home = account graphical;
+      marks = pkgs.writeText "marks" (
+        lib.concatMapStrings (name: "${name}\n") (lib.attrNames home.jitsusama.theme.marks)
+      );
+    in
+    pkgs.runCommandLocal "every-program-wears-its-own-mark" { } ''
+      sed -n '/programGlyphs: Object.assign({/,/settings.glyphs/p' ${./launcher/Provider.qml} > table
+      grep -o '"[^"]*": "' table | cut -d '"' -f 2 > known
+      grep -o '"mark:[^"]*"' table | cut -d : -f 2 | tr -d '"' > named
+      bare=""
+      for entry in ${home.home.path}/share/applications/*.desktop; do
+        if grep -q -x -E '(NoDisplay|Hidden)=true' "$entry"; then continue; fi
+        id=$(basename "$entry" .desktop | tr '[:upper:]' '[:lower:]')
+        grep -q -x -F "$id" known || bare="$bare $id"
+      done
+      if [ -n "$bare" ]; then
+        echo "These programs would wear the program mark every program without one shares:$bare"
+        exit 1
+      fi
+      while read -r mark; do
+        grep -q -x -F "$mark" ${marks} || { echo "No theme mark is named $mark"; exit 1; }
+      done < named
+      touch $out
+    '';
+
   # The launcher's runs find pi's fleets and review rounds in a harness's
   # state written here (tests/runs-state.sh), as the real pi-runs reads it,
   # and go to the session that started one or read a participant's answer
