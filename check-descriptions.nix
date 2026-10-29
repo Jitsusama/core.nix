@@ -959,6 +959,10 @@
     the installed guide makes every TPM key ssh-tpm-agent's and tpm-signing's modules name, for
     the account naming it, with the PIN each asks for
   '';
+  the-guide-shell-keeps-its-vm-tests-qemu = ''
+    the guide's development shell holds the QEMU with canokey its VM tests boot under, so the
+    shell's root keeps it from being collected and compiled again
+  '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark

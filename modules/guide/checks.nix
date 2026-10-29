@@ -14,6 +14,17 @@
   ...
 }:
 onLinux {
+  # The guide's shell holds the QEMU its VM tests boot under, so nix-direnv's
+  # root for it keeps that QEMU, which no cache has, from being collected
+  # and compiled again for an hour or more.
+  the-guide-shell-keeps-its-vm-tests-qemu =
+    holds "the-guide-shell-keeps-its-vm-tests-qemu"
+      "the guide's development shell doesn't hold its VM tests' QEMU, so collecting the store compiles it again."
+      (
+        (self.devShells.${pkgs.stdenv.hostPlatform.system}.guide.GUIDE_VM_TESTS_QEMU or null)
+        == "${(import ../../tests/vm/guide/canokeys.nix { inherit pkgs; }).qemu}"
+      );
+
   # The keys an account's modules name in the TPM reach what the installed
   # guide reads, each with its account and a comment saying whose and
   # where: tpm-signing's two and ssh-tpm-agent's login key, which
