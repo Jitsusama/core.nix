@@ -338,6 +338,33 @@ fn a_healthy_disk_over_its_budget_has_what_holds_it_measured() {
 }
 
 #[test]
+fn each_measurement_goes_in_the_ledger_and_a_holder_says_what_it_grew_since_one_older() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    fs::write(root.join("kept"), vec![1u8; 64 * 1024]).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    let before = format!(
+        r#"[{{ "at": {}, "sizes": {{ "{}": 0 }} }}]"#,
+        now - 7200.0,
+        root.display()
+    );
+    fs::write(root.join(disk_guard::ledger::FILE), before).unwrap();
+    let mut guard = guard_over(&root, "1");
+    let status = measured(&mut guard, &root, Duration::from_secs(20));
+    let grew = &status["holders"][0]["grew"];
+    assert!(grew["bytes"].as_u64().unwrap() >= 64 * 1024, "{status}");
+    assert!(grew["over"].as_f64().unwrap() >= 7200.0, "{status}");
+    let at: Vec<f64> = disk_guard::ledger::load(&root)
+        .iter()
+        .map(|entry| entry.at)
+        .collect();
+    assert_eq!(at.len(), 2, "the older measurement and this one: {at:?}");
+}
+
+#[test]
 fn a_healthy_disk_within_its_budget_measures_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let mut guard = guard_over(dir.path(), "100%");
