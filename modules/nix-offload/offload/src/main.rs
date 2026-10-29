@@ -10,11 +10,12 @@
 //! Every 20 seconds it reads the machine queue. The moment a build or a VM
 //! check is queued or running, it asks the helper for a builder, names it
 //! `NAME<seconds>`, and writes the Nix machines line the helper gives into
-//! /run/nix-offload/machines, which nix-daemon reads at each build
-//! (`builders = @` it) and the queue reads to count the builder's room.
-//! The line is written twice, once making big-parallel mandatory and once
-//! nixos-test, so VM tests and big builds go to the builder first and
-//! small ones, quicker here than copied out, stay. Standing builders that
+//! /run/nix-offload/machines, which Nix's build hook reads as each build
+//! command starts (`builders = @` it) and the queue reads to count the
+//! builder's room. The line makes big-parallel mandatory and offers nothing
+//! a VM test needs, so big builds go to the builder first, and small ones
+//! and VM tests, whose inputs built here are slow to copy out, stay; a
+//! build sent whole to its store takes VM tests there instead. Standing builders that
 //! answer go only into /run/nix-offload/machines-with-standing, beside the
 //! lent one, for a build that names that file (`--builders @...`), never
 //! every build. Once nothing has reached it for fifteen minutes, or the
