@@ -567,6 +567,18 @@ pub struct Config {
     /// reason to, and a budget is a signal and a backstop, never a reason
     /// to take what an owner still holds.
     pub budget: Option<Size>,
+    pub holders: Holders,
+}
+
+/// Where the guard looks for what holds a disk, beside its sources.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Holders {
+    /// Folders whose every folder is a holder, so what no source names,
+    /// such as a program's own data, is still sized and named. The guard
+    /// clears nothing for being here.
+    #[serde(default)]
+    pub roots: Vec<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -591,6 +603,8 @@ struct Rendered {
     dedupe: Option<Dedupe>,
     boot: Option<PathBuf>,
     budget: Option<Size>,
+    #[serde(default)]
+    holders: Holders,
 }
 
 fn yes() -> bool {
@@ -653,7 +667,12 @@ impl Config {
         if rendered.scope == Scope::System && nix.profiles.is_none() {
             nix.profiles = Some(PathBuf::from("/nix/var/nix/profiles"));
         }
-        for path in [&nix.bin, &nix.store].into_iter().chain(&nix.profiles) {
+        let roots = &rendered.holders.roots;
+        for path in [&nix.bin, &nix.store]
+            .into_iter()
+            .chain(&nix.profiles)
+            .chain(roots)
+        {
             if !plain_absolute(path) {
                 return Err(format!("{} is not a plain absolute path", path.display()));
             }
@@ -669,6 +688,7 @@ impl Config {
             nix,
             system,
             budget: rendered.budget,
+            holders: rendered.holders,
         })
     }
 }

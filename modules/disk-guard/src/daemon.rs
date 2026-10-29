@@ -358,14 +358,15 @@ pub struct Guard {
     /// Whether the holders are to be measured again on the next step,
     /// since a clear has just changed them.
     remeasure: bool,
-    /// What holds the disks, as last measured and when, in wall seconds.
+    /// What holds the disks, as last measured and when, in wall seconds,
+    /// and how much each grew in the day before.
     measured: Measured,
     /// The thread measuring them, while it does.
     measuring: Option<std::thread::JoinHandle<()>>,
 }
 
 /// What holds the disks, as a thread of its own measured it.
-type Measured = Arc<Mutex<Option<(f64, Vec<(crate::holders::Place, u64)>)>>>;
+type Measured = Arc<Mutex<Option<(f64, Vec<(crate::holders::Place, u64)>, crate::ledger::Grown)>>>;
 
 /// How often what holds the disks is measured again while one is below
 /// healthy. Sizing every folder the sources name reads millions of
@@ -671,13 +672,14 @@ impl Guard {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
-            .is_some_and(|(at, _)| now - at < HOLDERS_EVERY);
+            .is_some_and(|(at, _, _)| now - at < HOLDERS_EVERY);
         if !pressed || (fresh && !self.remeasure) {
             return;
         }
         self.remeasure = false;
         let places = crate::holders::places(&self.config);
         let measured = Arc::clone(&self.measured);
+        let state = self.state().to_owned();
         let started = std::thread::Builder::new()
             .name("holders".to_owned())
             .spawn(move || {
@@ -687,7 +689,13 @@ impl Guard {
                 #[cfg(target_os = "linux")]
                 crate::commands::idle();
                 let sized = crate::holders::measure(places);
-                *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized));
+                // A ledger that won't write leaves the holders unsaid only
+                // in how much they grew.
+                let grew = crate::ledger::record(&state, now, &sized).unwrap_or_else(|error| {
+                    eprintln!("disk-guard: keeping the ledger: {error}");
+                    crate::ledger::Grown::new()
+                });
+                *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized, grew));
             });
         match started {
             Ok(thread) => self.measuring = Some(thread),
@@ -2149,9 +2157,11 @@ impl Guard {
             holders_at: None,
         };
         status.notice = crate::notices::standing(&status);
-        if let Some((at, measured)) = &*self.measured.lock().unwrap_or_else(PoisonError::into_inner)
+        if let Some((at, measured, grew)) =
+            &*self.measured.lock().unwrap_or_else(PoisonError::into_inner)
         {
-            status.holders = crate::holders::holders(measured, &self.offered, &self.kept, home);
+            status.holders =
+                crate::holders::holders(measured, &self.offered, &self.kept, grew, home);
             status.holders_at = Some(*at);
         }
         mark(&mut status, self.state(), home);

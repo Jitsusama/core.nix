@@ -124,6 +124,15 @@ in
       # daemon may expire for the account.
       nix.profiles = lib.mkDefault "${stateHome}/nix/profiles";
       nix.bin = lib.mkIf isDarwin (lib.mkDefault macNix);
+      # Each program's own data, state and cache, sized and named beside
+      # what the sources clear, so a pile no source names still shows:
+      # a package manager's every version, kept by nothing, once held 7 GiB
+      # unseen there.
+      holders.roots = lib.mkDefault [
+        cacheHome
+        dataHome
+        stateHome
+      ];
       sources = {
         src = lib.mkDefault {
           kind = "cargo";

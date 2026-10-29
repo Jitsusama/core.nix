@@ -2,6 +2,7 @@ use disk_guard::activity::Use;
 use disk_guard::config::Config;
 use disk_guard::holders::{Kind, Offered, Place, holders, mark, measure, places};
 use disk_guard::keeps::{Keep, Keeps};
+use disk_guard::ledger::{Grown, Growth};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -122,7 +123,7 @@ fn each_holder_says_whose_it_is_and_why_the_guard_may_clear_none_of_it() {
     ];
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
     let kept = [(PathBuf::from("/home/u/trees/fix-1/target"), Use::Busy(4242))];
-    let said = holders(&measured, &offered, &kept, Some(home));
+    let said = holders(&measured, &offered, &kept, &Grown::new(), Some(home));
     let says: Vec<_> = said.iter().map(|holder| holder.says.as_str()).collect();
     assert_eq!(
         says,
@@ -152,7 +153,7 @@ fn only_the_ten_biggest_are_listed() {
     let measured: Vec<_> = (1..=12)
         .map(|n| (place(&format!("/x/{n}"), Kind::Other, "x"), n * GIB))
         .collect();
-    let said = holders(&measured, &[], &[], None);
+    let said = holders(&measured, &[], &[], &Grown::new(), None);
     assert_eq!(said.len(), 10);
     assert_eq!(said[0].bytes, 12 * GIB);
     assert_eq!(said[9].bytes, 3 * GIB);
@@ -166,7 +167,7 @@ fn a_kept_holder_says_his_reason_and_says_the_guard_s_own_once_let_go() {
         20 * GIB,
     )];
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
-    let mut said = holders(&measured, &offered, &[], Some(home));
+    let mut said = holders(&measured, &offered, &[], &Grown::new(), Some(home));
     let judged = said.clone();
     assert_eq!(said[0].kept, None);
     assert_eq!(said[0].clears, 12 * GIB);
@@ -222,7 +223,7 @@ fn a_holder_says_how_much_a_clear_takes_now_and_whether_the_rest_waits() {
         offered("/home/u/trees/fix-1/scratch", 3 * GIB, false),
         offered("/home/u/trees/fix-2/scratch", 4 * GIB, false),
     ];
-    let said = holders(&measured, &offered, &[], Some(home));
+    let said = holders(&measured, &offered, &[], &Grown::new(), Some(home));
     assert_eq!(
         said[0].clears,
         6 * GIB,
@@ -244,11 +245,119 @@ fn a_holder_being_cleared_says_so_until_its_clear_ends() {
         20 * GIB,
     )];
     let offered = [offered("/home/u/trees/fix-2/target", 12 * GIB, true)];
-    let mut said = holders(&measured, &offered, &[], None);
+    let mut said = holders(&measured, &offered, &[], &Grown::new(), None);
     assert!(!said[0].clearing);
     let asked = [PathBuf::from("/home/u/trees/fix-2/target")];
     mark(&mut said, &Keeps::new(), &asked, None);
     assert!(said[0].clearing, "a clear of part of it is a clear of it");
     mark(&mut said, &Keeps::new(), &[], None);
     assert!(!said[0].clearing);
+}
+
+#[test]
+fn a_holder_says_how_much_it_grew_in_a_day_from_a_gibibyte() {
+    let home = Path::new("/home/u");
+    let measured = [
+        (place("/home/u/src/app", Kind::Other, "app"), 10 * GIB),
+        (place("/home/u/src/lib", Kind::Other, "lib"), 4 * GIB),
+    ];
+    let mut grew = Grown::new();
+    let over = 20.0 * 3600.0;
+    grew.insert(
+        PathBuf::from("/home/u/src/app"),
+        Growth {
+            bytes: 6 * GIB,
+            over,
+        },
+    );
+    grew.insert(
+        PathBuf::from("/home/u/src/lib"),
+        Growth {
+            bytes: GIB / 2,
+            over,
+        },
+    );
+    let said = holders(&measured, &[], &[], &grew, Some(home));
+    assert_eq!(
+        said[0].says,
+        "~/src/app holds 10.0 GiB; nothing in it is a build or cache the guard clears. It \
+         grew 6.0 GiB in 20.0 h."
+    );
+    assert_eq!(
+        said[0].grew,
+        Some(Growth {
+            bytes: 6 * GIB,
+            over
+        })
+    );
+    assert_eq!(
+        said[1].says,
+        "~/src/lib holds 4.0 GiB; nothing in it is a build or cache the guard clears.",
+        "growing less than a gibibyte a day isn't news"
+    );
+}
+
+#[test]
+fn a_holder_growing_fast_is_listed_beyond_the_ten_biggest() {
+    let measured: Vec<_> = (10..=21)
+        .map(|n| (place(&format!("/x/{n}"), Kind::Other, "x"), n * GIB))
+        .collect();
+    let mut grew = Grown::new();
+    let over = 3600.0;
+    grew.insert(
+        PathBuf::from("/x/10"),
+        Growth {
+            bytes: 5 * GIB,
+            over,
+        },
+    );
+    grew.insert(
+        PathBuf::from("/x/11"),
+        Growth {
+            bytes: 4 * GIB,
+            over,
+        },
+    );
+    let said = holders(&measured, &[], &[], &grew, None);
+    let listed: Vec<u64> = said.iter().map(|holder| holder.bytes / GIB).collect();
+    assert_eq!(listed, [21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 10]);
+}
+
+#[test]
+fn each_folder_in_a_holders_root_is_a_holder_unless_a_source_says_more() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    for folder in [
+        "share/versions/1",
+        "share/containers/storage",
+        "share/Trash/files",
+    ] {
+        fs::create_dir_all(root.join(folder)).unwrap();
+    }
+    fs::write(root.join("share/loose"), "a file is no holder").unwrap();
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user",
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "holders": {{ "roots": ["{0}/share"] }},
+             "sources": {{
+               "trash": {{ "kind": "trash", "path": "{0}/share/Trash" }},
+               "podman": {{ "kind": "podman", "command": "/bin/podman",
+                            "path": "{0}/share/containers/storage" }} }} }}"#,
+        root.display()
+    ))
+    .unwrap();
+    let at = |path: &str| root.join(path).to_string_lossy().into_owned();
+    assert_eq!(
+        found(&config),
+        [
+            (at("share/Trash"), Kind::Other, "trash".to_owned()),
+            (
+                at("share/containers/storage"),
+                Kind::Containers,
+                "podman".to_owned()
+            ),
+            (at("share/versions"), Kind::Other, "versions".to_owned()),
+        ],
+        "the containers folder holds podman's storage, so it isn't one"
+    );
 }

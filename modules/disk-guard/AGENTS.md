@@ -146,12 +146,19 @@ or launchd, and [`home.nix`][2] the account's.
   sentence says so rather than that the guard is clearing. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the
-  space: the ten biggest
-  folders the sources name, each straight under a root or a cache whole,
+  space: the ten biggest folders the sources name, each straight under a
+  root or a cache whole, and each folder in the config's `holders.roots`,
   with whose it is (a quest, a worktree, a cache, containers or other),
   whether the guard may clear any of it and, when not, why. Sizing them
   reads millions of entries, so a thread at idle priority does it at most
   every half hour; `holders_at` says when. `src/holders.rs` holds it.
+- **The ledger.** Each measurement of the holders goes in the state
+  folder's `ledger.json`, kept two days. A holder's `grew` is how much it
+  grew since the earliest measurement within the last day that's at least
+  an hour old, said in its sentence from a gibibyte, and one that grew
+  5 GiB or more is listed beside the ten biggest, so a leak shows by name
+  before it's big. A folder that measurement didn't size isn't said to
+  grow. `src/ledger.rs` holds it.
 - **Keeps.** `disk-guard keep FOLDER REASON...` tells the account's guard
   never to clear anything in a folder, or holding one, for Joel's reason;
   `disk-guard unkeep FOLDER` lets go. They live in the state folder's
@@ -197,6 +204,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/survey.rs`           | each source's candidates                                 |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
+| `src/ledger.rs`           | what held each disk over two days, and what grew         |
 | `src/clears.rs`           | the folders Joel asked cleared now                       |
 | `src/anchor.rs`           | removal that never leaves its root                       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
