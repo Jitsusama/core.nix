@@ -35,7 +35,9 @@
 //!   left until the deadline, prints its machines line once Nix can use
 //!   it, and stays running while it's there, holding the way to it. Before
 //!   that line it may print `price DOLLARS`, the hour's price of what it
-//!   made, since a fallback machine can cost more than `--rate`. It
+//!   made, since a fallback machine can cost more than `--rate`, and
+//!   `store URI`, the builder's store as this account reaches it, for a
+//!   build sent there whole, written to /run/nix-offload/store. It
 //!   ends once the builder goes on its own, and gives the way up when told
 //!   to end (SIGTERM, to its whole process group). The seconds are counted
 //!   here, in the zone TZ names, so the helper needs no time zones of its
@@ -80,6 +82,9 @@ const MACHINES: &str = "/run/nix-offload/machines";
 /// `--builders @` it: never every build, since they may be machines only
 /// some work may reach.
 const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
+/// Where a build sent whole to the lent builder (`--store`) reads its
+/// store's URI, while one stands.
+const STORE: &str = "/run/nix-offload/store";
 
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
@@ -127,24 +132,47 @@ struct Lent {
     name: String,
     helper: Child,
     line: String,
+    store: Option<String>,
     host: String,
     rate: Option<u64>,
     since: u64,
     used: u64,
 }
 
-/// What the helper said once its builder was made: its price, if it gave
-/// one, and its machines line.
-fn heard_from(helper: impl BufRead) -> (Option<u64>, String) {
-    let mut rate = None;
-    for line in helper.lines() {
-        let Ok(line) = line else { break };
-        match line.strip_prefix("price ") {
-            Some(price) => rate = journal::price(price.trim()),
-            None => return (rate, line),
+impl Lent {
+    fn lending(&self) -> machines::Lending<'_> {
+        machines::Lending {
+            line: &self.line,
+            store: self.store.as_deref(),
         }
     }
-    (rate, String::new())
+}
+
+/// What the helper said once its builder was made: its price and its
+/// store, if it gave them, and its machines line.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Heard {
+    rate: Option<u64>,
+    store: Option<String>,
+    line: String,
+}
+
+/// Read what the helper says: `price DOLLARS` and `store URI` lines, in
+/// any order, then its machines line.
+fn heard_from(helper: impl BufRead) -> Heard {
+    let mut heard = Heard::default();
+    for line in helper.lines() {
+        let Ok(line) = line else { break };
+        if let Some(price) = line.strip_prefix("price ") {
+            heard.rate = journal::price(price.trim());
+        } else if let Some(store) = line.strip_prefix("store ") {
+            heard.store = Some(store.trim().to_owned());
+        } else {
+            heard.line = line;
+            break;
+        }
+    }
+    heard
 }
 
 fn main() -> ExitCode {
@@ -245,7 +273,12 @@ fn read_standing(path: &Path) -> Vec<machines::Standing> {
 /// Name the standing builders that answer, lending none, until told to end.
 fn stand(standing: &[machines::Standing]) {
     hear_stops();
-    let mut machines = Machines::new(MACHINES.into(), WITH_STANDING.into(), standing.to_vec());
+    let mut machines = Machines::new(
+        MACHINES.into(),
+        WITH_STANDING.into(),
+        STORE.into(),
+        standing.to_vec(),
+    );
     while !ENDING.load(Ordering::SeqCst) {
         machines.show(None);
         rest(TICK);
@@ -259,7 +292,12 @@ fn serve(settings: &Settings) {
         .standing
         .as_deref()
         .map_or_else(Vec::new, read_standing);
-    let mut machines = Machines::new(MACHINES.into(), WITH_STANDING.into(), standing);
+    let mut machines = Machines::new(
+        MACHINES.into(),
+        WITH_STANDING.into(),
+        STORE.into(),
+        standing,
+    );
     machines.show(None);
     let mut lent: Option<Lent> = None;
     let mut not_before = 0;
@@ -305,7 +343,7 @@ fn serve(settings: &Settings) {
             say_others(settings);
             said_on = Some(day);
         }
-        machines.show(lent.as_ref().map(|builder| builder.line.as_str()));
+        machines.show(lent.as_ref().map(Lent::lending));
         rest(TICK);
     }
     if let Some(mut builder) = lent {
@@ -351,21 +389,25 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
     });
     // In short waits, so a stop is heard while the builder is being made.
     let asked = Instant::now();
-    let (mut rate, mut line) = (None, String::new());
+    let mut said = Heard::default();
     while asked.elapsed() < READY && !ENDING.load(Ordering::SeqCst) {
         match heard.recv_timeout(Duration::from_secs(1)) {
-            Ok(said) => {
-                (rate, line) = said;
+            Ok(heard) => {
+                said = heard;
                 break;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
+    let Heard { rate, store, line } = said;
     let line = line.trim();
     match host_of(line) {
         Some(host) if helper.try_wait().ok().flatten().is_none() => {
-            machines.show(Some(line));
+            machines.show(Some(machines::Lending {
+                line,
+                store: store.as_deref(),
+            }));
             let ran = Ran {
                 seconds: self::now() - now,
                 rate,
@@ -382,6 +424,7 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
                 name,
                 helper,
                 line: line.to_owned(),
+                store,
                 host,
                 rate,
                 since: now,
@@ -644,19 +687,30 @@ mod tests {
     }
 
     #[test]
-    fn the_helper_may_price_its_builder_before_its_line() {
+    fn the_helper_may_price_its_builder_and_name_its_store_before_its_line() {
         let line = "ssh-ng://nix-offload x86_64-linux /key 5 1 kvm - aG9zdA==";
+        let store = "ssh-ng://nix-offload?ssh-key=/k";
         assert_eq!(
-            heard_from(format!("price 0.89\n{line}\nlater\n").as_bytes()),
-            (Some(890), line.to_owned())
+            heard_from(format!("price 0.89\nstore {store}\n{line}\nlater\n").as_bytes()),
+            Heard {
+                rate: Some(890),
+                store: Some(store.to_owned()),
+                line: line.to_owned(),
+            }
         );
         assert_eq!(
             heard_from(format!("{line}\n").as_bytes()),
-            (None, line.to_owned())
+            Heard {
+                line: line.to_owned(),
+                ..Heard::default()
+            }
         );
         assert_eq!(
             heard_from("price 0.89\n".as_bytes()),
-            (Some(890), String::new())
+            Heard {
+                rate: Some(890),
+                ..Heard::default()
+            }
         );
     }
 }

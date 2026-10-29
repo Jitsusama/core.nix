@@ -36,6 +36,7 @@ mod pressure;
 mod runs;
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Instant;
@@ -209,7 +210,7 @@ fn compare(
     // store has collected since is built from the flake, as before.
     let built = Command::new("nix")
         .args(["build", "--no-link", "--keep-going", "-L"])
-        .args(standing_builders())
+        .args(where_to_build())
         .args(
             targets
                 .iter()
@@ -228,17 +229,44 @@ fn compare(
     })
 }
 
-/// Where nix-offload names the machine's standing builders beside any lent
-/// one, for a build that asks for them.
-const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
+/// Where nix-offload says the machine's builders: `NIX_OFFLOAD_DIR`, or
+/// /run/nix-offload. In it, machines-with-standing names the standing
+/// builders beside any lent one, for a build that asks for them, and store
+/// the lent builder's store, while one stands.
+fn offload_dir() -> PathBuf {
+    env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from("/run/nix-offload"), PathBuf::from)
+}
 
-/// The standing builders, asked for where the machine has them. They're
+/// Where the checks are built. While a builder is lent, they're sent to
+/// its store whole: evaluated here, with only their derivations and
+/// sources crossing, and every input built or fetched there. The build
+/// hook's way would build their inputs here and copy them up, and the
+/// connection's upload can be slow. Otherwise they're built here, with the
+/// standing builders asked for where the machine has them. Those are
 /// never offered to every build, since they may be machines only public
 /// code may reach; core.nix's checks are public code with public inputs
 /// alone, which `stands-alone` holds, so they may go there.
-fn standing_builders() -> Vec<String> {
-    if Path::new(WITH_STANDING).exists() {
-        vec!["--builders".to_owned(), format!("@{WITH_STANDING}")]
+fn where_to_build() -> Vec<String> {
+    let dir = offload_dir();
+    let with_standing = dir.join("machines-with-standing");
+    let store = fs::read_to_string(dir.join("store")).unwrap_or_default();
+    if let Some(store) = store
+        .lines()
+        .next()
+        .filter(|store| !store.trim().is_empty())
+    {
+        eprintln!("changed-checks: building on the lent builder, {store}");
+        vec![
+            "--eval-store".to_owned(),
+            "auto".to_owned(),
+            "--store".to_owned(),
+            store.trim().to_owned(),
+        ]
+    } else if with_standing.exists() {
+        vec![
+            "--builders".to_owned(),
+            format!("@{}", with_standing.display()),
+        ]
     } else {
         Vec::new()
     }
