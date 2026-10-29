@@ -162,16 +162,42 @@ Provider {
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
-        const within = here ? `within ${Math.ceil(here.accuracy / 1000)} km` : "";
+        // A place Joel set himself says so, since GeoClue no longer moves it.
+        const byHand = here?.hand === true;
+        const within = !here ? "" : byHand ? "set by hand"
+            : `within ${Math.ceil(here.accuracy / 1000)} km`;
         const side = here ? here.place ?? position : Location.read ? "unknown" : "\u2026";
         const differs = Location.zoneDiffers;
         // Said plainly where it's unknown, never guessed.
         const elsewhere = differs ? `it keeps ${here.zone}, not the clock's ${Location.clockZone}`
             : "";
         const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
-            : differs ? elsewhere : `${within}, found through GeoClue`;
+            : differs ? elsewhere : byHand ? within : `${within}, found through GeoClue`;
         const inside = () => {
             const rows = [];
+            // Where GeoClue can't find the laptop, or finds it wrong, Joel
+            // names its town, and asks GeoClue again once he's moved on.
+            rows.push(thing({
+                key: "verb:location:set",
+                verb: Words.verb("verb:location:set"),
+                name: Words.name("verb:location:set"),
+                glyph: Words.glyph("verb:location:set"),
+                ask: Words.of("verb:location:set").ask ?? "",
+                chip: Words.name("location"),
+                hue: "action",
+                state: () => Location.told,
+                given: words => Location.setByHand(words)
+            }));
+            if (byHand)
+                rows.push(thing({
+                    key: "verb:location:again",
+                    verb: Words.verb("verb:location:again"),
+                    name: Words.name("verb:location:again"),
+                    glyph: Words.glyph("verb:location:again"),
+                    hue: "action",
+                    stays: true,
+                    run: () => Location.findAgain()
+                }));
             if (here)
                 rows.push(copyRow({
                     key: "location:position",

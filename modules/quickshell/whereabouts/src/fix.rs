@@ -41,6 +41,10 @@ pub struct Fix {
     /// The time zone kept there, "America/Toronto", or null likewise.
     #[serde(default)]
     pub zone: Option<String>,
+    /// Whether Joel said where the laptop is himself, rather than GeoClue
+    /// finding it. Left out of the file when it didn't.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hand: bool,
 }
 
 impl Fix {
@@ -55,6 +59,7 @@ impl Fix {
             when,
             place: None,
             zone: None,
+            hand: false,
         };
         fix.holds().then_some(fix)
     }
@@ -70,6 +75,12 @@ impl Fix {
     pub fn named(mut self, place: Option<String>, zone: Option<String>) -> Fix {
         self.place = place.or(self.place);
         self.zone = zone.or(self.zone);
+        self
+    }
+
+    /// The fix as Joel said it himself.
+    pub fn by_hand(mut self) -> Fix {
+        self.hand = true;
         self
     }
 
@@ -195,6 +206,15 @@ mod tests {
     #[test]
     fn the_first_fix_is_always_said() {
         assert!(moved(None, &at(0.0, 0.0, 100_000.0)));
+    }
+
+    #[test]
+    fn a_fix_said_by_hand_says_so_and_one_found_doesnt() {
+        let found = serde_json::to_string(&at(1.0, 2.0, 3.0)).unwrap();
+        assert!(!found.contains("hand"));
+        let said = serde_json::to_string(&at(1.0, 2.0, 3.0).by_hand()).unwrap();
+        assert!(said.ends_with(r#""hand":true}"#));
+        assert!(Fix::read(&said).is_some_and(|fix| fix.hand));
     }
 
     #[test]

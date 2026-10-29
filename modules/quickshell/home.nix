@@ -1426,7 +1426,7 @@ in
     # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
     # run's answer through pi-runs too. The clipboard's Paste presses its
     # window's paste keys through wtype (launcher/Copies.qml).
-    home.packages = [
+    home.packages = lib.optional followsTheLaptop whereabouts ++ [
       askpass
       launcherSay
       piWants
@@ -1742,8 +1742,12 @@ in
         PartOf = [ "graphical-session.target" ];
         After = [ "graphical-session.target" ];
       };
+      # A place Joel sets himself is pinned in its state folder, and Now's
+      # Location sets and takes the pin away through the same program, on
+      # the shell's path.
       Service = {
-        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json";
+        StateDirectory = "whereabouts";
+        ExecStart = "${lib.getExe whereabouts} %t/whereabouts.json %S/whereabouts/pin.json";
         Restart = "on-failure";
         RestartSec = 60;
       };

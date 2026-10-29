@@ -1572,6 +1572,21 @@
       "glyph": "zone"
     },
     {
+      "id": "verb:location:set",
+      "in": "location",
+      "name": "Set It by Hand",
+      "verb": "set",
+      "ask": "where are you?",
+      "glyph": "location"
+    },
+    {
+      "id": "verb:location:again",
+      "in": "location",
+      "name": "Find It Again",
+      "verb": "find",
+      "glyph": "location"
+    },
+    {
       "id": "time:day",
       "in": "time",
       "name": "Date"

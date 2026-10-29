@@ -1169,6 +1169,84 @@ def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop:
         desktop.as_account("rm -rf ~/.local/state/clock-follows")
 
 
+def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desktop) -> None:
+    """A place set by hand holds over GeoClue until the laptop is found again."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    pin = "~/.local/state/whereabouts/pin.json"
+    began = machine.succeed("timedatectl show --property=Timezone --value").strip()
+
+    def location(test: Callable[[Json], bool]) -> None:
+        """Open Location from the top and wait until its row passes the test."""
+        desktop.answer("location")
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Location" and test(shown["selected"])
+            )
+        )
+
+    def close() -> None:
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+    try:
+        # A town no place is called sets nothing, and the foot says why:
+        # built as a check, the VM has no network to ask; run by hand it
+        # may reach Open-Meteo, which finds no such place.
+        nowhere = "Qzxv Fjordholm"
+        location(lambda _: True)
+        desktop.step_in()
+        desktop.down_to("Set It by Hand")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["asking"])
+        machine.send_chars(nowhere)
+        desktop.launcher_until(lambda shown: shown["typed"] == nowhere)
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["footer"]
+                in {f"couldn't ask where {nowhere} is", f"no place is called {nowhere}"}
+            ),
+            timeout=dt.timedelta(seconds=30),
+        )
+        desktop.as_account(f"test ! -e {pin}")
+        close()
+        # A pin, as setting it writes one, is here from then on, whatever
+        # GeoClue says, and the clock follows it as it would any fix.
+        said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": 1000,
+                "when": int(time.time()), "place": "Lighthouse, Alberta",
+                "zone": "America/Edmonton", "hand": True}  # fmt: skip
+        desktop.as_account(
+            f"mkdir -p ~/.local/state/whereabouts && echo '{json.dumps(said)}' > {pin}"
+        )
+        desktop.as_account("systemctl --user restart whereabouts.service")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -q '\"hand\":true' {fix}"), timeout=dt.timedelta(seconds=30)
+        )
+        machine.wait_until_succeeds(
+            "test $(timedatectl show --property=Timezone --value) = America/Edmonton",
+            timeout=dt.timedelta(seconds=30),
+        )
+        location(lambda row: row["side"] == "Lighthouse, Alberta")
+        desktop.step_in()
+        # Found again, the pin goes, and here is what GeoClue says, which
+        # in the VM is nothing yet.
+        desktop.down_to("Find It Again")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"test ! -e {pin} && test \"$(cat {fix})\" = '{{}}'"),
+            timeout=dt.timedelta(seconds=30),
+        )
+        close()
+        location(lambda row: row["side"] == "unknown")
+        close()
+    finally:
+        machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
+        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.as_account(f"rm -rf {pin} ~/.local/state/clock-follows")
+
+
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:
     """The launcher finds emoji in their own place, and only there."""
     machine = desktop.machine
