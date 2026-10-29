@@ -1252,10 +1252,17 @@ def test_the_time_here_says_how_the_clock_is_kept(desktop: Desktop) -> None:
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     kept = "$XDG_RUNTIME_DIR/timekeeping.json"
-    # timekeeping runs, and with no network timesyncd has made no exchange,
-    # so the file says nothing, and the time says nothing of its keeping.
-    machine.wait_until_succeeds(desktop.in_session("systemctl --user is-active timekeeping"))
-    machine.wait_until_succeeds(desktop.in_session(f"test \"$(cat {kept})\" = '{{}}'"))
+    # timekeeping runs, and timesyncd, asking a server that isn't there,
+    # has made no exchange, so the file says nothing, and the time says
+    # nothing of its keeping.
+    machine.wait_until_succeeds(
+        desktop.in_session("systemctl --user is-active timekeeping"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    machine.wait_until_succeeds(
+        desktop.in_session(f"test \"$(cat {kept})\" = '{{}}'"),
+        timeout=dt.timedelta(seconds=60),
+    )
     keeping = [
         "Synchronised", "Server", "Offset", "Delay", "Jitter", "Stratum", "Reference",
         "Poll Interval", "Leap Second",
