@@ -841,9 +841,12 @@ onLinux {
         function settle(each, how) {}
         function go(each) {}
       '';
-      # Where an item is done names its session, which needs none here.
+      # Where an item is done names its session, and Waiting on You lists
+      # the sessions wanting Joel, none of which it needs here.
       sessions = singleton "Sessions.qml" ''
         property var running: []
+        property var wanting: []
+        function wanted(wants) { return "asks you"; }
       '';
       timedatectl = pkgs.writeShellScriptBin "timedatectl" "echo America/Halifax";
     in

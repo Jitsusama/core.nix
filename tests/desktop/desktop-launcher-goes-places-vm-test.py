@@ -3687,6 +3687,53 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         desktop.as_account("systemctl --user stop caffeinate.service")
 
 
+def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
+    """A session wanting Joel is in Waiting on You as its Agents row, and Now has no pi row.
+
+    Super+O, Return, Return goes to its window: Now opens on Waiting on You, which counts it,
+    Return steps in to the session, selected, and its Return goes to its window.
+    """
+    machine = desktop.machine
+    desktop.pi_session()
+    desktop.as_account(
+        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
+        f" && find {MISSION}/waiting -name '*.json' -delete"
+    )
+    desktop.as_account(
+        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
+    )
+    since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    question = {"kind": "question", "since": since, "said": "Which way?"}
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now"]
+                and (shown["selected"] or {}).get("name") == "Waiting on You"
+                and shown["selected"]["side"] == "1"
+            )
+        )
+        assert "pi" not in desktop.showing()["rows"], desktop.showing()
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "Waiting on You"]
+                and shown["rows"][:1] == ["A quest of its own & whole"]
+                and (shown["selected"] or {}).get("verb") == "go"
+            )
+        )
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
+            timeout=dt.timedelta(seconds=10),
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+    finally:
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:
     """A waiting notice goes, read, once its item can't be done now any more."""
     machine = desktop.machine
