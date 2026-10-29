@@ -671,6 +671,9 @@
   pnpm-keeps-one-store = ''
     pnpm 10 and 12 find an account's one store from what its shells and user manager are given
   '';
+  processor-telemetry-passes-clippy = ''
+    clippy finds nothing in the processor telemetry reader or its tests
+  '';
   programs-nobody-starts-stay-unlisted = ''
     the entries of virt-manager, the NixOS manual and umpv are masked as hidden where the launcher
     reads them, while the programs stay installed
