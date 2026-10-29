@@ -1769,6 +1769,16 @@ impl Guard {
         let kept = std::mem::take(&mut world.kept);
         drop(world);
         self.kept = kept;
+        // Read afresh each survey, so a keep holds from the next step. One
+        // that won't read stops the survey rather than risk what it keeps.
+        let keeps = crate::keeps::load(self.state())?;
+        // A keep names its folder with every link resolved, and a source's
+        // root may be named through one, so each offer is resolved too.
+        offers.retain(|offer| {
+            let path = &offer.candidate.path;
+            let resolved = fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+            !crate::keeps::touches(&keeps, &resolved)
+        });
         self.offered = offers
             .iter()
             .map(|offer| (offer.candidate.path.clone(), offer.candidate.size))
@@ -2073,7 +2083,13 @@ impl Guard {
             status.holders = crate::holders::holders(measured, &self.offered, &self.kept, home);
             status.holders_at = Some(*at);
         }
+        mark(&mut status, self.state(), home);
         status
+    }
+
+    /// The folder the guard keeps its memory, journal and Joel's keeps in.
+    fn state(&self) -> &Path {
+        self.memory_path.parent().unwrap_or(Path::new("/"))
     }
 
     /// The pacer for a pass in `band` on the filesystem at `path`. Below
@@ -2134,6 +2150,7 @@ impl Guard {
         let beaten = Arc::clone(&self.beaten);
         let bands = self.config.bands.clone();
         let home = self.home.clone();
+        let state = self.state().to_owned();
         Box::new(move || {
             let now = wall_now();
             let mut beaten = beaten.lock().unwrap_or_else(PoisonError::into_inner);
@@ -2152,6 +2169,7 @@ impl Guard {
                         .map(|filesystem| filesystem.room(filesystem.full_at.map(|at| at - now)))
                         .collect();
                     status.says = crate::words::machine(&rooms, home.as_deref());
+                    mark(status, &state, home.as_deref());
                     state::save(&path, status)
                 }
             };
@@ -2207,6 +2225,15 @@ impl Guard {
         drop(beaten);
         self.written = Some((now, status));
         Ok(())
+    }
+}
+
+/// Marks a status's holders with the keeps in `state` as they are now,
+/// since `disk-guard keep` changes them between steps. Keeps that won't
+/// read leave the holders as they were.
+fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
+    if let Ok(keeps) = crate::keeps::load(state) {
+        crate::holders::mark(&mut status.holders, &keeps, home);
     }
 }
 

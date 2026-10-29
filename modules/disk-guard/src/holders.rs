@@ -8,9 +8,10 @@
 use crate::activity::Use;
 use crate::anchor::Dir;
 use crate::config::{Config, Source};
+use crate::keeps::{Keep, Keeps, covering};
 use crate::units::shown;
 use crate::words::tilde;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -18,7 +19,7 @@ use std::path::{Path, PathBuf};
 pub const SHOWN: usize = 10;
 
 /// Whose a holder is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     /// A quest's workspace, named by the quest.
@@ -44,7 +45,7 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Owner {
     pub kind: Kind,
     pub name: String,
@@ -58,16 +59,24 @@ pub struct Place {
 }
 
 /// One holder, as the status file says it.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Holder {
     pub path: PathBuf,
     pub bytes: u64,
     pub owner: Owner,
+    /// What a sentence about it calls it: the quest, worktree or cache's
+    /// name, or its folder.
+    pub name: String,
     /// Whether any of it is something the guard clears, once it has sat
-    /// idle long enough for the disk's band.
+    /// idle long enough for the disk's band. A keep leaves this as the
+    /// guard judged it, so letting go of the keep needs no new judging.
     pub clearable: bool,
+    /// How much of it the guard would clear.
+    pub clears: u64,
     /// Why the guard may clear none of it, when it may not.
     pub why: Option<String>,
+    /// Joel's keep on it, when he keeps it or a folder holding it.
+    pub kept: Option<Keep>,
     pub says: String,
 }
 
@@ -213,29 +222,53 @@ pub fn holders(
                 .map(|(_, size)| size)
                 .sum();
             let why = (clears == 0).then(|| why(place, kept));
-            let name = called(&place.owner, &place.path, home);
-            let says = match &why {
-                Some(why) => format!("{name} holds {}; {why}.", shown(*bytes)),
-                None => format!(
-                    "{name} holds {}, of which {} is builds or caches the guard clears once \
-                     they sit idle long enough.",
-                    shown(*bytes),
-                    shown(clears.min(*bytes))
-                ),
-            };
-            Holder {
+            let mut holder = Holder {
                 path: place.path.clone(),
                 bytes: *bytes,
                 owner: place.owner.clone(),
+                name: match place.owner.kind {
+                    Kind::Other => tilde(&place.path, home),
+                    _ => place.owner.name.clone(),
+                },
                 clearable: why.is_none(),
+                clears: clears.min(*bytes),
                 why,
-                says,
-            }
+                kept: None,
+                says: String::new(),
+            };
+            holder.says = says(&holder, home);
+            holder
         })
         .collect();
     holders.sort_by_key(|holder| std::cmp::Reverse(holder.bytes));
     holders.truncate(SHOWN);
     holders
+}
+
+/// Marks each holder with the keep that covers it, or none, and says it
+/// again. Marking is the same however often it's done, so each writer of
+/// the status file marks what it writes with the keeps as they are then.
+pub fn mark(holders: &mut [Holder], keeps: &Keeps, home: Option<&Path>) {
+    for holder in holders {
+        holder.kept = covering(keeps, &holder.path).cloned();
+        holder.says = says(holder, home);
+    }
+}
+
+/// One sentence for a holder: whose it is, how much it holds, and what
+/// keeps it or how much of it the guard clears.
+fn says(holder: &Holder, home: Option<&Path>) -> String {
+    let name = called(&holder.owner, &holder.path, home);
+    let bytes = shown(holder.bytes);
+    match (&holder.kept, &holder.why) {
+        (Some(keep), _) => format!("{name} holds {bytes}; you keep it: {}.", keep.reason),
+        (None, Some(why)) => format!("{name} holds {bytes}; {why}."),
+        (None, None) => format!(
+            "{name} holds {bytes}, of which {} is builds or caches the guard clears once \
+             they sit idle long enough.",
+            shown(holder.clears)
+        ),
+    }
 }
 
 /// Why the guard may clear none of a place.
