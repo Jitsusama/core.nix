@@ -22,7 +22,9 @@
 //! on a machine many sessions share; each evaluation's memory goes when it
 //! ends. A commit's derivations never change, so the base's are
 //! kept under `~/.cache/changed-checks`, and only the working tree is
-//! evaluated again. git and nix are the person's own, with their settings,
+//! evaluated again. A run that wants a commit another run is evaluating
+//! waits for it rather than evaluating it too, and a working tree git
+//! calls clean is kept by its commit the same way. git and nix are the person's own, with their settings,
 //! so they're found on the path rather than pinned.
 //!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
@@ -30,6 +32,7 @@
 //! (`runs.rs` says what it holds).
 
 mod checks;
+mod pressure;
 mod runs;
 
 use std::env;
@@ -173,7 +176,16 @@ fn compare(
     }
     eprintln!("comparing {system}'s checks at {short} with the working tree");
     let before = kept(noted)?;
-    let after = derivations(flake, system, "tree", noted)?;
+    // A working tree git calls clean is its commit, whose derivations never
+    // change, so they're kept by it as a base's are, and a run again on the
+    // same commit, or one whose commit is a base kept already, evaluates
+    // nothing.
+    let after = match clean_commit()? {
+        Some(commit) => checks::kept(&checks::keeping(&cache(), &commit, system), || {
+            derivations(flake, system, "tree", noted)
+        })?,
+        None => derivations(flake, system, "tree", noted)?,
+    };
     let comparison = checks::compare(&before, &after);
     let mut named = 0;
     for (kind, names) in comparison.kinds() {
@@ -215,6 +227,16 @@ fn compare(
     })
 }
 
+/// The working tree's commit, when nothing in it differs from the commit
+/// in what Nix reads: no file git tracks, or has been told of, changed.
+fn clean_commit() -> Result<Option<String>, String> {
+    let changed = run("git", &["status", "--porcelain", "--untracked-files=no"])?;
+    if !changed.is_empty() {
+        return Ok(None);
+    }
+    run("git", &["rev-parse", "HEAD"]).map(Some)
+}
+
 /// Each evaluation goes past nix's evaluation cache. Evaluated through
 /// `--apply`, a result can't be kept there, so the cache saved nothing (one
 /// chunk took 115 s with it and 108 to 127 s without), while two evaluations
@@ -245,18 +267,25 @@ fn derivations(
     let names: Vec<String> = serde_json::from_str(&listed)
         .map_err(|error| format!("nix named the checks oddly: {error}"))?;
     let chunks = checks::chunks(&names);
-    let evaluated = checks::each_at_once(&chunks, checks::AT_ONCE, |chunk| {
-        let selecting = checks::selecting(chunk)?;
-        let began = Instant::now();
-        let evaluated = run(
-            "nix",
-            &["eval", "--json", &checks, "--apply", &selecting, UNCACHED],
-        )?;
-        let took = began.elapsed();
-        let derivations: Derivations = serde_json::from_str(&evaluated)
-            .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
-        Ok::<_, String>((chunk.len(), took, derivations))
-    })?;
+    // A further chunk begins only while memory isn't stalling: two at once
+    // while it was full stalled Joel's launcher on 29 October.
+    let evaluated = checks::each_at_once(
+        &chunks,
+        checks::AT_ONCE,
+        || !pressure::memory_stalled(),
+        |chunk| {
+            let selecting = checks::selecting(chunk)?;
+            let began = Instant::now();
+            let evaluated = run(
+                "nix",
+                &["eval", "--json", &checks, "--apply", &selecting, UNCACHED],
+            )?;
+            let took = began.elapsed();
+            let derivations: Derivations = serde_json::from_str(&evaluated)
+                .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
+            Ok::<_, String>((chunk.len(), took, derivations))
+        },
+    )?;
     let mut found = Derivations::new();
     for (checks, took, derivations) in evaluated {
         evaluation.chunk(checks, took);

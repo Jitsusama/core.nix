@@ -155,7 +155,9 @@
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
-        google = moduleFrom ./modules/google/home.nix { inherit (self.homeModules) quickshell; };
+        google = moduleFrom ./modules/google/home.nix {
+          inherit (self.homeModules) people quickshell;
+        };
         gtk = ./modules/gtk/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
@@ -166,6 +168,7 @@
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
         lag-watch = ./modules/lag-watch/home.nix;
+        link-keys = ./modules/link-keys/home.nix;
         load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
@@ -173,12 +176,14 @@
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
+        nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         onepassword = ./modules/onepassword/home.nix;
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         pi = ./modules/pi/home.nix;
+        people = moduleFrom ./modules/people/home.nix { inherit (self.homeModules) quickshell; };
         pi-packages = ./modules/pi-packages/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
@@ -189,7 +194,7 @@
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;
-        slack = ./modules/slack/home.nix;
+        slack = moduleFrom ./modules/slack/home.nix { inherit (self.homeModules) people; };
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
@@ -200,7 +205,9 @@
         tpm-signing = ./modules/tpm-signing/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
-        tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
+        tuple = moduleFrom ./modules/tuple/home.nix {
+          inherit (self.homeModules) niri people quickshell;
+        };
         unlisted = ./modules/unlisted/home.nix;
         vivid = ./modules/vivid/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
@@ -219,6 +226,7 @@
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
+        linux-builder = ./modules/linux-builder/darwin.nix;
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         sudo = ./modules/sudo/darwin.nix;
@@ -280,6 +288,7 @@
         niri = ./modules/niri/nixos.nix;
         niri-off-cpu = ./modules/niri-off-cpu/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;
+        nix-offload = ./modules/nix-offload/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
         open-with = ./modules/open-with/nixos.nix;

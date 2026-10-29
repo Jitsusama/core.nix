@@ -44,13 +44,39 @@
       first = value: lib.head (lib.toList value);
     in
     holds "pi-writes-what-the-last-boot-left"
-      "pi's list of the sessions the last boot's end took away isn't written as the session starts, runs outside background.slice or a node off the PATH, fails where the harness isn't installed, or reaches a Mac."
+      "pi's list of the sessions the last boot's end took away isn't written as the session starts, runs outside background.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
       (
         lib.elem "default.target" service.Install.WantedBy
         && service.Service.Slice == "background.slice"
-        && lib.hasPrefix "${lib.getExe pkgs.nodejs} " (first service.Service.ExecStart)
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
+          first service.Service.ExecStart
+        )
         && lib.hasSuffix "/scripts/restore-file.ts" (first service.Unit.ConditionPathExists)
         && !(mac.systemd.user.services ? pi-restore-file)
+      );
+
+  # The windows here joined to another machine's session are noted each
+  # minute, quietly in the background, only where the harness is installed,
+  # so the next boot can offer them back; a Mac gets none.
+  pi-notes-windows-on-sessions-elsewhere =
+    let
+      home = account workstation;
+      mac = account macWorkstation;
+      service = home.systemd.user.services.pi-windows-elsewhere;
+      timer = home.systemd.user.timers.pi-windows-elsewhere;
+      first = value: lib.head (lib.toList value);
+    in
+    holds "pi-notes-windows-on-sessions-elsewhere"
+      "pi doesn't note each minute the windows joined to sessions other machines hold, runs outside background.slice or a node off the PATH, logs node's module-type warning, fails where the harness isn't installed, or reaches a Mac."
+      (
+        lib.elem "timers.target" timer.Install.WantedBy
+        && first timer.Timer.OnCalendar == "minutely"
+        && service.Service.Slice == "background.slice"
+        && lib.hasPrefix "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON " (
+          first service.Service.ExecStart
+        )
+        && lib.hasSuffix "/scripts/windows-elsewhere.ts" (first service.Unit.ConditionPathExists)
+        && !(mac.systemd.user.timers ? pi-windows-elsewhere)
       );
 
   # pi's theme is the machine's: its text, its code and its thinking levels
@@ -148,10 +174,12 @@
         printf 'arg %s\n' "$@" >> "$SAID"
         env | sed 's/^/env /' >> "$SAID"
       '';
-      program = lib.getExe (import ./claude.nix { inherit pkgs claude; });
+      # The plan's model as an account has it.
+      inherit (home.jitsusama.pi.claude) model;
+      program = lib.getExe (import ./claude.nix { inherit pkgs claude model; });
       onOwnLogin = lib.getExe (
         import ./claude.nix {
-          inherit pkgs claude;
+          inherit pkgs claude model;
           ownLogin = true;
         }
       );
@@ -208,6 +236,7 @@
   # extension pi finds by itself, pi starts on it and on Sonnet, Claude Code
   # is the one it drives, and there is no pi-claude beside it. The Ask row
   # follows, on the machine's own login. A work machine has none of this.
+  # The plan's model is said once, so naming another moves both pis to it.
   pi-runs-on-the-machines-plan =
     let
       onClaude = account (
@@ -216,6 +245,18 @@
         }
       );
       onPi = account workstation;
+      onAnother = account (
+        workstation.extendModules {
+          modules = [
+            {
+              home-manager.users.someone.jitsusama.pi = {
+                plan = "claude";
+                claude.model = "a-model";
+              };
+            }
+          ];
+        }
+      );
       names = home: map lib.getName home.home.packages;
       provider = onClaude.home.file.".pi/agent/extensions/claude-code".source;
     in
@@ -225,6 +266,7 @@
         builtins.pathExists "${provider}/index.ts"
         && onClaude.jitsusama.pi.settings.defaultProvider == "claude-code"
         && onClaude.jitsusama.pi.settings.defaultModel == "claude-sonnet-5"
+        && onAnother.jitsusama.pi.settings.defaultModel == "a-model"
         && onClaude.home.sessionVariables ? PI_CLAUDE_CODE_COMMAND
         && !(lib.elem "pi-claude" (names onClaude))
         && onClaude.jitsusama.pi.ask.plan == "claude"

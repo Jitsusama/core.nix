@@ -1,10 +1,10 @@
 # shellcheck shell=bash
 # pi-claude: pi on Joel's own Claude plan, through Claude Code signed in to
 # that plan (the claude-code provider, $PROVIDER). A plan's limits are small
-# for agent work, so it starts on Sonnet unless given a --model, and stays off
-# the mesh (PI_MESH=off), where the machine's holds and questions would start
-# turns on that allowance. The login lives in a config folder of its own,
-# ~/.claude-personal, apart from any other Claude Code login in ~/.claude,
+# for agent work, so it starts on $PLAN_MODEL unless given a --model, and
+# stays off the mesh (PI_MESH=off), where the machine's holds and questions
+# would start turns on that allowance. The login lives in a config folder
+# of its own, ~/.claude-personal, apart from any other Claude Code login in ~/.claude,
 # and `pi-claude login` signs it in. On a machine whose only login is the
 # plan's ($OWN_LOGIN, or ~/.claude named in PI_CLAUDE_CONFIG_DIR), no folder
 # is named to Claude Code at all: on macOS a named folder is a keychain entry
@@ -47,7 +47,9 @@ if [ "${1:-}" = login ]; then
   exec env "${away[@]}" "${named[@]}" "$CLAUDE" auth status
 fi
 
-model=(--model claude-code/claude-sonnet-5)
+model=(--model "claude-code/$PLAN_MODEL")
+# Said to pi only by its argument.
+unset PLAN_MODEL
 for argument in "$@"; do
   case $argument in
     --model | --model=*) model=() ;;

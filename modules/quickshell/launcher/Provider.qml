@@ -451,6 +451,12 @@ Scope {
         }
     }
 
+    // The programs this provider gives acts to (programActs) whose desktop
+    // entries hide themselves, as Tuple's does, having no window to open:
+    // Programs lists them all the same, each stepping in on Return rather
+    // than starting (Applications.qml).
+    property var hiddenPrograms: []
+
     // An application's own glyph, by its desktop entry's id or a window's
     // app id, with a machine's own from `settings.glyphs`: its logo where
     // the icon font has one, as a hex code point, and otherwise the
@@ -539,7 +545,7 @@ Scope {
         const made = Object.assign({
             // An act done to a thing (its key `verb:`) isn't of the
             // thing's kind: Return does what its name says, so the foot
-            // says "switch" for Switch, not a thing's "open".
+            // says "go" for Go To, not a thing's "open".
             what: String(fields.key ?? "").startsWith("verb:") ? "" : provider.what,
             chord: [],
             side: "",

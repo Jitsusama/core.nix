@@ -33,6 +33,7 @@
     homeModules.workstation
     homeModules.cargo
     homeModules.disk-guard
+    homeModules.link-keys
     homeModules.pnpm
     homeModules.podman
     homeModules.spend-watch

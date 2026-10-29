@@ -4,20 +4,21 @@ It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the w
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
 that connects. The account is ready, unless a test signs it out, with three meetings on Meet
 from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
-minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4,
-with Grace not going and Ada's Quarterly Plan and an agenda attached; and Planning two hours
-on, Joel's own with Grace asked. Joel may change his own, and Standup on Ada's calendar, which
-she shares with him. An answer a shell writes is
-written down in google-asked beside the socket, for the test to read, and taken as Google would
-take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
-that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
+minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4
+every weekday, with Grace not going and Ada's Quarterly Plan and an agenda attached; and
+Planning two hours on, Joel's own with Grace asked. Joel may change his own, and Standup on
+Ada's calendar, which she shares with him. An answer a shell writes is written down in
+google-asked beside the socket, for the test to read, and taken as Google would take it, so the
+file and every shell say the meeting answered or moved; a meeting Joel holds that's cancelled
+is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
 with three unread in the inbox; one marked read or archived is written down too, and taken
 out of the mail that wants him, as Gmail would, and one read and then marked unread again
 wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
 open, kept in google-files beside the socket, or to save, in Downloads, said as fetched as
 the program says it. Joel looked at two documents lately: Ada's Quarterly Plan in Docs, and
-Team Budget in Sheets, on a shared drive.
+Team Budget in Sheets, on a shared drive. His sign-in grants Meet's scope, so a shell may ask
+for a new Meet meeting, which is made at once as new-abcd-efg.
 """
 
 import json
@@ -63,6 +64,7 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "reminders": [],
         "attachments": [],
         "dial": None,
+        "repeats": None,
         **more,
     }
 
@@ -85,6 +87,14 @@ class Account:
                 now + AHEAD,
                 "abc-defg-hij",
                 place="Room 4",
+                repeats={
+                    "every": "week",
+                    "interval": 1,
+                    "days": [{"day": day, "nth": None} for day in range(1, 6)],
+                    "monthDays": [],
+                    "times": None,
+                    "until": None,
+                },
                 about="What we did yesterday,\nwhat we do today.",
                 holds=False,
                 through="ada@example.com",
@@ -120,6 +130,7 @@ class Account:
                 "address": "ada@example.com",
                 "to": "Joel Gerber",
                 "cc": "",
+                "others": [],
                 "subject": "Lunch on Friday",
                 "at": now - 2 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/lunch",
@@ -134,6 +145,7 @@ class Account:
                 "address": "grace@example.com",
                 "to": "Joel Gerber, Ada Lovelace",
                 "cc": "",
+                "others": ["ada@example.com"],
                 "subject": "Quarterly Numbers",
                 "at": now - 5 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/numbers",
@@ -167,6 +179,8 @@ class Account:
         self.heard = now
         # The file last asked to be fetched, as the program says it (src/files.rs).
         self.fetched: dict[str, object] | None = None
+        # The Meet meeting last asked to be made, as the program says it (src/state.rs).
+        self.made: dict[str, object] | None = None
         self.leave()
 
     def line(self) -> bytes:
@@ -180,6 +194,7 @@ class Account:
                 "documents": [],
                 "heard": None,
                 "fetched": None,
+                "meet": {"granted": False, "made": None},
             }
             return f"{json.dumps(gone)}\n".encode()
         said = {
@@ -190,6 +205,7 @@ class Account:
             "documents": self.documents,
             "heard": self.heard,
             "fetched": self.fetched,
+            "meet": {"granted": True, "made": self.made},
         }
         return f"{json.dumps(said)}\n".encode()
 
@@ -212,44 +228,58 @@ class Account:
         """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
 
         Or mail marked read or archived, or marked unread again after it was read, or a file it
-        carries fetched.
+        carries fetched, or a new Meet meeting made, as new-abcd-efg.
         """
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
         said = json.loads(line)
-        answer = said.get("answer", {})
-        tidied = (said.get("read") or said.get("archive") or {}).get("id")
-        unread = said.get("unread", {}).get("id")
-        cancelled = said.get("cancel", {}).get("id")
-        moved = said.get("move", {})
         with self.lock:
             if "fetch" in said:
                 self.fetch(said["fetch"])
-            for one in self.meetings:
-                if answer.get("id") == one["id"]:
-                    one["answer"] = answer["with"]
-                if moved.get("id") == one["id"] and one["through"]:
-                    one["start"], one["end"] = moved["start"], moved["end"]
-            self.meetings = [
-                one for one in self.meetings if not (one["id"] == cancelled and one["holds"])
-            ]
-            held = [mail for mail in self.mail if mail["id"] != tidied]
-            if len(held) < len(self.mail):
-                if "read" in said:
-                    self.read += [mail for mail in self.mail if mail["id"] == tidied]
-                self.mail = held
-                self.unread -= 1
-            back = [mail for mail in self.read if mail["id"] == unread]
-            if back:
-                self.read = [mail for mail in self.read if mail["id"] != unread]
-                self.mail = sorted(self.mail + back, key=lambda mail: -int(str(mail["at"])))
-                self.unread += 1
+            if "make" in said:
+                self.made = {
+                    "asked": int(time.time() * 1000),
+                    "link": "https://meet.google.com/new-abcd-efg",
+                    "failed": False,
+                }
+            self.schedule(said)
+            self.tidy(said)
             self.leave()
             for shell in list(self.shells):
                 try:
                     shell.sendall(self.line())
                 except OSError:
                     self.shells.remove(shell)
+
+    def schedule(self, said: dict[str, dict[str, object]]) -> None:
+        """Take what a shell asked of the meetings: one answered, moved or cancelled."""
+        answer = said.get("answer", {})
+        cancelled = said.get("cancel", {}).get("id")
+        moved = said.get("move", {})
+        for one in self.meetings:
+            if answer.get("id") == one["id"]:
+                one["answer"] = answer["with"]
+            if moved.get("id") == one["id"] and one["through"]:
+                one["start"], one["end"] = moved["start"], moved["end"]
+        self.meetings = [
+            one for one in self.meetings if not (one["id"] == cancelled and one["holds"])
+        ]
+
+    def tidy(self, said: dict[str, dict[str, object]]) -> None:
+        """Take what a shell asked of the mail: marked read, archived or marked unread again."""
+        tidied = (said.get("read") or said.get("archive") or {}).get("id")
+        unread = said.get("unread", {}).get("id")
+        held = [mail for mail in self.mail if mail["id"] != tidied]
+        if len(held) < len(self.mail):
+            if "read" in said:
+                self.read += [mail for mail in self.mail if mail["id"] == tidied]
+            self.mail = held
+            self.unread -= 1
+        back = [mail for mail in self.read if mail["id"] == unread]
+        if back:
+            self.read = [mail for mail in self.read if mail["id"] != unread]
+            self.mail = sorted(self.mail + back, key=lambda mail: -int(str(mail["at"])))
+            self.unread += 1
 
     def fetch(self, asked: dict[str, object]) -> None:
         """Write a file a piece of mail carries where the program would, and say where."""

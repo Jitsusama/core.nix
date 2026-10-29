@@ -6,8 +6,11 @@
 // too, after the open ones that match as well, and by its id; Return opens
 // pi on a quest in the folder the harness would pick, autoloaded, unless a
 // session has it loaded, when it goes to that session's window; the right
-// arrow steps into its facts, its parent's title among them; and a quest
-// made while the launcher was shut is there when it opens. It exits 0 once
+// arrow steps into its facts, its parent's title among them; Start a
+// Session there steps into the machines the realm's node places on, where
+// it has more than this one, each that can't take a session dimmed with
+// why, and Wherever It Fits last; and a quest made while the launcher was
+// shut is there when it opens. It exits 0 once
 // every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -124,6 +127,37 @@ ShellRoot {
             const folder = facts[facts.length - 1];
             expect("its folder copied whole", folder.copy === `${root.here}/session`, folder.copy);
             expect("a fact copies itself", facts[1].verb === "copy", facts[1].verb);
+            expect("with this machine alone, Start a Session holds no step",
+                facts[0].verbs === null && facts[0].note === "", facts[0].note);
+            expect("the node asked where sessions may go", Sessions.lookedAround > 0,
+                Sessions.lookedAround);
+
+            // With another machine the realm links, out of reach now.
+            Sessions.places = [
+                { name: "alpha", cannot: "", rather: "" },
+                { name: "beta", cannot: "out of reach", rather: "" }
+            ];
+            Sessions.fits = "alpha";
+            const start = prompt.verbs()[0];
+            expect("Start a Session says where Return starts one", start.note === "this machine",
+                start.note);
+            const machines = start.verbs();
+            expect("stepping into the machines, this one first, Wherever It Fits last",
+                names(machines) === "alpha, beta, Wherever It Fits", names(machines));
+            const [here, away, anywhere] = machines;
+            expect("this machine says so", here.note === "this machine" && !here.gone, here.note);
+            expect("one that can't take it stays, dimmed, saying why",
+                away.gone && away.note === "out of reach", `${away.gone} ${away.note}`);
+            expect("Wherever It Fits says where", anywhere.note === "on alpha", anywhere.note);
+            here.run();
+            expect("starting it on the machine chosen",
+                JSON.stringify(Sessions.startedOn)
+                    === JSON.stringify(["alpha", "QEST-20261003-PROMPT", `${root.here}/session`]),
+                JSON.stringify(Sessions.startedOn));
+            anywhere.run();
+            expect("Wherever It Fits leaves it to the node", Sessions.startedOn[0] === "",
+                JSON.stringify(Sessions.startedOn));
+            Sessions.places = [];
 
             // A session with it loaded: Return goes there.
             Sessions.running = [{
@@ -133,11 +167,11 @@ ShellRoot {
             }];
             const held = quests.everything()[1];
             expect("a loaded one names its session",
-                held.side === "subquest \u00b7 queued \u00b7 WCJQSG" && held.verb === "switch", held.side);
+                held.side === "subquest \u00b7 queued \u00b7 WCJQSG" && held.verb === "go", held.side);
             held.run();
             expect("going to its session", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":7}}',
                 JSON.stringify(Niri.acted));
-            expect("its step says so", held.verbs()[0].name === "Switch" && held.verbs()[0].verb === "switch",
+            expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go",
                 held.verbs()[0].name);
 
             root.waiting = "the quest made since";

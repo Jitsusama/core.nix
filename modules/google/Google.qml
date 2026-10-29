@@ -40,6 +40,29 @@ Singleton {
     // The file mail carries last asked for, as it stands: { mail, file,
     // how, asked, path, failed }, or null.
     property var fetched: null
+    // Making a Meet meeting: whether Joel's sign-in grants it, and the one
+    // last asked for, { asked, link, failed }, or null.
+    property var meet: ({ granted: false, made: null })
+
+    // The person an address is, as People's row for them, from the
+    // launcher's provider that knows people (People.qml's personOf), so a
+    // mail's sender and a meeting's guests step through to who they are;
+    // null on a machine without People, or for someone no source knows.
+    function personOf(launcher, email) {
+        const people = (launcher?.sources ?? []).find(source => typeof source.personOf
+            === "function");
+        return people ? people.personOf(email) : null;
+    }
+
+    // How the meeting asked for at `since` stands (Google.js).
+    function making(since) {
+        return Said.making(meet, since);
+    }
+
+    // Asks the program to make a new Meet meeting.
+    function make() {
+        ask(Said.make());
+    }
 
     function hear(line) {
         const said = Said.heard(line);
@@ -52,6 +75,19 @@ Singleton {
         documents = said.documents;
         heard = said.heard;
         fetched = said.fetched;
+        meet = said.meet;
+    }
+
+    // Everyone the meetings and mail name, by address, for People
+    // (GoogleSource.qml), each saying when what's with them is.
+    function people(meetings, mail) {
+        return Said.people(meetings, mail);
+    }
+
+    // Whether a meeting or a piece of mail is with someone by one of their
+    // addresses.
+    function withThem(thing, emails) {
+        return Said.withThem(thing, emails);
     }
 
     // The program gone, as it is once it stops, is no account: what it held
@@ -64,6 +100,7 @@ Singleton {
         documents = [];
         heard = null;
         fetched = null;
+        meet = { granted: false, made: null };
     }
 
     // Asks the program one thing, a line its ask.rs reads. It's running

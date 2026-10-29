@@ -1,7 +1,7 @@
-//! Asking Google: the token endpoint, and the Calendar, Gmail and Drive
-//! APIs as the account.
+//! Asking Google: the token endpoint, and the Calendar, Gmail, Drive and
+//! Meet APIs as the account.
 //!
-//! Both origins are given rather than fixed, so the tests can ask a stand-in
+//! The origins are given rather than fixed, so the tests can ask a stand-in
 //! on this machine instead (`tests/stand_in.rs`).
 
 use std::time::Duration;
@@ -19,12 +19,18 @@ use crate::mail;
 /// its base64 makes a third again.
 const ATTACHMENT_MOST: u64 = 36 * 1024 * 1024;
 
+/// The scope that lets this program make a Meet meeting, and manage only
+/// those it made, which a sign-in from before pi asked for it lacks.
+pub const MAKES_MEETINGS: &str = "https://www.googleapis.com/auth/meetings.space.created";
+
 /// Where Google answers.
 pub struct Origins {
     /// The OAuth token endpoint.
     pub token: String,
     /// The APIs' root, before `/calendar/v3`, `/gmail/v1` and `/drive/v3`.
     pub api: String,
+    /// Meet's API, which answers only on a host of its own.
+    pub meet: String,
 }
 
 impl Default for Origins {
@@ -32,6 +38,7 @@ impl Default for Origins {
         Origins {
             token: "https://oauth2.googleapis.com/token".into(),
             api: "https://www.googleapis.com".into(),
+            meet: "https://meet.googleapis.com".into(),
         }
     }
 }
@@ -149,6 +156,40 @@ impl Google {
             .map_err(|error| Refused::Unreachable(format!("Google's answer to {what}: {error}")))
     }
 
+    /// The lines a series of meetings on the primary calendar repeats by,
+    /// its `recurrence`, as RFC 5545 writes them (RRULE, EXDATE, RDATE),
+    /// which an occurrence doesn't carry. A series gone since says none.
+    pub fn recurrence(&self, token: &str, series: &str) -> Result<Vec<String>, Refused> {
+        let mut answer = self
+            .agent
+            .get(format!(
+                "{}/calendar/v3/calendars/primary/events/{series}",
+                self.origins.api
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("fields", "recurrence")
+            .call()
+            .map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if status == 404 || status == 410 {
+            return Ok(Vec::new());
+        }
+        if status != 200 {
+            return Err(refused(status, "a series of meetings"));
+        }
+        let body: Value = answer.body_mut().read_json().map_err(|error| {
+            Refused::Unreachable(format!("Google's answer to a series of meetings: {error}"))
+        })?;
+        Ok(body
+            .get("recurrence")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect())
+    }
+
     /// The ids of the mail that wants Joel, newest first.
     pub fn wanting(&self, token: &str) -> Result<Value, Refused> {
         let shown = mail::SHOWN.to_string();
@@ -207,6 +248,31 @@ impl Google {
             .and_then(Value::as_str)
             .map(str::to_owned)
             .ok_or_else(|| Refused::Unreachable("Google answered a file without it".into()))
+    }
+
+    /// A new Meet meeting, made as Joel's own, and the link that joins it.
+    /// It's a meeting space, not an event, so it's on no calendar and
+    /// nobody is told of it: whoever has the link may join.
+    pub fn space(&self, token: &str) -> Result<String, Refused> {
+        let mut answer = self
+            .agent
+            .post(format!("{}/v2/spaces", self.origins.meet))
+            .header("Authorization", &format!("Bearer {token}"))
+            .send_json(serde_json::json!({}))
+            .map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "making a meeting"));
+        }
+        let answer: Value = answer.body_mut().read_json().map_err(|error| {
+            Refused::Unreachable(format!("Google's answer to making a meeting: {error}"))
+        })?;
+        answer
+            .get("meetingUri")
+            .and_then(Value::as_str)
+            .filter(|link| link.starts_with("https://meet.google.com/"))
+            .map(str::to_owned)
+            .ok_or_else(|| Refused::Unreachable("Google made a meeting without a link".into()))
     }
 
     /// Takes the label `label` off the mail `id`, as Gmail's own buttons

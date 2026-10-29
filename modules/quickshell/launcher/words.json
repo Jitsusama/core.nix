@@ -3,6 +3,7 @@
     "on",
     "agents",
     "applications",
+    "people",
     "desktop",
     "computer",
     "network",
@@ -21,7 +22,6 @@
         "clipboard",
         "capture",
         "session:recording",
-        "people",
         "emoji",
         "session:quiet"
       ],
@@ -116,6 +116,41 @@
       "name": "Quest"
     },
     {
+      "id": "agents:last-boot",
+      "in": "agents",
+      "name": "Reopen Last Boot's Sessions",
+      "verb": "more",
+      "glyph": "resume",
+      "said": {
+        "one": "1 session",
+        "many": "{count} sessions"
+      }
+    },
+    {
+      "id": "verb:agents:last-boot:all",
+      "in": "agents:last-boot",
+      "name": "Reopen Them All",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:one",
+      "in": "agents:last-boot",
+      "name": "Reopen",
+      "verb": "reopen",
+      "glyph": "resume",
+      "said": {
+        "gone": "not reopened, since its folder, {cwd}, is gone"
+      }
+    },
+    {
+      "id": "verb:agents:last-boot:notNow",
+      "in": "agents:last-boot",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
       "id": "agents:start",
       "in": "agents",
       "name": "Start a Session",
@@ -150,6 +185,19 @@
       "id": "agents:started",
       "in": "agents",
       "name": "Started"
+    },
+    {
+      "id": "agents:machine",
+      "in": "agents",
+      "name": "Machine",
+      "said": {
+        "on": "on {machine}",
+        "away": "{machine}, out of reach",
+        "unheld": "not joined, since {machine} doesn't hold it in a way that can be joined from here",
+        "unreached": "not joined, since {machine} is out of reach",
+        "untold": "not told, since {why}",
+        "unanswered": "not told, since the node didn't answer"
+      }
     },
     {
       "id": "agents:spent",
@@ -2822,7 +2870,7 @@
       "id": "on:waiting",
       "in": "on",
       "name": "Waiting on You",
-      "verb": "switch",
+      "verb": "go",
       "glyph": "waitsOnJoel",
       "empty": "Nothing waits on you.",
       "said": {
@@ -2835,8 +2883,8 @@
     {
       "id": "verb:on:waiting:go",
       "in": "on",
-      "name": "Go to {where}",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -3014,8 +3062,8 @@
     {
       "id": "verb:notice:goTo",
       "in": "notices",
-      "name": "Go to {program}",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -3287,6 +3335,17 @@
       "name": "A Video From the Camera"
     },
     {
+      "id": "capture:recent",
+      "in": "capture",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing taken yet.",
+      "said": {
+        "none": "none"
+      }
+    },
+    {
       "id": "cameras",
       "name": "Cameras",
       "glyph": "camera",
@@ -3395,15 +3454,69 @@
     },
     {
       "id": "people",
-      "name": "Calls",
+      "name": "People",
       "noun": "people",
       "glyph": "people",
-      "ask": "who to pair with?",
-      "empty": "Nobody to call yet."
+      "ask": "who?",
+      "empty": "Nobody you've met or written lately."
+    },
+    {
+      "id": "verb:person:call",
+      "in": "people",
+      "name": "Call Them",
+      "verb": "call",
+      "glyph": "call"
+    },
+    {
+      "id": "verb:person:join",
+      "in": "people",
+      "name": "Join Their Call",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:person:mail",
+      "in": "people",
+      "name": "Write a Mail",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:person:page",
+      "in": "people",
+      "name": "Open in {source}",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
+      "id": "verb:person:slack",
+      "in": "people",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:person:favourite",
+      "in": "people",
+      "name": "Favourite",
+      "verb": "star",
+      "glyph": "favourite",
+      "states": {
+        "favourite": {
+          "verb": "unstar"
+        }
+      }
+    },
+    {
+      "id": "person:recent",
+      "in": "people",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
     },
     {
       "id": "tuple",
-      "in": "people",
+      "in": "applications",
       "name": "The Call"
     },
     {
@@ -4102,6 +4215,13 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:guests",
+      "in": "calendar:meeting",
+      "name": "Guests",
+      "verb": "more",
+      "glyph": "people"
+    },
+    {
       "id": "verb:calendar:attachments",
       "in": "calendar:meeting",
       "name": "Attachments",
@@ -4181,6 +4301,13 @@
       "glyph": "reply"
     },
     {
+      "id": "verb:mail:replyAll",
+      "in": "mail:message",
+      "name": "Reply All",
+      "verb": "reply",
+      "glyph": "replyAll"
+    },
+    {
       "id": "verb:mail:read",
       "in": "mail:message",
       "name": "Read",
@@ -4241,6 +4368,13 @@
       "verb": "join",
       "glyph": "joinCall",
       "ask": "which code?"
+    },
+    {
+      "id": "verb:meet:link",
+      "in": "applications",
+      "name": "Copy a New Meeting's Link",
+      "verb": "copy",
+      "glyph": "link"
     },
     {
       "id": "docs:document",
@@ -4323,8 +4457,8 @@
     {
       "id": "verb:switch",
       "in": "windows",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4390,8 +4524,8 @@
     {
       "id": "verb:program:switch",
       "in": "applications",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4539,18 +4673,53 @@
       "glyph": "copy"
     },
     {
-      "id": "verb:recent:open",
+      "id": "verb:path:file:open",
       "in": "path:file",
       "name": "Open",
       "verb": "open",
       "glyph": "path"
     },
     {
-      "id": "verb:recent:window",
+      "id": "verb:path:folder:window",
       "in": "path:folder",
       "name": "New Window Here",
       "verb": "open",
       "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:folder",
+      "in": "path:folder",
+      "name": "Open This Folder",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:here",
+      "in": "path:folder",
+      "name": "Save Here",
+      "verb": "save",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:replace",
+      "in": "path:file",
+      "name": "Replace It",
+      "verb": "replace",
+      "glyph": "path"
+    },
+    {
+      "id": "file-chooser:filter",
+      "in": "path:folder",
+      "name": "Filter",
+      "verb": "show",
+      "glyph": "filter"
+    },
+    {
+      "id": "file-chooser:choice",
+      "in": "path:folder",
+      "name": "Choice",
+      "verb": "choose",
+      "glyph": "option"
     },
     {
       "id": "verb:float",
@@ -4589,8 +4758,8 @@
     {
       "id": "verb:agent:switch",
       "in": "agents",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4674,13 +4843,18 @@
       "in": "orchestrators",
       "name": "Resume",
       "verb": "resume",
-      "glyph": "resume"
+      "glyph": "resume",
+      "said": {
+        "afresh": "started afresh in {folder}, since its last session's folder, {cwd}, is gone",
+        "nowhere": "not resumed, since its last session's folder, {cwd}, is gone and its quest names no folder to start in",
+        "unfound": "not resumed, since its last session's record wasn't found and its quest names no folder to start in"
+      }
     },
     {
       "id": "verb:quest:switch",
       "in": "quests",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To Its Session",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4691,10 +4865,17 @@
       "glyph": "agent"
     },
     {
+      "id": "verb:quest:start-anywhere",
+      "in": "verb:quest:open",
+      "name": "Wherever It Fits",
+      "verb": "start",
+      "glyph": "agent"
+    },
+    {
       "id": "verb:run:switch",
       "in": "runs",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4704,12 +4885,17 @@
       "by": "tuple"
     },
     {
+      "id": "tuple:show",
+      "name": "Show the Call",
+      "verb": "show",
+      "by": "tuple"
+    },
+    {
       "id": "tuple:mute",
-      "name": "Mute Me in the Call",
+      "name": "Muted",
       "verb": "mute",
       "states": {
         "muted": {
-          "name": "Let Them Hear Me Again",
           "verb": "unmute"
         }
       },

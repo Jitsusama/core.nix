@@ -41,6 +41,7 @@ QtObject {
         };
 
         // What the file says: [what, the line, what's read of it]
+        const unmade = { granted: false, made: null };
         const lines = [
             ["the whole state",
                 JSON.stringify({
@@ -49,19 +50,19 @@ QtObject {
                 }),
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], heard: 1793042446024, fetched: null
+                    documents: [], heard: 1793042446024, fetched: null, meet: unmade
                 }],
             ["a state with nothing heard yet",
                 '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
                 {
                     account: "none", meetings: [], mail: [], unread: null, documents: [],
-                    heard: null, fetched: null
+                    heard: null, fetched: null, meet: unmade
                 }],
             ["a state from before mail",
                 '{"account":"ready","meetings":[],"heard":1}',
                 {
                     account: "ready", meetings: [], mail: [], unread: null, documents: [],
-                    heard: 1, fetched: null
+                    heard: 1, fetched: null, meet: unmade
                 }],
             ["half a line", '{"account":"rea', null],
             ["a line that isn't the state", '{"hello":1}', null],
@@ -69,6 +70,30 @@ QtObject {
         ];
         for (const [what, line, meant] of lines)
             check(what, Google.heard(line), meant);
+        check("making a meeting granted", Google.heard(JSON.stringify({ account: "ready",
+            meetings: [], meet: { granted: true, made: null } })).meet,
+            { granted: true, made: null });
+
+        // A new Meet meeting, asked for at 100: how it stands as the
+        // program says.
+        const meet = made => ({ granted: true, made: made });
+        const link = "https://meet.google.com/new-abcd-efg";
+        check("the line making a meeting", Google.make(), '{"make":{}}\n');
+        check("how a meeting asked for stands", [
+            [meet(null), null],
+            [meet(null), 100],
+            [meet({ asked: 90, link: link, failed: false }), 100],
+            [meet({ asked: 100, link: null, failed: false }), 100],
+            [meet({ asked: 101, link: link, failed: false }), 100],
+            [meet({ asked: 101, link: null, failed: true }), 100]
+        ].map(([standing, since]) => Google.making(standing, since)), [
+            { state: "", link: "" },
+            { state: "making", link: "" },
+            { state: "making", link: "" },
+            { state: "making", link: "" },
+            { state: "made", link: link },
+            { state: "failed", link: "" }
+        ]);
 
         // When it came: [what, when, said]
         const cames = [
@@ -176,6 +201,41 @@ QtObject {
             Mail.replying(Object.assign({}, lunch, { subject: "RE: Lunch" })),
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com&su=RE%3A%20Lunch");
         check("no reply with no address", Mail.replying({ address: "", subject: "Lunch" }), "");
+        check("a new mail to someone", Mail.writing(["ada@example.com"], ""),
+            "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com");
+        check("no new mail to nobody", Mail.writing([""], ""), "");
+
+        // Everyone the meetings and mail name, for People, by address, each
+        // with when what's with them is.
+        const minute = 60 * 1000;
+        const standupWith = {
+            start: lunch.at + 61 * minute, end: lunch.at + 91 * minute,
+            organizer: { name: "Ada Lovelace", email: "Ada@Example.com" },
+            guests: [{ name: "Grace Hopper", email: "grace@example.com", answer: "no" },
+                { name: "Room 4", email: null, answer: "yes" }]
+        };
+        const alan = { address: "alan@example.com", from: "Alan", at: lunch.at - minute };
+        const meetingSpan = { from: standupWith.start, to: standupWith.end };
+        check("who the meetings and mail name", Google.people([standupWith], [lunch, alan]), [
+            { emails: ["ada@example.com"], name: "Ada Lovelace",
+                spans: [meetingSpan, { from: lunch.at, to: lunch.at }] },
+            { emails: ["grace@example.com"], name: "Grace Hopper", spans: [meetingSpan] },
+            { emails: ["alan@example.com"], name: "Alan", spans: [{ from: alan.at, to: alan.at }] }
+        ]);
+        check("a meeting with them", Google.withThem(standupWith, ["grace@example.com"]), true);
+        check("mail from them", Google.withThem(lunch, ["ada@example.com"]), true);
+        check("nothing with a stranger", Google.withThem(standupWith, ["x@example.com"]), false);
+
+        // Reply All: to who sent it, copied to everyone else, each once.
+        check("a reply to all, copied to the others", Mail.replyingAll(Object.assign({}, lunch,
+            { others: ["grace@example.com", "alan@example.com", "grace@example.com"] })),
+            "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
+                + "&cc=grace%40example.com%2Calan%40example.com"
+                + "&su=Re%3A%20Lunch%20%26%20a%20walk%3F");
+        check("no reply to all when it went to nobody else", [lunch,
+            Object.assign({}, lunch, { others: [] }),
+            { address: "", subject: "Lunch", others: ["grace@example.com"] }]
+            .map(Mail.replyingAll), ["", "", ""]);
         // Write to the Guests: its holder and every guest with an address,
         // each once, about the meeting.
         check("a mail to a meeting's guests", Mail.toTheGuests({

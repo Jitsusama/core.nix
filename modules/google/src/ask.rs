@@ -5,8 +5,9 @@
 //! `{"move": {"id": "…", "start": …, "end": …}}` in milliseconds since
 //! the epoch; to mark mail read, `{"read": {"id": "…"}}`, or unread
 //! again, `{"unread": {"id": "…"}}`; to archive it,
-//! `{"archive": {"id": "…"}}`; and to fetch one of the files it carries,
-//! from 0, to open or save, `{"fetch": {"id": "…", "file": 0, "how": "open"}}`.
+//! `{"archive": {"id": "…"}}`; to fetch one of the files it carries,
+//! from 0, to open or save, `{"fetch": {"id": "…", "file": 0, "how": "open"}}`;
+//! and to make a new Meet meeting, `{"make": {}}`.
 //!
 //! A line that isn't one of these is let go. The id goes into the path
 //! of a request to Google, so only the letters, digits and underscores
@@ -35,6 +36,8 @@ pub enum Ask {
     Archive { id: String },
     /// Fetch the mail `id`'s file `file` to open or save, as `how` says.
     Fetch { id: String, file: usize, how: How },
+    /// Make a new Meet meeting, to copy its link.
+    Make {},
 }
 
 /// What a line asks, or none when it asks nothing this program does.
@@ -49,6 +52,7 @@ pub fn read(line: &str) -> Option<Ask> {
         | Ask::Fetch { id, .. } => named(id),
         // A meeting ends after it starts, and both are after 1970.
         Ask::Move { id, start, end } => named(id) && 0 < *start && start < end,
+        Ask::Make {} => true,
     };
     taken.then_some(ask)
 }
@@ -123,6 +127,12 @@ mod tests {
                 id: "19a2b3c4d5e6f708".into()
             })
         );
+    }
+
+    #[test]
+    fn a_meeting_is_made_by_an_ask_of_nothing_more() {
+        assert_eq!(read(r#"{"make": {}}"#), Some(Ask::Make {}));
+        assert_eq!(read(r#"{"make": {"guests": ["ada@example.com"]}}"#), None);
     }
 
     #[test]

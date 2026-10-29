@@ -21,6 +21,7 @@ import Quickshell
 import QtQuick
 import "Calendar.js" as Said
 import "Mail.js" as Written
+import "Meet.js" as Calls
 
 Singleton {
     id: root
@@ -213,8 +214,10 @@ Singleton {
     // what's done most after joining, each keeping the launcher, the one
     // he gave noted as his answer; for one Google lets him
     // change, Move the Meeting, to a later time or one typed there, which
-    // asks once, naming who Google tells; Attachments, the files on it,
-    // while it has any; and for one Joel holds, Cancel
+    // asks once, naming who Google tells; Guests, who holds it and who's
+    // asked, each stepping through to the person, when People knows any;
+    // Attachments, the files on it, while it has any; and for one Joel
+    // holds, Cancel
     // the Meeting, which asks once, since Google mails everyone asked; and
     // last, as copying always is, Copy the Link.
     function acts(meeting, provider) {
@@ -246,6 +249,9 @@ Singleton {
                 rows.push(root.answering(meeting, provider, said));
         if (root.movable(meeting))
             rows.push(root.moving(meeting, provider));
+        const guests = root.guesting(meeting, provider);
+        if (guests)
+            rows.push(guests);
         if ((meeting.attachments ?? []).length > 0)
             rows.push(root.attaching(meeting, provider));
         if (meeting.holds)
@@ -253,6 +259,41 @@ Singleton {
         if (meeting.link || meeting.page)
             rows.push(root.linking(meeting, provider));
         return rows;
+    }
+
+    // Guests steps in to who holds it, unless that's Joel, and then each
+    // guest, as People's rows, so each steps through to the person (VKCF3Z's
+    // design: the guests, before Attachments), counting those People
+    // knows; none when it knows nobody on it, or there's no People.
+    function guesting(meeting, provider) {
+        const emails = (meeting.holds ? [] : [meeting.organizer?.email])
+            .concat((meeting.guests ?? []).map(guest => guest.email));
+        const people = () => {
+            const found = [];
+            for (const email of emails) {
+                const person = Google.personOf(provider.launcher, email);
+                if (person && !found.some(one => one.key === person.key))
+                    found.push(person);
+            }
+            return found;
+        };
+        const count = people().length;
+        if (count === 0)
+            return null;
+        const key = "verb:calendar:guests";
+        const row = provider.thing({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "person",
+            count: String(count),
+            stays: true,
+            verbs: people,
+            targets: people,
+            run: () => provider.launcher?.enter(row)
+        });
+        return row;
     }
 
     // Attachments steps in to the files on it, as mail's does (VKCF3Z,
@@ -514,7 +555,7 @@ Singleton {
     // A Meet code as Joel types or pastes it, written as Meet writes it, or
     // "" for anything Meet wouldn't know.
     function meetCode(typed) {
-        return Said.meetCode(typed);
+        return Calls.meetCode(typed);
     }
 
     function join(meeting) {
@@ -529,9 +570,9 @@ Singleton {
     readonly property var calls: {
         Niri.revision;
         return Object.values(Niri.windows)
-            .map(window => ({ window: window, code: Said.meetCall(window.app_id) }))
+            .map(window => ({ window: window, code: Calls.meetCall(window.app_id) }))
             .filter(call => call.code !== "")
-            .map(call => Object.assign(call, { meeting: Said.calledBy(meetings, call.code) }));
+            .map(call => Object.assign(call, { meeting: Calls.calledBy(meetings, call.code) }));
     }
 
     // The meeting's own page in Google Calendar.

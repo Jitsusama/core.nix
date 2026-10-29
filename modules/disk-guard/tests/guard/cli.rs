@@ -628,3 +628,78 @@ fn a_keep_needs_a_folder_there_and_a_reason() {
         (0, format!("{} wasn't kept.\n", machine.root.display()))
     );
 }
+
+/// The machine with its guard's socket at a path short enough to bind,
+/// which a socket's address allows only 108 bytes of, in a folder the
+/// caller holds.
+fn with_short_socket() -> (Machine, tempfile::TempDir) {
+    let mut machine = Machine::new();
+    let short = tempfile::tempdir().unwrap();
+    machine.env.system_socket = short.path().join("s");
+    (machine, short)
+}
+
+#[test]
+fn a_footprint_without_the_machines_guard_says_none_is_there() {
+    let (machine, _short) = with_short_socket();
+    let (code, out, err) = machine.run(&format!("footprint {}", machine.root.display()));
+    assert_eq!((code, out.as_str()), (3, ""));
+    assert!(err.contains("asking the machine's guard"), "{err}");
+}
+
+#[test]
+fn a_footprint_says_what_the_disk_holds_beside_what_the_files_do() {
+    let (machine, _short) = with_short_socket();
+    let files = machine.root.join("files");
+    write_file(&files.join("big"), &"x".repeat(8192));
+    let mut server =
+        disk_guard::socket::Server::bind(&machine.env.system_socket, Duration::ZERO).unwrap();
+    std::thread::spawn(move || {
+        server
+            .serve(&mut |_, _, responder| {
+                responder.send(&disk_guard::socket::Reply::Footprints(vec![
+                    Some(4096),
+                    None,
+                ]));
+            })
+            .unwrap();
+    });
+    let gone = machine.root.join("gone");
+    let (code, out, _) = machine.run(&format!("footprint {} {}", files.display(), gone.display()));
+    assert_eq!(code, 1, "a path it couldn't read is a refusal: {out}");
+    assert_eq!(
+        out,
+        format!(
+            "{}: 4.0 KiB on the disk, for 8.0 KiB of files.\n\
+             {}: 0 B of files; what they take on the disk can't be read \
+             (not yours, not on Btrfs, or gone).\n",
+            files.display(),
+            gone.display()
+        )
+    );
+}
+
+#[test]
+fn a_footprint_asked_too_soon_is_asked_again() {
+    use disk_guard::socket::{Reply, Server, TOO_SOON};
+    let (machine, _short) = with_short_socket();
+    let mut server = Server::bind(&machine.env.system_socket, Duration::ZERO).unwrap();
+    std::thread::spawn(move || {
+        // The account asked a moment ago, as a guard's plan beside its
+        // daemon does, so the first ask is refused and the next answered.
+        let mut replies = [
+            Reply::Error(TOO_SOON.to_owned()),
+            Reply::Footprints(vec![Some(4096)]),
+        ]
+        .into_iter();
+        for _ in 0..2 {
+            let reply = replies.next().unwrap();
+            server
+                .serve(&mut |_, _, responder| responder.send(&reply))
+                .unwrap();
+        }
+    });
+    let (code, out, err) = machine.run(&format!("footprint {}", machine.root.display()));
+    assert_eq!((code, err.as_str()), (0, ""), "{out}");
+    assert!(out.contains("4.0 KiB on the disk"), "{out}");
+}

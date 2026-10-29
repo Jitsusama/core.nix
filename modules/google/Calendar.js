@@ -1,8 +1,8 @@
 // What the shell works out from the meetings the google program keeps
 // (src/state.rs): which meeting is next, when it is in words, which one
 // wants Joel and what its notice tells, whether Return joins it, how Joel
-// answered it, the lines that answer and cancel it (src/ask.rs), and which
-// Meet call a
+// answered it, how it repeats and how its guests did, and the lines that
+// answer, cancel and move it (src/ask.rs); Meet.js says which call a
 // window is. Calendar.qml asks these of the meetings Google.qml holds,
 // Mail.js asks the day and the time, and the checks run them in Qt's own
 // engine (tests/calendar.qml). Times are milliseconds since 1970, as the
@@ -209,20 +209,40 @@ function asked(person) {
     return said === "" ? name : `${name}, ${said}`;
 }
 
+// How those asked answered, counted, as a calendar heads its list of
+// guests: "9 going, 2 not going, 3 not answered", each answer in the
+// order an invitation offers them. One not yet heard from counts as not
+// answered. Nothing for one guest, whom Asked says whole.
+function tallied(guests) {
+    if (guests.length < 2) {
+        return "";
+    }
+    const counts = new Map(Object.values(ANSWERED).map(said => [said, 0]));
+    for (const guest of guests) {
+        const said = ANSWERED[guest.answer] ?? ANSWERED.waiting;
+        counts.set(said, counts.get(said) + 1);
+    }
+    return [...counts].filter(([, count]) => count > 0)
+        .map(([said, count]) => `${count} ${said}`).join(", ");
+}
+
 // Its details, as the launcher's drawer shows them beside its row: its
 // title, when and where it is, its call and the number it's dialled into
-// by, his answer, who holds it and who else is asked, the files on it by
-// their titles, and what it's about, every one plain text, since the
-// description is someone else's words.
+// by, his answer, who holds it, how many of those asked answered each
+// way and who they are, the files on it by their titles, and what it's
+// about, every one plain text, since the description is someone else's
+// words.
 function details(meeting, untitled) {
     const attachments = meeting.attachments ?? [];
     const facts = [
         { label: "When", value: dated(meeting) },
+        { label: "Repeats", value: repeated(meeting.repeats) },
         { label: "Where", value: meeting.place ?? "" },
         { label: "Call", value: meeting.link ?? "" },
         { label: "Dial In", value: dialled(meeting.dial) },
         { label: "Your Answer", value: answered(meeting) },
         { label: "Holds It", value: meeting.organizer ? asked(meeting.organizer) : "" },
+        { label: "Answers", value: tallied(meeting.guests ?? []) },
         { label: "Asked", value: (meeting.guests ?? []).map(asked).join("; ") },
         {
             label: attachments.length === 1 ? "Attachment" : "Attachments",
@@ -234,6 +254,82 @@ function details(meeting, untitled) {
         facts: facts.filter(fact => fact.value !== ""),
         body: meeting.about ?? ""
     };
+}
+
+// What one of a series counts by, one and many.
+const EVERY = {
+    day: ["day", "days"],
+    week: ["week", "weeks"],
+    month: ["month", "months"],
+    year: ["year", "years"]
+};
+// Which of a day in its month, from the first.
+const WHICH = ["", "first", "second", "third", "fourth", "fifth"];
+// Monday to Friday, as the days count from Sunday.
+const WEEKDAYS = "1,2,3,4,5";
+// An ordinal's ending goes by its last figure, but for 11th to 13th.
+const TEN = 10;
+const HUNDRED = 100;
+const TEENS = [11, 12, 13];
+const ENDINGS = ["th", "st", "nd", "rd"];
+
+// 1st, 2nd, 3rd, 4th, 11th, 21st.
+function ordinal(n) {
+    const ending = TEENS.includes(n % HUNDRED) ? "th" : ENDINGS[n % TEN] ?? "th";
+    return `${n}${ending}`;
+}
+
+// Which of a day in its month: first, or from the end, last and second
+// last.
+function which(n) {
+    if (n > 0) {
+        return WHICH[n] ?? ordinal(n);
+    }
+    return n === -1 ? "last" : `${WHICH[-n] ?? ordinal(-n)} last`;
+}
+
+// Words in a list, as one says them: "a", "a and b", "a, b and c".
+function listed(words) {
+    if (words.length < 2) {
+        return words.join("");
+    }
+    // Qt's engine has no Array's at.
+    return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+// How a meeting repeats, as its details say it: "Every weekday", "Every 2
+// weeks on Monday and Wednesday", "Every month on the last Friday, until
+// 31 December 2026"; or "" for one that doesn't, or whose series' rule
+// wasn't heard (src/calendar.rs).
+function repeated(repeats) {
+    const [one, many] = EVERY[repeats?.every] ?? [];
+    if (!one) {
+        return "";
+    }
+    const days = repeats.days ?? [];
+    const plain = days.every(day => day.nth === null);
+    const weekdays = days.map(day => day.day).sort().join(",") === WEEKDAYS;
+    let said = "";
+    if (repeats.every === "week" && repeats.interval === 1 && plain && weekdays) {
+        said = "Every weekday";
+    } else {
+        said = repeats.interval === 1 ? `Every ${one}` : `Every ${repeats.interval} ${many}`;
+        const on = days.map(day => (day.nth === null
+            ? DAYS[day.day] : `the ${which(day.nth)} ${DAYS[day.day]}`));
+        const dates = (repeats.monthDays ?? []).map(day => (day > 0
+            ? `the ${ordinal(day)}` : `the ${which(day)} day`));
+        if (on.length + dates.length > 0) {
+            said += ` on ${listed(on.concat(dates))}`;
+        }
+    }
+    if (repeats.times) {
+        return `${said}, ${repeats.times} times`;
+    }
+    if (repeats.until) {
+        const last = new Date(repeats.until);
+        return `${said}, until ${last.getDate()} ${MONTHS[last.getMonth()]} ${last.getFullYear()}`;
+    }
+    return said;
 }
 
 // The number a call is dialled into by, and its PIN when it asks one, as
@@ -248,41 +344,6 @@ function dialled(dial) {
 // The line that asks the program to answer a meeting yes, maybe or no.
 function answer(meeting, said) {
     return `${JSON.stringify({ answer: { id: meeting.id, with: said } })}\n`;
-}
-
-// A Meet call's code, as abc-defg-hij, from the app id Chrome gives the
-// window it opens a call's link in as an app of its own: its host and
-// path, the path's slash an underscore, then its profile, as
-// chrome-meet.google.com__abc-defg-hij-Default. Any other window, Meet's
-// own front page and a call in a browser tab among them, is no call: "".
-const MEET_WINDOW = /^chrome-meet\.google\.com__([a-z]{3}-[a-z]{4}-[a-z]{3})-/;
-// The code a Meet link joins by, before any ?authuser= that follows it.
-const MEET_LINK = /^https:\/\/meet\.google\.com\/([a-z-]+)/;
-
-function meetCall(appId) {
-    const found = MEET_WINDOW.exec(appId ?? "");
-    return found ? found[1] : "";
-}
-
-// A Meet code as Joel types or pastes it, three letters, four and three,
-// with or without its dashes and spaces, or its whole link, written as
-// Meet writes it: "abc-defg-hij"; or "" for anything else, which Meet
-// wouldn't know.
-const MEET_CODE = /^([a-z]{3})-?([a-z]{4})-?([a-z]{3})$/;
-const SPACES = /\s+/g;
-
-function meetCode(given) {
-    const plain = String(given ?? "").trim().toLowerCase().replace(SPACES, "");
-    const parts = MEET_CODE.exec(MEET_LINK.exec(plain)?.[1] ?? plain);
-    return parts ? `${parts[1]}-${parts[2]}-${parts[3]}` : "";
-}
-
-// The meeting whose call has that code, or null for one nobody asked
-// Joel to, such as a link someone pasted.
-function calledBy(meetings, code) {
-    return meetings.find(meeting => code !== ""
-        && MEET_LINK.exec(meeting.link ?? "")?.[1] === code)
-        ?? null;
 }
 
 // The line that asks the program to cancel a meeting Joel holds.

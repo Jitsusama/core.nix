@@ -2,7 +2,7 @@
 // Applications.qml) through Quickshell itself, over desktop entries written
 // beside this, with niri, the desktop's shortcuts, the notices' history and
 // what's playing (launcher/Playing.qml) stood in. A running program with a
-// player, a stream and notices holds, in order, Switch to the window used
+// player, a stream and notices holds, in order, Go To the window used
 // last, New window, New window below, its desktop entry's own actions (one
 // shortened, one left to New window), Recent, its other window by title,
 // Notices, Quit, then Media and Sound, each doing what it says: Quit asks once
@@ -22,7 +22,9 @@
 // or name, and opened by its own command when it takes files, else as the
 // desktop opens them. A program whose sites are read only as it's stepped
 // into reads them then, once each time the launcher opens, each site by
-// its title beside its host, opened by its own command. Typing on
+// its title beside its host, opened by its own command. A program whose
+// entry hides itself is listed only when another provider gives it acts,
+// and then steps in on Return rather than starting. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -58,17 +60,35 @@ ShellRoot {
         property var held: []
         property var belowChord: []
         property var sources: [notices, keys, giver]
+        property var entered: null
+
+        function enter(row) {
+            entered = row;
+        }
     }
 
     // Another provider giving a program's Recent its own things, as Docs'
-    // documents are given.
+    // documents are given, and the acts of a program whose entry hides
+    // itself, as Tuple's are.
     QtObject {
         id: giver
 
         signal changed
 
+        property var hiddenPrograms: ["pair"]
+
+        function programActs(program) {
+            return program === "tester" ? [
+                { key: "tester:link", name: "Copy a New Log's Link", verb: "copy" }
+            ] : program !== "pair" ? [] : [
+                { key: "pair:link", name: "Copy the Room's Link", verb: "copy" },
+                { key: "pair:room", name: "Open the Room", verb: "open" }
+            ];
+        }
+
         function recentOf(program) {
-            return program !== "tester" ? [] : [{ key: "gdoc:plan", name: "Plan Doc" }];
+            return program === "tester" ? [{ key: "gdoc:plan", name: "Plan Doc" }]
+                : program === "pair" ? [{ key: "gdoc:notes", name: "Pair Notes" }] : [];
         }
     }
 
@@ -153,7 +173,7 @@ ShellRoot {
 
     function ready() {
         if (root.waiting === "the programs"
-                && ["tester", "quiet", "radio", "browser", "org.example.viewer"]
+                && ["tester", "quiet", "radio", "browser", "pair", "org.example.viewer"]
                     .every(id => root.program(id) !== undefined)
                 && applications.recents.of("quiet").length === 2
                 && applications.recents.of("tester").length === 2
@@ -288,9 +308,10 @@ ShellRoot {
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();
-            same("in the program's order, each part where it applies", names(tester),
-                "Switch, New Window, New Window Below, Private window, Open the logbook, "
-                + "Recent, Draft, Notices, Quit, Media, Sound");
+            same("in the program's order, each part where it applies, what's given it to copy last",
+                names(tester),
+                "Go To, New Window, New Window Below, Private window, Open the logbook, "
+                + "Recent, Draft, Notices, Quit, Media, Sound, Copy a New Log's Link");
             const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
             const files = shared.targets();
             same("its files from the list programs share, by its name or its id, newest first, then what another provider gives it",
@@ -299,9 +320,21 @@ ShellRoot {
             files[0].run();
             same("one opens by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["tester", `${root.home}/notes.md`]));
-            same("Switch names the window used last", switching.side, "Logbook");
+            same("a hidden program nobody gives acts to isn't listed", program("ghost"), undefined);
+            const pair = program("pair");
+            same("a hidden program another gives acts to steps in rather than starting, "
+                + "what it gives to copy after everything",
+                `${pair.verb} ${pair.stays} ${names(pair.verbs())} | ${names(pair.targets())}`,
+                "more true Open the Room, Recent, Copy the Room's Link "
+                + "| Open the Room, Recent, Copy the Room's Link");
+            const spawnedBefore = JSON.stringify(Niri.spawned);
+            pair.run();
+            expect("and Return steps in, starting nothing", launcher.entered === pair
+                && JSON.stringify(Niri.spawned) === spawnedBefore, JSON.stringify(Niri.spawned));
+            same("one closed still starts", program("radio").verb, "start");
+            same("Go To names the window used last", switching.side, "Logbook");
             switching.run();
-            same("Switch goes to it", acted(), '[{"FocusWindow":{"id":11}}]');
+            same("Go To goes to it", acted(), '[{"FocusWindow":{"id":11}}]');
             same("the other window says where it is", draft.side, "workspace 2");
             same("an action is run", `${secret.verb} ${logbook.verb}`, "run run");
             expect("its full name still finds it", secret.keywords !== null, secret.keywords);
@@ -463,6 +496,11 @@ ShellRoot {
                 same(`"${typed}" found as looking whole does`, got, whole(typed));
                 found(typed);
             }
+            // A program held open as its entries are read again keeps the
+            // one that's gone, its id and name with it: it offers nothing,
+            // and doesn't throw.
+            same("a program whose entry is gone offers nothing",
+                applications.controls({}, () => {}, () => {}).length, 0);
             root.waiting = "the recents to change";
             // Held inside a program, as Joel would be, while its list changes.
             launcher.open = true;

@@ -272,10 +272,11 @@ Scope {
                 })
             };
         case "goTo": {
+            // Go To, the program it goes to at its side, as going to
+            // anything open is said everywhere.
             const entry = DesktopEntries.heuristicLookup(notification.appName);
             return Object.assign(named("verb:notice:goTo"), {
-                name: Words.name("verb:notice:goTo", "",
-                    { program: entry ? entry.name : notification.appName }),
+                side: entry ? entry.name : notification.appName,
                 run: done(() => Niri.act({ FocusWindow: { id: window.id } }))
             });
         }

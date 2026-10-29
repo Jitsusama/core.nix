@@ -7,9 +7,15 @@
 // action's words ("open a terminal") and the foot teaches its chord, so
 // the two aren't listed side by side.
 //
+// A program whose desktop entry hides itself, having no window to open, is
+// listed all the same when another provider says it gives it acts
+// (`hiddenPrograms`, Provider.qml), as Calls.qml does for Tuple. Starting it
+// would only start its daemon, so its Return steps in, as a device's does,
+// and inside are only those acts and what follows them, never starting it.
+//
 // The right arrow steps into everything the program can be told, the same
 // for every program, each row there only when it applies: what can be done
-// first (Switch, New window, New window below, its other windows by title,
+// first (Go To, New window, New window below, its other windows by title,
 // its desktop entry's own actions, Recent where it keeps what it had open
 // lately, its Shortcuts where it has keys of its own, Quit), then its parts (Media while it
 // has a player, Sound while it plays or records, Notifications while the
@@ -130,7 +136,7 @@ Provider {
         return provider.tidy(window.title ?? "", entry.name) || entry.name;
     }
 
-    // Its windows but the one used last, which Switch already goes to, as
+    // Its windows but the one used last, which Go To already goes to, as
     // rows Return goes to, each by its own title, saying where it is as the
     // Windows collection does: nothing on the workspace in front, and a
     // column when two are titled alike. Each holds what Windows' row for it
@@ -149,7 +155,7 @@ Provider {
             return thing({
                 key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
                 is: `window:${window.id}`,
-                verb: "switch",
+                verb: "go",
                 name: titled(window, entry),
                 glyph: programGlyph(entry.id),
                 hue: "program",
@@ -597,7 +603,7 @@ Provider {
     // launcher calls as Programs is stepped into (Provider.qml).
     function lately(entry, source, path) {
         const kind = source?.kind === "folder" ? "folder" : "file";
-        const key = kind === "folder" ? "verb:recent:window" : "verb:recent:open";
+        const key = kind === "folder" ? "verb:path:folder:window" : "verb:path:file:open";
         const act = thing({
             key: `${key}:${path}`,
             name: Words.name(key),
@@ -647,15 +653,41 @@ Provider {
         return layer ? [Object.assign({}, layer, { name: Words.name("shortcuts") })] : [];
     }
 
+    // The hidden programs other providers give acts to, by id.
+    readonly property var declared: (provider.launcher?.sources ?? [])
+        .filter(other => other !== provider)
+        .reduce((ids, other) => ids.concat(other.hiddenPrograms ?? []), [])
+
+    // Whether a program steps in on Return rather than starting: only one
+    // another provider declares, never one that's simply closed.
+    function stepsIn(entry) {
+        return entry.noDisplay && declared.includes(entry.id);
+    }
+
     // Everything the right arrow holds for a program, as it stands now, in
     // one order for every program: Go To or Open, New Window, New Window
     // Below, its own actions, Recent, its windows, its notices, Shortcuts
     // and Quit, then Media and Sound while it plays. What it does comes
     // first and what ends it near the bottom, so Return on a program never
-    // lands in its Recent.
+    // lands in its Recent. One that steps in has only what's given it,
+    // its Recent, its notices and Shortcuts, in that order, never starting.
+    // Either way, what's given it to copy comes after everything, as Meet's
+    // Copy a New Meeting's Link does, since Copy is last.
     function controls(entry, start, below) {
+        // A program held open as its desktop entries are read again, as on
+        // a switch, keeps the entry that's gone, which has no id or name;
+        // it offers nothing until the step is drawn from the new one.
+        if (entry.id === undefined || entry.name === undefined)
+            return [];
         const looked = {};
         const same = given => provider.names(entry, given, looked);
+        const given = givenActs(entry.id);
+        const copying = row => row.verb === "copy";
+        const doing = given.filter(row => !copying(row));
+        const copies = given.filter(copying);
+        if (stepsIn(entry)) {
+            return doing.concat(recent(entry), notices(same), keysOf(entry), copies);
+        }
         const windows = running[entry.id] ?? [];
         const latest = windows[0] ?? null;
         const acts = (latest ? [said("verb:program:switch", "", {
@@ -668,15 +700,19 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), windowsOf(entry),
+        return acts.concat(menu(entry, taken), doing, recent(entry), windowsOf(entry),
             notices(same), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
-            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : []);
+            streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],
+            copies);
     }
 
+    // Quickshell lists no entry that hides itself, so a hidden one another
+    // provider declares is looked up by its id, as its list changes.
     things: DesktopEntries.applications.values
-        .filter(entry => !entry.noDisplay)
+        .concat(provider.declared.map(id => DesktopEntries.byId(id))
+            .filter(entry => entry?.noDisplay))
         .map(entry => {
             const start = () => Niri.spawn(provider.command(entry));
             const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
@@ -701,11 +737,19 @@ Provider {
                 below: below,
                 verbs: () => provider.controls(entry, start, below)
             });
+            if (provider.stepsIn(entry))
+                return Object.assign(row, {
+                    verb: "more",
+                    stays: true,
+                    nested: true,
+                    run: () => provider.launcher?.enter(row),
+                    targets: row.verbs
+                });
             // Whether it's running, and so what Return does, is asked as
             // the row is read, never kept.
             const latest = () => (provider.running[entry.id] ?? [])[0] ?? null;
             Object.defineProperties(row, {
-                verb: { enumerable: true, get: () => latest() ? "switch" : "start" },
+                verb: { enumerable: true, get: () => latest() ? "go" : "start" },
                 count: { enumerable: true, get: () => provider.windowCount(entry) },
                 // The layer of its own keys it holds as Shortcuts, so the
                 // layer, named as the program is, isn't listed beside it

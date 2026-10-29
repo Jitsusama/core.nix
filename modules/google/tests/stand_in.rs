@@ -6,6 +6,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -86,6 +87,7 @@ impl StandIn {
         Origins {
             token: format!("{}/token", self.origin),
             api: self.origin.clone(),
+            meet: self.origin.clone(),
         }
     }
 
@@ -290,6 +292,66 @@ fn carrying(path: &str, body: &str) -> (u16, String) {
         );
     }
     gmail(path, body)
+}
+
+#[test]
+fn a_meeting_is_made_for_its_link_only_once_the_sign_in_grants_meet() {
+    let failing = Arc::new(AtomicBool::new(false));
+    let fails = Arc::clone(&failing);
+    let stand_in = StandIn::new(move |path, body| {
+        if path.starts_with("POST /v2/spaces ") {
+            if fails.load(Ordering::SeqCst) {
+                return (503, "{}".into());
+            }
+            return (
+                200,
+                r#"{"name": "spaces/s1", "meetingUri": "https://meet.google.com/new-abcd-efg",
+                    "meetingCode": "new-abcd-efg"}"#
+                    .into(),
+            );
+        }
+        google(path, body)
+    });
+    let path = credentials("meet", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    let made = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.starts_with("POST /v2/spaces "))
+            .count()
+    };
+    assert!(
+        !watch.look(&now()).meet.granted,
+        "a sign-in without Meet's scope grants it"
+    );
+    watch.making(&now());
+    let state = watch.make(&now()).clone();
+    assert_eq!(made(&stand_in), 0, "Google was asked without Meet's scope");
+    let unmade = state.meet.made.unwrap();
+    assert!(unmade.failed && unmade.link.is_none(), "{unmade:?}");
+    // Joel signs in again from pi, granting Meet's scope too.
+    let file = fs::read_to_string(&path).unwrap().replace(
+        r#""scope": "calendar""#,
+        r#""scope": "calendar https://www.googleapis.com/auth/meetings.space.created""#,
+    );
+    fs::write(&path, file).unwrap();
+    assert!(watch.look(&now()).meet.granted);
+    let asking = watch.making(&now()).meet.made.clone().unwrap();
+    assert!(!asking.failed && asking.link.is_none(), "{asking:?}");
+    let state = watch.make(&now()).clone();
+    assert_eq!(
+        state.meet.made.unwrap().link.as_deref(),
+        Some("https://meet.google.com/new-abcd-efg")
+    );
+    assert_eq!(made(&stand_in), 1);
+    assert_eq!(state.account, Standing::Ready);
+    failing.store(true, Ordering::SeqCst);
+    watch.making(&now());
+    let state = watch.make(&now()).clone();
+    let unmade = state.meet.made.unwrap();
+    assert!(unmade.failed && unmade.link.is_none(), "{unmade:?}");
+    assert_eq!(state.meetings.len(), 1, "Meet failing lost the meetings");
 }
 
 #[test]
@@ -538,6 +600,78 @@ fn every_page_of_meetings_is_joined() {
 }
 
 #[test]
+fn each_series_is_asked_how_it_repeats_once_a_while_and_kept_while_google_fails() {
+    let failing = Arc::new(AtomicBool::new(false));
+    let fails = Arc::clone(&failing);
+    let stand_in = StandIn::new(move |path, body| {
+        if path.starts_with("GET /calendar/v3/calendars/primary/events/s?") {
+            if fails.load(Ordering::SeqCst) {
+                return (503, "{}".into());
+            }
+            return (
+                200,
+                r#"{"recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO"]}"#.into(),
+            );
+        }
+        if path.starts_with("GET /calendar/v3/calendars/primary/events?") {
+            // Two of one series, and one of a series gone since.
+            let twice = EVENTS
+                .replace(r#""id": "e1","#, r#""id": "s_1", "recurringEventId": "s","#)
+                .replace("}]}", "}, ");
+            let again = EVENTS
+                .replace(r#"{"items": ["#, "")
+                .replace(r#""id": "e1","#, r#""id": "s_2", "recurringEventId": "s","#)
+                .replace("}]}", "}, ");
+            let gone = EVENTS
+                .replace(r#"{"items": ["#, "")
+                .replace(r#""id": "e1","#, r#""id": "g_1", "recurringEventId": "g","#);
+            return (200, format!("{twice}{again}{gone}"));
+        }
+        if path.starts_with("GET /calendar/v3/calendars/primary/events/g?") {
+            return (404, "{}".into());
+        }
+        google(path, body)
+    });
+    let path = credentials("series", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let weekly = |watch: &mut Watch, at: &Zoned| {
+        watch
+            .look(at)
+            .meetings
+            .iter()
+            .map(|meeting| meeting.repeats.as_ref().map(|repeats| repeats.days.len()))
+            .collect::<Vec<_>>()
+    };
+    let asked = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains("/events/s?fields=recurrence "))
+            .count()
+    };
+    assert_eq!(weekly(&mut watch, &now()), [Some(1), Some(1), None]);
+    assert_eq!(
+        asked(&stand_in),
+        1,
+        "a series was asked for each of its meetings"
+    );
+    weekly(&mut watch, &now());
+    assert_eq!(asked(&stand_in), 1, "a series was asked again at once");
+    failing.store(true, Ordering::SeqCst);
+    let later: Zoned = "2026-10-26T15:25:00-04:00[-04:00]".parse().unwrap();
+    assert_eq!(
+        weekly(&mut watch, &later),
+        [Some(1), Some(1), None],
+        "a series Google failed to say again lost how it repeats"
+    );
+    assert_eq!(
+        asked(&stand_in),
+        2,
+        "a series wasn't asked again after five minutes"
+    );
+}
+
+#[test]
 fn the_calendars_reminders_hold_for_meetings_on_every_page() {
     // Google says the calendar's reminders on each page; only the first's
     // are kept, and every meeting that keeps them is reminded by them.
@@ -580,6 +714,7 @@ fn an_unreachable_google_keeps_what_was_heard() {
     watch.google = Google::new(Origins {
         token: format!("http://{closed}/token"),
         api: format!("http://{closed}"),
+        meet: format!("http://{closed}"),
     });
     let state = watch.look(&now()).clone();
     assert_eq!(state.account, Standing::Unreachable);

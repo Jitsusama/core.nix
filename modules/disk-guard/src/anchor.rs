@@ -193,6 +193,54 @@ impl Dir {
         Dir::from_fd(fd)
     }
 
+    /// Opens a directory an account named, by a path with no symlink on it,
+    /// as `canonicalize` gives one: a link swapped in since is refused
+    /// rather than followed.
+    #[cfg(target_os = "linux")]
+    pub fn open_unlinked(path: &Path) -> io::Result<Dir> {
+        let resolve = ResolveFlags::NO_SYMLINKS;
+        let fd = rustix::fs::openat2(rustix::fs::CWD, path, DIRECTORY, Mode::empty(), resolve)?;
+        Dir::from_fd(fd)
+    }
+
+    /// The open directory itself, for a call on what lies in it.
+    pub fn fd(&self) -> &OwnedFd {
+        &self.fd
+    }
+
+    /// Calls `each` with this directory, or the one beneath it a file lies
+    /// in, and that file's inode, for every regular file beneath it on its
+    /// own filesystem, never through a symlink. It gives up once it has
+    /// looked at `budget` entries, and on the first error `each` returns.
+    pub fn each_file(
+        &self,
+        budget: &mut usize,
+        each: &mut dyn FnMut(&OwnedFd, u64) -> io::Result<()>,
+    ) -> io::Result<()> {
+        for name in self.names()? {
+            *budget = budget
+                .checked_sub(1)
+                .ok_or_else(|| io::Error::other("too much to walk"))?;
+            let name = OsStr::from_bytes(&name);
+            let Ok(stat) = rustix::fs::statat(&self.fd, name, AtFlags::SYMLINK_NOFOLLOW) else {
+                continue;
+            };
+            if stat.st_dev != self.dev {
+                continue;
+            }
+            match FileType::from_raw_mode(stat.st_mode) {
+                FileType::RegularFile => each(&self.fd, stat.st_ino)?,
+                FileType::Directory => {
+                    if let Ok(Some(child)) = self.entry(name) {
+                        child.each_file(budget, each)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn from_fd(fd: OwnedFd) -> io::Result<Dir> {
         let stat = rustix::fs::fstat(&fd)?;
         Ok(Dir {

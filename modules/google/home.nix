@@ -25,7 +25,7 @@
 # each of its reminders and as it starts (Starting.qml); the account
 # signed out wants him to sign in again (SignedOut.qml); and the mail that
 # wants him is counted there too (NewMail.qml).
-{ quickshell }:
+{ people, quickshell }:
 {
   config,
   lib,
@@ -58,7 +58,10 @@ let
   };
 in
 {
-  imports = [ quickshell ];
+  imports = [
+    people
+    quickshell
+  ];
 
   options.jitsusama.google.window = lib.mkOption {
     type = lib.types.nonEmptyListOf lib.types.str;
@@ -80,6 +83,13 @@ in
 
   config = {
     home.packages = [ opens ];
+
+    # Everyone Joel's meetings and mail name, as people (GoogleSource.qml),
+    # consulted after a source that calls, so calling comes before mail.
+    jitsusama.people.sources.google = {
+      order = 20;
+      source = ./GoogleSource.qml;
+    };
 
     # Google's programs, every one opened as jitsusama.google.window says,
     # so they're one family wherever they run. Docs, Sheets, Slides, Drive
@@ -117,6 +127,7 @@ in
       "quickshell/Calendar.js".source = ./Calendar.js;
       "quickshell/Mail.qml".source = ./Mail.qml;
       "quickshell/Mail.js".source = ./Mail.js;
+      "quickshell/Meet.js".source = ./Meet.js;
       "quickshell/Drive.qml".source = ./Drive.qml;
       "quickshell/Drive.js".source = ./Drive.js;
     };
@@ -177,7 +188,8 @@ in
       order = 49;
       source = ./Documents.qml;
     };
-    # Meet's own acts beside its New Meeting: Join by Code.
+    # Meet's own acts beside its New Meeting: Join by Code, and Copy a New
+    # Meeting's Link once Joel's sign-in grants Meet's scope.
     jitsusama.quickshell.launcher.providers.meet = {
       order = 50;
       source = ./Meet.qml;

@@ -40,8 +40,8 @@ onLinux {
   google-passes-clippy = passesClippy "google-passes-clippy" (pkgs.callPackage ./package.nix { });
 
   # Which meeting is next, when it is in words and whether it's about to
-  # start are Calendar.js's, run in Qt's own engine over meetings like the
-  # program's (tests/calendar.qml).
+  # start are Calendar.js's, and which Meet call a window is Meet.js's, run
+  # in Qt's own engine over meetings like the program's (tests/calendar.qml).
   the-shell-tells-the-next-meeting =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -49,6 +49,7 @@ onLinux {
     pkgs.runCommandLocal "the-shell-tells-the-next-meeting" { } ''
       cp ${../../tests/calendar.qml} calendar.qml
       cp ${./Calendar.js} Calendar.js
+      cp ${./Meet.js} Meet.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

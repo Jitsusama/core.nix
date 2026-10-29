@@ -16,6 +16,10 @@
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
   '';
+  a-long-name-reads-at-one-pace = ''
+    a selected name too long for its row slides at one reading pace, gathering speed from rest and
+    settling back to it in at most a fifth of a second at each end, never stepping back
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -34,6 +38,10 @@
   a-quiet-file-says-nothing = ''
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
+  '';
+  a-realms-link-key-stays-apart = ''
+    a realm's link key is served on its own socket by an agent holding only it, kept outside the
+    folder the account's own agent loads, made with no PIN, and an account naming no realm has none
   '';
   a-refused-profile-is-said-once = ''
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
@@ -347,16 +355,19 @@
   google-reads-the-calendar = ''
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
-    can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
-    and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
-    meeting only when Joel holds it, telling every guest, moves one through the calendar Google lets
-    him change it on, telling everyone asked, tells it the mail that wants Joel, newest first, each
-    asked for once, with who it went to and who was copied, its text, never an attachment's, and
-    each file it carries, by its name, kind and size, but what its HTML shows inline, fetching one
-    only when asked, never to open one that runs, into a folder only Joel reads or into Downloads,
-    never over a file there, marking it read or archiving it when asked, marking it unread again,
-    mail read here wanting Joel again at once, and the documents of each kind he looked at lately,
-    his last first, asking Drive again only every five minutes and keeping them while Drive fails
+    can't be reached, tells the shell each meeting's times, answer, the one link it's joined by and
+    how its series repeats, asking each series only every five minutes and keeping its rule while
+    Google fails, and answers an invitation the shell asks it to, changing only Joel's own answer,
+    cancels a meeting only when Joel holds it, telling every guest, moves one through the calendar
+    Google lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
+    first, each asked for once, with who it went to, who was copied and whom a reply to all copies,
+    never Joel, its text, never an attachment's, and each file it carries, by its name, kind and
+    size, but what its HTML shows inline, fetching one only when asked, never to open one that runs,
+    into a folder only Joel reads or into Downloads, never over a file there, marking it read or
+    archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
+    the documents of each kind he looked at lately, his last first, asking Drive again only every
+    five minutes and keeping them while Drive fails, and makes a Meet meeting for its link when
+    asked, only once Joel's sign-in grants Meet's scope
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -502,9 +513,15 @@
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';
   mycelium-links-what-a-machine-names = ''
-    a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
-    as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
-    none only has the program, and one in no realm has no realm set
+    a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
+    service on Linux signing in with the agents' key and an agent on a Mac whose sessions sign
+    commits with that key; one naming none runs it dialling nothing, and one in no realm has
+    neither a realm nor a node
+  '';
+  mycelium-keeps-each-realm-apart = ''
+    a machine joining a further realm runs a node of its own for it, with its own state, mesh and
+    steer folders under the harness's per-realm roots and its own link key, apart from the home
+    realm's agents key; its pis are told which realm is home
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
@@ -583,6 +600,16 @@
   '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
+  '';
+  nix-offload-decides-when = ''
+    a builder is asked for only for builds and VM checks held three minutes for room a builder
+    gives, by a queue still writing, within the day's hours and never beside one not yet seen
+    gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
+    only builders it asked for are ever given back; standing builders are named while they
+    answer; and a day's journal sums to its hours and cost
+  '';
+  nix-offload-passes-clippy = ''
+    clippy finds nothing in nix-offload or its tests
   '';
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
@@ -683,8 +710,13 @@
   '';
   pi-writes-what-the-last-boot-left = ''
     the launcher's list of the pi sessions the last boot's end took away is written as the account's
-    session starts, in background.slice with the store's node, skipped where the harness isn't
-    installed, and never on a Mac
+    session starts, in background.slice with the store's node and no module-type warning, skipped
+    where the harness isn't installed, and never on a Mac
+  '';
+  pi-notes-windows-on-sessions-elsewhere = ''
+    each minute the harness notes which windows here are joined to a session another machine holds,
+    so the next boot can offer them back, in background.slice with the store's node, skipped where
+    the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -814,6 +846,14 @@
   shutdown-status-reads-the-last-stage = ''
     shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and
     leftovers after three quiet seconds
+  '';
+  slack-finds-who-it-knows = ''
+    slack-people says who Slack knows by an email address with their time zone, and one it knows
+    nobody by, asking each address once with the harness's sign-in and only ever looking up, and
+    asks nobody once Slack refuses the sign-in or with none at all
+  '';
+  slack-passes-clippy = ''
+    clippy finds nothing in slack-people or its tests
   '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
@@ -974,6 +1014,10 @@
     programs ask the portal, their own dialogs included, and open-with's description says it
     answers it
   '';
+  the-launcher-chooses-files-as-asked = ''
+    the launcher chooses the files a program opens or saves in the folder it asks for, the files
+    opened lately first, then its folders and files, then its filters, and answers what was picked
+  '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
   '';
@@ -986,12 +1030,18 @@
     choices that run its own command
   '';
   the-launcher-finds-the-people = ''
-    the launcher's Tuple place leads with the room or a call's controls, lists and finds contacts as
-    they stand, calls, joins and favours them, and never starts a stopped Tuple
+    People with Tuple as its source lists favourites and those called lately, finds anyone as they
+    stand, calls, joins and favours them, steps in before calling, lists a source's page for them
+    after the ways to reach them with its facts in the drawer and the time where they are, and
+    never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
     its tree or goes to its session, and sees one made while it was shut
+  '';
+  the-launcher-reads-talks-boundedly = ''
+    the orchestrators' talks are read only from the inboxes holding them, of 120, and focus
+    moving among 120 sessions makes no reader again, so the shell's threads stay bounded
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -1011,7 +1061,9 @@
   '';
   the-launcher-holds-a-programs-controls = ''
     a program's step holds its windows, its own actions, Quit asked once, then Media, Sound and
-    Notifications, in order and only where they apply, each reaching only that program
+    Notifications, in order and only where they apply, each reaching only that program, with what
+    another provider gives it to copy last, and a hidden program another provider gives acts to is
+    listed and steps in rather than starting
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
@@ -1133,6 +1185,13 @@
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
   '';
+  the-people-are-one-person-each = ''
+    every source's people join into one person per email address, a source that knows two
+    addresses for someone joining them, each standing as the first source that says, favourites
+    listed first, then whoever there's been something with, the last first, someone only asked to
+    what's to come left to be found by typing, with their details for the drawer and their acts in
+    the one order
+  '';
   the-picker-picks-what-the-keys-say = ''
     the region picker starts on the middle quarter, moves and sizes its box by arrows within the
     screen, and names a 16 by 10 grid's cells by two letters
@@ -1199,17 +1258,19 @@
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and its
     details say, who was copied and the files it carries among them, each file by its kind and size;
-    writes a reply to who sent it, and a mail to everyone else a meeting names; writes the lines
-    that mark mail read or unread again or archive it or fetch a file it carries; and says how that
-    fetch stands
+    writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
+    everyone else a meeting names; writes the lines that mark mail read or unread again or archive
+    it or fetch a file it carries; says how that fetch stands; and writes the line making a Meet
+    meeting and says how one asked for stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
-    details for the drawer, which may be moved and to what later or typed time, what that clashes
-    with and who's told, writes the lines that answer, cancel and move it, and knows which Meet
-    call a window is and whose meeting it is
+    details for the drawer, how it repeats in words and how many of those asked answered each way
+    among them, which may be moved and to what later or typed time, what that clashes with and who's
+    told, writes the lines that answer, cancel and move it, and knows which Meet call a window is
+    and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1363,11 +1424,13 @@
     once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
     its Meet call in Now while it's open, says Google signed out in Now with Return signing in again
     in pi, counts the mail that wants Joel in Now with Return listing it as Mail does, details and
-    all, opens mail by its subject, keeping one Mail window, replies to it, flips its Read switch
-    both ways, archives it, and opens a file it carries or saves a copy, lists the documents Joel
-    opened lately in Docs' Recent and opens one, the same row its title finds, joins a Meet call by
-    its code after Meet's New Meeting, sets the volume, loses no letter typed after its chord, and
-    shows the shortcuts
+    all, opens mail by its subject, keeping one Mail window, replies to it, and to all on mail that
+    went to others too, flips its Read switch both ways, archives it, and opens a file it carries or
+    saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
+    its title finds, joins a Meet call by its code after Meet's New Meeting and copies a new
+    meeting's link last, finds a person by name with the ways to reach them, their next meeting,
+    their Recent and their address last, and steps to them from a meeting's guests and a mail's
+    sender, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1604,6 +1667,10 @@
   '';
   work-yields-to-what-the-person-works-in = ''
     jobs is idle beside app.slice, pi finds it, and a window's scope is not idle
+  '';
+  wrappers-run-once-a-boot = ''
+    a machine with measured boot keeps the SUID wrappers' unit active once it's run, so measured
+    boot's wait for sysinit.target can't run it past its start limit
   '';
   writes-go-out-sooner = ''
     a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after

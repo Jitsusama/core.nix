@@ -1635,7 +1635,7 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     """A search lists each thing once."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
-    # Tuple's place stands alone for its rows and its people; the
+    # People stands alone for everyone in it; the
     # session's locking and do not disturb draw their keys' chords, so
     # those keys aren't listed again, the lock by its own name;
     # kitty draws Super+Return's;
@@ -1671,7 +1671,7 @@ def test_a_search_lists_each_thing_once(desktop: Desktop) -> None:
     # another thing. Home, with nothing typed, lists nothing twice
     # either, a collection picked often staying in its own place.
     for typed, leading in [
-        ("calls", ["Calls"]),
+        ("people", ["People"]),
         ("lock", ["Lock"]),
         ("kitty", ["kitty"]),
         ("do not disturb", ["Do Not Disturb"]),

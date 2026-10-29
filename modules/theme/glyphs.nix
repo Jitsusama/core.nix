@@ -184,7 +184,7 @@ in
   call = {
     glyph = nerd "f03f2";
     console = "T";
-    means = "a call is under way";
+    means = "a call is under way, and Calls, what can be done about one";
     # A handset.
     drawn = drawing [
       "M0 2.5L2.5 0L5.5 3L4 4.5C4.8 6.3 5.7 7.2 7.5 8L9 6.5L12 9.5L9.5 12"
@@ -697,7 +697,7 @@ in
   people = {
     glyph = nerd "f000e";
     console = "P";
-    means = "calls, and the people to call or pair with";
+    means = "the people Joel deals with, and People, which holds them";
   };
   saver = {
     glyph = nerd "f032a";
@@ -957,6 +957,11 @@ in
     console = "<";
     means = "replying to a message, from its notice or its row";
   };
+  replyAll = {
+    glyph = nerd "f045b";
+    console = "<";
+    means = "replying to everyone a mail went to or was copied to";
+  };
   offer = {
     glyph = nerd "f0ce0";
     console = ">";
@@ -1009,10 +1014,20 @@ in
     console = "/";
     means = "a folder";
   };
+  filter = {
+    glyph = nerd "f0233";
+    console = "v";
+    means = "which files a program shows, as it offers them";
+  };
+  option = {
+    glyph = nerd "f1542";
+    console = "~";
+    means = "a choice a program offers about what it opens or saves";
+  };
   recent = {
     glyph = nerd "f02da";
     console = "r";
-    means = "what a program had open lately";
+    means = "what a program had open lately, or what Joel had with someone";
   };
   picture = {
     glyph = nerd "f02e9";

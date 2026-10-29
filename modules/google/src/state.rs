@@ -39,6 +39,31 @@ pub struct State {
     pub heard: Option<i64>,
     /// The file mail carries that was last asked for, as it stands.
     pub fetched: Option<Fetched>,
+    /// Making a Meet meeting, as it stands.
+    pub meet: Meet,
+}
+
+/// Making a Meet meeting to copy its link: whether the sign-in lets this
+/// program, and the one last asked for.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Meet {
+    /// Whether Joel's sign-in grants Meet's scope, which one from before
+    /// it was asked for doesn't, until he signs in again from pi.
+    pub granted: bool,
+    pub made: Option<Made>,
+}
+
+/// The meeting last asked to be made, which the shell waits on: being
+/// made, then its link or that it couldn't be.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Made {
+    /// When it was asked, in milliseconds since the epoch, which tells
+    /// one ask from the next.
+    pub asked: i64,
+    /// The link that joins it, once it's made.
+    pub link: Option<String>,
+    /// Whether Google wouldn't make it, or couldn't be reached.
+    pub failed: bool,
 }
 
 impl State {
@@ -68,7 +93,8 @@ mod tests {
         assert_eq!(
             line,
             "{\"account\":\"signedOut\",\"meetings\":[],\"mail\":[],\"unread\":null,\
-             \"documents\":[],\"heard\":null,\"fetched\":null}\n"
+             \"documents\":[],\"heard\":null,\"fetched\":null,\
+             \"meet\":{\"granted\":false,\"made\":null}}\n"
         );
     }
 }
