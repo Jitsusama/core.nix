@@ -804,6 +804,11 @@ Scope {
         // What each row's drawer would show beside the row's own words, so
         // a check can judge for itself that none only repeats its row.
         const drawers = [];
+        // Every row holding something for the drawer, though it isn't a
+        // thing, so the drawer never shows it: a maker that forgot to mark
+        // its thing, or words with nowhere to be read (VKCF3Z, 2026-10-29:
+        // a row gets no drawer unless it's one of the kinds).
+        const undrawn = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -833,6 +838,10 @@ Scope {
                             facts: (drawn.facts ?? []).filter(fact => fact).length,
                             picture: (drawn.picture ?? "") !== ""
                         });
+                    if (!detailed(row) && (!!row.drawer || (row.reads ?? "") !== ""
+                        || (row.picture ?? "") !== ""))
+                        undrawn.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.key ?? row.is})`);
                     const deeper = depth < actlessDeepest
                         && !(row.opens && Catalogue.long(row.opens));
                     const inside = deeper
@@ -854,7 +863,7 @@ Scope {
         // How many it walked too, so a check that finds none knows it
         // looked.
         return { walked: seen.size, rows: out, ownVersions: own, copyFirst, skipped,
-            uncomposed: loose, composed: composed, drawers };
+            uncomposed: loose, composed: composed, drawers, undrawn };
     }
 
     // Whether Return on a row steps in where the row has an act of its own

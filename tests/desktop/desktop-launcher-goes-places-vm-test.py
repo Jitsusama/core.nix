@@ -2368,6 +2368,10 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     assert said["composed"] > 0, "the walk found no mail to ask of"
     # Nor does a mail's or a meeting's drawer only say its row again.
     assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
+    # Nor holds a mail's surface anything for a drawer it never gets.
+    assert said["undrawn"] == [], "Held for a drawer, though not a thing:\n" + "\n".join(
+        said["undrawn"]
+    )
 
 
 @pytest.mark.usefixtures("google")
@@ -3186,6 +3190,12 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     # And no row's drawer only says the row again (docs/design.md, the
     # drawer).
     assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
+    # And nothing holds words or a picture for a drawer it never gets,
+    # since the drawer goes by kind (docs/design.md, the drawer): a thing
+    # whose maker forgot to say so, or words with nowhere to be read.
+    assert said["undrawn"] == [], "Held for a drawer, though not a thing:\n" + "\n".join(
+        said["undrawn"]
+    )
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

@@ -803,9 +803,8 @@ Provider {
                 : room ? bar(1 - room.free / room.total) : undefined,
             glyph: Words.glyph(kinds.disks),
             title: Words.name(kinds.disks),
-            note: guard ? guardSays(guard, worst) : counted ? since(kept) : "",
-            // The guard's own words, below the rows.
-            reads: guard && worst ? worst.says ?? "" : ""
+            // The guard's own words are each disk's, in its drawer (disked).
+            note: guard ? guardSays(guard, worst) : counted ? since(kept) : ""
         }, () => diskParts(guard));
     }
 

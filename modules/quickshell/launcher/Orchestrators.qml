@@ -243,7 +243,7 @@ Provider {
     }
 
     // A talk read: his words, how it went, and what came of it, each a row
-    // Return copies, the reply below the rows.
+    // Return copies, the reply in the talk's own drawer.
     function talkRows(address, id) {
         const talk = (talks[String(address).toUpperCase()] ?? []).find(one => one.id === id);
         if (!talk)
@@ -253,8 +253,7 @@ Provider {
             name: Words.name(`orchestrators:talk:${key}`),
             side: side,
             copy: copy,
-            glyph: "",
-            reads: talk.reply
+            glyph: ""
         });
         return [
             row("yours", talk.words, talk.words),
