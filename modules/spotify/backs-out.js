@@ -12,15 +12,18 @@
         globalThis.setTimeout(backsOut, awhile);
         return;
     }
-    // What Spotify draws over a page: a dialog, a menu, a list to pick from,
-    // a popover; and a row chosen in a list.
-    const over = ["dialog", "menu", "listbox"]
+    // What Spotify draws over a page: a dialog, a menu, a popover; and a row
+    // chosen in a list. Each counts only while it shows, since Spotify keeps
+    // its language and country dialogs in every page, hidden. A list to pick
+    // from isn't one: Liked Songs' filter tags are a list on the page, and
+    // one that pops up does so under a field, which leaves Escape to Spotify.
+    const over = ["dialog", "menu"]
         .map((role) => `[role="${role}"]`)
-        .concat(['[aria-modal="true"]', "[data-tippy-root]"])
+        .concat(['[aria-modal="true"]', "[data-tippy-root]", '[role="row"][aria-selected="true"]'])
         .join(", ");
-    const chosen = '[role="row"][aria-selected="true"]';
     const field = "input, textarea, select, [contenteditable]";
     const alone = (event) => !(event.ctrlKey || event.altKey || event.metaKey || event.shiftKey);
+    const showing = (page) => Array.from(page.querySelectorAll(over)).some((part) => part.checkVisibility());
     globalThis.addEventListener(
         "keydown",
         (event) => {
@@ -29,7 +32,7 @@
                 return;
             }
             const page = globalThis.document;
-            if (page.fullscreenElement || page.querySelector(over) !== null || page.querySelector(chosen) !== null) {
+            if (page.fullscreenElement || showing(page)) {
                 return;
             }
             history.goBack();
