@@ -47,6 +47,13 @@ in
       # next draw brought them back with their lock held. The compositor's
       # own draws were seen waiting on such a lock for up to 250 ms.
       "xe-shared-buffers-keep-their-place"
+      # A hibernate's thaw reset Bluetooth's controller and probed it again,
+      # and the probe waited on its firmware while user space was frozen, so
+      # the power-off asked a controller still in its bootloader for D3. It
+      # refused, and the hibernate rolled back with the laptop left on. Thaw
+      # is now a plain wake, and a missed interrupt is checked against the
+      # controller's own register.
+      "btintel-pcie-pm"
     ]
   );
 

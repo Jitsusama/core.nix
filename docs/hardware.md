@@ -216,6 +216,7 @@ or a local fix.
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
 | `xe-shared-buffers-keep-their-place` | buffers shared between programs aren't reclaimed first |
+| `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
 into purgeable and non-purgeable halves. Buffers that cost a backup and a
@@ -256,6 +257,19 @@ one back happens with its lock held. A trace of niri overnight caught its
 draws waiting on a client's buffer lock for 122 to 250 ms, three times in
 five minutes, and the section below, The Write-Combined Buffers Under
 Reclaim, says what held them.
+
+`btintel-pcie-pm` is four of mainline's commits from 2026-10-14:
+12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35. At a
+hibernate's thaw, the driver reset the controller and probed it again,
+though freeze never cut its power. The probe waited on the controller's
+firmware while user space was frozen. So the power-off asked a controller
+still in its bootloader for D3, timed out on its interrupt three times
+and returned -EBUSY. The hibernate rolled back, leaving the laptop on
+until its battery ran out. Thaw is now a plain wake, and only a restore
+or a resume from S3 resets. A missed interrupt is checked against the
+controller's boot stage register rather than a cache only the interrupt
+updates. This kernel lacks the mailbox handshake the third commit
+finishes, so that step is left out.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
