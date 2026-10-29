@@ -45,7 +45,11 @@ PersonSource {
             return;
         if (!reader.running)
             reader.running = true;
-        asking = Object.assign({}, asking, Object.fromEntries(fresh.map(email => [email, true])));
+        // Qt's JavaScript has no Object.fromEntries.
+        const asked = Object.assign({}, asking);
+        for (const email of fresh)
+            asked[email] = true;
+        asking = asked;
         for (const email of fresh)
             reader.write(`${email}\n`);
     }
