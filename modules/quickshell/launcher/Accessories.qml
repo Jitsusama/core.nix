@@ -40,6 +40,7 @@ import Quickshell.Bluetooth
 import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
+import "../Devices.js" as Devices
 import "../Fuzzy.js" as Fuzzy
 import "Links.js" as Links
 
@@ -81,20 +82,7 @@ Provider {
     // What it is, from the icon BlueZ names for its class, as the theme's
     // mark for that kind of thing.
     function kind(device) {
-        const icon = device.icon;
-        const kinds = {
-            "audio-headphones": "headphones",
-            "audio-headset": "headset",
-            "audio-card": "speaker",
-            "input-mouse": "mouse",
-            "input-tablet": "mouse",
-            "input-keyboard": "keyboard",
-            "input-gaming": "gamepad",
-            "phone": "phone",
-            "computer": "computer",
-            "video-display": "display"
-        };
-        return Theme.glyph[kinds[icon] ?? "bluetooth"];
+        return Theme.glyph[Devices.kind(device.icon)];
     }
 
     // Connected, then paired, then the rest, then by name; a device that

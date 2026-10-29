@@ -29,6 +29,11 @@
     deeper until it charges or rises five points past the low mark, so a charge wavering about a
     mark is never said twice
   '';
+  a-low-device-is-its-own-notice = ''
+    each connected Bluetooth device reporting a battery stands by its own charge, and each running
+    low is a thing of its own, keyed by its address, signed by its name and drawn by its kind's
+    glyph, wanting Joel now only at the critical mark
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';

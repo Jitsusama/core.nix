@@ -386,7 +386,13 @@ card to go. What comes true by itself, a camera a program opened or the
 battery running low, arrives as one notice of its own, signed with its
 glyph and name and carrying what can be done about it, and again, urgent,
 when it comes to need Joel now; what his own keys turned on, and what was
-already true as the desktop started, says nothing, since he knows. The
+already true as the desktop started, says nothing, since he knows. Every
+battery runs low at 20% and needs him now at 10%, the laptop's and each
+Bluetooth device's alike: each device is a notice, a mark and a row of
+its own, signed with its name and drawn with its kind's glyph, so a
+headset running low never reads as the laptop. Once low, a battery only
+goes deeper until it charges or rises five points past the mark, so a
+charge wavering about a mark is never said twice. The
 desktop or its apps kept waiting on the same thing, memory, the disk, the
 processor or niri, for a minute shows quietly, as something left on, from
 lag-watch's windows; a moment's wait never does, since Joel feels it

@@ -182,6 +182,7 @@ onLinux {
           "time"
           "network"
           "battery"
+          "devices"
           "volume"
           "spend"
           "pi"
@@ -2304,6 +2305,25 @@ onLinux {
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml crossing.qml
+      touch $out
+    '';
+
+  # Each Bluetooth device running low is a thing of its own, by its own
+  # charge, name and kind, as tests/devices.qml holds Devices.js to with
+  # plain objects standing in for BlueZ's devices, since the desktop VM has
+  # no Bluetooth.
+  a-low-device-is-its-own-notice =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-low-device-is-its-own-notice" { } ''
+      cp ${../../tests/devices.qml} devices.qml
+      cp ${./Devices.js} Devices.js
+      cp ${./Crossing.js} Crossing.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml devices.qml
       touch $out
     '';
 
