@@ -59,6 +59,11 @@ pub enum Command {
     Clear {
         path: PathBuf,
     },
+    /// What the files under each path take on the disk, which the
+    /// machine's guard reads.
+    Footprint {
+        paths: Vec<PathBuf>,
+    },
 }
 
 /// Where the commands find things, worked out once from the environment.
@@ -96,6 +101,7 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard journal [--since SPAN] [--json]
        disk-guard check-config FILE
        disk-guard explain PATH [--config FILE]
+       disk-guard footprint PATH...
        disk-guard thaw";
 
 impl Env {
@@ -216,6 +222,16 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             }
             _ => return Err(format!("clear takes one folder\n{USAGE}")),
         },
+        Some("footprint") => {
+            if options.positional.is_empty() {
+                return Err(format!("footprint takes one path or more\n{USAGE}"));
+            }
+            let paths = std::mem::take(&mut options.positional)
+                .into_iter()
+                .map(PathBuf::from)
+                .collect();
+            Command::Footprint { paths }
+        }
         Some("explain") => {
             let config = options.path("--config");
             match options.positional.as_slice() {
@@ -360,6 +376,7 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
         Command::Keep { path, reason } => keep(env, &path, &reason, out),
         Command::Unkeep { path } => unkeep(env, &path, out),
         Command::Clear { path } => clear(env, &path, out),
+        Command::Footprint { paths } => footprint(env, &paths, out),
     };
     match done {
         Ok(code) => code,
@@ -617,6 +634,59 @@ fn clear(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
         path.display()
     );
     Ok(FINE)
+}
+
+/// How long a footprint may take the machine's guard to walk.
+const FOOTPRINT_TIMEOUT: Duration = Duration::from_mins(5);
+
+/// Says what the files under each of `paths` take on the disk, as the
+/// machine's guard reads it, beside what they hold once read.
+fn footprint(env: &Env, paths: &[PathBuf], out: &mut dyn Write) -> Done {
+    let paths: Vec<PathBuf> = paths
+        .iter()
+        .map(|path| fs::canonicalize(path).unwrap_or_else(|_| path.clone()))
+        .collect();
+    let request = crate::socket::Request::Footprint {
+        paths: paths.clone(),
+    };
+    let asked = |error: io::Error| {
+        let code = if matches!(
+            error.kind(),
+            io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+        ) {
+            NO_DAEMON
+        } else {
+            REFUSED
+        };
+        (code, format!("asking the machine's guard: {error}"))
+    };
+    let found =
+        match crate::socket::ask(&env.system_socket, &request, FOOTPRINT_TIMEOUT).map_err(asked)? {
+            crate::socket::Reply::Footprints(found) if found.len() == paths.len() => found,
+            other => return Err((REFUSED, format!("the machine's guard answered {other:?}"))),
+        };
+    let mut code = FINE;
+    for (path, disk) in paths.iter().zip(found) {
+        let files = size(crate::footprint::files(path));
+        let _ = match disk {
+            Some(disk) => writeln!(
+                out,
+                "{}: {} on the disk, for {files} of files.",
+                path.display(),
+                size(disk)
+            ),
+            None => {
+                code = REFUSED;
+                writeln!(
+                    out,
+                    "{}: {files} of files; what they take on the disk can't be read \
+                     (not yours, not on Btrfs, or gone).",
+                    path.display()
+                )
+            }
+        };
+    }
+    Ok(code)
 }
 
 /// Marks the status file's holders with the keeps and clears as they are

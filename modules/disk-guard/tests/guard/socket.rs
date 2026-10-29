@@ -49,6 +49,9 @@ fn serving(
                         Request::Processes { .. } => responder.send(&Reply::Answer(told())),
                         Request::Watching { paths } => responder.send(&Reply::Collects(paths)),
                         Request::Collect { .. } => handing.send(responder).unwrap(),
+                        Request::Footprint { paths } => {
+                            responder.send(&Reply::Footprints(vec![Some(4096); paths.len()]));
+                        }
                     }
                 })
                 .unwrap();
