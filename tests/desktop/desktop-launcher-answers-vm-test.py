@@ -1810,7 +1810,7 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
 def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop: Desktop,
 ) -> None:
-    """The processor's telemetry shows its own parts in Heat, and what held it back."""
+    """The processor's telemetry shows its own parts in Heat, what held it back and kept it up."""
     machine = desktop.machine
     held = "/run/processor-telemetry"
     socket = f"{held}/io.jitsusama.ProcessorTelemetry"
@@ -1831,6 +1831,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
             {"cpus": "1", "heldBack": []},
         ],
         "npu": [],
+        "keptFromResting": {"kept": 0.12, "by": [{"by": "display", "share": 0.12}]},
     }
     machine.succeed(f"install -d -o 1000 {held}")
     told = json.dumps({"parameters": reading})
@@ -1873,6 +1874,24 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     )
     desktop.step_in()
     desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    # What kept it from resting comes and goes, so it's the last row, saying
+    # the part that kept it most, and each part that did a step in.
+    desktop.answer("processor")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Kept From Resting"])
+    desktop.type_in("kept", "Kept From Resting")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("side") == "12%"
+            and shown["footer"] == "by the display engine"
+        )
+    )
+    desktop.photograph("launcher-kept-from-resting")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # With the launcher shut nothing watches, so the reader is let go: the

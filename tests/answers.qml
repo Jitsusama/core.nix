@@ -791,6 +791,28 @@ QtObject {
         machine("what held it back, as a note says it", ["pl1", "platformPl1", "prochot",
             "heat", "novel"].map(Machine.limit), ["its power limit, PL1",
             "the whole machine's power limit, PL1", "being told to slow down", "heat", "novel"]);
+        // What kept the package from resting, over the readings held: each
+        // part's share averaged over all of them, a part under a twentieth
+        // left out, longest first.
+        const rested = [{ kept: 0.2, by: [{ by: "display", share: 0.2 }] },
+            { kept: 0.1, by: [{ by: "display", share: 0.06 }, { by: "npu", share: 0.1 }] }];
+        const restedKept = Machine.kept(rested, false);
+        machine("kept from resting, on average", [restedKept.by.map(p => p.by),
+            restedKept.by.map(p => Math.round(p.share * 100)), Math.round(restedKept.share * 100),
+            restedKept.shown], [["display", "npu"], [13, 5], 15, true]);
+        const quiet = { kept: 0.01, by: [] };
+        const once = { kept: 0.3, by: [{ by: "cores", share: 0.3 }] };
+        machine("kept from resting, shown once a twentieth on average", [
+            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, once], false).shown,
+            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, quiet, once], false).shown],
+            [true, false]);
+        machine("kept from resting, shown until every reading is under a twentieth", [
+            Machine.kept([quiet, quiet, quiet, quiet, quiet, quiet, quiet, once], true).shown,
+            Machine.kept([quiet, quiet], true).shown], [true, false]);
+        machine("kept from resting, said by nothing", Machine.kept([], false), null);
+        machine("what kept it from resting, as a note says it", ["display", "internal",
+            "novel"].map(by => Machine.keeper(by).said), ["the display engine",
+            "the processor's own power controller", "novel"]);
         machine("no telemetry, no parts of its own", Heat.gather(heatChips, [], {}, null).temps
             .length, 5);
         machine("two disks, numbered", Heat.gather([heatChips[0], heatChips[0]], [], {}).temps

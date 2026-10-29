@@ -6,7 +6,9 @@
 //   Clock, what Held it Back over the last second and each core held (as
 //   its own telemetry says, ProcessorTelemetry.qml, shown only while
 //   something did), the Temperature (as Heat reads it), the programs Using
-//   it, the Load, the Kinds of core and the Model.
+//   it, the Load, the Kinds of core and the Model, then what Kept it From
+//   Resting over the last ten seconds and each part that did, shown only
+//   while something does.
 // - "memory" or "ram": what's Used, the Pressure (how long something waited
 //   for it), the Swap, what's Cached, the programs Using it, and its Type,
 //   as the machine read it at boot.
@@ -472,6 +474,23 @@ Provider {
         }
         if (info.model !== "")
             rows.push(leaf({ name: named("cpu:model"), side: info.model }));
+        // A row that comes and goes, so it's last, where it moves nothing.
+        const resting = ProcessorTelemetry.kept;
+        if (resting?.shown) {
+            const most = resting.by[0];
+            const fields = {
+                name: named("cpu:kept-from-resting"),
+                side: percent(resting.share),
+                graph: bar(resting.share),
+                note: most ? `by ${Machine.keeper(most.by).said}` : ""
+            };
+            rows.push(resting.by.length > 0 ? holderRow(Object.assign({ glyph: chip }, fields),
+                () => resting.by.map(part => figure({
+                    name: named(`cpu:kept-by-${Machine.keeper(part.by).id}`),
+                    side: percent(part.share),
+                    graph: bar(part.share)
+                }))) : figure(fields));
+        }
         return rows;
     }
 
@@ -995,8 +1014,9 @@ Provider {
     // The processor's telemetry is watched while a Processor answer is
     // listed, shown or stepped into, so what held it back is there once its
     // parts are opened, and it's read for nothing else Machine answers.
-    // Held Back has no words of its own: asked alone, it would wait on the
-    // reading that only its being shown asks for.
+    // Held Back and Kept From Resting have no words of their own: asked
+    // alone, each would wait on the reading that only its being shown asks
+    // for.
     readonly property bool watched: shown && [launcher.answer,
         ...launcher.held.map(step => step.row), ...launcher.matches]
         .some(row => row?.live === provider && row.title === Words.name(kinds.cpu))

@@ -3,8 +3,8 @@
 // how busy the processors and each core were between two reads, which kind
 // each core is, how fast a disk read and wrote between two reads, which
 // programs use the processors and the memory, what held the processor
-// back as its own telemetry says, and the memory modules the machine read
-// at boot. Machine.qml reads the files and says the figures.
+// back and what kept it from resting as its own telemetry says, and the
+// memory modules the machine read at boot. Machine.qml reads the files and says the figures.
 .pragma library
 
 // A line of /proc/stat counting a processor's time: "cpu" for them all,
@@ -184,6 +184,55 @@ function heldBack(reading) {
     const whole = strongest(reading.heldBack);
     const most = whole ?? strongest(cores);
     return most ? { share: most.share, by: most.by, whole: whole !== null, cores } : null;
+}
+
+// Each part the processor's telemetry says kept the package from resting,
+// by the reader's name for it: its own word's id, under the part's row,
+// and how a note says it.
+const KEEPERS = {
+    npu: { id: "npu", said: "the NPU" },
+    imageProcessor: { id: "image-processor", said: "the image processor" },
+    media: { id: "media-engine", said: "the media engine" },
+    graphics: { id: "graphics", said: "the graphics" },
+    display: { id: "display-engine", said: "the display engine" },
+    chipset: { id: "chipset", said: "the chipset's devices" },
+    cores: { id: "cores", said: "busy cores" },
+    internal: { id: "power-controller", said: "the processor's own power controller" },
+    other: { id: "other", said: "something else" }
+};
+
+function keeper(by) {
+    return KEEPERS[by] ?? { id: "other", said: by };
+}
+
+// The least share the reader says a part kept the package from resting
+// for, a twentieth, and so the least that's shown.
+const RESTLESS = 0.05;
+
+// What kept the package from resting over its last readings, oldest first,
+// each { kept, by } as the reader says a second (ProcessorTelemetry.qml
+// keeps about ten): the share of that time anything did, on average, each
+// part's share of it, longest first, leaving out those under a twentieth,
+// and whether it shows. It shows once its share reaches a twentieth, and
+// once shown stays until every reading held has been under one, so a share
+// near the line doesn't come and go each second. Null with no readings.
+function kept(readings, shown) {
+    if (readings.length === 0) {
+        return null;
+    }
+    const share = readings.reduce((sum, each) => sum + each.kept, 0) / readings.length;
+    const parts = {};
+    for (const reading of readings) {
+        for (const part of reading.by) {
+            parts[part.by] = (parts[part.by] ?? 0) + part.share;
+        }
+    }
+    const by = Object.keys(parts)
+        .map(part => ({ by: part, share: parts[part] / readings.length }))
+        .filter(part => part.share >= RESTLESS)
+        .sort((a, b) => b.share - a.share);
+    const still = shown && readings.some(each => each.kept >= RESTLESS);
+    return { share, by, shown: share >= RESTLESS || still };
 }
 
 // Each core's kind, by its number, on a processor of more than one kind:

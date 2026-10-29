@@ -477,7 +477,8 @@
         "machine:cpu:using",
         "machine:cpu:load",
         "machine:cpu:kinds",
-        "machine:cpu:model"
+        "machine:cpu:model",
+        "machine:cpu:kept-from-resting"
       ]
     },
     {
@@ -561,6 +562,56 @@
       "answers": [
         "processor model"
       ]
+    },
+    {
+      "id": "machine:cpu:kept-from-resting",
+      "in": "machine:cpu",
+      "name": "Kept From Resting"
+    },
+    {
+      "id": "machine:cpu:kept-by-npu",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "NPU"
+    },
+    {
+      "id": "machine:cpu:kept-by-image-processor",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Image Processor"
+    },
+    {
+      "id": "machine:cpu:kept-by-media-engine",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Media Engine"
+    },
+    {
+      "id": "machine:cpu:kept-by-graphics",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Graphics"
+    },
+    {
+      "id": "machine:cpu:kept-by-display-engine",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Display Engine"
+    },
+    {
+      "id": "machine:cpu:kept-by-chipset",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Chipset"
+    },
+    {
+      "id": "machine:cpu:kept-by-cores",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Cores"
+    },
+    {
+      "id": "machine:cpu:kept-by-power-controller",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Power Controller"
+    },
+    {
+      "id": "machine:cpu:kept-by-other",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Something Else"
     },
     {
       "id": "machine:uptime",
