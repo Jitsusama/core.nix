@@ -213,10 +213,13 @@ pub enum Source {
         every: Option<Span>,
         #[serde(default)]
         from: Option<Band>,
-        /// Files whose change since it last ran makes it due in the next
-        /// upkeep, looked at once a minute: what its own rule would let go
-        /// is spent once what it watches says something new arrived, not
-        /// when a schedule comes round.
+        /// Files or folders whose saying something new since it last ran
+        /// makes it due in the next upkeep, looked at once a minute: what
+        /// its own rule would let go is spent once what it watches says
+        /// something new arrived, not when a schedule comes round. What
+        /// they say is a link's target, a file's length and start, and a
+        /// folder's names three levels down, so rewriting one unchanged is
+        /// no news.
         #[serde(default)]
         watch: Vec<PathBuf>,
         timeout: Span,
