@@ -1391,8 +1391,8 @@
     saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
     its title finds, joins a Meet call by its code after Meet's New Meeting and copies a new
     meeting's link last, finds a person by name with the ways to reach them, their next meeting,
-    their Recent and their address last, sets the volume, loses no letter typed after its chord, and
-    shows the shortcuts
+    their Recent and their address last, and steps to them from a meeting's guests and a mail's
+    sender, sets the volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

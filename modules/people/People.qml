@@ -143,6 +143,27 @@ Provider {
         return kept ? [kept] : [];
     }
 
+    // Everyone by each of their addresses, lowercased, joined again only
+    // when who's known is.
+    readonly property var byEmail: {
+        const by = {};
+        for (const person of persons) {
+            for (const email of person.emails)
+                by[email.toLowerCase()] = person;
+        }
+        return by;
+    }
+
+    // The person an address is, as their one row, for a thing that names
+    // them, as a mail's sender or a meeting's guests (Mail.qml,
+    // Calendar.qml): null when no source knows them, so nothing is listed
+    // that can't step in. Asked of any provider holding `personOf`, so a
+    // machine without People lists no one.
+    function personOf(email) {
+        const person = byEmail[String(email ?? "").trim().toLowerCase()];
+        return person ? made(person, standOf(person)) : null;
+    }
+
     // Their next meeting, drawn as a meeting is everywhere, the soonest any
     // source has; a meeting to come isn't Recent.
     function next(person) {
