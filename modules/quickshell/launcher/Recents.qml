@@ -15,7 +15,10 @@
 // At most nine are kept a program, so 1 to 9 pick one. A source that's
 // `asked` watches nothing and is read only as its program is stepped into,
 // once each time the launcher opens (`ask`), for a program such as Chrome
-// whose history changes with every page.
+// whose history changes with every page. A source that also says what its
+// program has open now (`opened`, Chrome's tabs through chrome-open-tabs)
+// is asked that then too, and never otherwise, a line each as its command
+// prints them.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -36,22 +39,48 @@ Scope {
 
     readonly property int most: 9
 
+    // What each program has open now, by its desktop entry's id, as its
+    // source's `opened` command printed it as it was last stepped into.
+    property var openNow: ({})
+
+    // The pages closed from the launcher since it opened, by program, each
+    // staying where it was, said closed, until the next opening.
+    property var closed: ({})
+
     // The programs whose asked sources were read since the launcher opened.
     property var asked: ({})
 
-    // Reads the asked sources of a program stepped into, once an opening.
+    // Reads the asked sources of a program stepped into, and what it has
+    // open, once an opening.
     function ask(app) {
         if (recents.asked[app])
             return;
         recents.asked = Object.assign({}, recents.asked, { [app]: true });
-        for (const source of each.instances)
-            if (source.modelData.asked && source.modelData.app === app)
+        for (const source of each.instances) {
+            if (source.modelData.app !== app)
+                continue;
+            if (source.modelData.asked)
                 source.read();
+            if (source.modelData.opened)
+                source.look();
+        }
+    }
+
+    // What a program has open now, a line each, or none.
+    function openIn(app) {
+        return openNow[app] ?? [];
     }
 
     // The launcher closed, so the next opening reads them again.
     function forget() {
         recents.asked = {};
+        recents.closed = {};
+    }
+
+    // A page a program had open, closed from the launcher.
+    function closing(app, address) {
+        recents.closed = Object.assign({}, recents.closed,
+            { [app]: (recents.closed[app] ?? []).concat([address]) });
     }
 
     function of(app) {
@@ -102,6 +131,26 @@ Scope {
                     source.again = true;
                 else
                     listing.running = true;
+            }
+
+            // What its program has open, read only when asked.
+            function look() {
+                if (!opening.running)
+                    opening.running = true;
+            }
+
+            Process {
+                id: opening
+
+                command: source.modelData.opened ?? []
+                running: false
+                stdout: StdioCollector {
+                    id: opens
+
+                    onStreamFinished: recents.openNow = Object.assign({}, recents.openNow, {
+                        [source.modelData.app]: opens.text.split("\n").filter(line => line !== "")
+                    })
+                }
             }
 
             FileView {

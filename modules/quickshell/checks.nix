@@ -1265,9 +1265,10 @@ onLinux {
         readonly property int current: 11
         property var acted: []
         property var spawned: []
+        property var spawns: []
         function workspace(id) { return workspaces[id ?? "1"] ?? null; }
         function act(action) { acted = acted.concat([action]); }
-        function spawn(command) { spawned = command; }
+        function spawn(command) { spawned = command; spawns = spawns.concat([command]); }
       '';
       notices = singleton "Notices.qml" ''
         property var history: [
@@ -1475,6 +1476,16 @@ onLinux {
         echo . >> "$HOME/sites-read"
         n=$(wc -l < "$HOME/sites-read")
         printf 'https://example.org/%s\tPage %s\nhttps://other.example.net/a\tOlder page\n' "$n" "$n"
+      ''}
+      # Its tabs open now, as chrome-open-tabs lists them: one page open in
+      # two windows, the older page open again, and another in front of
+      # the second window.
+      export OPENED_LIST=${pkgs.writeShellScript "opened-list" ''
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+          7 1 true 3000 https://open.example.com/a 'Open A' \
+          8 1 false 2000 https://other.example.net/a 'Older page' \
+          9 2 false 1000 https://open.example.com/a 'Open A' \
+          10 2 true 500 https://another.example.com/b Another
       ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
