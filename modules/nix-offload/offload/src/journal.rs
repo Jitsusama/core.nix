@@ -10,21 +10,29 @@ use serde_json::{Value, json};
 /// Something that happened to a builder, as the journal keeps it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
+    /// The helper was asked to make it, before it ran, so a builder half
+    /// made when this stops is still known to be this one's.
+    Asked,
     /// It was made and Nix was given it.
     Started,
     /// It was given back, having run `seconds`.
     Stopped,
     /// It went on its own, having run `seconds`, and was given back.
     Lost,
-    /// It couldn't be made ready, and was given back.
+    /// It couldn't be made ready in `seconds`, and was given back.
     Failed,
-    /// It was found left over, by the daily check or at start, and given back.
+    /// It was found not given back, at start or later, and now is.
     Left,
 }
+
+/// The events that say a builder is gone: each is noted only once the
+/// helper said so.
+const GONE: [&str; 4] = ["stopped", "lost", "failed", "left"];
 
 impl Event {
     fn name(self) -> &'static str {
         match self {
+            Self::Asked => "asked",
             Self::Started => "started",
             Self::Stopped => "stopped",
             Self::Lost => "lost",
@@ -54,7 +62,30 @@ pub fn note(
     writeln!(journal, "{line}")
 }
 
-/// A day of the journal: builders started, seconds they ran, and builders
+/// The builders this asked for and hasn't seen gone, oldest first. They're
+/// the only ones it may give back: whatever else shares their prefix is
+/// someone else's.
+pub fn unreturned(journal: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in journal.lines() {
+        let Ok(line) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let (Some(event), Some(name)) = (line["event"].as_str(), line["name"].as_str()) else {
+            continue;
+        };
+        if matches!(event, "asked" | "started") {
+            if !out.iter().any(|known| known == name) {
+                out.push(name.to_owned());
+            }
+        } else if GONE.contains(&event) {
+            out.retain(|known| known != name);
+        }
+    }
+    out
+}
+
+/// A day of the journal: builders asked for, seconds they ran, and builders
 /// found left over.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Day {
@@ -78,8 +109,10 @@ pub fn day(journal: &str, from: u64) -> Day {
             continue;
         }
         match line["event"].as_str() {
-            Some("started") => day.started += 1,
-            Some("stopped" | "lost") => day.seconds += line["seconds"].as_u64().unwrap_or(0),
+            Some("asked") => day.started += 1,
+            Some("stopped" | "lost" | "failed") => {
+                day.seconds += line["seconds"].as_u64().unwrap_or(0);
+            }
             Some("left") => day.left += 1,
             _ => {}
         }
@@ -130,18 +163,22 @@ mod tests {
     fn a_day_counts_its_builders_time_and_what_was_left() {
         let dir = tempfile::tempdir().expect("a folder");
         let path = dir.path().join("journal.jsonl");
+        note(&path, 90, Event::Asked, "b-1", None).expect("noted");
         note(&path, 100, Event::Started, "b-1", None).expect("noted");
-        note(&path, 2000, Event::Stopped, "b-1", Some(1900)).expect("noted");
+        note(&path, 2000, Event::Stopped, "b-1", Some(1910)).expect("noted");
+        note(&path, 2900, Event::Asked, "b-2", None).expect("noted");
         note(&path, 3000, Event::Started, "b-2", None).expect("noted");
-        note(&path, 4000, Event::Lost, "b-2", Some(1000)).expect("noted");
+        note(&path, 4000, Event::Lost, "b-2", Some(1100)).expect("noted");
+        note(&path, 4100, Event::Asked, "b-3", None).expect("noted");
+        note(&path, 4700, Event::Failed, "b-3", Some(600)).expect("noted");
         note(&path, 5000, Event::Left, "b-0", None).expect("noted");
-        note(&path, 90_000, Event::Started, "tomorrow", None).expect("noted");
+        note(&path, 90_000, Event::Asked, "tomorrow", None).expect("noted");
         let journal = fs::read_to_string(&path).expect("read");
         assert_eq!(
             day(&journal, 0),
             Day {
-                started: 2,
-                seconds: 2900,
+                started: 3,
+                seconds: 3610,
                 left: 1
             }
         );
@@ -150,9 +187,25 @@ mod tests {
     #[test]
     fn a_line_it_cant_read_is_passed_over() {
         assert_eq!(
-            day("not json\n{\"at\":5,\"event\":\"started\"}\n", 0).started,
+            day("not json\n{\"at\":5,\"event\":\"asked\"}\n", 0).started,
             1
         );
+    }
+
+    #[test]
+    fn only_what_it_asked_for_and_never_saw_gone_is_unreturned() {
+        let journal = [
+            r#"{"at":1,"event":"asked","name":"lend-1"}"#,
+            r#"{"at":2,"event":"started","name":"lend-1"}"#,
+            r#"{"at":3,"event":"stopped","name":"lend-1","seconds":2}"#,
+            r#"{"at":4,"event":"asked","name":"lend-4"}"#,
+            r#"{"at":5,"event":"asked","name":"lend-5"}"#,
+            r#"{"at":6,"event":"started","name":"lend-5"}"#,
+            r#"{"at":7,"event":"left","name":"someone-elses"}"#,
+        ]
+        .join("\n");
+        assert_eq!(unreturned(&journal), ["lend-4", "lend-5"]);
+        assert!(unreturned("").is_empty());
     }
 
     #[test]

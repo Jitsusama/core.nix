@@ -12,6 +12,9 @@ let
   cfg = config.jitsusama.nix-offload;
   offload = pkgs.callPackage ./offload/package.nix { };
   time = lib.types.strMatching "[0-2][0-9]:[0-5][0-9]";
+  standing = pkgs.writeText "nix-offload-standing" (
+    lib.concatMapStrings (builder: "${builder.address} ${builder.line}\n") cfg.standing
+  );
 in
 {
   options.jitsusama.nix-offload = {
@@ -25,11 +28,19 @@ in
     };
     prefix = lib.mkOption {
       type = lib.types.str;
-      description = "What every builder's name starts with, so a leftover is known.";
+      description = ''
+        What every builder's name starts with. Only those it asked for are ever
+        given back, but one of its own keeps others' apart from its.
+      '';
     };
     rate = lib.mkOption {
       type = lib.types.strMatching "[0-9]+(\\.[0-9]{1,3})?";
       description = "A builder's price an hour, in dollars, for the day's line.";
+    };
+    firstStart = lib.mkOption {
+      type = time;
+      default = "08:00";
+      description = "The first time of day a builder is made, so none is made overnight.";
     };
     lastStart = lib.mkOption {
       type = time;
@@ -40,6 +51,27 @@ in
       type = time;
       default = "20:00";
       description = "The time of day every builder is given back by.";
+    };
+    standing = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            address = lib.mkOption {
+              type = lib.types.str;
+              description = "Where it answers, `host:port`, when it can be reached.";
+            };
+            line = lib.mkOption {
+              type = lib.types.str;
+              description = "Its Nix machines line.";
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        Builders always there, such as other machines nearby, named beside any
+        lent one while they answer, so Nix never waits on one that's away.
+      '';
     };
     timeZone = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -54,11 +86,15 @@ in
     systemd.user.services.nix-offload = {
       Unit.Description = "Lends this machine a builder while its queue holds builds back";
       Service = {
-        ExecStart = lib.concatStringsSep " " [
+        ExecStart = lib.concatStringsSep " " (
+          [
           (lib.getExe offload)
           "serve --helper ${cfg.helper} --prefix ${cfg.prefix} --rate ${cfg.rate}"
-          "--last-start ${cfg.lastStart} --deadline ${cfg.deadline}"
-        ];
+          "--first-start ${cfg.firstStart} --last-start ${cfg.lastStart}"
+            "--deadline ${cfg.deadline}"
+          ]
+          ++ lib.optional (cfg.standing != [ ]) "--standing ${standing}"
+        );
         # Named here, since glibc without it reads a zone it can't find as
         # UTC, and says nothing.
         Environment = [

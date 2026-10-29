@@ -8,6 +8,11 @@
 # Root reaches the builder with a key of its own, made once here and never
 # held in a Nix value; where the builder is, and how root's ssh gets there,
 # is the machine's to say.
+#
+# Writing the file chooses the builders root's Nix trusts, whose outputs
+# come back unsigned. That's a trusted user's power already, since Nix lets
+# one name builders for any build, so only a trusted account may write it:
+# the file then gives it nothing it didn't have.
 {
   config,
   pkgs,
@@ -21,6 +26,23 @@
   };
 
   config = {
+    assertions =
+      let
+        account = config.jitsusama.nix-offload.account;
+        user = config.users.users.${account} or { };
+        groups = [ (user.group or "") ] ++ (user.extraGroups or [ ]);
+        trusted = config.nix.settings.trusted-users;
+      in
+      [
+        {
+          assertion = lib.elem account trusted || lib.any (group: lib.elem "@${group}" trusted) groups;
+          message = ''
+            jitsusama.nix-offload.account (${account}) writes the builders root's Nix
+            trusts, so it must be one of nix.settings.trusted-users.
+          '';
+        }
+      ];
+
     # NixOS gives Nix no builders unless builds are distributed. Its own
     # nix.buildMachines would go to /etc/nix/machines, which this file takes
     # the place of, so a machine's other builders belong in it too.
@@ -37,11 +59,15 @@
       "f /run/nix-offload/machines 0644 ${config.jitsusama.nix-offload.account} - -"
     ];
 
-    system.activationScripts.nix-offload-key = ''
-      if [ ! -e /etc/nix/offload_ed25519 ]; then
-        ${pkgs.openssh}/bin/ssh-keygen -q -t ed25519 -N "" -C nix-offload \
-          -f /etc/nix/offload_ed25519
-      fi
-    '';
+    # After /etc, which /etc/nix belongs to.
+    system.activationScripts.nix-offload-key = {
+      deps = [ "etc" ];
+      text = ''
+        if [ ! -e /etc/nix/offload_ed25519 ]; then
+          ${pkgs.openssh}/bin/ssh-keygen -q -t ed25519 -N "" -C nix-offload \
+            -f /etc/nix/offload_ed25519
+        fi
+      '';
+    };
   };
 }

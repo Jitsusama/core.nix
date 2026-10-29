@@ -14,23 +14,34 @@ const RELIEVED: [&str; 3] = ["vms", "behind", "order"];
 /// runs its driver in the session itself, here.
 const SENT: [&str; 2] = ["build", "vm-check"];
 
+/// How old the queue's own reading may be and still be believed. It writes
+/// one every few seconds while it runs, so an older one is a queue that
+/// stopped, whose waiting jobs would otherwise keep a builder all day.
+const STALE: u64 = 120;
+
 /// Whether any job a builder could take has waited, at `now`, at least
-/// `wait` seconds since it asked. A queue that can't be read wants nothing.
+/// `wait` seconds since it asked. A queue that can't be read, or that
+/// stopped writing, wants nothing.
 pub fn wants(queue: &str, now: u64, wait: u64) -> bool {
     let Ok(queue) = serde_json::from_str::<Value>(queue) else {
         return false;
     };
-    queue["jobs"].as_array().is_some_and(|jobs| {
-        jobs.iter().any(|job| {
-            job["state"] == "waiting"
-                && RELIEVED.iter().any(|on| job["waitingOn"] == *on)
-                && SENT.iter().any(|kind| job["kind"] == *kind)
-                && job["since"]
-                    .as_str()
-                    .and_then(seconds_of)
-                    .is_some_and(|since| now.saturating_sub(since) >= wait)
+    let fresh = queue["at"]
+        .as_str()
+        .and_then(seconds_of)
+        .is_some_and(|at| now.saturating_sub(at) <= STALE);
+    fresh
+        && queue["jobs"].as_array().is_some_and(|jobs| {
+            jobs.iter().any(|job| {
+                job["state"] == "waiting"
+                    && RELIEVED.iter().any(|on| job["waitingOn"] == *on)
+                    && SENT.iter().any(|kind| job["kind"] == *kind)
+                    && job["since"]
+                        .as_str()
+                        .and_then(seconds_of)
+                        .is_some_and(|since| now.saturating_sub(since) >= wait)
+            })
         })
-    })
 }
 
 /// Seconds since the epoch of a time as the queue writes it,
@@ -65,7 +76,11 @@ mod tests {
     const NOW: u64 = 1_793_286_000;
 
     fn queue(jobs: &str) -> String {
-        format!(r#"{{"v":1,"jobs":[{jobs}]}}"#)
+        queue_at("2026-10-29T14:59:50.000Z", jobs)
+    }
+
+    fn queue_at(at: &str, jobs: &str) -> String {
+        format!(r#"{{"v":1,"at":"{at}","jobs":[{jobs}]}}"#)
     }
 
     fn job(kind: &str, state: &str, on: &str, asked: u64) -> String {
@@ -127,6 +142,17 @@ mod tests {
         ]
         .join(",");
         assert!(wants(&queue(&jobs), NOW, 180));
+    }
+
+    #[test]
+    fn a_queue_that_stopped_writing_wants_nothing() {
+        let waiting = job("build", "waiting", "order", NOW - 600);
+        assert!(!wants(
+            &queue_at("2026-10-29T14:57:00.000Z", &waiting),
+            NOW,
+            180
+        ));
+        assert!(!wants(&format!(r#"{{"jobs":[{waiting}]}}"#), NOW, 180));
     }
 
     #[test]
