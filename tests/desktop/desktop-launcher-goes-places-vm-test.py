@@ -2182,7 +2182,7 @@ def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: 
 def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     desktop: Desktop,
 ) -> None:
-    """A file mail carries is fetched only on Return, to open, closing, or to save in Downloads."""
+    """A file mail carries is fetched only on Return, to open, closing, or to save where picked."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
@@ -2212,15 +2212,39 @@ def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     machine.send_key("ret")
     machine.wait_until_succeeds(f"test -f {kept}", timeout=dt.timedelta(seconds=30))
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # Save a Copy keeps one in Downloads, the launcher staying to say so.
-    into_the_menu()
-    desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
-    desktop.down_to("Save a Copy")
+    def save_a_copy() -> None:
+        """Press Save a Copy on the menu, and wait for the picker, in Downloads, naming it."""
+        into_the_menu()
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Save a Copy"])
+        desktop.down_to("Save a Copy")
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["path"] == ["Save a Copy", "~/Downloads"]
+                and (shown["selected"] or {}).get("name") == "menu.pdf"
+            ),
+            timeout=dt.timedelta(seconds=30),
+        )
+
+    # Save a Copy asks where in the launcher's own picker, starting in
+    # Downloads with the file's name; Escape picks nothing and saves nothing.
+    save_a_copy()
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.fail(f"grep -qs save {asked}")
+    machine.fail(f"test -e {saved}")
+    # Return saves it where the picker stands, and the launcher closes.
+    save_a_copy()
     machine.send_key("ret")
+    line = json.dumps(
+        {"fetch": {"id": "lunch", "file": 0, "how": "save", "to": saved}},
+        separators=(",", ":"),
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
     machine.wait_until_succeeds(f"test -f {saved}", timeout=dt.timedelta(seconds=30))
-    desktop.launcher_until(lambda shown: shown["footer"] == "saved in Downloads")
-    desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
