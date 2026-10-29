@@ -135,11 +135,28 @@ Singleton {
     // Reopens a session that closed, where it left off: pi told the
     // session, in the folder it ran in, which its file's first line says,
     // as the harness restores one. With no file to say it, a session is
-    // started afresh on the quest instead, in `folder`.
+    // started afresh on the quest instead, in `folder`. A session's folder
+    // can be gone by now, a tree since given back, and kitty given a
+    // missing folder opens in the home folder without a word, where pi
+    // starts a new session apart from the old one (Joel's Aquifer
+    // orchestrator, 2026-10-29). So the folder is looked for first; when
+    // it's gone, the quest starts afresh in `folder` if that's there, and
+    // `gone(cwd, startedIn)` is told either way, `startedIn` empty when
+    // nothing could be opened, so the caller says so.
     readonly property string sessionFiles: `${home}/.pi/agent/sessions`
 
-    function resume(id, quest, folder) {
-        resumer.asked = { id: id, quest: quest, folder: folder };
+    // One at a time, in the order asked, so a second asked before the
+    // first's file is read waits rather than taking its place.
+    property var resuming: []
+    function resume(id, quest, folder, gone) {
+        resuming = resuming.concat([{ id: id, quest: quest, folder: folder, gone: gone }]);
+        resumeNext();
+    }
+    function resumeNext() {
+        if (resumer.running || resumer.asked !== null || resuming.length === 0)
+            return;
+        resumer.asked = resuming[0];
+        resuming = resuming.slice(1);
         resumer.running = true;
     }
 
@@ -148,8 +165,14 @@ Singleton {
         property var asked: null
         command: ["sh", "-c", 'for f in "$1"/*/*_"$2".jsonl; do head -n 1 "$f"; break; done',
             "resume", root.sessionFiles, asked?.id ?? ""]
+        onRunningChanged: Qt.callLater(root.resumeNext)
         stdout: StdioCollector {
-            onStreamFinished: root.resumed(resumer.asked, text)
+            onStreamFinished: {
+                const one = resumer.asked;
+                resumer.asked = null;
+                root.resumed(one, text);
+                Qt.callLater(root.resumeNext);
+            }
         }
     }
 
@@ -160,11 +183,63 @@ Singleton {
         } catch (error) {
             cwd = "";
         }
-        if (cwd === "") {
-            start(asked.quest, asked.folder);
+        lookFor([cwd, asked.folder], there => {
+            if (there[0]) {
+                reopened(asked.id, cwd);
+                return;
+            }
+            if (there[1])
+                start(asked.quest, asked.folder);
+            if (cwd !== "" || !there[1])
+                asked.gone?.(cwd, there[1] ? asked.folder : "");
+        });
+    }
+
+    // Whether each folder is there, told to `then` as a list of yes or no
+    // in the same order. Asks made while one look runs wait for the next,
+    // so Reopen Them All looks for every folder in one go.
+    property var looking: []
+    function lookFor(folders, then) {
+        looking = looking.concat([{ folders: folders, then: then }]);
+        look();
+    }
+    // Only once the last look has ended and been told, whichever of the
+    // two Quickshell says first.
+    function look() {
+        if (looker.running || looker.asks.length > 0 || looking.length === 0)
             return;
+        looker.asks = looking;
+        looking = [];
+        looker.command = ["sh", "-c",
+            'for d; do if [ -n "$d" ] && [ -d "$d" ]; then echo y; else echo n; fi; done',
+            "look"].concat(looker.asks.reduce((all, ask) => all.concat(ask.folders), []));
+        looker.running = true;
+    }
+    function looked(asks, text) {
+        const said = text.split("\n");
+        let at = 0;
+        for (const ask of asks) {
+            const there = ask.folders.map((_, nth) => said[at + nth] === "y");
+            at += ask.folders.length;
+            ask.then(there);
         }
-        reopened(asked.id, cwd);
+        looker.asks = [];
+        Qt.callLater(look);
+    }
+    Process {
+        id: looker
+        property var asks: []
+        onRunningChanged: Qt.callLater(root.look)
+        stdout: StdioCollector {
+            onStreamFinished: root.looked(looker.asks, text)
+        }
+    }
+
+    // Says, as a notice of the desktop's own, why a session didn't open as
+    // asked, in the words the caller gives.
+    function sayUnopened(title, body) {
+        Niri.spawn(["notify-send", "--app-name=Sessions", "--", title, body]);
+        Report.say(`unopened ${title}: ${body}`);
     }
 
     // Opens a closed session again where it left off, in a window of its
@@ -205,11 +280,19 @@ Singleton {
         }
         if (read === null || read.v !== 1 || !Array.isArray(read.sessions))
             return { boot: "", sessions: [] };
+        // One held on another machine is joined again by its words, given
+        // as an argv (the harness's #872); its folder is only where the
+        // window opens here, and may be unknown.
+        const elsewhere = one => typeof one.machine === "string" && one.machine !== ""
+            && typeof one.address === "string" && Array.isArray(one.attach)
+            && one.attach.length > 0 && one.attach.every(word => typeof word === "string")
+            && typeof one.cwd === "string" && (one.cwd === "" || one.cwd.startsWith("/"));
         return {
             boot: typeof read.boot === "string" ? read.boot : "",
             sessions: read.sessions.filter(one => one !== null && typeof one === "object"
                 && /^[A-Za-z0-9._-]+$/.test(String(one.id ?? ""))
-                && typeof one.cwd === "string" && one.cwd.startsWith("/"))
+                && (one.machine === undefined
+                    ? typeof one.cwd === "string" && one.cwd.startsWith("/") : elsewhere(one)))
         };
     }
 
@@ -233,8 +316,46 @@ Singleton {
     readonly property var lastBoot: restoring.boot !== "" && bootId !== ""
         && restoring.boot !== bootId && restoring.boot !== putOff ? restoring.sessions : []
 
-    function reopen(lost) {
-        reopened(lost.id, lost.cwd);
+    // One of them, in its own folder only: when that's gone, nothing is
+    // opened, and `gone(cwd)` is told so the caller says so, since there's
+    // no quest here to start afresh.
+    function reopen(lost, gone) {
+        if (lost.machine !== undefined) {
+            rejoin(lost);
+            return;
+        }
+        lookFor([lost.cwd], there => {
+            if (there[0])
+                reopened(lost.id, lost.cwd);
+            else
+                gone?.(lost.cwd, "");
+        });
+    }
+
+    // A window the last boot had joined to a session another machine
+    // holds is joined again by its words, in its folder here when that's
+    // still there, or gone to if a window here has joined it since, never
+    // opened twice.
+    function rejoin(lost) {
+        const joined = running.find(one => !one.here && one.address === lost.address
+            && (one.window || one.kitty));
+        if (joined) {
+            goTo(joined);
+            return;
+        }
+        const joining = `${lost.machine}:${lost.address}`;
+        if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
+            return;
+        attaching = Object.assign({}, attaching, { [joining]: Date.now() });
+        const open = there => {
+            Niri.spawn(["kitty", "-1", "--instance-group", "pi-sessions"]
+                .concat(there ? ["--directory", lost.cwd] : [], lost.attach));
+            Report.say(`joined session ${lost.address} on ${lost.machine} again`);
+        };
+        if (lost.cwd === "")
+            open(false);
+        else
+            lookFor([lost.cwd], there => open(there[0]));
     }
 
     function putOffLastBoot() {

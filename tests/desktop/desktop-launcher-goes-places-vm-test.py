@@ -548,10 +548,20 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     """Agents resumes a closed orchestrator where it left off, from one row and a choice."""
     machine = desktop.machine
     opened = "$XDG_RUNTIME_DIR/pi-opened"
-    # Lighthouse orchestrates a quest, and no session runs it; its quest's
-    # last session ran in ~/lighthouse, as pi's file for it says.
+    # Lighthouse orchestrates a quest, and no session runs it; the quest
+    # index names the session to resume, which ran in ~/lighthouse, as
+    # pi's file for it says, never the index's sessions, which can hold
+    # one long dead.
     lighthouse_listed(desktop)
-    index = {"quests": [{"id": "QEST-20261022-TESTQA", "sessions": ["01a1-lighthouse"]}]}
+    index = {
+        "quests": [
+            {
+                "id": "QEST-20261022-TESTQA",
+                "sessions": ["01a0-long-dead"],
+                "resume": {"id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"},
+            }
+        ]
+    }
     record = {"type": "session", "id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"}
     sessions = "~/.pi/agent/sessions/--home-jitsusama-lighthouse--"
     kept = f"{sessions}/2026-10-28T20-00-00-000Z_01a1-lighthouse.jsonl"

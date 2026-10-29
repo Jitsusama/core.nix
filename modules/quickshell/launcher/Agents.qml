@@ -298,15 +298,21 @@ Provider {
         const home = Sessions.home;
         const homely = folder => folder === home || folder.startsWith(`${home}/`)
             ? `~${folder.slice(home.length)}` : folder;
+        // In its own folder only; when that's gone, a notice says so and
+        // nothing opens, never one in the home folder instead.
+        const gone = String((Words.of("verb:agents:last-boot:one").said ?? {}).gone ?? "");
+        const reopen = one => Sessions.reopen(one, cwd => Sessions.sayUnopened(
+            String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd))));
         const closed = one => thing({
             key: `agents:last-boot:${one.id}`,
             name: String(one.title || one.address || one.id),
-            side: homely(one.cwd),
+            // One held elsewhere says where, as a session there does.
+            side: one.machine !== undefined ? provider.elsewhere("on", one) : homely(one.cwd),
             verb: Words.verb("verb:agents:last-boot:one"),
             glyph: Theme.glyph.agent,
             hue: "program",
             later: true,
-            run: () => Sessions.reopen(one)
+            run: () => reopen(one)
         });
         return thingRow({
             key: "agents:last-boot",
@@ -317,7 +323,7 @@ Provider {
             hue: "action"
         }, () => [act("all", {
             later: true,
-            run: () => lost.forEach(one => Sessions.reopen(one))
+            run: () => lost.forEach(one => reopen(one))
         })].concat(lost.map(closed), [act("notNow", {
             run: () => Sessions.putOffLastBoot()
         })]));
