@@ -4,13 +4,13 @@ It speaks the program's protocol (modules/google/src/state.rs and ask.rs): the w
 line of JSON, left in google.json beside the socket, which the shell reads, and told to a shell
 that connects. The account is ready, unless a test signs it out, with three meetings on Meet
 from when the stand-in starts: Design Review five minutes on, Joel's own, reminding him a
-minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4,
-with Grace not going and Ada's Quarterly Plan and an agenda attached; and Planning two hours
-on, Joel's own with Grace asked. Joel may change his own, and Standup on Ada's calendar, which
-she shares with him. An answer a shell writes is
-written down in google-asked beside the socket, for the test to read, and taken as Google would
-take it, so the file and every shell say the meeting answered or moved; a meeting Joel holds
-that's cancelled is written down and let go, as Google would. Two pieces of mail want Joel,
+minute before, or nearer or further as a test asks; Standup half an hour on, Ada's in Room 4
+every weekday, with Grace not going and Ada's Quarterly Plan and an agenda attached; and
+Planning two hours on, Joel's own with Grace asked. Joel may change his own, and Standup on
+Ada's calendar, which she shares with him. An answer a shell writes is written down in
+google-asked beside the socket, for the test to read, and taken as Google would take it, so the
+file and every shell say the meeting answered or moved; a meeting Joel holds that's cancelled
+is written down and let go, as Google would. Two pieces of mail want Joel,
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
 with three unread in the inbox; one marked read or archived is written down too, and taken
 out of the mail that wants him, as Gmail would, and one read and then marked unread again
@@ -63,6 +63,7 @@ def meeting(key: str, title: str, start: int, call: str, **more: object) -> dict
         "reminders": [],
         "attachments": [],
         "dial": None,
+        "repeats": None,
         **more,
     }
 
@@ -85,6 +86,14 @@ class Account:
                 now + AHEAD,
                 "abc-defg-hij",
                 place="Room 4",
+                repeats={
+                    "every": "week",
+                    "interval": 1,
+                    "days": [{"day": day, "nth": None} for day in range(1, 6)],
+                    "monthDays": [],
+                    "times": None,
+                    "until": None,
+                },
                 about="What we did yesterday,\nwhat we do today.",
                 holds=False,
                 through="ada@example.com",

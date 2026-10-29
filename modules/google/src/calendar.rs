@@ -10,10 +10,14 @@
 //! Each meeting says what the launcher shows of it: where, who holds it,
 //! who else is asked and how each answered, and what it's about, its
 //! description as plain text, the files on it and the number it's dialled
-//! into by, when Joel is reminded of it, and the calendar he may change it
-//! through, when Google lets him.
+//! into by, how it repeats, when Joel is reminded of it, and the calendar
+//! he may change it through, when Google lets him.
+//!
+//! An occurrence names its series but not how the series repeats, so the
+//! watch asks each series' rule of its own and gives it beside the events
+//! (`series`), as it gives the calendars Joel may write to.
 
-use jiff::civil::Date;
+use jiff::civil::{Date, Time};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
@@ -34,6 +38,8 @@ pub struct Meeting {
     pub end: i64,
     #[serde(rename = "allDay")]
     pub all_day: bool,
+    /// How it repeats, for one of a series whose rule was heard.
+    pub repeats: Option<Repeats>,
     /// How Joel answered, or none when he wasn't asked: his own event, or
     /// one with nobody else on it.
     pub answer: Option<Answer>,
@@ -105,6 +111,47 @@ pub struct Guest {
     pub answer: Answer,
 }
 
+/// How a series repeats, as its rule says it (RFC 5545's RRULE), in what
+/// the shell words it from: every two weeks on Monday and Wednesday, every
+/// month on the last Friday, until 31 December.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Repeats {
+    pub every: Every,
+    /// How many of them from one to the next: 2 for every other week.
+    pub interval: u32,
+    /// The days of the week it falls on, in the rule's order.
+    pub days: Vec<Weekday>,
+    /// The days of the month it falls on, -1 the last.
+    #[serde(rename = "monthDays")]
+    pub month_days: Vec<i8>,
+    /// How many times it happens in all, when the rule says.
+    pub times: Option<u32>,
+    /// When it last may, in milliseconds since the epoch, when the rule
+    /// says.
+    pub until: Option<i64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Every {
+    Day,
+    Week,
+    Month,
+    Year,
+}
+
+/// A day of the week a series falls on: 0 Sunday to 6 Saturday, as the
+/// shell's dates count them, and which of them in its month when the rule
+/// says, 1 the first and -1 the last.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Weekday {
+    pub day: u8,
+    pub nth: Option<i8>,
+}
+
+/// The days of the week as a rule writes them, from Sunday.
+const WEEKDAYS: [&str; 7] = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
 /// How much of a description is kept: enough to read in the launcher,
 /// never a whole pasted agenda.
 pub const ABOUT_MOST: usize = 2000;
@@ -152,6 +199,7 @@ fn midnight(day: Date, zone: &TimeZone) -> Timestamp {
 /// say what he may change; with none, he may change only his own.
 pub fn meetings(answer: &Value, zone: &TimeZone) -> Vec<Meeting> {
     let defaults = popups(answer.get("defaultReminders"));
+    let series = answer.get("series");
     let writable: Vec<&str> = answer
         .get("writable")
         .and_then(Value::as_array)
@@ -164,8 +212,159 @@ pub fn meetings(answer: &Value, zone: &TimeZone) -> Vec<Meeting> {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|event| meeting(event, zone, &defaults, &writable))
+        .filter_map(|event| {
+            let mut found = meeting(event, zone, &defaults, &writable)?;
+            found.repeats = event
+                .get("recurringEventId")
+                .and_then(Value::as_str)
+                .and_then(|id| series?.get(id)?.as_array())
+                .and_then(|lines| {
+                    let lines: Vec<&str> = lines.iter().filter_map(Value::as_str).collect();
+                    repeats(&lines, zone)
+                });
+            Some(found)
+        })
         .collect()
+}
+
+/// The series the answer's meetings are of, each once, in their order:
+/// those the watch asks the rules of.
+pub fn repeating(answer: &Value) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    let series = answer
+        .get("items")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|event| event.get("recurringEventId").and_then(Value::as_str));
+    for id in series {
+        if !found.iter().any(|kept| kept == id) {
+            found.push(id.to_owned());
+        }
+    }
+    found
+}
+
+/// How a series repeats, from its `recurrence` lines, read in `zone` when
+/// its end is said in no zone of its own. A series of more than one rule,
+/// or none, says nothing, rather than half of it. A rule holding a part
+/// this doesn't read (as which of a set, BYSETPOS, or a month, BYMONTH)
+/// keeps only how often, never days it might not fall on.
+pub fn repeats(lines: &[&str], zone: &TimeZone) -> Option<Repeats> {
+    let mut rules = lines.iter().filter_map(|line| line.strip_prefix("RRULE:"));
+    let rule = rules.next()?;
+    if rules.next().is_some() {
+        return None;
+    }
+    let mut every = None;
+    let mut found = Repeats {
+        every: Every::Day,
+        interval: 1,
+        days: Vec::new(),
+        month_days: Vec::new(),
+        times: None,
+        until: None,
+    };
+    let mut unread = false;
+    for part in rule.split(';') {
+        let Some((name, value)) = part.split_once('=') else {
+            unread = true;
+            continue;
+        };
+        let read = match name.to_ascii_uppercase().as_str() {
+            "FREQ" => {
+                every = match value.to_ascii_uppercase().as_str() {
+                    "DAILY" => Some(Every::Day),
+                    "WEEKLY" => Some(Every::Week),
+                    "MONTHLY" => Some(Every::Month),
+                    "YEARLY" => Some(Every::Year),
+                    // More often than daily isn't a meeting's.
+                    _ => return None,
+                };
+                true
+            }
+            "INTERVAL" => value
+                .parse()
+                .ok()
+                .filter(|interval| *interval > 0)
+                .map(|interval| found.interval = interval)
+                .is_some(),
+            "BYDAY" => value
+                .split(',')
+                .map(weekday)
+                .collect::<Option<Vec<_>>>()
+                .map(|days| found.days = days)
+                .is_some(),
+            "BYMONTHDAY" => value
+                .split(',')
+                .map(|day| day.parse().ok().filter(|day: &i8| *day != 0))
+                .collect::<Option<Vec<_>>>()
+                .map(|days| found.month_days = days)
+                .is_some(),
+            "COUNT" => value
+                .parse()
+                .ok()
+                .map(|times| found.times = Some(times))
+                .is_some(),
+            "UNTIL" => until(value, zone)
+                .map(|until| found.until = Some(until))
+                .is_some(),
+            // Which day a week starts on changes nothing said here.
+            "WKST" => true,
+            _ => false,
+        };
+        unread |= !read;
+    }
+    found.every = every?;
+    if unread {
+        found.days.clear();
+        found.month_days.clear();
+    }
+    Some(found)
+}
+
+/// A day of the week as a rule writes it, MO, or with which of them in its
+/// month, 1MO or -1FR.
+fn weekday(written: &str) -> Option<Weekday> {
+    let at = written.len().checked_sub(2)?;
+    let (nth, code) = written.split_at_checked(at)?;
+    let day = WEEKDAYS
+        .iter()
+        .position(|day| day.eq_ignore_ascii_case(code))?;
+    let nth = match nth.trim_start_matches('+') {
+        "" => None,
+        nth => Some(nth.parse().ok().filter(|nth: &i8| *nth != 0)?),
+    };
+    Some(Weekday {
+        day: u8::try_from(day).ok()?,
+        nth,
+    })
+}
+
+/// When a rule's UNTIL is, as 20261231T045959Z, a time in no zone of its
+/// own, read in `zone`, as 20261231T235959, or a day, its midnight here.
+fn until(written: &str, zone: &TimeZone) -> Option<i64> {
+    let number = |from: usize, to: usize| written.get(from..to)?.parse::<i16>().ok();
+    let day = Date::new(
+        number(0, 4)?,
+        i8::try_from(number(4, 6)?).ok()?,
+        i8::try_from(number(6, 8)?).ok()?,
+    )
+    .ok()?;
+    let Some(clock) = written.get(8..).filter(|clock| !clock.is_empty()) else {
+        return Some(midnight(day, zone).as_millisecond());
+    };
+    if !clock.starts_with('T') {
+        return None;
+    }
+    let part = |from: usize| i8::try_from(number(from, from + 2)?).ok();
+    let time = day.to_datetime(Time::new(part(9)?, part(11)?, part(13)?, 0).ok()?);
+    let zone = match clock.get(7..)? {
+        "Z" => TimeZone::UTC,
+        "" => zone.clone(),
+        _ => return None,
+    };
+    Some(time.to_zoned(zone).ok()?.timestamp().as_millisecond())
 }
 
 /// The minutes before its start each reminder in a list pops up, furthest
@@ -256,6 +455,7 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
         start,
         end,
         all_day: start_all_day,
+        repeats: None,
         answer,
         link,
         kind,
@@ -446,6 +646,106 @@ mod tests {
         TimeZone::fixed(jiff::tz::offset(-4))
     }
 
+    fn weekly(days: &[(u8, Option<i8>)]) -> Vec<Weekday> {
+        days.iter()
+            .map(|&(day, nth)| Weekday { day, nth })
+            .collect()
+    }
+
+    #[test]
+    fn a_meeting_of_a_series_says_how_the_series_repeats() {
+        let answer = json!({
+            "items": [
+                {"id": "s_1", "recurringEventId": "s", "summary": "Standup",
+                    "start": {"dateTime": "2026-10-26T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-26T16:15:00-04:00"}},
+                {"id": "s_2", "recurringEventId": "s", "summary": "Standup",
+                    "start": {"dateTime": "2026-10-28T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-28T16:15:00-04:00"}},
+                {"id": "q_1", "recurringEventId": "q", "summary": "Unheard",
+                    "start": {"dateTime": "2026-10-27T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-27T16:15:00-04:00"}},
+                {"id": "once", "summary": "Once",
+                    "start": {"dateTime": "2026-10-29T16:00:00-04:00"},
+                    "end": {"dateTime": "2026-10-29T16:15:00-04:00"}}
+            ],
+            "series": {"s": ["EXDATE;TZID=America/Toronto:20261102T160000",
+                "RRULE:FREQ=WEEKLY;WKST=SU;INTERVAL=2;BYDAY=MO,WE"]}
+        });
+        assert_eq!(repeating(&answer), ["s", "q"]);
+        let found = meetings(&answer, &zone());
+        let said: Vec<_> = found
+            .iter()
+            .map(|meeting| meeting.repeats.clone())
+            .collect();
+        let fortnightly = Repeats {
+            every: Every::Week,
+            interval: 2,
+            days: weekly(&[(1, None), (3, None)]),
+            month_days: vec![],
+            times: None,
+            until: None,
+        };
+        assert_eq!(
+            said,
+            [Some(fortnightly.clone()), Some(fortnightly), None, None]
+        );
+    }
+
+    #[test]
+    fn a_rule_says_which_of_a_day_in_its_month_and_when_it_ends() {
+        let rule = |line: &str| repeats(&[line], &zone()).unwrap();
+        let monthly = rule("RRULE:FREQ=MONTHLY;BYDAY=-1FR;COUNT=6");
+        assert_eq!((monthly.every, monthly.times), (Every::Month, Some(6)));
+        assert_eq!(monthly.days, weekly(&[(5, Some(-1))]));
+        assert_eq!(
+            rule("RRULE:FREQ=MONTHLY;BYDAY=+1MO").days,
+            weekly(&[(1, Some(1))])
+        );
+        assert_eq!(
+            rule("RRULE:FREQ=MONTHLY;BYMONTHDAY=15,-1").month_days,
+            [15, -1]
+        );
+        // At 04:59:59 in Greenwich, 00:59:59 here.
+        assert_eq!(
+            rule("RRULE:FREQ=DAILY;UNTIL=20261231T045959Z").until,
+            Some(1_798_693_199_000)
+        );
+        assert_eq!(
+            rule("RRULE:FREQ=DAILY;UNTIL=20261231T005959").until,
+            Some(1_798_693_199_000)
+        );
+        assert_eq!(
+            rule("RRULE:FREQ=YEARLY;UNTIL=20261231").until,
+            Some(1_798_689_600_000)
+        );
+    }
+
+    #[test]
+    fn a_rule_says_nothing_it_cant_read_wholly() {
+        let rule = |lines: &[&str]| repeats(lines, &zone());
+        // The last weekday of each month: without reading which of the set,
+        // its days would be wrong, so only how often is said.
+        let last = rule(&["RRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"]).unwrap();
+        assert_eq!((last.every, last.days.len()), (Every::Month, 0));
+        assert_eq!(rule(&["RRULE:FREQ=WEEKLY;BYDAY=XX"]).unwrap().days, []);
+        assert_eq!(rule(&["RRULE:FREQ=HOURLY"]), None);
+        assert_eq!(rule(&["RRULE:INTERVAL=2"]), None);
+        assert_eq!(rule(&["EXDATE:20261102T160000Z"]), None);
+        assert_eq!(rule(&["RRULE:FREQ=DAILY", "RRULE:FREQ=WEEKLY"]), None);
+        assert_eq!(rule(&["RRULE:FREQ=DAILY;UNTIL=2026"]).unwrap().until, None);
+        assert_eq!(
+            rule(&["RRULE:FREQ=DAILY;UNTIL=20261231T2"]).unwrap().until,
+            None
+        );
+        assert_eq!(
+            rule(&["RRULE:FREQ=DAILY;UNTIL=20261231T256060Z"])
+                .unwrap()
+                .until,
+            None
+        );
+    }
+
     #[test]
     fn the_window_is_today_and_the_next_seven_days_here() {
         let now = "2026-10-26T15:20:00-04:00[-04:00]"
@@ -480,6 +780,7 @@ mod tests {
                 start: 1_793_044_800_000,
                 end: 1_793_045_700_000,
                 all_day: false,
+                repeats: None,
                 answer: Some(Answer::Maybe),
                 link: Some("https://meet.google.com/abc-defg-hij".into()),
                 kind: Some(Kind::Meet),

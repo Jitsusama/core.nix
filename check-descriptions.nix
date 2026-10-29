@@ -347,16 +347,17 @@
   google-reads-the-calendar = ''
     google reads the harness's Google account without writing its file, refreshes a stale token in
     memory, is signed out by a refused sign-in until a new one, keeps what was heard while Google
-    can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
-    and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
-    meeting only when Joel holds it, telling every guest, moves one through the calendar Google lets
-    him change it on, telling everyone asked, tells it the mail that wants Joel, newest first, each
-    asked for once, with who it went to, its text, never an attachment's, and each file it carries,
-    by its name, kind and size, but what its HTML shows inline, fetching one only when asked, never
-    to open one that runs, into a folder only Joel reads or into Downloads, never over a file there,
-    marking it read or archiving it when asked, marking it unread again, mail read here wanting Joel
-    again at once, and the documents of each kind he looked at lately, his last first, asking Drive
-    again only every five minutes and keeping them while Drive fails
+    can't be reached, tells the shell each meeting's times, answer, the one link it's joined by and
+    how its series repeats, asking each series only every five minutes and keeping its rule while
+    Google fails, and answers an invitation the shell asks it to, changing only Joel's own answer,
+    cancels a meeting only when Joel holds it, telling every guest, moves one through the calendar
+    Google lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
+    first, each asked for once, with who it went to, its text, never an attachment's, and each file
+    it carries, by its name, kind and size, but what its HTML shows inline, fetching one only when
+    asked, never to open one that runs, into a folder only Joel reads or into Downloads, never over
+    a file there, marking it read or archiving it when asked, marking it unread again, mail read
+    here wanting Joel again at once, and the documents of each kind he looked at lately, his last
+    first, asking Drive again only every five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1201,9 +1202,9 @@
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
-    details for the drawer, which may be moved and to what later or typed time, what that clashes
-    with and who's told, writes the lines that answer, cancel and move it, and knows which Meet
-    call a window is and whose meeting it is
+    details for the drawer, how it repeats in words among them, which may be moved and to what later
+    or typed time, what that clashes with and who's told, writes the lines that answer, cancel and
+    move it, and knows which Meet call a window is and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
