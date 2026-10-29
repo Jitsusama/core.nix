@@ -1488,7 +1488,7 @@ What each studio round settled, newest first, with the reason.
   day leaning on one model was listed 32 times, every one the week after
   a switch to a newer one. A new model or tool is now listed, a day's
   mix of models is the report by model's, and what's told is a cap, a
-  refusal, what the provider says, a sign-in only the person can give,
+  refusal, what the provider says, a sign-in only Joel can give,
   a day on course for twice the costliest of eight weeks, pi spending
   from sessions no log here knows, and a credential nobody knew
   spending, which may be a leaked key.
