@@ -668,22 +668,21 @@ fn footprint(env: &Env, paths: &[PathBuf], out: &mut dyn Write) -> Done {
     let mut code = FINE;
     for (path, disk) in paths.iter().zip(found) {
         let files = size(crate::footprint::files(path));
-        let _ = match disk {
-            Some(disk) => writeln!(
+        let _ = if let Some(disk) = disk {
+            writeln!(
                 out,
                 "{}: {} on the disk, for {files} of files.",
                 path.display(),
                 size(disk)
-            ),
-            None => {
-                code = REFUSED;
-                writeln!(
-                    out,
-                    "{}: {files} of files; what they take on the disk can't be read \
-                     (not yours, not on Btrfs, or gone).",
-                    path.display()
-                )
-            }
+            )
+        } else {
+            code = REFUSED;
+            writeln!(
+                out,
+                "{}: {files} of files; what they take on the disk can't be read \
+                 (not yours, not on Btrfs, or gone).",
+                path.display()
+            )
         };
     }
     Ok(code)

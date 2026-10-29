@@ -150,7 +150,7 @@ mod search {
     use std::os::fd::{AsRawFd, OwnedFd};
     use std::path::Path;
 
-    /// BTRFS_IOC_TREE_SEARCH_V2: _IOWR(0x94, 17, the 112-byte header).
+    /// `BTRFS_IOC_TREE_SEARCH_V2`, which is `_IOWR(0x94, 17)` on a 112-byte header.
     const TREE_SEARCH_V2: libc::c_ulong = 0xC070_9411;
     /// The search key's fields, then the buffer's size, before the buffer.
     const KEY: usize = 104;

@@ -91,7 +91,10 @@ pub fn answering(
                                     .spawn(move || {
                                         // At idle priority, as the account's
                                         // sizing is, so a walk never slows
-                                        // what the person or a build does.
+                                        // what the person or a build does. A
+                                        // Mac's only way lowers the whole
+                                        // daemon, so there it runs as it is.
+                                        #[cfg(target_os = "linux")]
                                         crate::commands::idle();
                                         let found = footprints(&paths, uid);
                                         WALKING.store(false, Ordering::Release);
