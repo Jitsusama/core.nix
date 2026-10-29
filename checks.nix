@@ -625,7 +625,9 @@ gather (
 
       # Quickshell's JavaScript lacks some of the language's newer methods, which
       # qmllint lets through and the shell fails on only as it runs, so the
-      # shell's code calls none of them.
+      # shell's code calls none of them, in Quickshell's module and in every
+      # module that gives the shell a file. Spotify's script runs in Spotify's
+      # own browser, which has them.
       the-shell-speaks-its-javascript =
         pkgs.runCommandLocal "the-shell-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
           ''
@@ -634,8 +636,10 @@ gather (
             # search, and only none passes.
             status=0
             rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
-              -e '\.(flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' \
-              -e '\b(structuredClone|Object\.groupBy|Object\.hasOwn)\(' modules/quickshell || status=$?
+              --glob '!modules/spotify/**' \
+              -e '\.(at|flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' \
+              -e '\b(structuredClone|Object\.groupBy|Object\.hasOwn|Object\.fromEntries)\(' \
+              modules || status=$?
             if [ $status = 0 ]; then
               echo "The lines above call a method Quickshell's JavaScript doesn't have."
               exit 1
