@@ -155,6 +155,9 @@ Provider {
     // position, and how sure it is. Inside, the position, how it was
     // found, and the time zone the clock keeps, saying so where the place
     // keeps another. Found by typing its name too, since Now is its home.
+    // Once the clock has followed the laptop into another zone, it says so
+    // and Put It Back leads what's inside (Joel, 2026-10-28: "i really
+    // want my timezone to automatically change if possible").
     readonly property var location: {
         const here = Location.here;
         const position = here ? `${here.latitude.toFixed(2)}, ${here.longitude.toFixed(2)}` : "";
@@ -164,10 +167,27 @@ Provider {
         // Said plainly where it's unknown, never guessed.
         const elsewhere = differs ? `it keeps ${here.zone}, not the clock's ${Location.clockZone}`
             : "";
+        const moved = Location.clockMoved ? Location.moved : null;
+        // "Clock moved to Edmonton time, from Calgary": the zone by its
+        // city, and where the laptop was, by its town.
+        const city = zone => zone.split("/").pop().split("_").join(" ");
+        const said = moved ? `clock moved to ${city(moved.to)} time`
+            + (moved.place ? `, from ${moved.place.split(",")[0]}` : "") : "";
         const note = !here ? (Location.read ? "GeoClue hasn't found the laptop yet" : "")
-            : differs ? elsewhere : `${within}, found through GeoClue`;
+            : moved ? said : differs ? elsewhere : `${within}, found through GeoClue`;
         const inside = () => {
             const rows = [];
+            if (moved)
+                rows.push(thing({
+                    key: "verb:location:put-back",
+                    verb: Words.verb("verb:location:put-back"),
+                    name: Words.name("verb:location:put-back"),
+                    glyph: Words.glyph("verb:location:put-back"),
+                    side: city(moved.from),
+                    hue: "action",
+                    stays: true,
+                    run: () => Location.putBack()
+                }));
             if (here)
                 rows.push(copyRow({
                     key: "location:position",
@@ -189,7 +209,7 @@ Provider {
             name: Words.name("location"),
             side: side,
             note: note,
-            hue: differs ? "strong" : "voice",
+            hue: moved || differs ? "strong" : "voice",
             glyph: Theme.glyph.location
         }, inside);
     }

@@ -1512,9 +1512,9 @@ Scope {
 
     // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
     // it" was too many): a turn by the way it goes ("off"), a verb that's
-    // one with the way it goes whole ("log out", whose first word alone
-    // says nothing), anything else by its first word.
-    readonly property var phrasal: ["in", "out"]
+    // one with the way it goes whole ("log out", "put back", whose first
+    // word alone says nothing), anything else by its first word.
+    readonly property var phrasal: ["in", "out", "back"]
 
     function oneWord(verb) {
         const said = verb.split(" ");

@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -963,6 +964,62 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
+    """The clock follows the laptop into another zone, says so in Now, and is put back."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    zone = "timedatectl show --property=Timezone --value"
+    began = machine.succeed(zone).strip()
+    ran = "systemctl --user show clock-follows.service"
+    ran += " --property=InactiveEnterTimestampMonotonic --value"
+
+    def found(where: str, accuracy: int, place: str) -> None:
+        """Write where the laptop is, as whereabouts does, and wait for the clock to read it."""
+        before = desktop.as_account(ran).strip()
+        said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": accuracy,
+                "when": int(time.time()), "place": place, "zone": where}  # fmt: skip
+        desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+        machine.wait_until_succeeds(
+            desktop.in_session(f'test "$({ran})" != {shlex.quote(before)}'),
+            timeout=dt.timedelta(seconds=30),
+        )
+
+    def keeps(where: str) -> None:
+        """Wait until the clock keeps this zone."""
+        machine.wait_until_succeeds(f'test "$({zone})" = {where}', timeout=dt.timedelta(seconds=30))
+
+    try:
+        # Found by Wi-Fi, to within 300 m, in another zone: the clock moves,
+        # and Now's Location says so.
+        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        keeps("America/Edmonton")
+        desktop.answer("location")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Location"
+            and "clock moved to Edmonton time, from Lighthouse" in json.dumps(shown["selected"])
+        )
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Put It Back"])
+        # Put back, it's held where it was while the laptop stays there.
+        machine.send_key("ret")
+        keeps(began)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        assert machine.succeed(zone).strip() == began
+        # Somewhere else lets it go, and the clock follows again.
+        found("America/Vancouver", 300, "Harbour, British Columbia")
+        keeps("America/Vancouver")
+        # Found only from the network's address, tens of kilometres wide,
+        # as through WARP, it never moves the clock.
+        found("Asia/Tokyo", 26000, "Shibuya, Tokyo")
+        assert machine.succeed(zone).strip() == "America/Vancouver"
+    finally:
+        machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
+        desktop.as_account(f"rm -rf {fix} ~/.local/state/clock-follows")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

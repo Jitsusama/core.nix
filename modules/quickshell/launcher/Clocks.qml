@@ -41,7 +41,9 @@ Provider {
         const zones = loaded();
         const now = Date.now();
         const local = -new Date(now).getTimezoneOffset();
-        const here = settings.zone ?? null;
+        // The clock's own zone, which follows the laptop, before the one
+        // the machine was built with.
+        const here = Location.clockZone || (settings.zone ?? null);
         let told = Zones.answer(typed, zones, now, here, local);
         if (!told)
             return null;

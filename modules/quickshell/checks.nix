@@ -998,6 +998,7 @@ onLinux {
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
         cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+        cp ${singleton "Location.qml" ''property string clockZone: ""''} Location.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
@@ -2246,6 +2247,11 @@ onLinux {
   # clippy finds nothing in the window recorder, its tests included.
   record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
     pkgs.callPackage ./record-window/package.nix { }
+  );
+
+  # clippy finds nothing in clock-follows, its tests included.
+  clock-follows-passes-clippy = passesClippy "clock-follows-passes-clippy" (
+    pkgs.callPackage ./clock-follows/package.nix { }
   );
 
   # clippy finds nothing in whereabouts, its tests included.

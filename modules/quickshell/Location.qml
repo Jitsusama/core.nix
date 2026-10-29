@@ -1,7 +1,8 @@
 pragma Singleton
 // Where the laptop is, the one place the shell learns it from: what
 // whereabouts last found through GeoClue (whereabouts/), its town and the
-// zone it keeps, and the time zone the clock keeps now. The weather's here
+// zone it keeps, the time zone the clock keeps now, and the clock's last
+// move to follow the laptop (clock-follows/). The weather's here
 // and Now's Location read it, and nothing else asks where the laptop is.
 //
 // Each is read as the shell starts and again as it changes, never assumed:
@@ -34,6 +35,41 @@ Singleton {
     // Whether the place keeps another zone than the clock does.
     readonly property bool zoneDiffers: here !== null && (here.zone ?? "") !== ""
         && clockZone !== "" && here.zone !== clockZone
+
+    // The clock's last move to where the laptop is (clock-follows/), {
+    // from, to, place, when }, kept until it's put back or moves again, or
+    // null; said only while the clock still keeps the zone it moved to.
+    property var moved: null
+    readonly property bool clockMoved: moved !== null && moved.to === clockZone
+
+    readonly property string kept: `${Quickshell.env("XDG_STATE_HOME")
+        || `${Quickshell.env("HOME")}/.local/state`}/clock-follows`
+
+    function movedOf(text) {
+        let said;
+        try {
+            said = JSON.parse(text);
+        } catch (error) {
+            return null;
+        }
+        return typeof said?.from === "string" && typeof said.to === "string" ? said : null;
+    }
+
+    // Puts the clock back in the zone it kept before it followed the
+    // laptop, where it's held until the laptop is somewhere else.
+    function putBack() {
+        Quickshell.execDetached(["systemctl", "--user", "start", "--no-block",
+            "clock-put-back.service"]);
+    }
+
+    FileView {
+        path: `${root.kept}/moved.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.moved = root.movedOf(text())
+        onLoadFailed: root.moved = null
+    }
 
     function hereOf(text) {
         let said;
