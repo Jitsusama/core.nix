@@ -2,7 +2,8 @@
 // FileChooser.qml) through Quickshell itself, as open-with asks it, over
 // folders the check makes, with the launcher stood in and a socket standing
 // in for open-with's. Asked to open, it opens in the folder asked for, every
-// folder on the way held above it; it lists the files opened lately
+// folder on the way held above it and each saying the one held deepest, so
+// the path is one folder; it lists the files opened lately
 // elsewhere first, then its folders, then the files the filter passes, by
 // name, then the program's filters, each group apart; a file is one row,
 // though it was opened lately too, and the hidden ones show once a "." is
@@ -210,6 +211,9 @@ ShellRoot {
         const way = chooser.onTheWay(notes).map(path => `folder:${path}`).join(" ");
         expect("every folder on the way is held above the one asked for", heldPaths() === way,
             `${heldPaths()}, not ${way}`);
+        const titles = launcher.held.slice(1).map(step => step.row.title);
+        expect("the path says one folder, the one held deepest",
+            titles.every(title => title === "~/notes"), titles.join(" "));
         let rows = rowsIn(notes);
         expect("lately elsewhere, then folders, then files the filter passes, then the filters",
             names(rows) === "old.md, | sub, a.md, notes.txt, | Markdown (chosen), All Files", names(rows));

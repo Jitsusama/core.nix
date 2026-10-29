@@ -431,8 +431,8 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
 
 # A program asks the portal for a file to open, and then to save, in a
 # folder, as Chrome and Slack do, and the launcher chooses it rather than
-# GTK's dialog: it opens in that folder, every folder on the way held above
-# it. What's typed finds a file there and Return opens it; saving, Return
+# GTK's dialog: it opens in that folder, its path the program's title and
+# then the folder, every folder on the way held above it. What's typed finds a file there and Return opens it; saving, Return
 # saves as the name the program gave; and Escape chooses nothing. The
 # portal hands the program each path picked, and each ask's socket goes once
 # it's answered.
@@ -448,6 +448,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
 
     def choose(mode: str, name: str = "") -> None:
         """Ask the portal for a file in the notes, and wait until the launcher holds them."""
+        title = "Save the Notes" if mode == "save" else "Open the Notes"
         machine.succeed(f"rm -f {chose}")
         desktop.as_account(
             "systemd-run --user --collect --unit=choose-a-file"
@@ -455,7 +456,8 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         )
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["files", "home", "~", "chosen-notes"]
+                shown["path"] == [title, "~/chosen-notes"]
+                and len(shown["held"]) == 4
                 and shown["selected"] is not None
             ),
             timeout=timedelta(seconds=60),

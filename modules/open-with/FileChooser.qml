@@ -157,13 +157,30 @@ Provider {
 
     // A folder's row, stepped into to what it holds, led by Open This
     // Folder where one is asked for.
+    //
+    // Held, each folder on the way is titled as the one held deepest, read
+    // as the launcher says its path, so the path says the program's title
+    // and then one folder, "~/Downloads", which changes in place as the
+    // left arrow goes up, rather than a crumb a folder (VKCF3Z,
+    // 2026-10-29).
     function folderRow(path) {
         const acts = !folders ? [] : [act(mode === "save-files" ? "verb:file-chooser:here"
             : "verb:file-chooser:folder", path, [path])];
-        return Object.assign(Files.folder(path, thing, acts, () => rowsOf(readIn(path))), {
+        const row = Object.assign(Files.folder(path, thing, acts, () => rowsOf(readIn(path))), {
             empty: "Nothing here.",
             typed: letters => typedIn(path, letters)
         });
+        Object.defineProperty(row, "title", {
+            get: () => Files.shown(provider.deepest() || path),
+            enumerable: true
+        });
+        return row;
+    }
+
+    // The folder held deepest in the launcher, or none.
+    function deepest() {
+        const keys = heldKeys().filter(key => key.startsWith("folder:"));
+        return keys.length > 0 ? keys[keys.length - 1].slice("folder:".length) : "";
     }
 
     // A file's row: opened by Return, or, saving, stepped into to Replace It.
