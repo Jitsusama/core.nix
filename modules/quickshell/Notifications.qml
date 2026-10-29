@@ -1091,9 +1091,11 @@ Scope {
                                 height: root.line
                                 visible: card.keys
                                 size: Theme.mono.body
-                                keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", "back"]]
+                                // The arrows by their marks alone, as the
+                                // launcher's foot says them (KeyHints.qml).
+                                keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", ""]]
                                     : [["\u21b5", Words.verb(card.opens ? "verb:notice:open"
-                                        : "verb:notice:forget")], ["\u2192", "more"]]
+                                        : "verb:notice:forget")], ["\u2192", ""]]
                             }
                         }
                     }
