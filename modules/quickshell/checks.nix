@@ -2275,6 +2275,22 @@ onLinux {
       touch $out
     '';
 
+  # A piece standing for several things is a fact for each, known by its
+  # own mark, as tests/facts.qml holds Facts.js to.
+  a-piece-may-stand-for-several =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-piece-may-stand-for-several" { } ''
+      cp ${../../tests/facts.qml} facts.qml
+      cp ${./Facts.js} Facts.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml facts.qml
+      touch $out
+    '';
+
   # A battery that reports only its charge, as a Bluetooth device's does,
   # is low and then critical once each, as tests/crossing.qml holds.
   a-low-charge-is-said-once =

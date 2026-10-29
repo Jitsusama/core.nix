@@ -90,4 +90,42 @@ Item {
     // rows, which Return lists in place of doing its first act, so each
     // shows as it does everywhere else. Null for a piece that's only acts.
     property var rows: null
+    // The things it stands for, each a fact of its own (Facts.js), where
+    // it stands for several, as the Bluetooth devices' batteries do: each
+    // a plain object read as a piece is, with a `key` of its own, made by
+    // `thing`. Null for a piece that's one fact, as most are.
+    property var each: null
+
+    // A thing of `each`, as a piece of its own would read, from what it
+    // says that a piece doesn't by default.
+    function thing(own) {
+        const wants = own.wants ?? false;
+        const kind = own.kind ?? (wants ? "wants" : "leftOn");
+        return Object.assign({
+            settings: settings,
+            present: true,
+            active: false,
+            value: "",
+            role: "text",
+            sign: "",
+            glance: "",
+            least: "",
+            hint: "",
+            title: "",
+            context: "",
+            wants: wants,
+            kind: kind,
+            group: kind,
+            now: false,
+            app: "",
+            arrives: false,
+            withdraws: false,
+            telling: "",
+            collected: false,
+            markGlyph: "",
+            hue: "machine",
+            actions: [],
+            rows: null
+        }, own);
+    }
 }

@@ -52,6 +52,11 @@
     a realm's link key is served on its own socket by an agent holding only it, kept outside the
     folder the account's own agent loads, made with no PIN, and an account naming no realm has none
   '';
+  a-piece-may-stand-for-several = ''
+    a piece standing for several things, as the Bluetooth devices' batteries do, is a fact for
+    each in the overview's order, each known by its piece's mark and its own key, and none while it
+    stands for none
+  '';
   a-refused-profile-is-said-once = ''
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
     battery without repeating it, and said once it takes

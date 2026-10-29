@@ -8,17 +8,19 @@ import QtQuick
 // Quickshell finds a folder's types only once a file it loads imports it,
 // and the pieces are loaded later, by name.
 import qs.pieces
+import "Facts.js" as Listed
 
 Singleton {
     id: root
 
-    // { entry, piece } in the overview's order, piece null until it loads.
+    // { entry, piece } in the overview's order, piece null until it loads,
+    // and one for each thing a piece stands for (Facts.js).
     readonly property var all: {
         loaded.count;
-        return Overview.pieces.map((entry, index) => {
+        return Listed.facts(Overview.pieces, Overview.pieces.map((entry, index) => {
             const loader = loaded.objectAt(index);
-            return { entry: entry, piece: loader ? loader.item : null };
-        });
+            return loader ? loader.item : null;
+        }));
     }
 
     Instantiator {
