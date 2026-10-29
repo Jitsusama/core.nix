@@ -1542,6 +1542,10 @@
     zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
     and the question mark key asks the launcher for the keys
   '';
+  zoxide-lists-without-writing = ''
+    the account's zoxide lists its folders, the most visited first, without writing its database,
+    and a visit still writes it
+  '';
   zsh-is-the-login-shell = ''
     an account on NixOS logs in to zsh, as one on a Mac does
   '';
