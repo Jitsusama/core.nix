@@ -868,6 +868,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert re.search("^after \\d+ ms, \\d+ Hz$", desktop.as_account("wl-paste --no-newline"))
     desktop.answer("350 f in c")
+    answer_is_whole(desktop, "176.667 \u00b0C")
     desktop.photograph("launcher-units")
     machine.send_key("esc")
     # The zones come from the list built from tzdata, so this proves it's
@@ -936,6 +937,19 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     log = desktop.shell_said("ERROR", "Error:")
     assert "ERROR" not in log, "an answer raised an error"
     assert "Error:" not in log, "an answer raised an error"
+
+
+def answer_is_whole(desktop: Desktop, answer: str) -> None:
+    """Wait for the answer to come, and check it's drawn whole in the row it held.
+
+    The row says "Ask" until the answer comes, and is kept as it does, so what it then says
+    must not be cut to the room "Ask" took, as the gallery's launcher-units once showed it.
+    """
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == [answer])
+    assert desktop.held_still(), "the launcher never came to rest"
+    words = json.loads(desktop.as_account("qs ipc call launcher laidOut"))["rows"][0]["words"]
+    name = next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == answer)
+    assert not name["cut"], words
 
 
 def guard_says(desktop: Desktop, holders: list[Json]) -> None:
