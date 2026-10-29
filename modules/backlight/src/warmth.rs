@@ -12,6 +12,10 @@
 //! and one smaller than 150 K isn't started, so the screen doesn't wander
 //! with every flicker of the light. This file only decides; main.rs sets
 //! what it decides.
+//!
+//! Joel can say the screen shouldn't follow the room. Then it glides back
+//! to its own white, however near it already is, and holds there until he
+//! says it should follow again.
 
 use std::time::{Duration, Instant};
 
@@ -55,6 +59,8 @@ pub struct Warmth {
     room: Option<f64>,
     lux: Option<f64>,
     shut: bool,
+    /// Whether the screen follows the room, as Joel last said.
+    follows: bool,
 }
 
 impl Warmth {
@@ -67,7 +73,26 @@ impl Warmth {
             room: None,
             lux: None,
             shut: false,
+            follows: true,
         }
+    }
+
+    /// Joel said whether the screen should follow the room.
+    pub fn follow_the_room(&mut self, follows: bool, now: Instant) {
+        if self.follows != follows {
+            self.follows = follows;
+            self.follow(now);
+        }
+    }
+
+    /// Whether the screen follows the room.
+    pub fn follows(&self) -> bool {
+        self.follows
+    }
+
+    /// The warmth the screen is at, or going to.
+    pub fn stands(&self) -> u16 {
+        self.aim.unwrap_or(self.shown)
     }
 
     /// The room's light changed warmth.
@@ -111,18 +136,32 @@ impl Warmth {
         self.aim
     }
 
-    fn follow(&mut self, now: Instant) {
+    /// Where the screen should be, if it should move: the room's warmth
+    /// while it follows the room, else its own white.
+    fn wanted(&self) -> Option<u16> {
+        if self.shut {
+            return None;
+        }
+        if !self.follows {
+            return Some(WHITE);
+        }
         let (Some(room), Some(lux)) = (self.room, self.lux) else {
+            return None;
+        };
+        (lux >= DIM).then(|| for_room(room))
+    }
+
+    fn follow(&mut self, now: Instant) {
+        let Some(to) = self.wanted() else {
             return;
         };
-        if self.shut || lux < DIM {
-            return;
-        }
-        let to = for_room(room);
+        // A small move isn't worth starting for the room, but going back to
+        // white, when Joel asked for it, is always finished.
+        let slight = self.follows && to.abs_diff(self.shown) < WORTH;
         match self.aim {
             Some(aim) if aim == to => {}
             Some(_) => self.aim = Some(to),
-            None if to.abs_diff(self.shown) < WORTH => {}
+            None if to == self.shown || slight => {}
             None => {
                 self.aim = Some(to);
                 self.next = Some(now);
@@ -256,5 +295,51 @@ mod tests {
         assert_eq!(warmth.wake(), None, "already there");
         warmth.reset(now);
         assert_eq!(glide(&mut warmth, now).last(), Some(&5000));
+    }
+
+    #[test]
+    fn told_not_to_follow_it_glides_back_to_white_and_holds() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        glide(&mut warmth, now);
+        warmth.follow_the_room(false, now);
+        assert_eq!(warmth.stands(), WHITE);
+        assert_eq!(glide(&mut warmth, now).last(), Some(&WHITE));
+        warmth.room(3000.0, now);
+        assert_eq!(warmth.wake(), None, "the room is no longer followed");
+    }
+
+    #[test]
+    fn going_back_to_white_finishes_however_near_it_is() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(6400);
+        warmth.follow_the_room(false, now);
+        assert_eq!(glide(&mut warmth, now), vec![6450, 6500]);
+    }
+
+    #[test]
+    fn a_lid_shut_on_the_way_back_finishes_it_once_open() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(5000);
+        warmth.follow_the_room(false, now);
+        warmth.lid(true, now);
+        assert_eq!(warmth.wake(), None);
+        warmth.lid(false, now);
+        assert_eq!(glide(&mut warmth, now).last(), Some(&WHITE));
+    }
+
+    #[test]
+    fn told_to_follow_again_it_goes_back_to_the_room() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.follow_the_room(false, now);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        assert_eq!(warmth.wake(), None);
+        warmth.follow_the_room(true, now);
+        assert!(warmth.follows());
+        assert_eq!(warmth.stands(), 5000);
     }
 }

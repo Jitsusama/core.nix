@@ -19,6 +19,10 @@
 # follows the room part of the way (src/warmth.rs), through
 # wl-gammarelay-rs, which holds niri's gamma for each screen and takes its
 # warmth over the session's bus. It's the daemon's own, so it comes with it.
+# Whether it follows the room is Joel's to say, through the daemon's own
+# name on the session's bus (src/switch.rs), which the shell's Warmth part
+# sets, and how it stands is kept in $XDG_RUNTIME_DIR/backlight-warmth for
+# that part's note.
 {
   config,
   lib,
@@ -113,9 +117,12 @@ in
       ExecStart = "${lib.getExe package} ${standard}";
       Restart = "on-failure";
       RestartSec = 1;
-      # A monitor's facts go with the monitor, and with the daemon however
+      # A monitor's facts, and the warmth's note, go with the daemon however
       # it ends, a stop or a crash, so none is shown that nobody keeps.
-      ExecStopPost = "${pkgs.runtimeShell} -c '${pkgs.coreutils}/bin/rm -f %t/desk/ddc-*'";
+      ExecStopPost = [
+        "${pkgs.runtimeShell} -c '${pkgs.coreutils}/bin/rm -f %t/desk/ddc-*'"
+        "${pkgs.coreutils}/bin/rm -f %t/backlight-warmth"
+      ];
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };
