@@ -1348,6 +1348,7 @@ onLinux {
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
       cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./Words.qml} Words.qml
+      cp ${./Files.qml} Files.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/program-controls.qml} shell.qml
       cp ${niri} Niri.qml

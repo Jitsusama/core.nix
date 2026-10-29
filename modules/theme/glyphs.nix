@@ -995,7 +995,12 @@ in
   path = {
     glyph = nerd "f0224";
     console = "/";
-    means = "where a file or a folder is";
+    means = "a file, or where one is";
+  };
+  folder = {
+    glyph = nerd "f0256";
+    console = "/";
+    means = "a folder";
   };
   recent = {
     glyph = nerd "f02da";

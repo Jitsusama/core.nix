@@ -88,6 +88,7 @@ let
     "Picks.qml"
     "Trials.qml"
     "Words.qml"
+    "Files.qml"
     "Pasting.qml"
     "Notices.qml"
     "Forward.js"
