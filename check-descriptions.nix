@@ -1434,8 +1434,9 @@
   '';
   vm-guide-recovers = ''
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
-    without changing it, mounts it whole, sets which generation boots next, replaces a lost key,
-    reinstalls a boot loader gone from the ESP, and gives a root shell inside
+    without changing it, mounts it whole, copies its home folders onto a USB drive without their
+    caches, sets which generation boots next, replaces a lost key, reinstalls a boot loader gone
+    from the ESP, and gives a root shell inside
   '';
   vm-guide-signs-a-stick-for-two-machines = ''
     a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under

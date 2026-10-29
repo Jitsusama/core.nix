@@ -108,12 +108,15 @@ def keys(values: dict[str, Any]) -> Generator[str]:
     with (
         tempfile.NamedTemporaryFile(suffix=".qcow2") as disk,
         tempfile.NamedTemporaryFile(suffix=".qcow2") as stick,
+        tempfile.NamedTemporaryFile(suffix=".qcow2") as drive,
         tempfile.TemporaryDirectory() as folder,
     ):
         overlay(values["qemuImg"], values["image"], "qcow2", disk.name)
         os.environ["NIX_DISK_IMAGE"] = disk.name
         overlay(values["qemuImg"], values["stick"], "raw", stick.name)
         os.environ["STICK_IMAGE"] = stick.name
+        overlay(values["qemuImg"], values["drive"], "raw", drive.name)
+        os.environ["DRIVE_IMAGE"] = drive.name
         for name in ["kept", "lost", "new"]:
             shutil.copy(f"{values['keys']}/{name}", f"{folder}/{name}")
             Path(f"{folder}/{name}").chmod(0o600)
@@ -166,23 +169,41 @@ def opened(recovering: QemuMachine, values: dict[str, Any]) -> QemuMachine:
 
 
 @pytest.fixture(scope="module")
-def generation_chosen(opened: QemuMachine) -> QemuMachine:
-    """Choose generation 1 to boot next, and come back to the menu."""
+def copied(opened: QemuMachine) -> QemuMachine:
+    """Copy alice's home folder onto the USB drive, its cache too, and come back to the menu."""
+    opened.succeed(
+        "mkdir -p /mnt/home/alice/notes /mnt/home/alice/.cache"
+        " && echo kept > /mnt/home/alice/notes/today.txt"
+        " && echo made-again > /mnt/home/alice/.cache/thumbnail"
+    )
     opened.send_key("down")
     enter(opened, "")
-    on_screen(opened, "Which should it boot next")
-    assert "Generation 1" in screen(opened), screen(opened)
+    on_screen(opened, "Which drive should they be copied onto")
     enter(opened, "")
+    opened.wait_until_succeeds("test -e /run/guide/copied", timeout=WRITING)
     on_screen(opened, "What should be done")
     return opened
+
+
+@pytest.fixture(scope="module")
+def generation_chosen(copied: QemuMachine) -> QemuMachine:
+    """Choose generation 1 to boot next, and come back to the menu."""
+    for _ in range(2):
+        copied.send_key("down")
+    enter(copied, "")
+    on_screen(copied, "Which should it boot next")
+    assert "Generation 1" in screen(copied), screen(copied)
+    enter(copied, "")
+    on_screen(copied, "What should be done")
+    return copied
 
 
 @pytest.fixture(scope="module")
 def replaced(generation_chosen: QemuMachine, keys: str, values: dict[str, Any]) -> QemuMachine:
     """Replace the lost key with the new one, opened by the kept key and the recovery key."""
     machine, pin = generation_chosen, values["pin"]
-    machine.send_key("down")
-    machine.send_key("down")
+    for _ in range(3):
+        machine.send_key("down")
     enter(machine, "")
     on_screen(machine, "the YubiKey you still have")
     enter(machine, "")
@@ -202,7 +223,7 @@ def replaced(generation_chosen: QemuMachine, keys: str, values: dict[str, Any]) 
 def boot_loader_back(replaced: QemuMachine) -> QemuMachine:
     """Take the boot loader off the ESP, and have the guide install it again."""
     replaced.succeed("rm -r /mnt/boot/EFI/systemd /mnt/boot/loader/entries")
-    for _ in range(3):
+    for _ in range(4):
         replaced.send_key("down")
     # What the menu looks like on a console, its keys drawn by its font.
     replaced.screenshot("menu")
@@ -235,6 +256,19 @@ def test_everything_the_machine_mounts_is_under_mnt(opened: QemuMachine) -> None
     # What bootctl lists from outside the machine, for the guide's fixtures (qemu-canokey).
     listed = opened.succeed("bootctl --esp-path=/mnt/boot list --json=short")
     print("FIXTURE bootctl-list-from-the-stick.json " + listed.replace("\n", "\\n"))
+
+
+def test_home_folders_are_copied_onto_a_drive(copied: QemuMachine) -> None:
+    """The home folders are on the drive, named for the machine, its caches left behind."""
+    assert "can come out" in copied.succeed("cat /run/guide/copied")
+    # Unmounted by the guide, so it can come out whole.
+    copied.fail("findmnt /run/guide/copy")
+    drive = copied.succeed("lsblk -nrpo PATH,FSTYPE | awk '$2 == \"exfat\" {print $1}'").strip()
+    copied.succeed(f"mkdir -p /run/drive && mount -o ro {drive} /run/drive")
+    folder = "/run/drive/machine home folders/alice"
+    assert copied.succeed(f"cat '{folder}/notes/today.txt'").strip() == "kept"
+    copied.fail(f"test -e '{folder}/.cache'")
+    copied.succeed("umount /run/drive")
 
 
 def test_generation_chosen_boots_next(generation_chosen: QemuMachine) -> None:

@@ -759,10 +759,16 @@ fn recover() -> Result<(), Fault> {
                 guide::recover::REPAIRS,
             )? {
                 Some(0) => break true,
-                Some(at @ 1..=3) => {
+                Some(at @ 1..=4) => {
                     let steps: Vec<Box<dyn guide::Step>> = match at {
-                        1 => vec![Box::new(guide::recover::BootGeneration)],
-                        2 => vec![
+                        1 => {
+                            // Chosen again, it copies again, onto the
+                            // same drive or another.
+                            machine.remove(guide::recover::copy::COPIED)?;
+                            vec![Box::new(guide::recover::copy::CopyHome)]
+                        }
+                        2 => vec![Box::new(guide::recover::BootGeneration)],
+                        3 => vec![
                             Box::new(guide::recover::IdentifyKeptKey),
                             Box::new(guide::recover::ReplaceLostKey),
                         ],
