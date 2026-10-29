@@ -1876,15 +1876,16 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
         )
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Core 0", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # What kept it from resting comes and goes, so it's the last row, saying
-    # the part that kept it most, and each part that did a step in.
+    # What kept it from resting comes and goes, so it's the last part, before
+    # the step's Copy, saying the part that kept it most, and each part that
+    # did a step in.
     desktop.answer("processor")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][-1:] == ["Kept From Resting"])
+    desktop.launcher_until(lambda shown: shown["rows"][-2:] == ["Kept From Resting", "Copy"])
     desktop.type_in("kept", "Kept From Resting")
     desktop.launcher_until(
         lambda shown: (
@@ -1894,7 +1895,7 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     )
     desktop.photograph("launcher-kept-from-resting")
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # With the launcher shut nothing watches, so the reader is let go: the
