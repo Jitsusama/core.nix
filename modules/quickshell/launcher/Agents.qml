@@ -61,7 +61,7 @@ Provider {
             // one row left of them (Launcher.qml's compose).
             is: Sessions.isOf(session),
             rich: 2,
-            verb: "switch",
+            verb: "go",
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since
             // a member keeps its words as given.
@@ -94,7 +94,7 @@ Provider {
     property string told: ""
 
     // A session's own acts, in the one order every session keeps
-    // (SessionRow.js), each steering it through its inbox but Switch; an
+    // (SessionRow.js), each steering it through its inbox but Go To; an
     // orchestrator's row offers the same ones (Orchestrators.qml).
     function sessionActs(session) {
         const act = (id, fields) => thing(Object.assign({
@@ -209,7 +209,7 @@ Provider {
 
     readonly property var start: {
         const quests = () => (source("quests")?.everything() ?? [])
-            .filter(row => row.unfinished && row.verb !== "switch");
+            .filter(row => row.unfinished && row.verb !== "go");
         const orchestrators = () => source("orchestrators")?.startable ?? [];
         const choice = (id, note, rows) => thingRow({
             key: `agents:start:${id}`,

@@ -33,7 +33,11 @@ Piece {
     // and as many as fit on its notice (Arrivals.qml).
     readonly property var every: wanting.map(session => ({
         glyph: Theme.glyph.windows,
-        name: `Go to ${session.title}`,
+        // Go To, where it goes at its side, as going to anything open is
+        // said everywhere, so the word never changes shape.
+        name: Words.name("verb:agent:switch"),
+        verb: Words.verb("verb:agent:switch"),
+        side: session.title,
         run: () => Sessions.goTo(session)
     }))
     actions: every.slice(0, 3)

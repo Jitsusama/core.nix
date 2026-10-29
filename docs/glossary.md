@@ -200,7 +200,7 @@ or a copy, can be opened, copied or forgotten.
 | field | where Joel types, at the top of every place | | |
 | back | going up one place, to the row he was on | | the ← key |
 | action | what a row can do: the same set for every row of its kind | verb | |
-| go to | the action moving to something already open, such as a window or a session | | |
+| go to | the action moving to something already open, such as a window or a session, a row named Go To with where at its side | | |
 | open | the action starting something, such as a program or a file | | |
 | turn on | the action starting a setting, a radio or a light | | |
 | turn off | the action stopping a setting, a radio or a light | | |

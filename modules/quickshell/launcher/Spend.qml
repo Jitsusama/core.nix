@@ -231,7 +231,9 @@ Provider {
             headline: `${shown.title}: ${shown.headline}`,
             copy: shown.markdown,
             rows: shown.rows.map(build),
-            note: "Return copies the report"
+            // Not "the report", which in Agents is a quest's document
+            // (docs/glossary.md).
+            note: "Return copies it whole"
         };
     }
 }

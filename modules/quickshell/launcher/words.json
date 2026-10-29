@@ -2822,7 +2822,7 @@
       "id": "on:waiting",
       "in": "on",
       "name": "Waiting on You",
-      "verb": "switch",
+      "verb": "go",
       "glyph": "waitsOnJoel",
       "empty": "Nothing waits on you.",
       "said": {
@@ -2835,8 +2835,8 @@
     {
       "id": "verb:on:waiting:go",
       "in": "on",
-      "name": "Go to {where}",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -3014,8 +3014,8 @@
     {
       "id": "verb:notice:goTo",
       "in": "notices",
-      "name": "Go to {program}",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4323,8 +4323,8 @@
     {
       "id": "verb:switch",
       "in": "windows",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4390,8 +4390,8 @@
     {
       "id": "verb:program:switch",
       "in": "applications",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4589,8 +4589,8 @@
     {
       "id": "verb:agent:switch",
       "in": "agents",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4679,8 +4679,8 @@
     {
       "id": "verb:quest:switch",
       "in": "quests",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To Its Session",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4693,8 +4693,8 @@
     {
       "id": "verb:run:switch",
       "in": "runs",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {

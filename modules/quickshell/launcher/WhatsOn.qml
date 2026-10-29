@@ -316,8 +316,10 @@ Provider {
     function item(each) {
         const now = each.ready && !each.putOff;
         const where = whereOf(each);
+        // Go To, where it goes at its side, as going to anything open is
+        // said everywhere, so the word never changes shape.
         const does = where === "" ? null : act(each, "go", {
-            name: Words.name("verb:on:waiting:go").replace("{where}", where),
+            side: where,
             later: true,
             run: () => WaitingOnYou.go(each)
         });
@@ -401,8 +403,12 @@ Provider {
         // Every act a piece has, where it keeps more than its notice can
         // offer (pieces/Pi.qml's every).
         const actions = (piece.every ?? piece.actions).map(action => thing({
-            key: `verb:on:${fact.entry.mark}:${action.name}`,
+            // Where it goes, too, since acts of one name, Go To, can
+            // differ by where (pieces/Pi.qml).
+            key: [`verb:on:${fact.entry.mark}`, action.name].concat(action.side ? [action.side] : [])
+                .join(":"),
             name: action.name,
+            side: action.side ?? "",
             glyph: action.glyph,
             hue: "action",
             chord: action.chord ?? [],

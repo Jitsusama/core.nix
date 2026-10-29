@@ -92,13 +92,13 @@ ShellRoot {
             Sessions.running = [{ address: "LEADER", window: { id: 9 }, presence: { owner: { pid: 4242 } } }];
             const led = runs.everything()[0];
             expect("its session named",
-                /^fleet · 1 of 2 done · 1[01] min · LEADER$/.test(led.side) && led.verb === "switch", led.side);
+                /^fleet · 1 of 2 done · 1[01] min · LEADER$/.test(led.side) && led.verb === "go", led.side);
             led.run();
             expect("going to its session", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":9}}',
                 JSON.stringify(Niri.acted));
 
             const members = led.verbs();
-            expect("stepping in", names(members) === "Switch, a, b", names(members));
+            expect("stepping in", names(members) === "Go To, a, b", names(members));
             expect("one at work says what it does", members[1].side === "reading checks.nix · opus",
                 members[1].side);
             expect("one done says its model, cost and time", members[2].side === "opus · $1.25 · 10 min",
