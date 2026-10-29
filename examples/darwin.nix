@@ -7,11 +7,16 @@ nix-darwin.lib.darwinSystem {
   modules = [
     core.darwinModules.workstation
     core.darwinModules.graphical
+    core.darwinModules.linux-builder
     (
       { lib, pkgs, ... }:
       {
         networking.hostName = "example";
         nixpkgs.hostPlatform = "aarch64-darwin";
+
+        # Nix kept by its own installer rather than nix-darwin, as the Linux
+        # builder is written for.
+        nix.enable = false;
 
         system.primaryUser = "joel";
         users.users.joel.home = "/Users/joel";

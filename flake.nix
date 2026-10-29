@@ -219,6 +219,7 @@
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
+        linux-builder = ./modules/linux-builder/darwin.nix;
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         sudo = ./modules/sudo/darwin.nix;
