@@ -27,6 +27,10 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-refused-profile-is-said-once = ''
+    a power profile the daemon refuses is said once as a warning, tried again at each change of the
+    battery without repeating it, and said once it takes
+  '';
   a-sender-keeps-to-its-level = ''
     a notice reaches no further than its sender is kept to, however critical, and each level shows,
     counts and stays as it says
