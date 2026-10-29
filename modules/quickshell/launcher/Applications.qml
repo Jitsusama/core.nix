@@ -495,6 +495,7 @@ Provider {
     // What each program had open lately, from the files they write.
     readonly property Recents recents: Recents {
         sources: provider.settings.recents ?? []
+        showing: provider.launcher?.open ?? false
     }
 
     // A list read after a program was stepped into, or changing while it's

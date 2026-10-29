@@ -17,7 +17,8 @@
 // its folder, opened by its start command while none of its windows is
 // open and through the process behind its last window while one is, and
 // read again as its file changes, nine at most, a program held then drawn
-// again. A program's files on the
+// again; a change while the launcher is closed is read only as it opens.
+// A program's files on the
 // list programs share are its Recent too, found by its desktop entry's id
 // or name, and opened by its own command when it takes files, else as the
 // desktop opens them. A program whose sites are read only as it's stepped
@@ -156,7 +157,11 @@ ShellRoot {
         target: applications.recents
 
         function onLatelyChanged() {
-            if (root.waiting === "the recents to change")
+            if (root.waiting === "a change while closed")
+                root.fail("quiet's list was read while the launcher was closed");
+            else if (root.waiting === "read as it opens")
+                root.readOnOpening();
+            else if (root.waiting === "the recents to change")
                 root.changed();
             else if (root.waiting === "the sites")
                 root.browsed(1);
@@ -567,9 +572,36 @@ ShellRoot {
             // and doesn't throw.
             same("a program whose entry is gone offers nothing",
                 applications.controls({}, () => {}, () => {}).length, 0);
-            root.waiting = "the recents to change";
-            // Held inside a program, as Joel would be, while its list changes.
+            // Written while the launcher is closed, quiet's list isn't read
+            // until it opens, however long that is.
+            root.waiting = "a change while closed";
+            launcher.open = false;
+            writer.setText(Array.from({ length: 10 }, (_, n) => `${root.home}/folder ${n + 1}`)
+                .join("\n") + "\n");
+            whileClosed.start();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Long enough for a list read at the change to have come.
+    Timer {
+        id: whileClosed
+
+        interval: 1000
+        onTriggered: {
+            root.waiting = "read as it opens";
             launcher.open = true;
+        }
+    }
+
+    // The change made while it was closed, read as it opened; then, held
+    // inside a program, as Joel would be, its list changes again.
+    function readOnOpening() {
+        try {
+            same("a change while it was closed is read as the launcher opens",
+                applications.recents.of("quiet")[0], `${root.home}/folder 1`);
+            root.waiting = "the recents to change";
             launcher.held = [{ row: program("quiet"), rows: program("quiet").verbs() }];
             root.redrawn = 0;
             writer.setText(Array.from({ length: 11 }, (_, n) => `${root.home}/folder ${n + 1}`)

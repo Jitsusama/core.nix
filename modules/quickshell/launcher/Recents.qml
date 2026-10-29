@@ -1,6 +1,10 @@
 // What each program had open lately, for its Recent inside the launcher
 // (Applications.qml): the paths it keeps, in the order it keeps them, read
-// again each time the file it keeps them in changes, and never on a timer.
+// once at start and again each time the file it keeps them in changes,
+// and never on a timer. A change while the launcher is closed (`showing`)
+// is only noted, and read as it next opens, so no list's command runs
+// while nothing shows it, however often a program writes (the shell's
+// design, RSCH-20261029-0E8050).
 // Its `sources`, each { app, watch, list }: `app` the program's desktop
 // entry, `watch` the file the program writes as it goes, and `list` the
 // command that prints its paths, one a line. A source with no `app` is a
@@ -29,6 +33,8 @@ Scope {
     id: recents
 
     property var sources: []
+    // Whether the launcher is open, which a change is read while.
+    property bool showing: false
 
     // Each program's paths by its desktop entry's id: from its own source,
     // and from the list programs share, matched again as the desktop
@@ -125,6 +131,24 @@ Scope {
             // A change while the list is being read is read again once it's
             // done, so the last change always counts.
             property bool again: false
+            // A change while the launcher was closed, read as it opens.
+            property bool stale: false
+
+            readonly property bool showing: recents.showing
+
+            onShowingChanged: {
+                if (source.showing && source.stale) {
+                    source.stale = false;
+                    source.read();
+                }
+            }
+
+            function changedNow() {
+                if (source.showing)
+                    source.read();
+                else
+                    source.stale = true;
+            }
 
             function read() {
                 if (listing.running)
@@ -157,7 +181,7 @@ Scope {
                 path: source.modelData.asked ? "" : source.modelData.watch ?? ""
                 watchChanges: true
                 printErrors: false
-                onFileChanged: source.read()
+                onFileChanged: source.changedNow()
             }
 
             Process {
