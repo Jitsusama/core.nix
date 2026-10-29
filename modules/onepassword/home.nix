@@ -1,8 +1,11 @@
 # 1Password's keys, for the launcher to list over its window, whose app id
 # is com.onepassword.OnePassword. 1Password takes no settings for its keys,
-# so these are its own, from its help's list for Linux. The system's half,
+# so these are its own, from its help's list for Linux. Its desktop entry is
+# its package's, with two things it can be asked from outside its window,
+# which the launcher lists among its own actions: Quick Access, and Lock
+# 1Password, named as its key list names Ctrl+Shift+L. The system's half,
 # the app itself, is nixos.nix beside this.
-_:
+{ lib, pkgs, ... }:
 let
   grouped = group: map (key: key // { inherit group; });
 
@@ -94,4 +97,33 @@ in
   imports = [ ../keys/home.nix ];
 
   jitsusama.keys.onepassword = keys;
+
+  # The package's entry as it has it, which this one shadows, the account's
+  # folder coming first. Its actions are written in their names' order, so
+  # Quick Access, which leaves 1Password as it is, comes before Lock
+  # 1Password, which changes it.
+  xdg.desktopEntries = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    "com.onepassword.OnePassword" = {
+      name = "1Password";
+      comment = "Password manager and secure wallet";
+      exec = "1password %U";
+      icon = "1password";
+      categories = [ "Office" ];
+      mimeType = [
+        "x-scheme-handler/onepassword"
+        "x-scheme-handler/onepassword8"
+      ];
+      settings.StartupWMClass = "com.onepassword.OnePassword";
+      actions = {
+        access = {
+          name = "Quick Access";
+          exec = "1password --quick-access";
+        };
+        lock = {
+          name = "Lock 1Password";
+          exec = "1password --lock";
+        };
+      };
+    };
+  };
 }

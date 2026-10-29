@@ -600,6 +600,10 @@
   one-ssh-agent = ''
     a workstation with a screen answers SSH with the TPM only
   '';
+  onepassword-offers-its-quick-acts = ''
+    the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
+    installed 1Password takes
+  '';
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
   '';
