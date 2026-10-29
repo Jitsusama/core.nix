@@ -329,12 +329,24 @@ Scope {
             relive(source);
             return;
         }
+        const at = current;
         const scroll = list.contentY;
         compose(false);
         if (list.contentY !== scroll)
             list.contentY = scroll;
-        if (current >= 0)
-            list.positionViewAtIndex(current, ListView.Contain);
+        root.showMoved(at);
+    }
+
+    // After a refresh, the list stays where it was and moves only to show a
+    // selection the refresh itself moved, through reveal, so it glides and
+    // never restarts a glide headed there. Brought to the selection on
+    // every refresh instead, the list snapped mid-glide to where the glide
+    // was going and was pulled back for the rest of it, each second inside
+    // Machine, and a list scrolled by hand went back under the pointer
+    // (Joel, 2026-10-29: "a lot of scrolling focus quirkiness").
+    function showMoved(was) {
+        if (current >= 0 && current !== was)
+            list.reveal(current);
     }
 
     // An answer row asked again, as it says now, keeping where it's held
@@ -2239,8 +2251,7 @@ Scope {
             current = now;
         if (list.contentY !== scroll)
             list.contentY = scroll;
-        if (current >= 0)
-            list.positionViewAtIndex(current, ListView.Contain);
+        root.showMoved(at);
     }
 
     // Whether the search under way only says again what's there, as a
