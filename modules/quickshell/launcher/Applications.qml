@@ -385,7 +385,8 @@ Provider {
     }
 
     // Its Microphone, while it records: whether it's heard, saying so, and
-    // muting or unmuting what it records a step in.
+    // a step in whether what it records is Muted, one switch saying yes or
+    // no as a device's is (Sound.qml's mutedSwitch).
     function microphone(recorders) {
         const hears = () => provider.muted(recorders) ? provider.soundSaid("muted")
             : provider.soundSaid("recording");
@@ -394,6 +395,7 @@ Provider {
             targets: () => [provider.said("verb:program:mute",
                 provider.muted(recorders) ? "muted" : "", {
                     key: "verb:program:mute:microphone",
+                    side: provider.soundSaid(provider.muted(recorders) ? "yes" : "no"),
                     stays: true,
                     run: () => {
                         const hushed = provider.muted(recorders);
@@ -406,9 +408,9 @@ Provider {
         return row;
     }
 
-    // Sound: muting or unmuting, by how it stands, Louder and Quieter, which
-    // keep the launcher to be pressed again, and its volume, while it plays;
-    // then its Microphone, while it records.
+    // Sound: whether it's Muted, one switch saying yes or no, Louder and
+    // Quieter, which keep the launcher to be pressed again, and its volume,
+    // while it plays; then its Microphone, while it records.
     function sound(streams, recorders) {
         const row = said("program:sound", "", {
             hue: "program",
@@ -420,6 +422,7 @@ Provider {
                 });
                 const rows = streams.length === 0 ? [] : [provider.said("verb:program:mute",
                     provider.muted(streams) ? "muted" : "", {
+                        side: provider.soundSaid(provider.muted(streams) ? "yes" : "no"),
                         stays: true,
                         run: () => {
                             const hushed = provider.muted(streams);
