@@ -303,6 +303,9 @@
   every-folder-says-what-it-holds = ''
     every folder says what goes in it, but those still waiting for their note
   '';
+  every-machine-asks-names-in-each-family = ''
+    every NixOS machine's name service is nsncd asking for each address family on its own
+  '';
   every-program-wears-its-own-mark = ''
     every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
   '';
@@ -1553,6 +1556,10 @@
   vm-mv7-voice-is-levelled = ''
     an MV7's voice comes up 12 dB, its room and s sounds less, its peaks under -1 dBFS; another
     mic's are untouched
+  '';
+  vm-names-give-ipv4-when-ipv6-answers-first = ''
+    a .local name whose answer over IPv6 comes first, which resolved then gives alone, still gives
+    its IPv4 address, and both families, through the name service
   '';
   vm-network-revives-units = ''
     what the network let down starts, and reloads on change
