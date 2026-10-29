@@ -4008,7 +4008,6 @@
       "id": "verb:mail:read",
       "in": "mail:message",
       "name": "Read",
-      "once": ["Mark As Read"],
       "verb": "read",
       "glyph": "readMail",
       "states": {
