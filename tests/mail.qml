@@ -124,6 +124,25 @@ QtObject {
             Mail.replying(Object.assign({}, lunch, { subject: "RE: Lunch" })),
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com&su=RE%3A%20Lunch");
         check("no reply with no address", Mail.replying({ address: "", subject: "Lunch" }), "");
+        check("a new mail to someone", Mail.writing("ada@example.com"),
+            "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com");
+        check("no new mail to nobody", Mail.writing(""), "");
+
+        // Everyone the meetings and mail name, for People, by address.
+        const standupWith = {
+            organizer: { name: "Ada Lovelace", email: "Ada@Example.com" },
+            guests: [{ name: "Grace Hopper", email: "grace@example.com", answer: "no" },
+                { name: "Room 4", email: null, answer: "yes" }]
+        };
+        check("who the meetings and mail name", Google.people([standupWith],
+            [lunch, { address: "alan@example.com", from: "Alan" }]), [
+            { emails: ["ada@example.com"], name: "Ada Lovelace", recent: true },
+            { emails: ["grace@example.com"], name: "Grace Hopper", recent: true },
+            { emails: ["alan@example.com"], name: "Alan", recent: true }
+        ]);
+        check("a meeting with them", Google.withThem(standupWith, ["grace@example.com"]), true);
+        check("mail from them", Google.withThem(lunch, ["ada@example.com"]), true);
+        check("nothing with a stranger", Google.withThem(standupWith, ["x@example.com"]), false);
 
         // Which windows are Mail's, as Chrome names them.
         const listed = [

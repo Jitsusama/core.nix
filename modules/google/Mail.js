@@ -90,6 +90,17 @@ function replying(mail) {
         .join("&")}`;
 }
 
+// Gmail's link to write someone a new mail, in a window of its own, or
+// nothing for no address.
+function writing(address) {
+    if ((address ?? "") === "") {
+        return "";
+    }
+    const asked = [["view", "cm"], ["fs", "1"], ["to", address]];
+    return `${COMPOSE}?${asked.map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
+        .join("&")}`;
+}
+
 // The line that asks the program to mark mail read or unread again, or to
 // archive it.
 function tidy(mail, how) {
