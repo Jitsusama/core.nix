@@ -867,6 +867,60 @@ def test_the_launcher_sets_the_volume_to_a_number_and_says_how_loud_it_is(deskto
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
+# How many rows the launcher's card shows at once.
+ROWS_SHOWN = 8
+
+
+def wheel(desktop: Desktop, x: float, y: float, notches: int) -> None:
+    """Turn the wheel there by QEMU's tablet, as desktop.click clicks, down for a positive count."""
+    client = desktop.machine.qmp_client
+    assert client is not None
+    button = "wheel-down" if notches > 0 else "wheel-up"
+
+    def tablet(*events: Json) -> None:
+        client.send("input-send-event", json.loads(json.dumps({"events": events})))
+
+    tablet(
+        {"type": "abs", "data": {"axis": "x", "value": int(x * 32767)}},
+        {"type": "abs", "data": {"axis": "y", "value": int(y * 32767)}},
+    )
+    for _ in range(abs(notches)):
+        tablet({"type": "btn", "data": {"down": True, "button": button}})
+        tablet({"type": "btn", "data": {"down": False, "button": button}})
+
+
+def test_a_refresh_leaves_the_list_where_it_was_scrolled(desktop: Desktop) -> None:
+    """A place that refreshes each second leaves its list where it was scrolled, selection off it.
+
+    Each refresh once brought the list back to the selection, which snapped a glide under way
+    to its end and pulled a list scrolled by hand back under the pointer.
+    """
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Machine holds a row more than the card shows, and says how its parts
+    # stand each second.
+    machine.send_chars("machine ")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["computer"]
+            and len(shown["rows"]) > ROWS_SHOWN
+            and (shown["selected"] or {}).get("name") == shown["rows"][0]
+        )
+    )
+    first = desktop.showing()["rows"][0]
+    wheel(desktop, 0.5, 0.5, 3)
+    desktop.launcher_until(lambda shown: shown["scrolled"] > 0)
+    scrolled = desktop.showing()["scrolled"]
+    # Several refreshes later it's where the wheel left it, the selection
+    # still on the first row, out of sight above.
+    time.sleep(3)
+    shown = desktop.showing()
+    assert shown["scrolled"] == scrolled, shown
+    assert (shown["selected"] or {}).get("name") == first, shown
+    launcher_closed(desktop)
+
+
 def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) -> None:
     """A fact in the foot that reads shorter keeps its room, so nothing after it slides."""
     machine = desktop.machine
