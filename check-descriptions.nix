@@ -1070,7 +1070,9 @@
   '';
   the-launcher-chooses-files-as-asked = ''
     the launcher chooses the files a program opens or saves in the folder it asks for, the files
-    opened lately first, then its folders and files, then its filters, and answers what was picked
+    opened lately first, then its folders and files, then its filters, and answers what was picked;
+    a place kept elsewhere, as Google's Drive, is listed after home's files, and its files are
+    fetched before they're answered
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first

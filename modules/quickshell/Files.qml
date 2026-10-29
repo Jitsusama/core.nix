@@ -5,7 +5,9 @@ pragma Singleton
 // FileChooser.qml) take as it is, made with the launcher's `thing` of the
 // surface showing it. Its name is the last part of its path, its folder
 // beside it, said from home as ~; it's keyed by its kind and its whole
-// path, so one file is one thing wherever it shows.
+// path, so one file is one thing wherever it shows. One kept elsewhere, as
+// in Google's Drive, has no path here, so `elsewhere` keys and names it as
+// its place says, drawn the same.
 //
 // The surface says what's done to it: its own acts come first, the first
 // being what Return does, and Copy the Path always last. One given what it
@@ -52,6 +54,34 @@ Singleton {
     // steps in to its acts and then those.
     function folder(path, thing, acts, inside) {
         return made("folder", path, thing, acts, inside ?? null);
+    }
+
+    // A file or a folder kept elsewhere, with no path here until it's
+    // fetched, as one in Google's Drive: the same row, keyed and named by
+    // `fields` (key, name, side, note, drawer), with no Copy the Path,
+    // since it has none.
+    function elsewhere(kind, fields, thing, acts, inside) {
+        const first = acts[0] ?? null;
+        const row = {
+            key: fields.key,
+            what: kind,
+            component: kind,
+            name: fields.name,
+            glyph: Words.glyph(`path:${kind}`),
+            hue: "program",
+            side: fields.side ?? "",
+            note: fields.note ?? "",
+            verb: first?.verb ?? Words.verb(`path:${kind}`),
+            run: first?.run ?? (() => {}),
+            verbs: () => acts
+        };
+        if (fields.drawer)
+            row.drawer = fields.drawer;
+        if (inside) {
+            const held = () => acts.concat(inside());
+            Object.assign(row, { verb: "more", stays: true, now: false, verbs: held, targets: held });
+        }
+        return thing(row);
     }
 
     function made(kind, path, thing, acts, inside) {

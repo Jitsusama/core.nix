@@ -19,8 +19,15 @@
 // opening nothing; Return marks a file, the launcher staying, and its row
 // wears the mark, says what Return does now and holds Marked, yes; Return
 // again unmarks it; and Open the Marked answers every one marked, in the
-// order they were, wherever each was. It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// order they were, wherever each was. A place kept elsewhere, given by a
+// stand-in for Google's Drive, is listed after home's files, apart, and
+// found by typing from another folder, never while saving; held, it says
+// its folder's name; a file there is drawn as a file, or as the row it is
+// everywhere, and picked once fetched, the launcher staying and saying so
+// until then; marked with others, it's answered in the order marked, and
+// one that can't be fetched keeps the launcher, saying why, until Return
+// again fetches it. It exits 0 once every case holds, and otherwise 1,
+// saying which didn't.
 pragma ComponentBehavior: Bound
 
 import qs
@@ -57,6 +64,7 @@ ShellRoot {
         property bool open: false
         property var held: []
         property string into_: ""
+        readonly property var sources: [chooser, drive]
 
         function into(name) {
             open = true;
@@ -81,9 +89,46 @@ ShellRoot {
         })
     }
 
+    // A stand-in for Google's Drive (modules/google): one place, a folder in
+    // it, a file and a Google document there, each fetch kept for the case
+    // to answer.
+    QtObject {
+        id: drive
+
+        property var fetches: []
+        // What the picker gave it to make rows with, as it was last asked.
+        property var asked: null
+
+        function fetched(key) {
+            return (done, failed) => {
+                drive.fetches = drive.fetches.concat([{ key: key, done: done, failed: failed }]);
+                Qt.callLater(root.step);
+            };
+        }
+
+        function chooserPlaces(chooser) {
+            if (chooser.saving || chooser.folders)
+                return [];
+            drive.asked = chooser;
+            const files = () => [
+                chooser.file({ key: "drive:report", name: "report.pdf", note: "In My Drive.",
+                    drawer: null, adopt: null, fetch: fetched("drive:report") }),
+                chooser.file({ key: "gdoc:plan", name: "Plan", note: "As a .docx copy.", drawer: null,
+                    adopt: { key: "gdoc:plan", what: "document", component: "document", name: "Plan",
+                        glyph: "d", hue: "program", side: "Docs", verb: "open", run: () => {},
+                        verbs: () => [] },
+                    fetch: fetched("gdoc:plan") })
+            ];
+            return [chooser.folder({ key: "drive", name: "Google Drive", note: "",
+                inside: () => [chooser.folder({ key: "drive:folder:mine", name: "My Drive", note: "",
+                    inside: files }), chooser.folder({ key: "drive:folder:shared", name: "Shared with Me",
+                    note: "", inside: () => [], empty: () => "Listing it." })] })];
+        }
+    }
+
     // A socket of open-with's, by its number: each answer it's given.
     Variants {
-        model: [1, 2, 3, 4, 5, 6, 7]
+        model: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
         SocketServer {
             id: socket
@@ -232,6 +277,44 @@ ShellRoot {
                 expect("closing the launcher on an ask from inside the shell answers none",
                     shellPicked.length === 0 && chooser.asks.length === 0,
                     `${JSON.stringify(shellPicked)}, ${chooser.asks.length} waiting`);
+                ask(8, { mode: "open", title: "Open", folder: home });
+            } else if (stage === 17 && chooser.asking?.reply.endsWith("/8.sock") && ready([home])) {
+                stage = 18;
+                elsewhere();
+            } else if (stage === 18 && drive.fetches.length === 1) {
+                stage = 19;
+                expect("a file kept elsewhere keeps the launcher while it's fetched, saying so",
+                    launcher.open && answers.length === 6 && reportRow.note === "Fetching it.",
+                    `${launcher.open}, ${answers.length} answers, ${reportRow.note}`);
+                drive.fetches[0].done(`${runtime}/picked/report.pdf`);
+            } else if (stage === 19 && answers.length === 7) {
+                stage = 20;
+                expect("once it's fetched, its path is answered and the launcher closes",
+                    answers[6] === JSON.stringify({ paths: [`${runtime}/picked/report.pdf`], filter: null,
+                        choices: {} }) && !launcher.open, `${answers[6]}, ${launcher.open}`);
+                ask(9, { mode: "open", title: "Open Several", multiple: true, folder: home });
+            } else if (stage === 20 && chooser.asking?.reply.endsWith("/9.sock") && ready([home])) {
+                stage = 21;
+                severalElsewhere();
+            } else if (stage === 21 && drive.fetches.length === 3) {
+                stage = 22;
+                drive.fetches[1].done(`${runtime}/picked/plan.docx`);
+                drive.fetches[2].failed("Google Drive couldn't be reached.");
+                const lead = rowsIn(home)[0];
+                expect("one that can't be fetched keeps the launcher, saying why",
+                    launcher.open && answers.length === 7 && lead.note === "Google Drive couldn't be reached.",
+                    `${launcher.open}, ${answers.length} answers, ${lead.note}`);
+                lead.run();
+            } else if (stage === 22 && drive.fetches.length === 5) {
+                stage = 23;
+                drive.fetches[3].done(`${runtime}/picked/plan.docx`);
+                drive.fetches[4].done(`${runtime}/picked/report.pdf`);
+            } else if (stage === 23 && answers.length === 8) {
+                stage = 24;
+                expect("marked with others, each is answered once fetched, in the order marked",
+                    answers[7] === JSON.stringify({ paths: [`${runtime}/picked/plan.docx`,
+                        `${runtime}/picked/report.pdf`], filter: null, choices: {} }) && !launcher.open,
+                    `${answers[7]}, ${launcher.open}`);
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -331,6 +414,61 @@ ShellRoot {
         rows[0].run();
     }
 
+    // The file kept elsewhere, as the case picking it last drew it.
+    property var reportRow: null
+
+    // Google Drive's rows, from home.
+    function driveFiles() {
+        const place = named(rowsIn(home), "Google Drive");
+        launcher.enter(place);
+        const mine = named(place.verbs(), "My Drive");
+        launcher.enter(mine);
+        return mine.verbs();
+    }
+
+    function elsewhere() {
+        const rows = rowsIn(home);
+        expect("a place kept elsewhere is listed after home's files, apart",
+            names(rows).endsWith(", | Google Drive"), names(rows));
+        const away = chooser.folderRow(notes).typed("drive");
+        expect("typed in another folder, it's found", names(away) === "Google Drive", names(away));
+        const there = chooser.folderRow(home).typed("drive");
+        expect("typed at home, where it's listed, it isn't found twice", there.length === 0, names(there));
+        const listing = named(named(rows, "Google Drive").verbs(), "Shared with Me");
+        expect("a folder still being listed says so", listing.empty === "Listing it.", listing.empty);
+        let told = false;
+        const heard = () => {
+            told = true;
+        };
+        chooser.changed.connect(heard);
+        drive.asked.changed();
+        chooser.changed.disconnect(heard);
+        expect("a place saying its folder has come tells the launcher", told, "nothing said");
+        const files = driveFiles();
+        expect("a file there is a file, and one of Google's kinds the row it is everywhere",
+            names(files) === "report.pdf, Plan" && files[0].component === "file"
+                && files[0].key === "drive:report" && files[1].component === "document"
+                && files[1].note === "As a .docx copy.",
+            `${names(files)} ${files[0].component} ${files[1].component} ${files[1].note}`);
+        const titles = launcher.held.slice(1).map(step => step.row.title);
+        expect("held, every folder says the one held deepest", titles.every(title => title === "My Drive"),
+            titles.join(", "));
+        reportRow = files[0];
+        expect("Return picks it by the program's word, keeping the launcher",
+            reportRow.verb === "open" && reportRow.stays === true, `${reportRow.verb} ${reportRow.stays}`);
+        reportRow.run();
+    }
+
+    function severalElsewhere() {
+        const files = driveFiles();
+        named(files, "Plan").run();
+        named(files, "report.pdf").run();
+        const lead = rowsIn(home)[0];
+        expect("files kept elsewhere are marked as any is", lead.side === "2" && lead.stays === true,
+            `${lead.side} ${lead.stays}`);
+        lead.run();
+    }
+
     // What the shell's own ask was answered with, none until it is.
     property var shellPicked: null
 
@@ -342,6 +480,8 @@ ShellRoot {
     }
 
     function savingForTheShell() {
+        expect("saving, no place kept elsewhere is offered", chooser.places.length === 0,
+            names(chooser.places));
         const given = rowsIn(notes)[0];
         expect("asked from inside the shell, it leads with the name given, saved by Return",
             given.name === "copy.pdf" && given.verb === "save", `${given.name} ${given.verb}`);

@@ -1527,8 +1527,9 @@ onLinux {
 
   # The launcher chooses the files a program opens or saves, as open-with
   # asks it (tests/file-chooser.qml): in folders made here, with the files
-  # opened lately listed by a stand-in for recent-files, and the desktop's
-  # kinds of file by a few of shared-mime-info's lines.
+  # opened lately listed by a stand-in for recent-files, the desktop's
+  # kinds of file by a few of shared-mime-info's lines, and a place kept
+  # elsewhere by a stand-in for Google's Drive.
   the-launcher-chooses-files-as-asked =
     pkgs.runCommandLocal "the-launcher-chooses-files-as-asked" { }
       ''
