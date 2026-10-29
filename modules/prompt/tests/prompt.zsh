@@ -21,7 +21,8 @@ plain() {
 
 IN_NIX_SHELL=impure
 _prompt_precmd
-_prompt_state[unsaved]=1 _prompt_state[ahead]=1 _prompt_state[jobs]=1
+_prompt_state[unstaged]=1 _prompt_state[untracked]=1
+_prompt_state[ahead]=2 _prompt_state[behind]=1 _prompt_state[jobs]=1
 _prompt_took=12.4s
 leaf=${PWD:t}
 branch=${_prompt_state[branch]}
@@ -53,3 +54,11 @@ done
 _prompt_lay
 plain $_prompt_right
 [[ $REPLY == *$branch* && $REPLY == *12.4s* ]] || fail "120 columns don't show it all: $REPLY"
+# Git's notation after the branch: what the tree holds, then the upstream.
+[[ $REPLY == *"$branch *? ↑2↓1" ]] ||
+  fail "The branch isn't followed by git's notation: $REPLY"
+# A tree clean and in step adds nothing after the branch.
+_prompt_clean
+_prompt_lay
+plain $_prompt_right
+[[ $REPLY == *$branch ]] || fail "A clean tree has something after its branch: $REPLY"

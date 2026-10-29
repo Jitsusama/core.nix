@@ -481,18 +481,9 @@ in
     console = "N";
     means = "a development shell is loaded";
   };
-  unpushed = {
-    glyph = nerd "f431";
-    console = "^";
-    means = "commits not yet pushed";
-  };
-  # A pencil, since work still being written is what it pictures, where
-  # the on mark's dot pictured nothing and had to be explained.
-  unsaved = {
-    glyph = nerd "f03eb";
-    console = "*";
-    means = "work not yet saved: changes not committed, or a file not written";
-  };
+  # A branch's changes and its upstream have no marks here: the prompt,
+  # Neovim and pi write them in git's own notation (* + ? and arrows with
+  # counts), and Neovim marks a buffer not yet written with Vim's [+].
   locked = {
     glyph = nerd "f023";
     console = "%";
