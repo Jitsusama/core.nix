@@ -13,7 +13,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Lets the lock go after a resume from hibernation, which asked at the disk";
+    description = "Lets the lock go after a resume from hibernation, and rescues one that rolled back";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "hibernate-unlock";

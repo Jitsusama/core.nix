@@ -1,9 +1,11 @@
 //! Lets the lock go after a resume from hibernation, since the disk prompt
 //! has just asked for Joel's password, as he chose: one prompt, not two. A
-//! wake from sleep keeps its lock.
+//! wake from sleep keeps its lock. And a hibernation that rolled back, with
+//! the machine never off, is never left on in silence.
 //!
 //! ```text
 //! hibernate-unlock pre|post <action> [<disk>...]
+//! hibernate-unlock rescue
 //! ```
 //!
 //! systemd-sleep runs it before and after each sleep, naming the action
@@ -26,13 +28,68 @@
 //! It asks `tpm2_readclock` for the counts, `cryptsetup` for each disk's
 //! tokens and `loginctl` to let the locks go, each from `PATH`. Anything it
 //! can't read keeps the lock, and it never fails the sleep.
+//!
+//! A hibernation can write its image and still roll back, when a device
+//! refuses to power off, and the kernel then tells systemd it worked. Its
+//! sign is a hibernation back with neither count moved. Ten seconds later,
+//! once the sleep is over, `rescue` runs on its own: with the lid shut
+//! nobody is looking, and a laptop left on in a bag runs flat and hot, so it
+//! hibernates once more, and powers off if that rolls back too. With the
+//! lid open, a notice tells whoever is signed in.
 
 use serde_json::Value;
+use std::env;
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// Where the counts from before the image was written are kept.
 const KEPT: &str = "/run/hibernate-unlock";
+
+/// Kept while a rolled-back hibernation is tried again, so a second
+/// rollback powers off rather than trying forever.
+const TRIED_AGAIN: &str = "/run/hibernate-unlock-tried-again";
+
+/// What a rescue does once a hibernation rolled back.
+#[derive(Debug, PartialEq, Eq)]
+enum Rescue {
+    HibernateAgain,
+    PowerOff,
+    Say,
+}
+
+/// With the lid open someone is there to be told; with it shut, one more
+/// try, then off.
+fn rescue(lid_shut: bool, tried_again: bool) -> Rescue {
+    match (lid_shut, tried_again) {
+        (false, _) => Rescue::Say,
+        (true, false) => Rescue::HibernateAgain,
+        (true, true) => Rescue::PowerOff,
+    }
+}
+
+/// Whether a lid's `/proc/acpi/button/lid/*/state` says it's shut.
+fn says_shut(state: &str) -> bool {
+    state.split_whitespace().last() == Some("closed")
+}
+
+/// The users signed in at a seat, from `loginctl list-sessions --json=short`.
+fn seated(sessions: &Value) -> Vec<String> {
+    let mut users: Vec<String> = sessions
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|session| {
+            session["seat"]
+                .as_str()
+                .is_some_and(|seat| !seat.is_empty())
+        })
+        .filter_map(|session| session["user"].as_str().map(str::to_owned))
+        .collect();
+    users.sort();
+    users.dedup();
+    users
+}
 
 /// The TPM's counts of the times it started afresh and the times it started
 /// from saved state, the two a firmware start moves.
@@ -136,8 +193,8 @@ fn before(action: &str) {
 }
 
 /// After the machine is back, let the locks go if it came back through the
-/// disk prompt.
-fn after(disks: &[String]) {
+/// disk prompt, and rescue a hibernation that never went off.
+fn after(action: &str, disks: &[String]) {
     let Some(then) = fs::read_to_string(KEPT)
         .ok()
         .and_then(|t| Starts::unkept(&t))
@@ -150,9 +207,16 @@ fn after(disks: &[String]) {
         return;
     };
     if !then.started_since(now) {
-        eprintln!("hibernate-unlock: woke without a start, so through no prompt; the lock stays");
+        if action == "hibernate" {
+            rolled_back();
+        } else {
+            eprintln!(
+                "hibernate-unlock: woke without a start, so through no prompt; the lock stays"
+            );
+        }
         return;
     }
+    let _ = fs::remove_file(TRIED_AGAIN);
     if disks.is_empty() || !disks.iter().all(|disk| disk_is_typed(disk)) {
         eprintln!("hibernate-unlock: a disk opens without a typed secret; the lock stays");
         return;
@@ -163,13 +227,107 @@ fn after(disks: &[String]) {
     }
 }
 
+/// Asks systemd to run the rescue in ten seconds, once this sleep is over
+/// and the sessions are thawed, with the same programs on its `PATH`.
+fn rolled_back() {
+    eprintln!("hibernate-unlock: the hibernation rolled back, so the machine is still on");
+    let Ok(me) = env::current_exe() else {
+        eprintln!("hibernate-unlock: couldn't find itself to rescue the machine");
+        return;
+    };
+    let path = format!("--setenv=PATH={}", env::var("PATH").unwrap_or_default());
+    let me = me.to_string_lossy();
+    let args = [
+        "--on-active=10s",
+        "--collect",
+        "--quiet",
+        "--description=Rescues a hibernation that rolled back",
+        &path,
+        &me,
+        "rescue",
+    ];
+    if said("systemd-run", &args).is_none() {
+        eprintln!("hibernate-unlock: systemd-run couldn't start the rescue");
+    }
+}
+
+fn lid_shut() -> bool {
+    fs::read_dir("/proc/acpi/button/lid")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|lid| fs::read_to_string(lid.path().join("state")).ok())
+        .any(|state| says_shut(&state))
+}
+
+fn on_path(program: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path)
+        .map(|dir| dir.join(program))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Puts a notice in each seated user's session, through their own systemd.
+fn say_to_each_session() {
+    let Some(notify) = on_path("notify-send") else {
+        eprintln!("hibernate-unlock: no notify-send to say the hibernation didn't finish");
+        return;
+    };
+    let notify = notify.to_string_lossy();
+    let sessions = said("loginctl", &["list-sessions", "--json=short"])
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or(Value::Null);
+    for user in seated(&sessions) {
+        let machine = format!("--machine={user}@.host");
+        let args = [
+            machine.as_str(),
+            "--user",
+            "--collect",
+            "--quiet",
+            &notify,
+            "--urgency=critical",
+            "--app-name=Hibernation",
+            "Hibernation didn't finish",
+            "The laptop is still on. Hibernate it again, or shut it down.",
+        ];
+        if said("systemd-run", &args).is_none() {
+            eprintln!("hibernate-unlock: couldn't tell {user} the hibernation didn't finish");
+        }
+    }
+}
+
+/// What the rescue ten seconds after a rollback does.
+fn rescue_now() {
+    let tried_again = Path::new(TRIED_AGAIN).exists();
+    match rescue(lid_shut(), tried_again) {
+        Rescue::HibernateAgain => {
+            eprintln!("hibernate-unlock: the lid is shut, so it hibernates again");
+            let _ = fs::write(TRIED_AGAIN, "");
+            let _ = said("systemctl", &["hibernate", "--check-inhibitors=no"]);
+        }
+        Rescue::PowerOff => {
+            eprintln!(
+                "hibernate-unlock: the lid is shut and it rolled back twice, so it powers off"
+            );
+            let _ = fs::remove_file(TRIED_AGAIN);
+            let _ = said("systemctl", &["poweroff", "--check-inhibitors=no"]);
+        }
+        Rescue::Say => {
+            eprintln!("hibernate-unlock: the lid is open, so it says so");
+            let _ = fs::remove_file(TRIED_AGAIN);
+            say_to_each_session();
+        }
+    }
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = env::args().skip(1).collect();
     match args.as_slice() {
         [when, action, ..] if when == "pre" => before(action),
-        [when, _, disks @ ..] if when == "post" => after(disks),
+        [when, action, disks @ ..] if when == "post" => after(action, disks),
+        [what] if what == "rescue" => rescue_now(),
         _ => {
-            eprintln!("usage: hibernate-unlock pre|post <action> [<disk>...]");
+            eprintln!("usage: hibernate-unlock pre|post <action> [<disk>...] | rescue");
             return ExitCode::from(2);
         }
     }
@@ -234,6 +392,37 @@ mod tests {
             assert!(writes_an_image(action), "{action}");
         }
         assert!(!writes_an_image("suspend"));
+    }
+
+    #[test]
+    fn a_rollback_with_the_lid_open_is_said() {
+        assert_eq!(rescue(false, false), Rescue::Say);
+        assert_eq!(rescue(false, true), Rescue::Say);
+    }
+
+    #[test]
+    fn a_rollback_with_the_lid_shut_tries_once_then_powers_off() {
+        assert_eq!(rescue(true, false), Rescue::HibernateAgain);
+        assert_eq!(rescue(true, true), Rescue::PowerOff);
+    }
+
+    #[test]
+    fn the_lid_reads_shut_only_when_it_says_closed() {
+        assert!(says_shut("state:      closed\n"));
+        assert!(!says_shut("state:      open\n"));
+        assert!(!says_shut(""));
+    }
+
+    #[test]
+    fn only_users_at_a_seat_are_told_once_each() {
+        let sessions = json!([
+            {"session": "1", "user": "joel", "seat": "seat0"},
+            {"session": "2", "user": "joel", "seat": "seat0"},
+            {"session": "3", "user": "ssh", "seat": null},
+            {"session": "4", "user": "cron", "seat": ""}
+        ]);
+        assert_eq!(seated(&sessions), vec!["joel".to_owned()]);
+        assert!(seated(&Value::Null).is_empty());
     }
 
     #[test]

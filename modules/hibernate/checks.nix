@@ -9,8 +9,10 @@
 onLinux {
   # hibernate-unlock's tests run as it builds: the TPM's counts are read
   # from tpm2_readclock and kept whole, a firmware start moves one of them
-  # and a wake neither, only sleeps that write an image are kept, and a disk
-  # counts as asking only when every token asks for something typed.
+  # and a wake neither, only sleeps that write an image are kept, a disk
+  # counts as asking only when every token asks for something typed, and a
+  # rolled-back hibernation is said with the lid open, tried again with it
+  # shut, then powered off, with each seated user told once.
   hibernate-unlock-lets-go-only-after-the-disk-asked = pkgs.callPackage ./unlock/package.nix { };
   # clippy finds nothing in it, its tests included.
   hibernate-unlock-passes-clippy = passesClippy "hibernate-unlock-passes-clippy" (
