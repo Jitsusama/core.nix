@@ -82,4 +82,28 @@ onLinux {
         if [ ! -e passed ]; then cat ran; exit 1; fi
         touch $out
       '';
+
+  # zathura says each file it's started with to the desktop's list of files
+  # opened lately, through recent-files where the desktop has it, stood in
+  # here, handing on all it was given, and then runs as it would.
+  zathura-says-the-files-it-opens =
+    let
+      home = account graphical;
+      recent-files = pkgs.writeShellScriptBin "recent-files" ''echo "$*" >> "$SAID"'';
+    in
+    pkgs.runCommandLocal "zathura-says-the-files-it-opens"
+      {
+        nativeBuildInputs = [
+          home.programs.zathura.package
+          recent-files
+        ];
+      }
+      ''
+        export HOME=$PWD SAID=$PWD/said
+        zathura --version one.pdf > version 2>&1 || { cat version; exit 1; }
+        grep -q -i zathura version || { echo "zathura didn't run: $(cat version)"; exit 1; }
+        told=$(if [ -e said ]; then cat said; else echo 'nothing said'; fi)
+        [ "$told" = "add zathura --version one.pdf" ] || { echo "zathura said: $told"; exit 1; }
+        touch $out
+      '';
 }

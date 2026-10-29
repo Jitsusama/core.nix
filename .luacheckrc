@@ -17,6 +17,9 @@ files['modules/neovim/plugins/snacks.lua'] = { ignore = { '613' } }
 -- mpv runs the camera's viewfinder script in Lua 5.2 and gives it `mp`.
 files['modules/camera'] = { std = 'lua52', read_globals = { 'mp' } }
 
+-- mpv's own scripts, the player's, run the same way.
+files['modules/mpv'] = { std = 'lua52', read_globals = { 'mp' } }
+
 -- swayimg runs LuaJIT, and its config writes into the `swayimg` table.
 files['modules/swayimg'] = { std = 'luajit', globals = { 'swayimg' } }
 

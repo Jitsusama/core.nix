@@ -3,9 +3,10 @@
 //! and written through `glib::BookmarkFile`, as GTK's `RecentManager`
 //! does, so a file is kept the way every GTK program reads it: its kind,
 //! when it was added, changed and visited, and each program that opened it,
-//! how often and when last. GIMP and Inkscape add to it themselves; Neovim
-//! and what open-with opens add to it through this, so the launcher reads
-//! one list for every program's files rather than one of each program's.
+//! how often and when last. GIMP and Inkscape add to it themselves; Neovim,
+//! mpv, swayimg, zathura and inlyne add to it through this (recent-files),
+//! so the launcher reads one list for every program's files rather than one
+//! of each program's.
 
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,28 @@ pub type Failed = Box<dyn Error>;
 #[must_use]
 pub fn place() -> PathBuf {
     glib::user_data_dir().join("recently-used.xbel")
+}
+
+/// The files among what a program was given to open, in the order given:
+/// each local file by its path, or by its `file://` link as GIO passes one,
+/// a path not whole taken from `here`, the folder it started in. Anything
+/// else is left out, so a program's options, a web address or a stream, a
+/// folder and a file that isn't there are never listed.
+#[must_use]
+pub fn files(given: &[String], here: &Path) -> Vec<PathBuf> {
+    given
+        .iter()
+        .filter_map(|each| {
+            if each.starts_with("file://") {
+                glib::filename_from_uri(each).ok().map(|(path, _)| path)
+            } else if each.contains("://") {
+                None
+            } else {
+                Some(here.join(each))
+            }
+        })
+        .filter(|path| path.is_file())
+        .collect()
 }
 
 /// A file one program opened, and when it last did, in microseconds.
@@ -354,6 +377,31 @@ mod tests {
         .unwrap();
         let names: Vec<_> = seen(&list).into_iter().map(|each| each.1).collect();
         assert_eq!(names, ["new.txt", "kept.txt"]);
+    }
+
+    #[test]
+    fn only_the_local_files_given_are_files() {
+        let here = folder();
+        std::fs::write(here.join("one.pdf"), "").unwrap();
+        std::fs::write(here.join("two words.pdf"), "").unwrap();
+        std::fs::create_dir_all(here.join("view")).unwrap();
+        let linked = glib::filename_to_uri(here.join("two words.pdf"), None).unwrap();
+        let given: Vec<String> = [
+            "-P",
+            "3",
+            "view",
+            "one.pdf",
+            linked.as_str(),
+            "https://example.org/one.pdf",
+            "missing.pdf",
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+        assert_eq!(
+            files(&given, &here),
+            vec![here.join("one.pdf"), here.join("two words.pdf")]
+        );
     }
 
     #[test]

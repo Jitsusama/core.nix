@@ -398,6 +398,9 @@
     inlyne draws a sheet and the keys page its settings name on the theme's background, headings in
     the strong text and none of its own colours, and markdown files open in it
   '';
+  inlyne-says-the-files-it-opens = ''
+    inlyne says each file it's started with to the desktop's list of files opened lately, then runs
+  '';
   ipu7-outlives-its-open-files = ''
     the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds
   '';
@@ -489,6 +492,9 @@
   mpv-accepts-its-configuration = ''
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
+  '';
+  mpv-says-the-files-it-plays = ''
+    mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';
   mycelium-links-what-a-machine-names = ''
     a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
@@ -836,7 +842,8 @@
   '';
   swayimg-moves-by-its-keys = ''
     in swayimg, pressed as a keyboard presses them, → and ← go to the next and previous picture and
-    End and Home to the last and first
+    End and Home to the last and first, and the picture it opened with, and none after, is said to
+    the desktop's list of files opened lately
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
@@ -1599,6 +1606,10 @@
   zathura-keys-go-where-they-say = ''
     zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
     and the question mark key asks the launcher for the keys
+  '';
+  zathura-says-the-files-it-opens = ''
+    zathura says each document it's started with to the desktop's list of files opened lately, then
+    runs
   '';
   zoxide-lists-the-folder-visited-last-first = ''
     the account's zoxide lists the folder visited last first when asked, though another was visited
