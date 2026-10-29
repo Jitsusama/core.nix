@@ -39,6 +39,10 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-realms-link-key-stays-apart = ''
+    a realm's link key is served on its own socket by an agent holding only it, kept outside the
+    folder the account's own agent loads, made with no PIN, and an account naming no realm has none
+  '';
   a-refused-profile-is-said-once = ''
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
     battery without repeating it, and said once it takes
