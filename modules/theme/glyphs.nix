@@ -1141,6 +1141,11 @@ in
     console = "a";
     means = "archiving mail, out of the inbox";
   };
+  attachment = {
+    glyph = nerd "f03e2";
+    console = "&";
+    means = "a file attached to a meeting or a mail";
+  };
   googleDocument = {
     glyph = nerd "f0dc8";
     console = "d";

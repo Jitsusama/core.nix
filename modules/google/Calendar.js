@@ -226,7 +226,7 @@ function details(meeting, untitled) {
         { label: "Asked", value: (meeting.guests ?? []).map(asked).join("; ") },
         {
             label: attachments.length === 1 ? "Attachment" : "Attachments",
-            value: attachments.join(", ")
+            value: attachments.map(file => file.title).join(", ")
         }
     ];
     return {

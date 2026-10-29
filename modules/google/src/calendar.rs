@@ -19,6 +19,7 @@ use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::drive;
 use crate::link::{self, Kind};
 
 /// One meeting, as the shell is told it.
@@ -46,9 +47,9 @@ pub struct Meeting {
     /// What it's about: its description as plain text, at most
     /// `ABOUT_MOST` characters.
     pub about: Option<String>,
-    /// The files on it, by their titles, as Google Calendar lists them
-    /// under it: a doc, a deck, an agenda.
-    pub attachments: Vec<String>,
+    /// The files on it, as Google Calendar lists them under it: a doc, a
+    /// deck, an agenda.
+    pub attachments: Vec<Attachment>,
     /// The number its call is dialled into by, when its conference has one.
     pub dial: Option<Dial>,
     /// Whether Joel holds it, which makes it his to cancel.
@@ -75,6 +76,17 @@ pub struct Meeting {
 pub struct Person {
     pub name: String,
     pub email: Option<String>,
+}
+
+/// A file on a meeting: its title, where it opens, and, for one of Docs,
+/// Sheets or Slides, Drive's id for it and its kind, which make it the
+/// document it is.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Attachment {
+    pub title: String,
+    pub link: String,
+    pub id: Option<String>,
+    pub kind: Option<drive::Kind>,
 }
 
 /// A call's number to dial into it by, as its conference shows it, and the
@@ -265,23 +277,42 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
     })
 }
 
-/// The titles of the files on an event, each once, in its order.
-fn attached(event: &Value) -> Vec<String> {
-    let mut titles: Vec<String> = Vec::new();
+/// The files on an event, each once by where it opens, in its order,
+/// leaving out any with no title to call it by or no link to open.
+fn attached(event: &Value) -> Vec<Attachment> {
+    let mut files: Vec<Attachment> = Vec::new();
     let found = event
         .get("attachments")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|file| file.get("title").and_then(Value::as_str))
-        .map(str::trim)
-        .filter(|title| !title.is_empty());
-    for title in found {
-        if !titles.iter().any(|kept| kept == title) {
-            titles.push(title.to_owned());
+        .filter_map(attachment);
+    for file in found {
+        if !files.iter().any(|kept| kept.link == file.link) {
+            files.push(file);
         }
     }
-    titles
+    files
+}
+
+fn attachment(file: &Value) -> Option<Attachment> {
+    let text = |field: &str| {
+        file.get(field)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|said| !said.is_empty())
+    };
+    let kind = text("mimeType").and_then(|mime| {
+        drive::Kind::ALL
+            .into_iter()
+            .find(|kind| kind.mime() == mime)
+    });
+    Some(Attachment {
+        title: text("title")?.to_owned(),
+        link: text("fileUrl")?.to_owned(),
+        id: kind.and(text("fileId")).map(str::to_owned),
+        kind: kind.filter(|_| text("fileId").is_some()),
+    })
 }
 
 /// The first number an event's conference is dialled into by: its label
@@ -519,10 +550,14 @@ mod tests {
         "start": {"dateTime": "2026-10-26T16:00:00Z"},
         "end": {"dateTime": "2026-10-26T16:30:00Z"},
         "attachments": [
-            {"fileUrl": "https://docs.google.com/document/d/1", "title": "Agenda"},
-            {"fileUrl": "https://docs.google.com/document/d/1", "title": "Agenda"},
+            {"fileUrl": "https://docs.google.com/document/d/1", "title": "Agenda",
+             "fileId": "1", "mimeType": "application/vnd.google-apps.document"},
+            {"fileUrl": "https://docs.google.com/document/d/1", "title": "Agenda",
+             "fileId": "1", "mimeType": "application/vnd.google-apps.document"},
             {"fileUrl": "https://drive.google.com/file/d/2", "title": " "},
-            {"fileUrl": "https://docs.google.com/presentation/d/3", "title": "Numbers"}
+            {"fileUrl": "https://drive.google.com/file/d/4", "title": "Menu",
+             "fileId": "4", "mimeType": "application/pdf"},
+            {"title": "Nowhere"}
         ],
         "conferenceData": {"entryPoints": [
             {"entryPointType": "video", "uri": "https://meet.google.com/abc-defg-hij"},
@@ -531,7 +566,23 @@ mod tests {
             {"entryPointType": "phone", "uri": "tel:+44-20-0000-0000"}
         ]}}]});
         let found = &meetings(&answer, &zone())[0];
-        assert_eq!(found.attachments, ["Agenda", "Numbers"]);
+        assert_eq!(
+            found.attachments,
+            [
+                Attachment {
+                    title: "Agenda".into(),
+                    link: "https://docs.google.com/document/d/1".into(),
+                    id: Some("1".into()),
+                    kind: Some(drive::Kind::Document),
+                },
+                Attachment {
+                    title: "Menu".into(),
+                    link: "https://drive.google.com/file/d/4".into(),
+                    id: None,
+                    kind: None,
+                }
+            ]
+        );
         assert_eq!(
             found.dial,
             Some(Dial {
