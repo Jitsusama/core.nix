@@ -886,11 +886,29 @@ Scope {
     // says (Sound's Sound). Read from the vocabulary as home is made, so no
     // answer is asked for it.
     function holding(category, room) {
+        const stands = standsOf(category);
+        if (stands !== "")
+            return stands;
         const names = (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "")
             .concat(commandsIn(category).map(row => row.start.trim()
                 || row.key.replace(/^command:/, "")));
         const own = (category.name ?? category.id).toLowerCase();
         return listed(names.filter(name => name.toLowerCase() !== own), room);
+    }
+
+    // How a place stands, where the vocabulary names a provider that says
+    // so (a category's `stands`): docs/design.md's "a place that measures
+    // something says how it stands instead", as Power's row says the charge and the
+    // profile where Machine holds it, the way Processor's says how busy it
+    // is (2026-10-28: "having power as a top under machine with just a list
+    // of options in the hint instead of treated like cpus and stuff is
+    // weird"). Asked as its row is made, like the names it replaces; ""
+    // when nothing says, and the place lists what it holds instead.
+    function standsOf(category) {
+        if (!category.stands)
+            return "";
+        const source = sources.find(one => one.settings.name === category.stands);
+        return source?.stands?.() ?? "";
     }
 
     // Names as one line, as many whole as fit in `room` characters, then

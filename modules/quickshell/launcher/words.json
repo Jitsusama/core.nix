@@ -62,6 +62,7 @@
     {
       "id": "energy",
       "name": "Power",
+      "stands": "power",
       "holds": [
         "power",
         "session:profile",
