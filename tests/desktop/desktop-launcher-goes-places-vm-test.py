@@ -1484,12 +1484,46 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     today = desktop.showing()
     assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
+    # Inside Now, its details slide out in the drawer beside the card, as
+    # the meeting's one component gives them, each a name and a figure.
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Design Review"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"][:1] == ["When"]
+        )
+    )
+    desktop.photograph("launcher-meeting-drawer")
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"grep -qx https://meet.google.com/pqr-stuv-wxy {opened}",
         timeout=dt.timedelta(seconds=30),
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # In Now, where the drawer is out, a row with nothing more to show
+    # shows its name alone, never another row's details nor its own note,
+    # which the foot says.
+    desktop.answer("now")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
+    desktop.step_in("ret")
+    # Now opens on the meeting, below the time.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
+    rows = cast("list[str]", desktop.showing()["rows"])
+    for name in reversed(rows[rows.index("Time") : rows.index("Design Review")]):
+        machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == name  # noqa: B023
+        )
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Time"
+            and shown["drawer"]["out"] is True
+            and shown["drawer"]["facts"] == []
+            and shown["drawer"]["body"] == ""
+        )
+    )
+    machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -1519,6 +1553,10 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
+    # Found by a search typed at home, the drawer stays in: it slides only
+    # as Joel steps in or out (docs/design.md, "The drawer is the card
+    # continued").
+    assert (desktop.showing().get("drawer") or {}).get("out") is False, desktop.showing()
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")

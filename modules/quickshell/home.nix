@@ -55,6 +55,7 @@ let
     "shell.qml"
     "Prompt.qml"
     "KeyHints.qml"
+    "Drawer.qml"
     "Launcher.qml"
     "Choice.qml"
     "Graph.qml"

@@ -183,11 +183,29 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
         desktop.as_account("echo -n 'something after the picture' | wl-copy > /dev/null 2>&1")
     machine.send_key("meta_l-v")
     desktop.launcher_ready()
+    tall = desktop.showing()["drawer"]["cardHeight"]
     with desktop.told("showed Image 256 \u00d7 256"):
         desktop.type_in("image", selecting="Image 256 \u00d7 256")
+    # The picture shows in the drawer, out of the card's right side and
+    # within the screen, and the card keeps its height for it.
+    drawer = desktop.showing()["drawer"]
+    assert drawer["out"], drawer
+    assert drawer["title"] == "Image 256 \u00d7 256", drawer
+    assert drawer["cardHeight"] == tall, f"the card grew for the picture: {drawer}, from {tall}"
+    assert drawer["height"] == tall, drawer
+    screen = json.loads(desktop.as_account("niri msg --json focused-output"))
+    assert drawer["cardAt"] < drawer["at"], drawer
+    assert drawer["at"] + drawer["width"] <= screen["logical"]["width"], (drawer, screen)
     desktop.photograph("launcher-copies-picture")
     machine.send_key("ret")
     retry(desktop.pasted_the_picture, timeout=timedelta(seconds=10))
+    # A search typed at home opens no drawer, whatever it finds.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("image")
+    assert not desktop.showing()["drawer"]["out"], desktop.showing()["drawer"]
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
 
 
 def test_a_picture_outlives_the_program_that_copied_it(desktop: Desktop) -> None:
