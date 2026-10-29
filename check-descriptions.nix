@@ -1442,7 +1442,9 @@
     host's own machine's, so the bundle it keeps for itself, sealed to a FIDO2 key, is opened with
     that key's PIN and signs the stick's boot program with the machine's db key; written again, the
     stick keeps its passphrase, typed back and proven against its old vault, and the bundle opens
-    by its passphrase with the key still plugged in
+    by its passphrase with the key still plugged in; the first write is signed for the host's
+    machine alone, and the second, asked to sign for every machine whose bundle the person keeps,
+    opens another machine's bundle by its passphrase and is signed with both machines' db keys
   '';
   vm-hibernation-comes-back = ''
     a machine hibernated to a swap file on btrfs inside LUKS, with zram in front and no resume=,
