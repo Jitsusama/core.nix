@@ -3393,6 +3393,23 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         )
         selected = desktop.showing()["selected"] or {}
         assert (selected["side"], selected["verb"]) == ("nothing waits", "more"), selected
+        # What's typed narrows Now to the rows it names, and clearing it
+        # brings them all back.
+        desktop.type_in("awake")
+        desktop.launcher_until(
+            lambda shown: shown["rows"][:1] == ["Keep Awake"] and not shown["nothing"]
+        )
+        machine.send_key("left")
+        desktop.launcher_until(
+            lambda shown: shown["typed"] == "" and shown["rows"][:1] == ["Waiting on You"]
+        )
+        # Clearing keeps the row typing chose, so the selection goes back up.
+        shown = desktop.showing()
+        for _ in range(shown["rows"].index(shown["selected"]["name"])):
+            machine.send_key("up")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Waiting on You"
+        )
         # Return steps in, as it does with things waiting, to a list saying
         # nothing does, rather than closing as if the launcher vanished.
         machine.send_key("ret")
