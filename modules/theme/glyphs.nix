@@ -1006,6 +1006,11 @@ in
     console = "/";
     means = "where a file or a folder is";
   };
+  recent = {
+    glyph = nerd "f02da";
+    console = "r";
+    means = "what a program had open lately";
+  };
   picture = {
     glyph = nerd "f02e9";
     console = "p";

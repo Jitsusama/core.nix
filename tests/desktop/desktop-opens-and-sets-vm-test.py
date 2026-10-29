@@ -892,6 +892,49 @@ def test_a_programs_media_and_sound_work_its_real_player_and_its_stream(  # noqa
     machine.succeed(f"rm -r {tones}")
 
 
+# kitty's Recent holds the folders zoxide has learned, read again as
+# zoxide's database changes, even one it made after the shell started.
+# Return on one opens a kitty window there through the kitty already open,
+# over its socket, rather than starting another.
+
+
+def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -> None:
+    """Recent in kitty lists a folder zoxide learned, and Return opens a window there."""
+    machine = desktop.machine
+    folder = f"/home/{desktop.account}/src/tide"
+    desktop.as_account(f"mkdir -p {folder} && zoxide add {folder}")
+    desktop.as_account("niri msg action spawn -- kitty --title recent-from")
+    machine.wait_until_succeeds(
+        desktop.in_session("niri msg focused-window | grep -q recent-from"), timeout=STARTING
+    )
+
+    def kittys() -> list[int]:
+        """Name the process behind each of kitty's windows, one a window."""
+        windows = json.loads(desktop.as_account("niri msg --json windows"))
+        return [window["pid"] for window in windows if window["app_id"] == "kitty"]
+
+    before = kittys()
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.step_in()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "tide" in shown["rows"])
+    desktop.photograph("launcher-kitty-recent")
+    desktop.type_in("tide", selecting="tide")
+    machine.send_key("ret")
+    there = (
+        f"for p in $(pgrep -u {desktop.account}); do"
+        f' [ "$(readlink /proc/$p/cwd)" = {folder} ] && exit 0; done; exit 1'
+    )
+    machine.wait_until_succeeds(desktop.in_session(there), timeout=STARTING)
+    retry(lambda _: len(kittys()) > len(before), timeout=timedelta(seconds=30))
+    assert set(kittys()) == set(before), "it started another kitty"
+    desktop.as_account("pkill -f 'kitty --title recent-from'")
+    machine.wait_until_fails(desktop.in_session(there), timeout=timedelta(seconds=30))
+
+
 def test_the_launcher_sets_the_power_profile(desktop: Desktop) -> None:
     """The launcher sets the power profile, staying to say so, or closing on Ctrl+Return."""
     machine = desktop.machine
