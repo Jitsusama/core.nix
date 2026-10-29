@@ -6,7 +6,6 @@
 // Google sign-in (/google-auth) writes the file the program reads; the
 // program then hears it within a minute.
 import qs
-import Quickshell
 import QtQuick
 
 Piece {
@@ -22,7 +21,6 @@ Piece {
         glyph: Theme.glyph.signIn,
         name: "Sign In Again",
         verb: "sign in",
-        run: () => Niri.spawn(["kitty", "--directory", Quickshell.env("HOME"), "pi", "--",
-            "/google-auth"])
+        run: () => Sessions.tell("/google-auth", Sessions.home)
     }]
 }

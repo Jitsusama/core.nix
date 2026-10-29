@@ -101,13 +101,15 @@ ShellRoot {
             expect("found by its id", names(byId) === "Retune the prompt", names(byId));
 
             laptop.run();
-            expect("opening pi in its newest tree",
-                Niri.spawned.join(" ") === `kitty --directory ${root.here}/newer env `
-                    + "QUEST_WORKFLOW_AUTOLOAD_ID=QEST-20261001-LAPTOP pi", Niri.spawned.join(" "));
+            expect("starting a session in its newest tree",
+                JSON.stringify(Sessions.started)
+                    === JSON.stringify(["QEST-20261001-LAPTOP", `${root.here}/newer`]),
+                JSON.stringify(Sessions.started));
             prompt.run();
-            expect("opening pi where its newest session ran",
-                Niri.spawned.join(" ") === `kitty --directory ${root.here}/session env `
-                    + "QUEST_WORKFLOW_AUTOLOAD_ID=QEST-20261003-PROMPT pi", Niri.spawned.join(" "));
+            expect("starting one where its newest session ran",
+                JSON.stringify(Sessions.started)
+                    === JSON.stringify(["QEST-20261003-PROMPT", `${root.here}/session`]),
+                JSON.stringify(Sessions.started));
 
             // A day this year goes without its year.
             const touched = new Date().getFullYear() === 2026 ? "21 Oct" : "21 Oct 2026";

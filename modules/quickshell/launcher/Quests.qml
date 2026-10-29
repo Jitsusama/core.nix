@@ -92,8 +92,7 @@ Provider {
         if (ongoing)
             Sessions.goTo(ongoing);
         else
-            Niri.spawn(["kitty", "--directory", quest.folder, "env",
-                `QUEST_WORKFLOW_AUTOLOAD_ID=${quest.id}`, "pi"]);
+            Sessions.start(quest.id, quest.folder);
     }
 
     function made(quest) {
