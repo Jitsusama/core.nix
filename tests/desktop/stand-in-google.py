@@ -104,6 +104,7 @@ class Account:
                 "at": now - 2 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/lunch",
                 "body": "Shall we try the place on the corner?\n\nAda",
+                "attachments": ["menu.pdf"],
             },
             {
                 "id": "numbers",
@@ -114,6 +115,7 @@ class Account:
                 "at": now - 5 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/numbers",
                 "body": "The numbers are in the sheet.",
+                "attachments": [],
             },
         ]
         self.unread = 3
