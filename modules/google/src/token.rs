@@ -101,6 +101,7 @@ mod tests {
             refresh_token: "refresh".into(),
             access_token: "pis".into(),
             expires,
+            scopes: Vec::new(),
         }
     }
 

@@ -12,12 +12,12 @@ use jiff::{Timestamp, Zoned};
 use serde_json::Value;
 
 use crate::account::{self, Missing};
-use crate::api::{Google, Refused};
+use crate::api::{Google, MAKES_MEETINGS, Refused};
 use crate::calendar::{self, Answer};
 use crate::drive::{self, Document, Kind};
 use crate::files::{self, Failed, Fetched, How, Places};
 use crate::mail::{self, Bytes, Mail, Tidy};
-use crate::state::{Standing, State};
+use crate::state::{Made, Standing, State};
 use crate::token::Keeper;
 
 pub struct Watch {
@@ -85,6 +85,7 @@ impl Watch {
                 answer["writable"] = Value::from(self.writable.clone());
                 answer["series"] = self.ruled(&answer, now);
                 self.state.account = Standing::Ready;
+                self.state.meet.granted = self.makes_meetings();
                 self.state.meetings = calendar::meetings(&answer, now.time_zone());
                 self.state.heard = Some(now.timestamp().as_millisecond());
             }
@@ -284,6 +285,51 @@ impl Watch {
                 }
             }
             Err(looked) => self.fell(looked, self.state.account),
+        }
+        &self.state
+    }
+
+    /// Whether Joel's sign-in lets this program make a Meet meeting, read
+    /// afresh, since signing in again from pi widens it.
+    fn makes_meetings(&self) -> bool {
+        account::read(&self.credentials, self.account.as_deref())
+            .is_ok_and(|account| account.grants(MAKES_MEETINGS))
+    }
+
+    /// Says a new Meet meeting is being made, which `make` then does, so
+    /// the shell can say so while Google answers.
+    pub fn making(&mut self, now: &Zoned) -> &State {
+        self.state.meet.made = Some(Made {
+            asked: now.timestamp().as_millisecond(),
+            link: None,
+            failed: false,
+        });
+        &self.state
+    }
+
+    /// Makes the meeting `making` asked for: its link once Google makes
+    /// it, or that it couldn't be. A sign-in without Meet's scope isn't
+    /// asked of Google at all. Signed out while asking, nothing is held,
+    /// and nothing made.
+    pub fn make(&mut self, now: &Zoned) -> &State {
+        if self.state.meet.made.is_none() {
+            return &self.state;
+        }
+        self.state.meet.granted = self.makes_meetings();
+        let link = if self.state.meet.granted {
+            match self.asking(now, Google::space) {
+                Ok(link) => Some(link),
+                Err(looked) => {
+                    self.fell(looked, self.state.account);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let Some(made) = &mut self.state.meet.made {
+            made.failed = link.is_none();
+            made.link = link;
         }
         &self.state
     }

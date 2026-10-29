@@ -17,7 +17,8 @@ out of the mail that wants him, as Gmail would, and one read and then marked unr
 wants him once more. Lunch on Friday carries a menu, which a shell may ask to be fetched, to
 open, kept in google-files beside the socket, or to save, in Downloads, said as fetched as
 the program says it. Joel looked at two documents lately: Ada's Quarterly Plan in Docs, and
-Team Budget in Sheets, on a shared drive.
+Team Budget in Sheets, on a shared drive. His sign-in grants Meet's scope, so a shell may ask
+for a new Meet meeting, which is made at once as new-abcd-efg.
 """
 
 import json
@@ -176,6 +177,8 @@ class Account:
         self.heard = now
         # The file last asked to be fetched, as the program says it (src/files.rs).
         self.fetched: dict[str, object] | None = None
+        # The Meet meeting last asked to be made, as the program says it (src/state.rs).
+        self.made: dict[str, object] | None = None
         self.leave()
 
     def line(self) -> bytes:
@@ -189,6 +192,7 @@ class Account:
                 "documents": [],
                 "heard": None,
                 "fetched": None,
+                "meet": {"granted": False, "made": None},
             }
             return f"{json.dumps(gone)}\n".encode()
         said = {
@@ -199,6 +203,7 @@ class Account:
             "documents": self.documents,
             "heard": self.heard,
             "fetched": self.fetched,
+            "meet": {"granted": True, "made": self.made},
         }
         return f"{json.dumps(said)}\n".encode()
 
@@ -221,7 +226,7 @@ class Account:
         """Write down what a shell asked, and take it: a meeting answered, moved or cancelled.
 
         Or mail marked read or archived, or marked unread again after it was read, or a file it
-        carries fetched.
+        carries fetched, or a new Meet meeting made, as new-abcd-efg.
         """
         with self.asked.open("a") as asked:
             asked.write(f"{line}\n")
@@ -234,6 +239,12 @@ class Account:
         with self.lock:
             if "fetch" in said:
                 self.fetch(said["fetch"])
+            if "make" in said:
+                self.made = {
+                    "asked": int(time.time() * 1000),
+                    "link": "https://meet.google.com/new-abcd-efg",
+                    "failed": False,
+                }
             for one in self.meetings:
                 if answer.get("id") == one["id"]:
                     one["answer"] = answer["with"]

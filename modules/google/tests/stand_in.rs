@@ -87,6 +87,7 @@ impl StandIn {
         Origins {
             token: format!("{}/token", self.origin),
             api: self.origin.clone(),
+            meet: self.origin.clone(),
         }
     }
 
@@ -291,6 +292,66 @@ fn carrying(path: &str, body: &str) -> (u16, String) {
         );
     }
     gmail(path, body)
+}
+
+#[test]
+fn a_meeting_is_made_for_its_link_only_once_the_sign_in_grants_meet() {
+    let failing = Arc::new(AtomicBool::new(false));
+    let fails = Arc::clone(&failing);
+    let stand_in = StandIn::new(move |path, body| {
+        if path.starts_with("POST /v2/spaces ") {
+            if fails.load(Ordering::SeqCst) {
+                return (503, "{}".into());
+            }
+            return (
+                200,
+                r#"{"name": "spaces/s1", "meetingUri": "https://meet.google.com/new-abcd-efg",
+                    "meetingCode": "new-abcd-efg"}"#
+                    .into(),
+            );
+        }
+        google(path, body)
+    });
+    let path = credentials("meet", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path.clone(), None);
+    let made = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.starts_with("POST /v2/spaces "))
+            .count()
+    };
+    assert!(
+        !watch.look(&now()).meet.granted,
+        "a sign-in without Meet's scope grants it"
+    );
+    watch.making(&now());
+    let state = watch.make(&now()).clone();
+    assert_eq!(made(&stand_in), 0, "Google was asked without Meet's scope");
+    let unmade = state.meet.made.unwrap();
+    assert!(unmade.failed && unmade.link.is_none(), "{unmade:?}");
+    // Joel signs in again from pi, granting Meet's scope too.
+    let file = fs::read_to_string(&path).unwrap().replace(
+        r#""scope": "calendar""#,
+        r#""scope": "calendar https://www.googleapis.com/auth/meetings.space.created""#,
+    );
+    fs::write(&path, file).unwrap();
+    assert!(watch.look(&now()).meet.granted);
+    let asking = watch.making(&now()).meet.made.clone().unwrap();
+    assert!(!asking.failed && asking.link.is_none(), "{asking:?}");
+    let state = watch.make(&now()).clone();
+    assert_eq!(
+        state.meet.made.unwrap().link.as_deref(),
+        Some("https://meet.google.com/new-abcd-efg")
+    );
+    assert_eq!(made(&stand_in), 1);
+    assert_eq!(state.account, Standing::Ready);
+    failing.store(true, Ordering::SeqCst);
+    watch.making(&now());
+    let state = watch.make(&now()).clone();
+    let unmade = state.meet.made.unwrap();
+    assert!(unmade.failed && unmade.link.is_none(), "{unmade:?}");
+    assert_eq!(state.meetings.len(), 1, "Meet failing lost the meetings");
 }
 
 #[test]
@@ -653,6 +714,7 @@ fn an_unreachable_google_keeps_what_was_heard() {
     watch.google = Google::new(Origins {
         token: format!("http://{closed}/token"),
         api: format!("http://{closed}"),
+        meet: format!("http://{closed}"),
     });
     let state = watch.look(&now()).clone();
     assert_eq!(state.account, Standing::Unreachable);

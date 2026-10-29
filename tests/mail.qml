@@ -41,6 +41,7 @@ QtObject {
         };
 
         // What the file says: [what, the line, what's read of it]
+        const unmade = { granted: false, made: null };
         const lines = [
             ["the whole state",
                 JSON.stringify({
@@ -49,19 +50,19 @@ QtObject {
                 }),
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], heard: 1793042446024, fetched: null
+                    documents: [], heard: 1793042446024, fetched: null, meet: unmade
                 }],
             ["a state with nothing heard yet",
                 '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
                 {
                     account: "none", meetings: [], mail: [], unread: null, documents: [],
-                    heard: null, fetched: null
+                    heard: null, fetched: null, meet: unmade
                 }],
             ["a state from before mail",
                 '{"account":"ready","meetings":[],"heard":1}',
                 {
                     account: "ready", meetings: [], mail: [], unread: null, documents: [],
-                    heard: 1, fetched: null
+                    heard: 1, fetched: null, meet: unmade
                 }],
             ["half a line", '{"account":"rea', null],
             ["a line that isn't the state", '{"hello":1}', null],
@@ -69,6 +70,30 @@ QtObject {
         ];
         for (const [what, line, meant] of lines)
             check(what, Google.heard(line), meant);
+        check("making a meeting granted", Google.heard(JSON.stringify({ account: "ready",
+            meetings: [], meet: { granted: true, made: null } })).meet,
+            { granted: true, made: null });
+
+        // A new Meet meeting, asked for at 100: how it stands as the
+        // program says.
+        const meet = made => ({ granted: true, made: made });
+        const link = "https://meet.google.com/new-abcd-efg";
+        check("the line making a meeting", Google.make(), '{"make":{}}\n');
+        check("how a meeting asked for stands", [
+            [meet(null), null],
+            [meet(null), 100],
+            [meet({ asked: 90, link: link, failed: false }), 100],
+            [meet({ asked: 100, link: null, failed: false }), 100],
+            [meet({ asked: 101, link: link, failed: false }), 100],
+            [meet({ asked: 101, link: null, failed: true }), 100]
+        ].map(([standing, since]) => Google.making(standing, since)), [
+            { state: "", link: "" },
+            { state: "making", link: "" },
+            { state: "making", link: "" },
+            { state: "making", link: "" },
+            { state: "made", link: link },
+            { state: "failed", link: "" }
+        ]);
 
         // When it came: [what, when, said]
         const cames = [
