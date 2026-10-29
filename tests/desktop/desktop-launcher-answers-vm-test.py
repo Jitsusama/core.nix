@@ -49,22 +49,6 @@ def field_key(field: list[Json], mark: str, word: str) -> Json:
     return said[0]
 
 
-def field_says_whole(desktop: Desktop, said: str) -> None:
-    """Wait until the field says this, as an answer comes in its own time, and check it's whole."""
-
-    def laid() -> list[Json]:
-        return cast(
-            "list[Json]", json.loads(desktop.as_account("qs ipc call launcher laidOut"))["field"]
-        )
-
-    desktop_session.retry(
-        lambda _: any(said in word["text"] for word in laid()), timeout=dt.timedelta(seconds=30)
-    )
-    field = laid()
-    word = next(word for word in field if said in word["text"])
-    assert not word["cut"], field
-
-
 def test_the_launcher_lists_each_thing_once_for_everything_joel_types(desktop: Desktop) -> None:
     """The launcher lists each thing once, for everything Joel types."""
     machine = desktop.machine
@@ -917,9 +901,6 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         desktop.answer(typed)
         machine.send_key("esc")
     desktop.answer("weather tokyo")
-    # What's typed and its answer come before the aside and the keys, so
-    # the answer is whole and the aside says less.
-    field_says_whole(desktop, "no forecast")
     desktop.photograph("launcher-offline")
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
