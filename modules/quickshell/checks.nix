@@ -1821,6 +1821,7 @@ onLinux {
       cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
+      cp ${./KeyHints.qml} KeyHints.qml
       cp ${lights} Lights.qml
       cp ${../../tests/rows.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
