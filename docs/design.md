@@ -958,15 +958,14 @@ works the same way everywhere.
   unless the screen is too narrow for the drawer beside it, so the card
   never moves and never changes size for what's selected. It's out
   exactly while the selected row is a thing with details (a program, a
-  session, a quest, a mail, a meeting, a person, a file or folder, a
+  session, a quest, a mail, a meeting, a person, a file, a folder, a
   notice, a window, a device, a network, a copy, a value with a
   history), the same at home, in a search and in every place; an act, a
-  switch, a choice or a place has none (VKCF3Z, 2026-10-29, after Joel's
-  "shows when it's not needed, and only shows in certain places").
-  Moving between two rows that both have one, it stays, and what it
-  shows changes in place; onto a row without one, or from one, it fades
-  in place, only once the selection has rested a moment, so holding an
-  arrow never flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
+  switch, a choice or a place has none (Joel, 2026-10-29: "the side
+  drawer shows when it's not needed, and only shows in certain
+  places"). Between two things it stays and what it shows changes in
+  place; onto or off one it fades in place once the selection rests, so
+  holding an arrow never flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
   while it holds more than fits, since Page Up and Page Down page the
   list. Another program's words are shown plain, never as markup.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
