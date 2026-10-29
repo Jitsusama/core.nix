@@ -378,7 +378,7 @@ _prompt_build_right() {
     fi
     if (( ${_prompt_state[unsaved]} )); then
       REPLY+=" " _prompt_plain+=" "
-      _prompt_put text ${_prompt_glyph[on]}
+      _prompt_put text ${_prompt_glyph[unsaved]}
     fi
     if (( ${_prompt_state[ahead]} )); then
       REPLY+=" " _prompt_plain+=" "

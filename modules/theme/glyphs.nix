@@ -486,6 +486,13 @@ in
     console = "^";
     means = "commits not yet pushed";
   };
+  # A pencil, since work still being written is what it pictures, where
+  # the on mark's dot pictured nothing and had to be explained.
+  unsaved = {
+    glyph = nerd "f03eb";
+    console = "*";
+    means = "work not yet saved: changes not committed, or a file not written";
+  };
   locked = {
     glyph = nerd "f023";
     console = "%";
