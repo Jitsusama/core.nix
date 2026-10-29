@@ -95,25 +95,45 @@ function saysAct(one, said) {
 // does, so its Return is the step itself. One already inside, by its
 // verb or its name, is moved first rather than said twice.
 function leading(row, inside) {
-    const holds = !!row.verbs && !!row.targets;
-    if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given || holds) {
-        return inside;
-    }
     const verb = verbOf(row);
     const said = verb.toLowerCase();
-    if (said === "") {
+    // A copy is never first inside: a row whose only act is copying steps
+    // in on Return, so its copy is listed after what can be done and
+    // before what's said (Joel, 2026-10-28: "the copy at the top of most
+    // screens is confusing").
+    const copying = said === "copy";
+    const holds = !!row.verbs && !!row.targets && !copying;
+    if (inside.length === 0 || kindOf(row) !== "action" || row.confirm || row.given || holds
+        || said === "") {
         return inside;
     }
     const already = inside.findIndex(one => saysAct(one, said));
+    if (copying) {
+        return copiedLast(already >= 0 ? inside[already] : ownAct(row, verb),
+            inside.filter((_one, at) => at !== already));
+    }
     if (already === 0) {
         return inside;
     }
     if (already > 0) {
         return [inside[already]].concat(inside.slice(0, already), inside.slice(already + 1));
     }
+    return [ownAct(row, verb)].concat(inside);
+}
+
+// A copy placed last, after what can be done and what's only said, as
+// docs/design.md's Return rule has it: "Copy is never the first row of a
+// step, unless it's the only one, and is always the last".
+function copiedLast(copy, inside) {
+    return inside.concat([copy]);
+}
+
+// Return's own act as a row inside, doing what Return on the row does.
+function ownAct(row, verb) {
+    const said = verb.toLowerCase();
     // Every field a provider's row has (Provider.qml's `thing`), so the
     // list draws it as it draws them; the launcher prepares its name.
-    const own = {
+    return {
         key: `return:${said}`,
         name: verb.charAt(0).toUpperCase() + verb.slice(1),
         verb,
@@ -127,7 +147,8 @@ function leading(row, inside) {
         verbs: null,
         plain: false,
         later: false,
-        now: false,
+        // A copy is set while the launcher holds the keys, as the row's is.
+        now: row.now === true,
         glyph: row.glyph ?? "",
         hue: "action",
         stays: row.stays === true,
@@ -135,7 +156,6 @@ function leading(row, inside) {
         // stands now, a program's switch or start, is read when it's done.
         run: () => row.run()
     };
-    return [own].concat(inside);
 }
 
 // Whether the catalogue lists it: a row with a name that does something

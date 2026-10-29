@@ -705,6 +705,12 @@ Scope {
         const own = [];
         const loose = [];
         let composed = 0;
+        // Every step whose first row is a copy where more is held, which
+        // docs/design.md's Return rule never allows ("Copy is never the
+        // first row of a step, unless it's the only one, and is always the
+        // last"; Joel, 2026-10-28: "the copy at the top of most screens is
+        // confusing").
+        const copyFirst = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -723,17 +729,28 @@ Scope {
                             + ` (${row.key}, not made as a ${kind})`);
                     else if (row.component)
                         composed += 1;
-                    if (depth < actlessDeepest && !(row.opens && Catalogue.long(row.opens)))
-                        walk(catalogueHolds(row, above === null || collects({ row: above })),
-                            row, path, names.concat([row.name]), depth + 1);
+                    const deeper = depth < actlessDeepest
+                        && !(row.opens && Catalogue.long(row.opens));
+                    const inside = deeper
+                        ? catalogueHolds(row, above === null || collects({ row: above })) : [];
+                    if (inside.length > 1 && copying(inside[0]))
+                        copyFirst.push({ id, words: row.name, in: names.join(" \u203a ") });
+                    walk(inside, row, path, names.concat([row.name]), depth + 1);
                 }
             }
         };
         walk(home(), null, [], [], 0);
         // How many it walked too, so a check that finds none knows it
         // looked.
-        return { walked: seen.size, rows: out, ownVersions: own, uncomposed: loose,
-            composed: composed };
+        return { walked: seen.size, rows: out, ownVersions: own, copyFirst,
+            uncomposed: loose, composed: composed };
+    }
+
+    // Whether a row is an act of copying, as a step's Copy is, rather than
+    // a value that copies what it says.
+    function copying(row) {
+        return !!row && row.figure !== true && !row.answered && verbOf(row) === "copy"
+            && /^copy\b/i.test(row.name ?? "");
     }
 
     // What a row holds as `enter` shows it stepped into: from home or a
@@ -747,7 +764,7 @@ Scope {
             const things = asThing(row, among);
             const making = things ? row.verbs : row.targets;
             const made = making ? making() ?? [] : [];
-            const own = things ? led(row, made) : made;
+            const own = things || copiesOnly(row) ? led(row, made) : made;
             const places = things && row.from ? partsOf(row.from) : [];
             return things ? own.concat(places, partsIn(row)) : own;
         } catch (error) {
@@ -1333,7 +1350,22 @@ Scope {
     // meeting's See It) or a collection's match does.
     function keepsOpen(choice) {
         return !!choice.stays && !!choice.run && !choice.spot && !choice.from
-            && verbOf(choice) !== "more" && !(choice.verbs && choice.targets);
+            && verbOf(choice) !== "more" && !(choice.verbs && choice.targets)
+            && !copiesOnly(choice);
+    }
+
+    // Whether a row's only act is copying the figure it shows while it
+    // holds more, as a disk's Space does, or an answer listed in its
+    // place by name, as Power's Battery is: Return steps in, as the right
+    // arrow does, and the copy is listed inside after what can be done
+    // (Catalogue.js's leading), so Return never copies and closes where
+    // the right arrow would open (Joel, 2026-10-28: "hitting enter on the
+    // battery closes the window when right opens it"). An answer to what
+    // was typed, a sum or a lookup, still copies on Return, since what was
+    // asked is the answer itself; its copy inside comes after its acts too.
+    function copiesOnly(choice) {
+        return !!choice && (choice.figure === true || (choice.answered === true
+            && (choice.placed ?? "") !== "")) && verbOf(choice) === "copy" && holdsMore(choice);
     }
 
     // Whether a row holds a thing's insides (its verbs, Return's act first,
@@ -1375,7 +1407,7 @@ Scope {
     // word wherever it's done (Joel, 2026-10-26), where it was open, choose,
     // go, see or the act asked about, and never says it twice.
     function stepsIn(choice) {
-        if (leadsElsewhere(choice))
+        if (leadsElsewhere(choice) || copiesOnly(choice))
             return true;
         if (choice.start !== undefined || choice.given || !holdsMore(choice))
             return false;
@@ -1888,8 +1920,11 @@ Scope {
     // provider's rows are.
     function led(row, made) {
         const own = Catalogue.leading(row, made);
-        if (own !== made && String(own[0].key).startsWith("return:"))
-            own[0].prepared = Fuzzy.prepare(own[0].name);
+        // Return's act leads, or a copy comes after the acts.
+        const added = own === made ? undefined
+            : own.find(one => String(one.key).startsWith("return:") && !one.prepared);
+        if (added)
+            added.prepared = Fuzzy.prepare(added.name);
         return own;
     }
 
@@ -1899,7 +1934,9 @@ Scope {
     // act it led with gone.
     function stepRows(row, things) {
         const made = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
-        return things && made ? led(row, made) : made;
+        // A row that would only copy gains its copy inside wherever it's
+        // stepped into, so the copy is never lost to Return stepping in.
+        return made && (things || copiesOnly(row)) ? led(row, made) : made;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
@@ -2507,6 +2544,9 @@ Scope {
             ask(choice);
             return;
         }
+        // One that would only copy what it says steps into what it holds.
+        if (copiesOnly(choice) && enter(choice))
+            return;
         // One that can't be taken back, such as powering off, steps into
         // its verbs, which say what it does, so a second Return does it and
         // Escape or the left arrow backs out.

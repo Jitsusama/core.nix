@@ -118,12 +118,19 @@ QtObject {
         expect("found by its name", names(Catalogue.leading(joined, [{ name: "Sign in to it",
             verb: "open", run: does }, { name: "Disconnect it", run: does }])),
             "Disconnect it, Sign in to it");
-        expect("or by how its name starts", names(Catalogue.leading({ name: "Quarry",
-            verb: "copy", run: does, verbs: opens }, [{ name: "Play it", run: does },
-            { name: "Copy what it said", run: does }])), "Copy what it said, Play it");
+        // A copy is never first: it comes after what can be done, before
+        // what's only said, and last where nothing inside does anything
+        // (Joel, 2026-10-28).
+        expect("a copy after the acts, found by how its name starts", names(Catalogue.leading({
+            name: "Quarry", verb: "copy", run: does, verbs: opens }, [{ name: "Play it",
+            run: does }, { name: "Copy what it said", run: does }, { name: "Said", figure: true,
+            run: does }])), "Play it, Copy what it said, Said");
         expect("not a figure copying its own value", names(Catalogue.leading({ name: "Disk",
             verb: "copy", run: does, verbs: opens }, [{ name: "Space", verb: "copy",
-            run: does }, { name: "Busy", verb: "copy", run: does }])), "Copy, Space, Busy");
+            run: does }, { name: "Busy", verb: "copy", run: does }])), "Space, Busy, Copy");
+        expect("a value holding only facts copies last", names(Catalogue.leading({
+            name: "Battery", verb: "copy", run: does, verbs: opens, targets: opens },
+            [{ name: "Charger", figure: true, run: does }])), "Charger, Copy");
         expect("read without what it's done to", names(Catalogue.leading({ name: "Radio",
             verb: "turn off", run: does, verbs: opens }, [{ name: "Turn it off", run: does }])),
             "Turn it off");

@@ -137,10 +137,12 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # into the answer's row.
     desktop.answer("charger")
     desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    # The copy is listed last, after the facts, since nothing else inside
+    # does anything (Joel, 2026-10-28: never a copy at the top).
     desktop.step_in()
-    # Return's own Copy leads, then the charger.
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy", "Charger"])
-    machine.send_key("down")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:1] == ["Charger"] and shown["rows"][-1:] == ["Copy"]
+    )
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Charger"
@@ -287,8 +289,13 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.launcher_until(
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Battery"
     )
-    # A figure copies what it shows on Return, even one holding more
-    # (Joel, 2026-10-26: a row showing a value copies it, everywhere).
+    # A figure holding more steps in on Return, as the right arrow does,
+    # and copies what it shows from the Copy listed last inside (Joel,
+    # 2026-10-28: "hitting enter on the battery closes the window when
+    # right opens it").
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: in_battery(shown) and shown["rows"][-1:] == ["Copy"])
+    desktop.down_to("Copy")
     machine.send_key("ret")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     pasted = desktop.as_account("wl-paste --no-newline")
@@ -366,10 +373,11 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
             and (shown["selected"] or {}).get("name") == f"the keyboard's light is {kbd_said}"
         )
     )
-    # Return's own Copy leads the answer's step, then the levels.
+    # The levels lead the answer's step, then the copy, after what can be
+    # done and before what's said.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:4] == ["Copy", *kbd_levels])
-    for _ in range(kbd_levels.index("Light to 2 of 2") + 1):
+    desktop.launcher_until(lambda shown: shown["rows"][:4] == [*kbd_levels, "Copy"])
+    for _ in range(kbd_levels.index("Light to 2 of 2")):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Light to 2 of 2")
     machine.send_key("ret")
@@ -486,8 +494,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # headline's disk has, and the disk's speed, how busy it is and its
     # latency come after.
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Copy", "Space"])
-    machine.send_key("down")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Space"])
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Space"
@@ -510,9 +517,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     # why not, its own sentence below.
     desktop.answer("disk")
     desktop.step_in()
-    desktop.launcher_until(
-        lambda shown: shown["rows"][:3] == ["Copy", "Space", "What's Filling It"]
-    )
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Space", "What's Filling It"])
     desktop.type_in("filling", selecting="What's Filling It")
     assert desktop.showing()["selected"]["side"] == "Containers \u00b7 12.0 GiB"
     desktop.step_in()
@@ -536,7 +541,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "Reading", "Writing"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # What the network carries now, in and out, from the kernel's
@@ -574,12 +579,10 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     desktop.step_in()
     # Connections follows only where more than one interface is listed.
     desktop.launcher_until(
-        lambda shown: (
-            shown["rows"][:6] == ["Copy", "In", "Out", "Connection", "Round Trip", "Dropped"]
-        )
+        lambda shown: shown["rows"][:5] == ["In", "Out", "Connection", "Round Trip", "Dropped"]
     )
     assert (
-        desktop.showing()["things"][3]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
+        desktop.showing()["things"][2]["reads"] == "Connection \u00b7 40 Mb/s in \u00b7 12 Mb/s out"
     )
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
@@ -590,7 +593,7 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
     )
     desktop.step_in()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Copy", "8.8.8.8", "1.1.1.1", "9.9.9.9"])
+    desktop.launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A guard that stops writing is asked about once its last heartbeat
