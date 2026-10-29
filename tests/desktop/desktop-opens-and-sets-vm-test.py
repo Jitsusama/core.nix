@@ -432,10 +432,10 @@ def test_the_launcher_asks_what_to_open_a_picture_with_for_the_portal(desktop: D
 # A program asks the portal for a file to open, and then to save, in a
 # folder, as Chrome and Slack do, and the launcher chooses it rather than
 # GTK's dialog: it opens in that folder, its path the program's title and
-# then the folder, every folder on the way held above it. What's typed finds a file there and Return opens it; saving, Return
-# saves as the name the program gave; and Escape chooses nothing. The
-# portal hands the program each path picked, and each ask's socket goes once
-# it's answered.
+# then the folder, every folder on the way held above it. What's typed
+# finds a file there and Return opens it; saving, Return saves as the name
+# the program gave; and Escape chooses nothing. The portal hands the
+# program each path picked, and each ask's socket goes once it's answered.
 
 
 def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Desktop) -> None:
@@ -445,6 +445,8 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
     chose = "/run/user/1000/portal-chose"
     sockets_gone = "! ls /run/user/1000/open-with/*.sock"
     desktop.as_account(f"mkdir -p {notes} && touch {notes}/plan.md {notes}/list.md")
+    # The files, then each folder from /home down to the notes.
+    held = 1 + notes.count("/")
 
     def choose(mode: str, name: str = "") -> None:
         """Ask the portal for a file in the notes, and wait until the launcher holds them."""
@@ -457,7 +459,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         desktop.launcher_until(
             lambda shown: (
                 shown["path"] == [title, "~/chosen-notes"]
-                and len(shown["held"]) == 4
+                and len(shown["held"]) == held
                 and shown["selected"] is not None
             ),
             timeout=timedelta(seconds=60),
@@ -467,7 +469,7 @@ def test_the_launcher_chooses_a_file_to_open_or_save_for_the_portal(desktop: Des
         """Wait until the portal said these lines, and the ask's socket went."""
         said = "\\n".join(lines)
         machine.wait_until_succeeds(
-            f"[ \"$(cat {chose})\" = \"$(printf '{said}')\" ]", timeout=timedelta(seconds=60)
+            f'[ "$(cat {chose})" = "$(printf \'{said}\')" ]', timeout=timedelta(seconds=60)
         )
         desktop.launcher_until(lambda shown: not shown["open"])
         machine.wait_until_succeeds(sockets_gone, timeout=timedelta(seconds=10))
