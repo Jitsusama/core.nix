@@ -114,10 +114,11 @@ in
           "TZDIR=${pkgs.tzdata}/share/zoneinfo"
         ]
         ++ lib.optional (cfg.timeZone != null) "TZ=${cfg.timeZone}";
-        # It's told to end first, so it gives its builder back, then its
-        # helper goes.
+        # It's told to end first, so it ends its helper and journals its
+        # builder for the next start to give back, then anything left goes.
+        # A switch starts nothing until every stop ends, so a stop is short.
         KillMode = "mixed";
-        TimeoutStopSec = "5min";
+        TimeoutStopSec = "10s";
         Restart = "on-failure";
         Slice = "background.slice";
       };

@@ -78,7 +78,8 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     [--standing PATH] | nix-offload stand --standing PATH \
                     | nix-offload report --rate DOLLARS";
 
-/// Set when the service is told to end, so the builder is given back first.
+/// Set when the service is told to end, so its builder is journalled for the
+/// next start to give back.
 static ENDING: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn ending(_: libc::c_int) {
@@ -299,9 +300,24 @@ fn serve(settings: &Settings) {
         machines.show(lent.as_ref().map(|builder| builder.line.as_str()));
         rest(TICK);
     }
-    if let Some(builder) = lent {
-        give_back(settings, &mut machines, builder, Event::Stopped);
+    if let Some(mut builder) = lent {
+        machines.show(None);
+        end(&mut builder.helper);
+        leave(settings, &builder.name, builder.since, builder.rate);
     }
+}
+
+/// Leave a builder for the next start to give back, since a stop that
+/// waited on its delete would hold every other unit's start at a switch.
+/// Its own idle delete takes it if no start comes.
+fn leave(settings: &Settings, name: &str, asked: u64, rate: Option<u64>) {
+    let now = now();
+    let ran = Ran {
+        seconds: now - asked,
+        rate,
+    };
+    let _ = journal::note(&settings.journal, now, Event::Ended, name, Some(ran));
+    eprintln!("nix-offload: told to end, so {name} is left for the next start to give back");
 }
 
 /// Ask the helper for a builder, and give Nix its line once it's ready.
@@ -342,7 +358,17 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
     match host_of(line) {
         Some(host) if helper.try_wait().ok().flatten().is_none() => {
             machines.show(Some(line));
-            let _ = journal::note(&settings.journal, self::now(), Event::Started, &name, None);
+            let ran = Ran {
+                seconds: self::now() - now,
+                rate,
+            };
+            let _ = journal::note(
+                &settings.journal,
+                self::now(),
+                Event::Started,
+                &name,
+                Some(ran),
+            );
             eprintln!("nix-offload: {name} is ready; Nix may send it builds");
             Some(Lent {
                 name,
@@ -353,6 +379,11 @@ fn lend(settings: &Settings, machines: &mut Machines, now: u64, left: u64) -> Op
                 since: now,
                 used: self::now(),
             })
+        }
+        _ if ENDING.load(Ordering::SeqCst) => {
+            end(&mut helper);
+            leave(settings, &name, now, rate);
+            None
         }
         _ => {
             eprintln!("nix-offload: {name} wasn't ready, so it's given back");
@@ -399,13 +430,16 @@ fn give_back(settings: &Settings, machines: &mut Machines, mut builder: Lent, ev
 fn give_back_unreturned(settings: &Settings, lent: Option<&Lent>) -> usize {
     let journal = fs::read_to_string(&settings.journal).unwrap_or_default();
     let mut still = 0;
-    for name in journal::unreturned(&journal) {
-        if lent.is_some_and(|builder| builder.name == name) {
+    for builder in journal::unreturned(&journal) {
+        let name = &builder.name;
+        if lent.is_some_and(|lent| &lent.name == name) {
             continue;
         }
         eprintln!("nix-offload: {name} isn't yet seen gone, so it's given back");
-        if down(settings, &name) {
-            let _ = journal::note(&settings.journal, now(), Event::Left, &name, None);
+        if down(settings, name) {
+            let now = now();
+            let (event, ran) = builder.given_back(now, decide::IDLE);
+            let _ = journal::note(&settings.journal, now, event, name, ran);
         } else {
             still += 1;
         }
@@ -428,7 +462,7 @@ fn say_others(settings: &Settings) {
         .lines()
         .map(str::trim)
     {
-        if !name.is_empty() && !ours.iter().any(|known| known == name) {
+        if !name.is_empty() && !ours.iter().any(|known| known.name == name) {
             eprintln!("nix-offload: {name} is there after the deadline, and isn't this one's");
         }
     }
