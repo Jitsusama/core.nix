@@ -143,7 +143,9 @@ or launchd, and [`home.nix`][2] the account's.
   either way by tens of gigabytes an hour. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. While a disk
-  is below healthy, `holders` says what holds the space: the ten biggest
+  is below healthy, or holds more than the config's `budget` (a size or a
+  share used, which takes nothing more), `holders` says what holds the
+  space: the ten biggest
   folders the sources name, each straight under a root or a cache whole,
   with whose it is (a quest, a worktree, a cache, containers or other),
   whether the guard may clear any of it and, when not, why. Sizing them

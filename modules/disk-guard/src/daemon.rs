@@ -640,8 +640,9 @@ impl Guard {
         })
     }
 
-    /// Starts measuring what holds the disks, when one is below healthy and
-    /// the last measure is old or missing, unless a measure still runs.
+    /// Starts measuring what holds the disks, when one is below healthy or
+    /// holds more than its budget, and the last measure is old or missing,
+    /// unless a measure still runs.
     fn measure_holders(&mut self, now: f64) {
         if self
             .measuring
@@ -651,10 +652,15 @@ impl Guard {
             return;
         }
         self.measuring = None;
-        let pressed = self
-            .watched
-            .values()
-            .any(|watched| watched.band != Band::Healthy);
+        let budget = self.config.budget;
+        let pressed = self.watched.values().any(|watched| {
+            watched.band != Band::Healthy
+                || budget
+                    .zip(watched.space.as_ref())
+                    .is_some_and(|(budget, space)| {
+                        space.total.saturating_sub(space.free) > budget.of(space.total)
+                    })
+        });
         let fresh = self
             .measured
             .lock()
