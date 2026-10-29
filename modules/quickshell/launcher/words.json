@@ -1560,14 +1560,21 @@
       "name": "Location"
     },
     {
-      "id": "location:position",
+      "id": "location:town",
       "in": "location",
-      "name": "Position"
+      "name": "Town"
     },
     {
-      "id": "location:zone",
+      "id": "location:knows",
       "in": "location",
-      "name": "Zone"
+      "name": "How It Knows"
+    },
+    {
+      "id": "verb:location:copy",
+      "in": "location",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy"
     },
     {
       "id": "verb:time:put-back",
