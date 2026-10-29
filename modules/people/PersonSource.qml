@@ -20,8 +20,11 @@
 // now. Given a person as People.qml joins them, { email, emails, name,
 // facts, recent, from }, `acts` gives what Joel can do with them through
 // it, rows made with the People place's provider, `main` on the one way
-// it reaches them, and `recent` the things it has with them lately, each
-// drawn by that thing's own row (Mail.row, Calendar.row), never one of
+// it reaches them; `next` the next thing it has with them, a meeting not
+// yet over, as { at, row }, or null; and `recent` the things it's had
+// with them, each { at, row }, `at` when it was in milliseconds since the
+// epoch, so People lists every source's newest first. Each row is drawn
+// by that thing's own component (Mail.row, Calendar.row), never one of
 // its own. `woken` is asked each time the launcher opens, for a source
 // that only follows what it knows while someone might look. A source
 // that learns its acts for someone only once asked, as Slack's looks
@@ -39,6 +42,10 @@ QtObject {
 
     function acts(person, provider) {
         return [];
+    }
+
+    function next(person, provider) {
+        return null;
     }
 
     function recent(person, provider) {

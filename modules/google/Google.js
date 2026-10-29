@@ -31,12 +31,12 @@ function heard(line) {
 // Everyone the account's meetings and mail name, as People's Google
 // source says them (PersonSource.qml): each who holds or is asked to a
 // meeting, and each who sent mail that wants Joel, by their address, with
-// the name they're given. All of them are recent, since the meetings run
-// from today to a week on and the mail is what waits on him now. One with
-// no address can't be one person across sources, so is left out; who's
-// named more than once is said once, by the first name given. Each says
-// when those things are, a meeting from its start to its end and mail at
-// when it came, so People can list whoever's nearest now first.
+// the name they're given. One with no address can't be one person across
+// sources, so is left out; who's named more than once is said once, by
+// the first name given. Each says when those things are, a meeting from
+// its start to its end and mail when it came, so People lists whoever
+// there's been something with, the last first, and leaves someone only
+// asked to a meeting to come to be found by typing.
 function people(meetings, mail) {
     const found = new Map();
     const add = (email, name, span) => {
@@ -49,7 +49,7 @@ function people(meetings, mail) {
             had.spans.push(span);
         } else {
             found.set(address, {
-                emails: [address], name: name ?? "", recent: true, spans: [span]
+                emails: [address], name: name ?? "", spans: [span]
             });
         }
     };

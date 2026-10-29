@@ -65,11 +65,14 @@ Provider {
         return Person.standing(person, stands);
     }
 
-    // Those listed with nothing typed, as they stand now, the nearest
-    // measured from when they're listed rather than kept up with the clock.
-    readonly property var all: Person.ordered(
-        persons.filter(person => Person.listed(person, standOf(person))), person => standOf(person),
-        Date.now()).map(person => made(person, standOf(person)))
+    // Those listed with nothing typed, as they stand now, the last thing
+    // with each measured as they're listed rather than kept up with the
+    // clock.
+    readonly property var all: {
+        const now = Date.now();
+        return Person.ordered(persons.filter(person => Person.listed(person, standOf(person), now)),
+            person => standOf(person), now).map(person => made(person, standOf(person)));
+    }
     onAllChanged: changed()
 
     // The listed rows by key, so a search finds them as they stand.
@@ -120,8 +123,9 @@ Provider {
         return Person.acts(sources.map(source => source.acts(person, provider)));
     }
 
-    // What the right arrow lists: every act, then each address to copy,
-    // then the things lately with them, each source's in its order.
+    // What the right arrow lists: every way to reach them, their next
+    // meeting, the things lately with them, then each address to copy,
+    // last as every Copy is.
     function inside(person) {
         const addresses = person.emails.map((email, at) => copyRow({
             key: `fact:person:email:${at}`,
@@ -129,15 +133,23 @@ Provider {
             side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
-        return acts(person).concat(addresses, recent(person));
+        return acts(person).concat(next(person), recent(person), addresses);
     }
 
-    // Their Recent: what each source has had with them lately, each its
-    // own thing's row, the same word as a program's Recent, or nothing
+    // Their next meeting, drawn as a meeting is everywhere, the soonest any
+    // source has; a meeting to come isn't Recent.
+    function next(person) {
+        const coming = sources.map(source => source.next(person, provider))
+            .filter(Boolean).sort((a, b) => a.at - b.at)[0];
+        return coming ? [coming.row] : [];
+    }
+
+    // Their Recent: what each source has had with them, newest first, each
+    // its own thing's row, the same word as a program's Recent, or nothing
     // when no source has any.
     function recent(person) {
-        const had = () => sources.reduce((rows, source) => rows.concat(source.recent(person,
-            provider)), []);
+        const had = () => sources.reduce((each, source) => each.concat(source.recent(person,
+            provider)), []).sort((a, b) => b.at - a.at).map(one => one.row);
         const count = had().length;
         if (count === 0)
             return [];

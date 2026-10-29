@@ -71,46 +71,46 @@ QtObject {
             { said: "in a call", order: 1, favourite: true, recent: false });
         check("nothing said", Person.standing(everyone[2], stands),
             { said: "", order: 4, favourite: false, recent: false });
-        check("listed: a favourite", Person.listed(ben, Person.standing(ben, stands)), true);
-        check("listed: dealt with lately", Person.listed(everyone[2], Person.standing(everyone[2], [])),
-            true);
-        check("not listed: only known", Person.listed(ben, Person.standing(ben, [])), false);
+        check("listed: a favourite", Person.listed(ben, Person.standing(ben, stands), 0), true);
+        check("listed: dealt with lately",
+            Person.listed(everyone[2], Person.standing(everyone[2], []), 0), true);
+        check("not listed: only known", Person.listed(ben, Person.standing(ben, []), 0), false);
 
-        // In order: favourites, then whoever can be reached, then by name.
+        // In order: favourites, then by name, however they stand, since that
+        // changes while the list is open.
         const standOf = person => Person.standing(person, [{
-            "ada@example.com": { said: "available", order: 0 },
+            "grace@example.com": { said: "available", order: 0 },
             "ben@example.com": { said: "away", order: 2, favourite: true }
         }]);
-        check("favourites, then reachable, then by name",
-            names(Person.ordered(everyone, standOf, 0)),
+        check("favourites, then by name", names(Person.ordered(everyone, standOf, 0)),
             ["ben@example.com", "Ada Lovelace", "grace@example.com"]);
 
-        // Whoever Joel has something with nearest now comes first, by what
-        // every source says, before how they stand: A's meeting is under
-        // way, B's mail came a minute ago, and nothing's with C.
+        // By the last thing between them and Joel, newest first, by what
+        // every source says: A is in a meeting with him now, B's mail came
+        // a minute ago, and C is only asked to a meeting to come, so isn't
+        // listed but is ordered last.
         const minute = 60 * 1000;
         const now = 100 * minute;
-        const near = Person.merged([
+        const coming = { from: now + 9 * minute, to: now + 39 * minute };
+        const lately = Person.merged([
             { name: "google", people: [
-                { emails: ["b@x"], name: "B", recent: true,
-                    spans: [{ from: now - minute, to: now - minute }] },
-                { emails: ["a@x"], name: "A", recent: true,
-                    spans: [{ from: now + 9 * minute, to: now + 9 * minute }] },
-                { emails: ["c@x"], name: "C", recent: true }] },
+                { emails: ["b@x"], name: "B", spans: [{ from: now - minute, to: now - minute }] },
+                { emails: ["a@x"], name: "A", spans: [coming] },
+                { emails: ["c@x"], name: "C", spans: [coming] }] },
             { name: "vault", people: [{ emails: ["a@x"], name: "A",
                 spans: [{ from: now - minute, to: now + minute }, { from: 0, to: NaN }] }] }
         ]);
-        check("when everything with them is, by every source", near[1].spans, [
-            { from: now + 9 * minute, to: now + 9 * minute },
-            { from: now - minute, to: now + minute }
-        ]);
-        check("how far off the nearest is", near.map(person => Person.apart(person, now)),
-            [minute, 0, Number.MAX_SAFE_INTEGER]);
-        const cAvailable = [{ "c@x": { said: "available", order: 0 } }];
-        check("nearest first, then how they stand", names(Person.ordered(near,
-            person => Person.standing(person, cAvailable), now)), ["A", "B", "C"]);
+        check("when everything with them is, by every source", lately[1].spans,
+            [coming, { from: now - minute, to: now + minute }]);
+        check("the last thing with each", lately.map(person => Person.last(person, now)),
+            [now - minute, now, null]);
+        check("someone only asked to what's to come isn't listed",
+            lately.map(person => Person.listed(person, Person.standing(person, []), now)),
+            [true, true, false]);
+        check("the last first", names(Person.ordered(lately,
+            person => Person.standing(person, []), now)), ["A", "B", "C"]);
         const cFavourite = [{ "c@x": { said: "", order: 4, favourite: true } }];
-        check("a favourite before the nearest", names(Person.ordered(near,
+        check("a favourite before the last", names(Person.ordered(lately,
             person => Person.standing(person, cFavourite), now)), ["C", "A", "B"]);
 
         // The drawer.

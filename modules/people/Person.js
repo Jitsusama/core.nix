@@ -125,30 +125,33 @@ function standing(person, stands) {
     return UNSAID;
 }
 
-// Whether they're listed with nothing typed: a favourite, someone dealt
-// with lately, or someone a source says is so.
-function listed(person, stood) {
-    return person.recent || stood.favourite || stood.recent;
+// When the last thing between them and Joel was, in milliseconds since
+// the epoch: the end of a meeting they had, now for one under way, or
+// when a mail came; or null when there's been nothing yet, as for
+// someone only asked to a meeting to come.
+function last(person, now) {
+    const past = (person.spans ?? []).filter(span => span.from <= now)
+        .map(span => Math.min(span.to, now));
+    return past.length === 0 ? null : Math.max(...past);
 }
 
-// How far from now the nearest thing with them is, one under way being
-// none; for nothing, further than anything.
-function apart(person, now) {
-    return Math.min(Number.MAX_SAFE_INTEGER,
-        ...(person.spans ?? []).map(span => Math.max(0, span.from - now, now - span.to)));
+// Whether they're listed with nothing typed: a favourite, someone there's
+// been something with, or someone a source says Joel dealt with lately.
+// Everyone else is found by typing.
+function listed(person, stood, now) {
+    return stood.favourite || stood.recent || person.recent || last(person, now) !== null;
 }
 
-// Those listed in order: favourites, then whoever Joel has something with
-// nearest now (a meeting soon, mail just come), then by how they stand,
-// so whoever can be reached comes first, then by name. It's measured from
-// now only as they're ordered, so the minute passing moves nobody under
-// the keys.
+// Those listed in order: favourites, then by the last thing between them
+// and Joel, newest first, then by name. How they stand isn't part of it,
+// since it changes while the list is open; it's said in their note.
+// It's measured from now only as they're ordered, so the minute passing
+// moves nobody under the keys.
 function ordered(persons, standOf, now) {
     const rank = person => (standOf(person).favourite ? 0 : 1);
-    const near = person => apart(person, now);
+    const when = person => last(person, now) ?? Number.MIN_SAFE_INTEGER;
     return persons.slice().sort((a, b) => rank(a) - rank(b)
-        || near(a) - near(b)
-        || standOf(a).order - standOf(b).order
+        || when(b) - when(a)
         || a.name.localeCompare(b.name));
 }
 

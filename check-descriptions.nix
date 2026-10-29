@@ -1104,8 +1104,9 @@
   '';
   the-people-are-one-person-each = ''
     every source's people join into one person per email address, a source that knows two
-    addresses for someone joining them, each standing as the first source that says, those dealt
-    with lately or favoured listed in order, with their details for the drawer and their acts in
+    addresses for someone joining them, each standing as the first source that says, favourites
+    listed first, then whoever there's been something with, the last first, someone only asked to
+    what's to come left to be found by typing, with their details for the drawer and their acts in
     the one order
   '';
   the-picker-picks-what-the-keys-say = ''
@@ -1336,8 +1337,8 @@
     its subject, keeping one Mail window, replies to it, flips its Read switch both ways and
     archives it, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
     its title finds, joins a Meet call by its code after Meet's New Meeting, finds a person by name
-    with the ways to reach them and their Recent, sets the volume, loses no letter typed after its
-    chord, and shows the shortcuts
+    with the ways to reach them, their next meeting, their Recent and their address last, sets the
+    volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

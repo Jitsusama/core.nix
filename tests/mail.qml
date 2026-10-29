@@ -146,12 +146,10 @@ QtObject {
         const alan = { address: "alan@example.com", from: "Alan", at: lunch.at - minute };
         const meetingSpan = { from: standupWith.start, to: standupWith.end };
         check("who the meetings and mail name", Google.people([standupWith], [lunch, alan]), [
-            { emails: ["ada@example.com"], name: "Ada Lovelace", recent: true,
+            { emails: ["ada@example.com"], name: "Ada Lovelace",
                 spans: [meetingSpan, { from: lunch.at, to: lunch.at }] },
-            { emails: ["grace@example.com"], name: "Grace Hopper", recent: true,
-                spans: [meetingSpan] },
-            { emails: ["alan@example.com"], name: "Alan", recent: true,
-                spans: [{ from: alan.at, to: alan.at }] }
+            { emails: ["grace@example.com"], name: "Grace Hopper", spans: [meetingSpan] },
+            { emails: ["alan@example.com"], name: "Alan", spans: [{ from: alan.at, to: alan.at }] }
         ]);
         check("a meeting with them", Google.withThem(standupWith, ["grace@example.com"]), true);
         check("mail from them", Google.withThem(lunch, ["ada@example.com"]), true);
