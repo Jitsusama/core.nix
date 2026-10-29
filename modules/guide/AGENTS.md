@@ -433,8 +433,11 @@ driven on; the installed machine's steps come later.
 
 ## Working on It
 
-`direnv` enters the flake's development shell in this directory, with cargo,
-clippy and rustfmt. `cargo test` runs in a second, and the package runs the
+`direnv` enters the flake's guide shell in this directory, with cargo,
+clippy and rustfmt, and on Linux the QEMU with canokey the VM tests boot
+under, held so the shell's root keeps it: no cache has it, and it compiles
+for an hour or more, so the first entry after core's nixpkgs moves waits for
+it once. `cargo test` runs in a second, and the package runs the
 tests again as it builds, then `guide tools`. `nix fmt` from the repository
 root formats the Rust. `guide observe` prints what the guide sees on the
 machine it runs on and changes nothing, which is how a parser meets a

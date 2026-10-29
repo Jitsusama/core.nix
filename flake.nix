@@ -429,7 +429,7 @@
       # checks a change touches, and on Linux run-subtests, which runs some
       # of a VM test's subtests in seconds, and shell-preview, which shows the
       # shell from the working copy in a niri window (docs/testing.md).
-      devShells = forEachSystem (pkgs: {
+      devShells = forEachSystem (pkgs: rec {
         default = pkgs.mkShell {
           # wifid's sign-in window builds against GTK and WebKit, which
           # only Linux has.
@@ -467,6 +467,22 @@
             // import ./modules/guide/tools.nix { inherit pkgs; }
           );
         };
+
+        # The same, entered in modules/guide (its .envrc), holding on Linux
+        # the QEMU the guide's VM tests boot under. It's built with canokey
+        # (tests/vm/guide/canokeys.nix), so no cache has it and it takes an
+        # hour or more to compile; held here, nix-direnv's root for the
+        # shell keeps it, so it's built once for each nixpkgs core pins
+        # rather than again whenever the store is collected. Only the shell's
+        # first entry after nixpkgs moves waits for it, and a VM test would
+        # build it then anyway.
+        guide = default.overrideAttrs (old: {
+          env =
+            old.env
+            // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+              GUIDE_VM_TESTS_QEMU = "${(import ./tests/vm/guide/canokeys.nix { inherit pkgs; }).qemu}";
+            };
+        });
       });
 
       checks = forEachSystem (
