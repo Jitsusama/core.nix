@@ -50,20 +50,12 @@ pub fn update(config: &Config, now: SystemTime) -> Vec<(Package, Result<Outcome,
 /// `current` where it was.
 pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result<Outcome, String> {
     let place = Place::of(config, package);
-    fs::create_dir_all(&place.dir).map_err(|error| format!("{}: {error}", place.dir.display()))?;
-    let lock_path = place.dir.join(".lock");
-    let lock =
-        File::create(&lock_path).map_err(|error| format!("{}: {error}", lock_path.display()))?;
-    let _held = match lock.try_lock() {
-        Ok(()) => Held(lock),
-        Err(TryLockError::WouldBlock) => {
-            return Ok(Outcome {
-                done: Done::Busy,
-                removed: 0,
-                unfetched: None,
-            });
-        }
-        Err(TryLockError::Error(error)) => return Err(format!("{}: {error}", lock_path.display())),
+    let Some(_held) = hold(&place)? else {
+        return Ok(Outcome {
+            done: Done::Busy,
+            removed: 0,
+            unfetched: None,
+        });
     };
     let env = version::build_env(config);
     let (commit, unfetched) = version::fetch(config, package, &place, &env)?;
@@ -79,12 +71,45 @@ pub fn update_one(config: &Config, package: &Package, now: SystemTime) -> Result
             Err(why) => Done::Failed { commit, why },
         }
     };
-    let removed = version::prune(config, &place, now)?;
+    let removed = version::prune(&place)?;
     Ok(Outcome {
         done,
         removed,
         unfetched,
     })
+}
+
+/// Remove what nothing uses of each package, with no fetch or build: run
+/// when a pi starts or ends, so a version goes with the last pi running
+/// it. A package an update holds is left to it, since its update removes
+/// too: `None`.
+#[must_use]
+pub fn prune(config: &Config) -> Vec<(Package, Result<Option<usize>, String>)> {
+    config
+        .packages
+        .iter()
+        .map(|package| {
+            let place = Place::of(config, package);
+            let removed = hold(&place).and_then(|held| match held {
+                Some(_held) => version::prune(&place).map(Some),
+                None => Ok(None),
+            });
+            (package.clone(), removed)
+        })
+        .collect()
+}
+
+/// The package's lock, or nothing when another run holds it.
+fn hold(place: &Place) -> Result<Option<Held>, String> {
+    fs::create_dir_all(&place.dir).map_err(|error| format!("{}: {error}", place.dir.display()))?;
+    let lock_path = place.dir.join(".lock");
+    let lock =
+        File::create(&lock_path).map_err(|error| format!("{}: {error}", lock_path.display()))?;
+    match lock.try_lock() {
+        Ok(()) => Ok(Some(Held(lock))),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Error(error)) => Err(format!("{}: {error}", lock_path.display())),
+    }
 }
 
 /// A package's lock, given back the moment the update is done with it.

@@ -665,11 +665,13 @@
   '';
   pi-packages-passes-clippy = ''
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
-    through an update and never swap in a build that fails or leaves a native module unbuilt
+    through an update, keep the version before current and the one a live pi says it loaded, and
+    never swap in a build that fails or leaves a native module unbuilt
   '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
-    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac
+    fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
+    or end, watched in each package's loaded folder, removes the versions no pi runs
   '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with

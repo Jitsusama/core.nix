@@ -2,12 +2,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use serde_json::Value;
-
-/// How long a version `current` has left is kept, at least.
-const KEEP_DAYS: u64 = 2;
 
 /// One package pi loads, and where it comes from.
 #[derive(Debug, Clone)]
@@ -64,8 +60,6 @@ pub struct Config {
     /// Variables a build is given, over those it keeps from where it
     /// was started.
     pub env: Vec<(String, String)>,
-    /// How long a version `current` has left is kept, at least.
-    pub keep: Duration,
 }
 
 impl Config {
@@ -122,7 +116,6 @@ impl Config {
                     .collect()
             })
             .unwrap_or_default();
-        let days = value["keepDays"].as_u64().unwrap_or(KEEP_DAYS);
         Ok(Self {
             root: text("root")?,
             packages,
@@ -131,7 +124,6 @@ impl Config {
             pnpm: text("pnpm")?,
             path,
             env,
-            keep: Duration::from_secs(days * 86_400),
         })
     }
 }

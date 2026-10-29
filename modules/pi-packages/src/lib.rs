@@ -22,10 +22,13 @@
 //! never half of either (version.rs).
 //!
 //! A version `current` has left stays as it was, for the sessions still
-//! running it, until it has been out for `keepDays` and no process on the
-//! machine holds a file in it, maps one or stands in it (inuse/). A
-//! build that fails its check is removed and `current` is left alone; the
-//! next run tries again. One update runs at a time for each package, under
+//! running it, until no process on the machine runs it, holds a file in it
+//! or stands in it (inuse/); what a pi runs is what it says it loaded
+//! (loaded.rs), or what it maps when it says nothing. The version
+//! `current` left last stays too, for a reload just made or a step back.
+//! `prune` removes them alone, whenever a pi starts or ends. A build that
+//! fails its check is removed and `current` is left alone; the next run
+//! tries again. One update or prune runs at a time for each package, under
 //! a lock beside its versions.
 //!
 //! Versions were first kept in `releases/`, a word that names giving a
@@ -35,5 +38,6 @@
 pub mod check;
 pub mod config;
 pub mod inuse;
+pub mod loaded;
 pub mod run;
 pub mod version;
