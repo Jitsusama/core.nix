@@ -1023,6 +1023,52 @@ def test_the_launcher_switches_to_a_window_by_its_title(desktop: Desktop) -> Non
     )
 
 
+def test_the_selection_is_drawn_on_its_row_as_rows_above_it_change(desktop: Desktop) -> None:
+    """Letters typed in a list scrolled down leave the selection drawn on its selected row.
+
+    Rows coming or going above a scrolled list move where the list's rows start, and the
+    selection drawn from the top stayed where its row had been, under another.
+    """
+    machine = desktop.machine
+    windows = [desktop.opened(f"Fill {at:02}") for at in range(1, 13)]
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("fill")
+    desktop.launcher_until(
+        lambda shown: {f"Fill {at:02}" for at in range(1, 13)} <= set(shown["rows"])
+    )
+    drift = []
+    typed = "fill"
+    # Each a letter added or taken away, so rows above the selection go or
+    # come back.
+    for change in [" 1", "", " 0", " ", " 1"]:
+        # Down to the last row, so the list is scrolled.
+        shown = desktop.showing()
+        below = len(shown["rows"]) - 1 - shown["rows"].index(shown["selected"]["name"])
+        for _ in range(below):
+            machine.send_key("down")
+        desktop.launcher_until(lambda shown: shown["selected"]["name"] == shown["rows"][-1])
+        wanted = f"fill{change}"
+        while not wanted.startswith(typed):
+            machine.send_key("backspace")
+            typed = typed[:-1]
+        machine.send_chars(wanted[len(typed) :])
+        typed = wanted
+        desktop.launcher_until(
+            lambda shown: (
+                shown["typed"] == typed  # noqa: B023
+                and (shown["selected"] or {"settled": True})["settled"]
+            )
+        )
+        selection = laid_out(desktop)["selection"]
+        if selection and selection["y"] != selection["row"]:
+            drift.append((typed, selection))
+    assert not drift, f"the selection was drawn off its row: {drift}"
+    launcher_closed(desktop)
+    for window in windows:
+        desktop.close(window)
+
+
 def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -> None:
     """A name too long for its row slides to show its end while selected, and only it moves."""
     machine = desktop.machine
