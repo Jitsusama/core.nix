@@ -4184,7 +4184,7 @@
       "id": "verb:mail:replyAll",
       "in": "mail:message",
       "name": "Reply All",
-      "verb": "reply all",
+      "verb": "reply",
       "glyph": "replyAll"
     },
     {
