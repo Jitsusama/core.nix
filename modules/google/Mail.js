@@ -156,6 +156,7 @@ const ELLIPSIS = "\u2026";
 const FETCHED = {
     fetching: `fetching${ELLIPSIS}`,
     saved: "saved in Downloads",
+    savedThere: "saved",
     gone: "no longer in the mail",
     runs: "a program or a script, so only saved",
     unreachable: "Gmail couldn't be reached",
@@ -184,9 +185,14 @@ function fetchedAs(fetched, mail, at, since) {
 }
 
 // The line asking the program to fetch the file `at` on `mail`, to open
-// or save as `how` says.
-function fetch(mail, at, how) {
-    return `${JSON.stringify({ fetch: { id: mail.id, file: at, how } })}\n`;
+// or save as `how` says, a save going `to` the path Joel picked when he
+// picked one.
+function fetch(mail, at, how, to = "") {
+    const asked = { id: mail.id, file: at, how: how };
+    if (to !== "") {
+        asked.to = to;
+    }
+    return `${JSON.stringify({ fetch: asked })}\n`;
 }
 
 // A file's kind as a file manager says it, by its ending ("PDF"), or

@@ -169,6 +169,9 @@ QtObject {
         // says how it stands for an ask made since.
         check("the line fetching a file", Mail.fetch(lunch, 1, "save"),
             '{"fetch":{"id":"m_2","file":1,"how":"save"}}\n');
+        check("the line saving a file where Joel picked",
+            Mail.fetch(lunch, 1, "save", "/home/joel/Plans/menu.pdf"),
+            '{"fetch":{"id":"m_2","file":1,"how":"save","to":"/home/joel/Plans/menu.pdf"}}\n');
         const fetched = (more) => Object.assign({ mail: "m_2", file: 0, how: "open", asked: 50,
             path: null, failed: null }, more);
         check("how a fetch stands", [
@@ -182,8 +185,10 @@ QtObject {
             Mail.fetchedAs(fetched({ path: "/x" }), lunch, 1, 40),
             Mail.fetchedAs(null, lunch, 0, 40)
         ], ["fetching", "opened", "saved", "unreachable", "", "", ""]);
-        check("what its row says", ["fetching", "saved", "runs", "opened"].map(Mail.fetchedSaid),
-            ["fetching\u2026", "saved in Downloads", "a program or a script, so only saved", ""]);
+        check("what its row says",
+            ["fetching", "saved", "savedThere", "runs", "opened"].map(Mail.fetchedSaid),
+            ["fetching\u2026", "saved in Downloads", "saved", "a program or a script, so only saved",
+                ""]);
         const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
             at: lunch.at };
         check("the details of mail saying little", Mail.details(bare, "No Subject"), {
