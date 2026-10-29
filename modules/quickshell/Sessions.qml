@@ -327,7 +327,8 @@ Singleton {
             for (const id of Object.keys(node).sort()) {
                 const session = node[id];
                 const presence = session.presence;
-                if (session.machine === machine && (session.state === "busy" || session.state === "idle")
+                const running = session.state === "busy" || session.state === "idle";
+                if (session.machine === machine && running
                         && presence && (presence.addresses ?? []).length > 0)
                     next.push({ file: id, presence: presence, kitty: kittyOf(presence) });
             }
@@ -528,6 +529,9 @@ Singleton {
         path: `${Quickshell.env("XDG_STATE_HOME") || `${root.home}/.local/state`}/mycelium/realm`
         blockLoading: true
         printErrors: false
+        // A node's first run writes it after the shell has started.
+        watchChanges: true
+        onFileChanged: reload()
     }
     readonly property string realm: realmFile.text().trim()
     FileView {
