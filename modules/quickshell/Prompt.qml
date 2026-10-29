@@ -5,6 +5,9 @@
 // the padlock. A ghost after what's typed offers how it could end, or, with
 // nothing typed, a hint. An aside on the right, muted, says something about
 // what's typed, such as where the launcher's selection is among its matches.
+// Where the field's own keys do more than type (the launcher's Tab and left
+// arrow), they're said at its right edge, each a key and its word, as the
+// foot says its keys.
 // A secret's aside says when caps lock is on, its glyph in the warning
 // colour, since a password typed in capitals fails with no reason given.
 // Chips before what's typed hold what's being acted on: a thing, then a verb
@@ -37,11 +40,11 @@ Item {
     // back out, as the launcher's levels want: what's typed there is a few
     // letters narrowing a list, never text worth walking through, so the
     // arrow is the one key for "not that", and a second press goes up.
-    // Only the plain arrow does, the field saying so with its mark after
-    // what's typed, as Tab's follows the ghost, and the right arrow just
-    // after puts it back (Joel, 2026-10-26: the left arrow clears only
-    // where it says so, and the right arrow right after brings the text
-    // back). With Ctrl or Alt it moves the caret, as in any field.
+    // Only the plain arrow does, the field saying so at its right edge, as
+    // it says Tab's, and the right arrow just after puts it back (Joel,
+    // 2026-10-26: the left arrow clears only where it says so, and the right
+    // arrow right after brings the text back). With Ctrl or Alt it moves the
+    // caret, as in any field.
     property bool leftClears: false
     // What the left arrow just took away, which the right arrow puts back
     // until any other key is pressed or anything else is typed.
@@ -53,7 +56,7 @@ Item {
     // step of the path to a letter (Joel, 2026-10-25: "the breadcrumb
     // quickly goes single letter per entry").
     property real asideMost: Math.max(0, Math.min(width * 0.4, width - 2 * Theme.space.l
-        - glyphWidth - Theme.space.m - pathWanted - typingRoom - Theme.space.xl))
+        - glyphWidth - Theme.space.m - pathWanted - typingRoom - Theme.space.xl - keysRoom))
     // Whether the aside keeps the room its widest has taken until forget():
     // the launcher's says the selected row's note, which changes with each
     // arrow, and an aside sized to each one moved where what's typed had to
@@ -76,10 +79,26 @@ Item {
     }
 
     // Where what's typed has to end: before the aside's room, and before
-    // caps lock's glyph when it shows.
-    readonly property real end: asideRoom === 0 ? width - Theme.space.l
+    // caps lock's glyph when it shows, and before the field's keys.
+    readonly property real end: asideRoom === 0 ? width - Theme.space.l - keysRoom
         : asideText.x - Theme.space.xl
             - (capitals ? Theme.space.s + capitalsGlyph.implicitWidth : 0)
+
+    // The field's keys, said at its right edge (Joel, 2026-10-28: hints
+    // "flush against the text feels wrong and they are not super obvious
+    // what they mean"): Tab while a completion shows, then the left arrow
+    // while it clears what's typed, or the right arrow while it puts back
+    // what the left took. Each has a place as wide as the widest it can
+    // say, kept whether it says anything or not, so nothing in the field
+    // moves as they come and go with each letter. They're set at the right
+    // edge, past the aside, so neither moves as the aside changes.
+    readonly property bool keyed: leftClears
+    readonly property var keyPlaces: keyed ? [chipFace.advanceWidth("\u21e5 complete"),
+        Math.max(chipFace.advanceWidth("\u2190 clear"), chipFace.advanceWidth("\u2192 restore"))]
+        : []
+    readonly property real keysRoom: keyed
+        ? keyPlaces[0] + fieldKeys.spacing + keyPlaces[1] + Theme.space.xl : 0
+    readonly property bool typed: input.text !== "" && !secret
 
     // Return, or Shift+Return, which asks for it below the focused window,
     // or Ctrl+Return, which does it and closes whatever it is.
@@ -87,10 +106,6 @@ Item {
     // Tab, which takes the ghost.
     signal completed
 
-    // Words as they read, in the styled text a ghost is drawn in.
-    function plain(words: string): string {
-        return words.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
     signal cancelled
     // The right arrow past the end of what's typed, and the left arrow before
     // its start (or anywhere, with leftClears, once what's typed is gone) or
@@ -123,10 +138,23 @@ Item {
         font.pointSize: Theme.mono.large
     }
 
-    Text {
-        id: asideText
+    KeyHints {
+        id: fieldKeys
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
+        anchors.verticalCenter: parent.verticalCenter
+        visible: prompt.keyed
+        widths: prompt.keyPlaces
+        endsRight: true
+        keys: [prompt.typed && prompt.ghost !== "" ? ["\u21e5", "complete"] : ["", ""],
+            prompt.typed ? ["\u2190", "clear"]
+            : input.text === "" && prompt.cleared !== "" ? ["\u2192", "restore"] : ["", ""]]
+    }
+
+    Text {
+        id: asideText
+        anchors.right: prompt.keyed ? fieldKeys.left : parent.right
+        anchors.rightMargin: prompt.keyed ? Theme.space.xl : Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
         width: prompt.asideRoom
         // Given no room, it isn't drawn: a text of no width isn't cut but
@@ -317,30 +345,22 @@ Item {
             visible: input.cursorVisible
         }
 
-        // A hint stands just clear of the caret; a ghost runs on from what's
-        // typed as one word, and ends in an ellipsis where the field does.
-        // Tab's key follows the ghost it takes, as a key's mark does in the
-        // foot: said where it works and only while it does, and one word
-        // with the ghost, so it never stands still while the letters move
-        // it, nor takes the foot's room from how things stand. The left
-        // arrow's follows it where the arrow clears what's typed, and once
-        // it has, what it took stands as the ghost with the right arrow's
-        // mark, which puts it back.
+        // A hint starts where the first letter typed will, on the names'
+        // column, so a letter takes its place rather than landing beside it
+        // (the launcher audit's finding 35, Joel's yes on 2026-10-26: it
+        // stood a step right of it). A ghost runs on from what's typed as
+        // one word, and ends in an ellipsis where the field does.
+        // Once the left arrow has cleared what's typed, what it took stands
+        // in its place as the ghost, which the right arrow puts back. The
+        // keys that take them are said at the field's right edge.
         Text {
-            readonly property string mark: `<font color="${Theme.text}">%1</font>`
-            readonly property string clears: prompt.leftClears ? mark.arg("\u2190") : ""
-
-            x: input.text === "" ? Theme.space.xs : input.contentWidth
+            x: input.text === "" ? 0 : input.contentWidth
             width: Math.max(0, input.width - x)
             elide: Text.ElideRight
             anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.StyledText
-            text: input.text === "" ? prompt.cleared !== ""
-                    ? `${prompt.plain(prompt.cleared)} ${mark.arg("\u2192")}`
-                    : prompt.plain(prompt.hint)
-                : prompt.ghost === "" ? (clears === "" ? "" : `&nbsp;${clears}`)
-                : `${prompt.plain(prompt.ghost)} ${mark.arg("\u21e5")}`
-                    + (clears === "" ? "" : ` ${clears}`)
+            textFormat: Text.PlainText
+            text: input.text === "" ? prompt.cleared !== "" ? prompt.cleared : prompt.hint
+                : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)
             color: Theme.muted
             font.family: Theme.mono.family

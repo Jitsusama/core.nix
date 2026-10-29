@@ -1358,8 +1358,8 @@ Scope {
 
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
-    // step. Tab is said in the field, after the completion it takes
-    // (Prompt.qml), not here: it comes and goes with each letter, so in the
+    // step. Tab is said in the field, at its right edge while there's a
+    // completion to take (Prompt.qml), not here: it comes and goes with each letter, so in the
     // foot it moved the keys or took room from how things stand. The left
     // arrow is said only where it goes back: that it takes away what's
     // typed is what any field does, and saying so took room from how things

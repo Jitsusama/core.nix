@@ -717,10 +717,13 @@ works the same way everywhere.
   and a typed command comes last in the place whose answer it gives (Network's "ip ⟨address or network⟩").
   Tab does nothing at home, since an arrow reaches every place.
 - **Tab only completes.** It takes the grey completion the field shows, and
-  does nothing while none shows. Its key, ⇥, follows the completion in the
-  field, only then, rather than standing in the foot, where its coming and
+  does nothing while none shows. The field says so at its right edge,
+  "⇥ complete", only then, rather than the foot, where its coming and
   going with each letter moved the other keys or took room from how things
-  stand.
+  stand. Its place there is kept while nothing shows in it, so nothing in
+  the field moves as it comes and goes; flush after the completion, a bare
+  ⇥ was neither clear nor at rest (Joel, 2026-10-28: "flush against the
+  text feels wrong and they are not super obvious what they mean").
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, so a few letters reach inside a thing from
   anywhere: what can be done to it,
@@ -731,9 +734,10 @@ works the same way everywhere.
   by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
   the one before it (the Shortcuts category's Shortcuts) is said once, so
   it reads as a place, not as tags side by side. The left arrow takes
-  away what's typed, whole, where the field says so with ← after it, as
-  ⇥ follows a completion; what it took then stands in grey with → after
-  it, and the right arrow right after puts it back. Any other key lets it
+  away what's typed, whole, where the field says so, "← clear" at its
+  right edge after Tab's place; what it took then stands in grey, the
+  field saying "→ restore" in the same place, and the right arrow right
+  after puts it back. Any other key lets it
   go, and with Ctrl the left arrow moves the caret as in any field. With
   nothing typed it steps back out,
   putting back what was typed before with the same row selected;
