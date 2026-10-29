@@ -613,8 +613,8 @@
   '';
   nix-offload-decides-when = ''
     a builder is asked for only for builds and VM checks held three minutes for room a builder
-    gives, by a queue still writing, within the day's hours and never beside one not yet seen
-    gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
+    gives, or running or waiting while the queue says the machine is over a pressure line, by
+    a queue still writing, within the day's hours and never beside one not yet seen gone; it's given back once idle, at the deadline or once gone, with a wait after a failure;
     only builders it asked for are ever given back; a stop ends at once, leaving its builder
     for the next start, which prices it to then or its own idle delete; standing builders are
     named while they answer, and only to builds that ask for them, never in the file every
