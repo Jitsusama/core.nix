@@ -1183,8 +1183,8 @@
     gap's size with the same room all round, and What's on points at the row the keys are on
   '';
   the-margins-marks-are-drawn-level = ''
-    every mark the margin can show is the theme's drawing of it, standing the grid's full height and
-    centred across it as Qt draws it
+    every mark the margin can show, a device's kind among them, is the theme's drawing of it,
+    standing the grid's full height and centred across it as Qt draws it
   '';
   the-mic-mute-light-follows-the-mute = ''
     `mic-mute-light` asks after the mute only once a change to a mute or the default source has

@@ -26,6 +26,12 @@ function kind(icon) {
     return KINDS[icon] ?? "bluetooth";
 }
 
+// Every glyph `kind` can give, so tests/drawings.qml can hold each to
+// having a drawing, since a device running low is drawn by it in the margin.
+function kinds() {
+    return [...new Set([...Object.values(KINDS), "bluetooth"])];
+}
+
 function charge(device) {
     return Math.round(device.battery * 100);
 }

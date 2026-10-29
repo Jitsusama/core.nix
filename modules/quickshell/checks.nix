@@ -2070,6 +2070,8 @@ onLinux {
         ]}
         EOF
         cp ${./Fuzzy.js} Fuzzy.js
+        cp ${./Devices.js} Devices.js
+        cp ${./Crossing.js} Crossing.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
@@ -2230,9 +2232,10 @@ onLinux {
       touch $out
     '';
 
-  # Every mark the margin can show is the theme's drawing of it, standing the
-  # grid's full height and centred across it as Qt draws it, so a row of
-  # them is level and each has the same room either side (tests/drawings.qml).
+  # Every mark the margin can show, each kind a device running low is drawn
+  # as among them, is the theme's drawing of it, standing the grid's full
+  # height and centred across it as Qt draws it, so a row of them is level
+  # and each has the same room either side (tests/drawings.qml).
   the-margins-marks-are-drawn-level =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -2252,6 +2255,8 @@ onLinux {
     pkgs.runCommandLocal "the-margins-marks-are-drawn-level" { } ''
       cp ${../../tests/drawings.qml} drawings.qml
       cp ${drawings} Drawings.js
+      cp ${./Devices.js} Devices.js
+      cp ${./Crossing.js} Crossing.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
