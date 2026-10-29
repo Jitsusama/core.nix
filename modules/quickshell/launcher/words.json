@@ -3,6 +3,7 @@
     "on",
     "agents",
     "applications",
+    "people",
     "desktop",
     "computer",
     "network",
@@ -21,7 +22,6 @@
         "clipboard",
         "capture",
         "session:recording",
-        "people",
         "emoji",
         "session:quiet"
       ],
@@ -114,6 +114,38 @@
       "id": "agents:task",
       "in": "agents",
       "name": "Quest"
+    },
+    {
+      "id": "agents:last-boot",
+      "in": "agents",
+      "name": "Reopen Last Boot's Sessions",
+      "verb": "more",
+      "glyph": "resume",
+      "said": {
+        "one": "1 session",
+        "many": "{count} sessions"
+      }
+    },
+    {
+      "id": "verb:agents:last-boot:all",
+      "in": "agents:last-boot",
+      "name": "Reopen Them All",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:one",
+      "in": "agents:last-boot",
+      "name": "Reopen",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:notNow",
+      "in": "agents:last-boot",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
     },
     {
       "id": "agents:start",
@@ -3395,15 +3427,62 @@
     },
     {
       "id": "people",
-      "name": "Calls",
+      "name": "People",
       "noun": "people",
       "glyph": "people",
-      "ask": "who to pair with?",
-      "empty": "Nobody to call yet."
+      "ask": "who?",
+      "empty": "Nobody you've met or written lately."
+    },
+    {
+      "id": "verb:person:call",
+      "in": "people",
+      "name": "Call Them",
+      "verb": "call",
+      "glyph": "call"
+    },
+    {
+      "id": "verb:person:join",
+      "in": "people",
+      "name": "Join Their Call",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:person:mail",
+      "in": "people",
+      "name": "Write a Mail",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:person:slack",
+      "in": "people",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:person:favourite",
+      "in": "people",
+      "name": "Favourite",
+      "verb": "star",
+      "glyph": "favourite",
+      "states": {
+        "favourite": {
+          "verb": "unstar"
+        }
+      }
+    },
+    {
+      "id": "person:recent",
+      "in": "people",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
     },
     {
       "id": "tuple",
-      "in": "people",
+      "in": "applications",
       "name": "The Call"
     },
     {
@@ -4181,6 +4260,13 @@
       "glyph": "reply"
     },
     {
+      "id": "verb:mail:replyAll",
+      "in": "mail:message",
+      "name": "Reply All",
+      "verb": "reply",
+      "glyph": "replyAll"
+    },
+    {
       "id": "verb:mail:read",
       "in": "mail:message",
       "name": "Read",
@@ -4711,12 +4797,17 @@
       "by": "tuple"
     },
     {
+      "id": "tuple:show",
+      "name": "Show the Call",
+      "verb": "show",
+      "by": "tuple"
+    },
+    {
       "id": "tuple:mute",
-      "name": "Mute Me in the Call",
+      "name": "Muted",
       "verb": "mute",
       "states": {
         "muted": {
-          "name": "Let Them Hear Me Again",
           "verb": "unmute"
         }
       },

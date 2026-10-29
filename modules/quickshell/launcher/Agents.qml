@@ -232,10 +232,58 @@ Provider {
         });
     }
 
-    things: [start]
+    // The sessions the last boot's end took away (Sessions.qml's
+    // lastBoot), one row after the sessions running while any are left,
+    // and gone on the boot they ran in or once put off (VKCF3Z's design,
+    // [fce929da]). Now shows this same row among what else wants Joel
+    // (WhatsOn.qml). Return steps in with Reopen Them All first, so
+    // Return twice brings every one back, each in its own window and
+    // folder; then each one, as a closed session, reopening just it; then
+    // Not Now. Its count is in its note, never its name, which would
+    // change as he reopens them.
+    readonly property var lastBoot: {
+        const lost = Sessions.lastBoot;
+        if (lost.length === 0)
+            return null;
+        const act = (id, fields) => thing(Object.assign({
+            key: `verb:agents:last-boot:${id}`,
+            verb: Words.verb(`verb:agents:last-boot:${id}`),
+            name: Words.name(`verb:agents:last-boot:${id}`),
+            glyph: Words.glyph(`verb:agents:last-boot:${id}`),
+            hue: "action"
+        }, fields));
+        const home = Sessions.home;
+        const homely = folder => folder === home || folder.startsWith(`${home}/`)
+            ? `~${folder.slice(home.length)}` : folder;
+        const closed = one => thing({
+            key: `agents:last-boot:${one.id}`,
+            name: String(one.title || one.address || one.id),
+            side: homely(one.cwd),
+            verb: Words.verb("verb:agents:last-boot:one"),
+            glyph: Theme.glyph.agent,
+            hue: "program",
+            later: true,
+            run: () => Sessions.reopen(one)
+        });
+        return thingRow({
+            key: "agents:last-boot",
+            name: Words.name("agents:last-boot"),
+            side: ((Words.of("agents:last-boot").said ?? {})[lost.length === 1 ? "one" : "many"]
+                ?? "").replace("{count}", lost.length),
+            glyph: Words.glyph("agents:last-boot"),
+            hue: "action"
+        }, () => [act("all", {
+            later: true,
+            run: () => lost.forEach(one => Sessions.reopen(one))
+        })].concat(lost.map(closed), [act("notNow", {
+            run: () => Sessions.putOffLastBoot()
+        })]));
+    }
+
+    things: lastBoot ? [lastBoot, start] : [start]
 
     function everything() {
-        return all.concat([start]);
+        return all.concat(lastBoot ? [lastBoot] : [], [start]);
     }
 
     function counted() {

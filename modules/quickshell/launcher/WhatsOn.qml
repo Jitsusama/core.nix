@@ -47,7 +47,7 @@ Provider {
 
     readonly property var all: {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
-            && fact.piece.present && fact.piece.active && !shownAbove(fact));
+            && fact.piece.present && fact.piece.active && above(fact) === "");
         // What waits on Joel, then this moment's rows, which are always
         // there, so the top never moves; then the rest by group, what
         // wants Joel first, and by name within each, so a row keeps its
@@ -57,6 +57,12 @@ Provider {
             name: fact.piece.title,
             row: made(fact)
         }));
+        // The sessions the last boot's end took away, Agents' own row,
+        // among what else wants Joel while any are left to reopen (VKCF3Z's
+        // design, [fce929da]), drawn the same as there.
+        const lost = source("agents")?.lastBoot ?? null;
+        if (lost)
+            rows.push({ group: "wants", name: lost.name, row: lost });
         return [waiting].concat(moment, Now.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()
@@ -355,10 +361,16 @@ Provider {
         return row;
     }
 
-    // What the agents have waiting on Joel, one row however many: it counts
-    // and colours only what he can do now, its note names the first of
-    // those, else the first for later, and the right arrow lists what's for
-    // now and then what's for later, each in the agents' own order. With
+    // Everything waiting on Joel's hands, one row however many: the pi
+    // sessions that want him, each the row it is in Agents (Agents.qml's
+    // made), whose Return goes to its window, then what the agents have
+    // waiting on him (the launcher's shape, RSCH-20261028-2NK1E5: sessions
+    // wanting him first, drawn as sessions, then the orchestrator's items;
+    // Now's own pi row goes). It counts and colours only what he can do
+    // now, a session wanting him among it, its note names the first of
+    // those, else the first for later, and the right arrow lists the
+    // sessions, what's for now and then what's for later, each in its own
+    // order, the oldest want first. With
     // only later things, the row is muted and says how many. With nothing
     // waiting it's still there, muted, saying so, since Now's top never
     // changes shape (the launcher's shape, RSCH-20261028-2NK1E5, landing
@@ -366,8 +378,17 @@ Provider {
     // most pressing first, or to a list saying nothing waits: the row acts
     // the same whatever waits, so Super+O, Return, Return reaches the
     // pressing thing and each press can be foreseen (VKCF3Z, 2026-10-29).
-    readonly property string first: WaitingOnYou.foremost
-        ? WaitingOnYou.titled(WaitingOnYou.foremost) : ""
+    readonly property var sessions: Sessions.wanting
+    readonly property int waitsNow: sessions.length + WaitingOnYou.now.length
+    readonly property string first: sessions.length > 0
+        ? `${sessions[0].title} ${Sessions.wanted(sessions[0].presence.wants)}`
+        : WaitingOnYou.foremost ? WaitingOnYou.titled(WaitingOnYou.foremost) : ""
+    // What's inside, made as it's stepped into.
+    function waitingRows() {
+        const agents = source("agents");
+        return (agents ? sessions.map(session => agents.made(session)) : [])
+            .concat(WaitingOnYou.items.map(each => provider.item(each)));
+    }
     readonly property var waiting: member({
         // Not `on:waiting`, which is the missed notices' row, by its mark
         // (pieces/Waiting.qml), so the two are never taken for one.
@@ -378,15 +399,15 @@ Provider {
         empty: Words.of("on:waiting").empty,
         name: Words.name("on:waiting"),
         glyph: Theme.glyph.waitsOnJoel,
-        hue: WaitingOnYou.now.length > 0 ? "strong" : "muted",
-        side: WaitingOnYou.now.length > 0 ? String(WaitingOnYou.now.length)
+        hue: provider.waitsNow > 0 ? "strong" : "muted",
+        side: provider.waitsNow > 0 ? String(provider.waitsNow)
             : WaitingOnYou.later.length > 0
                 ? waitingSaid("later", { count: WaitingOnYou.later.length })
                 : waitingSaid("none", {}),
         note: first,
         nested: true,
-        verbs: () => WaitingOnYou.items.map(each => provider.item(each)),
-        targets: () => WaitingOnYou.items.map(each => provider.item(each)),
+        verbs: () => provider.waitingRows(),
+        targets: () => provider.waitingRows(),
         run: () => provider.launcher?.enter(provider.waiting)
     })
     // What home's Now leads with: the first thing waiting, after its row's
@@ -475,16 +496,21 @@ Provider {
     readonly property var pressing: Facts.all
         .filter(fact => fact.entry.mark !== null && fact.piece && fact.piece.present
             && fact.piece.active && Now.pressing(fact.piece.group))
-        .map(fact => shownAbove(fact) ? meeting.key : `on:${fact.entry.mark}`)
+        .map(fact => above(fact) || `on:${fact.entry.mark}`)
 
-    // Whether what's on is the meeting this moment's rows already hold: the
-    // meeting coming (Starting.qml) is the calendar's next one but for the
-    // few minutes one runs on past its start, and is then that one row,
-    // never a second beside it (Joel, 2026-10-28: "seeing multiples of the
-    // same thing gives me executive dysfunction").
-    function shownAbove(fact) {
-        return fact.entry.mark === "meeting" && meeting !== null
-            && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`;
+    // The key of the row above, Now's top, that already stands for what's
+    // on, or "": never a second row beside it (Joel, 2026-10-28: "seeing
+    // multiples of the same thing gives me executive dysfunction"). The
+    // sessions wanting Joel are in Waiting on You. The meeting coming
+    // (Starting.qml) is the calendar's next one but for the few minutes one
+    // runs on past its start, and is then the moment's meeting row.
+    function above(fact) {
+        if (fact.entry.mark === "agent")
+            return waiting.key;
+        if (fact.entry.mark === "meeting" && meeting !== null
+            && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`)
+            return meeting.key;
+        return "";
     }
 
     // Where Now opens, among these rows: on the most pressing, so Super+O
@@ -495,7 +521,7 @@ Provider {
     // what's only for later (VKCF3Z, 2026-10-29).
     function starts(rows) {
         const waits = rows.findIndex(row => row.key === "on:waitingOnYou");
-        if (WaitingOnYou.now.length > 0)
+        if (provider.waitsNow > 0)
             return waits;
         const urgent = rows.findIndex(row => provider.pressing.includes(row.key));
         return urgent === -1 ? waits : urgent;
@@ -504,7 +530,8 @@ Provider {
     // This moment's rows and Waiting on You are always there, so what's
     // counted is what's on beside them, and what waits only when it does.
     function counted() {
-        const on = all.length - moment.length - (WaitingOnYou.foremost === null ? 1 : 0);
+        const waits = WaitingOnYou.foremost !== null || sessions.length > 0;
+        const on = all.length - moment.length - (waits ? 0 : 1);
         return on === 0 ? "nothing" : String(on);
     }
 }

@@ -352,13 +352,13 @@
     Google fails, and answers an invitation the shell asks it to, changing only Joel's own answer,
     cancels a meeting only when Joel holds it, telling every guest, moves one through the calendar
     Google lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
-    first, each asked for once, with who it went to and who was copied, its text, never an
-    attachment's, and each file it carries, by its name, kind and size, but what its HTML shows
-    inline, fetching one only when asked, never to open one that runs, into a folder only Joel reads
-    or into Downloads, never over a file there, marking it read or archiving it when asked, marking
-    it unread again, mail read here wanting Joel again at once, and the documents of each kind he
-    looked at lately, his last first, asking Drive again only every five minutes and keeping them
-    while Drive fails
+    first, each asked for once, with who it went to, who was copied and whom a reply to all copies,
+    never Joel, its text, never an attachment's, and each file it carries, by its name, kind and
+    size, but what its HTML shows inline, fetching one only when asked, never to open one that runs,
+    into a folder only Joel reads or into Downloads, never over a file there, marking it read or
+    archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
+    the documents of each kind he looked at lately, his last first, asking Drive again only every
+    five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -817,6 +817,14 @@
     shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and
     leftovers after three quiet seconds
   '';
+  slack-finds-who-it-knows = ''
+    slack-people says who Slack knows by an email address, and one it knows nobody by, asking each
+    address once with the harness's sign-in and only ever looking up, and asks nobody once Slack
+    refuses the sign-in or with none at all
+  '';
+  slack-passes-clippy = ''
+    clippy finds nothing in slack-people or its tests
+  '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';
@@ -988,8 +996,8 @@
     choices that run its own command
   '';
   the-launcher-finds-the-people = ''
-    the launcher's Tuple place leads with the room or a call's controls, lists and finds contacts as
-    they stand, calls, joins and favours them, and never starts a stopped Tuple
+    People with Tuple as its source lists favourites and those called lately, finds anyone as they
+    stand, calls, joins and favours them, steps in before calling, and never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
@@ -1013,7 +1021,8 @@
   '';
   the-launcher-holds-a-programs-controls = ''
     a program's step holds its windows, its own actions, Quit asked once, then Media, Sound and
-    Notifications, in order and only where they apply, each reaching only that program
+    Notifications, in order and only where they apply, each reaching only that program, and a
+    hidden program another provider gives acts to is listed and steps in rather than starting
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
@@ -1135,6 +1144,13 @@
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
   '';
+  the-people-are-one-person-each = ''
+    every source's people join into one person per email address, a source that knows two
+    addresses for someone joining them, each standing as the first source that says, favourites
+    listed first, then whoever there's been something with, the last first, someone only asked to
+    what's to come left to be found by typing, with their details for the drawer and their acts in
+    the one order
+  '';
   the-picker-picks-what-the-keys-say = ''
     the region picker starts on the middle quarter, moves and sizes its box by arrows within the
     screen, and names a 16 by 10 grid's cells by two letters
@@ -1201,17 +1217,18 @@
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and its
     details say, who was copied and the files it carries among them, each file by its kind and size;
-    writes a reply to who sent it, and a mail to everyone else a meeting names; writes the lines
-    that mark mail read or unread again or archive it or fetch a file it carries; and says how that
-    fetch stands
+    writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
+    everyone else a meeting names; writes the lines that mark mail read or unread again or archive
+    it or fetch a file it carries; and says how that fetch stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
     no to, says when it is in words, when it's about to start and when it's said as a notice,
     whether Return joins it or shows it, whether it's today's and how Joel answered it, gives its
-    details for the drawer, how it repeats in words among them, which may be moved and to what later
-    or typed time, what that clashes with and who's told, writes the lines that answer, cancel and
-    move it, and knows which Meet call a window is and whose meeting it is
+    details for the drawer, how it repeats in words and how many of those asked answered each way
+    among them, which may be moved and to what later or typed time, what that clashes with and who's
+    told, writes the lines that answer, cancel and move it, and knows which Meet call a window is
+    and whose meeting it is
   '';
   the-shutdown-mark-cannot-stop-a-reboot = ''
     the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage
@@ -1365,11 +1382,12 @@
     once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
     its Meet call in Now while it's open, says Google signed out in Now with Return signing in again
     in pi, counts the mail that wants Joel in Now with Return listing it as Mail does, details and
-    all, opens mail by its subject, keeping one Mail window, replies to it, flips its Read switch
-    both ways, archives it, and opens a file it carries or saves a copy, lists the documents Joel
-    opened lately in Docs' Recent and opens one, the same row its title finds, joins a Meet call by
-    its code after Meet's New Meeting, sets the volume, loses no letter typed after its chord, and
-    shows the shortcuts
+    all, opens mail by its subject, keeping one Mail window, replies to it, and to all on mail that
+    went to others too, flips its Read switch both ways, archives it, and opens a file it carries or
+    saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
+    its title finds, joins a Meet call by its code after Meet's New Meeting, finds a person by name
+    with the ways to reach them, their next meeting, their Recent and their address last, sets the
+    volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

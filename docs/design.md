@@ -490,7 +490,7 @@ it. Owners go by layer:
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
 | An agent wanting Joel, and for what                                   | the margin mark while one waits, a notice once     | Agents ("pi" finds them); Now |
 | A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; Now               |
-| In a call                                                              | the margin mark, while in one                      | Calls; Now                   |
+| In a call                                                              | the margin mark, while in one                      | Programs › Tuple; Now        |
 | Notifications waiting                                                  | the margin mark                                    | Notifications (Super+N); Now |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |

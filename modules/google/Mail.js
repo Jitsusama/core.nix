@@ -1,7 +1,7 @@
 // What the shell says of the mail that wants Joel, as the google program
 // keeps it (src/mail.rs): when each came, what its row and its details
-// say, where a reply to it is written, the lines that mark one read or
-// archive it (src/ask.rs), and which windows are Mail's. Mail.qml asks
+// say, where a reply to it, or to all, is written, the lines that mark one
+// read or archive it (src/ask.rs), and which windows are Mail's. Mail.qml asks
 // these, and the checks run them in Qt's own engine (tests/mail.qml).
 // Times are milliseconds since 1970, as the program gives them.
 .pragma library
@@ -85,15 +85,24 @@ const REPLIED = /^re:/i;
 // Gmail, where a new message is written in a window of its own.
 const COMPOSE = "https://mail.google.com/mail/u/0/";
 
-// Where a new message to these addresses is written, with this subject,
-// as Gmail's own link to compose takes them: each address once, joined
-// as Gmail joins them. Nothing when there's nobody to write to.
-function writing(to, subject) {
-    const addresses = [...new Set(to.filter(address => (address ?? "") !== ""))];
+// Where a new message to these addresses is written, with this subject
+// and copied to those, as Gmail's own link to compose takes them: each
+// address once, joined as Gmail joins them, the subject left out when
+// there's none to give. Nothing when there's nobody to write to.
+function writing(to, subject, copied) {
+    const once = all => [...new Set(all.filter(address => (address ?? "") !== ""))];
+    const addresses = once(to);
     if (addresses.length === 0) {
         return "";
     }
-    const asked = [["view", "cm"], ["fs", "1"], ["to", addresses.join(",")], ["su", subject]];
+    const asked = [["view", "cm"], ["fs", "1"], ["to", addresses.join(",")]];
+    const cc = once(copied ?? []).filter(address => !addresses.includes(address));
+    if (cc.length > 0) {
+        asked.push(["cc", cc.join(",")]);
+    }
+    if ((subject ?? "") !== "") {
+        asked.push(["su", subject]);
+    }
     return `${COMPOSE}?${asked.map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
         .join("&")}`;
 }
@@ -102,8 +111,20 @@ function writing(to, subject) {
 // its subject marked a reply once. Nothing when it gives no address to
 // reply to.
 function replying(mail) {
-    const subject = REPLIED.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
-    return writing([mail.address], subject);
+    return writing([mail.address], answering(mail));
+}
+
+// Where a reply to all is written: to who sent it, copied to everyone
+// else it went to or was copied to, but Joel (src/mail.rs). Nothing when
+// it went to nobody else, since then it's only a reply.
+function replyingAll(mail) {
+    const others = mail.others ?? [];
+    return others.length === 0 ? "" : writing([mail.address], answering(mail), others);
+}
+
+// A reply's subject, marked a reply once.
+function answering(mail) {
+    return REPLIED.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`;
 }
 
 // Where a mail to everyone else a meeting names is written, its holder

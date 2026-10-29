@@ -602,6 +602,70 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     )
 
 
+def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -> None:
+    """Agents reopens what the last boot's end took away, Return twice, or puts it off."""
+    machine = desktop.machine
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    # The harness kept one session live as an earlier boot ended.
+    lost = {
+        "v": 1,
+        "boot": "an-earlier-boot",
+        "sessions": [
+            {
+                "id": "01b2-harbour",
+                "address": "HARBOR",
+                "title": "Harbour",
+                "cwd": "/home/jitsusama/harbour",
+                "lostAt": 1,
+            },
+        ],
+    }
+    desktop.as_account(f"rm -f {opened} && mkdir -p ~/harbour")
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    # Its row comes after the sessions running, its count beside it.
+    desktop.launcher_until(lambda shown: "Reopen Last Boot's Sessions" in shown["rows"])
+    desktop.down_to("Reopen Last Boot's Sessions")
+    assert desktop.showing()["selected"]["side"] == "1 session", desktop.showing()
+    # Return steps in, all of them first, so Return twice reopens them.
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Reopen Them All", "Harbour", "Not Now"])
+    desktop.photograph("launcher-agents-last-boot")
+    assert desktop.showing()["selected"]["told"][:1] == ["\u21b5 reopen"], desktop.showing()
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f'grep -qx "$HOME/harbour " {opened}'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    said = desktop.as_account(f"cat {opened}").split("\n")
+    assert said[1:3] == ["--session", "01b2-harbour"], said
+    desktop.launcher_until(lambda shown: not shown["open"])
+    # Put off, it's gone for this boot, as no harness here drops it.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: "Not Now" in shown["rows"])
+    desktop.down_to("Not Now")
+    machine.send_key("ret")
+    # Nothing is left to reopen, so the launcher closes.
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.down_to("Agents")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["held"] == ["agents"] and "Start a Session" in shown["rows"]
+    )
+    assert "Reopen Last Boot's Sessions" not in desktop.showing()["rows"], desktop.showing()
+    machine.send_key("esc")
+    desktop.launcher_until(lambda shown: not shown["open"])
+    desktop.as_account(f"rm -rf {opened} ~/harbour")
+
+
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(
     desktop: Desktop,
 ) -> None:
@@ -2025,6 +2089,31 @@ def test_a_reply_to_mail_is_written_in_mail_to_who_sent_it(desktop: Desktop) -> 
 
 
 @pytest.mark.usefixtures("google")
+def test_a_reply_to_all_is_written_to_who_sent_it_copied_to_the_others(desktop: Desktop) -> None:
+    """Reply All, after Reply on mail that went to others too, copies them; Lunch went to Joel."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("quarterly numbers")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "mail:numbers")
+    desktop.step_in()
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["Open in Mail", "Reply", "Reply All", "Archive"]
+    )
+    desktop.down_to("Reply All")
+    machine.send_key("ret")
+    link = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+        "&to=grace%40example.com&cc=ada%40example.com&su=Re%3A%20Quarterly%20Numbers"
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(link)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_file_mail_carries_is_fetched_to_open_or_to_save_only_on_return(
     desktop: Desktop,
 ) -> None:
@@ -2146,6 +2235,54 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
     desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
+    desktop: Desktop,
+) -> None:
+    """A person is found by name; inside, the ways to reach them, then what's lately with them."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # Ada holds the stand-in's Standup and wrote Lunch on Friday, so Google
+    # knows her by her address, and she's one person for both.
+    desktop.answer("ada lovelace")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "person:ada@example.com"
+            and (shown["selected"].get("drawer") or {}).get("facts", [{}])[0]
+            == {"label": "Email", "value": "ada@example.com"}
+        )
+    )
+    # Return steps in, never reaching her by itself: Write a Mail first,
+    # then her next meeting drawn as a meeting, her Recent, and her
+    # address to copy last.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:4] == ["Write a Mail", "Standup", "Recent", "ada@example.com"]
+            and shown["things"][1]["is"] == "calendar:meeting:standup"
+        )
+    )
+    machine.fail(f"test -s {opened}")
+    desktop.down_to("Recent")
+    desktop.step_in()
+    # The mail with her, its own component's row; a meeting to come isn't
+    # Recent.
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
+    machine.send_key("up")
+    machine.send_key("up")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")
+    machine.send_key("ret")
+    writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(writing)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -2679,8 +2816,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
-    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26).
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
+    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26),
+    # and People after Programs (RSCH-20261028-2NK1E5).
+    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -2752,7 +2890,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Tab moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    for _step in range(2):
+    # Past Programs and People.
+    for _step in range(3):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")
@@ -3622,6 +3761,53 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
         launcher_closed(desktop)
     finally:
         desktop.as_account("systemctl --user stop caffeinate.service")
+
+
+def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
+    """A session wanting Joel is in Waiting on You as its Agents row, and Now has no pi row.
+
+    Super+O, Return, Return goes to its window: Now opens on Waiting on You, which counts it,
+    Return steps in to the session, selected, and its Return goes to its window.
+    """
+    machine = desktop.machine
+    desktop.pi_session()
+    desktop.as_account(
+        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
+        f" && find {MISSION}/waiting -name '*.json' -delete"
+    )
+    desktop.as_account(
+        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
+    )
+    since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    question = {"kind": "question", "since": since, "said": "Which way?"}
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    try:
+        desktop.as_account("qs ipc call launcher collection on")
+        desktop.launcher_ready()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now"]
+                and (shown["selected"] or {}).get("name") == "Waiting on You"
+                and shown["selected"]["side"] == "1"
+            )
+        )
+        assert "pi" not in desktop.showing()["rows"], desktop.showing()
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "Waiting on You"]
+                and shown["rows"][:1] == ["A quest of its own & whole"]
+                and (shown["selected"] or {}).get("verb") == "go"
+            )
+        )
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
+            timeout=dt.timedelta(seconds=10),
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+    finally:
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 
 
 def test_a_waiting_notice_goes_read_once_its_item_stops_waiting(desktop: Desktop) -> None:

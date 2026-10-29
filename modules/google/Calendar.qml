@@ -21,6 +21,7 @@ import Quickshell
 import QtQuick
 import "Calendar.js" as Said
 import "Mail.js" as Written
+import "Meet.js" as Calls
 
 Singleton {
     id: root
@@ -514,7 +515,7 @@ Singleton {
     // A Meet code as Joel types or pastes it, written as Meet writes it, or
     // "" for anything Meet wouldn't know.
     function meetCode(typed) {
-        return Said.meetCode(typed);
+        return Calls.meetCode(typed);
     }
 
     function join(meeting) {
@@ -529,9 +530,9 @@ Singleton {
     readonly property var calls: {
         Niri.revision;
         return Object.values(Niri.windows)
-            .map(window => ({ window: window, code: Said.meetCall(window.app_id) }))
+            .map(window => ({ window: window, code: Calls.meetCall(window.app_id) }))
             .filter(call => call.code !== "")
-            .map(call => Object.assign(call, { meeting: Said.calledBy(meetings, call.code) }));
+            .map(call => Object.assign(call, { meeting: Calls.calledBy(meetings, call.code) }));
     }
 
     // The meeting's own page in Google Calendar.
