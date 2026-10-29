@@ -322,6 +322,11 @@ let
     # Whether mDNS gets through the firewall, and only on a trusted network,
     # shows only with machines on a network asking each other.
     vm-machines-find-each-other-at-home = import ./tests/mdns.nix { inherit self pkgs; };
+    # Whether the name service keeps a family's addresses that resolved left
+    # out shows only with a neighbour whose other family answers first.
+    vm-names-give-ipv4-when-ipv6-answers-first = import ./tests/name-service.nix {
+      inherit self pkgs;
+    };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
     # Whether the shell's surfaces come back after a screen goes shows only
@@ -897,6 +902,7 @@ gather (
     ./modules/mic-mute-light/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mycelium/checks.nix
+    ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix
     ./modules/nftables/checks.nix

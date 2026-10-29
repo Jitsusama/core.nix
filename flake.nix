@@ -284,6 +284,7 @@
         memory-modules = ./modules/memory-modules/nixos.nix;
         mic-mute-light = ./modules/mic-mute-light/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
+        name-service = ./modules/name-service/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;
         niri = ./modules/niri/nixos.nix;

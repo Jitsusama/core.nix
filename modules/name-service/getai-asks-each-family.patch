@@ -1,0 +1,133 @@
+Ask each address family on its own in GETAI
+
+The nscd protocol carries no address family, so glibc filters a GETAI
+answer by the family the program asked for, and the answer has to hold
+every family's addresses. nsncd made one lookup with no family to fill
+it. systemd-resolved answers such a lookup of a .local name from
+whichever of mDNS's IPv4 and IPv6 scopes replies first, with that
+family's addresses alone, so on a machine whose neighbours answered over
+IPv6 first, getent ahostsv4 and ssh -4 found nothing for a name
+resolvectl resolved.
+
+nsncd now asks for IPv6 and IPv4 at once, in two lookups on two threads,
+and joins the answers; glibc sorts them afterwards. A lookup takes as
+long as the slower of the two.
+
+diff --git a/src/handlers.rs b/src/handlers.rs
+index 949cc86..600d131 100644
+--- a/src/handlers.rs
++++ b/src/handlers.rs
+@@ -22,7 +22,7 @@ use std::os::unix::ffi::OsStrExt;
+ use anyhow::{bail, Context, Result};
+ use atoi::atoi;
+ use dns_lookup::AddrInfoHints;
+-use nix::libc::{AI_CANONNAME, SOCK_STREAM};
++use nix::libc::{AF_INET, AF_INET6, AI_CANONNAME, SOCK_STREAM};
+ use nix::sys::socket::AddressFamily;
+ use nix::unistd::{getgrouplist, Gid, Group, Uid, User};
+ use slog::{debug, error, Logger};
+@@ -511,42 +511,36 @@ pub fn handle_request(
+ 
+         RequestType::GETAI => {
+             let hostname = CStr::from_bytes_with_nul(request.key)?.to_str()?;
+-            // Boths hints are necessary to mimick the glibc behaviour.
+-            let hints = AddrInfoHints {
+-                // The canonical name will be filled in the first
+-                // addrinfo struct returned by getaddrinfo.
+-                flags: AI_CANONNAME,
+-                // There's no way to convey socktype in the the Nscd
+-                // protocol, neither in the request nor response.
+-                //
+-                // Set this to SOCK_STREAM to match glibc and unscd
+-                // behaviour.
+-                socktype: SOCK_STREAM,
+-                address: 0,
+-                protocol: 0,
+-            };
+-            let resp = dns_lookup::getaddrinfo(Some(hostname), None, Some(hints));
+-            let ai_resp_empty = AiResponse {
+-                canon_name: hostname.to_string(),
+-                addrs: vec![],
+-            };
+-            let ai_resp: AiResponse = match resp {
+-                Ok(ai_resp_iter) => {
+-                    let mut ai_resp_iter = ai_resp_iter.filter_map(|e| e.ok()).peekable();
+-                    // According to man 3 getaddrinfo, the resulting
+-                    // canonical name should be stored in the first
+-                    // addrinfo struct.
+-                    // Re-using the request hostname if we don't get a
+-                    // canonical name.
+-                    let canon_name = ai_resp_iter
+-                        .peek()
+-                        .and_then(|e| e.canonname.to_owned())
+-                        .unwrap_or(hostname.to_string());
+-                    let addrs: Vec<IpAddr> = ai_resp_iter.map(|e| e.sockaddr.ip()).collect();
+-
+-                    AiResponse { canon_name, addrs }
++            // The Nscd protocol carries no address family, so the client
++            // filters the answer by family itself, and it has to hold every
++            // family's addresses. One lookup of either family doesn't: a
++            // resolver may answer it from one family's scope alone, as
++            // systemd-resolved does for an mDNS name, and a client asking
++            // for the other family then finds nothing. So each family is
++            // asked on its own, both at once, and the answers joined; the
++            // client sorts them afterwards.
++            let (v6, v4) = std::thread::scope(|scope| {
++                let v6 = scope.spawn(|| lookup_family(hostname, AF_INET6));
++                let v4 = lookup_family(hostname, AF_INET);
++                (v6.join().unwrap_or_default(), v4)
++            });
++            let mut canon_name = None;
++            let mut addrs: Vec<IpAddr> = vec![];
++            for (name, ip) in v6.into_iter().chain(v4) {
++                // According to man 3 getaddrinfo, the resulting canonical
++                // name is stored in the first addrinfo struct.
++                if canon_name.is_none() {
++                    canon_name = name;
+                 }
+-                Err(_) => ai_resp_empty,
++                if !addrs.contains(&ip) {
++                    addrs.push(ip);
++                }
++            }
++            let ai_resp = AiResponse {
++                // Re-using the request hostname if we don't get a
++                // canonical name.
++                canon_name: canon_name.unwrap_or(hostname.to_string()),
++                addrs,
+             };
+ 
+             serialize_address_info(ai_resp)
+@@ -1059,6 +1053,32 @@ fn serialize_hostent(hostent: Hostent) -> Result<Vec<u8>> {
+     Ok(buf)
+ }
+ 
++/// Look a host's addresses of one family up, each with the canonical name its
++/// addrinfo struct holds. A failed lookup has no addresses.
++fn lookup_family(hostname: &str, family: i32) -> Vec<(Option<String>, IpAddr)> {
++    // Boths hints are necessary to mimick the glibc behaviour.
++    let hints = AddrInfoHints {
++        // The canonical name will be filled in the first
++        // addrinfo struct returned by getaddrinfo.
++        flags: AI_CANONNAME,
++        // There's no way to convey socktype in the the Nscd
++        // protocol, neither in the request nor response.
++        //
++        // Set this to SOCK_STREAM to match glibc and unscd
++        // behaviour.
++        socktype: SOCK_STREAM,
++        address: family,
++        protocol: 0,
++    };
++    match dns_lookup::getaddrinfo(Some(hostname), None, Some(hints)) {
++        Ok(found) => found
++            .filter_map(|e| e.ok())
++            .map(|e| (e.canonname, e.sockaddr.ip()))
++            .collect(),
++        Err(_) => vec![],
++    }
++}
++
+ /// Serialize a [RequestType::GETAI] response to the wire.
+ ///
+ /// This wire format has been implemented by reading the `addhstaiX`
