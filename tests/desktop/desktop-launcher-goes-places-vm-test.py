@@ -1678,6 +1678,7 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
+@pytest.mark.usefixtures("google")
 def test_a_meetings_attachments_open_from_inside_it(desktop: Desktop) -> None:
     """A meeting's attachments open from inside it, a document as its own row."""
     machine = desktop.machine

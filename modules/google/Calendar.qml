@@ -255,11 +255,11 @@ Singleton {
         return rows;
     }
 
-    // Attachments steps in to the files on it, as mail's would (VKCF3Z,
-    // 6abd5c3e), its note how many: each of Docs, Sheets or Slides as the
-    // document it is (Drive.qml), the one from Recent when he's opened it
-    // lately, which says when, and any other file a row opening its link
-    // in Google's window.
+    // Attachments steps in to the files on it, as mail's does (VKCF3Z,
+    // 6abd5c3e), counting them as Recent does: each of Docs, Sheets or
+    // Slides as the document it is (Drive.qml), the one from Recent when
+    // he's opened it lately, which says when, and any other file a row
+    // opening its link in Google's window.
     function attaching(meeting, provider) {
         const key = "verb:calendar:attachments";
         const files = meeting.attachments;
@@ -270,7 +270,7 @@ Singleton {
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "action",
-            note: String(files.length),
+            count: String(files.length),
             stays: true,
             verbs: inside,
             targets: inside,
