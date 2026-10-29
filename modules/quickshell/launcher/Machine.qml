@@ -730,13 +730,14 @@ Provider {
         };
         const each = holder => {
             const disk = guard.holding(holder.path) ?? guard.worst;
-            return figure({
+            return thingRow({
+                key: `machine:disk:holder:${holder.path}`,
                 name: called(holder),
                 side: guard.shown(holder.bytes),
                 graph: disk ? bar(holder.bytes / disk.total) : undefined,
-                note: holder.clearable ? said.clears ?? "" : holder.why ?? "",
+                note: holder.clearable && !holder.kept ? said.clears ?? "" : holder.why ?? "",
                 reads: holder.says ?? ""
-            });
+            }, () => holderParts(guard, holder, called(holder)));
         };
         const minutes = Math.max(0, Math.round((Date.now() / 1000 - guard.holdersAt) / 60));
         const biggest = guard.holders[0];
@@ -746,6 +747,55 @@ Provider {
             glyph: chip,
             note: minutes < 1 ? said.now ?? "" : (said.ago ?? "").replace("{minutes}", minutes)
         }, () => guard.holders.map(each));
+    }
+
+    // What can be done to a holder, then what it reads, then Copy the Path
+    // (VKCF3Z's design, the disk guard's acts): open its folder; keep it
+    // from the guard's clearing, a switch that asks Joel why as it's
+    // turned on, where the account's guard measured it, since only that
+    // guard keeps; its size and what the guard would clear of it.
+    function holderParts(guard, holder, name) {
+        const act = (id, fields) => (fields.copy ? copyRow : thing)(Object.assign({
+            key: `verb:disk:${id}:${holder.path}`,
+            name: Words.name(`verb:disk:${id}`),
+            verb: Words.verb(`verb:disk:${id}`),
+            glyph: Words.glyph(`verb:disk:${id}`),
+            hue: "action"
+        }, fields));
+        const rows = [act("open", { run: () => Niri.spawn(["xdg-open", holder.path]) })];
+        if (holder.ours) {
+            const kept = holder.kept ?? null;
+            const keeping = {
+                side: kept ? `yes, ${kept.reason}` : "no",
+                stays: true,
+                state: () => guard.told
+            };
+            rows.push(act("keep", kept
+                ? Object.assign(keeping, {
+                    verb: Words.verb("verb:disk:keep", "kept"),
+                    run: () => guard.release(holder.path)
+                })
+                : Object.assign(keeping, {
+                    ask: Words.of("verb:disk:keep").ask ?? "",
+                    chip: name,
+                    given: reason => guard.keep(holder.path, reason)
+                })));
+        }
+        rows.push(figure({
+            key: `machine:disk:holder:size:${holder.path}`,
+            name: named("disk:holder:size"),
+            side: guard.shown(holder.bytes)
+        }));
+        if ((holder.clears ?? 0) > 0)
+            rows.push(figure({
+                key: `machine:disk:holder:clears:${holder.path}`,
+                name: named("disk:holder:clears"),
+                side: guard.shown(holder.clears)
+            }));
+        // An act like any other, though copying is its Return, so it wears
+        // its glyph as acts do rather than standing as a figure.
+        rows.push(act("copy-path", { copy: holder.path, figure: false, plain: false }));
+        return rows;
     }
 
     function diskParts(guard) {

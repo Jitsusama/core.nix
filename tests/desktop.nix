@@ -525,6 +525,10 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         reports
         piStandIn
         pkgs.libnotify
+        # The disk guard's own program, without its daemons, so Disk's Keep
+        # marks a folder kept in the status file the test writes in the
+        # account's guard's place, as the guard itself would.
+        (pkgs.callPackage ../modules/disk-guard/package.nix { })
         # A player that tells the desktop what it plays, as Spotify does.
         (pkgs.mpv.override { scripts = [ pkgs.mpvScripts.mpris ]; })
       ];

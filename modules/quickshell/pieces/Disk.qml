@@ -59,13 +59,16 @@ Piece {
     // What holds the disks, as each guard measured it, biggest first; a
     // folder both measured is one holder, as the later says. A guard
     // measures only while a disk is short of room, so it's empty until one
-    // has: { path, bytes, owner: { kind, name }, clearable, why, says }.
+    // has: { path, name, bytes, clears, owner: { kind, name }, clearable,
+    // why, says, kept }, and `ours` where the account's guard measured it,
+    // since only that guard keeps what Joel asks it to.
     readonly property var holders: {
         const byPath = {};
         for (const status of said.slice().sort((a, b) => (a.holders_at ?? 0)
             - (b.holders_at ?? 0)))
             for (const holder of status.holders ?? [])
-                byPath[holder.path] = holder;
+                byPath[holder.path] = Object.assign({}, holder,
+                    { ours: status === account.said });
         return Object.values(byPath).sort((a, b) => b.bytes - a.bytes);
     }
     // When they were last measured, in wall seconds, or 0.
@@ -118,6 +121,37 @@ Piece {
         stays: true,
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])
     }] : [])
+
+    // What the guard said of the last Keep or Release, for the foot: the
+    // one sentence it prints, or why it couldn't.
+    property string told: ""
+
+    // Keeps a folder from the guard's clearing, for Joel's reason, or lets
+    // it go again; the account's guard rewrites its status before it
+    // answers, so the row has flipped by the time the foot says so.
+    function keep(path, reason) {
+        tell(["keep", path, reason]);
+    }
+
+    function release(path) {
+        tell(["unkeep", path]);
+    }
+
+    function tell(words) {
+        if (keeping.running)
+            return;
+        told = "\u2026";
+        keeping.command = ["sh", "-c", "exec \"$0\" \"$@\" 2>&1", "disk-guard"].concat(words);
+        keeping.running = true;
+    }
+
+    Process {
+        id: keeping
+        stdout: StdioCollector {
+            id: keepingSaid
+            onStreamFinished: piece.told = keepingSaid.text.trim()
+        }
+    }
 
     // Why a guard stopped, in a phrase, from what its unit's Result says.
     function stoppedFor(result) {

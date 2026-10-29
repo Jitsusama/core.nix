@@ -891,6 +891,94 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     assert "Error:" not in log, "an answer raised an error"
 
 
+def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gives(
+    desktop: Desktop,
+) -> None:
+    """A folder filling the disk is kept from the guard's clearing, for the reason Joel gives."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    folder = desktop.as_account("mkdir -p ~/scratch && realpath ~/scratch").strip()
+    status = desktop.as_account("echo $XDG_RUNTIME_DIR").strip() + "/disk-guard/status.json"
+
+    def said(holders: list[Json]) -> None:
+        """Write what the account's guard says, holding these, as it writes it, whole."""
+        whole = {
+            "version": 1,
+            "heartbeat": time.time() + 3600,
+            "filesystems": [
+                {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30},
+            ],
+            "frozen": [],
+            "holders": holders,
+            "holders_at": time.time(),
+        }
+        desktop.as_account(
+            f"mkdir -p $(dirname {status}) && echo '{json.dumps(whole)}' > {status}.new"
+            f" && mv {status}.new {status}"
+        )
+
+    def into_it() -> None:
+        """Open Disk's What's Filling It, and step into the folder."""
+        desktop.answer("disk")
+        desktop.step_in()
+        desktop.type_in("filling", selecting="What's Filling It")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch"])
+        desktop.step_in("ret")
+
+    said(
+        [
+            {
+                "path": folder,
+                "name": "~/scratch",
+                "bytes": 3 * 2**30,
+                "clears": 2**30,
+                "owner": {"kind": "other", "name": "scratch"},
+                "clearable": True,
+                "why": None,
+                "kept": None,
+                "says": "~/scratch holds 3.0 GiB.",
+            }
+        ]
+    )
+    try:
+        # Return steps into it: what can be done, then what it reads,
+        # then Copy the Path.
+        into_it()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Open Its Folder", "Keep", "Size", "Clearable", "Copy the Path"]
+            )
+        )
+        desktop.down_to("Keep")
+        assert desktop.showing()["selected"]["side"] == "no"
+        # Kept, it asks why, and the guard says so.
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["asking"])
+        machine.send_chars("the thesis data")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["footer"] == f"Kept {folder}: the thesis data.")
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # It stays kept, saying why, and Return lets it go.
+        into_it()
+        desktop.launcher_until(lambda shown: "Keep" in shown["rows"])
+        desktop.down_to("Keep")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "yes, the thesis data"
+                and shown["selected"]["verb"] == "release"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["footer"] == f"No longer kept: {folder}.")
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        said([])
+        desktop.as_account("rm -rf ~/scratch ~/.local/state/disk-guard")
+
+
 def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     """The weather's here follows the laptop."""
     machine = desktop.machine
