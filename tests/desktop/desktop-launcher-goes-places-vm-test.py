@@ -2381,13 +2381,12 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
         desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
         timeout=dt.timedelta(seconds=10),
     )
+    # Run, it does what its Return does, opening it again where it's
+    # closed (#1069), so the launcher doesn't open on it.
     lighthouse = one(listed(), "Lighthouse", "Agents \u203a Orchestrators")
+    assert lighthouse["kind"] == "action", lighthouse
     assert ran(lighthouse)["done"]
-    desktop.launcher_until(
-        lambda shown: shown["open"] and shown["path"] == ["Agents", "Orchestrators", "Lighthouse"]
-    )
-    machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    machine.fail(closed)
     # A place opens there.
     assert ran(one(entries, "Power", "Machine")) == {
         "done": True,
