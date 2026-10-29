@@ -11,6 +11,11 @@
 # package whose first install fails, as with no network at the switch,
 # has no link yet, and pi warns that it is missing until a later run
 # installs it.
+#
+# A version goes once no pi runs it, keeping `current` and the version
+# before it. A pi says which version it loaded in the package's `loaded/`
+# folder, and each change there starts `pi-packages sweep`, which removes
+# what no pi runs any more, so a version goes with its last pi.
 {
   config,
   lib,
@@ -36,9 +41,11 @@ let
   ];
   gitPackages = builtins.filter (source: lib.hasPrefix "git:" source) cfg.sources;
   urlOf = source: "https://${lib.removePrefix "git:" source}";
+  # Where each package's pis say what they loaded (src/loaded.rs).
+  loadedDirs = map (source: "${cfg.root}/${lib.removePrefix "git:" source}/loaded") gitPackages;
   configFile = pkgs.writeText "pi-packages.json" (
     builtins.toJSON {
-      inherit (cfg) root keepDays;
+      inherit (cfg) root;
       packages = map (source: { url = urlOf source; }) gitPackages;
       git = lib.getExe pkgs.git;
       node = lib.getExe cfg.node;
@@ -55,8 +62,8 @@ let
   # The command, told its settings, for the account to run.
   configured = pkgs.writeShellScriptBin "pi-packages" ''
     case "''${1:-status}" in
-      update | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
-      *) echo "usage: pi-packages [status | update]" >&2; exit 2 ;;
+      update | sweep | status) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
+      *) echo "usage: pi-packages [status | update | sweep]" >&2; exit 2 ;;
     esac
   '';
 in
@@ -98,14 +105,6 @@ in
       type = lib.types.package;
       default = pkgs.nodejs;
       defaultText = lib.literalExpression "pkgs.nodejs";
-    };
-    keepDays = lib.mkOption {
-      description = ''
-        How long a version the link has left is kept, at least. It goes only
-        once no process maps, holds or stands in a file of it.
-      '';
-      type = lib.types.ints.unsigned;
-      default = 2;
     };
     links = lib.mkOption {
       description = "The sources pi is given: each `git:` one as its current link.";
@@ -162,6 +161,28 @@ in
       Install.WantedBy = [ "timers.target" ];
     };
 
+    # A pi starting, reloading or ending changes what it says it loaded,
+    # and a version no pi runs any more goes then, not at the next update.
+    systemd.user.services.pi-packages-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Removes the versions of pi's packages that no pi runs";
+        X-RestartIfChanged = false;
+      };
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe package} sweep --config ${configFile}";
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.paths.pi-packages-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit.Description = "Watches what each pi says it loaded of its packages";
+      Path = {
+        PathChanged = loadedDirs;
+        MakeDirectory = true;
+      };
+      Install.WantedBy = [ "paths.target" ];
+    };
+
     launchd.agents.pi-packages = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
       enable = true;
       config = {
@@ -172,6 +193,20 @@ in
           "${configFile}"
         ];
         StartInterval = 900;
+        ProcessType = "Background";
+        LowPriorityIO = true;
+      };
+    };
+    launchd.agents.pi-packages-sweep = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
+      enable = true;
+      config = {
+        ProgramArguments = [
+          (lib.getExe package)
+          "sweep"
+          "--config"
+          "${configFile}"
+        ];
+        WatchPaths = loadedDirs;
         ProcessType = "Background";
         LowPriorityIO = true;
       };

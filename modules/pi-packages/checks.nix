@@ -18,7 +18,9 @@
   # Each of pi's git packages is updated at a switch, before pi's settings
   # name its link, and in the background every fifteen minutes: by a user
   # timer in background.slice on Linux, which a switch doesn't restart, and
-  # by a launchd agent on a Mac.
+  # by a launchd agent on a Mac. Each change to what a pi says it loaded
+  # starts a sweep, on Linux by a path unit watching every package's
+  # `loaded/` folder and on a Mac by a launchd agent watching the same.
   pi-packages-swap-in-the-background =
     let
       home = account workstation;
@@ -26,9 +28,12 @@
       service = home.systemd.user.services.pi-packages;
       timer = home.systemd.user.timers.pi-packages.Timer;
       settings = home.home.activation.piTakesCoresSettings;
+      sweep = home.systemd.user.services.pi-packages-sweep;
+      watched = home.systemd.user.paths.pi-packages-sweep.Path.PathChanged;
+      harness = "${home.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/loaded";
     in
     holds "pi-packages-swap-in-the-background"
-      "pi's packages aren't updated before pi's settings are written, or not in the background on Linux and on a Mac."
+      "pi's packages aren't updated before pi's settings are written, or not in the background on Linux and on a Mac, or a pi's start or end doesn't remove the versions no pi runs."
       (
         service.Service.Slice == "background.slice"
         && service.Unit.X-RestartIfChanged == false
@@ -36,6 +41,10 @@
         && home.home.activation ? piPackagesInstall
         && lib.elem "piPackagesInstall" settings.after
         && mac.launchd.agents.pi-packages.config.StartInterval == 900
+        && sweep.Service.Slice == "background.slice"
+        && lib.hasInfix " sweep --config " (lib.concatStringsSep " " (lib.toList sweep.Service.ExecStart))
+        && lib.elem harness watched
+        && mac.launchd.agents.pi-packages-sweep.config.WatchPaths != [ ]
       );
 }
 // onLinux {

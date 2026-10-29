@@ -3,6 +3,7 @@
 //!
 //! Usage:
 //!   pi-packages update --config FILE   bring every package to its branch
+//!   pi-packages sweep --config FILE    remove the versions no pi runs
 //!   pi-packages status --config FILE   where each package's current is
 
 use std::path::Path;
@@ -13,7 +14,8 @@ use pi_packages::config::Config;
 use pi_packages::run::{self, Done};
 use pi_packages::version::Place;
 
-const USAGE: &str = "usage: pi-packages update --config FILE | status --config FILE";
+const USAGE: &str =
+    "usage: pi-packages update --config FILE | sweep --config FILE | status --config FILE";
 
 /// Characters of a commit worth showing.
 const SHORT: usize = 8;
@@ -23,6 +25,7 @@ fn main() -> ExitCode {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     let done = match words.as_slice() {
         ["update", "--config", file] => update(Path::new(file)),
+        ["sweep", "--config", file] => sweep(Path::new(file)),
         ["status", "--config", file] => status(Path::new(file)),
         _ => Err(USAGE.into()),
     };
@@ -88,6 +91,28 @@ fn update(file: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("not updated: {}", failed.join(", ")))
+    }
+}
+
+fn sweep(file: &Path) -> Result<(), String> {
+    let config = Config::read(file)?;
+    let mut failed = Vec::new();
+    for (package, removed) in run::sweep(&config) {
+        let name = package.key.display();
+        match removed {
+            Ok(Some(0)) => {}
+            Ok(Some(removed)) => println!("{name}: removed {removed} old versions nothing uses"),
+            Ok(None) => println!("{name}: an update holds it, and removes what it can"),
+            Err(why) => {
+                println!("{name}: nothing removed: {why}");
+                failed.push(name.to_string());
+            }
+        }
+    }
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("nothing removed: {}", failed.join(", ")))
     }
 }
 
