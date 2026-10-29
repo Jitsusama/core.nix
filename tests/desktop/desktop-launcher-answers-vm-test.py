@@ -34,7 +34,7 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
 
 
 def field_key(field: list[Json], mark: str, word: str) -> Json:
-    """Give the field's word for a key, its mark and then what it does, failing if it's not there."""
+    """Give the field's word for a key, its mark then what it does, failing if it isn't there."""
     said = [one for one in field if mark in one["text"] and one["text"].endswith(f" {word}")]
     assert len(said) == 1, (mark, word, field)
     return said[0]
