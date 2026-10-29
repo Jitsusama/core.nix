@@ -375,10 +375,10 @@ Provider {
             hue: Marks.tone(piece),
             plain: !holding && actions.length === 0,
             stays: !holding && actions.length > 0 && actions[0].stays,
-            targets: holding,
             // Return's act leads the right arrow, then the rest, so every
-            // act is there.
-            verbs: !holding && actions.length > 1 ? () => actions : null,
+            // act is there; a piece standing for things holds them instead,
+            // and with no act of its own, Return steps in to them too.
+            verbs: holding ?? (actions.length > 1 ? () => actions : null),
             run: holding ? null : () => {
                 if (actions.length > 0)
                     actions[0].run();
