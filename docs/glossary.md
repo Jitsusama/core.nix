@@ -294,7 +294,7 @@ now, and keep or stop keeping a folder.
 | forecast | how long a filesystem has until it's full, at the rate it's filling | | |
 | holder | a folder the disk guard names as taking a filesystem's room, with whose it is | | `holders` |
 | keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
-| clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe, prune | `disk-guard clear` |
+| clear | the disk guard removing builds, caches and waste it may, as a band allows or at once when Joel asks | purge, wipe | `disk-guard clear` |
 
 ## Keyboards
 
