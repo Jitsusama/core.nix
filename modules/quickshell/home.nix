@@ -1727,7 +1727,14 @@ in
       flag = "caffeinated-lid";
       Description = "Keeps the machine running with its lid shut, while there's power";
       PartOf = [ "caffeinate.service" ];
-      After = [ "caffeinate.service" ];
+      # Bound to the mains supply, which systemd holds ready only while it's
+      # online (nixos.nix), so it stops the moment the power goes, whatever
+      # the shell heard; it never starts without it.
+      BindsTo = [ "sys-subsystem-power_supply-mains.device" ];
+      After = [
+        "caffeinate.service"
+        "sys-subsystem-power_supply-mains.device"
+      ];
       ConditionACPower = true;
     };
 

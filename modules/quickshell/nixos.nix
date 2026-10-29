@@ -46,6 +46,14 @@
 # without asking, as a browser is: it only ever asks to a city's accuracy,
 # and what it learns stays in the account's runtime directory, leaving
 # only as the weather's question to Open-Meteo, to a hundredth of a degree.
+#
+# The mains supply is a device systemd tracks, ready only while it's
+# online, so keeping the machine running with its lid shut (home.nix's
+# caffeinate-lid) ends the moment the power goes, by systemd's own doing.
+# The shell lets the lid go too, but a shell that missed the power going
+# while the machine slept kept it held, and a laptop left running in a bag
+# ran flat (2026-10-28). systemd hears every change the kernel says,
+# including one said as the machine wakes.
 { pkgs, ... }:
 let
   # The standard library alone, so it builds with rustc and no crates.
@@ -76,6 +84,13 @@ in
   ];
 
   security.pam.services.quickshell = { };
+
+  services.udev.extraRules = ''
+    SUBSYSTEM=="power_supply", ATTR{type}=="Mains", TAG+="systemd", \
+      ENV{SYSTEMD_ALIAS}+="/sys/subsystem/power_supply/mains"
+    SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}!="1", \
+      ENV{SYSTEMD_READY}="0"
+  '';
 
   services.geoclue2 = {
     enable = true;
