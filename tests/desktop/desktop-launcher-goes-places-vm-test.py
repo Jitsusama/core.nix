@@ -63,14 +63,19 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     last write, so every write was heard, and the rows were joined only as it opened.
     """
     machine = desktop.machine
+    jobs = "$XDG_RUNTIME_DIR/jobs"
+    # Once as it opens, once as Agents makes its rows on opening, and one
+    # to spare for anything else the desktop changes meanwhile; made again
+    # on each write, it would be ten more.
+    joins_on_opening = 3
     before = int(desktop.as_account("qs ipc call launcher joined"))
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
     for gib in range(11, 21):
         lined["heartbeat"] = float(gib)
         lined["machine"] = {"availableGib": gib}
         desktop.as_account(
-            f"mkdir -p $XDG_RUNTIME_DIR/jobs && echo '{json.dumps(lined)}'"
-            " > $XDG_RUNTIME_DIR/jobs/.q && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+            f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
+            f" && mv {jobs}/.q {jobs}/queue.json"
         )
     try:
         desktop.answer("queue")
@@ -80,17 +85,14 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
                 and shown["selected"]["note"].startswith("20 GiB to spare")
             )
         )
-        # Once as it opened, once as Agents made its rows on opening, and one
-        # to spare for anything else the desktop changed meanwhile; made
-        # again on each write, it would be ten more.
         joined = int(desktop.as_account("qs ipc call launcher joined")) - before
-        assert joined <= 3, f"the closed launcher joined its rows {joined} times"
+        assert joined <= joins_on_opening, f"the closed launcher joined its rows {joined} times"
     finally:
         machine.send_key("esc")
         machine.wait_until_fails(
             desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
         )
-        desktop.as_account("rm -f $XDG_RUNTIME_DIR/jobs/queue.json")
+        desktop.as_account(f"rm -f {jobs}/queue.json")
 
 
 # One walk, as its subtest was: each step starts where the last left it.
