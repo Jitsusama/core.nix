@@ -119,6 +119,8 @@ first in the queue and conclude.
 | tidy | reporting which trees on the machine are spent, removing nothing | | `work tidy` |
 | reclaim | taking back the trees nobody owns | | `work reclaim` |
 | scratch folder | a quest's folder for clones, data and builds, its tmp/ cleared when it concludes | | the quest workspace |
+| version | one commit of a pi package installed on the machine, which a pi runs | | `versions/<commit>` |
+| sweep | pi-packages removing the versions no pi runs, keeping current and the one before, at each pi's start or end | | `pi-packages sweep` |
 | background command | a command a session runs without waiting on it | background job | the `jobs` tool |
 | background work | a session's background commands, fleets and review rounds together | | `/jobs` |
 | fleet | subagents run at once on one piece of work | fan-out, batch | the `subagent` tool |
