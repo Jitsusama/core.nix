@@ -1,5 +1,6 @@
 // The newest screenshot, opened in GIMP from the launcher, found by typing
-// or in Capture, after what it captures. Every
+// or among GIMP's own acts in Programs (`programActs`), and Edit in GIMP
+// on every picture Capture's Recent holds (`fileActs`). Every
 // screenshot lands in one folder, niri's own and the region ones the shell
 // takes with grim alike, so the folder is watched rather than niri, which
 // tells the shell only of its own. One that was only copied has no file, so
@@ -40,4 +41,24 @@ Provider {
     // The folder is there from login (home.nix), so it's watched from the
     // start.
     things: editing ? [editing] : []
+
+    // GIMP's own acts in Programs: the newest screenshot to edit.
+    function programActs(program) {
+        return program === "gimp" ? provider.things : [];
+    }
+
+    // What GIMP does to a picture shown anywhere: edits it.
+    function fileActs(path) {
+        if (!/\.(png|jpe?g|webp)$/i.test(path))
+            return [];
+        const key = "verb:gimp:edit";
+        return [thing({
+            key: `${key}:${path}`,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: String.fromCodePoint(0xf338),
+            hue: "action",
+            run: () => Niri.spawn(["gimp", path])
+        })];
+    }
 }

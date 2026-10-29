@@ -18,8 +18,10 @@
 // one list, newest first, nine at most, each the file it is wherever it
 // shows (Files.qml), a picture shown in the drawer, read each time Capture
 // is stepped into and never otherwise (VKCF3Z and Y2YBTS, 2026-10-29).
-// Then what's done with screenshots once they're taken, the programs' own
-// rows (`lodged`).
+// It holds nothing another program lodges: editing the newest screenshot
+// and looking through them all are GIMP's and the picture viewer's own, in
+// their programs (VKCF3Z, 2026-10-29), and a picture taken holds what each
+// program that edits it gives (`fileActs`), as Edit in GIMP.
 import Quickshell
 import Quickshell.Io
 import qs
@@ -273,7 +275,9 @@ Provider {
         }), () => provider.taken.map(path => provider.takenRow(path)))]
 
     // One thing taken: Return opens it in its program, the picture viewer
-    // or mpv, and a picture is shown in the drawer.
+    // or mpv, and a picture is shown in the drawer. After Open come what
+    // other providers give it (`fileActs(path)`), as GIMP gives Edit in
+    // GIMP, then Copy the Path.
     function takenRow(path) {
         const key = "verb:path:file:open";
         const act = thing({
@@ -284,7 +288,10 @@ Provider {
             hue: "action",
             run: () => Niri.spawn(["xdg-open", path])
         });
-        const row = Files.file(path, thing, [act]);
+        const given = (launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other.fileActs === "function")
+            .reduce((acts, other) => acts.concat(other.fileActs(path)), []);
+        const row = Files.file(path, thing, [act].concat(given));
         if (/\.(png|jpe?g|webp)$/i.test(path))
             row.drawer = { title: row.name, picture: path };
         return row;
@@ -307,7 +314,7 @@ Provider {
     function search(typed) {
         const words = Fuzzy.words(typed);
         const found = [];
-        for (const row of fixed.concat(windows, recent, lodged())) {
+        for (const row of fixed.concat(windows, recent)) {
             const m = matched(row, words);
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
@@ -319,11 +326,9 @@ Provider {
         return { rows: kept.map(f => f.row), grade: finest };
     }
 
-    // What it captures, then what it took lately, then the screenshots
-    // taken, to edit the newest or look through them all
-    // (collection-order.md), each its own program's.
+    // What it captures, then what it took lately (collection-order.md).
     function everything() {
-        return fixed.concat(recent, lodged());
+        return fixed.concat(recent);
     }
 
     function counted() {

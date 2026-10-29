@@ -3684,23 +3684,29 @@
     },
     {
       "id": "gimp",
-      "in": "capture",
+      "in": "applications",
       "name": "The Newest Screenshot"
     },
     {
       "id": "gimp:screenshot",
-      "in": "capture",
+      "by": "gimp",
       "name": "Edit the Newest Screenshot",
       "verb": "edit"
     },
     {
+      "id": "verb:gimp:edit",
+      "in": "path:file",
+      "name": "Edit in GIMP",
+      "verb": "edit"
+    },
+    {
       "id": "swayimg",
-      "in": "capture",
+      "in": "applications",
       "name": "Screenshots"
     },
     {
       "id": "swayimg:screenshots",
-      "in": "capture",
+      "by": "swayimg",
       "name": "Look Through the Screenshots",
       "verb": "look"
     },
