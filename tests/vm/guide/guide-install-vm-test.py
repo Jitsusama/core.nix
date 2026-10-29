@@ -1112,47 +1112,6 @@ def test_a_switch_leaves_the_session_on_the_first_console(
     enter(machine, "exit")
 
 
-def console_session(machine: QemuMachine) -> str | None:
-    """Give the session signed in on the first console, if there is one."""
-    sessions = json.loads(machine.succeed("loginctl list-sessions --json=short"))
-    return next((s["session"] for s in sessions if s.get("tty") == "tty1"), None)
-
-
-def sign_in_on_the_console(machine: QemuMachine, values: dict[str, Any]) -> str:
-    """Sign alice in at the first console's prompt, and give her session."""
-    # Anchored to the screen's end, since an earlier sign-in's lines stay.
-    machine.wait_until_tty_matches("1", r"login: \s*\Z")
-    enter(machine, "alice")
-    machine.wait_until_tty_matches("1", r"Password: \s*\Z")
-    enter(machine, values["password"])
-    machine.wait_until_succeeds("loginctl list-sessions --json=short | grep -q tty1")
-    session = console_session(machine)
-    assert session is not None
-    return session
-
-
-def test_a_switch_leaves_the_session_on_the_first_console(
-    signed_in: QemuMachine, restarted: str, values: dict[str, Any]
-) -> None:
-    """A switch leaves alice signed in on the first console, and it signs in again after."""
-    del restarted
-    machine = signed_in
-    session = sign_in_on_the_console(machine, values)
-    machine.succeed("/run/current-system/bin/switch-to-configuration test")
-    # A switch whose target changed starts every unit it wants that isn't
-    # running, the guide's among them, as this does whatever changed.
-    machine.succeed("systemctl start multi-user.target")
-    assert machine.succeed("systemctl show -P ConditionResult guide-installed").strip() == "no"
-    state = machine.succeed(f"loginctl show-session {session} -P State").strip()
-    assert state in {"active", "online"}, state
-    assert console_session(machine) == session
-    # Left, the console asks again, and takes a sign-in.
-    enter(machine, "exit")
-    machine.wait_until_succeeds("! loginctl list-sessions --json=short | grep -q tty1")
-    sign_in_on_the_console(machine, values)
-    enter(machine, "exit")
-
-
 def test_cleared_tpm_is_sealed_again(
     signed_in: QemuMachine, cleared: Cleared, values: dict[str, Any]
 ) -> None:
