@@ -9,8 +9,9 @@ pragma ComponentBehavior: Bound
 // gives its whole row, which the Mail place (Messages.qml), Now's mail
 // (NewMail.qml) and search all take as it is, with its acts in one order,
 // Open, Reply, Reply All when it went to others too, Archive, Read (a
-// switch), Attachments while it carries any, and Copy the Link, and its
-// details in the drawer.
+// switch), its sender, People's row stepping through to them when People
+// knows them, Attachments while it carries any, and Copy the Link, and
+// its details in the drawer.
 //
 // Inside Attachments, each file is a row of its own, its kind and size
 // beside it and in the drawer. Return fetches it from Gmail, only then,
@@ -147,6 +148,11 @@ Singleton {
         if (Said.replyingAll(mail) !== "")
             listed.push(act("verb:mail:replyAll", () => root.reply(Said.replyingAll(mail))));
         listed.push(tidying(mail, "archive", thing), reading(mail, thing));
+        // Who sent it, their row stepping through to them (VKCF3Z,
+        // 6f0e747b), when People knows them.
+        const sender = Google.personOf(root.launcher, mail.address);
+        if (sender)
+            listed.push(sender);
         if ((mail.attachments ?? []).length > 0)
             listed.push(attaching(mail, thing));
         return listed.concat([linking(mail, thing)]);
