@@ -35,14 +35,15 @@ onLinux {
         && lib.any (lib.hasSuffix "/bin/ssh-tpm-agent --key-dir ${folder}") (
           lib.toList home.systemd.user.services.personal-link.Service.ExecStart
         )
-        && keys == [
-          {
-            file = "${folder}/personal-link";
-            label = "personal link";
-            pin = false;
-            github = null;
-          }
-        ]
+        &&
+          keys == [
+            {
+              file = "${folder}/personal-link";
+              label = "personal link";
+              pin = false;
+              github = null;
+            }
+          ]
         && !(lib.hasPrefix "/home/someone/.ssh" (builtins.head keys).file)
         && !(none.systemd.user.sockets ? personal-link)
         && !(lib.any (key: lib.hasSuffix " link" key.label) none.jitsusama.tpmKeys)
