@@ -1199,8 +1199,12 @@ onLinux {
         property var marked: []
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
-        // No sender has a window open here, so Return on a notice reads it.
-        function senderWindow(app) { return null; }
+        // A sender's window by its program's id, as Notices finds it, the
+        // desktop's entries aside.
+        function senderWindow(app) {
+          return Object.values(Niri.windows)
+            .find(w => w.app_id.toLowerCase() === app.toLowerCase()) ?? null;
+        }
       '';
       # The tester's player, found by its desktop entry, a radio's, found
       # only by its identity, and one nobody's; the tester's two streams, a

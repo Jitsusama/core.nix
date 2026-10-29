@@ -176,13 +176,17 @@ Provider {
         case "goTo":
             // Going to its program while a window of it is open. Opening a
             // program that isn't open would be named Open, which the
-            // launcher would take for opening the notice.
+            // launcher would take for opening the notice. Going there reads
+            // it, as opening it does, and as Go To on its card does.
             return thing(Object.assign(named("verb:notice:goTo"), {
                 verb: Words.verb("verb:notice:goTo"),
                 name: Words.name("verb:notice:goTo", "",
                     { program: from.entry ? from.entry.name : notice.app }),
                 later: true,
-                run: () => provider.go(notice.app)
+                run: () => {
+                    Notices.mark(notice.id, true);
+                    provider.go(notice.app);
+                }
             }));
         case "read":
             // One switch, its name the same either way and what it is at
