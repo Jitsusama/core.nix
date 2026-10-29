@@ -941,6 +941,34 @@ Provider {
         return rows;
     }
 
+    // A disk is a device, so a thing (VKCF3Z, 2026-10-29): beside it its
+    // room and, while it's short, what the guard is doing about it, so
+    // that's seen without selecting it; in the drawer, while it's short,
+    // its figures and the guard's own sentence, and its name alone while
+    // it's healthy, as the sentence then only says the room again.
+    function disked(guard, disk, fields) {
+        const free = `${guard.shown(disk.free)} free`;
+        if (disk.band === "healthy")
+            return figure(Object.assign({ thing: true, key: `machine:disk:${disk.path}`,
+                side: free }, fields));
+        const said = Words.of("machine:disk:space").said ?? {};
+        const doing = disk.exhausted ? said.cleared
+            : disk.band === "pressure" ? said.clearing : said.clearingAll;
+        const full = typeof disk.full_at === "number" ? disk.full_at - Date.now() / 1000 : 0;
+        const facts = [
+            { label: named("disk:free"), value: guard.shown(disk.free) },
+            { label: named("disk:size"), value: guard.shown(disk.total) },
+            full > 0 ? { label: named("disk:full-in"), value: guard.duration(full) } : null
+        ];
+        return figure(Object.assign({
+            thing: true,
+            key: `machine:disk:${disk.path}`,
+            side: `${free} \u00b7 ${doing ?? guard.banded(disk.band)}`,
+            drawer: { title: fields.name, facts: facts.filter(fact => fact !== null),
+                body: disk.says ?? "" }
+        }, fields));
+    }
+
     function diskParts(guard) {
         const chip = Words.glyph(kinds.disks);
         const rows = [];
@@ -949,23 +977,23 @@ Provider {
             // first is the headline's, and within a band the least room.
             const watched = guard.disks.slice()
                 .sort((a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free);
-            const each = disk => figure({
+            const each = disk => disked(guard, disk, {
                 name: disk.path,
-                side: disk.band === "healthy" ? `${guard.shown(disk.free)} free`
-                    : `${guard.shown(disk.free)} free \u00b7 ${guard.banded(disk.band)}`,
                 graph: bar(1 - disk.free / disk.total, disk.band !== "healthy")
             });
             const worst = watched[0];
             const space = {
                 name: named("disk:space"),
-                side: `${guard.shown(worst.free)} free`,
                 graph: bar(1 - worst.free / worst.total, worst.band !== "healthy"),
                 note: watched.length > 1 ? `on ${worst.path}, the least of ${watched.length}`
                     : `on ${worst.path}`
             };
             rows.push(watched.length > 1
-                ? holderRow(Object.assign(space, { glyph: chip }), () => watched.map(each))
-                : figure(space));
+                ? holderRow(Object.assign(space, {
+                    glyph: chip,
+                    side: `${guard.shown(worst.free)} free`
+                }), () => watched.map(each))
+                : disked(guard, worst, space));
             if (guard.holders.length > 0)
                 rows.push(filling(guard, chip));
         } else if (room) {
