@@ -150,7 +150,7 @@ Singleton {
     property var fetches: []
 
     function tops() {
-        const drives = root.listing("drives");
+        const drives = root.holds("drives");
         const place = (folder, word) => root.chooser.folder({
                 key: `drive:folder:${folder}`,
                 name: Words.name(word),
@@ -166,7 +166,7 @@ Singleton {
     // has made its rows; null until it's said. Each ask is a closure of
     // its own, since Qt.callLater runs one function once a turn, with the
     // last arguments it was given.
-    function listing(folder) {
+    function holds(folder) {
         if (!(folder in root.asked)) {
             root.asked[folder] = Date.now();
             Qt.callLater(() => Google.list(folder));
@@ -177,7 +177,7 @@ Singleton {
     // A folder's rows: its folders, stepped into, then the files the
     // program that asked would take, each picked by fetching it.
     function inside(folder) {
-        const files = root.listing(folder)?.files ?? [];
+        const files = root.holds(folder)?.files ?? [];
         return files.filter(file => file.kind === "folder"
             || root.chooser.wants(Said.pickedAs(file).name, Said.pickedAs(file).mime))
             .map(file => root.pickable(file));
