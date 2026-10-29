@@ -188,7 +188,7 @@ function fetchedAs(fetched, mail, at, since) {
 // or save as `how` says, a save going `to` the path Joel picked when he
 // picked one.
 function fetch(mail, at, how, to = "") {
-    const asked = { id: mail.id, file: at, how: how };
+    const asked = { id: mail.id, file: at, how };
     if (to !== "") {
         asked.to = to;
     }
