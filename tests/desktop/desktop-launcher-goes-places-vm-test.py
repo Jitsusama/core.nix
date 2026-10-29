@@ -3384,6 +3384,28 @@ def test_the_selection_glides_to_its_row_and_typing_never_glides(desktop: Deskto
     assert said.strip() == "", f"the selection glided as a letter made the rows: {said}"
 
 
+def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
+    """Machine reads itself again each second, and each row is kept rather than drawn again."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("machine ")
+    desktop.launcher_until(lambda shown: shown["held"] == ["computer"])
+    first = laid_out(desktop)
+
+    def read_again(_: bool) -> bool:
+        return laid_out(desktop)["made"] >= first["made"] + 3
+
+    retry(read_again, timeout=dt.timedelta(seconds=30))
+    then = laid_out(desktop)
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert then["drawn"] == first["drawn"], (
+        f"rows made {then['made'] - first['made']} times drew"
+        f" {then['drawn'] - first['drawn']} rows afresh"
+    )
+
+
 def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:
     """Nothing on the launcher moves unless it changes, as letters, erasures and arrows go."""
     machine = desktop.machine
