@@ -2192,6 +2192,7 @@ Scope {
             return;
         held = steps;
         reshow(steps.length);
+        Report.say(`refreshed ${source.settings.name}`);
     }
 
     // Each step from `from` on made again from the rows the one above it

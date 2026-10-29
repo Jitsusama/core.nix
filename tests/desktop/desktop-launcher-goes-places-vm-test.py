@@ -912,9 +912,11 @@ def test_a_refresh_leaves_the_list_where_it_was_scrolled(desktop: Desktop) -> No
     wheel(desktop, 0.5, 0.5, 3)
     desktop.launcher_until(lambda shown: shown["scrolled"] > 0)
     scrolled = desktop.showing()["scrolled"]
-    # Several refreshes later it's where the wheel left it, the selection
+    # Three refreshes later it's where the wheel left it, the selection
     # still on the first row, out of sight above.
-    time.sleep(3)
+    for _ in range(3):
+        since = desktop.mark()
+        desktop.reported("refreshed ", lambda _rest: True, since)
     shown = desktop.showing()
     assert shown["scrolled"] == scrolled, shown
     assert (shown["selected"] or {}).get("name") == first, shown
