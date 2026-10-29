@@ -946,6 +946,10 @@
     the console takes the account's terminal colours in its own order, whatever the theme, and a
     machine with no account keeps the kernel's
   '';
+  the-desktop-comes-first-in-its-session = ''
+    niri and the shell sit first in session.slice, at ten times its other units' CPU weight,
+    each with a hard memory floor that session.slice's own covers with a gibibyte to spare
+  '';
   the-desktop-draws-letters-unhinted = ''
     the graphical account's desktop settings tell GTK and Chrome to draw letters unhinted, as macOS
     does

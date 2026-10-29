@@ -26,8 +26,18 @@
 # shares the CPU as an app would.
 #
 # session.slice holds the compositor and the shell, which took 0.98 GiB
-# between them on the XPS 14, so a 1.5 GiB floor keeps it in memory however
-# hard a build pushes. The floor is a hard one, MemoryMin: the kernel
+# between them on the XPS 14, and 1.63 GB on 29 October, past the 1.5 GiB
+# floor it had: 678 MB of it the shell, 126 MB niri. So the floor is 2.5 GiB,
+# and inside it the compositor and the shell hold floors of their own,
+# 256 MiB and 1 GiB, set in their modules beside their units, so what's
+# kept for them is theirs rather than the portals'. They come first there
+# too, at ten times the CPU weight of session.slice's other units: they're
+# how Joel drives the machine. Neither runs in real time. On 29 October at
+# a load of 28, the shell's main thread waited 11 us to run and niri's
+# 16 us, while the shell's own work took 43% of a core: real time would run
+# that ahead of the compositor and save almost nothing.
+#
+# The floor is a hard one, MemoryMin: the kernel
 # takes a soft one, MemoryLow, back whenever it finds nothing else to take, and
 # when an evaluation filled a 61 GiB laptop it did so 215,001 times, leaving
 # two thirds of niri in swap. niri then read keys up to 281 ms late, and past
@@ -144,9 +154,11 @@ let
   # app.slice claims a little more, to cover session.slice's 1.5 GiB beside
   # it. What the floors below leave unused the kernel shares among the
   # account's other slices. Work in jobs, background and containers has the
-  # rest of memory, and when that runs out, it's what swaps.
+  # rest of memory, and when that runs out, it's what swaps. The account's
+  # 25% covers app.slice's 12.5 GiB and session.slice's 2.5 on a 62 GiB
+  # machine.
   apps = "20%";
-  account = "23%";
+  account = "25%";
 in
 {
   options.jitsusama.slices.disks = lib.mkOption {
@@ -199,7 +211,7 @@ in
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
-      MemoryMin = "1536M";
+      MemoryMin = "2560M";
     }
     // latency;
 
