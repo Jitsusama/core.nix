@@ -1,10 +1,10 @@
 # mycelium carries the harness mesh between a realm's machines, so a session
 # on one shows on the others and a message reaches it wherever it runs. Every
 # workstation gets the program, which the other end of a link runs over SSH.
-# A machine joins a realm by naming it, and one that keeps links also runs
-# the node, dialling each machine it names: a user service on Linux, and on a
-# Mac an agent in the login session. A machine sets both in its own
-# repository:
+# A machine joins a realm by naming it, and then runs the node, which holds
+# its sessions, starts the ones other machines ask of it, hears its pis and
+# dials each machine it names: a user service on Linux, and on a Mac an agent
+# in the login session. A machine sets both in its own repository:
 #
 #   jitsusama.mycelium.realm = "personal";
 #   jitsusama.mycelium.links = [ "other-machine" ];
@@ -39,6 +39,7 @@ let
   package = mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
   linking = cfg.links != [ ];
+  serving = cfg.realm != null;
   agentsKey = config.systemd.user.sockets ? agent-signing;
   name = lib.types.strMatching "[a-z0-9-]+";
   taint = lib.types.submodule {
@@ -153,7 +154,8 @@ in
       description = ''
         The machines of the realm this machine dials and keeps linked, as SSH
         destinations. Two machines link once, so only one of each pair names
-        the other. With none, the machine only answers links.
+        the other. With none, the machine's node answers links and dials
+        nothing.
       '';
     };
     declares = lib.mkOption {
@@ -190,7 +192,7 @@ in
         costs_money = cfg.declares.costsMoney;
       };
     })
-    (lib.mkIf (isLinux && linking) {
+    (lib.mkIf (isLinux && serving) {
       systemd.user.services.mycelium = {
         Unit = {
           Description = "Carries the harness mesh between the machines of the ${cfg.realm} realm";
@@ -209,7 +211,7 @@ in
         Install.WantedBy = [ "default.target" ];
       };
     })
-    (lib.mkIf (isDarwin && linking) {
+    (lib.mkIf (isDarwin && serving) {
       launchd.agents.mycelium = {
         enable = true;
         config = {
