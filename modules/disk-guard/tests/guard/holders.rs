@@ -1,6 +1,7 @@
 use disk_guard::activity::Use;
 use disk_guard::config::Config;
-use disk_guard::holders::{Kind, Place, holders, measure, places};
+use disk_guard::holders::{Kind, Place, holders, mark, measure, places};
+use disk_guard::keeps::{Keep, Keeps};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -156,4 +157,42 @@ fn only_the_ten_biggest_are_listed() {
     assert_eq!(said.len(), 10);
     assert_eq!(said[0].bytes, 12 * GIB);
     assert_eq!(said[9].bytes, 3 * GIB);
+}
+
+#[test]
+fn a_kept_holder_says_his_reason_and_says_the_guard_s_own_once_let_go() {
+    let home = Path::new("/home/u");
+    let measured = [(
+        place("/home/u/trees/fix-2", Kind::Worktree, "fix-2"),
+        20 * GIB,
+    )];
+    let offered = [(PathBuf::from("/home/u/trees/fix-2/target"), 12 * GIB)];
+    let mut said = holders(&measured, &offered, &[], Some(home));
+    let judged = said.clone();
+    assert_eq!(said[0].kept, None);
+    assert_eq!(said[0].clears, 12 * GIB);
+    assert_eq!(said[0].name, "fix-2");
+    let mut keeps = Keeps::new();
+    keeps.insert(
+        PathBuf::from("/home/u/trees"),
+        Keep {
+            reason: "the release builds".to_owned(),
+            at: 5.0,
+        },
+    );
+    mark(&mut said, &keeps, Some(home));
+    assert_eq!(
+        said[0].says,
+        "The worktree fix-2 holds 20.0 GiB; you keep it: the release builds."
+    );
+    assert_eq!(
+        said[0].kept.as_ref().map(|keep| keep.reason.as_str()),
+        Some("the release builds")
+    );
+    assert!(
+        said[0].clearable,
+        "what the guard judged of its contents stands beside the keep"
+    );
+    mark(&mut said, &Keeps::new(), Some(home));
+    assert_eq!(said, judged, "marking again with no keep undoes it");
 }

@@ -292,6 +292,8 @@ now, and keep or stop keeping a folder.
 | nearly full | the disk guard's second band, under a tenth free, when it takes more | urgent | `urgent` |
 | critically full | the disk guard's last band, under 4% free, when it may freeze what fills the disk | critical | `critical` |
 | forecast | how long a filesystem has until it's full, at the rate it's filling | | |
+| holder | a folder the disk guard names as taking a filesystem's room, with whose it is | | `holders` |
+| keep | Joel telling the disk guard never to clear a folder, with his reason | pin, protect, exclude | `disk-guard keep`, `disk-guard unkeep` |
 
 ## Keyboards
 

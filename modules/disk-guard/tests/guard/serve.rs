@@ -430,3 +430,25 @@ fn this_machine_can_be_sensed() {
     assert!(senses.saver);
     assert!(senses.pressure.io.some >= 0.0);
 }
+
+#[test]
+fn what_is_kept_is_never_cleared_even_on_a_critically_full_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    for name in ["kept.txt", "spare.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2026-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+    }
+    let kept = fs::canonicalize(root.join("files/kept.txt")).unwrap();
+    disk_guard::keeps::keep(root, &kept, "a copy of the old photos", 1.0).unwrap();
+    let mut guard = guard_at(root, "100%");
+    stepped(&mut guard, 3, &mut Fake::default());
+    assert!(
+        !root.join("files/spare.txt").exists(),
+        "what isn't kept goes"
+    );
+    assert!(kept.exists(), "what is kept stays");
+}
