@@ -24,6 +24,8 @@ ShellRoot {
     property int told: 0
     property int toldBefore: 0
     property real wrote: 0
+    // Seconds past a watcher's silence, as StatusFile counts it.
+    readonly property int longPast: 600
 
     Connections {
         target: status
@@ -58,16 +60,17 @@ ShellRoot {
         does: () => root.written(2),
         holds: () => status.said?.n === 2
     }, {
-        what: "a new heartbeat alone heard without saying anything new",
+        // A heartbeat long past, so the status goes silent once it's heard.
+        what: "a heartbeat alone heard without saying anything new",
         does: () => {
             root.toldBefore = root.told;
-            return root.written(2, 5);
+            return root.written(2, -root.longPast);
         },
-        holds: () => status.beat === root.wrote && root.told === root.toldBefore
+        holds: () => status.silent && root.told === root.toldBefore
     }, {
         what: "something new said once after it",
         does: () => root.written(3),
-        holds: () => status.said?.n === 3 && root.told === root.toldBefore + 1
+        holds: () => status.said?.n === 3 && !status.silent && root.told === root.toldBefore + 1
     }]
 
     property int at: 0
