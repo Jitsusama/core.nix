@@ -907,8 +907,13 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
     machine.wait_until_succeeds(
         desktop.in_session("niri msg focused-window | grep -q recent-from"), timeout=STARTING
     )
-    kitties = f"pgrep -c -u {desktop.account} -x kitty"
-    before = desktop.as_account(kitties).strip()
+
+    def kittys() -> list[int]:
+        """The process behind each of kitty's windows, one a window."""
+        windows = json.loads(desktop.as_account("niri msg --json windows"))
+        return [window["pid"] for window in windows if window["app_id"] == "kitty"]
+
+    before = kittys()
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("kitty", selecting="kitty")
@@ -924,7 +929,8 @@ def test_kittys_recent_opens_a_window_in_a_folder_it_visited(desktop: Desktop) -
         f' [ "$(readlink /proc/$p/cwd)" = {folder} ] && exit 0; done; exit 1'
     )
     machine.wait_until_succeeds(desktop.in_session(there), timeout=STARTING)
-    assert desktop.as_account(kitties).strip() == before, "it started another kitty"
+    retry(lambda _: len(kittys()) > len(before), timeout=timedelta(seconds=30))
+    assert set(kittys()) == set(before), "it started another kitty"
     desktop.as_account("pkill -f 'kitty --title recent-from'")
     machine.wait_until_fails(desktop.in_session(there), timeout=timedelta(seconds=30))
 
