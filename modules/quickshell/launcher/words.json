@@ -3998,6 +3998,13 @@
       "glyph": "mail"
     },
     {
+      "id": "verb:mail:reply",
+      "in": "mail:message",
+      "name": "Reply",
+      "verb": "reply",
+      "glyph": "reply"
+    },
+    {
       "id": "verb:mail:read",
       "in": "mail:message",
       "name": "Mark As Read",

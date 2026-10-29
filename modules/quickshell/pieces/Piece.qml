@@ -85,4 +85,9 @@ Item {
     // `stays: true`, so the launcher stays open and shows the change
     // (Joel, 2026-10-26: Return closes only when it takes him out).
     property var actions: []
+    // The things it stands for, where each is a thing of the launcher's
+    // own, such as a piece of mail: given the launcher's `thing`, their
+    // rows, which Return lists in place of doing its first act, so each
+    // shows as it does everywhere else. Null for a piece that's only acts.
+    property var rows: null
 }

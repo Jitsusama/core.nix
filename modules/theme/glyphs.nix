@@ -948,7 +948,7 @@ in
   reply = {
     glyph = nerd "f045a";
     console = "<";
-    means = "replying to a message from its notice";
+    means = "replying to a message, from its notice or its row";
   };
   offer = {
     glyph = nerd "f0ce0";
