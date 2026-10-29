@@ -1410,8 +1410,11 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         return at > 0 and rows[at - 1] in {"Location", "Weather"}
 
     desktop.launcher_until(after_the_moment)
-    desktop.down_to("Design Review")
+    # It's the meeting coming too, which wants Joel, so Now opens on it,
+    # and it's that one row, never a second beside it.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Design Review")
     today = desktop.showing()
+    assert today["rows"].count("Design Review") == 1, today["rows"]
     assert today["selected"]["verb"] == "join", today
     # Return joins it, as the meeting's own row does everywhere.
     machine.send_key("ret")

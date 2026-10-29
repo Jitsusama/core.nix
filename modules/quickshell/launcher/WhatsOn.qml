@@ -46,7 +46,7 @@ Provider {
 
     readonly property var all: {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
-            && fact.piece.present && fact.piece.active);
+            && fact.piece.present && fact.piece.active && !shownAbove(fact));
         // What waits on Joel, then this moment's rows, which are always
         // there, so the top never moves; then the rest by group, what
         // wants Joel first, and by name within each, so a row keeps its
@@ -412,7 +412,17 @@ Provider {
     readonly property var pressing: Facts.all
         .filter(fact => fact.entry.mark !== null && fact.piece && fact.piece.present
             && fact.piece.active && Now.pressing(fact.piece.group))
-        .map(fact => `on:${fact.entry.mark}`)
+        .map(fact => shownAbove(fact) ? meeting.key : `on:${fact.entry.mark}`)
+
+    // Whether what's on is the meeting this moment's rows already hold: the
+    // meeting coming (Starting.qml) is the calendar's next one but for the
+    // few minutes one runs on past its start, and is then that one row,
+    // never a second beside it (Joel, 2026-10-28: "seeing multiples of the
+    // same thing gives me executive dysfunction").
+    function shownAbove(fact) {
+        return fact.entry.mark === "meeting" && meeting !== null
+            && meeting.key === `calendar:meeting:${fact.piece.meeting?.id ?? ""}`;
+    }
 
     // Where Now opens, among these rows: on the most pressing, so Super+O
     // then Return does it. That's Waiting on You while something waits for
