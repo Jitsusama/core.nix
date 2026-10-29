@@ -273,6 +273,14 @@ that every signature asks to be confirmed. Add both public keys to GitHub as
 signing keys, and to the machine repository's
 `jitsusama.signing.allowedSigners`, so git can say whose a signature is.
 
+On a machine the guide installed, `guide github`, run as the account once
+signed in and online, adds the TPM's three keys to GitHub instead. It asks
+GitHub for a code and shows it with where to type it on the phone. It hands
+the sign-in to gh, which keeps it for git, and adds each key GitHub doesn't
+hold yet: the login key as an authentication key, titled with the machine's
+name and TPM, and the two signing keys as signing keys, titled with the
+machine's name and signing or agents. The YubiKey's spare still goes by hand.
+
 ## When the TPM Refuses
 
 At boot, systemd asks for each device's PIN on its own, the TPM first. Each

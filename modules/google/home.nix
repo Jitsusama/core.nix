@@ -212,7 +212,13 @@ in
         RestartSec = 10;
         # What it held goes with it, so the shell shows no account rather than
         # what was true when it stopped.
-        ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/google.json %t/google.json.new";
+        # The files fetched to open go with the program, as what it held does.
+        ExecStopPost = lib.concatStringsSep " " [
+          "${pkgs.coreutils}/bin/rm -rf"
+          "%t/google.json"
+          "%t/google.json.new"
+          "%t/google-files"
+        ];
       };
     };
   };

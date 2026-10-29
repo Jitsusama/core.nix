@@ -167,6 +167,16 @@
       "name": "Hears"
     },
     {
+      "id": "agents:step",
+      "in": "agents",
+      "name": "Step"
+    },
+    {
+      "id": "agents:wants",
+      "in": "agents",
+      "name": "Wants You For"
+    },
+    {
       "id": "quests",
       "once": ["Tasks"],
       "name": "Quests",
@@ -4078,6 +4088,20 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:attachments",
+      "in": "calendar:meeting",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "calendar:attachment",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
       "id": "verb:calendar:cancel",
       "in": "calendar:meeting",
       "name": "Cancel the Meeting",
@@ -4167,6 +4191,34 @@
       "name": "Archive",
       "verb": "archive",
       "glyph": "archive"
+    },
+    {
+      "id": "verb:mail:attachments",
+      "in": "mail:message",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "mail:attachment",
+      "in": "mail:message",
+      "name": "File",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:open",
+      "in": "mail:attachment",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:attachment:save",
+      "in": "mail:attachment",
+      "name": "Save a Copy",
+      "verb": "save",
+      "glyph": "saveCopy"
     },
     {
       "id": "verb:meet:code",
@@ -4492,6 +4544,35 @@
       "glyph": "windows"
     },
     {
+      "id": "verb:agent:talk",
+      "in": "agents",
+      "name": "Talk",
+      "verb": "talk",
+      "glyph": "reply",
+      "ask": "what to talk about?"
+    },
+    {
+      "id": "verb:agent:pause",
+      "in": "agents",
+      "name": "Pause",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:agent:resume",
+      "in": "agents",
+      "name": "Resume",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agent:stop",
+      "in": "agents",
+      "name": "Stop",
+      "verb": "stop",
+      "glyph": "stopped"
+    },
+    {
       "id": "orchestrators",
       "in": "agents",
       "name": "Orchestrators",
@@ -4539,40 +4620,11 @@
       "name": "What Came of It"
     },
     {
-      "id": "verb:orchestrator:talk",
-      "in": "orchestrators",
-      "name": "Talk",
-      "verb": "talk",
-      "glyph": "reply",
-      "ask": "what to talk about?"
-    },
-    {
-      "id": "verb:orchestrator:open",
-      "in": "orchestrators",
-      "name": "Open Its Window",
-      "verb": "switch",
-      "glyph": "windows"
-    },
-    {
-      "id": "verb:orchestrator:pause",
-      "in": "orchestrators",
-      "name": "Pause",
-      "verb": "pause",
-      "glyph": "pause"
-    },
-    {
       "id": "verb:orchestrator:resume",
       "in": "orchestrators",
       "name": "Resume",
       "verb": "resume",
       "glyph": "resume"
-    },
-    {
-      "id": "verb:orchestrator:stop",
-      "in": "orchestrators",
-      "name": "Stop",
-      "verb": "stop",
-      "glyph": "stopped"
     },
     {
       "id": "verb:quest:switch",

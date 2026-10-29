@@ -11,6 +11,7 @@ use std::thread;
 
 use google::api::{Google, Origins};
 use google::calendar::Answer;
+use google::files::{Failed, How, Places};
 use google::mail::Tidy;
 use google::state::Standing;
 use google::watch::Watch;
@@ -261,6 +262,88 @@ fn the_mail_that_wants_joel_is_told_newest_first_and_asked_for_once() {
     assert_eq!(asked(&stand_in), 2);
     watch.look(&now());
     assert_eq!(asked(&stand_in), 2, "mail already held was asked for again");
+}
+
+/// The stand-in's Gmail with one piece of mail carrying a menu, whose
+/// bytes Gmail keeps apart, and a program.
+fn carrying(path: &str, body: &str) -> (u16, String) {
+    if path.starts_with("GET /gmail/v1/users/me/messages?") {
+        return (
+            200,
+            r#"{"messages": [{"id": "m", "threadId": "t"}]}"#.into(),
+        );
+    }
+    if path.starts_with("GET /gmail/v1/users/me/messages/m/attachments/menu?") {
+        // "hello", as Gmail's URL-safe base64 leaves it, unpadded.
+        return (200, r#"{"data": "aGVsbG8"}"#.into());
+    }
+    if path.starts_with("GET /gmail/v1/users/me/messages/m?") {
+        return (
+            200,
+            r#"{"id": "m", "threadId": "t", "internalDate": "1793040000000",
+                "payload": {"mimeType": "multipart/mixed", "headers": [], "parts": [
+                {"mimeType": "application/pdf", "filename": "menu.pdf",
+                    "body": {"attachmentId": "menu", "size": 5}},
+                {"mimeType": "application/octet-stream", "filename": "setup.exe",
+                    "body": {"attachmentId": "setup", "size": 9}}]}}"#
+                .into(),
+        );
+    }
+    gmail(path, body)
+}
+
+#[test]
+fn a_file_mail_carries_is_fetched_only_when_asked_and_a_program_never_to_open() {
+    let stand_in = StandIn::new(carrying);
+    let path = credentials("files", now().timestamp().as_millisecond() + 3_600_000);
+    let folder = path.with_file_name("files");
+    let places = Places {
+        kept: folder.join("kept"),
+        saves: folder.join("Downloads"),
+    };
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let files = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .iter()
+            .filter(|heard| heard.line.contains("/attachments/"))
+            .count()
+    };
+    let state = watch.look(&now()).clone();
+    assert_eq!(state.mail[0].attachments.len(), 2);
+    assert_eq!(
+        files(&stand_in),
+        0,
+        "a file was fetched before it was asked for"
+    );
+    // While Gmail answers, the file is said to be on its way.
+    let waiting = watch
+        .fetching("m", 0, How::Open, &now())
+        .fetched
+        .clone()
+        .unwrap();
+    assert_eq!((waiting.path, waiting.failed), (None, None));
+    let opened = watch.fetch(&places, &now()).fetched.clone().unwrap();
+    let opened = PathBuf::from(opened.path.unwrap());
+    assert_eq!(opened, places.kept.join("m").join("menu.pdf"));
+    assert_eq!(fs::read(&opened).unwrap(), b"hello");
+    watch.fetching("m", 0, How::Save, &now());
+    let saved = watch.fetch(&places, &now()).fetched.clone().unwrap();
+    assert_eq!(
+        saved.path.map(PathBuf::from),
+        Some(places.saves.join("menu.pdf"))
+    );
+    assert_eq!(files(&stand_in), 2);
+    // A program is never fetched to open, and a file no mail holds isn't
+    // asked for.
+    watch.fetching("m", 1, How::Open, &now());
+    let program = watch.fetch(&places, &now()).fetched.clone().unwrap();
+    assert_eq!((program.path, program.failed), (None, Some(Failed::Runs)));
+    watch.fetching("m", 5, How::Open, &now());
+    let gone = watch.fetch(&places, &now()).fetched.clone().unwrap();
+    assert_eq!(gone.failed, Some(Failed::Gone));
+    assert_eq!(files(&stand_in), 2);
+    fs::remove_dir_all(&folder).unwrap();
 }
 
 #[test]

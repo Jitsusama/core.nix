@@ -97,6 +97,7 @@ mod fixtures {
 
 pub mod awake;
 pub mod fault;
+pub mod github;
 pub mod install;
 pub mod installed;
 pub mod journal;

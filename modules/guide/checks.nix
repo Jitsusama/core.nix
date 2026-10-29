@@ -17,7 +17,8 @@ onLinux {
   # The keys an account's modules name in the TPM reach what the installed
   # guide reads, each with its account and a comment saying whose and
   # where: tpm-signing's two and ssh-tpm-agent's login key, which
-  # tpm-signing brings.
+  # tpm-signing brings. Each says how `guide github` adds it, titled by
+  # the machine.
   the-guide-makes-the-keys-the-modules-name =
     let
       machine = bareNixos [
@@ -30,19 +31,20 @@ onLinux {
       ];
       home = machine.config.home-manager.users.someone.home.homeDirectory;
       facts = builtins.fromJSON machine.config.environment.etc."guide/machine.json".text;
-      key = file: comment: pin: {
+      key = file: comment: pin: kind: title: {
         account = "someone";
         file = "${home}/${file}";
         inherit comment pin;
+        github = { inherit kind title; };
       };
     in
     holds "the-guide-makes-the-keys-the-modules-name"
       "The installed guide doesn't see the keys in the TPM that an account's modules name."
       (
         lib.sort (one: other: one.file < other.file) facts.keys == [
-          (key ".local/share/signing/joel-signing" "someone@laptop signing" true)
-          (key ".ssh/agent-signing" "someone@laptop agents" false)
-          (key ".ssh/id_ecdsa" "someone@laptop" true)
+          (key ".local/share/signing/joel-signing" "someone@laptop signing" true "signing" "laptop signing")
+          (key ".ssh/agent-signing" "someone@laptop agents" false "signing" "laptop agents")
+          (key ".ssh/id_ecdsa" "someone@laptop" true "authentication" "laptop TPM")
         ]
       );
 

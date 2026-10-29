@@ -182,6 +182,33 @@ Singleton {
         Report.say(`attached session ${id}`);
     }
 
+    // Where each session on the mesh takes words and acts from, by its
+    // address: the harness's steer inbox, which every session reads, an
+    // orchestrator or not (mesh-workflow's steer()).
+    readonly property string inboxes: `${state}/steer`
+
+    // Leaves a steer in a session's inbox, under a name it skips until it's
+    // whole: `{ text, id }` talks to it, `{ act }` pauses, resumes or stops
+    // it.
+    function steer(address, fields) {
+        const name = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.json`;
+        const body = JSON.stringify(Object.assign({ at: new Date().toISOString(), from: "joel" },
+            fields));
+        Niri.spawn(["sh", "-c",
+            'mkdir -p "$1" && printf %s "$3" > "$1/$2.tmp" && mv "$1/$2.tmp" "$1/$2"',
+            "steer", `${inboxes}/${String(address).toUpperCase()}`, name, body]);
+    }
+
+    // Talks to a session: the words go with an id, so the session writes
+    // what became of them where the launcher reads its talks.
+    function talk(address, words) {
+        const text = words.trim();
+        if (text === "")
+            return false;
+        steer(address, { text: text, id: `talk-${Date.now()}` });
+        return true;
+    }
+
     // What a session is, for the launcher to keep one row of it: its window,
     // which the windows and its quest also find, or else itself.
     function isOf(session) {
@@ -593,30 +620,46 @@ Singleton {
     // The node's sessions by id, everyone it holds, while it answers a
     // watch; null while it doesn't, so the folder is read instead.
     property var node: null
-    Socket {
-        id: mycelium
-        path: root.realm !== "" && Quickshell.env("XDG_RUNTIME_DIR")
-            ? `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${root.realm}.sock` : ""
-        connected: path !== ""
-        onConnectionStateChanged: {
-            if (connected) {
-                write('{"Watch":{"groups":[],"recent":0}}\n');
-                flush();
-            } else if (root.node !== null) {
-                root.node = null;
-                root.relive();
+    readonly property string nodePath: realm !== "" && Quickshell.env("XDG_RUNTIME_DIR")
+        ? `${Quickshell.env("XDG_RUNTIME_DIR")}/mycelium/${realm}.sock` : ""
+    // A fresh connection each time, since a Socket refused once never
+    // connects again, however it's asked (Quickshell's socket.cpp keeps the
+    // refused one), as when a switch restarts the node and the shell asks
+    // before it listens; then Now read the folder until the shell restarted.
+    property bool linking: true
+    LazyLoader {
+        active: root.linking && root.nodePath !== ""
+
+        Socket {
+            id: mycelium
+            path: root.nodePath
+            connected: true
+            onConnectionStateChanged: {
+                if (mycelium.connected) {
+                    mycelium.write('{"Watch":{"groups":[],"recent":0}}\n');
+                    mycelium.flush();
+                    return;
+                }
+                if (root.node !== null) {
+                    root.node = null;
+                    root.relive();
+                }
+                relink.restart();
+            }
+            onError: relink.restart()
+            parser: SplitParser {
+                onRead: line => root.nodeSaid(line)
             }
         }
-        parser: SplitParser {
-            onRead: line => root.nodeSaid(line)
-        }
     }
-    // A node not yet up, or restarting, is asked again every few seconds.
+    // A node not yet up, or restarting, is asked again a few seconds on.
     Timer {
+        id: relink
         interval: 5000
-        repeat: true
-        running: mycelium.path !== "" && !mycelium.connected
-        onTriggered: mycelium.connected = true
+        onTriggered: {
+            root.linking = false;
+            root.linking = true;
+        }
     }
     // What the node tells a watch: every session first, then each one new,
     // changed or forgotten.

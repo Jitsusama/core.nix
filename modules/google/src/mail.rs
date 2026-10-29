@@ -52,6 +52,8 @@ pub struct Mail {
     pub address: String,
     /// Who it went to, each by name when the header gives one.
     pub to: String,
+    /// Who it was copied to, the same way, empty when nobody was.
+    pub cc: String,
     pub subject: String,
     /// When it came, in milliseconds since the epoch.
     pub at: i64,
@@ -60,9 +62,88 @@ pub struct Mail {
     /// What it says, as plain text: its plain part, or its HTML part as
     /// text when it has no plain one, at most `BODY_MOST` characters.
     pub body: String,
-    /// The name of each file it carries, in order, as Gmail lists them
-    /// under it.
-    pub attachments: Vec<String>,
+    /// The files it carries, in order, as Gmail lists them under it.
+    pub attachments: Vec<File>,
+}
+
+/// A file a piece of mail carries, as the shell is told it, with where
+/// its bytes are, which only this program asks for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct File {
+    /// Its name, as its sender gave it.
+    pub name: String,
+    /// Its type, as the sender's mail program said it.
+    pub kind: String,
+    /// How big it is, in bytes.
+    pub size: u64,
+    /// Whether it's a program or a script, which is never opened here,
+    /// only saved.
+    pub runs: bool,
+    #[serde(skip)]
+    pub bytes: Bytes,
+}
+
+/// Where a file's bytes are.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Bytes {
+    /// With Gmail, asked for by this id.
+    Asked(String),
+    /// In the message itself, as Gmail's base64, for one small enough.
+    Held(String),
+}
+
+/// The types of what would run if it were opened: programs, scripts,
+/// installers and launchers, as mail programs name them.
+const RUNNING_KINDS: &[&str] = &[
+    "application/java-archive",
+    "application/javascript",
+    "application/vnd.debian.binary-package",
+    "application/vnd.microsoft.portable-executable",
+    "application/x-apple-diskimage",
+    "application/x-appimage",
+    "application/x-bat",
+    "application/x-csh",
+    "application/x-desktop",
+    "application/x-elf",
+    "application/x-executable",
+    "application/x-java-archive",
+    "application/x-ms-installer",
+    "application/x-msdos-program",
+    "application/x-msdownload",
+    "application/x-msi",
+    "application/x-perl",
+    "application/x-python",
+    "application/x-rpm",
+    "application/x-ruby",
+    "application/x-sh",
+    "application/x-sharedlib",
+    "application/x-shellscript",
+    "text/javascript",
+    "text/x-perl",
+    "text/x-python",
+    "text/x-ruby",
+    "text/x-sh",
+    "text/x-shellscript",
+];
+
+/// The endings of the same, since a sender's mail program as often calls
+/// one only a stream of bytes.
+const RUNNING_ENDINGS: &[&str] = &[
+    "app", "appimage", "bash", "bat", "bin", "cmd", "com", "command", "csh", "deb", "desktop",
+    "dmg", "exe", "fish", "hta", "jar", "js", "jse", "lnk", "msi", "php", "pkg", "pl", "ps1", "py",
+    "rb", "rpm", "run", "scr", "sh", "so", "vbe", "vbs", "wsf", "zsh",
+];
+
+/// Whether a file named `name` of type `kind` would run if it were
+/// opened, by either.
+pub fn runs(name: &str, kind: &str) -> bool {
+    let ending = name
+        .rsplit_once('.')
+        .map(|(_, ending)| ending.to_ascii_lowercase());
+    RUNNING_KINDS
+        .iter()
+        .any(|running| running.eq_ignore_ascii_case(kind.trim()))
+        || ending.is_some_and(|ending| RUNNING_ENDINGS.contains(&ending.as_str()))
 }
 
 /// The ids of the mail a search answered with, in its order.
@@ -101,11 +182,8 @@ pub fn read(answer: &Value) -> Option<Mail> {
         id: id.to_owned(),
         from: sender(header("From")),
         address: address(header("From")),
-        to: split(header("To"))
-            .iter()
-            .map(|one| sender(one))
-            .collect::<Vec<_>>()
-            .join(", "),
+        to: named(header("To")),
+        cc: named(header("Cc")),
         subject: header("Subject").trim().to_owned(),
         // Gmail writes when it came as a string of milliseconds.
         at: answer
@@ -119,21 +197,37 @@ pub fn read(answer: &Value) -> Option<Mail> {
     })
 }
 
-/// The name of each file a message carries: every part with a filename,
-/// found depth first, but for what its HTML shows inline (a signature's
-/// logo, a pasted picture), which lives in a multipart/related beside the
-/// HTML and which Gmail doesn't list as an attachment either.
-fn attached(payload: &Value) -> Vec<String> {
-    let mut names = Vec::new();
-    carried(payload, &mut names);
-    names
+/// The files a message carries: every part with a filename, found depth
+/// first, but for what its HTML shows inline (a signature's logo, a
+/// pasted picture), which lives in a multipart/related beside the HTML
+/// and which Gmail doesn't list as an attachment either.
+fn attached(payload: &Value) -> Vec<File> {
+    let mut files = Vec::new();
+    carried(payload, &mut files);
+    files
 }
 
-fn carried(part: &Value, into: &mut Vec<String>) {
+fn carried(part: &Value, into: &mut Vec<File>) {
     let text = |field: &str| part.get(field).and_then(Value::as_str).unwrap_or("");
     let name = text("filename").trim();
     if !name.is_empty() {
-        into.push(name.to_owned());
+        let body = |field: &str| part.pointer(&format!("/body/{field}"));
+        let kind = text("mimeType").trim();
+        into.push(File {
+            name: name.to_owned(),
+            kind: kind.to_owned(),
+            size: body("size").and_then(Value::as_u64).unwrap_or(0),
+            runs: runs(name, kind),
+            bytes: match body("attachmentId").and_then(Value::as_str) {
+                Some(id) => Bytes::Asked(id.to_owned()),
+                None => Bytes::Held(
+                    body("data")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned(),
+                ),
+            },
+        });
         return;
     }
     if text("mimeType").eq_ignore_ascii_case("multipart/related") {
@@ -166,6 +260,15 @@ pub fn address(from: &str) -> String {
 
 /// The people a header lists, split at its commas but not those inside a
 /// quoted name, as "Lovelace, Ada" is.
+/// Everyone an address header names, each by name when it gives one.
+fn named(header: &str) -> String {
+    split(header)
+        .iter()
+        .map(|one| sender(one))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn split(header: &str) -> Vec<String> {
     let mut people = Vec::new();
     let (mut one, mut quoted) = (String::new(), false);
@@ -245,8 +348,14 @@ fn folded(text: &str) -> String {
 }
 
 /// What Gmail's URL-safe base64 holds, as text, with anything not UTF-8
-/// replaced, and the padding Gmail sometimes leaves off not needed.
+/// replaced.
 fn decoded(data: &str) -> String {
+    String::from_utf8_lossy(&bytes(data)).into_owned()
+}
+
+/// What Gmail's URL-safe base64 holds, the padding Gmail sometimes leaves
+/// off not needed.
+pub fn bytes(data: &str) -> Vec<u8> {
     let value = |c: u8| match c {
         b'A'..=b'Z' => Some(c - b'A'),
         b'a'..=b'z' => Some(c - b'a' + 26),
@@ -265,7 +374,7 @@ fn decoded(data: &str) -> String {
             bytes.push(u8::try_from((held >> bits) & 0xff).unwrap_or(0));
         }
     }
-    String::from_utf8_lossy(&bytes).into_owned()
+    bytes
 }
 
 /// Who a From header names: the name before the address, unquoted, or the
@@ -315,6 +424,7 @@ mod tests {
                 from: "Lovelace, Ada".into(),
                 address: "ada@example.com".into(),
                 to: String::new(),
+                cc: String::new(),
                 subject: "Lunch?".into(),
                 at: 1_793_044_800_000,
                 page: "https://mail.google.com/mail/u/0/#inbox/t1".into(),
@@ -349,6 +459,14 @@ mod tests {
     }
 
     #[test]
+    fn mail_says_who_it_was_copied_to_each_by_name() {
+        let answer = json!({"id": "m", "threadId": "t", "payload": {"headers": [
+            {"name": "CC", "value": "Grace Hopper <grace@example.com>, ada@example.com"}
+        ]}});
+        assert_eq!(read(&answer).unwrap().cc, "Grace Hopper, ada@example.com");
+    }
+
+    #[test]
     fn mail_reads_as_its_plain_part_before_its_html_and_never_an_attachment() {
         let part = |mime: &str, text: &str| {
             json!({"mimeType": mime,
@@ -380,12 +498,55 @@ mod tests {
                 ]},
                 {"mimeType": "image/png", "filename": "logo.png", "body": {}}
             ]},
-            {"mimeType": "application/pdf", "filename": "menu.pdf", "body": {}},
-            {"mimeType": "image/jpeg", "filename": " patio.jpg ", "body": {}}
+            {"mimeType": "application/pdf", "filename": "menu.pdf",
+                "body": {"attachmentId": "ANGjdJ-8_x", "size": 48213}},
+            {"mimeType": "image/jpeg", "filename": " patio.jpg ",
+                "body": {"data": encoded("jpeg"), "size": 4}}
         ]}});
         let mail = read(&answer).unwrap();
-        assert_eq!(mail.attachments, ["menu.pdf", "patio.jpg"]);
+        assert_eq!(
+            mail.attachments,
+            [
+                File {
+                    name: "menu.pdf".into(),
+                    kind: "application/pdf".into(),
+                    size: 48213,
+                    runs: false,
+                    bytes: Bytes::Asked("ANGjdJ-8_x".into()),
+                },
+                File {
+                    name: "patio.jpg".into(),
+                    kind: "image/jpeg".into(),
+                    size: 4,
+                    runs: false,
+                    bytes: Bytes::Held(encoded("jpeg")),
+                }
+            ]
+        );
         assert_eq!(mail.body, "Menu attached");
+        // Only what Joel sees of a file is told; where its bytes are isn't.
+        let told = serde_json::to_value(&mail.attachments[0]).unwrap();
+        assert_eq!(
+            told,
+            json!({"name": "menu.pdf", "kind": "application/pdf", "size": 48213, "runs": false})
+        );
+    }
+
+    #[test]
+    fn a_program_or_a_script_runs_by_its_type_or_its_ending() {
+        assert!(runs("setup.exe", "application/octet-stream"));
+        assert!(runs("Install.SH", "application/octet-stream"));
+        assert!(runs("tool", "application/x-executable"));
+        assert!(runs("launch", " Application/X-Desktop "));
+        assert!(!runs("menu.pdf", "application/pdf"));
+        assert!(!runs("notes", "text/plain"));
+        assert!(!runs("archive.tar.gz", "application/gzip"));
+    }
+
+    #[test]
+    fn gmails_base64_reads_back_as_its_bytes() {
+        assert_eq!(bytes(&encoded("jpeg")), b"jpeg");
+        assert_eq!(bytes("_-8"), [0xff, 0xef]);
     }
 
     #[test]

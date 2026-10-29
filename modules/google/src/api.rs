@@ -15,6 +15,10 @@ use crate::calendar::Answer;
 use crate::drive;
 use crate::mail;
 
+/// The most a file's answer may be: Gmail takes a file of 25 MB, which
+/// its base64 makes a third again.
+const ATTACHMENT_MOST: u64 = 36 * 1024 * 1024;
+
 /// Where Google answers.
 pub struct Origins {
     /// The OAuth token endpoint.
@@ -166,13 +170,43 @@ impl Google {
                 ("format", "full"),
                 (
                     "fields",
-                    "id,threadId,internalDate,payload(headers,mimeType,filename,body/data,\
-                     parts(mimeType,filename,body/data,parts(mimeType,filename,body/data,\
-                     parts(mimeType,filename,body/data))))",
+                    "id,threadId,internalDate,payload(headers,mimeType,filename,body,\
+                     parts(mimeType,filename,body,parts(mimeType,filename,body,\
+                     parts(mimeType,filename,body))))",
                 ),
             ],
             "a piece of mail",
         )
+    }
+
+    /// The bytes of the file Gmail keeps as `file` on the mail `id`, as
+    /// its URL-safe base64.
+    pub fn attachment(&self, token: &str, id: &str, file: &str) -> Result<String, Refused> {
+        let mut answer = self
+            .agent
+            .get(format!(
+                "{}/gmail/v1/users/me/messages/{id}/attachments/{file}",
+                self.origins.api
+            ))
+            .header("Authorization", &format!("Bearer {token}"))
+            .query("fields", "data")
+            .call()
+            .map_err(|error| unreachable(&error))?;
+        let status = answer.status().as_u16();
+        if status != 200 {
+            return Err(refused(status, "a file"));
+        }
+        let answer: Value = answer
+            .body_mut()
+            .with_config()
+            .limit(ATTACHMENT_MOST)
+            .read_json()
+            .map_err(|error| Refused::Unreachable(format!("Google's answer to a file: {error}")))?;
+        answer
+            .get("data")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| Refused::Unreachable("Google answered a file without it".into()))
     }
 
     /// Takes the label `label` off the mail `id`, as Gmail's own buttons

@@ -1301,6 +1301,12 @@ Scope {
                     lands: true,
                     run: () => root.landInside(gathered, best)
                 });
+            // The right arrow on any found thing that holds more goes
+            // straight inside it, whatever its Return does (VKCF3Z,
+            // 2026-10-29: "← is where you came from; the crumbs are
+            // where it lives").
+            else if (best.verbs || best.targets)
+                gathered.landsIn = best;
             rows.push(gathered);
         }
         return rows;
@@ -1309,8 +1315,10 @@ Scope {
     // Steps into a collection's matches, and then into the one of them that
     // was found, which stepping in keeps selected.
     function landInside(gathered, best) {
-        if (enter(gathered) && selected && steadyId(selected) === steadyId(best))
-            enter(selected);
+        if (enter(gathered) && selected && steadyId(selected) === steadyId(best)
+            && enter(selected))
+            // The left arrow comes back past the collection to the search.
+            held[held.length - 1].through = true;
     }
 
     // The right arrow: into the selected row, or, for a match that lands
@@ -1319,6 +1327,8 @@ Scope {
     function inward(row) {
         if (row && row.lands)
             row.run();
+        else if (row && row.landsIn)
+            landInside(row, row.landsIn);
         else if (leadsElsewhere(row))
             run(row, false, false);
         else
@@ -1358,16 +1368,16 @@ Scope {
 
     // What the keys do for a row, as the foot says them, a key and its
     // word each: Return's verb, Shift+Return where it can, where the arrows
-    // step. Tab is said in the field, after the completion it takes
-    // (Prompt.qml), not here: it comes and goes with each letter, so in the
-    // foot it moved the keys or took room from how things stand. The left
-    // arrow is said only where it goes back: that it takes away what's
-    // typed is what any field does, and saying so took room from how things
-    // stand as soon as Joel typed. Shift+Return and the right arrow are said
-    // wherever they work, a step in too (Joel, 2026-10-26: "the foot shows
-    // every key that works on the selection"): the right arrow where `enter`
-    // finds somewhere to go, by what it would ask, never by asking it, since
-    // the foot is said for every row.
+    // step. Tab is said in the field, at its right edge while there's a
+    // completion to take (Prompt.qml), not here: it comes and goes with
+    // each letter, so in the foot it moved the keys or took room from how
+    // things stand. The left arrow is said only where it goes back: that it
+    // takes away what's typed is what any field does, and saying so took
+    // room from how things stand as soon as Joel typed. Shift+Return and
+    // the right arrow are said wherever they work, a step in too (Joel,
+    // 2026-10-26: "the foot shows every key that works on the selection"):
+    // the right arrow where `enter` finds somewhere to go, by what it would
+    // ask, never by asking it, since the foot is said for every row.
     // Whether Return does something and keeps the launcher, as a setting
     // does, rather than going somewhere inside it, as a spot, a row with
     // more inside, one holding rows (its verbs and targets both, as a
@@ -2196,8 +2206,11 @@ Scope {
     function back() {
         if (held.length === 0)
             return;
-        const left = held[held.length - 1];
-        held = held.slice(0, -1);
+        // A thing landed in from a search goes back to the search, past the
+        // collection it was found in.
+        const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
+        const left = held[held.length - steps];
+        held = held.slice(0, -steps);
         restart(left.typed);
         reselect(left);
     }

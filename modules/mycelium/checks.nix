@@ -43,6 +43,11 @@ let
   declaring = {
     reach = [ "internet" ];
     probes.home = "192.0.2.1:53";
+    probes.office = [
+      "test"
+      "-e"
+      "/run/office"
+    ];
     taints = [
       {
         key = "person-works";
@@ -87,11 +92,12 @@ in
   # declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes included, isn't written in mycelium's shape, a held session's outlives isn't each system's, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, a held session's outlives isn't each system's, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
           probes.home.connect = "192.0.2.1:53";
+          probes.office.run = declaring.probes.office;
           outlives = [
             "window_close"
             "node_restart"

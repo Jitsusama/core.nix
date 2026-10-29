@@ -49,14 +49,20 @@ QtObject {
                 }),
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    documents: [], heard: 1793042446024
+                    documents: [], heard: 1793042446024, fetched: null
                 }],
             ["a state with nothing heard yet",
                 '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
-                { account: "none", meetings: [], mail: [], unread: null, documents: [], heard: null }],
+                {
+                    account: "none", meetings: [], mail: [], unread: null, documents: [],
+                    heard: null, fetched: null
+                }],
             ["a state from before mail",
                 '{"account":"ready","meetings":[],"heard":1}',
-                { account: "ready", meetings: [], mail: [], unread: null, documents: [], heard: 1 }],
+                {
+                    account: "ready", meetings: [], mail: [], unread: null, documents: [],
+                    heard: 1, fetched: null
+                }],
             ["half a line", '{"account":"rea', null],
             ["a line that isn't the state", '{"hello":1}', null],
             ["an account with no meetings said", '{"account":"ready"}', null]
@@ -107,12 +113,52 @@ QtObject {
             ],
             body: "Friday?\n\nAda"
         });
+        check("the details of mail copied to someone, after who it went to",
+            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject")
+                .facts.map(fact => fact.label), ["From", "To", "Cc", "Date"]);
+        check("who it was copied to",
+            Mail.details(Object.assign({}, lunch, { cc: "Grace Hopper" }), "No Subject")
+                .facts[2], { label: "Cc", value: "Grace Hopper" });
+        const menu = { name: "menu.pdf", kind: "application/pdf", size: 48213, runs: false };
+        const patio = { name: "patio.jpg", kind: "image/jpeg", size: 812, runs: false };
         check("the details of mail carrying files",
-            Mail.details(Object.assign({}, lunch, { attachments: ["menu.pdf", "patio.jpg"] }),
+            Mail.details(Object.assign({}, lunch, { attachments: [menu, patio] }),
                 "No Subject").facts[3], { label: "Attachments", value: "menu.pdf, patio.jpg" });
         check("the details of mail carrying one file",
-            Mail.details(Object.assign({}, lunch, { attachments: ["menu.pdf"] }), "No Subject")
+            Mail.details(Object.assign({}, lunch, { attachments: [menu] }), "No Subject")
                 .facts[3], { label: "Attachment", value: "menu.pdf" });
+        // A file it carries: its kind by its ending, its size as the launcher
+        // says one, and its details.
+        check("a file's side", Mail.sized(menu, "File"), "PDF \u00b7 48 kB");
+        check("a small file's side", Mail.sized(patio, "File"), "JPG \u00b7 812 B");
+        check("a file with no ending", Mail.kind({ name: "README" }, "File"), "File");
+        check("a hidden name is no ending", Mail.kind({ name: ".profile" }, "File"), "File");
+        check("sizes below ten keep a figure", [1500, 2.5e6, 12e9].map(Mail.weighed),
+            ["1.5 kB", "2.5 MB", "12 GB"]);
+        check("a file's details", Mail.carried(menu, "File"), {
+            title: "menu.pdf",
+            facts: [{ label: "Kind", value: "PDF" }, { label: "Size", value: "48 kB" }],
+            body: ""
+        });
+        // Fetching one asks the program by its mail and place, and its row
+        // says how it stands for an ask made since.
+        check("the line fetching a file", Mail.fetch(lunch, 1, "save"),
+            '{"fetch":{"id":"m_2","file":1,"how":"save"}}\n');
+        const fetched = (more) => Object.assign({ mail: "m_2", file: 0, how: "open", asked: 50,
+            path: null, failed: null }, more);
+        check("how a fetch stands", [
+            Mail.fetchedAs(fetched({}), lunch, 0, 40),
+            Mail.fetchedAs(fetched({ path: "/run/user/1000/google-files/m_2/menu.pdf" }), lunch,
+                0, 40),
+            Mail.fetchedAs(fetched({ how: "save", path: "/home/joel/Downloads/menu.pdf" }),
+                lunch, 0, 40),
+            Mail.fetchedAs(fetched({ failed: "unreachable" }), lunch, 0, 40),
+            Mail.fetchedAs(fetched({ path: "/x" }), lunch, 0, 60),
+            Mail.fetchedAs(fetched({ path: "/x" }), lunch, 1, 40),
+            Mail.fetchedAs(null, lunch, 0, 40)
+        ], ["fetching", "opened", "saved", "unreachable", "", "", ""]);
+        check("what its row says", ["fetching", "saved", "runs", "opened"].map(Mail.fetchedSaid),
+            ["fetching\u2026", "saved in Downloads", "a program or a script, so only saved", ""]);
         const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
             at: lunch.at };
         check("the details of mail saying little", Mail.details(bare, "No Subject"), {

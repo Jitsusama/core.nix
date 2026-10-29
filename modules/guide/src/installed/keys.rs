@@ -31,6 +31,9 @@ pub struct TpmKey {
     pub comment: String,
     /// Whether it asks for the PIN before it's used.
     pub pin: bool,
+    /// How `guide github` adds it to GitHub, if it goes there.
+    #[serde(default)]
+    pub github: Option<crate::github::OnGitHub>,
 }
 
 impl TpmKey {
