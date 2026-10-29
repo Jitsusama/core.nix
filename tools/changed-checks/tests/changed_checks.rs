@@ -21,10 +21,14 @@ fn starting() -> MutexGuard<'static, ()> {
 }
 
 /// git as changed-checks asks it: where the repository is, the merge base
-/// with origin's main and nothing else, and no untracked files.
+/// with origin's main and nothing else, and no untracked files. The working
+/// tree has a change in it, until a test writes `clean`, and then it's its
+/// commit.
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
-  rev-parse) echo "$STAND_IN/repo" ;;
+  rev-parse)
+    if [ "$2" = HEAD ]; then echo fedcba9876543210fedc; else echo "$STAND_IN/repo"; fi ;;
+  status) [ -e "$STAND_IN/clean" ] || echo " M flake.nix" ;;
   -C)
     case "$3" in
       merge-base) [ "$5" = refs/remotes/origin/main ] || exit 1; echo 0123456789abcdef0123 ;;
@@ -263,6 +267,27 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     assert_eq!(runs[1]["named"], 0, "{}", runs[1]);
     let chunks = &runs[0]["evaluated"][1]["chunks"];
     assert_eq!(chunks[0]["checks"], 4, "the tree's one chunk: {}", runs[0]);
+}
+
+#[test]
+fn a_clean_tree_is_kept_by_its_commit() {
+    let stand_in = StandIn::new("clean");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", BASE);
+    fs::write(stand_in.path("clean"), "").expect("written");
+    assert!(stand_in.run(&["--system", "x86_64-linux"]).status.success());
+    // Were the tree evaluated again, its checks would now all be removed.
+    stand_in.checks("working", "{}");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout), "");
+    let kept = Path::new("cache/changed-checks/fedcba9876543210fedc-x86_64-linux.json");
+    assert!(stand_in.folder.join(kept).exists());
+    let runs = stand_in.runs();
+    assert_eq!(evaluated(&runs[0]), ["base", "tree"], "{}", runs[0]);
+    assert!(evaluated(&runs[1]).is_empty(), "{}", runs[1]);
 }
 
 #[test]
