@@ -1128,6 +1128,13 @@ offers no alarm on it, and reading its clock fails with an I/O error. A
 sleep test on this laptop needs someone to open the lid or press the
 power button.
 
+At a desk with the lid shut, only lifting the lid woke it. The keyboard
+there is a paired Bluetooth one, which BlueZ allows to wake the laptop, but
+the AX200's Bluetooth controller is a USB device (`8087:0029`), and the
+kernel leaves its wakeup off, so at each sleep the kernel dropped its
+connections and left it listening for nobody. The bluetooth module turns
+that wakeup on for every USB controller of Bluetooth's device class.
+
 ### The Microphones
 
 The built-in microphones are a digital pair on the Realtek ALC274 codec
@@ -1154,7 +1161,7 @@ keep PipeWire's paths.
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
 | Clock      | what parts the TSC from the chipset's timers early on isn't found              |
-| Sleep      | the drain on battery overnight isn't measured yet                              |
+| Sleep      | the drain on battery overnight isn't measured, nor a Bluetooth keyboard's wake |
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |

@@ -2,6 +2,10 @@
 # check's meta.description, and every-check-says-what-it-proves fails on a check with none or
 # one with no check. A check added names what it proves here, in its place by name.
 {
+  a-bluetooth-keyboard-may-wake-it = ''
+    a machine with Bluetooth lets a USB controller of Bluetooth's device class wake it, so a paired
+    keyboard's key does, in a rule udev reads without a complaint
+  '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
   '';
