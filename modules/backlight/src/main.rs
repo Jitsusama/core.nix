@@ -67,6 +67,7 @@ use std::time::Instant;
 
 use tokio::sync::watch;
 use zbus::export::futures_core::Stream;
+use zbus::fdo::DBusProxy;
 use zbus::proxy::{CacheProperties, OwnerChangedStream, PropertyStream};
 use zbus::{Connection, proxy};
 
@@ -234,7 +235,21 @@ async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'static>)>, Start
         .await
         .ok()
         .map(Box::pin);
-    let shown = relay.temperature().await.unwrap_or(WHITE);
+    // Read only from a relay already running: asking would start one, which
+    // the bus does on the first warmth set, and one starts at the screen's
+    // own white.
+    let running = match DBusProxy::new(&bus).await {
+        Ok(owners) => owners
+            .name_has_owner(relay.inner().destination().clone())
+            .await
+            .unwrap_or(false),
+        Err(_) => false,
+    };
+    let shown = if running {
+        relay.temperature().await.unwrap_or(WHITE)
+    } else {
+        WHITE
+    };
     (Some((Warmth::new(shown), relay)), started)
 }
 

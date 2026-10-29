@@ -8,7 +8,8 @@
 # timer.
 # systemd-backlight's units save each level at shutdown, but the screen's
 # only while the lid is open (saves-while-open.sh), since a shut lid's panel
-# reads dark and the next boot would come up at it.
+# reads dark and the next boot would come up at it. The session's bus starts
+# the program that warms the built-in panel when the daemon first asks it.
 { config, pkgs, ... }:
 let
   savesWhileOpen = pkgs.callPackage ./saves-while-open.nix {
@@ -39,6 +40,17 @@ let
     '';
   };
 
+  # wl-gammarelay-rs, which warms the built-in panel for the daemon, is
+  # started by the session's bus as the account's unit (home.nix) when the
+  # daemon first sets a warmth, so a machine whose sensor sees no colour
+  # never runs it.
+  relayStarted = pkgs.runCommand "wl-gammarelay-activation" { } ''
+    mkdir -p $out/share/dbus-1/services
+    printf '[D-BUS Service]\nName=%s\nExec=%s\nSystemdService=%s\n' \
+      rs.wl-gammarelay ${pkgs.coreutils}/bin/false wl-gammarelay.service \
+      > $out/share/dbus-1/services/rs.wl-gammarelay.service
+  '';
+
   # After iio-sensor-proxy's own rules, which say what it may drive.
   unclaimed = pkgs.writeTextFile {
     name = "light-sensors-unclaimed";
@@ -53,6 +65,8 @@ in
     hear
     unclaimed
   ];
+
+  services.dbus.packages = [ relayStarted ];
 
   # A switch reloads udev's rules but replays no event, so a sensor set up
   # by older rules would keep its buffer as it was until the next boot.

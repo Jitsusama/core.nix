@@ -18,7 +18,11 @@
 # Where a sensor sees the light's colour, the built-in panel's warmth
 # follows the room part of the way (src/warmth.rs), through
 # wl-gammarelay-rs, which holds niri's gamma for each screen and takes its
-# warmth over the session's bus. It's the daemon's own, so it comes with it.
+# warmth over the session's bus. It's the daemon's own, so it comes with it,
+# and the bus starts it the first time the daemon sets a warmth
+# (nixos.nix), rather than every session: only a machine whose sensor sees
+# the light's colour needs it, and a compositor that can't set gamma, as a
+# nested one can't, would fail it at each start.
 # Whether it follows the room is Joel's to say, through the daemon's own
 # name on the session's bus (src/switch.rs), which the shell's Warmth part
 # sets, and how it stands is kept in $XDG_RUNTIME_DIR/backlight-warmth for
@@ -92,15 +96,14 @@ in
       PartOf = [ "graphical-session.target" ];
       After = [ "graphical-session.target" ];
     };
+    # Started by the bus alone, and again by the daemon's next warmth should
+    # it stop, so nothing restarts it in a loop where it can't run.
     Service = {
       # Started once it holds its name, so the daemon finds it there.
       Type = "dbus";
       BusName = "rs.wl-gammarelay";
       ExecStart = lib.getExe pkgs.wl-gammarelay-rs;
-      Restart = "on-failure";
-      RestartSec = 1;
     };
-    Install.WantedBy = [ "graphical-session.target" ];
   };
 
   config.systemd.user.services.backlight = {
