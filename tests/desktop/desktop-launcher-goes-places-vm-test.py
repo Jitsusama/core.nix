@@ -1601,8 +1601,7 @@ def test_a_signed_out_account_wants_joel_to_sign_in_again(desktop: Desktop) -> N
         desktop.down_to("Google")
         desktop.launcher_until(
             lambda shown: (
-                shown["selected"]["side"] == "signed out"
-                and shown["selected"]["verb"] == "sign in"
+                shown["selected"]["side"] == "signed out" and shown["selected"]["verb"] == "sign in"
             )
         )
         machine.send_key("ret")
@@ -1680,6 +1679,46 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     assert not any(
         thing["is"] == "calendar:meeting:planning" for thing in desktop.showing()["things"]
     ), desktop.showing()
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_sure(
+    desktop: Desktop,
+) -> None:
+    """A meeting Google lets Joel change is moved to a time he types, a step naming who's told."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    # The stand-in's Standup is Ada's, on her calendar, which Joel may change.
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    desktop.down_to("Move the Meeting")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: "15 Minutes Later" in shown["rows"])
+    # A time typed there is offered first, named by its day and times.
+    day = machine.succeed("date -d tomorrow '+%A %-d %B'").strip()
+    when = f"{day}, 10:00 to 10:30"
+    desktop.type_in("tomorrow 10:00", selecting=when)
+    # Return asks first, naming who Google tells, and moves nothing yet.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name")
+            == f"Move It to {when}, Telling Ada Lovelace and Grace Hopper"
+        )
+    )
+    machine.fail(f"test -s {asked}")
+    machine.send_key("ret")
+    moved = '{"move":{"id":"standup","start":'
+    machine.wait_until_succeeds(
+        f"grep -qF {shlex.quote(moved)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
+    # The launcher stays, as it does once a meeting is cancelled.
+    assert desktop.showing()["open"]
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
