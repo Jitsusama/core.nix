@@ -35,7 +35,7 @@ expect(
   'narrow',
   35,
   'project/' .. g.more .. '/notes.txt ' .. g.unsaved,
-  g.failed .. ' 1  ' .. g.branch .. ' ' .. g.unsaved .. '  ' .. g.more
+  g.failed .. ' 1  ' .. g.branch .. ' ' .. g.unsaved
 )
 vim.api.nvim_feedkeys('i', 'n', false)
 vim.defer_fn(function()

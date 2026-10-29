@@ -1,7 +1,7 @@
 # The prompt gives way: from 120 columns down to 16, in a rebase with
 # everything else showing too, the folder Joel is in and the glyph stay,
-# room is left to type until there's nothing left to give, and the more mark
-# shows whenever something is hidden. Run as zsh -f -i -c 'source this
+# room is left to type until there's nothing left to give, and what gives
+# way goes without a trace. Run as zsh -f -i -c 'source this
 # prompt.zsh folder branch', the folder being two below the root of a
 # repository on that branch.
 setopt extended_glob
@@ -42,14 +42,12 @@ for COLUMNS in {120..16}; do
     (( ${(m)#left} + 8 + (${#right} ? ${(m)#right} + 2 : 0) <= COLUMNS )) ||
       fail "$COLUMNS columns leave no room to type: $left$right"
   fi
-  # The mark stands where the hiding happened: on the right while it's
-  # drawn, and just before the glyph once it's gone.
-  if [[ -z $right ]]; then
-    [[ $left == *"$more ${_prompt_glyph[prompt]} " ]] ||
-      fail "$COLUMNS columns hide the right side unmarked: $left"
-  elif [[ $right != *$branch* || $right != *12.4s* || $right != *${_prompt_glyph[shell]}* ]]; then
-    [[ $right == *$more* ]] || fail "$COLUMNS columns hide something unmarked: $right"
-  fi
+  # What gives way leaves no mark behind: none before the glyph once the
+  # right side has gone, and none at the end of the right side. A branch
+  # cut short keeps the mark inside its name.
+  [[ $left != *"$more ${_prompt_glyph[prompt]} " ]] ||
+    fail "$COLUMNS columns mark the right side's going: $left"
+  [[ $right != *$more ]] || fail "$COLUMNS columns mark what gave way: $right"
 done
 (( COLUMNS = 120 ))
 _prompt_lay
