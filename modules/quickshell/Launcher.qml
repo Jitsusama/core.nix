@@ -3255,8 +3255,19 @@ Scope {
 
                                 required property int index
                                 // What it says now, read by its place, so a
-                                // row kept across a refresh says the new.
-                                readonly property var modelData: list.rows[index] ?? ({})
+                                // row kept across a refresh says the new. A
+                                // row let go has no place (Qt gives it -1)
+                                // until it's destroyed, a moment later, and
+                                // says what it last said till then, since
+                                // read by a place it hasn't, it said nothing
+                                // and every binding on it failed.
+                                readonly property var modelData: entry.index >= 0
+                                    ? list.rows[entry.index] : entry.said
+                                property var said: ({})
+                                onModelDataChanged: {
+                                    if (entry.index >= 0)
+                                        entry.said = entry.modelData;
+                                }
                                 Component.onCompleted: root.rowsDrawn += 1
                                 // What it's inside, whose glyph an act of its
                                 // own without one wears.

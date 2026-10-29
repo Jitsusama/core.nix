@@ -3394,7 +3394,7 @@ def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
     first = laid_out(desktop)
 
     def read_again(_: bool) -> bool:
-        return laid_out(desktop)["made"] >= first["made"] + 3
+        return int(laid_out(desktop)["made"]) >= int(first["made"]) + 3
 
     retry(read_again, timeout=dt.timedelta(seconds=30))
     then = laid_out(desktop)
