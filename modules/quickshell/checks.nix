@@ -1329,6 +1329,18 @@ onLinux {
         Name=Browser
         Exec=browser %U
       '';
+      # Hidden, as Tuple's is: one another provider gives acts to, and one
+      # nobody does.
+      pair = entry "pair" ''
+        Name=Pair
+        Exec=pair
+        NoDisplay=true
+      '';
+      ghost = entry "ghost" ''
+        Name=Ghost
+        Exec=ghost
+        NoDisplay=true
+      '';
       # A program whose entry's id isn't its command, as zathura's isn't.
       viewer = entry "viewer" ''
         Name=Viewer
@@ -1341,6 +1353,8 @@ onLinux {
       cp ${quiet} share/applications/quiet.desktop
       cp ${radio} share/applications/radio.desktop
       cp ${browser} share/applications/browser.desktop
+      cp ${pair} share/applications/pair.desktop
+      cp ${ghost} share/applications/ghost.desktop
       cp ${viewer} share/applications/org.example.viewer.desktop
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
@@ -1579,11 +1593,10 @@ onLinux {
       touch $out
     '';
 
-  # Tuple's place in the launcher leads with what can be done about calls
-  # now, as a stand-in for Tuple.qml says it, and its people follow Tuple's
-  # contacts through the real
-  # tuple-people, which reads a stand-in for Tuple's follow here, and call,
-  # join or favour one (tests/people.qml), with niri stood in. Stopping the
+  # The launcher's People, with Tuple as its source, follows Tuple's
+  # contacts through the real tuple-people, which reads a stand-in for
+  # Tuple's follow here, and calls, joins or favours one (tests/people.qml),
+  # with niri stood in. Stopping the
   # helper stops Tuple's follow, which writes only when someone's presence
   # changes and so would never find out by itself. A listener stands in for
   # the daemon's socket, and once it's stopped, leaving the socket's file
@@ -1594,13 +1607,6 @@ onLinux {
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
-      '';
-      # Out of a call, as Tuple.qml would be, which the test changes.
-      calls = singleton "Tuple.qml" ''
-        property var controls: [{ key: "tuple:open", verb: "open", name: "Open My Tuple Room",
-          keywords: "pair call start new", glyph: "o", hue: "action", run: () => {} }]
-        property bool calling: false
-        property string standing: ""
       '';
       helper = pkgs.callPackage ./pi-helper.nix {
         name = "tuple-people";
@@ -1670,18 +1676,21 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-launcher-finds-the-people" { } ''
-      mkdir launcher
+      mkdir -p launcher/people
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
-      cp ${../tuple/People.qml} launcher/People.qml
+      cp ${../people/People.qml} launcher/People.qml
+      cp ${../people/Person.js} launcher/Person.js
+      cp ${../people/PersonSource.qml} PersonSource.qml
+      cp ${../tuple/TupleSource.qml} launcher/people/tuple.qml
+      cp ${../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
-      cp ${calls} Tuple.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FOLLOWED=${followed} STOP_TUPLE=${stop} PATH=${helper}/bin:${tuple}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR

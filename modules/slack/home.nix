@@ -1,14 +1,32 @@
 # Slack's keys, for the launcher to list over its window, whose app id is
-# slack. Slack comes from wherever the machine gets it, so this lists its
-# keys and installs nothing; a machine with Slack imports it. Slack takes
-# no settings for its keys, so these are its own, from its help's list for
-# Windows and Linux.
-_:
+# slack, and Slack as one of People's sources. Slack comes from wherever
+# the machine gets it, so this lists its keys and installs nothing of
+# Slack's own; a machine with Slack imports it. Slack takes no settings
+# for its keys, so these are its own, from its help's list for Windows and
+# Linux.
+{ people }:
+{ config, pkgs, ... }:
 let
   grouped = group: map (key: key // { inherit group; });
+  # Who Slack knows by an address, only ever read (slack-people).
+  lookUp = pkgs.callPackage ./package.nix { };
 in
 {
-  imports = [ ../keys/home.nix ];
+  imports = [
+    ../keys/home.nix
+    people
+  ];
+
+  home.packages = [ lookUp ];
+
+  # Open in Slack for anyone Slack knows by one of their addresses, through
+  # the harness's Slack sign-in, read only (Joel, 2026-10-28), after calling
+  # and mail. With no sign-in, nothing is asked.
+  jitsusama.people.sources.slack = {
+    order = 30;
+    source = ./SlackSource.qml;
+    credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
+  };
 
   jitsusama.keys.slack =
     grouped "conversations" [

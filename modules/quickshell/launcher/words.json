@@ -3,6 +3,7 @@
     "on",
     "agents",
     "applications",
+    "people",
     "desktop",
     "computer",
     "network",
@@ -21,7 +22,6 @@
         "clipboard",
         "capture",
         "session:recording",
-        "people",
         "emoji",
         "session:quiet"
       ],
@@ -3427,15 +3427,62 @@
     },
     {
       "id": "people",
-      "name": "Calls",
+      "name": "People",
       "noun": "people",
       "glyph": "people",
-      "ask": "who to pair with?",
-      "empty": "Nobody to call yet."
+      "ask": "who?",
+      "empty": "Nobody you've met or written lately."
+    },
+    {
+      "id": "verb:person:call",
+      "in": "people",
+      "name": "Call Them",
+      "verb": "call",
+      "glyph": "call"
+    },
+    {
+      "id": "verb:person:join",
+      "in": "people",
+      "name": "Join Their Call",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:person:mail",
+      "in": "people",
+      "name": "Write a Mail",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:person:slack",
+      "in": "people",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:person:favourite",
+      "in": "people",
+      "name": "Favourite",
+      "verb": "star",
+      "glyph": "favourite",
+      "states": {
+        "favourite": {
+          "verb": "unstar"
+        }
+      }
+    },
+    {
+      "id": "person:recent",
+      "in": "people",
+      "name": "Recent",
+      "verb": "more",
+      "glyph": "recent"
     },
     {
       "id": "tuple",
-      "in": "people",
+      "in": "applications",
       "name": "The Call"
     },
     {
@@ -4743,12 +4790,17 @@
       "by": "tuple"
     },
     {
+      "id": "tuple:show",
+      "name": "Show the Call",
+      "verb": "show",
+      "by": "tuple"
+    },
+    {
       "id": "tuple:mute",
-      "name": "Mute Me in the Call",
+      "name": "Muted",
       "verb": "mute",
       "states": {
         "muted": {
-          "name": "Let Them Hear Me Again",
           "verb": "unmute"
         }
       },

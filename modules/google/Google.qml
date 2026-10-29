@@ -54,6 +54,18 @@ Singleton {
         fetched = said.fetched;
     }
 
+    // Everyone the meetings and mail name, by address, for People
+    // (GoogleSource.qml), each saying when what's with them is.
+    function people(meetings, mail) {
+        return Said.people(meetings, mail);
+    }
+
+    // Whether a meeting or a piece of mail is with someone by one of their
+    // addresses.
+    function withThem(thing, emails) {
+        return Said.withThem(thing, emails);
+    }
+
     // The program gone, as it is once it stops, is no account: what it held
     // may not be Joel's to see any more.
     function forget() {

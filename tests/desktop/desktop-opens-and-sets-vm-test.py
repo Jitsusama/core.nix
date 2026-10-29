@@ -281,7 +281,7 @@ def test_the_launchers_home_keeps_its_shape_and_a_collection_opens_by_name(
     desktop.launcher_ready()
     desktop.photograph("launcher-home")
     rows = desktop.showing()["rows"]
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
+    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
     assert rows == home, rows
     # A page down stops on the last.
     machine.send_key("pgdn")

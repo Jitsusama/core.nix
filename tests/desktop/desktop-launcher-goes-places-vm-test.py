@@ -2239,6 +2239,54 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
 
 
 @pytest.mark.usefixtures("google")
+def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent(
+    desktop: Desktop,
+) -> None:
+    """A person is found by name; inside, the ways to reach them, then what's lately with them."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # Ada holds the stand-in's Standup and wrote Lunch on Friday, so Google
+    # knows her by her address, and she's one person for both.
+    desktop.answer("ada lovelace")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "person:ada@example.com"
+            and (shown["selected"].get("drawer") or {}).get("facts", [{}])[0]
+            == {"label": "Email", "value": "ada@example.com"}
+        )
+    )
+    # Return steps in, never reaching her by itself: Write a Mail first,
+    # then her next meeting drawn as a meeting, her Recent, and her
+    # address to copy last.
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"][:4] == ["Write a Mail", "Standup", "Recent", "ada@example.com"]
+            and shown["things"][1]["is"] == "calendar:meeting:standup"
+        )
+    )
+    machine.fail(f"test -s {opened}")
+    desktop.down_to("Recent")
+    desktop.step_in()
+    # The mail with her, its own component's row; a meeting to come isn't
+    # Recent.
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
+    machine.send_key("left")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Recent")
+    machine.send_key("up")
+    machine.send_key("up")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")
+    machine.send_key("ret")
+    writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(writing)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: Desktop) -> None:
     """Docs' Recent lists what Joel opened lately, as search finds it, and Return opens it."""
     machine = desktop.machine
@@ -2742,8 +2790,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     # The same rows every time: Now first, then each place in the order
-    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26).
-    home = ["Now", "Agents", "Programs", "Desktop", "Machine", "Network", "Keyboard"]
+    # the approved proposal gives them, Disk inside Machine (Joel, 2026-10-26),
+    # and People after Programs (RSCH-20261028-2NK1E5).
+    home = ["Now", "Agents", "Programs", "People", "Desktop", "Machine", "Network", "Keyboard"]
     desktop.launcher_until(lambda shown: shown["rows"] == home)
 
     def selected_is() -> str:
@@ -2815,7 +2864,8 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:agents")
     # Had Tab moved to the first place, the arrow would be past it.
     assert first["is"] == "collection:on", first
-    for _step in range(2):
+    # Past Programs and People.
+    for _step in range(3):
         machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:desktop")
     desktop.step_in("ret")

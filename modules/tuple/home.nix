@@ -41,8 +41,11 @@
 # The shell is where a call shows (docs/design.md, Calls): a piece in the
 # margin while Joel's in one or one rings, with leaving, sharing and muting
 # in What's on, the launcher's rows to open his room, join a call whose link
-# was copied, and leave, and notices as people come and go, which Tuple on
-# Linux doesn't give yet. Tuple.qml follows the daemon's log for them all.
+# was copied, and leave, Tuple's own acts in Programs › Tuple, and notices
+# as people come and go, which Tuple on Linux doesn't give yet. Tuple.qml
+# follows the daemon's log for them all. Tuple's contacts are People's, one
+# of its sources (TupleSource.qml), so calling someone is with their mail
+# and meetings, not in a place of Tuple's own.
 #
 # The tuple command completes in zsh through Tuple's own completion, which
 # its command writes, so it knows every command and flag the version has.
@@ -52,7 +55,11 @@
 # call is still there after a restart.
 #
 # Tuple is newer than nixpkgs' (./package.nix).
-{ niri, quickshell }:
+{
+  niri,
+  people,
+  quickshell,
+}:
 {
   config,
   lib,
@@ -68,7 +75,7 @@ let
   # Tuple's people for the shell (people.rs): who's in Tuple's contacts and
   # how they stand, said only as it changes, since Tuple prints all of
   # them, over a megabyte, on every change of anyone's presence.
-  people = pkgs.callPackage ../quickshell/pi-helper.nix {
+  following = pkgs.callPackage ../quickshell/pi-helper.nix {
     name = "tuple-people";
     source = ./people.rs;
   };
@@ -106,18 +113,26 @@ in
 {
   imports = [
     niri
+    people
     quickshell
   ];
 
   home.packages = [
     package
     completion
-    people
+    following
   ];
 
   xdg.configFile = {
     "quickshell/Tuple.qml".source = ./Tuple.qml;
     "quickshell/Tuple.js".source = ./Tuple.js;
+    "quickshell/TuplePeople.qml".source = ./TuplePeople.qml;
+  };
+  # Tuple's contacts as people, the first source asked, since calling
+  # someone is the first way to reach them.
+  jitsusama.people.sources.tuple = {
+    order = 10;
+    source = ./TupleSource.qml;
   };
   jitsusama.quickshell = {
     overview.pieces.call = {
@@ -128,17 +143,11 @@ in
       tier = "when";
       mark = "call";
     };
-    # Beside the desktop's actions, since each is one.
+    # What can be done about a call now, found anywhere by name and listed
+    # as Tuple's acts inside Programs › Tuple.
     launcher.providers.tuple = {
       order = 45;
       source = ./Calls.qml;
-    };
-    # Tuple's place: what can be done about calls now, then the people to
-    # call or join, found by name or email.
-    launcher.providers.people = {
-      order = 46;
-      source = ./People.qml;
-      weight = 0.9;
     };
   };
 

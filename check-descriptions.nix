@@ -817,6 +817,14 @@
     shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and
     leftovers after three quiet seconds
   '';
+  slack-finds-who-it-knows = ''
+    slack-people says who Slack knows by an email address, and one it knows nobody by, asking each
+    address once with the harness's sign-in and only ever looking up, and asks nobody once Slack
+    refuses the sign-in or with none at all
+  '';
+  slack-passes-clippy = ''
+    clippy finds nothing in slack-people or its tests
+  '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
   '';
@@ -988,8 +996,8 @@
     choices that run its own command
   '';
   the-launcher-finds-the-people = ''
-    the launcher's Tuple place leads with the room or a call's controls, lists and finds contacts as
-    they stand, calls, joins and favours them, and never starts a stopped Tuple
+    People with Tuple as its source lists favourites and those called lately, finds anyone as they
+    stand, calls, joins and favours them, steps in before calling, and never starts a stopped Tuple
   '';
   the-launcher-finds-the-quests = ''
     the launcher lists open quests driving first, finds finished ones and ids, opens pi on one in
@@ -1013,7 +1021,8 @@
   '';
   the-launcher-holds-a-programs-controls = ''
     a program's step holds its windows, its own actions, Quit asked once, then Media, Sound and
-    Notifications, in order and only where they apply, each reaching only that program
+    Notifications, in order and only where they apply, each reaching only that program, and a
+    hidden program another provider gives acts to is listed and steps in rather than starting
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes
@@ -1134,6 +1143,13 @@
   the-panic-screen-wears-the-theme = ''
     the kernel's panic screen draws the account's text colour on its background, whatever the theme,
     and keeps the kernel's with no account
+  '';
+  the-people-are-one-person-each = ''
+    every source's people join into one person per email address, a source that knows two
+    addresses for someone joining them, each standing as the first source that says, favourites
+    listed first, then whoever there's been something with, the last first, someone only asked to
+    what's to come left to be found by typing, with their details for the drawer and their acts in
+    the one order
   '';
   the-picker-picks-what-the-keys-say = ''
     the region picker starts on the middle quarter, moves and sizes its box by arrows within the
@@ -1369,8 +1385,9 @@
     all, opens mail by its subject, keeping one Mail window, replies to it, and to all on mail that
     went to others too, flips its Read switch both ways, archives it, and opens a file it carries or
     saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
-    its title finds, joins a Meet call by its code after Meet's New Meeting, sets the volume, loses
-    no letter typed after its chord, and shows the shortcuts
+    its title finds, joins a Meet call by its code after Meet's New Meeting, finds a person by name
+    with the ways to reach them, their next meeting, their Recent and their address last, sets the
+    volume, loses no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

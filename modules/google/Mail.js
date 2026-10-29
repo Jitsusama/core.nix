@@ -87,8 +87,8 @@ const COMPOSE = "https://mail.google.com/mail/u/0/";
 
 // Where a new message to these addresses is written, with this subject
 // and copied to those, as Gmail's own link to compose takes them: each
-// address once, joined as Gmail joins them. Nothing when there's nobody
-// to write to.
+// address once, joined as Gmail joins them, the subject left out when
+// there's none to give. Nothing when there's nobody to write to.
 function writing(to, subject, copied) {
     const once = all => [...new Set(all.filter(address => (address ?? "") !== ""))];
     const addresses = once(to);
@@ -100,7 +100,9 @@ function writing(to, subject, copied) {
     if (cc.length > 0) {
         asked.push(["cc", cc.join(",")]);
     }
-    asked.push(["su", subject]);
+    if ((subject ?? "") !== "") {
+        asked.push(["su", subject]);
+    }
     return `${COMPOSE}?${asked.map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
         .join("&")}`;
 }
