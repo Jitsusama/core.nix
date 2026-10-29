@@ -5,16 +5,18 @@
 // the files jitsusama.people.sources names, in their order; none is named
 // here.
 //
-// With nothing typed it holds those dealt with lately and the
-// favourites, favourites first, then whoever can be reached, then by
-// name. Typing finds anyone any source knows by name or address, those
-// listed first. Each says how they stand at the right, when a source
-// says, and their address below. Return reaches them the first way a
-// source offers, calling before mail before chat; the right arrow lists
-// every act in that one order, each address to copy, and the things
-// lately with them, each drawn by its own row, so a mail is Mail's row
-// and a meeting the meeting's. Their details, every address and each
-// source's facts, are in the drawer beside the row.
+// With nothing typed it holds the favourites, then those dealt with
+// lately, then whoever can be reached, then by name (VKCF3Z's design,
+// RSCH-20261028-2NK1E5, waiting on Joel). Typing finds anyone any source
+// knows by name or address, those listed first. Each says how they stand
+// at the right, when a source says, and their address below. Return
+// steps in, as the right arrow does, never calling by itself: inside,
+// every act in the one order, the first way this machine reaches them
+// first (calling before mail before chat), each address to copy, and
+// their Recent, the things lately with them, each drawn by its own row,
+// so a mail is Mail's row and a meeting the meeting's. Their details,
+// every address and each source's facts, are in the drawer beside the
+// row.
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -79,7 +81,6 @@ Provider {
     // and Return the first way a source reaches them, asked as it's used,
     // so a row made for a search costs no source anything until then.
     function made(person, stood) {
-        const first = () => provider.acts(person)[0] ?? null;
         const row = member({
             key: `person:${person.email}`,
             component: "person",
@@ -92,12 +93,11 @@ Provider {
             drawer: Person.details(person),
             nested: true,
             later: true,
-            run: () => first()?.run?.(),
-            verbs: () => provider.inside(person)
-        });
-        Object.defineProperty(row, "verb", {
-            enumerable: true,
-            get: () => first()?.verb ?? "more"
+            verb: "more",
+            stays: true,
+            run: () => provider.launcher?.enter(row),
+            verbs: () => provider.inside(person),
+            targets: () => provider.inside(person)
         });
         // Their addresses, made ready to match when first searched, as the
         // name is.
@@ -126,9 +126,26 @@ Provider {
             side: person.emails.length === 1 ? "their email" : "one of their emails",
             glyph: Theme.glyph.email
         }));
-        const lately = sources.reduce((rows, source) => rows.concat(source.recent(person, provider)),
-            []);
-        return acts(person).concat(addresses, lately);
+        return acts(person).concat(addresses, recent(person));
+    }
+
+    // Their Recent: what each source has had with them lately, each its
+    // own thing's row, the same word as a program's Recent, or nothing
+    // when no source has any.
+    function recent(person) {
+        const had = () => sources.reduce((rows, source) => rows.concat(source.recent(person,
+            provider)), []);
+        const count = had().length;
+        return count === 0 ? [] : [thing({
+            key: "person:recent",
+            name: "Recent",
+            verb: "more",
+            glyph: Theme.glyph.recent,
+            hue: "person",
+            count: String(count),
+            nested: true,
+            targets: had
+        })];
     }
 
     // Inside the place, what's typed finds anyone, as at the top.
