@@ -184,6 +184,19 @@
       "name": "Started"
     },
     {
+      "id": "agents:machine",
+      "in": "agents",
+      "name": "Machine",
+      "said": {
+        "on": "on {machine}",
+        "away": "{machine}, out of reach",
+        "unheld": "not joined, since {machine} doesn't hold it in a way that can be joined from here",
+        "unreached": "not joined, since {machine} is out of reach",
+        "untold": "not told, since {why}",
+        "unanswered": "not told, since the node didn't answer"
+      }
+    },
+    {
       "id": "agents:spent",
       "in": "agents",
       "name": "Spent Today"

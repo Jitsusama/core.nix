@@ -41,8 +41,9 @@ function acts(standing, windowed) {
 }
 
 // What its drawer says: what it works on, its step, what it waits on Joel
-// for, what it's spent today and since when it's run, each as a name and a
-// figure, its title over them. Nothing it hasn't said is guessed.
+// for, what it's spent today, since when it's run, its address and the
+// machine it runs on, each as a name and a figure, its title over them.
+// Nothing it hasn't said is guessed.
 function drawer(title, presence, said) {
     const known = {
         works: presence?.worksOn,
@@ -50,7 +51,8 @@ function drawer(title, presence, said) {
         wants: presence?.wants?.said,
         spent: said.spent,
         started: said.started,
-        address: said.address
+        address: said.address,
+        machine: said.machine
     };
     const facts = Object.keys(known).filter(id => (known[id] ?? "") !== "")
         .map(id => ({ label: said.named(id), value: known[id] }));

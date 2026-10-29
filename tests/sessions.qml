@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 // Drives pi's sessions (modules/quickshell/Sessions.qml) through Quickshell
 // itself, over the records and processes tests/sessions-state.sh lays out,
 // with niri, kitty's kitten and the notices stood in. Every window niri
@@ -10,9 +11,13 @@
 // ends, takes its session with it. What an earlier boot's end took away
 // is offered whole, reopened held in its own folder, until put off. A
 // machine's node that isn't listening as the shell starts, as when a
-// switch restarts it, is watched once it listens, however long after. It
-// exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// switch restarts it, is watched once it listens, however long after.
+// What it tells of sessions on the realm's other machines is held too:
+// each says its machine, after this machine's; Go To joins one by the
+// words its node gives; one out of reach stays, saying so, and isn't
+// joined; one last heard of before this boot is passed over; and a steer
+// to one goes through the node, its refusal said. It exits 0 once every
+// case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -147,10 +152,64 @@ ShellRoot {
     // The node's sessions are heard once it listens: asked again, the
     // shell watches it, and what it tells is held.
     function watched() {
-        if (Sessions.node === null)
+        if (Sessions.node === null || addresses() !== "FARAWY OUTRCH")
             return;
-        console.log("a session is known by its own record");
-        Qt.callLater(() => Qt.exit(0));
+        const far = find("FARAWY");
+        const out = find("OUTRCH");
+        expect("one elsewhere says its machine", !far.here && far.machine === "lighthouse"
+            && far.reachable, JSON.stringify(far));
+        expect("one out of reach says so", !out.reachable && out.attach === null,
+            JSON.stringify(out));
+        Sessions.goTo(far);
+        expect("Go To joins it by its node's words", Niri.spawned.join(" ")
+            === "kitty -1 --instance-group pi-sessions zsh -lic mycelium attach r-far",
+            Niri.spawned.join(" "));
+        Sessions.goTo(out);
+        expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
+        stage = "steered";
+        Sessions.steer("farawy", { act: "pause" });
+    }
+
+    property string unjoined: ""
+
+    // A steer elsewhere goes through the node, whose refusal is said.
+    Connections {
+        target: Sessions
+
+        function onUnjoined(session) {
+            root.unjoined = session.address;
+        }
+
+        function onUnsteered(session, why) {
+            try {
+                root.expect("a steer elsewhere is refused by the node, saying why",
+                    root.stage === "steered" && session.address === "FARAWY"
+                    && why === "lighthouse is out of reach, so FARAWY can't be told now", why);
+                root.steeredBy();
+            } catch (error) {
+                root.fail(error.message);
+            }
+        }
+    }
+    Process {
+        id: steerSaid
+        command: ["cat", `${root.state}/steered`]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.expect("the node is asked with the steer",
+                        text.startsWith("--realm harbour steer FARAWY\n{")
+                        && text.includes('"act":"pause"'), text);
+                    console.log("a session is known by its own record");
+                    Qt.callLater(() => Qt.exit(0));
+                } catch (error) {
+                    root.fail(error.message);
+                }
+            }
+        }
+    }
+    function steeredBy() {
+        steerSaid.running = true;
     }
 
     Connections {
@@ -161,7 +220,8 @@ ShellRoot {
     }
 
     // A stand-in for the machine's node, listening only once asked, which
-    // answers a watch with no sessions.
+    // answers a watch with three sessions on another machine: one held
+    // there, one out of reach, and one last heard of before this boot.
     SocketServer {
         id: node
         active: false
@@ -172,11 +232,25 @@ ShellRoot {
                 onRead: line => {
                     if (!line.includes("Watch"))
                         return;
-                    asked.write('{"SessionsChanged":{"sessions":[]}}\n');
+                    asked.write(`${JSON.stringify({ SessionsChanged: { sessions: root.elsewhere() } })}\n`);
                     asked.flush();
                 }
             }
         }
+    }
+
+    function elsewhere() {
+        const now = new Date().toISOString();
+        const one = (id, address, state, at, attach) => ({
+            id: id, address: address, machine: "lighthouse", state: state, at: at,
+            attach: attach, window: null, groups: [], title: "",
+            presence: { addresses: [address], title: `\u03c0 - ${address} - /far`, busy: true }
+        });
+        return [
+            one("r-far", "FARAWY", "busy", now, "mycelium attach r-far"),
+            one("r-out", "OUTRCH", "unreachable", now, null),
+            one("r-old", "OLDONE", "busy", "2000-01-01T00:00:00Z", "mycelium attach r-old")
+        ];
     }
 
     Process {

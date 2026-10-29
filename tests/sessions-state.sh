@@ -5,7 +5,8 @@
 # so in its record and one only in its environment; one runs where niri
 # shows no window of its kitty; one's process has ended; one is from an
 # earlier boot; and one names a running pid that started at another time,
-# as a pid used again does. A stand-in kitten lists one kitty's windows.
+# as a pid used again does. A stand-in kitten lists one kitty's windows,
+# and a stand-in mycelium refuses a steer.
 # The running processes' pids are written beside them, for the test to end.
 set -euo pipefail
 
@@ -72,3 +73,13 @@ if [ "\$3" = unix:@kitty-600 ] && [ "\$4" = ls ]; then
 fi
 EOF
 chmod +x "$state/bin/kitten"
+
+# The realm's node refuses a steer to a machine out of reach, as mycelium
+# says it, after keeping what it was asked.
+cat >"$state/bin/mycelium" <<EOF
+#!$BASH
+[ "\$3" = steer ] || exit 1
+{ echo "\$*"; cat; } >"$state/steered"
+echo '{"Err":"lighthouse is out of reach, so FARAWY can'"'"'t be told now"}'
+EOF
+chmod +x "$state/bin/mycelium"
