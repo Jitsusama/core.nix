@@ -1832,9 +1832,12 @@ Scope {
         const places = things && row.from ? partsOf(row.from).length : 0;
         if ((!into || into.length === 0) && places === 0)
             return false;
+        const made = Date.now();
         held = held.concat([Object.assign(here(), { row: row, rows: into ?? [] })]);
+        const pushed = Date.now();
         if (row.from)
             row.from.opened();
+        const opened = Date.now();
         // What was typed found the row, so it goes: inside, everything the row
         // holds shows, and the left arrow puts it back on the way out. Stepped
         // into from a collection's match, the match stays selected among all
@@ -1847,7 +1850,10 @@ Scope {
                 list.positionViewAtIndex(matched, ListView.Contain);
             }
         }
-        searchParts = null;
+        // Said as a key's are: making the step's lists, what each part of
+        // stepping took, and the search that draws its rows.
+        searchParts = { lists: made - began, rows: Date.now() - opened, answers: 0,
+            each: { holding: pushed - made, opening: opened - pushed } };
         keyTimed(`\u2192 ${row.name}`, began);
         return true;
     }
