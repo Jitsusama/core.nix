@@ -960,7 +960,9 @@ def test_a_name_too_long_for_its_row_reads_on_while_selected(desktop: Desktop) -
         return next(row["words"] for row in laid["rows"] if row["selected"])
 
     def named(words: list[Json]) -> Json:
-        return next(word for word in words if word["text"] == title)
+        # A row not selected draws its name with the letters typed brought
+        # forward, as styled text, so its tags are set aside.
+        return next(word for word in words if re.sub("<[^>]*>", "", word["text"]) == title)
 
     first = selected_words()
     start = named(first)["x"]
