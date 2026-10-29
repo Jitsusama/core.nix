@@ -2745,18 +2745,26 @@ Scope {
     readonly property var drawerShows: !drawerOut || !selected ? null
         : drawerOf(selected) ?? { title: selected.name, body: selected.note ?? "" }
 
-    // The drawer's room beside the card, and where the card sits: centred,
-    // as it always has, unless the screen is too narrow for the room on its
-    // right, when it sits left of centre from the start. Both are worked
-    // out for the screen alone, never for what's shown, so the card never
-    // moves and the drawer never passes the screen's edge.
+    // The drawer's room beside the card, and where the card sits (VKCF3Z's
+    // ruling, after Joel's "never passes the bound of the screen and
+    // resizes to fit there"): the card stays centred, where Super+Space has
+    // always opened it, and the drawer takes what's left on its right, up
+    // to drawerMost. Only where that's less than drawerLeast, too narrow to
+    // hold a line of mail, does the card sit left of centre, the drawer
+    // given drawerLeast or what the screen has. Both are worked out for the
+    // screen alone, never for what's shown, so the card never moves.
     readonly property int drawerMost: 520
+    readonly property int drawerLeast: 280
     readonly property real drawerGap: Theme.space.m
-    readonly property real drawerWidth: !screenHere ? 0 : Math.min(drawerMost,
-        Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
+    readonly property real centred: !screenHere ? 0 : (screenHere.width - width) / 2
+    readonly property real drawerRoom: !screenHere ? 0
+        : screenHere.width - centred - width - drawerGap - Theme.space.xl
+    readonly property real drawerWidth: !screenHere ? 0
+        : drawerRoom >= drawerLeast ? Math.min(drawerMost, drawerRoom)
+        : Math.min(drawerLeast,
+            Math.max(0, screenHere.width - width - drawerGap - 2 * Theme.space.xl))
     readonly property real cardLeft: !screenHere ? 0 : Math.max(Theme.space.xl,
-        Math.min((screenHere.width - width) / 2,
-            screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
+        Math.min(centred, screenHere.width - Theme.space.xl - drawerWidth - drawerGap - width))
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
     // what's typed and held, the first twenty rows' names in order (a

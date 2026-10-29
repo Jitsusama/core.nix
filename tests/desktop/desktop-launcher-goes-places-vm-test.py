@@ -1520,8 +1520,9 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
     desktop.launcher_until(
-        lambda shown: (shown.get("drawer") or {}).get("title") == "Standup"
-        and shown["drawer"]["out"] is True
+        lambda shown: (
+            (shown.get("drawer") or {}).get("title") == "Standup" and shown["drawer"]["out"] is True
+        )
     )
     desktop.photograph("launcher-meeting-drawer")
     # Return shows it, a step in named for it, its day and times first,
