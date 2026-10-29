@@ -33,6 +33,10 @@ pub struct Memory {
     /// When each source's command last ran, in wall seconds, by name.
     #[serde(default)]
     pub ran: std::collections::BTreeMap<String, f64>,
+    /// What each producer's watch said as its command last ran, by name,
+    /// so only something new makes it due again.
+    #[serde(default)]
+    pub said: std::collections::BTreeMap<String, u64>,
     /// The last run linking the store's identical files that finished.
     #[serde(default)]
     pub deduped: Option<crate::dedupe::Deduped>,
@@ -61,6 +65,7 @@ impl Default for Memory {
             upkept: None,
             pass_seconds: None,
             ran: std::collections::BTreeMap::new(),
+            said: std::collections::BTreeMap::new(),
             deduped: None,
             frozen: Vec::new(),
             spared: Vec::new(),

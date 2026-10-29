@@ -55,6 +55,7 @@ fn offers_using(
 ) -> Vec<Offer> {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
+    let said = BTreeMap::new();
     let mut world = World {
         processes,
         me: std::process::id(),
@@ -64,6 +65,7 @@ fn offers_using(
         now: now(),
         finished: &mut finished,
         ran,
+        said: &said,
         uses,
         kept: Vec::new(),
         counted: std::cell::RefCell::default(),

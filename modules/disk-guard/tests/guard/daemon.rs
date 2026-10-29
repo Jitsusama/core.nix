@@ -401,11 +401,23 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
     // October, where its own rule keeps four.
     use disk_guard::config::Source;
     use disk_guard::units::Span;
+    // What it watches is said by what it holds, not when it was written:
+    // a janitor that rewrote its links and touched its marker each time it
+    // looked set off a walk of every source every ten minutes on 29
+    // October.
     let home = Home::new();
     let marker = home.root.join("ran");
+    let cache = home.root.join("cache");
+    let latest = cache.join("tool/default/latest");
+    fs::create_dir_all(latest.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink("sha/1", &latest).unwrap();
     let stamp = home.root.join("stamp");
     fs::write(&stamp, "").unwrap();
     touch(&stamp, 1_000_000_000);
+    let point = |at: &str| {
+        fs::remove_file(&latest).unwrap();
+        std::os::unix::fs::symlink(at, &latest).unwrap();
+    };
     let mut config = home.config("0%", "0%");
     config.sources.insert(
         "gc".to_owned(),
@@ -418,7 +430,7 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
             path: home.root.clone(),
             every: Some(Span(std::time::Duration::from_hours(6))),
             from: None,
-            watch: vec![stamp.clone()],
+            watch: vec![stamp.clone(), cache.clone()],
             timeout: Span(std::time::Duration::from_secs(10)),
         },
     );
@@ -436,10 +448,17 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
     assert_eq!(runs(), 1, "nothing it watches has changed");
     #[expect(clippy::cast_possible_truncation, reason = "a wall clock in seconds")]
     touch(&stamp, start as i64 + 100);
+    point("sha/1");
     guard.step(&at(122.0), &CALM).unwrap();
-    assert_eq!(runs(), 2, "what it watches changed since it ran");
+    assert_eq!(runs(), 1, "written again, saying the same");
+    point("sha/2");
     guard.step(&at(183.0), &CALM).unwrap();
+    assert_eq!(runs(), 2, "what it watches says something new");
+    guard.step(&at(244.0), &CALM).unwrap();
     assert_eq!(runs(), 2, "once for each change");
+    fs::write(&stamp, "a version").unwrap();
+    guard.step(&at(305.0), &CALM).unwrap();
+    assert_eq!(runs(), 3, "a file saying something new");
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
