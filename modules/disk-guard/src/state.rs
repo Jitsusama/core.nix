@@ -92,9 +92,12 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
             "no file to save to",
         ));
     };
+    // Named for the process, since a command and the daemon both write
+    // the status file, and one's rename must never take the other's
+    // half-written file.
     let mut beside = std::ffi::OsString::from(".");
     beside.push(name);
-    beside.push(".new");
+    beside.push(format!(".{}.new", std::process::id()));
     let beside = dir.join(beside);
     let text = serde_json::to_vec(value).map_err(io::Error::other)?;
     let mut file = fs::File::create(&beside)?;

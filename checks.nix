@@ -250,6 +250,11 @@ let
     # Recovering is a stick, a laid-out disk and its subvolumes together,
     # with nothing of the machine's on the stick.
     vm-guide-recovers = import ./tests/vm/guide/guide-recover.nix { inherit self pkgs; };
+    # Whether firmware boots a program signed by several machines' keys is
+    # the firmware's own to say, and only a running one says it.
+    vm-guide-signs-a-stick-for-two-machines = import ./tests/vm/guide/guide-one-stick.nix {
+      inherit self pkgs;
+    };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.

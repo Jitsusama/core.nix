@@ -19,6 +19,10 @@
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
   '';
+  a-notice-is-one-thing = ''
+    a notice's card and its row among the notices list the same acts in one order, copying last,
+    and a notice gone from the screen keeps none of its sender's
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds
@@ -164,6 +168,10 @@
   '';
   clipboard-history-passes-clippy = ''
     clippy finds nothing in the clipboard history or its tests
+  '';
+  clock-follows-passes-clippy = ''
+    clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
+    or its tests
   '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests
@@ -314,8 +322,9 @@
     programs write git's settings and the declared ones still win
   '';
   google-opens-its-links = ''
-    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages open
-    in a window of their own, any other link in the browser, and what isn't a link nowhere
+    a meeting's Tuple link joins through Tuple, or the browser without it, Google's own pages,
+    documents included, open in a window of their own, any other link in the browser, and what
+    isn't a link nowhere
   '';
   google-passes-clippy = ''
     clippy finds nothing in google or its tests
@@ -326,10 +335,12 @@
     can't be reached, tells the shell each meeting's times, answer and the one link it's joined by,
     and answers an invitation the shell asks it to, changing only Joel's own answer, cancels a
     meeting only when Joel holds it, telling every guest, moves one through the calendar Google
-    lets him change it on, telling everyone asked, and tells it the mail that wants Joel, newest
-    first, each asked for once, with who it went to and its text, never an attachment's, marking
-    it read or archiving it when asked, and marking it unread again, mail read here wanting Joel
-    again at once
+    lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest first,
+    each asked for once, with who it went to, its text, never an attachment's, and the name of each
+    file it carries but what its HTML shows inline, marking it read or archiving it when asked,
+    marking it unread again, mail read here wanting Joel again at once, and the documents of each
+    kind he looked at lately, his last first, asking Drive again only every five minutes and
+    keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -1154,11 +1165,17 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-reads-the-documents = ''
+    the shell reads the documents from the google program's file, none from a line from before
+    them, knows which Google program opens each kind, and says who owns a document and when Joel
+    last opened it beside its title, with its details for the drawer
+  '';
   the-shell-reads-the-mail = ''
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and
-    its details say; writes a reply to who sent it; and writes the lines that mark mail read or
-    unread again or archive it
+    its details say, the files it carries among them; writes a reply to who sent it, and a mail to
+    everyone else a meeting names; and writes the lines that mark mail read or unread again or
+    archive it
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1312,13 +1329,15 @@
     a meeting about to start by its name, lists it in Now, counts one within the hour down as a
     want, marked from ten minutes off and said at its reminder and as it starts, shows one further
     off with who's asked and how each answered, its details beside it, answers its invitation,
-    cancels one Joel holds once he's sure, moves one Google lets him change to a time he types once
-    he's sure, and lists its Meet call in Now while it's open, says Google signed out in Now with
-    Return signing in again in pi, counts the mail that wants Joel in Now with Return listing it
-    as Mail does, details and all, opens mail by its subject, keeping one Mail window, replies to
-    it, flips its Read switch both ways and archives it, finds a person by name with the ways to
-    reach them and their Recent, sets the volume, loses no letter typed after its chord, and shows
-    the shortcuts
+    writes to its guests and copies its call's link, cancels one Joel holds once he's sure, moves
+    one Google lets him change to a time he types once he's sure, and lists its Meet call in Now
+    while it's open, says Google signed out in Now with Return signing in again in pi, counts the
+    mail that wants Joel in Now with Return listing it as Mail does, details and all, opens mail by
+    its subject, keeping one Mail window, replies to it, flips its Read switch both ways and
+    archives it, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
+    its title finds, joins a Meet call by its code after Meet's New Meeting, finds a person by name
+    with the ways to reach them and their Recent, sets the volume, loses no letter typed after its
+    chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
@@ -1387,6 +1406,11 @@
     a repair stick finds a machine's disk, opens it with a YubiKey's PIN, checks its filesystem
     without changing it, mounts it whole, sets which generation boots next, replaces a lost key,
     reinstalls a boot loader gone from the ESP, and gives a root shell inside
+  '';
+  vm-guide-signs-a-stick-for-two-machines = ''
+    a repair stick the guide signed with two machines' db keys boots with Secure Boot enforcing under
+    each machine's firmware, which holds only that machine's keys, and firmware holding neither
+    refuses it
   '';
   vm-guide-writes-a-stick = ''
     the guide writes a stick as the person, holding the host awake, through UDisks2, unmounting what

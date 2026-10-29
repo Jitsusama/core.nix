@@ -1479,7 +1479,7 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
 def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop: Desktop,
 ) -> None:
-    """An invitation is answered from a meeting's acts, its foot says the answer, and it stays."""
+    """An invitation is answered from a meeting's acts, the one given noted, and it stays."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     asked = "/run/user/1000/google-asked"
@@ -1489,14 +1489,20 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.step_in()
     # Its acts: seeing it, Return's own, and joining first, then the three
-    # answers.
-    desktop.down_to("Answer Maybe")
+    # answers, each by its value, the one Joel gave noted as his.
+    desktop.launcher_until(lambda shown: "Not Going" in shown["rows"])
+    sides = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
+    assert sides["verb:calendar:yes"] == "Going \u00b7 your answer", sides
+    assert sides["verb:calendar:maybe"] == "Maybe", sides
+    desktop.down_to("Maybe")
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Answer Maybe" and shown["footer"] == "going"
+            (shown["selected"] or {}).get("name") == "Maybe" and shown["footer"] == "going"
         )
     )
     machine.send_key("ret")
+    # Its note moves at once, before Google answers.
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "your answer")
     line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
@@ -1505,11 +1511,52 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.launcher_until(
         lambda shown: (
             shown["open"]
-            and (shown["selected"] or {}).get("name") == "Answer Maybe"
+            and (shown["selected"] or {}).get("name") == "Maybe"
             and shown["footer"] == "maybe"
         )
     )
     machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Desktop) -> None:
+    """A meeting writes to everyone else it names after joining, and copies its link last."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    # Writing to them comes straight after joining, and copying is last.
+    desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
+    rows = desktop.showing()["rows"]
+    assert rows[rows.index("Join the Meeting") + 1] == "Write to the Guests", rows
+    desktop.down_to("Copy the Link")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "its call")
+    machine.send_key("ret")
+    call = "https://meet.google.com/abc-defg-hij"
+    machine.wait_until_succeeds(
+        desktop.in_session(f'[ "$(wl-paste --no-newline)" = "{call}" ]'),
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Write to the Guests writes to Ada, who holds it, and Grace, asked,
+    # about the meeting by its title, in Mail's window.
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Write to the Guests" in shown["rows"])
+    desktop.down_to("Write to the Guests")
+    machine.send_key("ret")
+    writing = (
+        "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+        "&to=ada%40example.com%2Cgrace%40example.com&su=Standup"
+    )
+    machine.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(writing)} {opened}", timeout=dt.timedelta(seconds=30)
+    )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -1746,6 +1793,8 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
             and drawer.get("title") == lunch["title"]
             and drawer.get("facts", [])[:2] == lunch["facts"]
             and drawer.get("facts", [{}] * 3)[2].get("label") == "Date"
+            # The file it carries, by name, after when it came.
+            and drawer.get("facts", [{}] * 4)[3:] == [{"label": "Attachment", "value": "menu.pdf"}]
             and drawer.get("body") == lunch["body"]
         )
 
@@ -1935,6 +1984,75 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(writing)} {opened}", timeout=dt.timedelta(seconds=30)
     )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: Desktop) -> None:
+    """Docs' Recent lists what Joel opened lately, as search finds it, and Return opens it."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    # The stand-in's Quarterly Plan is Docs' alone; Team Budget is Sheets'.
+    desktop.answer("docs")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Docs")
+    desktop.step_in()
+    desktop.type_in("recent", selecting="Recent")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
+    plan = desktop.showing()["selected"]
+    assert plan["is"] == "gdoc:plan", plan
+    assert re.fullmatch(r"Ada Lovelace \u00b7 \d\d:\d\d", plan["side"]), plan
+    facts = (plan.get("drawer") or {}).get("facts") or [{}]
+    assert facts[0] == {"label": "Owner", "value": "Ada Lovelace"}, plan
+    # Return opens it in a window of its own, leaving the launcher.
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://docs.google.com/document/d/plan/edit' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Its title finds the same row from anywhere, one on a shared drive saying
+    # only when it was opened.
+    desktop.answer("team budget")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("is") == "gdoc:budget"
+            and re.fullmatch(r"\d\d:\d\d", str(shown["selected"].get("side", ""))) is not None
+        )
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_meet_starts_a_meeting_or_joins_one_by_its_code(desktop: Desktop) -> None:
+    """Meet's acts start a new meeting or join one by its code, however it's typed."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    opened = "/run/user/1000/google-opened"
+    machine.succeed(f"rm -f {opened}")
+    desktop.answer("meet")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Meet")
+    desktop.step_in()
+    # New Meeting, its desktop entry's, then Join by Code, Meet's own.
+    desktop.launcher_until(
+        lambda shown: (
+            {"New Meeting", "Join by Code"} <= set(shown["rows"])
+            and shown["rows"].index("New Meeting") < shown["rows"].index("Join by Code")
+        )
+    )
+    # A code with neither dashes nor lower case is still Meet's.
+    desktop.type_in("join by code", selecting="Join by Code")
+    desktop.step_in("ret")
+    machine.send_chars("ABC DEFG HIJ")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"grep -qxF 'https://meet.google.com/abc-defg-hij' {opened}",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
@@ -3358,6 +3476,28 @@ def test_the_selection_glides_to_its_row_and_typing_never_glides(desktop: Deskto
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     assert said.strip() == "", f"the selection glided as a letter made the rows: {said}"
+
+
+def test_a_refresh_draws_no_row_afresh(desktop: Desktop) -> None:
+    """Machine reads itself again each second, and each row is kept rather than drawn again."""
+    machine = desktop.machine
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_chars("machine ")
+    desktop.launcher_until(lambda shown: shown["held"] == ["computer"])
+    first = laid_out(desktop)
+
+    def read_again(_: bool) -> bool:
+        return int(laid_out(desktop)["made"]) >= int(first["made"]) + 3
+
+    retry(read_again, timeout=dt.timedelta(seconds=30))
+    then = laid_out(desktop)
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    assert then["drawn"] == first["drawn"], (
+        f"rows made {then['made'] - first['made']} times drew"
+        f" {then['drawn'] - first['drawn']} rows afresh"
+    )
 
 
 def test_nothing_on_the_launcher_moves_unless_it_changes(desktop: Desktop) -> None:

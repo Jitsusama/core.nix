@@ -998,6 +998,14 @@ onLinux {
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
         cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+        cp ${singleton "Location.qml" ''
+          property string clockZone: ""
+          property bool clockMoved: false
+          property var moved: null
+          property string movedSaid: ""
+          function city(zone) { return zone; }
+          function putBack() {}
+        ''} Location.qml
         cp ${../../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
@@ -1191,6 +1199,12 @@ onLinux {
         property var marked: []
         function mark(id, read) { marked = marked.concat([id]); }
         function seen() {}
+        // A sender's window by its program's id, as Notices finds it, the
+        // desktop's entries aside.
+        function senderWindow(app) {
+          return Object.values(Niri.windows)
+            .find(w => w.app_id.toLowerCase() === app.toLowerCase()) ?? null;
+        }
       '';
       # The tester's player, found by its desktop entry, a radio's, found
       # only by its identity, and one nobody's; the tester's two streams, a
@@ -1320,6 +1334,7 @@ onLinux {
       cp ${./launcher/Applications.qml} launcher/Applications.qml
       cp ${./launcher/Recents.qml} launcher/Recents.qml
       cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
+      cp ${./launcher/Notice.js} launcher/Notice.js
       cp ${./Words.qml} Words.qml
       cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/program-controls.qml} shell.qml
@@ -1921,6 +1936,22 @@ onLinux {
       touch $out
     '';
 
+  # A notice's card and its row in the launcher list the same acts in one
+  # order, as tests/notice.qml holds Notice.js.
+  a-notice-is-one-thing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-notice-is-one-thing" { } ''
+      cp ${../../tests/notice.qml} notice.qml
+      cp ${./launcher/Notice.js} Notice.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice.qml
+      touch $out
+    '';
+
   # What comes true by itself is said once as a notice, and again only as
   # it tells something new, its earlier notice taken back first, as
   # tests/arrivals.qml holds Arrivals.qml to with the facts and the notices
@@ -2246,6 +2277,11 @@ onLinux {
   # clippy finds nothing in the window recorder, its tests included.
   record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
     pkgs.callPackage ./record-window/package.nix { }
+  );
+
+  # clippy finds nothing in clock-follows, its tests included.
+  clock-follows-passes-clippy = passesClippy "clock-follows-passes-clippy" (
+    pkgs.callPackage ./clock-follows/package.nix { }
   );
 
   # clippy finds nothing in whereabouts, its tests included.

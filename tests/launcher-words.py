@@ -259,7 +259,7 @@ STRAY_UNITS = [
 # second word is part of it ("log out"), as the launcher's foot keeps it
 # whole (Launcher.qml's `phrasal`).
 TURN = "turn"
-PHRASAL = {"in", "out"}
+PHRASAL = {"in", "out", "back"}
 
 
 def shown(entry: Entry) -> list[tuple[str, str]]:

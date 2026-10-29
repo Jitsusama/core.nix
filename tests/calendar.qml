@@ -339,6 +339,19 @@ QtObject {
         check("the line moving one", Calendar.move(design, at(26, 17, 0), at(26, 17, 30)),
             `{"move":{"id":"design","start":${at(26, 17, 0)},"end":${at(26, 17, 30)}}}\n`);
 
+        // A Meet code as typed: [what, typed, the code]
+        const codes = [
+            ["as Meet writes it", "abc-defg-hij", "abc-defg-hij"],
+            ["without its dashes, in capitals", "ABCDEFGHIJ", "abc-defg-hij"],
+            ["spaced", " abc defg hij ", "abc-defg-hij"],
+            ["its whole link", "https://meet.google.com/abc-defg-hij?authuser=0", "abc-defg-hij"],
+            ["a letter short", "abc-def-hij", ""],
+            ["digits", "abc-1234-hij", ""],
+            ["nothing", "", ""]
+        ];
+        for (const [what, typed, meant] of codes)
+            check(`a Meet code ${what}`, Calendar.meetCode(typed), meant);
+
         // Which Meet call a window is, by its app id: [what, the app id, its code]
         const windows = [
             ["a call in Chrome's app window", "chrome-meet.google.com__abc-defg-hij-Default",

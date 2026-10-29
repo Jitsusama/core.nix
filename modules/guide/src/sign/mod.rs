@@ -3,7 +3,9 @@
 //! signature is byte for byte what sbsign makes from the same key at the
 //! same moment, which every machine here boots, rather than a smaller one
 //! of our own design no firmware has been tried against. sbsign itself is
-//! Linux's alone, and a Mac writes sticks too.
+//! Linux's alone, and a Mac writes sticks too. A program may be signed
+//! beside the signatures it carries, by several machines' keys, so one
+//! stick boots on each of them.
 
 pub mod der;
 pub mod pe;
@@ -157,10 +159,29 @@ impl Signer {
         holds(&self.certificate) && holds(&digest(&parsed))
     }
 
-    /// The program signed, as of `at`.
+    /// The program signed, as of `at`, this its only signature.
     pub fn sign(&self, program: Vec<u8>, at: SystemTime) -> Result<Vec<u8>, Fault> {
         let program = Program::parse(program)?;
-        let digest = digest(&program);
+        let signature = self.signature(&program, at)?;
+        Ok(program.signed(&signature))
+    }
+
+    /// The program signed, as of `at`, after the signatures it carries
+    /// that aren't this signer's, which this one takes the place of.
+    pub fn sign_beside(&self, program: Vec<u8>, at: SystemTime) -> Result<Vec<u8>, Fault> {
+        let program = Program::parse(program)?;
+        let signature = self.signature(&program, at)?;
+        let certificate = &self.certificate;
+        Ok(program.signed_beside(&signature, |entry| {
+            !entry
+                .windows(certificate.len())
+                .any(|window| window == certificate.as_slice())
+        }))
+    }
+
+    /// The PKCS #7 signature over the program, as of `at`.
+    fn signature(&self, program: &Program, at: SystemTime) -> Result<Vec<u8>, Fault> {
+        let digest = digest(program);
 
         let content = sequence(&[
             &sequence(&[
@@ -213,7 +234,9 @@ impl Signer {
             &value(0xa0, &[&self.certificate]),
             &der::value(der::SET, &[&signer]),
         ]);
-        let pkcs7 = sequence(&[&oid(SIGNED_DATA), &value(0xa0, &[&signed_data])]);
-        Ok(program.signed(&pkcs7))
+        Ok(sequence(&[
+            &oid(SIGNED_DATA),
+            &value(0xa0, &[&signed_data]),
+        ]))
     }
 }

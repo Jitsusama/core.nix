@@ -1,9 +1,10 @@
 # shellcheck shell=bash
 # Opens a link from Joel's calendar the way it's meant to be opened: a
 # Tuple call through Tuple, where Tuple is installed, so it joins without a
-# browser tab in between; Google's own pages (Meet, Calendar, Mail) in a
-# window of their own, so each is a program on the desktop and a Meet call
-# is a window niri can name; anything else in the default browser.
+# browser tab in between; Google's own pages (Meet, Calendar, Mail, and
+# Docs, Sheets, Slides and Drive) in a window of their own, so each is a
+# program on the desktop and a Meet call is a window niri can name;
+# anything else in the default browser.
 # usage: opens.sh WINDOW OPEN URL, WINDOW opening a URL in a window of its
 # own, as jitsusama.google.window says, and OPEN in the default browser.
 set -euo pipefail
@@ -19,7 +20,8 @@ https://tuple.app/c/* | https://production.tuple.app/c/*)
   fi
   exec "$open" "$url"
   ;;
-https://meet.google.com/* | https://calendar.google.com/* | https://mail.google.com/*)
+https://meet.google.com/* | https://calendar.google.com/* | https://mail.google.com/* | \
+  https://docs.google.com/* | https://drive.google.com/*)
   exec "$window" "$url"
   ;;
 https://* | http://*)

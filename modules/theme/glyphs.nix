@@ -1126,6 +1126,11 @@ in
       "M10 0A2 2 0 0 1 10 4A2 2 0 0 1 10 0Z"
     ];
   };
+  writeMail = {
+    glyph = nerd "f0ee3";
+    console = "w";
+    means = "writing a new mail to someone, in Mail's own window";
+  };
   readMail = {
     glyph = nerd "f0ab1";
     console = "o";
@@ -1135,6 +1140,21 @@ in
     glyph = nerd "f1259";
     console = "a";
     means = "archiving mail, out of the inbox";
+  };
+  googleDocument = {
+    glyph = nerd "f0dc8";
+    console = "d";
+    means = "a document in Joel's Google account, and Docs, which opens it";
+  };
+  googleSpreadsheet = {
+    glyph = nerd "f09f7";
+    console = "s";
+    means = "a spreadsheet in Joel's Google account, and Sheets, which opens it";
+  };
+  googlePresentation = {
+    glyph = nerd "f0428";
+    console = "p";
+    means = "a presentation in Joel's Google account, and Slides, which opens it";
   };
   clock = {
     glyph = nerd "f0150";

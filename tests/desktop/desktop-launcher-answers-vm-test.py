@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import shlex
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -890,6 +891,94 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
     assert "Error:" not in log, "an answer raised an error"
 
 
+def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gives(
+    desktop: Desktop,
+) -> None:
+    """A folder filling the disk is kept from the guard's clearing, for the reason Joel gives."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    folder = desktop.as_account("mkdir -p ~/scratch && realpath ~/scratch").strip()
+    status = desktop.as_account("echo $XDG_RUNTIME_DIR").strip() + "/disk-guard/status.json"
+
+    def said(holders: list[Json]) -> None:
+        """Write what the account's guard says, holding these, as it writes it, whole."""
+        whole = {
+            "version": 1,
+            "heartbeat": time.time() + 3600,
+            "filesystems": [
+                {"path": "/", "band": "pressure", "free": 5 * 2**30, "total": 30 * 2**30},
+            ],
+            "frozen": [],
+            "holders": holders,
+            "holders_at": time.time(),
+        }
+        desktop.as_account(
+            f"mkdir -p $(dirname {status}) && echo '{json.dumps(whole)}' > {status}.new"
+            f" && mv {status}.new {status}"
+        )
+
+    def into_it() -> None:
+        """Open Disk's What's Filling It, and step into the folder."""
+        desktop.answer("disk")
+        desktop.step_in()
+        desktop.type_in("filling", selecting="What's Filling It")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"] == ["~/scratch"])
+        desktop.step_in("ret")
+
+    said(
+        [
+            {
+                "path": folder,
+                "name": "~/scratch",
+                "bytes": 3 * 2**30,
+                "clears": 2**30,
+                "owner": {"kind": "other", "name": "scratch"},
+                "clearable": True,
+                "why": None,
+                "kept": None,
+                "says": "~/scratch holds 3.0 GiB.",
+            }
+        ]
+    )
+    try:
+        # Return steps into it: what can be done, then what it reads,
+        # then Copy the Path.
+        into_it()
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"] == ["Open Its Folder", "Keep", "Size", "Clearable", "Copy the Path"]
+            )
+        )
+        desktop.down_to("Keep")
+        assert desktop.showing()["selected"]["side"] == "no"
+        # Kept, it asks why, and the guard says so.
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["asking"])
+        machine.send_chars("the thesis data")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["footer"] == f"Kept {folder}: the thesis data.")
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        # It stays kept, saying why, and Return lets it go.
+        into_it()
+        desktop.launcher_until(lambda shown: "Keep" in shown["rows"])
+        desktop.down_to("Keep")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["selected"]["side"] == "yes, the thesis data"
+                and shown["selected"]["verb"] == "release"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["footer"] == f"No longer kept: {folder}.")
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        said([])
+        desktop.as_account("rm -rf ~/scratch ~/.local/state/disk-guard")
+
+
 def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     """The weather's here follows the laptop."""
     machine = desktop.machine
@@ -950,9 +1039,10 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # And once the file goes, here is nowhere again, and the location is
-    # said to be unknown rather than guessed.
-    desktop.as_account(f"rm {fix}")
+    # And once the file says nowhere, here is nowhere again, and the
+    # location is said to be unknown rather than guessed. It's never
+    # removed, since the shell can't see a removed file come back.
+    desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
     asked(nowhere)
     desktop.answer("location")
     desktop.launcher_until(
@@ -963,6 +1053,70 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     )
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+def test_the_clock_follows_the_laptop_into_another_zone_and_is_put_back(desktop: Desktop) -> None:
+    """The clock follows the laptop into another zone, says so in Time, and is put back."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    fix = "$XDG_RUNTIME_DIR/whereabouts.json"
+    zone = "timedatectl show --property=Timezone --value"
+    began = machine.succeed(zone).strip()
+    ran = "systemctl --user show clock-follows.service"
+    ran += " --property=InactiveEnterTimestampMonotonic --value"
+
+    def found(where: str, accuracy: int, place: str) -> None:
+        """Write where the laptop is, as whereabouts does, and wait for the clock to read it."""
+        before = desktop.as_account(ran).strip()
+        said = {"v": 2, "latitude": 51.05, "longitude": -114.07, "accuracy": accuracy,
+                "when": int(time.time()), "place": place, "zone": where}  # fmt: skip
+        desktop.as_account(f"echo '{json.dumps(said)}' > {fix}.new && mv {fix}.new {fix}")
+        machine.wait_until_succeeds(
+            desktop.in_session(f'test "$({ran})" != {shlex.quote(before)}'),
+            timeout=dt.timedelta(seconds=30),
+        )
+
+    def keeps(where: str) -> None:
+        """Wait until the clock keeps this zone."""
+        machine.wait_until_succeeds(f'test "$({zone})" = {where}', timeout=dt.timedelta(seconds=30))
+
+    try:
+        # Found by Wi-Fi, to within 300 m, in another zone: the clock moves,
+        # and the time here says so, the zone being the clock's.
+        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        keeps("America/Edmonton")
+        desktop.answer("time")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["footer"] == "clock moved to Edmonton time, as the laptop is in Lighthouse"
+            )
+        )
+        desktop.step_in()
+        # Put It Back leads what can be done; Copy, which isn't an act on
+        # the clock, may stand before or after it.
+        desktop.launcher_until(
+            lambda shown: [row for row in shown["rows"] if row != "Copy"][:1] == ["Put It Back"]
+        )
+        desktop.down_to("Put It Back")
+        assert desktop.showing()["selected"]["side"] == began.split("/")[-1].replace("_", " ")
+        # Put back, it's held where it was while the laptop stays there.
+        machine.send_key("ret")
+        keeps(began)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+        found("America/Edmonton", 300, "Lighthouse, Alberta")
+        assert machine.succeed(zone).strip() == began
+        # Somewhere else lets it go, and the clock follows again.
+        found("America/Vancouver", 300, "Harbour, British Columbia")
+        keeps("America/Vancouver")
+        # Found only from the network's address, tens of kilometres wide,
+        # as through WARP, it never moves the clock.
+        found("Asia/Tokyo", 26000, "Shibuya, Tokyo")
+        assert machine.succeed(zone).strip() == "America/Vancouver"
+    finally:
+        machine.succeed(f"timedatectl set-timezone {shlex.quote(began)}")
+        desktop.as_account(f"echo '{{}}' > {fix}.new && mv {fix}.new {fix}")
+        desktop.as_account("rm -rf ~/.local/state/clock-follows")
 
 
 def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Desktop) -> None:

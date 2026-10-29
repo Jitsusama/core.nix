@@ -6,7 +6,10 @@
 # next of the steps given, "on-battery percent" a line, and says the
 # battery changed once for each step after the first, then goes, which ends
 # the service's monitor.
-# usage: run.sh <service's command line> <steps> <expected calls> <what follows> <PATH>
+# A service that says what it chose in its runtime folder, as systemd gives
+# it, is given this one's, and with WANTED set its last word there must be
+# that.
+# usage: [WANTED=<choice>] run.sh <service's command line> <steps> <expected calls> <what follows> <PATH>
 set -euo pipefail
 
 # The service's ExecStart, a program and its arguments.
@@ -18,6 +21,7 @@ here=$(dirname "$0")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export STATE=$work
+export RUNTIME_DIRECTORY=$work
 
 cp "$steps" "$work/steps"
 chmod u+w "$work/steps"
@@ -35,4 +39,11 @@ fi
 if [ -e "$work/errors" ] || [ -s "$work/steps" ] || ! diff "$expected" "$work/calls"; then
   echo "$follows didn't follow the battery as listed." >&2
   exit 1
+fi
+if [ -n "${WANTED:-}" ]; then
+  said=$(cat "$work/wanted" 2> /dev/null || echo nothing)
+  if [ "$said" != "$WANTED" ]; then
+    echo "$follows said it chose $said, where its last choice was $WANTED." >&2
+    exit 1
+  fi
 fi

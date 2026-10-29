@@ -489,19 +489,46 @@ Provider {
     // them, each a folder or a file by its name, beside the folder it's in.
     // Return opens it through the program as its settings say: `open`
     // while a window of it is open, through the process behind the window
-    // used last ({pid}), and `start` while none is.
+    // used last ({pid}), and `start` while none is. Any other provider may
+    // give a program's Recent its own things, each its one row, by
+    // `recentOf(program)`, newest first, as Docs' documents are given
+    // (Documents.qml); it says `changed` when they change, so a Recent
+    // shown is made again.
     function recent(entry) {
         const source = (settings.recents ?? []).find(each => each.app === entry.id);
-        const paths = source ? provider.recents.of(entry.id) : [];
-        if (paths.length === 0)
+        const listed = () => (source ? provider.recents.of(entry.id)
+            .map(path => provider.lately(entry, source, path)) : [])
+            .concat(givenRecent(entry.id)).slice(0, provider.recents.most);
+        const count = listed().length;
+        if (count === 0)
             return [];
         return [said("program:recent", "", {
             hue: "program",
-            count: String(paths.length),
+            count: String(count),
             ask: "which?",
             nested: true,
-            targets: () => provider.recents.of(entry.id).map(path => provider.lately(entry, source, path))
+            targets: listed
         })];
+    }
+
+    // What other providers give a program's Recent.
+    function givenRecent(program) {
+        return hooked("recentOf", program);
+    }
+
+    // The acts other providers give a program beside its desktop entry's
+    // own (`programActs(program)`), as Meet's Join by Code is given
+    // (Meet.qml), listed after its desktop entry's actions and before its
+    // Recent.
+    function givenActs(program) {
+        return hooked("programActs", program);
+    }
+
+    // What every other provider with the hook `hook` gives `program`.
+    function hooked(hook, program) {
+        return (provider.launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other[hook] === "function")
+            .reduce((rows, other) => rows.concat(other[hook](program)), []);
     }
 
     // One path a program had open lately, as Recent's row. Not named
@@ -556,7 +583,7 @@ Provider {
         const player = playerOf(same);
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
-        return acts.concat(menu(entry, taken), recent(entry), keysOf(entry),
+        return acts.concat(menu(entry, taken), givenActs(entry.id), recent(entry), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
             streams.length > 0 || recorders.length > 0 ? [sound(streams, recorders)] : [],

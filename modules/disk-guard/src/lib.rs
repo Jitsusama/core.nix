@@ -5,6 +5,7 @@ pub mod age;
 pub mod anchor;
 pub mod band;
 pub mod caches;
+pub mod clears;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod cli;
 pub mod clock;
@@ -32,6 +33,7 @@ pub mod holders;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod host;
 pub mod journal;
+pub mod keeps;
 #[cfg(target_os = "linux")]
 pub mod linux;
 pub mod locks;

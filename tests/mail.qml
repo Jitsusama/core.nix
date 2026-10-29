@@ -49,14 +49,14 @@ QtObject {
                 }),
                 {
                     account: "ready", meetings: [standup], mail: [mail], unread: 3,
-                    heard: 1793042446024
+                    documents: [], heard: 1793042446024
                 }],
             ["a state with nothing heard yet",
                 '{"account":"none","meetings":[],"mail":[],"unread":null,"heard":null}',
-                { account: "none", meetings: [], mail: [], unread: null, heard: null }],
+                { account: "none", meetings: [], mail: [], unread: null, documents: [], heard: null }],
             ["a state from before mail",
                 '{"account":"ready","meetings":[],"heard":1}',
-                { account: "ready", meetings: [], mail: [], unread: null, heard: 1 }],
+                { account: "ready", meetings: [], mail: [], unread: null, documents: [], heard: 1 }],
             ["half a line", '{"account":"rea', null],
             ["a line that isn't the state", '{"hello":1}', null],
             ["an account with no meetings said", '{"account":"ready"}', null]
@@ -107,6 +107,12 @@ QtObject {
             ],
             body: "Friday?\n\nAda"
         });
+        check("the details of mail carrying files",
+            Mail.details(Object.assign({}, lunch, { attachments: ["menu.pdf", "patio.jpg"] }),
+                "No Subject").facts[3], { label: "Attachments", value: "menu.pdf, patio.jpg" });
+        check("the details of mail carrying one file",
+            Mail.details(Object.assign({}, lunch, { attachments: ["menu.pdf"] }), "No Subject")
+                .facts[3], { label: "Attachment", value: "menu.pdf" });
         const bare = { from: "ada@example.com", address: "ada@example.com", to: "", subject: "",
             at: lunch.at };
         check("the details of mail saying little", Mail.details(bare, "No Subject"), {
@@ -124,9 +130,9 @@ QtObject {
             Mail.replying(Object.assign({}, lunch, { subject: "RE: Lunch" })),
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com&su=RE%3A%20Lunch");
         check("no reply with no address", Mail.replying({ address: "", subject: "Lunch" }), "");
-        check("a new mail to someone", Mail.writing("ada@example.com"),
+        check("a new mail to someone", Mail.writing(["ada@example.com"], ""),
             "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com");
-        check("no new mail to nobody", Mail.writing(""), "");
+        check("no new mail to nobody", Mail.writing([""], ""), "");
 
         // Everyone the meetings and mail name, for People, by address.
         const standupWith = {
@@ -143,6 +149,23 @@ QtObject {
         check("a meeting with them", Google.withThem(standupWith, ["grace@example.com"]), true);
         check("mail from them", Google.withThem(lunch, ["ada@example.com"]), true);
         check("nothing with a stranger", Google.withThem(standupWith, ["x@example.com"]), false);
+
+        // Write to the Guests: its holder and every guest with an address,
+        // each once, about the meeting.
+        check("a mail to a meeting's guests", Mail.toTheGuests({
+            title: "Standup",
+            organizer: { name: "Ada Lovelace", email: "ada@example.com" },
+            guests: [{ name: "Grace Hopper", email: "grace@example.com" },
+                { name: "Room 4" }, { name: "Ada", email: "ada@example.com" }]
+        }), "https://mail.google.com/mail/u/0/?view=cm&fs=1"
+            + "&to=ada%40example.com%2Cgrace%40example.com&su=Standup");
+        check("a mail to the guests of one Joel holds", Mail.toTheGuests({
+            title: "Design Review", organizer: null,
+            guests: [{ name: "Grace Hopper", email: "grace@example.com" }]
+        }), "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=grace%40example.com"
+            + "&su=Design%20Review");
+        check("no mail for a meeting with nobody else",
+            Mail.toTheGuests({ title: "Focus", organizer: null, guests: [] }), "");
 
         // Which windows are Mail's, as Chrome names them.
         const listed = [

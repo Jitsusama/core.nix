@@ -187,7 +187,7 @@ Singleton {
 
     // Gmail's link to write someone a new mail, or nothing for no address.
     function writing(address) {
-        return Said.writing(address);
+        return Said.writing([address], "");
     }
 
     // A reply is written in a Mail window of its own, beside the mail it

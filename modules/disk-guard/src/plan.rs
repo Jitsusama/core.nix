@@ -164,6 +164,14 @@ fn days(n: f64) -> Option<f64> {
     Some(n * DAY)
 }
 
+/// Whether a Clear Joel asks for takes it: what a critically full disk
+/// takes now, but nothing a build or a shell is using and none of the
+/// store's garbage, which its own policy collects.
+pub fn clears(candidate: &Candidate) -> bool {
+    group(candidate, Band::Critical)
+        .is_some_and(|group| !matches!(group, Group::Occupied | Group::Garbage))
+}
+
 /// The group a band takes a candidate in, if it takes it at all.
 pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
     let (group, windows) = windows(candidate);

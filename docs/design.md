@@ -690,7 +690,10 @@ works the same way everywhere.
   one row that thing is anywhere it shows, never a version Now draws of
   it. Below them, only while true, come what else wants Joel (unread
   mail, missed notices, a low battery), what reaches other people,
-  what's playing and the modes left on, by name within each. Each place says what it holds
+  what's playing and the modes left on, by name within each (the power
+  profile only once picked by hand over the one the machine chose for
+  the charger and the battery, since its own choice isn't a mode Joel
+  left on). Each place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
   as fit, so a glance reminds Joel what there is; a place that measures
@@ -775,7 +778,13 @@ works the same way everywhere.
   and the day after, Rain saying when it next rains ("from 15:00, 70%")
   beside the next twelve hours' chance, and holding those hours, each its
   chance and how much; "rain", "umbrella" or "when will it rain", here or
-  in a place, answers with the next rain, its hours a step in. So is the
+  in a place, answers with the next rain, its hours a step in. The time
+  here is the clock's, which follows the laptop into another zone once a
+  Wi-Fi fix says it's there to within ten kilometres, never for a fix from
+  the network's address alone; the time then says so ("clock moved to
+  Edmonton time, as the laptop is in Lighthouse"), and Put It Back leads
+  what's inside, holding the zone it kept until the laptop is somewhere
+  else. So is the
   machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
@@ -879,10 +888,16 @@ works the same way everywhere.
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open. A notice on screen
-  waits while Joel's away, thirty seconds with nothing typed or moved
-  (`notices.away`), whatever keeps the screen awake, so one that comes
-  while he's gone is there when he's back, counting again in full. Each
+  program that sent it, its window when one is open. A notice is one thing
+  on its card and among the notices, its acts the same in the same order
+  (`launcher/Notice.js`): going to what it's about, what its sender offers,
+  Read, one switch saying yes or no, Forget It, and Copy What It Said last;
+  the card adds what's done to the whole stack before the copy, and leads
+  with Forget It where its Return forgets one with nothing to open. A
+  notice on screen waits while Joel's away, thirty seconds with nothing
+  typed or moved (`notices.away`), whatever keeps the screen awake, so one
+  that comes while he's gone is there when he's back, counting again in
+  full. Each
   program can be kept to how far its notices reach (`notices.senders`):
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less

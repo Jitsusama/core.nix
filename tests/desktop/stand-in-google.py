@@ -13,7 +13,8 @@ that's cancelled is written down and let go, as Google would. Two pieces of mail
 Lunch on Friday from Ada and Quarterly Numbers from Grace, each to Joel and saying a line,
 with three unread in the inbox; one marked read or archived is written down too, and taken
 out of the mail that wants him, as Gmail would, and one read and then marked unread again
-wants him once more.
+wants him once more. Joel looked at two documents lately: Ada's Quarterly Plan in Docs, and
+Team Budget in Sheets, on a shared drive.
 """
 
 import json
@@ -103,6 +104,7 @@ class Account:
                 "at": now - 2 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/lunch",
                 "body": "Shall we try the place on the corner?\n\nAda",
+                "attachments": ["menu.pdf"],
             },
             {
                 "id": "numbers",
@@ -113,11 +115,32 @@ class Account:
                 "at": now - 5 * MINUTE,
                 "page": "https://mail.google.com/mail/u/0/#inbox/numbers",
                 "body": "The numbers are in the sheet.",
+                "attachments": [],
             },
         ]
         self.unread = 3
         # Mail marked read, which marking it unread again brings back.
         self.read: list[dict[str, object]] = []
+        self.documents = [
+            {
+                "id": "plan",
+                "title": "Quarterly Plan",
+                "kind": "document",
+                "link": "https://docs.google.com/document/d/plan/edit",
+                "viewed": now - 10 * MINUTE,
+                "changed": now - 60 * MINUTE,
+                "owner": "Ada Lovelace",
+            },
+            {
+                "id": "budget",
+                "title": "Team Budget",
+                "kind": "spreadsheet",
+                "link": "https://docs.google.com/spreadsheets/d/budget/edit",
+                "viewed": now - 20 * MINUTE,
+                "changed": now - 30 * MINUTE,
+                "owner": None,
+            },
+        ]
         self.heard = now
         self.leave()
 
@@ -129,6 +152,7 @@ class Account:
                 "meetings": [],
                 "mail": [],
                 "unread": None,
+                "documents": [],
                 "heard": None,
             }
             return f"{json.dumps(gone)}\n".encode()
@@ -137,6 +161,7 @@ class Account:
             "meetings": self.meetings,
             "mail": self.mail,
             "unread": self.unread,
+            "documents": self.documents,
             "heard": self.heard,
         }
         return f"{json.dumps(said)}\n".encode()

@@ -283,6 +283,98 @@ fn gmail_failing_keeps_the_mail_held_and_the_meetings_told() {
     assert_eq!(state.mail, held);
 }
 
+/// The stand-in's Drive: one document of each kind Joel looked at, by the
+/// kind each search asks for.
+fn drive(path: &str, body: &str) -> (u16, String) {
+    if !path.starts_with("GET /drive/v3/files?") {
+        return google(path, body);
+    }
+    let (id, link) = if path.contains("document") {
+        ("d1", "document")
+    } else if path.contains("spreadsheet") {
+        ("s1", "spreadsheets")
+    } else {
+        ("p1", "presentation")
+    };
+    (
+        200,
+        format!(
+            r#"{{"files": [{{"id": "{id}", "name": "About {id}",
+                "webViewLink": "https://docs.google.com/{link}/d/{id}/edit",
+                "viewedByMeTime": "2026-10-26T18:00:00Z",
+                "owners": [{{"displayName": "Ada Lovelace"}}]}}]}}"#
+        ),
+    )
+}
+
+#[test]
+fn each_kind_of_document_is_told_and_drive_asked_again_only_after_a_while() {
+    let stand_in = StandIn::new(drive);
+    let path = credentials("documents", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let state = watch.look(&now()).clone();
+    let said: Vec<_> = state
+        .documents
+        .iter()
+        .map(|document| (document.id.as_str(), document.title.as_str()))
+        .collect();
+    assert_eq!(
+        said,
+        [("d1", "About d1"), ("s1", "About s1"), ("p1", "About p1")]
+    );
+    let searches = |stand_in: &StandIn| {
+        stand_in
+            .heard()
+            .into_iter()
+            .filter(|heard| heard.line.starts_with("GET /drive/v3/files?"))
+            .collect::<Vec<_>>()
+    };
+    let first = searches(&stand_in);
+    assert_eq!(first.len(), 3);
+    assert!(
+        first[0].line.contains("orderBy=viewedByMeTime+desc")
+            || first[0].line.contains("orderBy=viewedByMeTime%20desc"),
+        "{}",
+        first[0].line
+    );
+    assert!(first[0].line.contains("pageSize=9"));
+    watch.look(&now());
+    assert_eq!(
+        searches(&stand_in).len(),
+        3,
+        "Drive was asked again at once"
+    );
+    let later: Zoned = "2026-10-26T15:25:00-04:00[-04:00]".parse().unwrap();
+    watch.look(&later);
+    assert_eq!(
+        searches(&stand_in).len(),
+        6,
+        "Drive wasn't asked again after five minutes"
+    );
+}
+
+#[test]
+fn drive_failing_keeps_the_documents_held_and_the_rest_told() {
+    let stand_in = StandIn::new(drive);
+    let path = credentials("drive-down", now().timestamp().as_millisecond() + 3_600_000);
+    let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
+    let held = watch.look(&now()).documents.clone();
+    let down = StandIn::new(|path, body| {
+        if path.starts_with("GET /drive") {
+            (503, "{}".into())
+        } else {
+            google(path, body)
+        }
+    });
+    watch.google = Google::new(down.origins());
+    let later: Zoned = "2026-10-26T15:30:00-04:00[-04:00]".parse().unwrap();
+    let state = watch.look(&later).clone();
+    assert_eq!(state.account, Standing::Ready);
+    assert_eq!(state.meetings.len(), 1);
+    assert_eq!(state.documents, held);
+    assert_eq!(held.len(), 3);
+}
+
 #[test]
 fn a_refused_sign_in_is_signed_out_and_not_asked_again() {
     let stand_in = StandIn::new(|path, _| {
