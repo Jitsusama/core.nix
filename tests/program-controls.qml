@@ -3,9 +3,9 @@
 // beside this, with niri, the desktop's shortcuts, the notices' history and
 // what's playing (launcher/Playing.qml) stood in. A running program with a
 // player, a stream and notices holds, in order, Switch to the window used
-// last, New window, New window below, its other window by title, its desktop
-// entry's own actions (one shortened, one left to New window), Quit, then
-// Media, Sound and Notices, each doing what it says: Quit asks once
+// last, New window, New window below, its desktop entry's own actions (one
+// shortened, one left to New window), Recent, its other window by title,
+// Notices, Quit, then Media and Sound, each doing what it says: Quit asks once
 // and closes each window, the media and sound acts reach the player and
 // the program's streams only, and its figures follow what they did. A
 // program with nothing of the sort holds only New window and New window
@@ -16,7 +16,9 @@
 // keeps what it had open lately holds Recent, each path by its name beside
 // its folder, opened by its start command while none of its windows is
 // open and through the process behind its last window while one is, and
-// read again as its file changes, nine at most. Typing on
+// read again as its file changes, nine at most. A program's files on the
+// list programs share are its Recent too, found by its desktop entry's id
+// or name, and opened by its own command. Typing on
 // looks only through what the last key found, and finds what looking
 // through everything would. It exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
@@ -84,14 +86,19 @@ ShellRoot {
             name: "applications",
             recents: [{
                 app: "quiet",
+                kind: "folder",
                 watch: root.recentFile,
                 list: [Quickshell.env("RECENT_LIST")],
                 open: ["quiet", "@", "--to", "unix:@quiet-{pid}", "launch", "{path}"],
                 start: ["quiet", "--directory", "{path}"]
+            }, {
+                // The list programs share, as recent-files prints it.
+                watch: `${root.home}/shared`,
+                list: [Quickshell.env("SHARED_LIST")]
             }]
         })
         // Desktop entries and what quiet had open are read in the
-        // background, so the cases wait for all three and the list.
+        // background, so the cases wait for all three and both lists.
         onThingsChanged: root.ready()
     }
 
@@ -103,6 +110,10 @@ ShellRoot {
                 root.changed();
             else
                 root.ready();
+        }
+
+        function onSharedChanged() {
+            root.ready();
         }
     }
 
@@ -117,7 +128,8 @@ ShellRoot {
     function ready() {
         if (root.waiting === "the programs"
                 && ["tester", "quiet", "radio"].every(id => root.program(id) !== undefined)
-                && applications.recents.of("quiet").length === 2)
+                && applications.recents.of("quiet").length === 2
+                && applications.recents.of("tester").length === 2)
             Qt.callLater(root.cases);
     }
 
@@ -176,10 +188,17 @@ ShellRoot {
             // The launcher says Programs was stepped into, as it does.
             applications.opened();
             const tester = program("tester").verbs();
-            same("acts first, then parts, each where it applies", names(tester),
-                "Switch, New Window, New Window Below, Draft, Private window, "
-                + "Open the logbook, Quit, Media, Sound, Notices");
-            const [switching, , , draft, secret, logbook, quit, media, sound, told] = tester;
+            same("in the program's order, each part where it applies", names(tester),
+                "Switch, New Window, New Window Below, Private window, Open the logbook, "
+                + "Recent, Draft, Notices, Quit, Media, Sound");
+            const [switching, , , secret, logbook, shared, draft, told, quit, media, sound] = tester;
+            const files = shared.targets();
+            same("its files from the list programs share, by its name or its id, newest first",
+                `${names(files)} ${files.map(row => row.key).join(" ")}`,
+                `notes.md, plan.md file:${root.home}/notes.md file:${root.home}/plan.md`);
+            files[0].run();
+            same("one opens by the program's own command", JSON.stringify(Niri.spawned),
+                JSON.stringify(["tester", `${root.home}/notes.md`]));
             same("Switch names the window used last", switching.side, "Logbook");
             switching.run();
             same("Switch goes to it", acted(), '[{"FocusWindow":{"id":11}}]');

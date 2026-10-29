@@ -512,6 +512,10 @@
     Neovim spell-checks markdown without flagging niri, Quickshell, YubiKey, TPM or monospace, and
     still flags a misspelt word
   '';
+  neovim-says-the-files-it-opens = ''
+    Neovim says each file it opens to the desktop's list of files opened lately, as each comes into
+    view and going back to one too, and nothing that isn't a file on disk
+  '';
   neovim-starts-in-the-theme = ''
     Neovim starts in bamboo, transparent, without a complaint
   '';

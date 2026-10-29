@@ -75,6 +75,7 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
+    ../quickshell/recents.nix
   ];
 
   options.jitsusama.kitty.keys = lib.mkOption {
@@ -106,6 +107,40 @@ in
   config.jitsusama.kitty.keys = import ./keys.nix { inherit lib; };
 
   config.jitsusama.keys.terminal = map (key: { inherit (key) chord does; }) keys;
+
+  # kitty's Recent in the launcher: the folders zoxide learns as each is
+  # visited, as it ranks them, by how often and how lately, read as its
+  # database changes. Return opens a kitty window there, through the kitty
+  # behind the window used last while one is open. The launcher watches the
+  # list from inside its folder, which zoxide makes only at its first cd, so
+  # it's made at sign-in and that cd counts.
+  config.systemd.user.tmpfiles.rules = lib.optional config.programs.zoxide.enable "d ${config.xdg.dataHome}/zoxide 0700 - - -";
+
+  config.jitsusama.quickshell.launcher.recents = lib.optional config.programs.zoxide.enable {
+    app = "kitty";
+    kind = "folder";
+    watch = "${config.xdg.dataHome}/zoxide/db.zo";
+    list = [
+      (lib.getExe config.programs.zoxide.package)
+      "query"
+      "--list"
+    ];
+    open = [
+      "kitty"
+      "@"
+      "--to"
+      "unix:@kitty-{pid}"
+      "launch"
+      "--type=os-window"
+      "--cwd"
+      "{path}"
+    ];
+    start = [
+      "kitty"
+      "--directory"
+      "{path}"
+    ];
+  };
 
   config.home.packages = [
     (pkgs.kitty.overrideAttrs (old: {

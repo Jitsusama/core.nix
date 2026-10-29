@@ -1335,6 +1335,11 @@ onLinux {
       # that lists it.
       printf '%s\n' "$HOME/src/core.nix" /etc > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
+      # The list programs share, as recent-files prints it: the tester by
+      # its name and by its id, one file twice, and one of no program here.
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\n' \
+        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" > $HOME/shared
+      export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
