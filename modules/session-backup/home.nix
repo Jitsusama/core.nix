@@ -119,13 +119,17 @@ in
     systemd.user.services.session-backup = {
       Unit = {
         Description = "Copies the account's settled pi session logs, sealed, to Drive";
-        # A run takes most of an hour, longer than a switch waits for a
-        # oneshot to start, so a switch leaves a run going; the next hour's
-        # starts on the new program.
+        # A run takes most of an hour, so a switch leaves a run going; the
+        # next hour's starts on the new program.
         X-RestartIfChanged = false;
       };
       Service = {
-        Type = "oneshot";
+        # Started once it runs, not once it's done: a oneshot's start job
+        # lasts the whole run, and the hour a boot catches up on kept the
+        # account's manager "starting" for minutes, in which a switch
+        # reloads none of the account's units. A timer still never starts
+        # a run while one is going.
+        Type = "exec";
         ExecStart = "${lib.getExe package} run --config ${configFile}";
         # Whatever the account runs comes first: the slice gives it the
         # disk's idle priority and a small share of the processor.
