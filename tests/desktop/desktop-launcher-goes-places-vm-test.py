@@ -1502,9 +1502,7 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     )
     machine.send_key("ret")
     # Its note moves at once, before Google answers.
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("side") == "your answer"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "your answer")
     line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))
     machine.wait_until_succeeds(
         f"grep -qxF {shlex.quote(line)} {asked}", timeout=dt.timedelta(seconds=30)
