@@ -21,7 +21,7 @@
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later, where the ones still here can be answered
-// or let go, and while it's open the corner leaves them to it. A notice
+// or forgotten, and while it's open the corner leaves them to it. A notice
 // offering something to do (Reply, Play it) lists it above its footer with
 // the chord that takes the stack beside it, and its verbs lead with it.
 //
@@ -1092,7 +1092,8 @@ Scope {
                                 visible: card.keys
                                 size: Theme.mono.body
                                 keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", "back"]]
-                                    : [["\u21b5", card.opens ? "open" : "let go"], ["\u2192", "more"]]
+                                    : [["\u21b5", Words.verb(card.opens ? "verb:notice:open"
+                                        : "verb:notice:forget")], ["\u2192", "more"]]
                             }
                         }
                     }
