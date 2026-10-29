@@ -2171,8 +2171,10 @@ Scope {
         // shows the new state on its row at once).
         if (held.length === 0) {
             if (typed.trim() !== ""
-                && matches.some(row => source.things.some(own => own.key === row.key)))
+                && matches.some(row => source.things.some(own => own.key === row.key))) {
                 reshow(0);
+                Report.say(`refreshed ${source.settings.name}`);
+            }
             return;
         }
         const from = held.findIndex(step => step.row.from === source);
