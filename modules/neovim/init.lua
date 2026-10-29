@@ -176,6 +176,44 @@ vim.api.nvim_create_autocmd('BufReadPost', {
   end,
 })
 
+-- Each file Neovim opens goes on the desktop's list of files opened lately,
+-- where the desktop keeps one (open-with's recent-files), for the
+-- launcher's Recent inside Neovim. It's said as each comes into view, so
+-- going back to one already open counts too, and not again while it's the
+-- one said last. It's said in the background, so nothing waits on it, and
+-- one at a time, since each writes the whole list anew and two at once
+-- would lose one: the files opened meanwhile are said once it's done.
+local said_last
+local saying = false
+local waiting = {}
+local function say()
+  if saying or #waiting == 0 then
+    return
+  end
+  saying = true
+  local files = waiting
+  waiting = {}
+  vim.system(vim.list_extend({ 'recent-files', 'add', 'nvim' }, files), {}, function()
+    saying = false
+    vim.schedule(say)
+  end)
+end
+vim.api.nvim_create_autocmd('BufWinEnter', {
+  group = augroup('recent_files'),
+  callback = function(event)
+    if vim.bo[event.buf].buftype ~= '' or vim.fn.executable('recent-files') == 0 then
+      return
+    end
+    local path = vim.api.nvim_buf_get_name(event.buf)
+    if path == '' or path == said_last or vim.fn.filereadable(path) == 0 then
+      return
+    end
+    said_last = path
+    table.insert(waiting, path)
+    say()
+  end,
+})
+
 -- Check if file changed outside of Neovim
 vim.api.nvim_create_autocmd({ 'FocusGained', 'TermClose', 'TermLeave' }, {
   group = augroup('checktime'),

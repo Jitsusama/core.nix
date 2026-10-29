@@ -1297,7 +1297,7 @@ onLinux {
       tester = entry "tester" ''
         Name=Tester
         GenericName=Logbook
-        Exec=tester
+        Exec=tester %U
         Actions=private;new;logbook;
 
         [Desktop Action private]
@@ -1350,6 +1350,12 @@ onLinux {
       # that lists it.
       printf '%s\n' "$HOME/src/core.nix" /etc > $HOME/recent
       export RECENT_LIST=${pkgs.writeShellScript "recent-list" ''cat "$HOME/recent"''}
+      # The list programs share, as recent-files prints it: the tester by
+      # its name and by its id, one file twice, one of no program here, and
+      # one the radio was given, which can't open a file itself.
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\n' \
+        "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" > $HOME/shared
+      export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       touch $out
