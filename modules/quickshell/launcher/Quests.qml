@@ -103,7 +103,7 @@ Provider {
             // its Agents row says more of (Launcher.qml's compose).
             is: session ? session.is : `quest:${quest.id}`,
             rich: 1,
-            verb: session ? "switch" : "open",
+            verb: session ? "go" : "open",
             name: quest.title || quest.id,
             unfinished: isOpen(quest),
             glyph: Theme.glyph[marks[quest.status] ?? "pending"],

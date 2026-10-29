@@ -116,6 +116,38 @@
       "name": "Quest"
     },
     {
+      "id": "agents:last-boot",
+      "in": "agents",
+      "name": "Reopen Last Boot's Sessions",
+      "verb": "more",
+      "glyph": "resume",
+      "said": {
+        "one": "1 session",
+        "many": "{count} sessions"
+      }
+    },
+    {
+      "id": "verb:agents:last-boot:all",
+      "in": "agents:last-boot",
+      "name": "Reopen Them All",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:one",
+      "in": "agents:last-boot",
+      "name": "Reopen",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:last-boot:notNow",
+      "in": "agents:last-boot",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
       "id": "agents:start",
       "in": "agents",
       "name": "Start a Session",
@@ -2822,7 +2854,7 @@
       "id": "on:waiting",
       "in": "on",
       "name": "Waiting on You",
-      "verb": "switch",
+      "verb": "go",
       "glyph": "waitsOnJoel",
       "empty": "Nothing waits on you.",
       "said": {
@@ -2835,8 +2867,8 @@
     {
       "id": "verb:on:waiting:go",
       "in": "on",
-      "name": "Go to {where}",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -3014,8 +3046,8 @@
     {
       "id": "verb:notice:goTo",
       "in": "notices",
-      "name": "Go to {program}",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4181,6 +4213,13 @@
       "glyph": "reply"
     },
     {
+      "id": "verb:mail:replyAll",
+      "in": "mail:message",
+      "name": "Reply All",
+      "verb": "reply",
+      "glyph": "replyAll"
+    },
+    {
       "id": "verb:mail:read",
       "in": "mail:message",
       "name": "Read",
@@ -4323,8 +4362,8 @@
     {
       "id": "verb:switch",
       "in": "windows",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4390,8 +4429,8 @@
     {
       "id": "verb:program:switch",
       "in": "applications",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4589,8 +4628,8 @@
     {
       "id": "verb:agent:switch",
       "in": "agents",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4679,8 +4718,8 @@
     {
       "id": "verb:quest:switch",
       "in": "quests",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To Its Session",
+      "verb": "go",
       "glyph": "windows"
     },
     {
@@ -4693,8 +4732,8 @@
     {
       "id": "verb:run:switch",
       "in": "runs",
-      "name": "Switch",
-      "verb": "switch",
+      "name": "Go To",
+      "verb": "go",
       "glyph": "windows"
     },
     {

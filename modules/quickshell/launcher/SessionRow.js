@@ -29,7 +29,7 @@ function stands(presence) {
 // order every kind keeps (docs/design.md, the order of actions): what
 // leaves it as it is before what changes it, and what ends it last. Every
 // session on the mesh reads its steer inbox, so each can be talked to,
-// paused, resumed and stopped; one with no window offers no Switch.
+// paused, resumed and stopped; one with no window offers no Go To.
 function acts(standing, windowed) {
     const ids = windowed ? ["switch"] : [];
     ids.push("talk");

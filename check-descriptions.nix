@@ -352,13 +352,13 @@
     Google fails, and answers an invitation the shell asks it to, changing only Joel's own answer,
     cancels a meeting only when Joel holds it, telling every guest, moves one through the calendar
     Google lets him change it on, telling everyone asked, tells it the mail that wants Joel, newest
-    first, each asked for once, with who it went to and who was copied, its text, never an
-    attachment's, and each file it carries, by its name, kind and size, but what its HTML shows
-    inline, fetching one only when asked, never to open one that runs, into a folder only Joel reads
-    or into Downloads, never over a file there, marking it read or archiving it when asked, marking
-    it unread again, mail read here wanting Joel again at once, and the documents of each kind he
-    looked at lately, his last first, asking Drive again only every five minutes and keeping them
-    while Drive fails
+    first, each asked for once, with who it went to, who was copied and whom a reply to all copies,
+    never Joel, its text, never an attachment's, and each file it carries, by its name, kind and
+    size, but what its HTML shows inline, fetching one only when asked, never to open one that runs,
+    into a folder only Joel reads or into Downloads, never over a file there, marking it read or
+    archiving it when asked, marking it unread again, mail read here wanting Joel again at once, and
+    the documents of each kind he looked at lately, his last first, asking Drive again only every
+    five minutes and keeping them while Drive fails
   '';
   google-switches-to-the-new-one = ''
     a switch restarts google after reloading its units
@@ -504,9 +504,9 @@
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';
   mycelium-links-what-a-machine-names = ''
-    a workstation naming machines to link with runs mycelium's node in its realm, dialling each one,
-    as a user service on Linux signing in with the agents' key and an agent on a Mac; one naming
-    none only has the program, and one in no realm has no realm set
+    a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
+    service on Linux signing in with the agents' key and an agent on a Mac; one naming none runs
+    it dialling nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
@@ -1201,9 +1201,9 @@
     the shell reads the google program's whole state from its file, a line from before mail
     included, and nothing from half a line; says when mail came in words, and what its row and its
     details say, who was copied and the files it carries among them, each file by its kind and size;
-    writes a reply to who sent it, and a mail to everyone else a meeting names; writes the lines
-    that mark mail read or unread again or archive it or fetch a file it carries; and says how that
-    fetch stands
+    writes a reply to who sent it, and to all, copied to everyone else it went to, and a mail to
+    everyone else a meeting names; writes the lines that mark mail read or unread again or archive
+    it or fetch a file it carries; and says how that fetch stands
   '';
   the-shell-tells-the-next-meeting = ''
     the shell names as next the meeting about to start or going on, never one over, all day or said
@@ -1366,11 +1366,11 @@
     once he's sure, moves one Google lets him change to a time he types once he's sure, and lists
     its Meet call in Now while it's open, says Google signed out in Now with Return signing in again
     in pi, counts the mail that wants Joel in Now with Return listing it as Mail does, details and
-    all, opens mail by its subject, keeping one Mail window, replies to it, flips its Read switch
-    both ways, archives it, and opens a file it carries or saves a copy, lists the documents Joel
-    opened lately in Docs' Recent and opens one, the same row its title finds, joins a Meet call by
-    its code after Meet's New Meeting, sets the volume, loses no letter typed after its chord, and
-    shows the shortcuts
+    all, opens mail by its subject, keeping one Mail window, replies to it, and to all on mail that
+    went to others too, flips its Read switch both ways, archives it, and opens a file it carries or
+    saves a copy, lists the documents Joel opened lately in Docs' Recent and opens one, the same row
+    its title finds, joins a Meet call by its code after Meet's New Meeting, sets the volume, loses
+    no letter typed after its chord, and shows the shortcuts
   '';
   vm-desktop-opens-and-sets = ''
     the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the

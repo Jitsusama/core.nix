@@ -101,10 +101,6 @@ Singleton {
             ? said.replace("{title}", item.title).replace("{minutes}", item.minutes) : item.title;
     }
 
-    function capitalised(word) {
-        return word.charAt(0).toUpperCase() + word.slice(1);
-    }
-
     // Who an item is, across every file: its quest and its id.
     function identity(item) {
         return Waiting.identity(item);
@@ -222,7 +218,7 @@ Singleton {
 
             running: item !== null
             command: item === null ? [] : ["notify-send", "--app-name=waiting",
-                `--action=go=${root.capitalised(Words.verb("on:waiting"))}`,
+                `--action=go=${Words.name("verb:on:waiting:go")}`,
                 `--hint=string:x-waiting:${root.identity(item)}`,
                 item.title, root.minutes(item)]
             stdout: SplitParser {

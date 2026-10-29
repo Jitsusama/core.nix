@@ -7,9 +7,11 @@
 // record's terminal or its process's environment, and among a kitty's
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
-// ends, takes its session with it. A machine's node that isn't listening
-// as the shell starts, as when a switch restarts it, is watched once it
-// listens, however long after. It exits 0 once every case holds, and
+// ends, takes its session with it. What an earlier boot's end took away
+// is offered whole, reopened held in its own folder, until put off. A
+// machine's node that isn't listening as the shell starts, as when a
+// switch restarts it, is watched once it listens, however long after. It
+// exits 0 once every case holds, and
 // otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -100,9 +102,28 @@ ShellRoot {
         Sessions.goTo(unseen);
         expect("Go To asks its kitty", Niri.spawned.join(" ")
             === "kitten @ --to unix:@kitty-700 focus-window --match id:2", Niri.spawned.join(" "));
+        lastBoot();
 
         stage = "forgotten";
         removing.running = true;
+    }
+
+    // The sessions another boot's end took away are offered, but for one
+    // with no folder or an id pi's command line can't take; each reopens
+    // in its own window and folder, held; once put off they're gone, and
+    // stay gone however often the shell reads it again.
+    function lastBoot() {
+        expect("only the whole ones of another boot",
+            Sessions.lastBoot.map(one => one.id).join(" ") === "s-before",
+            JSON.stringify(Sessions.lastBoot));
+        Sessions.reopen(Sessions.lastBoot[0]);
+        // Held as every start is, by the realm's node where there is one.
+        const reopening = Niri.spawned.join(" ");
+        expect("reopened in its own window and folder",
+            reopening.startsWith("kitty -1 --instance-group pi-sessions --directory /tmp zsh -lic ")
+            && reopening.endsWith(" pi --session s-before"), reopening);
+        Sessions.putOffLastBoot();
+        expect("put off, none", Sessions.lastBoot.length === 0, JSON.stringify(Sessions.lastBoot));
     }
 
     // A record that goes takes its session.
@@ -165,7 +186,12 @@ ShellRoot {
 
     Process {
         id: ending
-        command: ["kill", Quickshell.env("OTHER_PID")]
+        // Until it has ended, not only been told to: a window gone before
+        // its process is would leave the session listed, as nothing else
+        // asks again, which a busy machine's checks hit.
+        command: ["sh", "-c", 'kill "$1"; while kill -0 "$1" 2>/dev/null'
+            + ' && [ "$(cut -d " " -f 3 "/proc/$1/stat")" != Z ]; do sleep 0.05; done',
+            "end", Quickshell.env("OTHER_PID")]
         onExited: {
             const windows = Object.assign({}, Niri.windows);
             delete windows[21];

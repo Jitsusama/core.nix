@@ -133,11 +133,11 @@ ShellRoot {
             }];
             const held = quests.everything()[1];
             expect("a loaded one names its session",
-                held.side === "subquest \u00b7 queued \u00b7 WCJQSG" && held.verb === "switch", held.side);
+                held.side === "subquest \u00b7 queued \u00b7 WCJQSG" && held.verb === "go", held.side);
             held.run();
             expect("going to its session", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":7}}',
                 JSON.stringify(Niri.acted));
-            expect("its step says so", held.verbs()[0].name === "Switch" && held.verbs()[0].verb === "switch",
+            expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go",
                 held.verbs()[0].name);
 
             root.waiting = "the quest made since";
