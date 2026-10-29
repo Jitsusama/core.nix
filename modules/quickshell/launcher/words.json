@@ -556,6 +556,11 @@
       "name": "Size"
     },
     {
+      "id": "machine:disk:holder:grew",
+      "in": "machine:disk:filling",
+      "name": "Grew"
+    },
+    {
       "id": "machine:disk:holder:clears",
       "in": "machine:disk:filling",
       "name": "Clearable"

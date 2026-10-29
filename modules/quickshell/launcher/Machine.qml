@@ -34,6 +34,7 @@ import Qt.labs.folderlistmodel
 import Quickshell.Io
 import QtQuick
 import "Heat.js" as Heat
+import "Interfaces.js" as Interfaces
 import "Machine.js" as Machine
 import "Numbers.js" as Numbers
 
@@ -806,6 +807,16 @@ Provider {
             name: named("disk:holder:size"),
             side: guard.shown(holder.bytes)
         }));
+        // How much it grew over the last day, as the guard measured it, once
+        // it has measured for an hour; what Joel looks at when something
+        // fills the disk faster than it should.
+        const grew = holder.grew ?? null;
+        if (grew && grew.bytes > 0)
+            rows.push(figure({
+                key: `machine:disk:holder:grew:${holder.path}`,
+                name: named("disk:holder:grew"),
+                side: `${guard.shown(grew.bytes)} in ${Interfaces.lasted(grew.over)}`
+            }));
         if ((holder.clears ?? 0) > 0)
             rows.push(figure({
                 key: `machine:disk:holder:clears:${holder.path}`,

@@ -1035,6 +1035,8 @@ QtObject {
             null);
         machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
         machine("how long, in days", Interfaces.lasted(200000), "2 d 7 h");
+        machine("how long, in whole hours", Interfaces.lasted(72000), "20 h");
+        machine("how long, in whole days", Interfaces.lasted(172800), "2 d");
         machine("how long, only just", Interfaces.lasted(20), "under a minute");
         machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
 

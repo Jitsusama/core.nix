@@ -921,6 +921,7 @@ def a_scratch_folder(desktop: Desktop) -> str:
                 "name": "~/scratch",
                 "bytes": 3 * 2**30,
                 "clears": 2**30,
+                "grew": {"bytes": 2 * 2**30, "over": 20 * 3600},
                 "owner": {"kind": "other", "name": "scratch"},
                 "clearable": True,
                 "why": None,
@@ -955,15 +956,18 @@ def test_a_folder_filling_the_disk_is_kept_from_the_guard_for_the_reason_joel_gi
         desktop.step_in("ret")
 
     try:
-        # Return steps into it: what can be done, then what it reads,
-        # then Copy the Path.
+        # Return steps into it: what can be done, then what it reads, how
+        # much it grew among them, then Copy the Path.
         into_it()
         desktop.launcher_until(
             lambda shown: (
                 shown["rows"]
-                == ["Open Its Folder", "Keep", "Clear", "Size", "Clearable", "Copy the Path"]
+                == ["Open Its Folder", "Keep", "Clear", "Size", "Grew", "Clearable",
+                    "Copy the Path"]
             )
-        )
+        )  # fmt: skip
+        reads = [thing["reads"] for thing in desktop.showing()["things"]]
+        assert "Grew \u00b7 2.0 GiB in 20 h" in reads, reads
         desktop.down_to("Keep")
         assert desktop.showing()["selected"]["side"] == "no"
         # Kept, it asks why, and the guard says so.
