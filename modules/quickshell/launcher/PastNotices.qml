@@ -64,6 +64,7 @@ Provider {
         const nowhere = !opened && !from.window && !from.entry;
         const verbs = () => provider.verbs(notice, said);
         const row = member({
+            thing: true,
             key: `notice:${notice.app}:${notice.summary}`,
             verb: nowhere ? "more" : opened || !from.window ? "open" : "go",
             name: notice.body === "" ? notice.summary

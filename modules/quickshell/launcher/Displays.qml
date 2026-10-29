@@ -375,6 +375,7 @@ Provider {
         const on = output.logical !== null;
         const focused = lit.length > 1 && output.name === focusedOutput;
         return member({
+            thing: true,
             key: `display:${output.name}`,
             verb: on ? "focus" : "turn on",
             name: named(output),

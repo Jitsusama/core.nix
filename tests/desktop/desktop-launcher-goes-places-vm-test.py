@@ -1042,6 +1042,36 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
     assert not shifts, "the foot's facts slid as the battery read shorter:\n" + "\n".join(shifts)
 
 
+def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
+    """The drawer is out for a thing, its title alone with nothing more, and in for an act."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Home opens on a place, which has no details (docs/design.md, the
+    # drawer: it goes by kind, not by what a row happens to hold).
+    desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("out") is False)
+    # A program found by a search is a thing, so the drawer is out, saying
+    # its title alone when it has nothing more to say.
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["title"] == (shown["selected"] or {}).get("name")
+        )
+    )
+    # Its acts are not things, so stepping in to them puts it away.
+    desktop.step_in("right")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") != "kitty"
+            and (shown.get("drawer") or {}).get("out") is False
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
 def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
     desktop: Desktop,
 ) -> None:

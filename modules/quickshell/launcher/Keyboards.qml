@@ -86,6 +86,7 @@ Provider {
         const found = Keyboards.keyboards(read(devices));
         const caps = Lights.caps;
         const rows = found.map(device => thingRow({
+            thing: true,
             key: `keyboards:${device.phys || device.name}`,
             name: named(device),
             side: Keyboards.joined(device),

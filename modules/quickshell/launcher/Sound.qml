@@ -203,6 +203,7 @@ Provider {
         // flipped, an act hidden in the row (docs/design.md, a switch is
         // one row).
         return entering(member({
+            thing: true,
             key: `sound:${node.name}`,
             name: named(node),
             glyph: worn(node),
@@ -610,6 +611,7 @@ Provider {
         const paused = streams.every(stream => stream.properties["pulse.corked"] === "true");
         const key = `sound:${node.name}:program:${program.name}`;
         return thingRow({
+            thing: true,
             key: key,
             name: program.name,
             side: paused ? `${streamLevel(streams)} \u00b7 ${said("paused")}` : streamLevel(streams),

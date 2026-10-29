@@ -121,6 +121,7 @@ Provider {
                 verbs: () => (inside ? inside() : []).concat(provider.talksOf(one.address))
             });
         const row = member({
+            thing: true,
             key: `orchestrator:${one.address}`,
             verb: "open",
             name: one.short || one.title || one.address,
@@ -225,6 +226,7 @@ Provider {
     function talksOf(asked) {
         const address = String(asked).toUpperCase();
         return (talks[address] ?? []).filter(talk => talk.words !== "").map(talk => thing({
+            thing: true,
             key: `talk:${address}:${talk.id}`,
             verb: "read",
             name: talk.words,

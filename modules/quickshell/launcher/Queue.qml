@@ -162,6 +162,7 @@ Provider {
         const session = sessionOf(job);
         const quest = job.quest ? questRow(job.quest) : null;
         const fields = {
+            thing: true,
             key: `job:${job.id}`,
             name: named(job),
             side: side(job),

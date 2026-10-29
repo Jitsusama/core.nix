@@ -153,6 +153,7 @@ Provider {
         const alike = (running[entry.id] ?? [])
             .filter(other => titled(other, entry) === titled(window, entry)).length;
         return thing({
+            thing: true,
             key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
             is: `window:${window.id}`,
             verb: "go",
@@ -827,6 +828,7 @@ Provider {
             const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
             const binds = provider.opening(provider.command(entry));
             const row = thing({
+                thing: true,
                 key: `program:${entry.id}`,
                 is: `program:${entry.id}`,
                 // A program says more than any one of its windows.

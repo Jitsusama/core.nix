@@ -843,6 +843,7 @@ Provider {
         const each = holder => {
             const disk = guard.holding(holder.path) ?? guard.worst;
             return thingRow({
+                thing: true,
                 key: `machine:disk:holder:${holder.path}`,
                 name: called(holder),
                 side: guard.shown(holder.bytes),
