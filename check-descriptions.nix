@@ -12,6 +12,10 @@
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1 doesn't build
   '';
+  a-firmware-update-frees-pcr-0-only-for-fwupds-entry = ''
+    the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
+    firmware updater, and leaves the policy alone for any other BootNext or none
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -1507,7 +1511,8 @@
     back
   '';
   vm-secure-boot-installs = ''
-    the whole install works, and the disk opens only for it
+    the whole install works, and the disk opens only for it; shut down with fwupd's firmware
+    update waiting, it frees PCR 0, and the boot after opens with the PIN and locks PCR 0 again
   '';
   vm-speakers-are-tuned = ''
     the XPS 14's speakers hear the tuning, headphones don't
