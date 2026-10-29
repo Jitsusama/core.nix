@@ -3051,17 +3051,17 @@ Scope {
     // Whether a row is a thing with details, by its kind rather than by
     // what it happens to hold, so the drawer stays out between two things
     // and a thing with nothing more shows its title alone (VKCF3Z,
-    // 2026-10-29). A thing's maker says so (`thing`, as each provider's
-    // maker of a program, a session, a device and the rest sets it, or
-    // the drawer it composes for the row, as a mail's attachment has); a
-    // component's row (a mail, a meeting, a file, a person, a document)
+    // 2026-10-29). A thing's maker says so with `thing`, as each
+    // provider's maker of a program, a session, a device and the rest
+    // does; a drawer composed for a row never makes it one, or the rule
+    // would go by content again. A component's row (a mail, a meeting, a file, a person, a document)
     // is one by its kind, made by it or keyed as one; a value is one only
     // while it has a history, its graph a spark. An act, a switch, a
     // choice, a place and a plain value have none.
     function detailed(row) {
         if (!row || row.opens || row.category)
             return false;
-        if (row.thing === true || !!row.drawer || !!row.component)
+        if (row.thing === true || !!row.component)
             return true;
         if (row.graph?.shape === "spark")
             return true;
