@@ -36,7 +36,14 @@ Provider {
     // Those that truly want Joel first, then those working, then those
     // listening, each in the order Sessions keeps: this machine's, the one
     // used last first, then the others, the one that changed last first.
+    // Made only while the launcher is open or its catalogue is walked from
+    // outside, since every session's row reads the machine queue and the
+    // session's presence, which change every few seconds; Home's count
+    // reads Sessions itself.
     readonly property var all: {
+        const launcher = provider.launcher;
+        if (!launcher || !(launcher.open || launcher.cataloguing))
+            return [];
         const rank = session => Sessions.wanting.includes(session) ? 0
             : SessionRow.stands(session.presence) === "busy" ? 1 : 2;
         return Sessions.running.map((session, at) => ({ session: session, at: at }))
