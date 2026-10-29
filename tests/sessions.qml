@@ -9,7 +9,9 @@ pragma ComponentBehavior: Bound
 // several windows by kitty's own list; Go To focuses that window, or asks
 // kitty when niri's isn't known; a record that goes, or a process that
 // ends, takes its session with it. What an earlier boot's end took away
-// is offered whole, reopened held in its own folder, until put off. A
+// is offered whole, reopened held in its own folder, until put off; a
+// closed session resumes in its own folder, and one whose folder is gone
+// opens nowhere but its quest's start folder, never the home folder. A
 // machine's node that isn't listening as the shell starts, as when a
 // switch restarts it, is watched once it listens, however long after.
 // What it tells of sessions on the realm's other machines is held too:
@@ -60,6 +62,8 @@ ShellRoot {
         try {
             if (stage === "listed")
                 listed();
+            else if (stage === "reopening")
+                reopening();
             else if (stage === "forgotten")
                 forgotten();
             else if (stage === "ended")
@@ -108,27 +112,64 @@ ShellRoot {
         expect("Go To asks its kitty", Niri.spawned.join(" ")
             === "kitten @ --to unix:@kitty-700 focus-window --match id:2", Niri.spawned.join(" "));
         lastBoot();
+        stage = "reopening";
+    }
 
-        stage = "forgotten";
-        removing.running = true;
+    // Why each that didn't open as asked didn't, as its caller is told:
+    // the id, the folder gone and where it started afresh instead.
+    property var unopened: []
+    function told(id) {
+        return (cwd, startedIn) => {
+            unopened = unopened.concat([`${id} ${cwd} ${startedIn}`]);
+            Qt.callLater(root.check);
+        };
     }
 
     // The sessions another boot's end took away are offered, but for one
     // with no folder or an id pi's command line can't take; each reopens
-    // in its own window and folder, held; once put off they're gone, and
-    // stay gone however often the shell reads it again.
+    // in its own window and folder, held, and one whose folder is gone
+    // since opens nowhere, never in the home folder. A closed session
+    // resumes in the folder its own record says, which needn't be the
+    // home folder; one whose folder is gone starts its quest afresh in
+    // the quest's start folder, or nowhere when it has none.
     function lastBoot() {
         expect("only the whole ones of another boot",
-            Sessions.lastBoot.map(one => one.id).join(" ") === "s-before",
+            Sessions.lastBoot.map(one => one.id).join(" ") === "s-before s-given-back",
             JSON.stringify(Sessions.lastBoot));
-        Sessions.reopen(Sessions.lastBoot[0]);
+        Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
+        Sessions.resume("s-kept", "QEST-KEPT", "/tmp", told("s-kept"));
+        Sessions.resume("s-gone", "QEST-GONE", root.state, told("s-gone"));
+        Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
+    }
+
+    readonly property string kitty: "kitty -1 --instance-group pi-sessions --directory"
+    function reopening() {
+        const kitties = Niri.spawns.filter(command => command.startsWith("kitty "));
+        if (kitties.length < 3 || unopened.length < 3)
+            return;
         // Held as every start is, by the realm's node where there is one.
-        const reopening = Niri.spawned.join(" ");
+        const opened = command => kitties.some(one => one.startsWith(command[0])
+            && one.endsWith(command[1]));
         expect("reopened in its own window and folder",
-            reopening.startsWith("kitty -1 --instance-group pi-sessions --directory /tmp zsh -lic ")
-            && reopening.endsWith(" pi --session s-before"), reopening);
+            opened([`${kitty} /tmp zsh -lic `, " pi --session s-before"]), kitties.join("\n"));
+        expect("resumed in the folder its record says",
+            opened([`${kitty} ${state}/trees/karst zsh -lic `, " pi --session s-kept"]),
+            kitties.join("\n"));
+        expect("its folder gone, its quest started afresh in the quest's",
+            opened([`${kitty} ${state} env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-GONE zsh -lic `, " pi"]),
+            kitties.join("\n"));
+        expect("three opened, none in the home folder nor a gone one", kitties.length === 3
+            && !kitties.some(one => one.includes(`--directory ${Quickshell.env("HOME")} `)
+                || one.includes("given-back") || one.includes("QEST-NONE")),
+            kitties.join("\n"));
+        expect("each not opened as asked told why", JSON.stringify(unopened.slice().sort())
+            === JSON.stringify(["s-given-back /given-back ",
+                `s-gone ${state}/trees/given-back ${state}`, `s-none ${state}/trees/given-back `]),
+            JSON.stringify(unopened));
         Sessions.putOffLastBoot();
         expect("put off, none", Sessions.lastBoot.length === 0, JSON.stringify(Sessions.lastBoot));
+        stage = "forgotten";
+        removing.running = true;
     }
 
     // A record that goes takes its session.

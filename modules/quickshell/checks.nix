@@ -1617,8 +1617,12 @@ onLinux {
         property var current: null
         property var acted: null
         property var spawned: []
+        property var spawns: []
         function act(request) { acted = request; }
-        function spawn(command) { spawned = command; }
+        function spawn(command) {
+          spawned = command;
+          spawns = spawns.concat([command.join(" ")]);
+        }
       '';
       options = singleton "Options.qml" ''
         readonly property var sounds: ({ wants: "", player: "" })
@@ -1636,7 +1640,7 @@ onLinux {
       report = singleton "Report.qml" "function say(text) {}";
     in
     pkgs.runCommandLocal "a-session-is-known-by-its-own-record" { } ''
-      export XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
+      export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../../tests/sessions-state.sh} $XDG_STATE_HOME
       export PATH=$XDG_STATE_HOME/bin:$PATH OTHER_PID=$(cat $XDG_STATE_HOME/other.pid)
       cp ${./Sessions.qml} Sessions.qml
@@ -1648,7 +1652,7 @@ onLinux {
       cp ${options} Options.qml
       cp ${quiet} Quiet.qml
       cp ${notices} Notices.qml
-      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

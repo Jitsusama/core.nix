@@ -54,15 +54,27 @@ record reused REUSE5 "$live" "$boot" "$(($(ticks "$live") + 1))" ''
 echo "$live" >"$state/live.pid"
 
 # What the last boot's end took away, as the harness keeps it: one whole,
-# one with no folder and one whose id a shell would read.
+# one whose folder is gone since, one with no folder and one whose id a
+# shell would read.
 cat >"$state/pi/restore.json" <<'EOF'
 {"v":1,"boot":"an-earlier-boot","sessions":[
   {"id":"s-before","address":"BEFORE","title":"Harbour","cwd":"/tmp","lostAt":1},
+  {"id":"s-given-back","address":"GIVENB","title":"Given Back","cwd":"/given-back","lostAt":1},
   {"id":"s-nowhere","address":"NOWHRE","title":"Nowhere","lostAt":1},
   {"id":"s; rm -rf ~","address":"SHELLY","title":"Shelly","cwd":"/tmp","lostAt":1}
 ]}
 EOF
 echo "$other" >"$state/other.pid"
+
+# Closed sessions' own records, as pi keeps them, each opening with the
+# folder it ran in: one in a tree still there, which isn't the home
+# folder, and one in a tree given back since.
+sessions=$HOME/.pi/agent/sessions/--trees--
+mkdir -p "$sessions" "$state/trees/karst"
+printf '{"type":"session","id":"s-kept","cwd":"%s"}\n' "$state/trees/karst" \
+  >"$sessions/2026-10-23T17-53-44-653Z_s-kept.jsonl"
+printf '{"type":"session","id":"s-gone","cwd":"%s"}\n' "$state/trees/given-back" \
+  >"$sessions/2026-09-29T17-54-04-184Z_s-gone.jsonl"
 
 # kitty 600 has two windows, the session's the second.
 cat >"$state/bin/kitten" <<EOF
