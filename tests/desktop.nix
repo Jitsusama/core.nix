@@ -473,6 +473,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.
         jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
+        # The VM's disk is the host's, which waits for minutes on end while
+        # other builds share it, so lag-watch's real windows would put the
+        # Lag mark in the margin of every test that reads it. Waiting is
+        # marked only after an hour here, longer than any test runs, and
+        # the test of the mark writes a wait that long itself.
+        jitsusama.quickshell.overview.pieces.lag.lasts = 3600;
         # Something on air lingers in the margin once it goes; a moment is
         # enough to see it, and keeps the test's waits for it to go short.
         jitsusama.quickshell.margin.linger = 2;
