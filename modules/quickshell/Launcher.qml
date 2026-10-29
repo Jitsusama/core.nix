@@ -2432,11 +2432,6 @@ Scope {
                         row.offers && row.verbs ? row.verbs() : []), []), letters));
             found = found.concat(stillActed(found));
             answer = null;
-            // Whether the drawer is out is the level's, read from all of
-            // it as it's stepped into, so narrowing it by typing never
-            // slides the drawer in or out.
-            if (words.length === 0)
-                levelHasDrawer = found.some(row => hasDrawer(row));
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
             if (steadying) {
@@ -2902,12 +2897,14 @@ Scope {
 
     // The drawer beside the card (Drawer.qml): what the selected row shows
     // beyond its line, its own or one made of the picture and the whole
-    // words it has. It's out only inside a place, never for a search typed
-    // at home, where three letters and Return is the habit and a drawer at
-    // every query would be noise; and out for the whole level while any of
-    // its rows has one, so it slides only as Joel steps in or out, never as
-    // he moves. A row of such a level with none of its own shows its name
-    // and note there.
+    // words it has. It's out exactly while the selected row is a thing with
+    // details, the same at home, in a search and in every place; an act, a
+    // switch, a choice or a place has none (VKCF3Z, 2026-10-29, after
+    // Joel's "shows when it's not needed, and only shows in certain
+    // places"). Between two rows that both have one it stays, and what it
+    // shows changes in place; onto a row without one, or from one, it fades
+    // only once the selection has rested, so holding an arrow never
+    // flickers it.
     function drawerOf(row) {
         if (!row)
             return null;
@@ -2919,18 +2916,33 @@ Scope {
         return { title: row.name, body: row.reads ?? "", picture: row.picture ?? "",
             across: row.across ?? 0, down: row.down ?? 0 };
     }
-    function hasDrawer(row) {
-        return !!row.drawer || (row.picture ?? "") !== "" || (row.reads ?? "") !== "";
+    // What the selected row has for the drawer, or null: typed to nothing,
+    // nothing is selected, and it has none.
+    readonly property var drawerWanted: open && selected ? drawerOf(selected) : null
+    property bool drawerOut: false
+    property var drawerShows: null
+    onDrawerWantedChanged: {
+        if (!open) {
+            drawerResting.stop();
+            drawerOut = false;
+        } else if (drawerOut && drawerWanted !== null) {
+            drawerResting.stop();
+            drawerShows = drawerWanted;
+        } else {
+            drawerResting.restart();
+        }
     }
-    property bool levelHasDrawer: false
-    // Typed to nothing, it goes in rather than stay out empty or keep the
-    // last row's details.
-    readonly property bool drawerOut: open && held.length > 0 && levelHasDrawer && !!selected
-    // A row with nothing more to show, in a level where the drawer is out,
-    // shows its own name alone (VKCF3Z): never the last row's details, never
-    // an empty slide-in, and never its note, which the foot already says.
-    readonly property var drawerShows: !drawerOut || !selected ? null
-        : drawerOf(selected) ?? { title: selected.name }
+    function drawerSettled() {
+        drawerOut = drawerWanted !== null;
+        if (drawerOut)
+            drawerShows = drawerWanted;
+    }
+    // How long the selection rests before the drawer comes or goes.
+    Timer {
+        id: drawerResting
+        interval: Theme.motion.medium
+        onTriggered: root.drawerSettled()
+    }
 
     // The drawer's room beside the card, and where the card sits (VKCF3Z's
     // ruling, after Joel's "never passes the bound of the screen and
@@ -3087,6 +3099,10 @@ Scope {
             often = picks.counts();
             spotsLater.stop();
             restart("");
+            // Nothing to rest from as it opens, so the drawer is out at once
+            // when the first row has details.
+            drawerResting.stop();
+            drawerSettled();
             // Always the same height, eight rows and home's gap, kept until
             // it closes, so the card is the same shape however much home
             // holds.

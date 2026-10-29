@@ -1721,9 +1721,9 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         timeout=dt.timedelta(seconds=30),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # In Now, where the drawer is out, a row with nothing more to show
-    # shows its name alone, never another row's details nor its own note,
-    # which the foot says.
+    # In Now, the drawer is out for the meeting, which has details, and
+    # goes in once the selection rests on a row with none, as Time is: it's
+    # the selected row's, never the place's (docs/design.md, the drawer).
     desktop.answer("now")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
@@ -1738,10 +1738,8 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         )
     desktop.launcher_until(
         lambda shown: (
-            (shown.get("drawer") or {}).get("title") == "Time"
-            and shown["drawer"]["out"] is True
-            and shown["drawer"]["facts"] == []
-            and shown["drawer"]["body"] == ""
+            (shown["selected"] or {}).get("name") == "Time"
+            and (shown.get("drawer") or {}).get("out") is False
         )
     )
     machine.send_key("esc")
@@ -1775,10 +1773,15 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
-    # Found by a search typed at home, the drawer stays in: it slides only
-    # as Joel steps in or out (docs/design.md, "The drawer is the card
-    # continued").
-    assert (desktop.showing().get("drawer") or {}).get("out") is False, desktop.showing()
+    # Found by a search typed at home, it's out too, since the drawer is
+    # the selected row's wherever it's found (docs/design.md, "The drawer
+    # is the card continued").
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["title"] == "Standup"
+        )
+    )
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")
