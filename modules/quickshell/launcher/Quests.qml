@@ -119,11 +119,12 @@ Provider {
             verbs: () => provider.verbs(quest)
         });
         // Its id and kind, made ready to match when first searched, as its
-        // name is.
+        // name is, and kept while they read the same (Fuzzy.kept), since
+        // every quest's row is made again whenever one quest is written.
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.prepare(`${quest.id} ${quest.kind}`))
+            get: () => also ?? (also = Fuzzy.kept(`${quest.id} ${quest.kind}`))
         });
         return row;
     }

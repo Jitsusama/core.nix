@@ -199,6 +199,41 @@ QtObject {
                     + quoted(found.slice(0, 5)));
         }
 
+        // Passing over a thing whose words don't start as a typed word
+        // does loses nothing: every query and every prefix of one, each a
+        // letter of the alphabet alone too, finds the same things with the
+        // word starts tested first as it does with them not (a match that
+        // wants its positions tests neither mask), and a text's starts say
+        // the same as its prepared self's.
+        const alone = Array.from("abcdefghijklmnopqrstuvwxyz0123456789");
+        const prefixes = Object.keys(firsts).concat(nothing, Object.keys(atMost))
+            .reduce((all, q) => all.concat(Array.from(q, (_, i) => q.slice(0, i + 1))), alone);
+        let unstarted = 0;
+        for (const query of prefixes) {
+            const words = Fuzzy.words(query);
+            for (const item of things) {
+                const quick = Fuzzy.match(item, words, false).score >= 0;
+                if (quick !== Fuzzy.match(item, words, true).score >= 0)
+                    failures.push(`"${query}" ${quick ? "found" : "missed"} "${item.text}"`
+                        + " only when tested by its word starts");
+                if (!Fuzzy.begins(item.starts, words))
+                    unstarted++;
+            }
+        }
+        for (const item of things)
+            if (Fuzzy.starts(item.text) !== item.starts)
+                failures.push(`"${item.text}" starts its words differently said alone`);
+        if (unstarted === 0)
+            failures.push("no thing was passed over by its word starts");
+        // A text kept ready is made once while it reads the same, and
+        // matches as one made afresh does.
+        const once = Fuzzy.kept("Open a terminal");
+        if (Fuzzy.kept("Open a terminal") !== once || Fuzzy.kept("Open a window") === once)
+            failures.push("a text kept ready was made again, or kept for another");
+        if (Fuzzy.match(once, Fuzzy.words("open term"), false).score
+            !== Fuzzy.match(Fuzzy.prepare("Open a terminal"), Fuzzy.words("open term"), false).score)
+            failures.push("a text kept ready matched otherwise than one made afresh");
+
         // How long a query takes, against the least any search could: one
         // look for its first word in each thing. A machine busy with other
         // work slows both alike, so the ratio holds where a time in
@@ -255,7 +290,7 @@ QtObject {
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures.concat(slow))
             console.warn(failure);
-        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 2;
+        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 5;
         console.warn(failures.length > 0 ? `${failures.length} of ${asked} went wrong`
             : slow.length > 0 ? `${slow.length} of ${asked} too slow in this process`
             : `all ${asked} held`);

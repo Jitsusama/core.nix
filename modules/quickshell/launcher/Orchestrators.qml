@@ -303,7 +303,7 @@ Provider {
         const found = [];
         for (const row of all) {
             const byName = Fuzzy.match(row.prepared, words, false);
-            const byTitle = row.note !== "" ? Fuzzy.match(Fuzzy.prepare(row.note), words, false)
+            const byTitle = row.note !== "" ? Fuzzy.match(Fuzzy.kept(row.note), words, false)
                 : byName;
             const best = byName.score >= byTitle.score ? byName : byTitle;
             if (best.score >= 0)

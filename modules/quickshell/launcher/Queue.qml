@@ -266,7 +266,7 @@ Provider {
         const found = [];
         for (const row of all) {
             const byName = Fuzzy.match(row.prepared, words, false);
-            const byNote = Fuzzy.match(Fuzzy.prepare(row.note), words, false);
+            const byNote = Fuzzy.match(Fuzzy.kept(row.note), words, false);
             const best = byName.score >= byNote.score ? byName : byNote;
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });

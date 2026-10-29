@@ -116,7 +116,7 @@ Provider {
         let also = null;
         Object.defineProperty(row, "also", {
             enumerable: true,
-            get: () => also ?? (also = Fuzzy.prepare(person.email))
+            get: () => also ?? (also = Fuzzy.kept(person.email))
         });
         return row;
     }
@@ -196,7 +196,9 @@ Provider {
     // is found there on its own (Calls.qml).
     // Everyone is searched, thousands of them, so each name and email's
     // letters are tested first, which passes most over without a call,
-    // and only those left are made ready to match, once. A letter more
+    // and only those with a word starting as each typed word does, so
+    // "s" passes over the many who only hold an s; only those left are
+    // made ready to match, once. A letter more
     // searches only those the letters before it found, since each word
     // matches where a word starts and so does all it starts with: walking
     // everyone each key was the launcher's dearest list, 8 ms a key and
@@ -217,8 +219,10 @@ Provider {
         for (const row of narrowing ? lately.found : everyone) {
             const person = row.person;
             const byName = (person.named & need) === need
+                && Fuzzy.begins(person.nameStarts, words)
                 ? Fuzzy.match(row.prepared, words, false) : missed;
             const byEmail = (person.mailed & need) === need
+                && Fuzzy.begins(person.mailStarts, words)
                 ? Fuzzy.match(row.also, words, false) : missed;
             const best = byName.score >= byEmail.score ? byName : byEmail;
             if (best.score < 0)
@@ -268,7 +272,9 @@ Provider {
                     name: name,
                     email: email,
                     named: Fuzzy.letters([name.toLowerCase()]),
-                    mailed: Fuzzy.letters([email.toLowerCase()])
+                    mailed: Fuzzy.letters([email.toLowerCase()]),
+                    nameStarts: Fuzzy.starts(name),
+                    mailStarts: Fuzzy.starts(email)
                 };
                 byId[id] = person;
                 rows.push(made(person, null));
