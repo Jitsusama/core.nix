@@ -175,6 +175,7 @@
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
+        nix-offload = ./modules/nix-offload/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         onepassword = ./modules/onepassword/home.nix;
         open-with = ./modules/open-with/home.nix;
@@ -286,6 +287,7 @@
         niri = ./modules/niri/nixos.nix;
         niri-off-cpu = ./modules/niri-off-cpu/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;
+        nix-offload = ./modules/nix-offload/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
         open-with = ./modules/open-with/nixos.nix;

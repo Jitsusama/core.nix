@@ -20,6 +20,7 @@
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
+import "Reading.js" as Reading
 
 Rectangle {
     id: row
@@ -109,9 +110,14 @@ Rectangle {
         // How far past its room the name runs, when it does.
         readonly property real over: Math.max(0, nameText.implicitWidth - width)
         readonly property bool scrolls: row.selected && over > 0
-        // A reading pace, in characters a second, and the rests at each end.
-        readonly property real pace: 8 * figureFace.advanceWidth
-        readonly property int rest: Math.round(1000 * Theme.motion.slowdown)
+        // A reading pace of twelve characters a second, held between soft
+        // ends (Reading.js). A short rest to see how it starts, and a
+        // longer one at its end to read that (Joel, 2026-10-29: the slide
+        // stuttered, was too slow, and started and stopped abruptly).
+        readonly property real pace: 12 * figureFace.advanceWidth
+        readonly property var slide: Reading.slide(over, pace)
+        readonly property int restFirst: Math.round(500 * Theme.motion.slowdown)
+        readonly property int restLast: Math.round(1000 * Theme.motion.slowdown)
 
         Text {
             id: nameText
@@ -125,36 +131,62 @@ Rectangle {
             font.weight: row.selected ? Font.Medium : Font.Normal
         }
 
-        SequentialAnimation {
-            id: reading
-            running: nameBox.scrolls
-            loops: Animation.Infinite
-            onRunningChanged: {
-                if (!running)
-                    nameText.x = 0;
-            }
+        // Animators, which move the name on the render thread, so the
+        // slide keeps every frame while the shell is busy making rows
+        // again, as it is each second in Machine (Joel, 2026-10-29:
+        // "scrolling long lines feels a bit janky"). An animator says the
+        // name's x back only when it stops, so each move runs on its own,
+        // the rests between them timed here, rather than looping in one
+        // group that would never say where the name rests.
+        onScrollsChanged: nameBox.scrolls ? nameBox.read() : nameBox.unread()
+        Component.onCompleted: {
+            if (nameBox.scrolls)
+                nameBox.read();
+        }
+        // Which move the rest ends in: out to the name's end, or back.
+        property bool outward: true
+        function read() {
+            nameBox.outward = true;
+            resting.interval = nameBox.restFirst;
+            resting.restart();
+        }
+        function unread() {
+            resting.stop();
+            slideOut.stop();
+            slideBack.stop();
+            nameText.x = 0;
+        }
 
-            PauseAnimation {
-                duration: nameBox.rest
+        Timer {
+            id: resting
+            onTriggered: (nameBox.outward ? slideOut : slideBack).start()
+        }
+        XAnimator {
+            id: slideOut
+            target: nameText
+            from: 0
+            to: -nameBox.over
+            duration: Math.round(1000 * Theme.motion.slowdown * nameBox.slide.seconds)
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: nameBox.slide.curve
+            onFinished: {
+                if (!nameBox.scrolls)
+                    return;
+                nameBox.outward = false;
+                resting.interval = nameBox.restLast;
+                resting.restart();
             }
-            NumberAnimation {
-                target: nameText
-                property: "x"
-                from: 0
-                to: -nameBox.over
-                duration: Math.round(1000 * Theme.motion.slowdown * nameBox.over
-                    / Math.max(1, nameBox.pace))
-            }
-            PauseAnimation {
-                duration: nameBox.rest
-            }
-            NumberAnimation {
-                target: nameText
-                property: "x"
-                to: 0
-                duration: Theme.motion.medium
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.motion.curve
+        }
+        XAnimator {
+            id: slideBack
+            target: nameText
+            to: 0
+            duration: Theme.motion.medium
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: Theme.motion.curve
+            onFinished: {
+                if (nameBox.scrolls)
+                    nameBox.read();
             }
         }
     }

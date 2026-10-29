@@ -16,6 +16,10 @@
     the shutdown step takes PCR 0 out of the TPM's policy only when BootNext names fwupd's
     firmware updater, and leaves the policy alone for any other BootNext or none
   '';
+  a-long-name-reads-at-one-pace = ''
+    a selected name too long for its row slides at one reading pace, gathering speed from rest and
+    settling back to it in at most a fifth of a second at each end, never stepping back
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -510,6 +514,11 @@
     commits with that key; one naming none runs it dialling nothing, and one in no realm has
     neither a realm nor a node
   '';
+  mycelium-keeps-each-realm-apart = ''
+    a machine joining a further realm runs a node of its own for it, with its own state, mesh and
+    steer folders under the harness's per-realm roots and its own link key, apart from the home
+    realm's agents key; its pis are told which realm is home
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
     outlives, whether work costs money, its taints) has it written where mycelium reads it, in
@@ -587,6 +596,14 @@
   '';
   nix-collects-before-the-disk-fills = ''
     Nix collects garbage during a build that fills the disk
+  '';
+  nix-offload-decides-when = ''
+    a builder is asked for only for builds and VM checks held three minutes for room a builder
+    gives, its host is found from its line and its use from ssh, and a day's journal sums to its
+    hours and cost
+  '';
+  nix-offload-passes-clippy = ''
+    clippy finds nothing in nix-offload or its tests
   '';
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
@@ -1639,6 +1656,10 @@
   '';
   work-yields-to-what-the-person-works-in = ''
     jobs is idle beside app.slice, pi finds it, and a window's scope is not idle
+  '';
+  wrappers-run-once-a-boot = ''
+    a machine with measured boot keeps the SUID wrappers' unit active once it's run, so measured
+    boot's wait for sysinit.target can't run it past its start limit
   '';
   writes-go-out-sooner = ''
     a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after

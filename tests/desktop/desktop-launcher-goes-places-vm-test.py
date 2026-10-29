@@ -548,10 +548,20 @@ def test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row(
     """Agents resumes a closed orchestrator where it left off, from one row and a choice."""
     machine = desktop.machine
     opened = "$XDG_RUNTIME_DIR/pi-opened"
-    # Lighthouse orchestrates a quest, and no session runs it; its quest's
-    # last session ran in ~/lighthouse, as pi's file for it says.
+    # Lighthouse orchestrates a quest, and no session runs it; the quest
+    # index names the session to resume, which ran in ~/lighthouse, as
+    # pi's file for it says, never the index's sessions, which can hold
+    # one long dead.
     lighthouse_listed(desktop)
-    index = {"quests": [{"id": "QEST-20261022-TESTQA", "sessions": ["01a1-lighthouse"]}]}
+    index = {
+        "quests": [
+            {
+                "id": "QEST-20261022-TESTQA",
+                "sessions": ["01a0-long-dead"],
+                "resume": {"id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"},
+            }
+        ]
+    }
     record = {"type": "session", "id": "01a1-lighthouse", "cwd": "/home/jitsusama/lighthouse"}
     sessions = "~/.pi/agent/sessions/--home-jitsusama-lighthouse--"
     kept = f"{sessions}/2026-10-28T20-00-00-000Z_01a1-lighthouse.jsonl"
@@ -3851,6 +3861,34 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
             timeout=dt.timedelta(seconds=10),
         )
         desktop.launcher_until(lambda shown: not shown["open"])
+    finally:
+        desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
+def test_a_wants_notice_goes_to_the_session_through_the_shell(desktop: Desktop) -> None:
+    """A want's notice, taken by Super+N, goes to the session as the launcher's Go To does.
+
+    Its Return asks the shell, which finds the session by its address, so one on another
+    machine is joined from here the same way.
+    """
+    machine = desktop.machine
+    desktop.pi_session()
+    desktop.as_account(
+        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
+    )
+    since = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    question = {"kind": "question", "since": since, "said": "Which way now?"}
+    try:
+        with desktop.told("shows card A quest of its own & whole asks you"):
+            desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+        with desktop.told("keys notices"):
+            machine.send_key("meta_l-n")
+        with desktop.told("lets notices go"):
+            machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
+            timeout=dt.timedelta(seconds=10),
+        )
     finally:
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
 

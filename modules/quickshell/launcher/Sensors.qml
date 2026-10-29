@@ -1,7 +1,10 @@
 // The kernel's hwmon chips and the readings each has, for the launcher's
 // Heat and Machine, so the processor's and the disk's temperatures are read
-// one way and said the same in both. The folders are listed once by Qt as
-// the shell starts, and a reading is read only when asked, so only sensors
+// one way and said the same in both. The chips are listed once by Qt as
+// the shell starts, and the readings each has by one listing of them all,
+// made again only when the chips change, never a reader per chip, since
+// each would be a thread and a watcher of its own over folders that don't
+// change. A reading is read only when asked, so only sensors
 // that are there are read: some chips answer every read through the
 // firmware, which is slow, and it's the shell's own thread that waits.
 // What a chip says of itself that never changes, its name and each
@@ -62,10 +65,11 @@ Scope {
     function chips() {
         const found = [];
         for (let i = 0; i < folders.count; i++) {
-            const listed = files.objectAt(i);
+            const folder = folders.get(i, "fileName");
+            const listed = listing[folder];
             if (!listed)
                 continue;
-            const dir = `/sys/class/hwmon/${folders.get(i, "fileName")}`;
+            const dir = `/sys/class/hwmon/${folder}`;
             const name = fixed(`${dir}/name`);
             found.push({ dir: dir, name: name, part: part(name), listed: listed });
         }
@@ -74,10 +78,7 @@ Scope {
 
     // Whether a chip's folder lists a file.
     function lists(chip, file) {
-        for (let i = 0; i < chip.listed.count; i++)
-            if (chip.listed.get(i, "fileName") === file)
-                return true;
-        return false;
+        return chip.listed.includes(file);
     }
 
     // Each reading of a kind ("temp" or "fan") a chip has, of those its
@@ -86,9 +87,7 @@ Scope {
     // Given `wanted`, only a sensor whose label it wants is read.
     function readings(chip, kind, wanted) {
         const found = [];
-        const listed = chip.listed;
-        for (let i = 0; i < listed.count; i++) {
-            const file = listed.get(i, "fileName");
+        for (const file of chip.listed) {
             const n = new RegExp(`^${kind}(\\d+)_input$`).exec(file);
             if (!n)
                 continue;
@@ -231,19 +230,54 @@ Scope {
         sortField: FolderListModel.Name
     }
 
-    // Each chip's readings, listed once by Qt.
-    Instantiator {
-        id: files
-        model: folders
-        onObjectAdded: sensors.kept = {}
-        onObjectRemoved: sensors.kept = {}
+    // Each chip's readings, by its folder's name, as one listing of every
+    // chip says them; made again whenever the chips listed change, which
+    // also forgets what was read once.
+    property var listing: ({})
+    // Chips that change while they're being listed are listed again after.
+    property bool relist: false
+    function listChips() {
+        if (folders.status !== FolderListModel.Ready)
+            return;
+        if (chipFiles.running)
+            relist = true;
+        else
+            chipFiles.running = true;
+    }
+    Connections {
+        target: folders
 
-        FolderListModel {
-            required property string fileName
-            folder: `file:///sys/class/hwmon/${fileName}`
-            showDirs: false
-            showDotAndDotDot: false
-            nameFilters: ["temp*_input", "fan*_input", "fan*_target", "pwm*"]
+        function onCountChanged() {
+            Qt.callLater(sensors.listChips);
+        }
+
+        function onStatusChanged() {
+            Qt.callLater(sensors.listChips);
+        }
+    }
+    Process {
+        id: chipFiles
+        command: ["sh", "-c", 'cd /sys/class/hwmon 2>/dev/null || exit 0; for f in */temp*_input'
+            + ' */fan*_input */fan*_target */pwm*; do [ -e "$f" ] && echo "$f"; done; true']
+        onExited: {
+            if (!sensors.relist)
+                return;
+            sensors.relist = false;
+            Qt.callLater(sensors.listChips);
+        }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const next = {};
+                for (const line of text.split("\n")) {
+                    const at = line.indexOf("/");
+                    if (at <= 0)
+                        continue;
+                    const chip = line.slice(0, at);
+                    next[chip] = (next[chip] ?? []).concat([line.slice(at + 1)]);
+                }
+                sensors.kept = {};
+                sensors.listing = next;
+            }
         }
     }
 
