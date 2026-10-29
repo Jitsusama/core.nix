@@ -260,6 +260,11 @@ let
     # together, and only a running machine has them all.
     vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
+    # Only Chrome, started, says whether it installed what the preferences
+    # file names.
+    vm-chrome-installs-the-open-tabs-extension = import ./tests/chrome-extension.nix {
+      inherit self pkgs;
+    };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
     vm-pebble-speakers-are-tuned = import ./tests/pebble-x-plus.nix { inherit pkgs; };
     vm-mv7-voice-is-levelled = import ./tests/shure-mv7-voice.nix { inherit pkgs; };

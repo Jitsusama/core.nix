@@ -164,6 +164,9 @@
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
   '';
+  chrome-pack-extension-passes-clippy = ''
+    clippy finds nothing in what packs the launcher's Chrome extension, or its tests
+  '';
   chrome-recent-sites-passes-clippy = ''
     clippy finds nothing in what reads Chrome's sites for the launcher, or its tests
   '';
@@ -1382,6 +1385,11 @@
   vm-boot-asks-on-every-screen = ''
     with two screens of different sizes, the splash's ask shows whole on both, its bottom left
     corner on the smaller one included
+  '';
+  vm-chrome-installs-the-open-tabs-extension = ''
+    Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
+    Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
+    disabling it
   '';
   vm-checks-go-first = ''
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,

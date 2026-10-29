@@ -8,8 +8,13 @@
 }:
 let
   recent-sites = pkgs.callPackage ./recent-sites/package.nix { };
+  pack-extension = pkgs.callPackage ./pack-extension/package.nix { };
 in
 onLinux {
+  # clippy finds nothing in what packs the launcher's Chrome extension, its
+  # tests included.
+  chrome-pack-extension-passes-clippy = passesClippy "chrome-pack-extension-passes-clippy" pack-extension;
+
   # clippy finds nothing in what reads Chrome's sites for the launcher, its
   # tests included.
   chrome-recent-sites-passes-clippy = passesClippy "chrome-recent-sites-passes-clippy" recent-sites;
