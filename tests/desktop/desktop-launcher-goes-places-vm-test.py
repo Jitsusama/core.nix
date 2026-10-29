@@ -2273,9 +2273,7 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Lunch on Friday's sender is Ada, whose row steps in to her.
     desktop.answer("lunch on friday")
-    desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name") == "Lunch on Friday"
-    )
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lunch on Friday")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "Ada Lovelace" in shown["rows"])
     desktop.down_to("Ada Lovelace")
