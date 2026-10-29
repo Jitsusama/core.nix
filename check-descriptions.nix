@@ -164,6 +164,9 @@
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
   '';
+  chrome-open-tabs-passes-clippy = ''
+    clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
+  '';
   chrome-pack-extension-passes-clippy = ''
     clippy finds nothing in what packs the launcher's Chrome extension, or its tests
   '';
@@ -1389,7 +1392,8 @@
   vm-chrome-installs-the-open-tabs-extension = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
     Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
-    disabling it
+    disabling it, and chrome-open-tabs lists two pages it opened, brings one to the front and
+    closes the other
   '';
   vm-checks-go-first = ''
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,

@@ -10,8 +10,22 @@
 # and guards nothing, so it lives here in the open. Chrome reads the
 # preferences file only from /usr/share/google-chrome/extensions, which is
 # made here, since NixOS has no /usr/share.
+#
+# The extension answers chrome-open-tabs (open-tabs/host), its
+# native-messaging host, which Chrome starts from the file named for the
+# host in /etc/opt/chrome/native-messaging-hosts, allowed to this extension
+# alone; the launcher asks the host, on the path, as Chrome is stepped into.
 { lib, pkgs, ... }:
 let
+  host = pkgs.callPackage ./open-tabs/host/package.nix { };
+  # The host as Chrome finds it, allowed to our extension alone.
+  hosting = builtins.toJSON {
+    name = "jitsusama.chrome_open_tabs";
+    description = "Chrome's open tabs, for the launcher";
+    path = lib.getExe host;
+    type = "stdio";
+    allowed_origins = [ "chrome-extension://eefbjjlcekpocpoiobhilnmpabjhmjhm/" ];
+  };
   packed = pkgs.runCommandLocal "chrome-open-tabs-extension" { } ''
     mkdir $out
     id=$(${lib.getExe (pkgs.callPackage ./pack-extension/package.nix { })} \
@@ -30,6 +44,10 @@ let
   );
 in
 {
+  environment.systemPackages = [ host ];
+
+  environment.etc."opt/chrome/native-messaging-hosts/jitsusama.chrome_open_tabs.json".text = hosting;
+
   systemd.tmpfiles.rules = [
     "d /usr/share/google-chrome/extensions 0755 root root -"
     "L+ /usr/share/google-chrome/extensions/eefbjjlcekpocpoiobhilnmpabjhmjhm.json - - - - ${preferences}"

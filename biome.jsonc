@@ -2,7 +2,9 @@
 // tests/qt-javascript-lint.sh, with every rule on but those below, each with
 // the reason it doesn't fit. Qt's engine (QV4) parses neither an object
 // spread nor a catch with no binding, so the rules asking for those are off.
-// Nothing here is formatted by biome.
+// It lints Chrome's open-tabs extension too, as it is (treefmt.nix), which
+// runs in Chrome with its `chrome` object. Nothing here is formatted by
+// biome.
 {
   "formatter": { "enabled": false },
   "assist": { "enabled": false },
@@ -30,5 +32,11 @@
         "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 500 } }
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["modules/chrome/open-tabs/extension/**"],
+      "javascript": { "globals": ["chrome"] }
+    }
+  ]
 }
