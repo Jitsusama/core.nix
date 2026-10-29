@@ -3293,7 +3293,12 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
     machine = desktop.machine
     # Nothing waits; Keep Awake is on, a mode left on, which Now never
     # opens on, since Return would turn it off.
-    desktop.as_account(f"rm -f {MISSION}/queue.json {MISSION}/waiting/*.json")
+    # The account's shell is zsh, which refuses a pattern matching nothing,
+    # so what waits is found rather than named by one.
+    desktop.as_account(
+        f"rm -f {MISSION}/queue.json && mkdir -p {MISSION}/waiting"
+        f" && find {MISSION}/waiting -name '*.json' -delete"
+    )
     desktop.as_account("systemctl --user start caffeinate.service")
     try:
         desktop.as_account("qs ipc call launcher collection on")
