@@ -29,7 +29,8 @@ pub struct Ceiling {
 }
 
 /// The most a link can carry in the shaper's own counting, in kbit/s, from
-/// the Mbit/s Ethernet says; Wi-Fi says nothing, and is left to the line.
+/// the Mbit/s Ethernet says; Wi-Fi says nothing, and is left to the
+/// connection.
 /// A link speed counts the wire's framing, which CAKE doesn't, so a rate
 /// of 100 Mbit/s on a 100 Mbit/s wire sent it 1.6% more than it carried:
 /// the router's port toward the machine held a queue of 8 ms, under the
@@ -90,9 +91,9 @@ pub fn uplinks(v4: &str, v6: &str) -> Vec<Uplink> {
 }
 
 /// Which links follow another's rate, by name: a link whose router is the
-/// same as one before it in the routes' order, so both lead to one line.
-/// Two estimates of one line would each take it whole, and their rates
-/// would add up past it. A link known only by its own name (no router's
+/// same as one before it in the routes' order, so both lead to one
+/// connection. Two estimates of one connection would each take it whole,
+/// and their rates would add up past it. A link known only by its own name (no router's
 /// address learned yet) follows nobody.
 pub fn leaders(order: &[(&str, &str)]) -> BTreeMap<String, String> {
     let mut follows = BTreeMap::new();
@@ -107,10 +108,10 @@ pub fn leaders(order: &[(&str, &str)]) -> BTreeMap<String, String> {
     follows
 }
 
-/// What each leading link's line carries, in kbit/s sent and received,
-/// from what every link carried: its own and its followers', since they
-/// reach the line through the one router.
-pub fn line_loads(
+/// What each leading link's connection carries, in kbit/s sent and
+/// received, from what every link carried: its own and its followers',
+/// since they reach the connection through the one router.
+pub fn connection_loads(
     carried: &BTreeMap<String, (f64, f64)>,
     follows: &BTreeMap<String, String>,
 ) -> BTreeMap<String, (f64, f64)> {
@@ -193,7 +194,7 @@ struct Neighbour {
 }
 
 /// The gateway's hardware address, from `ip -j neigh show dev <link> <gw>`,
-/// which names the network: the same router is the same line.
+/// which names the network: the same router is the same connection.
 pub fn gateway_address(json: &str) -> Option<String> {
     let found: Vec<Neighbour> = serde_json::from_str(json).ok()?;
     found.into_iter().find_map(|n| n.lladdr)
@@ -243,17 +244,18 @@ mod tests {
     }
 
     #[test]
-    fn a_line_carries_what_every_link_to_its_router_carries() {
-        // A download over Wi-Fi while the cable leads fills the one line:
-        // the cable's controller must see it, or it reads the line's queue
-        // against an idle download and cuts the upload instead.
+    fn a_connection_carries_what_every_link_to_its_router_carries() {
+        // A download over Wi-Fi while the cable leads fills the one
+        // connection: the cable's controller must see it, or it reads the
+        // connection's queue against an idle download and cuts the upload
+        // instead.
         let carried = BTreeMap::from([
             ("eth0".to_string(), (500.0, 2_000.0)),
             ("wlan0".to_string(), (300.0, 90_000.0)),
             ("usb0".to_string(), (100.0, 400.0)),
         ]);
         let follows = BTreeMap::from([("wlan0".to_string(), "eth0".to_string())]);
-        let loads = line_loads(&carried, &follows);
+        let loads = connection_loads(&carried, &follows);
         assert_eq!(loads.get("eth0"), Some(&(800.0, 92_000.0)));
         assert_eq!(loads.get("usb0"), Some(&(100.0, 400.0)));
         assert_eq!(loads.get("wlan0"), None);

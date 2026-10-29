@@ -42,8 +42,9 @@ const TABLE: &str = "shaper";
 const STEP: Duration = Duration::from_millis(200);
 
 /// Where a network nobody has measured starts, in kbit/s: under most home
-/// uplinks and downlinks, so its first seconds of load don't queue at the
-/// modem, and climbing from there within seconds when the line takes more.
+/// connections both ways, so its first seconds of load don't queue at the
+/// modem, and climbing from there within seconds when the connection takes
+/// more.
 const FIRST: Held = Held {
     up: 10_000,
     down: 50_000,
@@ -396,7 +397,7 @@ fn run(options: &Options) -> ExitCode {
         }
         let t = (now - began).as_secs_f64();
         // Every link is counted, followers too: their traffic crosses the
-        // leader's line, and a leader blind to it reads the queue a
+        // leader's connection, and a leader blind to it reads the queue a
         // download over Wi-Fi builds against an idle download, and cuts
         // its upload.
         let carried: BTreeMap<String, (f64, f64)> = shaped
@@ -407,13 +408,13 @@ fn run(options: &Options) -> ExitCode {
             .iter()
             .filter_map(|(n, s)| s.follows.clone().map(|l| (n.clone(), l)))
             .collect();
-        for (name, (sent, received)) in links::line_loads(&carried, &follows) {
+        for (name, (sent, received)) in links::connection_loads(&carried, &follows) {
             if let Some(s) = shaped.get_mut(&name) {
                 step(s, t, sent, received);
             }
         }
         // A follower holds its leader's rates, so the two together stay
-        // under the one line; its own controller only keeps its pings.
+        // under the one connection; its own controller only keeps its pings.
         let rates: BTreeMap<String, (u64, u64)> = shaped
             .iter()
             .map(|(n, s)| (n.clone(), (s.controller.up.rate, s.controller.down.rate)))
@@ -655,8 +656,8 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
     }
 }
 
-/// One step of an uplink's controller on what its line carried, in kbit/s,
-/// applying its rates when they moved.
+/// One step of an uplink's controller on what its connection carried, in
+/// kbit/s, applying its rates when they moved.
 fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
     let was = (s.controller.up.rate, s.controller.down.rate);
     s.state = s.controller.step(t, sent, received);
@@ -804,7 +805,7 @@ fn status(runtime: &Path) -> ExitCode {
         if let Some(leader) = &link.follows {
             let _ = writeln!(out, "  at {leader}'s rate: both reach the same router");
         }
-        // Said only while it holds: a quiet line needs no line saying so.
+        // Said only while it holds: a quiet connection needs no line saying so.
         if link.building && link.follows.is_none() {
             let _ = writeln!(
                 out,

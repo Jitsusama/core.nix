@@ -26,7 +26,8 @@ pub struct Sets {
     /// Each account's work: jobs (timed work inside it), background, its
     /// containers in user.slice and its machines.
     pub bulk4: Vec<String>,
-    /// The shaper's own pings, which must measure the line, not its queue.
+    /// The shaper's own pings, which must measure the connection, not its
+    /// queue.
     pub voice2: Vec<String>,
     /// Each account's apps, whose UDP to anything but 443 is a call, as is
     /// anything they send Meet's media servers.

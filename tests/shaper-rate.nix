@@ -1,12 +1,13 @@
-# Runs the shaper on a client whose line, at the router, is an 8 Mbit/s
-# link 20 ms away with a second of buffer, as a cable modem's is, and loads
-# it with the account's uploads. With the shaper, an app's ping stays near
-# the line's own 20 ms; without it, the buffer fills and the ping waits a
-# good part of a second. An app's upload takes the line from the jobs' while
-# it runs, leaving them CAKE's sixteenth. When the line drops to 4 Mbit/s
-# the shaper follows it down within seconds, and back up when it returns.
-# It does so too when the uploads ride a second link to the same router, as
-# Wi-Fi beside a cable does: the one line carries both links' traffic.
+# Runs the shaper on a client whose connection, at the router, is an
+# 8 Mbit/s link 20 ms away with a second of buffer, as a cable modem's is,
+# and loads it with the account's uploads. With the shaper, an app's ping
+# stays near the connection's own 20 ms; without it, the buffer fills and
+# the ping waits a good part of a second. An app's upload takes the
+# connection from the jobs' while it runs, leaving them CAKE's sixteenth.
+# When the connection drops to 4 Mbit/s the shaper follows it down within
+# seconds, and back up when it returns. It does so too when the uploads
+# ride a second link to the same router, as Wi-Fi beside a cable does: the
+# one connection carries both links' traffic.
 #
 # The margins are wide, so a loaded host running the machines slower
 # can't turn one into the other.
@@ -14,7 +15,7 @@
 let
   inherit (pkgs) lib;
   server = "192.168.2.3";
-  line = rate: "tbf rate ${rate} burst 32kbit limit 1000000";
+  connection = rate: "tbf rate ${rate} burst 32kbit limit 1000000";
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-rate";
@@ -79,8 +80,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
     networking.useDHCP = false;
     networking.firewall.enable = false;
     boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-    # The line: 20 ms away, then 8 Mbit/s with a second of buffer.
-    systemd.services.line = {
+    # The connection: 20 ms away, then 8 Mbit/s with a second of buffer.
+    systemd.services.connection = {
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
@@ -89,7 +90,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       serviceConfig.RemainAfterExit = true;
       script = ''
         tc qdisc replace dev eth2 root handle 1: netem delay 20ms limit 100000
-        tc qdisc replace dev eth2 parent 1: handle 2: ${line "8mbit"}
+        tc qdisc replace dev eth2 parent 1: handle 2: ${connection "8mbit"}
       '';
     };
   };
