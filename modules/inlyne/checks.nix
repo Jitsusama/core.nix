@@ -102,7 +102,6 @@ onLinux {
         cp page.png keys.png $out
       '';
 
-
   # inlyne says each file it's started with to the desktop's list of files
   # opened lately, through recent-files where the desktop has it, stood in
   # here, handing on all it was given, and then runs as it would.

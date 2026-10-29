@@ -186,7 +186,8 @@ local function say_opened()
     return
   end
   opened_said = true
-  os.execute('command -v recent-files >/dev/null && recent-files add swayimg ' .. quoted(image.path) .. ' &')
+  local said = 'recent-files add swayimg ' .. quoted(image.path)
+  os.execute('command -v recent-files >/dev/null && ' .. said .. ' &')
 end
 
 for _, mode in ipairs({ swayimg.viewer, swayimg.gallery }) do

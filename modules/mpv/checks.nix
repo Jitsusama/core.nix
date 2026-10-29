@@ -47,7 +47,8 @@ onLinux {
 
   # mpv says each file it plays to the desktop's list of files opened
   # lately, through recent-files where the desktop has it, stood in here,
-  # as it was given: a stream too, which recent-files passes over.
+  # each by its whole path, as mpv gives it, and a stream too, which
+  # recent-files passes over.
   mpv-says-the-files-it-plays =
     let
       home = account graphical;
@@ -78,7 +79,7 @@ onLinux {
         mpv --config-dir=$PWD/mpv --vo=null --ao=null --force-window=no --keep-open=no \
           --frames=2 one.mkv '${stream}' two.mkv > played 2>&1 || { cat played; exit 1; }
         told=$( [ -e said ] && tr '\n' ' ' < said || echo 'nothing said')
-        [ "$told" = "one.mkv ${stream} two.mkv " ] || { echo "mpv said: $told"; exit 1; }
+        [ "$told" = "$PWD/one.mkv ${stream} $PWD/two.mkv " ] || { echo "mpv said: $told"; exit 1; }
         touch $out
       '';
 }
