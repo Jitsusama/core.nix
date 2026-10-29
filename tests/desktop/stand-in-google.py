@@ -78,8 +78,9 @@ FOLDERS = {
     "trips": [held("itinerary", "itinerary.pdf", "file", "application/pdf", 9)],
     "0Team": [],
 }
-# How many downloads are told, as the program tells them.
+# How many downloads and folders are told, as the program tells them.
 DOWNLOADS_KEPT = 20
+LISTINGS_KEPT = 4
 # The ending each of Google's own kinds is downloaded with, as their office program's file.
 EXPORTED = {"document": ".docx", "spreadsheet": ".xlsx", "presentation": ".pptx"}
 
@@ -222,8 +223,8 @@ class Account:
         self.fetched: dict[str, object] | None = None
         # The Meet meeting last asked to be made, as the program says it (src/state.rs).
         self.made: dict[str, object] | None = None
-        # The Drive folder last listed, and the downloads asked lately, newest first.
-        self.listed: dict[str, object] | None = None
+        # The Drive folders listed and the downloads asked lately, each newest first.
+        self.listings: list[dict[str, object]] = []
         self.downloads: list[dict[str, object]] = []
         self.leave()
 
@@ -250,7 +251,7 @@ class Account:
             "heard": self.heard,
             "fetched": self.fetched,
             "meet": {"granted": True, "made": self.made},
-            "drive": {"listed": self.listed, "downloads": self.downloads},
+            "drive": {"listings": self.listings, "downloads": self.downloads},
         }
         return f"{json.dumps(said)}\n".encode()
 
@@ -363,15 +364,20 @@ class Account:
         }
 
     def look_in(self, folder: str) -> None:
-        """Say what a Drive folder holds, or that it's gone."""
+        """Say what a Drive folder holds, or that it's gone, first among those asked lately."""
         files = FOLDERS.get(folder)
-        self.listed = {
-            "folder": folder,
-            "asked": int(time.time() * 1000),
-            "files": files or [],
-            "more": False,
-            "failed": None if files is not None else "gone",
-        }
+        self.listings = [one for one in self.listings if one["folder"] != folder]
+        self.listings.insert(
+            0,
+            {
+                "folder": folder,
+                "asked": int(time.time() * 1000),
+                "files": files or [],
+                "more": False,
+                "failed": None if files is not None else "gone",
+            },
+        )
+        del self.listings[LISTINGS_KEPT:]
 
     def download(self, asked: dict[str, object]) -> None:
         """Write a Drive file where the program would, and say where, newest first."""
