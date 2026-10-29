@@ -45,8 +45,27 @@ let
   bluez-tools = pkgs.bluez-tools.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./bt-agent-foreground.patch ];
   });
+  # A key on a paired Bluetooth keyboard wakes the machine, as one on a
+  # wired keyboard does. BlueZ already marks a keyboard or mouse as allowed
+  # to wake it, and at each sleep the kernel leaves the controller
+  # listening for just those devices, but only if the controller itself may
+  # wake the machine, and the kernel leaves a USB controller's wakeup off.
+  # So the keyboard's key reached a controller that couldn't ask, and only
+  # the lid woke the laptop. A wake with nobody there, a mouse nudged in a
+  # bag, suspends again, since logind looks at a shut lid on every wake.
+  #
+  # Only controllers that say they're Bluetooth by their USB device class
+  # (wireless controller, RF, Bluetooth: e0, 01, 01), as Intel's and most
+  # Realtek's do; one that says so only on its interface, as MediaTek's do,
+  # stays as the kernel leaves it. A controller on PCI, as Intel's newest
+  # are, has its wakeup elsewhere and is left alone too.
+  wakes = pkgs.writeTextDir "lib/udev/rules.d/70-bluetooth-wakes.rules" ''
+    ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{bDeviceClass}=="e0", ATTR{bDeviceSubClass}=="01", ATTR{bDeviceProtocol}=="01", ATTR{power/wakeup}="enabled"
+  '';
 in
 {
+  services.udev.packages = [ wakes ];
+
   services.pipewire.wireplumber.configPackages = [ headsetMicrophoneSecond ];
 
   hardware.bluetooth = {

@@ -854,6 +854,7 @@ gather (
     ./hardware/microsoft-surface-laptop-4-1958/checks.nix
     ./modules/backlight/checks.nix
     ./modules/bat/checks.nix
+    ./modules/bluetooth/checks.nix
     ./modules/bluetooth-disk-prompt/checks.nix
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix
