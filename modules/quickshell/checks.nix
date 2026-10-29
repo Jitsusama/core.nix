@@ -1929,6 +1929,22 @@ onLinux {
       touch $out
     '';
 
+  # A notice's card and its row in the launcher list the same acts in one
+  # order, as tests/notice.qml holds Notice.js.
+  a-notice-is-one-thing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-notice-is-one-thing" { } ''
+      cp ${../../tests/notice.qml} notice.qml
+      cp ${./launcher/Notice.js} Notice.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml notice.qml
+      touch $out
+    '';
+
   # What comes true by itself is said once as a notice, and again only as
   # it tells something new, its earlier notice taken back first, as
   # tests/arrivals.qml holds Arrivals.qml to with the facts and the notices

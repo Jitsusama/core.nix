@@ -888,10 +888,16 @@ works the same way everywhere.
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open. A notice on screen
-  waits while Joel's away, thirty seconds with nothing typed or moved
-  (`notices.away`), whatever keeps the screen awake, so one that comes
-  while he's gone is there when he's back, counting again in full. Each
+  program that sent it, its window when one is open. A notice is one thing
+  on its card and among the notices, its acts the same in the same order
+  (`launcher/Notice.js`): going to what it's about, what its sender offers,
+  Read, one switch saying yes or no, Forget It, and Copy What It Said last;
+  the card adds what's done to the whole stack before the copy, and leads
+  with Forget It where its Return forgets one with nothing to open. A
+  notice on screen waits while Joel's away, thirty seconds with nothing
+  typed or moved (`notices.away`), whatever keeps the screen awake, so one
+  that comes while he's gone is there when he's back, counting again in
+  full. Each
   program can be kept to how far its notices reach (`notices.senders`):
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less

@@ -19,6 +19,10 @@
     once a notice is opened, its sender's window comes forward, the one used last, unless one of
     its own is in front already or it has none open
   '';
+  a-notice-is-one-thing = ''
+    a notice's card and its row among the notices list the same acts in one order, copying last,
+    and a notice gone from the screen keeps none of its sender's
+  '';
   a-prompt-waits-for-a-person = ''
     a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
     25 seconds

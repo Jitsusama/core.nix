@@ -139,6 +139,7 @@ let
     "launcher/KeyGroups.js"
     "launcher/Keyboards.js"
     "launcher/Now.js"
+    "launcher/Notice.js"
   ];
 
   # A service holding one of logind's locks for as long as it runs, with a
