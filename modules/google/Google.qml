@@ -44,6 +44,16 @@ Singleton {
     // last asked for, { asked, link, failed }, or null.
     property var meet: ({ granted: false, made: null })
 
+    // The person an address is, as People's row for them, from the
+    // launcher's provider that knows people (People.qml's personOf), so a
+    // mail's sender and a meeting's guests step through to who they are;
+    // null on a machine without People, or for someone no source knows.
+    function personOf(launcher, email) {
+        const people = (launcher?.sources ?? []).find(source => typeof source.personOf
+            === "function");
+        return people ? people.personOf(email) : null;
+    }
+
     // How the meeting asked for at `since` stands (Google.js).
     function making(since) {
         return Said.making(meet, since);

@@ -30,6 +30,9 @@ one is answered for it in [the surfaces table][surfaces].
    comfortably: a popup, a notice, a menu, the margin, a prompt, every
    surface. Each is designed around the keys and then given the pointer,
    never the other way round, and nothing can be reached only by pointing.
+   In the launcher the pointer never moves the selection, so there's no
+   hover selection (Joel, 2026-10-29: "the launcher window is not meant to
+   be mouse navigated").
    Chords are short, keep to the hands' strong positions and favour a
    mnemonic letter, which keeps its meaning on any layout.
 2. **Act or wonder.** Something is shown only if Joel would act on it, or
@@ -390,9 +393,10 @@ lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
 What each is, in words, is the launcher's Now, opened by Super+O on its
-most pressing row or by clicking a mark, on that mark's row: a row each, its glyph, its name, how it
-stands at the right, and what more there is to know in the footer, grouped
-by how much it asks with what wants Joel first. Return does its first
+first row, Waiting on You, or by clicking a mark, on that mark's row: a
+row each, its glyph, its name, how it stands at the right, and what more
+there is to know in the footer, grouped by how much it asks with what
+wants Joel first. Return does its first
 action and the right arrow steps into the rest. While it's open, the mark
 on its screen of the row the keys are on wears the accent, as where the
 keys are always does, straight up the line the list and the marks share,
@@ -442,6 +446,39 @@ surface at the chord took 122 to 401 ms and lost the first letters to the
 window below. niri hands a surface the keys a frame after it asks, so a
 letter typed within that frame still goes beneath; the desktop check holds
 that none is ever lost between the two.
+
+## First, and Light
+
+The shell is how the desktop is driven, so it answers before anything else
+wants the machine, and it asks little of the machine in return (Joel,
+2026-10-29: "it is the main control interface for this OS, so it needs to
+always be responsive over anything else. it also needs to use a small
+amount of resources so it doesn't put too much load on the system").
+
+**First.** The shell comes before every program, build and agent for the
+processor, memory and the disk, and after niri alone, which draws it. Its
+share is a weight above theirs and its memory is protected from being
+reclaimed, so the budgets above hold with every core busy, memory under
+pressure and the disk saturated. That's measured, not assumed: a key's
+frame and a chord's keys are timed while the machine is loaded that way,
+and a check fails when either passes its budget. Coming first is never a
+cap on anyone else; what's idle is theirs.
+
+**Light.** Coming first is only fair while the shell takes little, so
+what it takes is held to numbers, measured on the running desktop:
+
+| Measure                                  | Holds to                                      |
+| ---------------------------------------- | --------------------------------------------- |
+| processor, launcher closed, nothing live | under 1% of one core, over five minutes       |
+| processor, launcher open and still       | under 3% of one core, over a minute           |
+| processor, a key typed                   | its work done inside the 4 ms search budget   |
+| memory resident                          | under 300 MB, and no more than 10% over a day |
+| threads and open files                   | the same after a day as after an hour         |
+
+What isn't on screen isn't read: a reading is taken while something shows
+it, no more often than it changes, and stops when it goes. Anything that
+keeps the shell busy while nothing changes is a bug, found by profiling and
+given a check that fails without its fix.
 
 ## What Matters: Three Tiers
 
@@ -716,10 +753,12 @@ works the same way everywhere.
   left on). Waiting on You is a place, so Return steps into it whatever waits, to
   the most pressing first or to "Nothing waits on you.", and into each
   thing waiting, going to its window first inside; Super+O, Return,
-  Return reaches the pressing thing, each press foreseen. Now opens on
-  its most pressing row: Waiting on You while something waits now, else
-  the first that wants Joel or is live, else Waiting on You; never a
-  mode left on, which Return would turn off. Each place says what it holds
+  Return reaches the pressing thing, each press foreseen. Every place
+  and list opens on its first row, Now and Notices included, so the same
+  keys land on the same row every time: what's pressing earns the top by
+  order, never by the selection travelling to it (Joel, 2026-10-29:
+  "when opening the launcher it selects seemingly random things"). Each
+  place says what it holds
   after its name, muted, by its members' own names in the place's own
   order (Desktop: "This Window, Windows, Screens, Notices"), as many whole
   as fit, so a glance reminds Joel what there is; a place that measures

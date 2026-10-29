@@ -4204,6 +4204,13 @@
       "glyph": "meetingDetails"
     },
     {
+      "id": "verb:calendar:guests",
+      "in": "calendar:meeting",
+      "name": "Guests",
+      "verb": "more",
+      "glyph": "people"
+    },
+    {
       "id": "verb:calendar:attachments",
       "in": "calendar:meeting",
       "name": "Attachments",

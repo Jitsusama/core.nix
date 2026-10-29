@@ -2041,10 +2041,19 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     desktop.answer("lunch on friday")
     desktop.launcher_until(lunch_in_full)
     desktop.step_in()
+    # Its sender, Ada, after Read: People's row for her.
     desktop.launcher_until(
         lambda shown: (
             shown["rows"]
-            == ["Open in Mail", "Reply", "Archive", "Read", "Attachments", "Copy the Link"]
+            == [
+                "Open in Mail",
+                "Reply",
+                "Archive",
+                "Read",
+                "Ada Lovelace",
+                "Attachments",
+                "Copy the Link",
+            ]
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
@@ -2244,6 +2253,44 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     )
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
+    desktop: Desktop,
+) -> None:
+    """A meeting's Guests and a mail's sender are People's rows, each stepping in to the person."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # Standup is Ada's, and Grace is asked: Guests holds both, before
+    # Attachments, Ada first as she holds it.
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Guests" in shown["rows"])
+    rows = desktop.showing()["rows"]
+    assert rows.index("Guests") + 1 == rows.index("Attachments"), rows
+    desktop.down_to("Guests")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Grace Hopper"])
+    assert desktop.showing()["things"][1]["is"] == "person:grace@example.com"
+    desktop.down_to("Grace Hopper")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Write a Mail"])
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    # Lunch on Friday's sender is Ada, whose row steps in to her.
+    desktop.answer("lunch on friday")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lunch on Friday")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Ada Lovelace" in shown["rows"])
+    desktop.down_to("Ada Lovelace")
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: shown["rows"][:4] == ["Write a Mail", "Standup", "Recent", "ada@example.com"]
+    )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
