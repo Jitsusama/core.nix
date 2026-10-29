@@ -5,8 +5,10 @@
 // while it's picked. They're listed in Now's groups, what wants Joel first,
 // then what reaches other people, what's playing and the modes left on, and
 // by name within each (Now.js), so what can need him leads and one keeps
-// its place while its group stands; the time, the date, the weather and
-// the next meeting are always last, Now's own rows. What each asks
+// its place while its group stands. Now's top never changes (docs/design.md,
+// home is a few places): what waits on Joel first, then Now's own rows, the
+// time, the date, the location, the weather and the next meeting, and only
+// then what else is on, which comes and goes below them. What each asks
 // of Joel shows in its glyph's colour too. Return does a piece's first
 // action, and the
 // right arrow steps into the rest.
@@ -45,21 +47,22 @@ Provider {
     readonly property var all: {
         const lit = Facts.all.filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active);
-        // By group, what wants Joel first, and by name within each, so a
-        // row keeps its place while its group stands (Now.js); this
-        // moment's rows, its own, always last.
+        // What waits on Joel, then this moment's rows, which are always
+        // there, so the top never moves; then the rest by group, what
+        // wants Joel first, and by name within each, so a row keeps its
+        // place while its group stands (Now.js).
         const rows = lit.map(fact => ({
             group: fact.piece.group,
             name: fact.piece.title,
             row: made(fact)
         }));
-        if (waiting !== null)
-            rows.push({ group: "wants", name: waiting.name, row: waiting });
-        return Now.ordered(rows).map(each => each.row).concat(moment);
+        return (waiting === null ? [] : [waiting]).concat(moment,
+            Now.ordered(rows).map(each => each.row));
     }
     onAllChanged: changed()
 
-    // This moment, Now's own rows, always its last, after what's on: the
+    // This moment, Now's own rows, right after what waits on Joel and
+    // before what else is on: the
     // Time, the Date, the Weather here and the next meeting today, each
     // a row of Now itself rather than inside a Today to step into (Joel,
     // 2026-10-28: "what is the difference between top level now and
