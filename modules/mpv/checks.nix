@@ -82,4 +82,77 @@ onLinux {
         [ "$told" = "$PWD/one.mkv ${stream} $PWD/two.mkv " ] || { echo "mpv said: $told"; exit 1; }
         touch $out
       '';
+
+  # mpv keeps the file it plays now for its Recent in the launcher
+  # (playing.lua), read by the launcher's own command: while a file plays
+  # it reads as mpv's process id and the file's whole path, given as a
+  # name in the folder mpv was started in; what an mpv that was killed
+  # left is cleared as one starts; a stream isn't kept, so the line goes
+  # as one follows the file; and nothing is left once mpv quits.
+  mpv-says-the-file-it-plays-now =
+    let
+      home = account graphical;
+      mpv = lib.findFirst (package: lib.hasPrefix "mpv" (lib.getName package)) null home.home.packages;
+      kept = "${home.xdg.stateHome}/mpv/playing";
+      inherit (home.jitsusama.quickshell.launcher) recents;
+      source = lib.findFirst (each: each.app or "" == "mpv") null recents;
+      fonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
+      # The launcher's command, reading the folder this check keeps.
+      opened = lib.concatMapStringsSep " " (
+        part: if part == kept then ''"$XDG_STATE_HOME/mpv/playing"'' else lib.escapeShellArg part
+      ) source.opened;
+      stream = "av://lavfi:testsrc=duration=1:size=64x64";
+    in
+    assert lib.elem kept source.opened;
+    pkgs.runCommandLocal "mpv-says-the-file-it-plays-now"
+      {
+        nativeBuildInputs = [
+          mpv
+          pkgs.ffmpeg-headless
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_STATE_HOME=$PWD/state FONTCONFIG_FILE=${fonts}
+        mkdir -p mpv/scripts state/mpv/playing
+        cp ${home.xdg.configFile."mpv/scripts/playing.lua".source} mpv/scripts/playing.lua
+        ffmpeg -loglevel error -f lavfi -i testsrc=duration=5:size=64x64 one.mkv
+        printf '999999\t/gone.mkv\n' > state/mpv/playing/999999
+        : > state/mpv/playing/.999999
+        mpv --config-dir=$PWD/mpv --vo=null --ao=null --force-window=no --keep-open=yes \
+          one.mkv '${stream}' > played 2>&1 &
+        playing=$!
+        read_now() { ${opened} 2> /dev/null; }
+        want="$(printf '%s\t%s' "$playing" "$PWD/one.mkv")"
+        # Up to a minute each, so a busy machine can't fail it.
+        for _ in $(seq 600); do
+          [ "$(read_now)" = "$want" ] && break
+          sleep 0.1
+        done
+        if [ "$(read_now)" != "$want" ]; then
+          kill $playing; cat played
+          echo "while mpv played one.mkv, mpv's opened read: $(read_now)"
+          exit 1
+        fi
+        if [ -n "$(ls -A state/mpv/playing | grep -v -x "$playing")" ]; then
+          kill $playing
+          echo "what a killed mpv left stayed: $(ls -A state/mpv/playing)"
+          exit 1
+        fi
+        for _ in $(seq 600); do
+          [ -z "$(read_now)" ] && break
+          sleep 0.1
+        done
+        if [ -n "$(read_now)" ]; then
+          kill $playing
+          echo "with a stream playing, mpv's opened still read: $(read_now)"
+          exit 1
+        fi
+        kill -TERM $playing
+        wait $playing || true
+        if [ -n "$(ls -A state/mpv/playing)" ]; then
+          echo "mpv left this as it quit: $(ls -A state/mpv/playing)"
+          exit 1
+        fi
+        touch $out
+      '';
 }

@@ -20,9 +20,11 @@
 // `asked` watches nothing and is read only as its program is stepped into,
 // once each time the launcher opens (`ask`), for a program such as Chrome
 // whose history changes with every page. A source that also says what its
-// program has open now (`opened`, Chrome's tabs through chrome-open-tabs)
-// is asked that then too, and never otherwise, a line each as its command
-// prints them.
+// program has open now (`opened`, Chrome's tabs from its session, or the
+// file each mpv plays) is asked that then too, and never otherwise, a line
+// each as its command prints them. One saying no more than that, as mpv's
+// does, has no list of its own, so its program's paths stay the shared
+// list's.
 pragma ComponentBehavior: Bound
 
 import Quickshell
@@ -187,8 +189,8 @@ Scope {
             Process {
                 id: listing
 
-                command: source.modelData.list
-                running: !source.modelData.asked
+                command: source.modelData.list ?? []
+                running: !source.modelData.asked && (source.modelData.list ?? []).length > 0
                 onExited: {
                     if (source.again) {
                         source.again = false;

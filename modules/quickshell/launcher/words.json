@@ -4891,7 +4891,11 @@
       "in": "program:recent",
       "name": "File",
       "glyph": "path",
-      "verb": "open"
+      "verb": "open",
+      "said": {
+        "open": "open",
+        "closed": "closed"
+      }
     },
     {
       "id": "recent:site",
@@ -4961,6 +4965,20 @@
       "name": "Open",
       "verb": "open",
       "glyph": "path"
+    },
+    {
+      "id": "verb:path:file:go",
+      "in": "path:file",
+      "name": "Go To",
+      "verb": "go",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:path:file:close",
+      "in": "path:file",
+      "name": "Close It",
+      "verb": "close",
+      "glyph": "close"
     },
     {
       "id": "verb:path:folder:window",

@@ -47,13 +47,24 @@ Singleton {
     // A file's row: Return does the first of `acts`, and the right arrow
     // lists them all, then Copy the Path; given `inside`, Return steps in.
     function file(path, thing, acts, inside) {
-        return made("file", path, thing, acts, inside ?? null);
+        return made("file", path, thing, acts, inside ?? null, {});
+    }
+
+    // A file a program has open now, as a program's Recent leads with it:
+    // the same row, with `now` said beside its folder (open, or closed),
+    // and one `gone` dimmed where it was, as the launcher keeps a row whose
+    // thing has gone.
+    function held(path, thing, acts, now, gone) {
+        return made("file", path, thing, acts, null, {
+            side: `${within(path)} \u00b7 ${now}`,
+            gone: gone === true
+        });
     }
 
     // A folder's row, the same, but given `inside`, what it holds, Return
     // steps in to its acts and then those.
     function folder(path, thing, acts, inside) {
-        return made("folder", path, thing, acts, inside ?? null);
+        return made("folder", path, thing, acts, inside ?? null, {});
     }
 
     // A file or a folder kept elsewhere, with no path here until it's
@@ -84,7 +95,7 @@ Singleton {
         return thing(row);
     }
 
-    function made(kind, path, thing, acts, inside) {
+    function made(kind, path, thing, acts, inside, also) {
         const all = () => acts.concat([copying(kind, path, thing)]);
         const first = acts[0] ?? null;
         const row = {
@@ -99,6 +110,7 @@ Singleton {
             run: first?.run ?? (() => {}),
             verbs: all
         };
+        Object.assign(row, also);
         if (inside !== null) {
             const held = () => acts.concat(inside(), [copying(kind, path, thing)]);
             Object.assign(row, { verb: "more", stays: true, now: false, verbs: held, targets: held });
