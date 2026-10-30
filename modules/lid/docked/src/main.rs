@@ -8,11 +8,22 @@
 //! plugged in and stops it when none is, through SYSTEMCTL without waiting.
 //! Starting a unit that runs does nothing, so the lock never lapses while a
 //! monitor stays. udev runs it whenever a card says a monitor came or went.
-//! `LID_DOCKED_DRM` names the connectors' directory, for tests.
+//!
+//! A connector's status is what the kernel last found, and some drivers say a
+//! monitor came or went before looking: amdgpu does, so a monitor just
+//! unplugged still reads connected until something asks again. So it asks each
+//! external connector to look again before reading it, as writing "detect" to
+//! its status does. That also lets go of a connector forced on or off from the
+//! kernel's command line, which no machine here does.
+//!
+//! `LID_DOCKED_DRM` names the connectors' directory in place of the kernel's,
+//! for tests, whose status is written as it changes, so nothing there is asked
+//! to look again.
 
 use std::env;
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
@@ -44,23 +55,45 @@ fn external(name: &str) -> bool {
     })
 }
 
-/// The external connectors with something plugged in: any whose status
-/// isn't "disconnected", as logind counts them, sorted.
-fn plugged_in(drm: &Path) -> Vec<String> {
+/// The external connectors in a directory of DRM devices, sorted.
+fn externals(drm: &Path) -> Vec<String> {
     let Ok(entries) = fs::read_dir(drm) else {
         return Vec::new();
     };
-    let mut plugged: Vec<String> = entries
+    let mut names: Vec<String> = entries
         .flatten()
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| external(name))
+        .collect();
+    names.sort();
+    names
+}
+
+/// Asks each external connector to look again for its monitor. One that
+/// can't be asked is read as it stands.
+fn look_again(drm: &Path) {
+    for name in externals(drm) {
+        let asked = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(drm.join(&name).join("status"))
+            .and_then(|mut status| status.write_all(b"detect"));
+        if let Err(error) = asked {
+            eprintln!("lid-docked: {name} can't be asked to look again: {error}");
+        }
+    }
+}
+
+/// The external connectors with something plugged in: any whose status
+/// isn't "disconnected", as logind counts them, sorted.
+fn plugged_in(drm: &Path) -> Vec<String> {
+    externals(drm)
+        .into_iter()
         .filter(|name| {
             fs::read_to_string(drm.join(name).join("status"))
                 .map_or(true, |status| status.trim() != "disconnected")
         })
-        .collect();
-    plugged.sort();
-    plugged
+        .collect()
 }
 
 /// What to ask of the unit that holds the lock, given what's plugged in.
@@ -74,7 +107,13 @@ fn main() -> ExitCode {
         eprintln!("usage: lid-docked SYSTEMCTL UNIT");
         return ExitCode::from(2);
     };
-    let drm = env::var_os("LID_DOCKED_DRM").unwrap_or_else(|| OsString::from("/sys/class/drm"));
+    let drm = if let Some(stand_in) = env::var_os("LID_DOCKED_DRM") {
+        stand_in
+    } else {
+        let kernels = OsString::from("/sys/class/drm");
+        look_again(Path::new(&kernels));
+        kernels
+    };
     let plugged = plugged_in(Path::new(&drm));
     let verb = verb(&plugged);
     match Command::new(&systemctl)
@@ -177,6 +216,27 @@ mod tests {
     #[test]
     fn finds_nothing_without_a_card() {
         assert!(plugged_in(Path::new("/nonexistent")).is_empty());
+    }
+
+    #[test]
+    fn asks_each_monitors_connector_to_look_again() {
+        let drm = Drm::new("again");
+        drm.connector("card0-eDP-1", Some("connected"))
+            .connector("card0-DP-1", Some("disconnected"))
+            .connector("card0-DP-5", Some("connected"));
+        look_again(&drm.0);
+        let status = |name: &str| fs::read_to_string(drm.0.join(name).join("status")).unwrap();
+        assert_eq!(status("card0-DP-1"), "detect");
+        assert_eq!(status("card0-DP-5"), "detect");
+        assert_eq!(status("card0-eDP-1"), "connected\n");
+    }
+
+    #[test]
+    fn makes_no_status_where_there_was_none() {
+        let drm = Drm::new("none");
+        drm.connector("card0-DP-1", None);
+        look_again(&drm.0);
+        assert!(!drm.0.join("card0-DP-1").join("status").exists());
     }
 
     #[test]

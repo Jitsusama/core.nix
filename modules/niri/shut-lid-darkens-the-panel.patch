@@ -1,0 +1,34 @@
+Darken a shut laptop's panel even with no other monitor
+
+niri turns a laptop's own panel off when its lid shuts only while
+another monitor is connected, so a machine kept awake with its lid
+shut and nothing plugged in lights a panel nobody can see, and wakes
+its touchscreen with it. Shut, the panel goes dark either way, and
+opening the lid lights it again; with no output at all, niri runs as
+it does when a desktop's only monitor is unplugged.
+
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -2344,19 +2344,9 @@
+             return false;
+         }
+ 
+-        let config = self.config.borrow();
+-        if !config.debug.keep_laptop_panel_on_when_lid_is_closed {
+-            // Check if any external monitor is connected.
+-            for device in self.devices.values() {
+-                for (connector, _crtc) in device.drm_scanner.crtcs() {
+-                    if !is_laptop_panel(&format_connector_name(connector)) {
+-                        return true;
+-                    }
+-                }
+-            }
+-        }
+-
+-        false
++        // A shut lid darkens the panel even with no other monitor: a machine
++        // kept awake with its lid shut has nobody to show it to.
++        !self.config.borrow().debug.keep_laptop_panel_on_when_lid_is_closed
+     }
+ 
+     pub fn on_output_config_changed(&mut self, niri: &mut Niri) {

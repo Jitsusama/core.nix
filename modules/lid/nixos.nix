@@ -8,7 +8,8 @@
 # lid-docked holds logind's lock against the lid's handling while any
 # connector but the laptop's own screen reads connected. udev looks whenever a
 # graphics card appears or says a monitor came or went, starting the lock's
-# holder or stopping it. Unplugging the monitor with the lid shut lets go of
+# holder or stopping it. It asks each connector to look again first, since
+# amdgpu says a monitor went before its connector reads disconnected. Unplugging the monitor with the lid shut lets go of
 # the lock, and the lid suspends the laptop as it would anywhere else. A
 # suspend asked for, from the power key or the shell, isn't held.
 { lib, pkgs, ... }:

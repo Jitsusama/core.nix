@@ -64,6 +64,12 @@
     # the rest) gives an output `srgb-gamut`, which maps sRGB to the
     # primaries its EDID declares in the display engine: a degamma curve,
     # a colour matrix and a gamma curve, at no cost to drawing.
+    #
+    # niri darkens a laptop's own panel when its lid shuts only while
+    # another monitor is connected, so a laptop kept awake shut with
+    # nothing plugged in, working for others, lit a panel nobody could
+    # see. The patch (shut-lid-darkens-the-panel.patch) darkens it either
+    # way; opening the lid lights it again.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -82,6 +88,7 @@
           url = "https://github.com/niri-wm/niri/commit/bb38b7e14f8f7bbef6584cf263bf36b0044d63d3.patch";
           hash = "sha256-83i8Mpyc6k4BqBjPYEY/M4XnEbxBb4RKiFJ7tk4mXfM=";
         })
+        ./shut-lid-darkens-the-panel.patch
         ./srgb-gamut.patch
       ];
     });
