@@ -194,13 +194,16 @@ ShellRoot {
             "it answered with no file");
     }
 
-    // A device running low says so at its side, as Now lists it too.
+    // A device running low says so at its side, in the warning colour, as
+    // Now lists it too.
     function lowHolds() {
         const low = bluetooth.made(headphones);
         expect("one running low says so at its side", low.side === "15%, running low"
             && low.note === "connected", `${low.side}; ${low.note}`);
+        expect("one running low warns", low.warns === true, String(low.warns));
         const fine = bluetooth.made(mouse);
         expect("one not low says it's connected", fine.side === "connected", fine.side);
+        expect("one not low doesn't warn", fine.warns === false, String(fine.warns));
     }
 
     // The adapter's parts: its settings, its traffic, and what it is.
