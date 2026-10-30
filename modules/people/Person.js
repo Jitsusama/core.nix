@@ -193,8 +193,8 @@ function details(person, there = () => "") {
 }
 
 // Every source's acts for them in the one order: the main ways to reach
-// someone first, in the order the sources are consulted (Call Them, then
-// Write a Mail, then Open in Slack), and then each source's others.
+// someone first, in the order the sources are consulted (Write in Slack,
+// then Call Them, then Write a Mail), and then each source's others.
 function acts(each) {
     const all = [].concat(...each);
     return all.filter(act => act.main).concat(all.filter(act => !act.main));

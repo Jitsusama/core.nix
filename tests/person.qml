@@ -139,11 +139,11 @@ QtObject {
 
         // Acts: the main ways to reach them first, in source order, then the rest.
         check("acts in the one order", Person.acts([
+            [{ name: "Write in Slack", main: true }],
             [{ name: "Call Them", main: true }, { name: "Make Them a Favourite" }],
-            [{ name: "Write a Mail", main: true }, { name: "See Their Meetings" }],
-            [{ name: "Open in Slack", main: true }]
+            [{ name: "Write a Mail", main: true }, { name: "See Their Meetings" }]
         ]).map(act => act.name),
-            ["Call Them", "Write a Mail", "Open in Slack", "Make Them a Favourite",
+            ["Write in Slack", "Call Them", "Write a Mail", "Make Them a Favourite",
                 "See Their Meetings"]);
 
         if (failures.length > 0) {

@@ -1,20 +1,28 @@
-// Slack as one of People's sources (PersonSource.qml): Open in Slack for
+// Slack as one of People's sources (PersonSource.qml): Write in Slack for
 // anyone Slack knows by one of their addresses, in the harness's Slack
-// sign-in's workspace, and how they are there: active, away or in a
-// huddle, with their status's emoji, in their note, and their status and
-// presence in the drawer (VKCF3Z, 42b57b7d and 67f6cbac). It knows nobody
-// by itself, since a workspace has thousands; it only asks slack-people,
-// a reader that never sends anything, about a person once Joel steps
-// into them, and again on a later step-in once what it heard is a minute
-// old, since how someone is changes while who they are doesn't. What
-// it learns appears as Slack answers, the place told it changed. Whoever
-// Slack found it then knows, with their time zone as a fact, which People
-// follows with the time there.
-// Slack refusing the sign-in stops the asking until the shell starts
-// again; with no sign-in, slack-people asks nothing.
+// sign-in's workspace, first of the ways to reach them, and how they are
+// there: active, away or in a huddle, with their status's emoji, in their
+// note, and their status and presence in the drawer (VKCF3Z, 42b57b7d,
+// 67f6cbac and 3bbad443). It knows nobody by itself, since a workspace
+// has thousands; it asks slack-people, a reader that never sends
+// anything, about each person People lists as the launcher opens, ahead
+// and paced, so who they are is known before Joel steps into them, and
+// how they are as he steps in, again once what it heard is a minute old.
+// The reader keeps who was found between runs, so a restart forgets
+// nobody. Whoever Slack found it knows, with their time zone as a fact,
+// which People follows with the time there.
+//
+// Write in Slack never arrives late or moves under the keys: for someone
+// not yet looked up, it stands in its place dimmed, "looking in Slack",
+// lighting there when Slack answers, or saying "not in Slack" until the
+// launcher opens again. Someone already known not to be in Slack has no
+// such row (VKCF3Z, 8a0f14ea). Slack refusing the sign-in stops the
+// asking until the shell starts again; with no sign-in, nothing stands
+// in waiting.
 import qs
 import Quickshell.Io
 import QtQuick
+import "Slack.js" as Slack
 
 PersonSource {
     id: source
@@ -23,8 +31,19 @@ PersonSource {
     // zone, presence, status, emoji }, with no id for one Slack knows
     // nobody by.
     property var known: ({})
-    // When each address was last asked about and not yet answered.
+    // When each address was last asked about as Joel stepped in, and not
+    // yet answered.
     property var asking: ({})
+    // Each address asked about ahead, kept in place, since nothing is
+    // drawn from it.
+    property var ahead: ({})
+    // Each address Slack was asked about as Joel stepped in and knows
+    // nobody by, said so in place of Write in Slack until the launcher
+    // opens again.
+    property var missed: ({})
+    // Whether there's a sign-in Slack takes: with none, or one refused,
+    // nobody stands waiting on an answer that won't come.
+    property bool asks: true
     // When each address was last answered, kept in place rather than set
     // anew, since nothing is drawn from it and setting it would remake
     // everyone.
@@ -36,7 +55,7 @@ PersonSource {
     people: Object.values(known).filter(said => said.id).map(said => ({
         emails: [said.email],
         name: said.name,
-        facts: facts(said)
+        facts: Slack.facts(said)
     }))
 
     // How each stands in Slack, by address, in their note: active, away
@@ -58,53 +77,73 @@ PersonSource {
         away: 2
     })
 
-    // The drawer's facts of someone Slack found, each only while it says.
-    function facts(said) {
-        const status = [said.emoji, said.status].filter(word => word).join(" ");
-        const presence = said.presence
-            ? said.presence[0].toUpperCase() + said.presence.slice(1) : "";
-        return [
-            { label: "Status", value: status },
-            { label: "Presence", value: presence },
-            { label: "Time Zone", value: said.zone, zone: true }
-        ].filter(fact => fact.value);
-    }
-
     function acts(person, provider) {
         ask(person);
-        const found = person.emails.map(email => known[email]).find(said => said && said.id);
-        if (!found)
-            return [];
-        return [provider.thing({
+        const found = Slack.found(person.emails, known);
+        const row = {
             key: "verb:person:slack",
             name: Words.name("verb:person:slack"),
             verb: Words.verb("verb:person:slack"),
             glyph: Words.glyph("verb:person:slack"),
             hue: "action",
             main: true,
-            later: true,
-            run: () => Niri.spawn(["xdg-open", `slack://user?team=${found.team}&id=${found.id}`])
-        })];
+            later: true
+        };
+        if (found)
+            return [provider.thing(Object.assign(row, {
+                run: () => Niri.spawn(["xdg-open",
+                    `slack://user?team=${found.team}&id=${found.id}`])
+            }))];
+        const waiting = Slack.waiting(person.emails, known, missed, asks);
+        if (waiting === "")
+            return [];
+        // Dimmed, so Return does nothing until it lights.
+        const said = Words.of("verb:person:slack").said ?? {};
+        return [provider.thing(Object.assign(row, {
+            gone: true,
+            side: String(said[waiting] ?? ""),
+            run: () => {}
+        }))];
     }
 
-    // Asks Slack about each of their addresses not heard of in the last
-    // minute and not already being asked about.
+    // Asks Slack about each of their addresses that's due (Slack.due).
     function ask(person) {
-        const now = Date.now();
-        const stale = email => !(now - (answered[email] ?? -Infinity) < fresh)
-            && !(now - (asking[email] ?? -Infinity) < fresh);
-        const due = person.emails.filter(stale);
+        const due = Slack.due(person.emails, known, {
+            answered: answered,
+            asking: asking,
+            now: Date.now(),
+            fresh: fresh
+        });
         if (due.length === 0)
             return;
         if (!reader.running)
             reader.running = true;
         // Qt's JavaScript has no Object.fromEntries.
+        const now = Date.now();
         const asked = Object.assign({}, asking);
         for (const email of due)
             asked[email] = now;
         asking = asked;
         for (const email of due)
             reader.write(`${email}\n`);
+    }
+
+    // As the launcher opens: whoever People lists and Slack hasn't yet
+    // been asked about is asked about ahead, in the order they're listed,
+    // and what a step-in found missing is forgotten.
+    function woken() {
+        if (Object.keys(missed).length > 0)
+            missed = {};
+        if (!asks || !place)
+            return;
+        const due = Slack.ahead(place.all.map(row => row.person), known, ahead);
+        if (due.length === 0)
+            return;
+        for (const email of due)
+            ahead[email] = true;
+        if (!reader.running)
+            reader.running = true;
+        reader.write(due.map(email => `?${email}\n`).join(""));
     }
 
     function heard(line) {
@@ -114,16 +153,37 @@ PersonSource {
         } catch (error) {
             return;
         }
-        if (said?.signedOut) {
-            reader.running = false;
+        if (said?.signedOut || said?.signedIn === false) {
+            // Signed out stops the reader; with no sign-in it keeps
+            // reading the file, so signing in from pi is taken at once.
+            if (said.signedOut)
+                reader.running = false;
+            // What was asked is answered, so the person made again for
+            // it doesn't ask once more at once.
+            const now = Date.now();
+            for (const email of Object.keys(asking))
+                answered[email] = now;
+            asking = {};
+            const stood = asks;
+            asks = false;
+            if (stood)
+                place?.changed();
             return;
         }
         if (typeof said?.email !== "string")
             return;
-        answered[said.email] = Date.now();
-        const left = Object.assign({}, asking);
-        delete left[said.email];
-        asking = left;
+        asks = true;
+        // Only a step-in's answer says how they are, so only it holds the
+        // next step-in back a minute.
+        const steppedIn = asking[said.email] !== undefined;
+        if (steppedIn) {
+            answered[said.email] = Date.now();
+            const left = Object.assign({}, asking);
+            delete left[said.email];
+            asking = left;
+            if (!said.id)
+                missed = Object.assign({}, missed, { [said.email]: true });
+        }
         // The same answer again changes nothing, so nobody is made anew.
         if (JSON.stringify(known[said.email]) === JSON.stringify(said))
             return;

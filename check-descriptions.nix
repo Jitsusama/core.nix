@@ -915,11 +915,18 @@
   slack-finds-who-it-knows = ''
     slack-people says who Slack knows by an email address with their time zone, presence and
     status, on a grid by a search their profile confirms, and one it knows nobody by; finds each
-    once with the harness's sign-in and asks how they are each time, only ever reading; and asks
-    nobody once Slack refuses the sign-in or with none at all
+    once with the harness's sign-in, keeping who it found across a restart, and asks how they
+    are each time, only ever reading; asks ahead only after a step-in, and never how they are;
+    and asks nobody once Slack refuses the sign-in or with none at all, saying so
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
+  '';
+  slack-waits-in-its-place = ''
+    Slack's source in People asks about each address once a minute as Joel steps in, never one
+    known to be nobody, and ahead about those listed, in order, each once; Write in Slack stands
+    dimmed, looking in Slack, until it's answered, or not in Slack once a step-in found nobody,
+    and isn't listed for someone already known not to be there
   '';
   smartd-stops-cleanly-without-disks = ''
     the workstation's own smartd command, run with no disks, stops cleanly rather than failing
