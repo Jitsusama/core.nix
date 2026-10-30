@@ -144,6 +144,7 @@ Provider {
             glyph: kind(device),
             hue: "machine",
             side: warns ? `${charge}%, running low` : stood,
+            warns: warns,
             note: note,
             device: device,
             state: () => provider.said(device, note),
