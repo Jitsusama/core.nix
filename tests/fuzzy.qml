@@ -292,10 +292,25 @@ QtObject {
                     + `the least a search could, more than ${most}`);
         }
 
+        // A text still asked for stays kept however many others come and
+        // go, as a row shown is among a desktop's changing names: forgotten
+        // with them all at once, every collection made everything ready
+        // again on the same key. After the timings, so the texts made here
+        // don't weigh on them.
+        const others = 25000;
+        const asking = 500;
+        for (let at = 0; at < others; at += 1) {
+            Fuzzy.kept(`another name ${at}`);
+            if (at % asking === 0 && Fuzzy.kept("Open a terminal") !== once) {
+                failures.push(`a text still asked for was made again after ${at} others`);
+                break;
+            }
+        }
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures.concat(slow))
             console.warn(failure);
-        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 5;
+        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 6;
         console.warn(failures.length > 0 ? `${failures.length} of ${asked} went wrong`
             : slow.length > 0 ? `${slow.length} of ${asked} too slow in this process`
             : `all ${asked} held`);
