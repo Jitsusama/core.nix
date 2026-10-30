@@ -70,13 +70,16 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     joins_on_opening = 3
     before = int(desktop.as_account("qs ipc call launcher joined"))
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
-    for gib in range(11, 21):
-        lined["heartbeat"] = float(gib)
-        lined["machine"] = {"availableGib": gib}
-        desktop.as_account(
-            f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
-            f" && mv {jobs}/.q {jobs}/queue.json"
-        )
+    # The last write heard while closed, so none is heard, and joined
+    # for, once open: a write heard late was the spare's flake.
+    with desktop.told("heard jobs 20"):
+        for gib in range(11, 21):
+            lined["heartbeat"] = float(gib)
+            lined["machine"] = {"availableGib": gib}
+            desktop.as_account(
+                f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
+                f" && mv {jobs}/.q {jobs}/queue.json"
+            )
     try:
         desktop.answer("queue")
         desktop.launcher_until(
