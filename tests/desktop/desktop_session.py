@@ -84,6 +84,12 @@ FROM_THE_CORNER = 100
 # other machines and builds, a cold kitty or GIMP took past 30
 # seconds, and a wait on a program starting fails then, not the step.
 STARTING = timedelta(seconds=120)
+# How far apart typed keys go. QEMU's virtio keyboard holds about 64 events, four a key,
+# and drops what comes while it's full; at the driver's 10 ms a key, a guest starved
+# for 180 ms on a loaded builder lost the middle of "quarterly numbers", leaving "qs",
+# while its libinput said it was lagging behind (2026-10-30). 50 ms a key holds a stall
+# that long.
+KEY_PACE = timedelta(milliseconds=50)
 # More rows than this name something across everything the launcher is asked for in its
 # survey, so the rows were looked at rather than all empty.
 ROWS_LOOKED_AT = 100
@@ -486,7 +492,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         An answer still being looked up closes the launcher without copying. A row that comes
         from something found later, such as a window or a copy, can be named to wait for too.
         """
-        self.machine.send_chars(text)
+        self.machine.send_chars(text, delay=KEY_PACE)
 
         def holds(shown: Json) -> object:
             row = shown["selected"]
