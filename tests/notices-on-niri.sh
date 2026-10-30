@@ -39,8 +39,13 @@ says "report[shows card A notice]"
 # while to send.
 says "report[drawn notifications]"
 listed=false
+layers=""
 for _ in $(seq "$saying"); do
-  if niri msg layers | grep -q notifications; then
+  # Read whole before it's matched: piped into grep -q, niri could still be
+  # writing when grep stops at the match, and its broken pipe would fail the
+  # pipeline under pipefail, as if the layer were missing.
+  layers=$(niri msg layers)
+  if grep -q notifications <<< "$layers"; then
     listed=true
     break
   fi
@@ -48,7 +53,7 @@ for _ in $(seq "$saying"); do
 done
 if [ "$listed" != true ]; then
   echo "niri lists no notices' layer:" >&2
-  niri msg layers >&2
+  echo "$layers" >&2
   exit 1
 fi
 
