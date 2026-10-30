@@ -195,6 +195,9 @@ const KEPT = 20000;
 let keptItems = Object.create(null);
 let keptCount = 0;
 let keptBefore = Object.create(null);
+// How many texts have been made ready rather than found kept, so the
+// launcher can tell a search that had to make some.
+let keptMade = 0;
 
 // The text made ready to match, once while it reads the same.
 function kept(text) {
@@ -206,11 +209,20 @@ function kept(text) {
             keptItems = Object.create(null);
             keptCount = 0;
         }
-        item = keptBefore[key] ?? prepare(key);
+        item = keptBefore[key];
+        if (item === undefined) {
+            item = prepare(key);
+            keptMade += 1;
+        }
         keptItems[key] = item;
         keptCount += 1;
     }
     return item;
+}
+
+// How many texts kept() has made ready so far.
+function keptSoFar() {
+    return keptMade;
 }
 
 // The text with each hyphen inside a word taken out, its letters' places in

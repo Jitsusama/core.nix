@@ -321,6 +321,11 @@ Provider {
         return all;
     }
 
+    // A search looks through everyone, not only those listed.
+    function looksThrough() {
+        return everyone;
+    }
+
     // A source that only follows what it knows while someone might look,
     // as Tuple's does, is woken as the launcher opens.
     Connections {
