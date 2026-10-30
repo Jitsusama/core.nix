@@ -157,7 +157,15 @@ run-subtests vm-desktop-launcher-goes-places                   # list its subtes
 run-subtests vm-desktop-launcher-goes-places "opens kitty"     # run those named
 run-subtests -I vm-desktop-launcher-goes-places "opens kitty"  # then a Python prompt
 run-subtests -K vm-desktop-launcher-goes-places "opens kitty"  # keep the disks for next time
+run-subtests --there vm-desktop-launcher-goes-places "opens kitty"  # all of it on the builder
 ```
+
+With `--there`, nix-offload builds the flake's
+`legacyPackages.<system>.subtests` for the check and words where the VM
+can run, so neither the machines nor the VM are made here, and copies the
+pictures back. That build runs `run-subtests --driver` on the check's own
+driver. With no builder to take it, nix-offload builds it here; one that
+can't take it at all leaves run-subtests to run the driver here.
 
 Each subtest makes what it needs, a window or a notice, when an earlier one
 hasn't, so it runs alone. Each run has its own short runtime folder, since the

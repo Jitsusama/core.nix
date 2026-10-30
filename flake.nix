@@ -485,6 +485,19 @@
         });
       });
 
+      # Some of a VM test's subtests as a build of their own, for
+      # `run-subtests --there` to have built where its VM can run:
+      # `subtests { check = "vm-..."; words = [ ... ]; }`, on Linux.
+      legacyPackages = forEachSystem (
+        pkgs:
+        pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          subtests = import ./tools/run-subtests/subtests.nix {
+            inherit pkgs;
+            checks = self.checks.${pkgs.stdenv.hostPlatform.system};
+          };
+        }
+      );
+
       checks = forEachSystem (
         pkgs:
         import ./checks.nix {
