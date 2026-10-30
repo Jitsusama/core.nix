@@ -427,9 +427,8 @@ Singleton {
         // before it focuses it, and focusing it focuses its workspace, so
         // the next is only begun once it has.
         function onWindowOpenedOrChanged(window) {
-            const waiting = root.reopening?.waiting;
-            if (waiting && window.app_id === "kitty" && !waiting.known.includes(String(window.id)))
-                waiting.opened = window.id;
+            if (root.reopening && window.app_id === "kitty")
+                root.reopenedWindow(window.id);
             root.reopenedYet();
         }
         function onFocusedChanged() {
@@ -442,6 +441,34 @@ Singleton {
     // focus the window before last after this one's workspace was
     // focused, with the activation token niri gave it, so a window that
     // opened on another workspace is moved onto its own.
+    // Whose a new window is. kitty opens them in the order they were
+    // asked for, so one that comes after its session was given up on is
+    // that session's, the oldest given up on first, and goes to its own
+    // workspace; only a window none of those is waiting for is the
+    // session being reopened now's. A slow first kitty after a cold boot
+    // would otherwise be taken for the next one's, and both misplaced.
+    function reopenedWindow(id) {
+        const going = reopening;
+        const key = String(id);
+        if (going.taken.includes(key))
+            return;
+        const late = going.late[0];
+        if (late && !late.known.includes(key)) {
+            going.taken.push(key);
+            going.late = going.late.slice(1);
+            if (late.into !== null)
+                Niri.act({ MoveWindowToWorkspace: { window_id: id,
+                    reference: { Id: late.into }, focus: false } });
+            if (going.late.length === 0 && going.queue.length === 0 && !going.waiting)
+                reopening = null;
+            return;
+        }
+        const waiting = going.waiting;
+        if (waiting && waiting.opened === null && !waiting.known.includes(key)) {
+            going.taken.push(key);
+            waiting.opened = id;
+        }
+    }
     function reopenedYet() {
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened === null || Niri.focused !== waiting.opened)
@@ -454,7 +481,30 @@ Singleton {
             Niri.act({ ConsumeOrExpelWindowLeft: { id: waiting.opened } });
         reopening.waiting = null;
         reopenPatience.stop();
-        reopenNext();
+        reopenSoon();
+    }
+
+    // The next is begun no sooner than this after the last was, since
+    // every pi starting at once is a load Joel skipped Reopen Them All
+    // for (Joel, 2026-10-30: "i would just like about a second or two
+    // between each individual launch"). Each still waits for the one
+    // before to open first, since niri puts a window beside the column
+    // focused as it opens, and the next one's place would be focused by
+    // then.
+    readonly property int reopenPace: 2000
+    property real reopenStartedAt: 0
+    function reopenSoon() {
+        const wait = reopenStartedAt + reopenPace - Date.now();
+        if (wait > 0 && reopening && reopening.queue.length > 0) {
+            reopenPacing.interval = wait;
+            reopenPacing.restart();
+        } else {
+            reopenNext();
+        }
+    }
+    Timer {
+        id: reopenPacing
+        onTriggered: root.reopenNext()
     }
 
     // Reopens every session the last boot took away, each in its own
@@ -462,9 +512,10 @@ Singleton {
     // again at once, then this machine's one at a time, a screen and its
     // workspaces in the order niri numbers them and each column after the
     // last, since niri opens a window right of the focused column. Each
-    // waits for niri to open the one before, or a few seconds if it never
-    // does. One with nowhere kept opens beside where Joel was, after the
-    // rest, and Joel is taken back there at the end. `gone(one, cwd)` is
+    // waits for niri to open the one before, or half a minute if it never
+    // does, and for two seconds after it began (reopenPace). One with
+    // nowhere kept opens beside where Joel was, after the rest, and Joel
+    // is taken back there at the end. `gone(one, cwd)` is
     // told of one whose folder is gone, which isn't opened.
     property var reopening: null
     function reopenAll(lost, gone) {
@@ -478,7 +529,9 @@ Singleton {
                 .map(one => ({ one, at: kept[one.id] ?? null })).sort(order),
             gone,
             back: Niri.current,
-            waiting: null
+            waiting: null,
+            late: [],
+            taken: []
         };
         reopenNext();
     }
@@ -487,7 +540,9 @@ Singleton {
         if (!next) {
             if (reopening && reopening.back !== null)
                 Niri.act({ FocusWindow: { id: reopening.back } });
-            reopening = null;
+            // Kept while a window given up on may still come, to place it.
+            if (reopening && reopening.late.length === 0)
+                reopening = null;
             return;
         }
         reopening.queue = reopening.queue.slice(1);
@@ -509,6 +564,7 @@ Singleton {
             }
             reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
                 into: next.at ? root.into(next.at) : null, opened: null };
+            reopenStartedAt = Date.now();
             reopened(next.one.id, next.one.cwd);
             reopenPatience.restart();
         });
@@ -527,8 +583,11 @@ Singleton {
     }
     Timer {
         id: reopenPatience
-        interval: 10000
+        interval: 30000
         onTriggered: {
+            const waiting = root.reopening?.waiting;
+            if (waiting && waiting.opened === null)
+                root.reopening.late.push(waiting);
             if (root.reopening)
                 root.reopening.waiting = null;
             root.reopenNext();
