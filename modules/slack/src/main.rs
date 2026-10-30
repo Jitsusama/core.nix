@@ -86,28 +86,25 @@ fn main() {
                 }
             }
         };
-        let said = match line {
-            Some(line) => match line.trim().strip_prefix('?') {
-                Some(email) => {
-                    let email = email.to_lowercase();
-                    if asked(&email) && queued.insert(email.clone()) {
-                        ahead.push_back(email);
-                    }
-                    continue;
+        let said = if let Some(line) = line {
+            if let Some(email) = line.trim().strip_prefix('?') {
+                let email = email.to_lowercase();
+                if asked(&email) && queued.insert(email.clone()) {
+                    ahead.push_back(email);
                 }
-                None => asker.step_in(&line.trim().to_lowercase()),
-            },
-            None => {
-                let Some(email) = ahead.pop_front() else {
-                    if ended || line_ended(&heard) {
-                        break;
-                    }
-                    continue;
-                };
-                let (said, asked_slack) = asker.ahead(&email);
-                wait = if asked_slack { PACE } else { SETTLE };
-                said
+                continue;
             }
+            asker.step_in(&line.trim().to_lowercase())
+        } else {
+            let Some(email) = ahead.pop_front() else {
+                if ended || line_ended(&heard) {
+                    break;
+                }
+                continue;
+            };
+            let (said, asked_slack) = asker.ahead(&email);
+            wait = if asked_slack { PACE } else { SETTLE };
+            said
         };
         if !say(&said) {
             break;
