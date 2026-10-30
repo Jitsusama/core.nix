@@ -68,7 +68,10 @@ Provider {
                     out[question] = [kind, Words.name(part)];
         return out;
     }
-    questions: Object.keys(kinds).reduce((all, kind) => all.concat(Words.started(kinds[kind])), [])
+    questions: Object.keys(kinds).reduce((all, kind) => {
+        all.push(...Words.started(kinds[kind]));
+        return all;
+    }, [])
         .concat(Object.keys(parts))
 
     function answer(typed) {

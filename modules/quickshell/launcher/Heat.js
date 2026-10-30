@@ -240,7 +240,10 @@ function ownParts(telemetry, processor) {
 // processor's telemetry's temperatures, each { part, celsius }. Gives
 // { temps, fans }.
 function gather(chips, zones, cpuOfCore, telemetry) {
-    const temps = chips.reduce((all, chip) => all.concat(chipParts(chip, cpuOfCore ?? {})), []);
+    const temps = [];
+    for (const chip of chips) {
+        temps.push(...chipParts(chip, cpuOfCore ?? {}));
+    }
     const added = (zones ?? []).filter((zone, at, all) => zone.part !== ""
         && !temps.some(each => each.id === zone.part)
         && all.findIndex(other => other.part === zone.part) === at)
@@ -279,7 +282,10 @@ function toldOf(made, other) {
 // power. Where none are named, the first chip's unnamed fans are, by
 // number.
 function fans(chips) {
-    const all = chips.reduce((every, chip) => every.concat(chip.fans), []);
+    const all = [];
+    for (const chip of chips) {
+        all.push(...chip.fans);
+    }
     const named = all.filter((fan, at) => fan.label !== ""
         && all.findIndex(other => other.label === fan.label) === at);
     const unnamed = chips.map(chip => chip.fans.filter(fan => fan.label === ""))

@@ -92,22 +92,32 @@ Provider {
     ]
 
     // Every key with something of its own on each layer: a key that falls
-    // through is found on the layer it falls to.
-    readonly property var keys: KeyboardLayout.layers.reduce((rows, layer, number) => rows.concat(
-        layer.keys.map((key, index) => ({ key: key, index: index }))
-            .filter(found => found.key.cap !== undefined)
-            .map(found => member({
-                key: `keyboard:key:${layer.name}:${found.index}`,
-                verb: Words.verb("keyboard:key"),
-                name: provider.named(found.key),
-                side: found.key.holds ? `${layer.name}, held ${found.key.holds}` : layer.name,
-                keywords: `${layer.name} ${found.key.holds ?? ""}`,
-                note: found.key.where,
-                glyph: Theme.glyph.keyboard,
-                hue: "machine",
-                later: true,
-                run: () => KeyboardLayout.show(number, found.index)
-            }))), [])
+    // through is found on the layer it falls to. Built once with push, since
+    // a reduce that concatenates copies the list at every layer.
+    readonly property var keys: {
+        const rows = [];
+        KeyboardLayout.layers.forEach((layer, number) => layer.keys.forEach((key, index) => {
+            if (key.cap !== undefined)
+                rows.push(keyRow(layer, number, key, index));
+        }));
+        return rows;
+    }
+
+    // A key's row, the key at index on the layer numbered number.
+    function keyRow(layer, number, key, index) {
+        return member({
+            key: `keyboard:key:${layer.name}:${index}`,
+            verb: Words.verb("keyboard:key"),
+            name: provider.named(key),
+            side: key.holds ? `${layer.name}, held ${key.holds}` : layer.name,
+            keywords: `${layer.name} ${key.holds ?? ""}`,
+            note: key.where,
+            glyph: Theme.glyph.keyboard,
+            hue: "machine",
+            later: true,
+            run: () => KeyboardLayout.show(number, index)
+        });
+    }
 
     // A key by what it is: a character by itself, and beside its words where
     // they say more ("\ backslash"), and a key whose cap is a word by its

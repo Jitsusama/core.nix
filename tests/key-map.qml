@@ -218,6 +218,13 @@ ShellRoot {
             over("kitty", "~");
             expect("over the terminal, its own", map.leading().name === "Terminal"
                 && names(map.everything())[1] === "Desktop", names(map.everything()).join(", "));
+            // Opened again over the terminal, it leads with the same layers,
+            // so none of them is made again.
+            const layered = map.ranked;
+            const chords = map.all;
+            over("kitty", "notes");
+            expect("opened over the terminal again, its layers kept",
+                map.ranked === layered && map.all === chords, names(map.everything()).join(", "));
             // Each of these after the terminal led, so a window read wrong
             // would leave it leading. A program in a window of its own with
             // keys of its own leads with them, then the desktop's.
