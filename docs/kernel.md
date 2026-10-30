@@ -19,12 +19,12 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.3, the release `package.nix` names in `stable`, while
-  the pinned nixpkgs has only 7.2. nixpkgs's 7.2 package builds it, since
-  the two build the same way, and `stable` stops applying once nixpkgs's
-  release is as new. 7.3 holds every fix the XPS 14 took onto 7.2 ahead of
-  it, which [the hardware guide][hw] lists, so the laptop carries 23 fewer
-  patches than it did on 7.2.
+- **The series:** 7.3, at 7.3.1, the release `package.nix` names in
+  `stable`, while the pinned nixpkgs has only 7.2. nixpkgs's 7.2 package
+  builds it, since the two build the same way, and `stable` stops applying
+  once nixpkgs's release is as new. 7.3 holds every fix the XPS 14 took
+  onto 7.2 ahead of it, which [the hardware guide][hw] lists, so the laptop
+  carries 23 fewer patches than it did on 7.2.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.

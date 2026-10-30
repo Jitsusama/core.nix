@@ -41,8 +41,8 @@ let
   # pinned nixpkgs has no 7.3 package yet, so it's built from 7.2's, whose
   # build is the same. docs/kernel.md says why this release.
   stable = {
-    version = "7.3";
-    hash = "sha256-hzY8JPEOBjIes2J2VSEJTpRHH2v/i84taz5A858ASVM=";
+    version = "7.3.1";
+    hash = "sha256-+llarZNzT4KcljwqkO98NnMiT9f9rntJQG45fN4t4jE=";
   };
 in
 linux_7_2.override {
@@ -50,7 +50,8 @@ linux_7_2.override {
 
   argsOverride = lib.optionalAttrs (lib.versionOlder linux_7_2.version stable.version) {
     inherit (stable) version;
-    # A first release, such as 7.3, puts its modules under 7.3.0.
+    # A first release, such as 7.3, puts its modules under 7.3.0, and a
+    # stable one, such as 7.3.1, under its own version.
     modDirVersion = lib.versions.pad 3 stable.version;
     src = fetchurl {
       url = "mirror://kernel/linux/kernel/v7.x/linux-${stable.version}.tar.xz";
