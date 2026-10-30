@@ -1771,19 +1771,6 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
-@pytest.fixture
-def google(desktop: Desktop) -> Iterator[None]:
-    """Start the stand-in Google afresh for one test, and stop it after.
-
-    Its meetings are timed from when it starts, so one left running would come to start during
-    a later test, wanting Joel in Now and said as a notice.
-    """
-    desktop.as_account("systemctl --user restart google.service")
-    yield
-    desktop.as_account("systemctl --user stop google.service")
-
-
-@pytest.mark.usefixtures("google")
 def test_the_first_search_after_the_shell_starts_finds_details_made_already(
     desktop: Desktop,
 ) -> None:
@@ -1812,6 +1799,19 @@ def test_the_first_search_after_the_shell_starts_finds_details_made_already(
     assert "report[spots made on a key]" not in said, said
 
 
+@pytest.fixture
+def google(desktop: Desktop) -> Iterator[None]:
+    """Start the stand-in Google afresh for one test, and stop it after.
+
+    Its meetings are timed from when it starts, so one left running would come to start during
+    a later test, wanting Joel in Now and said as a notice.
+    """
+    desktop.as_account("systemctl --user restart google.service")
+    yield
+    desktop.as_account("systemctl --user stop google.service")
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     desktop: Desktop,
 ) -> None:
