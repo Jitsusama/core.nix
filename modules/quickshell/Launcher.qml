@@ -208,8 +208,10 @@ Scope {
     // the selection goes to the top; when a late answer arrives, a
     // selection already moved stays on the row it was on.
     function compose(fresh) {
+        const composing = Date.now();
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         const said = answering(typed, fresh);
+        const askedAll = Date.now();
         const listed = root.found.concat(stillActed(root.found));
         // An answer only there when nothing else is, as asking a model by a
         // question's first word is, gives way to anything found.
@@ -249,6 +251,7 @@ Scope {
             gathered.filter(row => !whole.has(row.from.settings.name)), latch)));
         // Searched again only to say what's there now, it keeps the order
         // it's shown in (reshow).
+        const placedAll = Date.now();
         matches = steadying ? steadied(rows.concat(below)) : rows.concat(below);
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
@@ -262,7 +265,15 @@ Scope {
             current = 0;
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
+        composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
+            showing: Date.now() - placedAll };
     }
+
+    // What the last composing spent its time on: the answers asked, the rows
+    // placed among them, then the list shown, its rows drawn afresh and
+    // everything that reads them; a typical key spent 4 ms on all three
+    // together, with nothing to say which (launcher-trials.json, 2026-10-30).
+    property var composeParts: null
 
     // An answer as a row: what it says as its name, Return copying it or
     // doing what it does, and its detail behind the right arrow, each part
@@ -1425,13 +1436,14 @@ Scope {
     property var gathered: []
 
     function gathering(letters, among) {
+        // What each collection took, in milliseconds, for a key that's slow
+        // to say which (Trials.qml). Made empty first, so a key too short to
+        // search them doesn't say what the key before it took.
+        const took = {};
+        listsTook = took;
         if (letters.replace(/\s+/g, "").length < 2)
             return [];
         const rows = [];
-        // What each collection took, in milliseconds, for a key that's slow
-        // to say which (Trials.qml).
-        const took = {};
-        listsTook = took;
         for (const source of among ?? collections) {
             // One opened only by its own chord adds no row to a search, but
             // does inside a category that holds it.
@@ -2487,6 +2499,7 @@ Scope {
     }
 
     function search(letters) {
+        const searchBegan = Date.now();
         if (!steadying)
             forgetGone();
         const narrowing = typed !== "" && letters.startsWith(typed);
@@ -2677,8 +2690,9 @@ Scope {
         const matched = Date.now();
         compose(true);
         list.positionViewAtBeginning();
-        searchParts = { lists: listed - began, rows: matched - listed,
-            answers: Date.now() - matched, each: listsTook, within: costs };
+        searchParts = { before: began - searchBegan, lists: listed - began, rows: matched - listed,
+            answers: Date.now() - matched, each: listsTook, within: costs,
+            composing: composeParts };
     }
 
     // What the last search at the top level spent its time on, or null for

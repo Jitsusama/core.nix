@@ -43,7 +43,15 @@ Scope {
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
                 + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each)},`
-                    + ` rows ${parts.rows}, answers ${parts.answers})` : ""));
+                    + ` rows ${parts.rows}, answers ${parts.answers}${composed(parts.composing)}`
+                    + `${parts.before ? `, before ${parts.before}` : ""})` : ""));
+    }
+
+    // The answers' time, as the answers asked, the rows placed and the list
+    // shown, when the key said them.
+    function composed(parts) {
+        return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
+            : "";
     }
 
     // The three collections that took longest, if any took a millisecond.
