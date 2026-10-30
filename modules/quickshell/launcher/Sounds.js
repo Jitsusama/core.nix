@@ -176,6 +176,17 @@ function plugged(facts) {
     return found ? String(found.value) : "";
 }
 
+// Each card's facts of its jack alone, by the same keys as all of them,
+// so what's plugged in is told apart from the rest desk-facts says, such
+// as whether the card is playing, which changes as sound starts and stops.
+function jacks(all) {
+    const each = {};
+    for (const key of Object.keys(all ?? {})) {
+        each[key] = (all[key] ?? []).filter((fact) => String(fact.name).toLowerCase() === PLUGGED);
+    }
+    return each;
+}
+
 // The vocabulary's word for what a device is called, by its node's name:
 // the machine's own by their port, a headset's microphone as its, or ""
 // for one whose own name says what it is. A microphone that shares its

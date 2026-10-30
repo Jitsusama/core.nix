@@ -3,8 +3,9 @@
 // the sound server would give them, with what desk-facts would say of
 // their jacks and niri's workspaces on the machine's own panel alone: a
 // jack with nothing plugged into it isn't listed, and says so where it's
-// shown; one with headphones in is; speakers desk-facts says no jack of
-// are; a display's output waits for a display; and a headset's microphone
+// shown; one with headphones in is; a card starting or stopping to play
+// lists nothing again, since only its jack says whether it's listed;
+// speakers desk-facts says no jack of are; a display's output waits for a display; and a headset's microphone
 // isn't listened to while the headset plays music, since listening would
 // switch it to calls, though it is once it's in a call. The sandbox has no
 // sound server, so which device is in use, and which one is watched, can't
@@ -58,6 +59,19 @@ ShellRoot {
         return { "PCH,0:out": [{ name: "Plugged in", value: plugged }] };
     }
 
+    // The same jack, its card now playing, as desk-facts says once sound
+    // starts through it.
+    function playingThrough(plugged) {
+        return { "PCH,0:out": [{ name: "Plugged in", value: plugged },
+            { name: "playing", value: "48 kHz, 32 bit, period 1024 (21.3 ms)" }] };
+    }
+
+    // Each time whether the headphones are listed is worked out again, as
+    // Sound's devices are: a new object each time, so each time is heard.
+    property int listings: 0
+    readonly property var headphonesListed: ({ listed: sound.listed(headphones) })
+    onHeadphonesListedChanged: listings += 1
+
     // Quickshell hears Qt.exit only once the shell has loaded, so the cases
     // run just after.
     Component.onCompleted: Qt.callLater(root.cases)
@@ -84,6 +98,14 @@ ShellRoot {
         expect("a jack with headphones in is listed", sound.listed(headphones), "not listed");
         expect("and says nothing of being empty", !sound.made(headphones).note
             .includes(sound.said("unplugged")), sound.made(headphones).note);
+        const before = listings;
+        sound.facts = playingThrough("headphones");
+        sound.facts = jack("headphones");
+        expect("a card starting and stopping lists nothing again", listings === before,
+            `listed ${listings - before} more times`);
+        sound.facts = playingThrough("nothing");
+        expect("its jack emptying does", listings > before && !sound.listed(headphones),
+            `listed ${listings - before} more times`);
 
         const playing = microphone("a2dp-sink");
         expect("a headset playing music would switch", sound.switches(playing), "it wouldn't");
