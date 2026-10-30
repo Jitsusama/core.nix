@@ -482,6 +482,8 @@ what it takes is held to numbers, measured on the running desktop:
 | Measure                                  | Holds to                                      |
 | ---------------------------------------- | --------------------------------------------- |
 | processor, launcher closed, nothing live | under 1% of one core, over five minutes       |
+| frames, launcher closed, nothing live    | none from any window, over 30 seconds         |
+| wakeups, launcher closed, nothing live   | under 5 a second on the shell's main thread   |
 | processor, launcher open and still       | under 3% of one core, over a minute           |
 | processor, a key typed                   | its work done inside the 4 ms search budget   |
 | memory resident                          | under 300 MB, and no more than 10% over a day |

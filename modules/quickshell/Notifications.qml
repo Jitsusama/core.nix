@@ -575,6 +575,8 @@ Scope {
     PanelWindow {
         id: window
 
+        Counted { name: "notices" }
+
         // Where the pointer reaches and what niri blurs: the notices alone,
         // not the gaps between them.
         property var areas: []

@@ -19,6 +19,8 @@ import QtQuick
 PanelWindow {
     id: map
 
+    Counted { name: "keyboard map" }
+
     // A key width, and the gap between keys.
     readonly property int unit: Theme.space.xxxl
     readonly property int gap: Theme.space.xs

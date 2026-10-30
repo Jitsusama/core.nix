@@ -18,6 +18,8 @@ Scope {
         PanelWindow {
             id: window
 
+            Counted { name: `wallpaper ${window.modelData?.name ?? ""}` }
+
             required property ShellScreen modelData
 
             screen: modelData

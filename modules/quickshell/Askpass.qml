@@ -98,6 +98,8 @@ Scope {
     }
 
     PanelWindow {
+        Counted { name: "askpass" }
+
         visible: root.asking !== null
         anchors.top: true
         anchors.bottom: true

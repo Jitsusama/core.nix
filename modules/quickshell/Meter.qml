@@ -11,6 +11,8 @@ import QtQuick
 PanelWindow {
     id: meter
 
+    Counted { name: "meter" }
+
     // Names the surface to niri, which is how the desktop test finds it.
     required property string name
     property string glyph
