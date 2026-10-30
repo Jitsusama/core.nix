@@ -34,6 +34,25 @@ function heard(line) {
     };
 }
 
+// The parts of what the program said whose text differs from `held`, the
+// text each part was last taken from, with the texts to hold now. The
+// program writes its file whole each time Google answers, most minutes
+// only to say when, and a part assigned again, even the same, remakes
+// everything bound to it: People's whole list, each minute, was most of
+// the closed shell's time (2026-10-30).
+function changed(held, said) {
+    const texts = Object.assign({}, held);
+    const parts = [];
+    for (const part of Object.keys(said)) {
+        const text = JSON.stringify(said[part]);
+        if (text !== held[part]) {
+            texts[part] = text;
+            parts.push(part);
+        }
+    }
+    return { texts, parts };
+}
+
 // The line that asks the program what a Drive folder holds: "root" (My
 // Drive), "shared" (Shared with Me), "drives" (the shared drives) or a
 // folder's id.
