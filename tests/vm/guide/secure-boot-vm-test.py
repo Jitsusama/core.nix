@@ -237,6 +237,27 @@ def test_disk_opens_with_the_tpm_and_the_pin_alone(sealed: QemuMachine) -> None:
     sealed.fail("test -e /run/cryptsetup-keyed/system")
 
 
+def test_firmware_starts_the_loader_by_its_own_entry_first(sealed: QemuMachine) -> None:
+    """The firmware starts the loader by an entry of its own, first in BootOrder."""
+    sealed.wait_for_unit("loader-first-in-boot-order.service")
+    listed = sealed.succeed("efibootmgr")
+    print(listed)
+    partuuid = sealed.succeed("lsblk -no PARTUUID /dev/disk/by-partlabel/system-boot").strip()
+    lines = listed.splitlines()
+    order = next(line.split()[1] for line in lines if line.startswith("BootOrder:"))
+    current = next(line.split()[1] for line in lines if line.startswith("BootCurrent:"))
+    first = next(line for line in lines if line.startswith(f"Boot{order[:4]}"))
+    # Boot0003* Linux Boot Manager<tab>HD(1,GPT,<partuuid>,...)/\EFI\systemd\systemd-bootx64.efi
+    assert first[8] == "*", first
+    assert partuuid.lower() in first.lower(), first
+    assert first.lower().endswith("/\\efi\\systemd\\systemd-bootx64.efi"), first
+    # The boot before this one made it, and this one came through it.
+    assert current == order[:4], (current, order)
+    # And this boot found nothing to write.
+    said = sealed.succeed("journalctl -b -o cat -u loader-first-in-boot-order.service")
+    assert "BootOrder" not in said, said
+
+
 def test_no_nvpcr_is_set_up_and_a_login_measures_nothing(sealed: QemuMachine) -> None:
     """No NvPCR is set up, and a login measures nothing."""
     # By its name rather than its unit: it exits before journald can

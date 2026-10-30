@@ -116,6 +116,25 @@ let
     text = builtins.readFile ./firmware-update.sh;
   };
 
+  # Gives the loader an entry of its own, first in BootOrder (loader-first.sh),
+  # by the path lanzaboote installs its signed systemd-boot to.
+  loaderFirst = pkgs.writeShellApplication {
+    name = "loader-first-in-boot-order";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.efibootmgr
+      pkgs.gnugrep
+      pkgs.gnused
+      pkgs.util-linux
+    ];
+    runtimeEnv = {
+      ESP = config.boot.loader.efi.efiSysMountPoint;
+      LOADER = "\\EFI\\systemd\\systemd-bootx64.efi";
+      LABEL = "Linux Boot Manager";
+    };
+    text = builtins.readFile ./loader-first.sh;
+  };
+
   # Every NvPCR this systemd defines, each pointed at /dev/null, which is how
   # systemd reads a definition it should ignore. Taken from the package, so a
   # new one in a later systemd is masked as well.
@@ -289,6 +308,29 @@ in
             ExecStop = lib.getExe firmwareUpdate;
           };
         };
+
+    # The firmware measures into PCR 4 every boot entry it tries before the
+    # one that starts, so whatever its own order puts ahead of our loader
+    # is in PCR 4 too, and systemd-pcrlock, unable to account for it,
+    # leaves PCR 4 out of the disk's policy. Each boot gives the loader an
+    # entry of its own, first in BootOrder, so the firmware starts it
+    # straight away on every machine, as it does wherever its own entry for
+    # the disk happens to come first. A stick still starts from the
+    # firmware's boot menu.
+    systemd.services.loader-first-in-boot-order = {
+      description = "Put the loader first in the firmware's boot order";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "sys-firmware-efi-efivars.mount" ];
+      unitConfig = {
+        ConditionPathIsDirectory = "/sys/firmware/efi/efivars";
+        RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = lib.getExe loaderFirst;
+      };
+    };
 
     # Measured boot holds sysinit.target back while systemd-pcrlock makes
     # the disk's policy, two to three seconds, longest on new firmware. In
