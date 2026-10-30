@@ -793,18 +793,26 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
 /// A builder's store once one stands again after ssh lost it, giving up
 /// `waiting.longest` after `since`: it looks every few seconds, since the
 /// store may still name the builder whose tunnel just went, and waits as
-/// `waited` does once the store is empty.
+/// `waited` does once the store is empty. Only a lender running stands one
+/// again, but a build is most often lost because its lender restarted, as
+/// a switch does, so a lender that isn't running is waited for up to
+/// `waiting.answered` after `since`.
 pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> Option<String> {
-    // Only a lender running stands one again.
-    let lending = pid_in(&dir.join("lender")).is_some_and(runs);
-    if !lending || since.elapsed() >= waiting.longest {
-        return None;
+    loop {
+        if since.elapsed() >= waiting.longest {
+            return None;
+        }
+        std::thread::sleep(AGAIN.min(waiting.answered));
+        if pid_in(&dir.join("lender")).is_some_and(runs) {
+            return fs::read_to_string(dir.join("store"))
+                .ok()
+                .filter(|store| !store.trim().is_empty())
+                .or_else(|| waited(dir, waiting));
+        }
+        if since.elapsed() >= waiting.answered {
+            return None;
+        }
     }
-    std::thread::sleep(AGAIN.min(waiting.answered));
-    fs::read_to_string(dir.join("store"))
-        .ok()
-        .filter(|store| !store.trim().is_empty())
-        .or_else(|| waited(dir, waiting))
 }
 
 /// How long a build lost mid-way waits before it's sent again.
@@ -1322,6 +1330,37 @@ mod tests {
         assert!(
             began.elapsed() < QUICK.longest,
             "it gave up once nothing was being made"
+        );
+    }
+
+    #[test]
+    fn a_build_lost_as_its_lender_restarts_waits_for_the_new_one() {
+        let dir = tempfile::tempdir().unwrap();
+        // The lender that just stopped, as a switch stops it.
+        fs::write(dir.path().join("lender"), "999999999\n").unwrap();
+        let lender = dir.path().to_owned();
+        let restarting = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            fs::write(lender.join("store"), "ssh-ng://far\n").unwrap();
+            fs::write(lender.join("lender"), format!("{}\n", std::process::id())).unwrap();
+        });
+        assert_eq!(
+            stood_again(dir.path(), QUICK, std::time::Instant::now()).as_deref(),
+            Some("ssh-ng://far\n")
+        );
+        restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_build_lost_with_no_lender_coming_back_stops_waiting() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("lender"), "999999999\n").unwrap();
+        fs::write(dir.path().join("store"), "ssh-ng://far\n").unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(stood_again(dir.path(), QUICK, began), None);
+        assert!(
+            began.elapsed() < QUICK.longest,
+            "it gave up once no lender came back"
         );
     }
 
