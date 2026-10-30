@@ -936,8 +936,16 @@ pub fn shared<'a>(
             Some(asked.with(&asked.flake, asked.attributes.clone())),
         );
     }
+    // Only a machine that takes something asked is asked whether it
+    // answers: an away machine's name can take seconds to fail to resolve.
     let answering: Vec<&Nearby> = nearby
         .iter()
+        .filter(|machine| {
+            asked
+                .attributes
+                .iter()
+                .any(|attribute| machine.takes(attribute))
+        })
         .filter(|machine| answers(&machine.address))
         .collect();
     let mut parts: Vec<(&Nearby, Vec<String>)> = Vec::new();
@@ -1534,6 +1542,26 @@ mod tests {
         assert!(!matches("checks.x.*-evaluates", "checks.y.dev-evaluates"));
         assert!(matches("checks.*.a*b", "checks.x.aXbYb"));
         assert!(!matches("checks.*.a*b", "checks.x.aXbY"));
+    }
+
+    #[test]
+    fn a_nearby_machine_is_asked_whether_it_answers_only_when_it_takes_something_asked() {
+        // An away machine's name can take seconds to fail to resolve, which
+        // every build it would never take shouldn't wait out.
+        let machines = [mac()];
+        let probed = std::cell::Cell::new(0);
+        let answers = |_: &str| {
+            probed.set(probed.get() + 1);
+            true
+        };
+        let linux = asked(&words("path:/z checks.x86_64-linux.a")).unwrap();
+        let (near, _) = shared(&linux, &machines, answers);
+        assert!(near.is_empty());
+        assert_eq!(probed.get(), 0, "nothing asked is the machine's");
+        let darwin = asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
+        let (near, _) = shared(&darwin, &machines, answers);
+        assert_eq!(near.len(), 1);
+        assert_eq!(probed.get(), 1);
     }
 
     #[test]
