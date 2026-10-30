@@ -2321,12 +2321,16 @@ Scope {
     // offers now (`above`, or that step's own rows), as enter made it:
     // a thing at the top, a collection's things or a nested row's, asked
     // for their verbs and then their parts, anything else for its targets.
-    // Says whether every step was still there.
+    // A step entered from what was typed is made again from its own row,
+    // since what was typed found it, not the rows above, as a place the
+    // picker holds at home is found from any folder. Says whether every
+    // step was still there.
     function remade(steps, from, above) {
         let rows = above ?? (from > 0 && from <= steps.length ? steps[from - 1].rows : []);
         for (let at = from; at < steps.length; at++) {
             const step = steps[at];
-            const thing = rows.find(row => sameRow(row, step.row));
+            const thing = rows.find(row => sameRow(row, step.row))
+                ?? ((step.typed ?? "") !== "" ? step.row : undefined);
             const things = !!thing && asThing(thing, at === 0 || collects(steps[at - 1]));
             const own = !thing ? null : stepRows(thing, things);
             const parts = thing && things ? partsIn(thing) : [];

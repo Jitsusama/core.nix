@@ -19,6 +19,14 @@
 // it instead; a name already there steps in to Replace It, the one ask.
 // Escape, or closing the launcher, picks nothing.
 //
+// Other providers give it places kept elsewhere, as Google's Drive is
+// (modules/google), by `chooserPlaces(chooser)`: asked once as an ask is
+// shown, so what's listed never changes while it's shown, and listed after
+// home's files, apart, found by typing from any folder (VKCF3Z,
+// 2026-10-29). Their files are fetched before they're picked: the launcher
+// stays, its foot saying so, and closes once every path is here, or stays
+// saying why one couldn't be.
+//
 // The answer goes back on the socket open-with listens on, as one line:
 // the paths picked, the filter in use and the option of each choice, or an
 // empty line for none. Asks wait their turn, oldest first, as OpenWith.qml's
@@ -30,6 +38,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import Qt.labs.folderlistmodel
+import "../Fuzzy.js" as Fuzzy
 
 Provider {
     id: provider
@@ -69,6 +78,13 @@ Provider {
     // Marked, and these are the ones marked, in the order they were.
     readonly property bool several: request.multiple === true && mode === "open" && !folders
     property var marked: []
+    // The places other providers give, asked as the ask is shown, and what
+    // each of their files says of itself, by its key, fetch included.
+    property var places: []
+    property var elsewhere: ({})
+    // Fetching what's kept elsewhere: how many are asked, how many are
+    // here, and why one couldn't be, or nothing while none is.
+    property var fetching: null
     // Each kind of file by how it's named, and the kinds each is one of.
     property var kinds: ({ names: {}, endings: {}, broader: {} })
 
@@ -139,19 +155,29 @@ Provider {
         const naming = saving && path !== "/" ? savingRow(path, request.name ?? "") : null;
         return apart([several ? [markedLead()] : [],
             (naming ? [naming] : []).concat(path === start ? recent(path) : []),
-            own.filter(row => row.key !== naming?.key), options()]);
+            own.filter(row => row.key !== naming?.key), path === Files.home ? places.slice() : [],
+            options()]);
     }
 
     // Groups one after another, each set apart from the one before it by a
     // gap, as Now is at home.
+    // The gap goes on a copy, what reads as it's drawn kept, since a
+    // place's rows are made once and shown elsewhere too.
     function apart(groups) {
         const rows = [];
         for (const group of groups) {
             if (group.length > 0 && rows.length > 0)
-                group[0].gap = true;
+                group[0] = Object.assign(copied(group[0]), { gap: true });
             rows.push(...group);
         }
         return rows;
+    }
+
+    function copied(row) {
+        const copy = {};
+        for (const name of Object.getOwnPropertyNames(row))
+            Object.defineProperty(copy, name, Object.getOwnPropertyDescriptor(row, name));
+        return copy;
     }
 
     // The files opened lately the filter passes, or their folders where a
@@ -182,16 +208,86 @@ Provider {
             typed: letters => typedIn(path, letters)
         });
         Object.defineProperty(row, "title", {
-            get: () => Files.shown(provider.deepest() || path),
+            get: () => provider.titled(Files.shown(path)),
             enumerable: true
         });
         return row;
     }
 
-    // The folder held deepest in the launcher, or none.
-    function deepest() {
-        const keys = heldKeys().filter(key => key.startsWith("folder:"));
-        return keys.length > 0 ? keys[keys.length - 1].slice("folder:".length) : "";
+    // What every folder held says, the one held deepest: a folder here by
+    // its path, one kept elsewhere by its name.
+    function titled(own) {
+        const keys = heldKeys().filter(key => key.startsWith("folder:") || elsewhere[key]?.folder);
+        const deepest = keys.length > 0 ? keys[keys.length - 1] : "";
+        if (deepest === "")
+            return own;
+        return deepest.startsWith("folder:") ? Files.shown(deepest.slice("folder:".length))
+            : elsewhere[deepest].name;
+    }
+
+    // What a place gives the chooser to make its rows with, so they're
+    // drawn, picked and marked as a folder's here are, and `changed`, said
+    // once what a folder holds has come, so every folder held is asked
+    // again.
+    function chooser() {
+        return {
+            saving: saving || mode === "save-files",
+            folders: folders,
+            changed: () => provider.changed(),
+            wants: (name, mime) => provider.wants(name, mime),
+            folder: fields => provider.folderElsewhere(fields),
+            file: fields => provider.fileElsewhere(fields)
+        };
+    }
+
+    function placesFor() {
+        const asked = chooser();
+        return (launcher?.sources ?? [])
+            .filter(other => other !== provider && typeof other.chooserPlaces === "function")
+            .reduce((rows, other) => rows.concat(other.chooserPlaces(asked)), []);
+    }
+
+    // A folder kept elsewhere: stepped into to what it holds, saying the
+    // one held deepest, as a folder here does. While it holds nothing it
+    // says what its place says (`empty`), as "Listing it." while it's
+    // asked for, else that there's nothing here.
+    function folderElsewhere(fields) {
+        elsewhere[fields.key] = { name: fields.name, folder: true };
+        const row = Files.elsewhere("folder", fields, thing, [], () => fields.inside());
+        Object.defineProperties(row, {
+            title: { get: () => provider.titled(fields.name), enumerable: true },
+            empty: { get: () => fields.empty?.() || "Nothing here.", enumerable: true }
+        });
+        return row;
+    }
+
+    // A file kept elsewhere: fetched, then picked by Return, or marked
+    // where several may be opened. One of Google's own kinds is the row it
+    // is everywhere (`adopt`), picked the same way.
+    function fileElsewhere(fields) {
+        elsewhere[fields.key] = { name: fields.name, fetch: fields.fetch };
+        const made = acts => {
+            const row = fields.adopt ? Object.assign({}, fields.adopt)
+                : Files.elsewhere("file", fields, thing, []);
+            Object.assign(row, { verb: acts[0].verb, run: acts[0].run, verbs: () => acts, stays: true });
+            Object.defineProperty(row, "note", {
+                get: () => provider.fetchingSaid() || (fields.note ?? ""),
+                enumerable: true
+            });
+            return row;
+        };
+        if (several)
+            return markingRow(fields.key, made);
+        return made([act("verb:path:file:open", fields.key, [fields.key])]);
+    }
+
+    // What the foot says while what's kept elsewhere is fetched.
+    function fetchingSaid() {
+        if (fetching === null)
+            return "";
+        if (fetching.why !== "")
+            return fetching.why;
+        return fetching.asked === 1 ? "Fetching it." : `Fetching ${fetching.here + 1} of ${fetching.asked}.`;
     }
 
     // A file's row: opened by Return, or, saving, stepped into to Replace It,
@@ -200,7 +296,7 @@ Provider {
         if (saving)
             return Files.file(path, thing, [act("verb:file-chooser:replace", path, [path])], () => []);
         if (several)
-            return markingRow(path);
+            return markingRow(path, acts => Files.file(path, thing, acts));
         return Files.file(path, thing, [act("verb:path:file:open", path, [path])]);
     }
 
@@ -210,7 +306,7 @@ Provider {
     // then Copy the Path. How it stands is read as it's drawn, so the row
     // says what Return just did without being made again (VKCF3Z,
     // 2026-10-29).
-    function markingRow(path) {
+    function markingRow(path, made) {
         const is = () => provider.marked.includes(path);
         const flip = () => {
             provider.marked = is() ? provider.marked.filter(each => each !== path)
@@ -230,7 +326,7 @@ Provider {
             verb: { enumerable: true, get: verb },
             side: { enumerable: true, get: () => is() ? "yes" : "no" }
         });
-        const row = Files.file(path, thing, [marking, act("verb:path:file:open", path, [path])]);
+        const row = made([marking, act("verb:path:file:open", path, [path])]);
         row.stays = true;
         Object.defineProperties(row, {
             verb: { enumerable: true, get: verb },
@@ -254,15 +350,17 @@ Provider {
             glyph: Words.glyph("verb:file-chooser:marked"),
             hue: "action",
             side: count === 0 ? "none" : `${count}`,
-            note: count === 0 ? "Nothing is marked yet: Return on a file marks it." : "",
-            stays: count === 0,
+            note: count === 0 ? "Nothing is marked yet: Return on a file marks it." : fetchingSaid(),
+            stays: count === 0 || marked.some(each => !each.startsWith("/")),
             run: () => {
                 if (provider.marked.length > 0)
-                    provider.pick(provider.marked.slice());
+                    provider.choose(provider.marked.slice());
             }
         });
     }
 
+    // Each path is here, and any kept elsewhere is fetched first; a file
+    // kept elsewhere keeps the launcher while it's fetched.
     function act(id, path, paths) {
         const own = id === "verb:file-chooser:replace";
         return thing({
@@ -271,8 +369,44 @@ Provider {
             verb: own ? Words.verb(id) : word(id),
             glyph: Words.glyph(id),
             hue: "action",
-            run: () => provider.pick(paths)
+            stays: !path.startsWith("/"),
+            run: () => provider.choose(paths)
         });
+    }
+
+    // Picks what's here at once, and what's kept elsewhere once each is
+    // fetched, in the order given, closing the launcher then; one that
+    // can't be leaves it open, saying why, so Return tries again.
+    function choose(ids) {
+        const away = ids.filter(id => !id.startsWith("/"));
+        if (away.length === 0 || asking === null) {
+            pick(ids);
+            return;
+        }
+        if (fetching !== null && fetching.why === "")
+            return;
+        const reply = asking.reply;
+        const here = {};
+        fetching = { asked: away.length, here: 0, why: "" };
+        changed();
+        for (const id of away)
+            elsewhere[id].fetch(path => {
+                if (asking?.reply !== reply || fetching === null)
+                    return;
+                here[id] = path;
+                fetching = Object.assign({}, fetching, { here: Object.keys(here).length });
+                changed();
+                if (fetching.here < away.length)
+                    return;
+                fetching = null;
+                pick(ids.map(each => each.startsWith("/") ? each : here[each]));
+                launcher.open = false;
+            }, why => {
+                if (asking?.reply !== reply || fetching === null)
+                    return;
+                fetching = Object.assign({}, fetching, { why: why });
+                changed();
+            });
     }
 
     // The row Return saves to: the name given, in this folder, or the file
@@ -300,12 +434,15 @@ Provider {
     function typedIn(folder, letters) {
         const typed = letters.trim();
         const naming = saving ? savingRow(folder, typed) : null;
+        const words = Fuzzy.words(typed);
+        const placed = folder === Files.home || typed === "" || typed.startsWith(".") ? []
+            : places.filter(row => Fuzzy.match(Fuzzy.prepare(row.name), words, false).score >= 0);
         const hidden = !typed.startsWith(".") ? [] : (listed[folder] ?? [])
             .filter(entry => entry.name.startsWith(".") && entry.name !== typed
                 && entry.name.toLowerCase().startsWith(typed.toLowerCase())
                 && (entry.folder || !folders && passes(entry.name)))
             .map(entry => entry.folder ? folderRow(entry.path) : fileRow(entry.path));
-        return (naming ? [naming] : []).concat(hidden);
+        return (naming ? [naming] : []).concat(hidden, placed);
     }
 
     // The program's filters, the one in use chosen, and its choices, each
@@ -373,10 +510,16 @@ Provider {
     // Whether the filter in use passes a file by its name: by a glob, or by
     // its kind, as the desktop's kinds name files.
     function passes(name) {
+        return wants(name, "");
+    }
+
+    // The same, for a file whose kind is said (`mime`), as one kept
+    // elsewhere is, else known by its name.
+    function wants(name, mime) {
         if (inUse < 0)
             return true;
         const filter = filters[inUse];
-        const kind = kindOf(name);
+        const kind = mime || kindOf(name);
         return (filter.globs ?? []).some(glob => globbed(glob).test(name))
             || kind !== "" && (filter.kinds ?? []).some(wanted => isKind(kind, wanted, 0));
     }
@@ -539,6 +682,9 @@ Provider {
         marked = [];
         stepped = [];
         lately = [];
+        fetching = null;
+        elsewhere = {};
+        places = placesFor();
         listing.running = (settings.recent ?? []).length > 0;
         launcher.into(settings.name);
         for (const path of onTheWay(start))
