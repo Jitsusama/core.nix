@@ -249,8 +249,13 @@ QtObject {
         // from one process to the next by as much as half, which no batch
         // within one can even out, so a matcher too slow exits 2 and the
         // check runs it again in a fresh process (checks.nix); a ranking
-        // that's wrong exits 1 and is never run again.
-        const most = 4.5;
+        // that's wrong exits 1 and is never run again. At rest it's 3.6 to
+        // 4.3 times (2026-10-29, one core alone or shared with a busy loop),
+        // and a machine loaded past its cores raises it to 5, since the
+        // matcher's allocations share caches and memory the floor's plain
+        // look hardly uses; a matcher grown slower in kind costs a multiple,
+        // which 6 still catches.
+        const most = 6;
         const many = things.concat(
             names.map(n => Fuzzy.prepare(n + " again")),
             names.map(n => Fuzzy.prepare("another " + n)));
