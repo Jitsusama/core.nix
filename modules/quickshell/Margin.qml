@@ -153,6 +153,8 @@ Scope {
         PanelWindow {
             id: window
 
+            Counted { name: `margin ${window.modelData?.name ?? ""}` }
+
             required property ShellScreen modelData
 
             // Pointed only on the screen What's on is open on, since that's

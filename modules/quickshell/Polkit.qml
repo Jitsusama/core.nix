@@ -55,6 +55,8 @@ Scope {
     }
 
     PanelWindow {
+        Counted { name: "polkit" }
+
         visible: agent.isActive
         anchors.top: true
         anchors.bottom: true

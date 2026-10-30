@@ -1541,8 +1541,9 @@
     what's happening and answer the keys
   '';
   vm-desktop-starts-clean = ''
-    the desktop boots without an ordering cycle and its shell without an error, the meters answer
-    the keys, programs wear the theme, and swipes and Bluetooth's agent work
+    the desktop boots without an ordering cycle and its shell without an error, the shell draws
+    nothing and barely wakes while nothing shows, the meters answer the keys, programs wear the
+    theme, and swipes and Bluetooth's agent work
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of

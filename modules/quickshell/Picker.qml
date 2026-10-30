@@ -109,6 +109,8 @@ Singleton {
     PanelWindow {
         id: window
 
+        Counted { name: "picker" }
+
         visible: root.asked !== null
         anchors.top: true
         anchors.bottom: true

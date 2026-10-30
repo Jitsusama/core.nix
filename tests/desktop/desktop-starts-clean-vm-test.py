@@ -594,6 +594,66 @@ def test_the_bluetooth_agent_stops_at_once_handing_its_agent_back(bluetooth: Des
     machine.fail("systemctl is-failed --quiet bluetooth-agent")
 
 
+# How long the shell is watched while nothing shows, and the most its main thread may wake in a
+# second meanwhile (RSCH-20261029-0E8050's budgets).
+QUIET = 30
+WAKEUPS_A_SECOND = 5
+
+
+def woken(desktop: Desktop, pid: str) -> dict[str, int]:
+    """Give how often each of the shell's threads has switched off its processor, by its name."""
+    said = desktop.as_account(
+        f"for t in /proc/{pid}/task/*; do"
+        ' printf \'%s %s \' "$(cat $t/comm)" "${t##*/}";'
+        " awk '/ctxt_switches/ { n += $2 } END { print n }' $t/status; done"
+    )
+    threads: dict[str, int] = {}
+    for line in said.splitlines():
+        name, tid, count = line.rsplit(" ", 2)
+        threads[f"{name} {tid}"] = int(count)
+    return threads
+
+
+def test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows(desktop: Desktop) -> None:
+    """The shell draws no frame, and its main thread barely wakes, while nothing shows.
+
+    With the launcher closed and nothing arriving, no window has anything new to draw, so
+    each draws nothing (RSCH-20261029-0E8050's Motion and Drawing). It's watched from just
+    after a minute turns, so the margin's clock has nothing to draw either.
+    """
+    machine = desktop.machine
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    machine.wait_until_fails(desktop.in_session(NOTICES), timeout=GOING)
+    pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
+    machine.wait_until_succeeds("test $(date +%S) -lt 5", timeout=timedelta(seconds=70))
+    desktop.as_account("qs ipc call frames start")
+    before = woken(desktop, pid)
+    # The span measured, not a wait for something to happen: what's counted is what the
+    # shell does while nothing does.
+    machine.sleep(duration=timedelta(seconds=QUIET))
+    after = woken(desktop, pid)
+    frames = json.loads(desktop.as_account("qs ipc call frames said"))
+    rates = {
+        thread: round((count - before.get(thread, 0)) / QUIET, 1)
+        for thread, count in after.items()
+        if count > before.get(thread, 0)
+    }
+    print(f"frames in {QUIET} s: {frames}")
+    print(f"wakeups a second, by thread: {dict(sorted(rates.items(), key=lambda r: -r[1]))}")
+    main = next(thread for thread in rates if thread.endswith(f" {pid}"))
+    assert frames == {}, f"windows drew while nothing showed: {frames}"
+    assert rates[main] < WAKEUPS_A_SECOND, f"the main thread woke {rates[main]} times a second"
+    # None counted could also be a count that never heard a window, so one that draws is
+    # counted too: the launcher, opening.
+    desktop.as_account("qs ipc call frames start")
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    opening = json.loads(desktop.as_account("qs ipc call frames said"))
+    assert opening.get("launcher", 0) > 0, f"the launcher opened without a frame: {opening}"
+
+
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
     """Quickshell warned of nothing it drew all along.
 

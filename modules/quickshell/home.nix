@@ -116,6 +116,8 @@ let
     "KeyboardMap.qml"
     "Report.qml"
     "Reported.qml"
+    "Frames.qml"
+    "Counted.qml"
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"

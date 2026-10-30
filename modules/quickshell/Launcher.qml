@@ -3376,6 +3376,8 @@ Scope {
     // of the whole surface, shown or not.
     PanelWindow {
         id: surface
+
+        Counted { name: "launcher" }
         visible: true
         screen: root.screenHere
         // Placed from the left, so the card sits where cardLeft says with
