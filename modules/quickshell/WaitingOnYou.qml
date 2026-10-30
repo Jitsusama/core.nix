@@ -247,26 +247,44 @@ Singleton {
         onLoadFailed: root.remembered = true
     }
 
+    // The quests' files, each written beside and renamed in, which the
+    // folder's one watch hears, so every change reads them all in one run.
     FolderListModel {
         id: folder
         folder: `file://${root.quests}`
         showDirs: false
         nameFilters: ["*.json"]
+        onRowsInserted: root.read()
+        onRowsRemoved: root.read()
+        onDataChanged: root.read()
+        onModelReset: root.read()
     }
 
-    Instantiator {
-        model: folder
-        // A quest whose file goes has nothing waiting any more.
-        onObjectRemoved: (index, object) => root.forget((object as FileView).path)
-
-        FileView {
-            required property string filePath
-            path: filePath
-            watchChanges: true
-            printErrors: false
-            onFileChanged: reload()
-            onLoaded: root.heard(filePath, text())
+    // Every file read in one run, each after a record separator and its
+    // path on a line of its own, which JSON never holds unescaped.
+    Process {
+        id: reader
+        command: ["sh", "-c", "for file in \"$1\"/*.json; do [ -f \"$file\" ] || continue;"
+            + " printf '\\036%s\\n' \"$file\"; cat \"$file\"; done", "sh", root.quests]
+        onExited: {
+            if (root.again) {
+                root.again = false;
+                reader.running = true;
+            }
         }
+        stdout: StdioCollector {
+            onStreamFinished: root.heard(text)
+        }
+    }
+
+    // Asked to read while reading, so the last change always counts.
+    property bool again: false
+
+    function read() {
+        if (reader.running)
+            again = true;
+        else
+            reader.running = true;
     }
 
     // The quests the files name, as one string, so a file heard again that
@@ -300,23 +318,23 @@ Singleton {
         owners = next;
     }
 
-    function forget(path) {
-        const next = Object.assign({}, kept);
-        delete next[path];
-        kept = next;
-    }
-
-    function heard(path, text) {
-        // A folder Qt fell back to when the quests' folder isn't there.
-        if (!path.startsWith(quests))
-            return;
-        const next = Object.assign({}, kept);
-        try {
-            next[path] = JSON.parse(text);
-        } catch (error) {
-            delete next[path];
+    // Each file by its path, one that doesn't parse left out, and a quest
+    // whose file went has nothing waiting any more. Kept as it was when
+    // nothing changed, so nothing weighed from it is made again.
+    function heard(text) {
+        const next = {};
+        for (const part of text.split("\x1e")) {
+            const end = part.indexOf("\n");
+            if (end < 0)
+                continue;
+            try {
+                next[part.slice(0, end)] = JSON.parse(part.slice(end + 1));
+            } catch (error) {
+                continue;
+            }
         }
-        kept = next;
+        if (JSON.stringify(next) !== JSON.stringify(kept))
+            kept = next;
     }
 
     FileView {
