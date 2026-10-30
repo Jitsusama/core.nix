@@ -3730,9 +3730,13 @@
     {
       "id": "verb:person:slack",
       "in": "people",
-      "name": "Open in Slack",
-      "verb": "open",
-      "glyph": "chat"
+      "name": "Write in Slack",
+      "verb": "write",
+      "glyph": "chat",
+      "said": {
+        "looking": "looking in Slack",
+        "missing": "not in Slack"
+      }
     },
     {
       "id": "verb:person:favourite",

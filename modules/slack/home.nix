@@ -19,11 +19,16 @@ in
 
   home.packages = [ lookUp ];
 
-  # Open in Slack for anyone Slack knows by one of their addresses, through
-  # the harness's Slack sign-in, read only (Joel, 2026-10-28), after calling
-  # and mail. With no sign-in, nothing is asked.
+  # What the source decides, beside it, where its import finds it.
+  xdg.configFile."quickshell/launcher/people/Slack.js".source = ./Slack.js;
+
+  # Write in Slack for anyone Slack knows by one of their addresses, through
+  # the harness's Slack sign-in, read only (Joel, 2026-10-28). It's the
+  # first source asked, since a message is the lightest way to reach
+  # someone, before a call or a mail (VKCF3Z, 3bbad443). With no sign-in,
+  # nothing is asked.
   jitsusama.people.sources.slack = {
-    order = 30;
+    order = 5;
     source = ./SlackSource.qml;
     credentials = "${config.xdg.configHome}/agentic-harness/slack/credentials.json";
   };

@@ -53,6 +53,7 @@ let
       # Slack, as no example does, so it's read here as if one had.
       mkdir -p qs/launcher/people
       cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
+      cp ${../slack/Slack.js} qs/launcher/people/Slack.js
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${

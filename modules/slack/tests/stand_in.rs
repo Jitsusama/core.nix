@@ -1,7 +1,8 @@
 //! The program against a stand-in for Slack on this machine: what it asks,
 //! with which sign-in, what it tells the shell, that it finds who each
-//! address is once and asks how they are each time, and that it asks
-//! nobody once Slack refuses the sign-in.
+//! address is once, keeping it across a restart, and asks how they are
+//! each time, that asking ahead never holds up a step-in, and that it
+//! asks nobody once Slack refuses the sign-in.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -85,16 +86,10 @@ fn credentials(test: &str) -> PathBuf {
 }
 
 /// Runs the program over the stand-in, given these lines, and says what
-/// it said back, a line each.
+/// it said back, a line each. What it keeps goes in a cache home beside
+/// the sign-in's file, so a second run with the same file finds it.
 fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
-    let mut program = Command::new(env!("CARGO_BIN_EXE_slack-people"))
-        .arg(credentials)
-        .arg(&stand_in.origin)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut program = started(&stand_in.origin, credentials);
     program
         .stdin
         .take()
@@ -107,6 +102,30 @@ fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
         .lines()
         .map(str::to_owned)
         .collect()
+}
+
+/// The program, started over Slack at `origin` with this sign-in.
+fn started(origin: &str, credentials: &PathBuf) -> std::process::Child {
+    Command::new(env!("CARGO_BIN_EXE_slack-people"))
+        .arg(credentials)
+        .arg(origin)
+        .env("XDG_CACHE_HOME", cache(credentials))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
+}
+
+/// The cache home a run with this sign-in's file keeps in.
+fn cache(credentials: &std::path::Path) -> PathBuf {
+    credentials.with_extension("cache")
+}
+
+/// Forgets a test's sign-in and what its runs kept.
+fn forget(credentials: &std::path::Path) {
+    let _ = std::fs::remove_file(credentials);
+    let _ = std::fs::remove_dir_all(cache(credentials));
 }
 
 /// Ada as the program says her, her zone with her, active.
@@ -132,6 +151,12 @@ const ADA_UNSAID: &str = concat!(
 const GRACE: &str = concat!(
     r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
     r#""zone":"America/New_York","presence":"away","status":"","emoji":""}"#
+);
+
+/// Grace found ahead, before anyone asked how she is.
+const GRACE_WHO: &str = concat!(
+    r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
+    r#""zone":"America/New_York","presence":"","status":"","emoji":""}"#
 );
 
 /// Someone Slack knows nobody by, as the program says them.
@@ -215,7 +240,8 @@ fn who_an_address_is_is_found_once_and_how_they_are_asked_each_time() {
          nobody@example.com\n",
     );
     let nobody = nobody("nobody@example.com");
-    assert_eq!(said, [ADA, &nobody, ADA_WRITING, &nobody]);
+    // Ada asked again is said at once as she was, then as she is now.
+    assert_eq!(said, [ADA, &nobody, ADA, ADA_WRITING, &nobody]);
     let heard = stand_in.heard();
     let asked: Vec<&str> = heard
         .iter()
@@ -251,7 +277,81 @@ fn who_an_address_is_is_found_once_and_how_they_are_asked_each_time() {
     );
     // Only ever reading: nothing is posted, nothing sent.
     assert!(only_read(&heard), "{heard:?}");
-    let _ = std::fs::remove_file(path);
+    forget(&path);
+}
+
+#[test]
+fn who_was_found_is_said_at_once_after_a_restart_then_how_they_are() {
+    let first = StandIn::new(slack);
+    let path = credentials("kept");
+    told(&first, &path, "ada@example.com\nnobody@example.com\n");
+    let again = StandIn::new(slack);
+    let said = told(&again, &path, "ada@example.com\nnobody@example.com\n");
+    assert_eq!(
+        said,
+        [ADA_UNSAID, ADA_WRITING, &nobody("nobody@example.com")]
+    );
+    let asked: Vec<String> = again
+        .heard()
+        .iter()
+        .map(|heard| heard.line.split('?').next().unwrap_or_default().to_owned())
+        .collect();
+    // Nobody is looked up by address again; Ada is only asked how she is.
+    assert_eq!(asked, ["GET /api/users.info", "GET /api/users.getPresence"]);
+    forget(&path);
+}
+
+#[test]
+fn who_was_kept_is_said_before_slack_answers() {
+    let first = StandIn::new(slack);
+    let path = credentials("before");
+    told(&first, &path, "ada@example.com\n");
+    // A Slack that takes each request and never answers it.
+    let silent = TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut program = started(&format!("http://{}", silent.local_addr().unwrap()), &path);
+    let mut asking = program.stdin.take().unwrap();
+    writeln!(asking, "ada@example.com").unwrap();
+    let mut said = String::new();
+    BufReader::new(program.stdout.take().unwrap())
+        .read_line(&mut said)
+        .unwrap();
+    program.kill().unwrap();
+    program.wait().unwrap();
+    assert_eq!(said.trim_end(), ADA_UNSAID);
+    forget(&path);
+}
+
+#[test]
+fn asking_ahead_finds_who_they_are_after_any_step_in_and_not_how_they_are() {
+    let stand_in = StandIn::new(slack);
+    let path = credentials("ahead");
+    let said = told(
+        &stand_in,
+        &path,
+        "?grace@example.com\n?grace@example.com\n?not an address\nada@example.com\n",
+    );
+    assert_eq!(said, [ADA, GRACE_WHO]);
+    let heard = stand_in.heard();
+    assert!(
+        heard[0].line.contains("email=ada%40example.com"),
+        "{heard:?}"
+    );
+    // Grace, asked ahead twice, is found once and never asked how she is.
+    assert_eq!(
+        heard
+            .iter()
+            .filter(|heard| heard.line.contains("email=grace%40example.com"))
+            .count(),
+        1
+    );
+    assert!(
+        !heard
+            .iter()
+            .any(|heard| heard.line.contains("getPresence") && heard.line.contains("U2")),
+        "{heard:?}"
+    );
+    assert!(only_read(&heard), "{heard:?}");
+    forget(&path);
 }
 
 #[test]
@@ -260,7 +360,7 @@ fn slack_too_busy_to_say_how_they_are_leaves_who_they_are_said() {
     let path = credentials("busy");
     let said = told(&stand_in, &path, "ada@example.com\nada@example.com\n");
     assert_eq!(said, [ADA_UNSAID, ADA_UNSAID]);
-    let _ = std::fs::remove_file(path);
+    forget(&path);
 }
 
 #[test]
@@ -278,7 +378,7 @@ fn a_grid_refusing_the_look_up_finds_them_by_a_search_their_profile_confirms() {
     );
     // Still only reading: a look-up, a search, a profile and presence.
     assert!(only_read(&heard), "{heard:?}");
-    let _ = std::fs::remove_file(path);
+    forget(&path);
 }
 
 #[test]
@@ -288,14 +388,14 @@ fn a_refused_sign_in_is_said_once_and_nobody_more_is_asked_about() {
     let said = told(&stand_in, &path, "ada@example.com\ngrace@example.com\n");
     assert_eq!(said, [r#"{"signedOut":true}"#]);
     assert_eq!(stand_in.heard().len(), 1);
-    let _ = std::fs::remove_file(path);
+    forget(&path);
 }
 
 #[test]
-fn with_no_sign_in_nothing_is_said_and_slack_is_never_asked() {
+fn with_no_sign_in_it_says_so_and_slack_is_never_asked() {
     let stand_in = StandIn::new(slack);
     let missing = std::env::temp_dir().join("slack-people-no-such-file.json");
-    let said = told(&stand_in, &missing, "ada@example.com\n");
-    assert!(said.is_empty(), "{said:?}");
+    let said = told(&stand_in, &missing, "ada@example.com\n?grace@example.com\n");
+    assert_eq!(said, [r#"{"signedIn":false}"#; 2]);
     assert!(stand_in.heard().is_empty());
 }

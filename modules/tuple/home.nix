@@ -128,8 +128,8 @@ in
     "quickshell/Tuple.js".source = ./Tuple.js;
     "quickshell/TuplePeople.qml".source = ./TuplePeople.qml;
   };
-  # Tuple's contacts as people, the first source asked, since calling
-  # someone is the first way to reach them.
+  # Tuple's contacts as people, asked after Slack and before mail, since a
+  # call is heavier than a message and lighter than a mail.
   jitsusama.people.sources.tuple = {
     order = 10;
     source = ./TupleSource.qml;

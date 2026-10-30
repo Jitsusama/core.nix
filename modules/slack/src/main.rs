@@ -6,19 +6,41 @@
 //! each (lib.rs's `Found`): their id in Slack and its workspace, which
 //! open them there, their name, their time zone, whether they're active,
 //! away or in a huddle, and their status, or no id for an address Slack
-//! knows nobody by. Who an address is is found once while it runs; how
-//! they are is asked each time the shell asks, which is as Joel steps
-//! into them, and when Slack can't be reached then, what it said last is
-//! said again. Once Slack refuses the sign-in, the line
-//! `{"signedOut":true}` is said and nobody more is asked about. With no sign-in in CREDENTIALS, the
-//! harness's file, it says nothing and asks nothing. ORIGIN is Slack's,
-//! unless a test names a stand-in.
+//! knows nobody by. Who an address is is found once and kept between runs
+//! (lib.rs's `Kept`, in the cache home), so someone known is said at once,
+//! then again once Slack says how they are, which is asked each time; when
+//! Slack can't be reached then, what it said last is said again.
+//!
+//! A line `?ADDRESS` asks ahead, for someone Joel may step into: who they
+//! are is found, not how they are, and only while no step-in is waiting,
+//! one look-up every few seconds, so asking ahead about everyone People
+//! lists stays inside Slack's limits and never holds up a step-in.
+//!
+//! Once Slack refuses the sign-in, the line `{"signedOut":true}` is said
+//! and nobody more is asked about. With no sign-in in CREDENTIALS, the
+//! harness's file, it asks nothing and says `{"signedIn":false}` to each
+//! line, so the shell waits on no answer. ORIGIN is Slack's, unless a
+//! test names a stand-in.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::Duration;
 
-use slack_people::{Account, Found, Refused, Slack, asked};
+use slack_people::{Account, Found, Kept, Refused, Slack, asked, now};
+
+/// How long after a look-up made ahead the next one waits: four calls to
+/// Slack each on an enterprise grid, whose search allows about twenty a
+/// minute.
+const PACE: Duration = Duration::from_secs(3);
+
+/// How long any look-up ahead waits at least, so a step-in the shell
+/// writes with it goes first.
+const SETTLE: Duration = Duration::from_millis(100);
+
+/// What's said with no sign-in to ask with.
+const NOT_SIGNED_IN: &str = r#"{"signedIn":false}"#;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -27,49 +49,195 @@ fn main() {
         std::process::exit(64);
     };
     let slack = Slack::new(args.next().unwrap_or_else(|| "https://slack.com".into()));
-    let mut known = HashMap::new();
-    let mut signed_out = false;
-    let stdout = std::io::stdout();
-    for line in std::io::stdin().lock().lines() {
-        let Ok(line) = line else { break };
-        let email = line.trim().to_lowercase();
-        if signed_out || !asked(&email) {
-            continue;
-        }
-        // The file is read for each address, so signing in again from pi
-        // is taken without a restart.
-        let Some(account) = Account::read(&credentials) else {
-            continue;
-        };
-        let had: Option<&Found> = known.get(&email);
-        let now = match had {
-            Some(had) if had.id.is_none() => Ok(had.clone()),
-            Some(had) => slack.again(&account, had),
-            None => slack.look_up(&account, &email),
-        }
-        .and_then(|found| present(&slack, &account, found));
-        let said = match now {
-            Ok(found) => {
-                let line = serde_json::to_string(&found).unwrap_or_default();
-                known.insert(email, found);
-                Some(line)
-            }
-            Err(Refused::SignedOut) => {
-                signed_out = true;
-                Some(r#"{"signedOut":true}"#.to_owned())
-            }
-            Err(Refused::Unreachable(why)) => {
-                eprintln!("<4>{why}");
-                had.and_then(|had| serde_json::to_string(had).ok())
-            }
-        };
-        if let Some(said) = said {
-            let mut out = stdout.lock();
-            if writeln!(out, "{said}").and_then(|()| out.flush()).is_err() {
+    let mut asker = Asker {
+        slack,
+        credentials,
+        known: HashMap::new(),
+        kept: Kept::at(kept_in()),
+        signed_out: false,
+    };
+    let (lines, heard) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if lines.send(line).is_err() {
                 break;
             }
         }
+    });
+    let mut ahead = VecDeque::new();
+    let mut queued = HashSet::new();
+    let mut ended = false;
+    let mut wait = SETTLE;
+    while !asker.signed_out {
+        // A step-in is taken the moment it comes; one ahead only once
+        // none has for a while, and every one left once the shell is gone.
+        let line = if ended {
+            None
+        } else if ahead.is_empty() {
+            heard.recv().ok()
+        } else {
+            match heard.recv_timeout(wait) {
+                Ok(line) => Some(line),
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => {
+                    ended = true;
+                    None
+                }
+            }
+        };
+        let said = if let Some(line) = line {
+            if let Some(email) = line.trim().strip_prefix('?') {
+                let email = email.to_lowercase();
+                if asked(&email) && queued.insert(email.clone()) {
+                    ahead.push_back(email);
+                }
+                continue;
+            }
+            asker.step_in(&line.trim().to_lowercase())
+        } else {
+            let Some(email) = ahead.pop_front() else {
+                if ended || line_ended(&heard) {
+                    break;
+                }
+                continue;
+            };
+            let (said, asked_slack) = asker.ahead(&email);
+            wait = if asked_slack { PACE } else { SETTLE };
+            said
+        };
+        if !say(&said) {
+            break;
+        }
     }
+}
+
+/// Whether the shell has gone, with nothing more to read.
+fn line_ended(heard: &mpsc::Receiver<String>) -> bool {
+    matches!(heard.try_recv(), Err(mpsc::TryRecvError::Disconnected))
+}
+
+/// Where who was found is kept: the cache home's, since it's only ever
+/// what Slack would say again.
+fn kept_in() -> Option<PathBuf> {
+    let home = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|home| home.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))?;
+    Some(home.join("slack-people").join("known.json"))
+}
+
+/// Says each line to the shell, or false once it's stopped listening.
+fn say(lines: &[String]) -> bool {
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    lines
+        .iter()
+        .all(|line| writeln!(out, "{line}").and_then(|()| out.flush()).is_ok())
+}
+
+/// Slack, the sign-in, and who's been found.
+struct Asker {
+    slack: Slack,
+    credentials: PathBuf,
+    /// Who each address is, as said last while running, how they are too.
+    known: HashMap<String, Found>,
+    kept: Kept,
+    signed_out: bool,
+}
+
+impl Asker {
+    /// What to say as Joel steps into someone, once Slack has answered:
+    /// who they are, said here at once when it's known, before Slack is
+    /// asked, then what Slack says of them now, unless it's the same.
+    fn step_in(&mut self, email: &str) -> Vec<String> {
+        if !asked(email) {
+            return Vec::new();
+        }
+        // The file is read for each address, so signing in again from pi
+        // is taken without a restart.
+        let Some(account) = Account::read(&self.credentials) else {
+            return vec![NOT_SIGNED_IN.to_owned()];
+        };
+        let had = self
+            .known
+            .get(email)
+            .cloned()
+            .or_else(|| self.kept.get(email, now()).cloned());
+        let said: Vec<String> = had.iter().filter_map(line).collect();
+        // A shell gone is found by the next line said, so nothing more
+        // is needed of this one.
+        let _ = say(&said);
+        let found = match &had {
+            Some(had) if had.id.is_none() => return Vec::new(),
+            Some(had) => self.slack.again(&account, had),
+            None => self.slack.look_up(&account, email),
+        }
+        .and_then(|found| present(&self.slack, &account, found));
+        match self.heard(found) {
+            Heard::Found(found) => line(&found)
+                .filter(|fresh| !said.contains(fresh))
+                .into_iter()
+                .collect(),
+            Heard::SignedOut(line) => vec![line],
+            // What was said already, from what was known, stands.
+            Heard::Unreachable => Vec::new(),
+        }
+    }
+
+    /// What to say of someone asked about ahead: who they are, kept or
+    /// found now, and whether Slack was asked to find it.
+    fn ahead(&mut self, email: &str) -> (Vec<String>, bool) {
+        if let Some(had) = self
+            .known
+            .get(email)
+            .or_else(|| self.kept.get(email, now()))
+        {
+            return (line(had).into_iter().collect(), false);
+        }
+        let Some(account) = Account::read(&self.credentials) else {
+            return (vec![NOT_SIGNED_IN.to_owned()], false);
+        };
+        let found = self.slack.look_up(&account, email);
+        let said = match self.heard(found) {
+            Heard::Found(found) => line(&found).into_iter().collect(),
+            Heard::SignedOut(line) => vec![line],
+            Heard::Unreachable => Vec::new(),
+        };
+        (said, true)
+    }
+
+    /// Takes what Slack answered: keeps who was found, or stops asking
+    /// anyone once it refuses the sign-in.
+    fn heard(&mut self, found: Result<Found, Refused>) -> Heard {
+        match found {
+            Ok(found) => {
+                self.kept.keep(&found, now());
+                self.known.insert(found.email.clone(), found.clone());
+                Heard::Found(found)
+            }
+            Err(Refused::SignedOut) => {
+                self.signed_out = true;
+                Heard::SignedOut(r#"{"signedOut":true}"#.to_owned())
+            }
+            Err(Refused::Unreachable(why)) => {
+                eprintln!("<4>{why}");
+                Heard::Unreachable
+            }
+        }
+    }
+}
+
+/// What came of asking Slack.
+enum Heard {
+    Found(Found),
+    SignedOut(String),
+    Unreachable,
+}
+
+/// Someone as the shell is told them.
+fn line(found: &Found) -> Option<String> {
+    serde_json::to_string(found).ok()
 }
 
 /// Someone found, with whether they're active or away, unless their

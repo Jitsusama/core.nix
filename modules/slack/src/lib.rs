@@ -1,7 +1,8 @@
 //! Who Slack knows by an email address, as a library the program
 //! (main.rs) and its tests share: the harness's Slack sign-in, read and
-//! never written ([`Account`]), and one look-up by address ([`Slack`]),
-//! said to the shell as one JSON line ([`Found`]).
+//! never written ([`Account`]), one look-up by address ([`Slack`]), said
+//! to the shell as one JSON line ([`Found`]), and who each address was
+//! found to be, kept between runs ([`Kept`]).
 //!
 //! It only ever reads: `users.lookupByEmail`, and where a workspace
 //! refuses that to the sign-in, `search.messages` and `users.info`, then
@@ -9,7 +10,8 @@
 //! it calls, and nothing it does sends a message or changes anything in
 //! Slack.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -47,7 +49,7 @@ impl Account {
 /// Slack and its workspace, which open them there, their name, and the
 /// time zone their profile keeps, by tzdata's name; or that Slack knows
 /// nobody by it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Found {
     pub email: String,
     /// Their id in Slack, or none for an address Slack knows nobody by.
@@ -63,6 +65,98 @@ pub struct Found {
     /// Their status's emoji as Unicode while it's set, or "" for none or
     /// for a workspace's own picture, which has no Unicode form to show.
     pub emoji: String,
+}
+
+impl Found {
+    /// Who they are without how they are, as it's kept: whether they're
+    /// active and their status are only ever as fresh as Slack's answer.
+    #[must_use]
+    pub fn who(&self) -> Found {
+        Found {
+            presence: String::new(),
+            status: String::new(),
+            emoji: String::new(),
+            ..self.clone()
+        }
+    }
+}
+
+/// How long knowing nobody by an address holds before Slack is asked
+/// again, in seconds: someone new to Slack, or saying something there for
+/// the first time, is found within a week.
+pub const NOBODY_HOLDS: u64 = 7 * 24 * 60 * 60;
+
+/// Who each address was found to be, kept in a file of the program's own
+/// so a restart of the shell, as each switch brings, forgets nobody:
+/// someone known is said at once, before Slack is asked how they are.
+/// It holds no presence, status or message, and is only ever a cache:
+/// with no file, or one that can't be read or written, everyone is
+/// simply asked about again.
+pub struct Kept {
+    path: Option<PathBuf>,
+    by: HashMap<String, KeptOne>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct KeptOne {
+    found: Found,
+    /// When it was found, in seconds since the epoch.
+    at: u64,
+}
+
+impl Kept {
+    /// What the file at `path` keeps, or nothing yet.
+    #[must_use]
+    pub fn at(path: Option<PathBuf>) -> Kept {
+        let by = path
+            .as_deref()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
+        Kept { path, by }
+    }
+
+    /// Who `email` was found to be, unless it was nobody long enough ago
+    /// to ask again.
+    pub fn get(&self, email: &str, now: u64) -> Option<&Found> {
+        self.by
+            .get(email)
+            .filter(|kept| kept.found.id.is_some() || now < kept.at + NOBODY_HOLDS)
+            .map(|kept| &kept.found)
+    }
+
+    /// Keeps who someone was found to be, writing the file anew whole, so
+    /// it's never read half written.
+    pub fn keep(&mut self, found: &Found, now: u64) {
+        let who = found.who();
+        if self
+            .by
+            .get(&who.email)
+            .is_some_and(|kept| kept.found == who)
+        {
+            return;
+        }
+        self.by.insert(
+            who.email.clone(),
+            KeptOne {
+                found: who,
+                at: now,
+            },
+        );
+        let Some(path) = &self.path else { return };
+        let Ok(text) = serde_json::to_string(&self.by) else {
+            return;
+        };
+        let written = path.with_extension("new");
+        let wrote = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&written, text))
+            .and_then(|()| std::fs::rename(&written, path));
+        if let Err(error) = wrote {
+            eprintln!("<4>couldn't keep who was found: {error}");
+        }
+    }
 }
 
 /// Why Slack said nothing of an address.
@@ -248,7 +342,7 @@ fn unicode(points: &str) -> Option<String> {
 }
 
 /// Seconds since the epoch, as Slack keeps when a status ends.
-fn now() -> u64 {
+pub fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())
@@ -425,6 +519,40 @@ mod tests {
             ),
             Some("grace@example.com".into())
         );
+    }
+
+    #[test]
+    fn who_was_found_is_kept_without_how_they_were_and_nobody_only_a_week() {
+        let path = std::env::temp_dir()
+            .join(format!("slack-people-kept-{}", std::process::id()))
+            .join("known.json");
+        let ada = Found {
+            email: "ada@example.com".into(),
+            id: Some("U1".into()),
+            team: "T1".into(),
+            name: "Ada Lovelace".into(),
+            zone: "Europe/London".into(),
+            presence: "active".into(),
+            status: "Writing".into(),
+            emoji: "📝".into(),
+        };
+        let nobody = found(&nobody(), "x@example.com", "T1").unwrap();
+        let mut kept = Kept::at(Some(path.clone()));
+        kept.keep(&ada, 1000);
+        kept.keep(&nobody, 1000);
+        let again = Kept::at(Some(path.clone()));
+        assert_eq!(again.get("ada@example.com", u64::MAX), Some(&ada.who()));
+        assert_eq!(
+            again.get("x@example.com", 1000 + NOBODY_HOLDS - 1),
+            Some(&nobody)
+        );
+        assert_eq!(again.get("x@example.com", 1000 + NOBODY_HOLDS), None);
+        assert_eq!(again.get("grace@example.com", 1000), None);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+        // With nowhere to keep it, it's only held while the program runs.
+        let mut held = Kept::at(None);
+        held.keep(&ada, 1000);
+        assert_eq!(held.get("ada@example.com", 1000), Some(&ada.who()));
     }
 
     #[test]
