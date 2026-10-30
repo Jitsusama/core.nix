@@ -24,6 +24,16 @@
     a selected name too long for its row slides at one reading pace, gathering speed from rest and
     settling back to it in at most a fifth of a second at each end, never stepping back
   '';
+  a-low-charge-is-said-once = ''
+    a battery that reports only its charge runs low at its mark and critical at its own, only ever
+    deeper until it charges or rises five points past the low mark, so a charge wavering about a
+    mark is never said twice
+  '';
+  a-low-device-is-its-own-notice = ''
+    each connected Bluetooth device reporting a battery stands by its own charge, and each running
+    low is a thing of its own, keyed by its address, signed by its name and drawn by its kind's
+    glyph, wanting Joel now only at the critical mark
+  '';
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
@@ -46,6 +56,11 @@
   a-realms-link-key-stays-apart = ''
     a realm's link key is served on its own socket by an agent holding only it, kept outside the
     folder the account's own agent loads, made with no PIN, and an account naming no realm has none
+  '';
+  a-piece-may-stand-for-several = ''
+    a piece standing for several things, as the Bluetooth devices' batteries do, is a fact for
+    each in the overview's order, each known by its piece's mark and its own key, and none while it
+    stands for none
   '';
   a-refused-profile-is-said-once = ''
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
@@ -1168,8 +1183,8 @@
     gap's size with the same room all round, and What's on points at the row the keys are on
   '';
   the-margins-marks-are-drawn-level = ''
-    every mark the margin can show is the theme's drawing of it, standing the grid's full height and
-    centred across it as Qt draws it
+    every mark the margin can show, a device's kind among them, is the theme's drawing of it,
+    standing the grid's full height and centred across it as Qt draws it
   '';
   the-mic-mute-light-follows-the-mute = ''
     `mic-mute-light` asks after the mute only once a change to a mute or the default source has

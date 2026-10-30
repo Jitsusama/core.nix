@@ -661,6 +661,14 @@ in
     glyph = nerd "f030c";
     console = "k";
     means = "a keyboard: its layout, layers, keys and lights, or one paired";
+    # Two rows of keys over a space bar, cut from one board.
+    drawn = drawing [
+      "M1.5 0 L0.95 0.1 L0.45 0.45 L0.1 0.95 L0 1.5 L0 10.5 L0.1 11.05 L0.45 11.55 L0.95 11.9"
+      "L1.5 12 L10.5 12 L11.05 11.9 L11.55 11.55 L11.9 11.05 L12 10.5 L12 1.5 L11.9 0.95"
+      "L11.55 0.45 L11.05 0.1 L10.5 0Z M1.75 2 L3.75 2 L3.75 4 L1.75 4Z M5 4 L5 2 L7 2 L7 4Z"
+      "M8.25 4 L8.25 2 L10.25 2 L10.25 4Z M1.75 7 L1.75 5 L3.75 5 L3.75 7Z M5 7 L5 5 L7 5 L7"
+      "7Z M8.25 7 L8.25 5 L10.25 5 L10.25 7Z M3 10 L3 8.25 L9 8.25 L9 10Z"
+    ];
   };
   flash = {
     glyph = nerd "f0241";
@@ -673,11 +681,24 @@ in
     glyph = nerd "f0379";
     console = "D";
     means = "a display, or the displays";
+    # A screen on its stand.
+    drawn = drawing [
+      "M0.6 0.1 L0.3 0.3 L0.1 0.6 L0 1 L0 7.5 L0.1 7.9 L0.3 8.2 L0.6 8.4 L1 8.5 L5.25 8.5"
+      "L5.25 10.5 L3 10.5 L3 12 L9 12 L9 10.5 L6.75 10.5 L6.75 8.5 L11 8.5 L11.4 8.4 L11.7"
+      "8.2 L11.9 7.9 L12 7.5 L12 1 L11.9 0.6 L11.7 0.3 L11.4 0.1 L11 0 L1 0Z M1.5 7 L1.5 1.5"
+      "L10.5 1.5 L10.5 7Z"
+    ];
   };
   bluetooth = {
     glyph = nerd "f00af";
     console = "B";
     means = "Bluetooth and what's paired by it";
+    # Bluetooth's own rune, for a device of no kind it knows.
+    drawn = drawing [
+      "M4.6 6 L2.15 7.9 L2.95 8.95 L5.2 7.2 L5.2 12 L9.85 8.45 L6.75 6 L9.85 3.55 L5.2 0 L5.2"
+      "4.8 L2.95 3.05 L2.15 4.1Z M6.55 4.45 L6.55 2.7 L7.7 3.55Z M6.55 7.55 L7.7 8.45 L6.55"
+      "9.3Z"
+    ];
   };
   bluetoothOff = {
     glyph = nerd "f00b2";
@@ -781,11 +802,36 @@ in
     glyph = nerd "f02cb";
     console = "h";
     means = "headphones";
+    # Two cups on their band, drawn whole so a pair running low is
+    # theirs in the margin (pieces/Devices.qml), as is each kind below.
+    drawn = drawing [
+      "M1.7 5.15 L1.95 4.3 L2.35 3.55 L2.9 2.9 L3.55 2.35 L4.3 1.95 L5.15 1.7 L6 1.6 L6.85"
+      "1.7 L7.7 1.95 L8.45 2.35 L9.1 2.9 L9.65 3.55 L10.05 4.3 L10.3 5.15 L10.4 6 L10.35 6.5"
+      "L9.4 6.5 L9 6.6 L8.7 6.8 L8.5 7.1 L8.4 7.5 L8.4 11 L8.5 11.4 L8.7 11.7 L9 11.9 L9.4 12"
+      "L11 12 L11.4 11.9 L11.7 11.7 L11.9 11.4 L12 11 L12 7.5 L11.95 7.2 L12 6 L11.9 4.85"
+      "L11.55 3.7 L11 2.65 L10.25 1.75 L9.35 1 L8.3 0.45 L7.15 0.1 L6 0 L4.85 0.1 L3.7 0.45"
+      "L2.65 1 L1.75 1.75 L1 2.65 L0.45 3.7 L0.1 4.85 L0 6 L0.05 7.2 L0 7.5 L0 11 L0.1 11.4"
+      "L0.3 11.7 L0.6 11.9 L1 12 L2.6 12 L3 11.9 L3.3 11.7 L3.5 11.4 L3.6 11 L3.6 7.5 L3.5"
+      "7.1 L3.3 6.8 L3 6.6 L2.6 6.5 L1.65 6.5 L1.6 6Z"
+    ];
   };
   headset = {
     glyph = nerd "f02ce";
     console = "h";
     means = "a headset: headphones with a microphone";
+    # The headphones, shorter, a microphone on its boom under one cup.
+    drawn = drawing [
+      "M1.95 4.3 L2.35 3.55 L2.9 2.9 L3.55 2.35 L4.3 1.95 L5.15 1.7 L6 1.6 L6.85 1.7 L7.7"
+      "1.95 L8.45 2.35 L9.1 2.9 L9.65 3.55 L10.05 4.3 L10.3 5.15 L10.35 5.5 L9.4 5.5 L9 5.6"
+      "L8.7 5.8 L8.5 6.1 L8.4 6.5 L8.4 9 L8.5 9.4 L8.7 9.7 L9 9.9 L9.4 10 L11 10 L11.4 9.9"
+      "L11.7 9.7 L11.9 9.4 L12 9 L12 6 L11.9 4.85 L11.55 3.7 L11 2.65 L10.25 1.75 L9.35 1"
+      "L8.3 0.45 L7.15 0.1 L6 0 L4.85 0.1 L3.7 0.45 L2.65 1 L1.75 1.75 L1 2.65 L0.45 3.7 L0.1"
+      "4.85 L0 6 L0 9 L0.1 9.4 L0.3 9.7 L0.6 9.9 L1.05 10 L1.05 11.25 L1.1 11.55 L1.25 11.8"
+      "L1.5 11.95 L1.8 12 L5 12 L5 10.5 L2.55 10.5 L2.55 10 L3 9.9 L3.3 9.7 L3.5 9.4 L3.6 9"
+      "L3.6 6.5 L3.5 6.1 L3.3 5.8 L3 5.6 L2.6 5.5 L1.65 5.5 L1.7 5.15Z M6.3 10.55 L6 10.5"
+      "L5.7 10.55 L5.45 10.7 L5.3 10.95 L5.25 11.25 L5.3 11.55 L5.45 11.8 L5.7 11.95 L6 12"
+      "L6.3 11.95 L6.55 11.8 L6.7 11.55 L6.75 11.25 L6.7 10.95 L6.55 10.7Z"
+    ];
   };
   microphone = {
     glyph = nerd "f036c";
@@ -796,26 +842,76 @@ in
     glyph = nerd "f04c3";
     console = "s";
     means = "a speaker, or anything else sound plays through";
+    # A cabinet, its cone and its tweeter cut out.
+    drawn = drawing [
+      "M3 0 L2.45 0.1 L1.95 0.45 L1.6 0.95 L1.5 1.5 L1.5 10.5 L1.6 11.05 L1.95 11.55 L2.45"
+      "11.9 L3 12 L9 12 L9.55 11.9 L10.05 11.55 L10.4 11.05 L10.5 10.5 L10.5 1.5 L10.4 0.95"
+      "L10.05 0.45 L9.55 0.1 L9 0Z M7 2.75 L6.9 3.15 L6.7 3.45 L6.4 3.65 L6 3.75 L5.6 3.65"
+      "L5.3 3.45 L5.1 3.15 L5 2.75 L5.1 2.35 L5.3 2.05 L5.6 1.85 L6 1.75 L6.4 1.85 L6.7 2.05"
+      "L6.9 2.35Z M8.5 7.5 L8.3 8.45 L7.75 9.25 L6.95 9.8 L6 10 L5.05 9.8 L4.25 9.25 L3.7"
+      "8.45 L3.5 7.5 L3.7 6.55 L4.25 5.75 L5.05 5.2 L6 5 L6.95 5.2 L7.75 5.75 L8.3 6.55Z"
+    ];
   };
   mouse = {
     glyph = nerd "f037d";
     console = "m";
     means = "a mouse or a tablet";
+    # A mouse from above, its wheel cut out.
+    drawn = drawing [
+      "M9.45 2.3 L8.65 1.1 L7.45 0.3 L6 0 L4.55 0.3 L3.35 1.1 L2.55 2.3 L2.25 3.75 L2.25 8.25"
+      "L2.55 9.7 L3.35 10.9 L4.55 11.7 L6 12 L7.45 11.7 L8.65 10.9 L9.45 9.7 L9.75 8.25 L9.75"
+      "3.75Z M6.75 4.25 L6.7 4.55 L6.55 4.8 L6.3 4.95 L6 5 L5.7 4.95 L5.45 4.8 L5.3 4.55"
+      "L5.25 4.25 L5.25 2.75 L5.3 2.45 L5.45 2.2 L5.7 2.05 L6 2 L6.3 2.05 L6.55 2.2 L6.7 2.45"
+      "L6.75 2.75Z"
+    ];
   };
   gamepad = {
     glyph = nerd "f0297";
     console = "g";
     means = "a game controller";
+    # A controller held by its grips, its shoulder buttons on top, its
+    # pad and two buttons cut out.
+    drawn = drawing [
+      "M1.45 0.2 L1.3 0.45 L1.25 0.75 L1.25 1.85 L0.75 2.25 L0.2 3.05 L0 4 L0 6 L0.2 6.95"
+      "L0.75 7.75 L1 7.95 L0.7 10.45 L0.75 11 L1 11.45 L1.4 11.85 L1.95 12 L2.45 11.95 L2.95"
+      "11.7 L3.3 11.3 L3.5 10.8 L3.75 8.5 L8.25 8.5 L8.5 10.8 L8.7 11.3 L9.05 11.7 L9.55"
+      "11.95 L10.05 12 L10.6 11.85 L11 11.45 L11.25 11 L11.3 10.45 L11 7.95 L11.25 7.75 L11.8"
+      "6.95 L12 6 L12 4 L11.8 3.05 L11.25 2.25 L10.75 1.85 L10.75 0.75 L10.7 0.45 L10.55 0.2"
+      "L10.3 0.05 L10 0 L8.5 0 L8.2 0.05 L7.95 0.2 L7.8 0.45 L7.75 0.75 L7.75 1.5 L4.25 1.5"
+      "L4.25 0.75 L4.2 0.45 L4.05 0.2 L3.8 0.05 L3.5 0 L2 0 L1.7 0.05Z M10.7 4.5 L10.65 4.8"
+      "L10.45 5.05 L10.2 5.25 L9.9 5.3 L9.6 5.25 L9.35 5.05 L9.15 4.8 L9.1 4.5 L9.15 4.2"
+      "L9.35 3.95 L9.6 3.75 L9.9 3.7 L10.2 3.75 L10.45 3.95 L10.65 4.2Z M4.6 4.6 L4.6 5.9"
+      "L3.95 5.9 L3.95 6.55 L2.65 6.55 L2.65 5.9 L2 5.9 L2 4.6 L2.65 4.6 L2.65 3.95 L3.95"
+      "3.95 L3.95 4.6Z M9.25 5.8 L9.3 6.1 L9.25 6.4 L9.05 6.65 L8.8 6.85 L8.5 6.9 L8.2 6.85"
+      "L7.95 6.65 L7.75 6.4 L7.7 6.1 L7.75 5.8 L7.95 5.55 L8.2 5.35 L8.5 5.3 L8.8 5.35 L9.05"
+      "5.55Z"
+    ];
   };
   phone = {
     glyph = nerd "f011c";
     console = "t";
     means = "a phone";
+    # A phone standing, its screen and its button cut out.
+    drawn = drawing [
+      "M4 0 L3.45 0.1 L2.95 0.45 L2.6 0.95 L2.5 1.5 L2.5 10.5 L2.6 11.05 L2.95 11.55 L3.45"
+      "11.9 L4 12 L8 12 L8.55 11.9 L9.05 11.55 L9.4 11.05 L9.5 10.5 L9.5 1.5 L9.4 0.95 L9.05"
+      "0.45 L8.55 0.1 L8 0Z M8 1.75 L8 9.25 L4 9.25 L4 1.75Z M6.65 10.6 L6.6 10.85 L6.45"
+      "11.05 L6.25 11.2 L6 11.25 L5.75 11.2 L5.55 11.05 L5.4 10.85 L5.35 10.6 L5.4 10.35"
+      "L5.55 10.15 L5.75 10 L6 9.95 L6.25 10 L6.45 10.15 L6.6 10.35Z"
+    ];
   };
   computer = {
     glyph = nerd "f0322";
     console = "l";
     means = "a computer: the screen built into this one, or another paired";
+    # A tower, its two bays and its light cut out.
+    drawn = drawing [
+      "M3.5 0 L3.1 0.1 L2.8 0.3 L2.6 0.6 L2.5 1 L2.5 11 L2.6 11.4 L2.8 11.7 L3.1 11.9 L3.5 12"
+      "L8.5 12 L8.9 11.9 L9.2 11.7 L9.4 11.4 L9.5 11 L9.5 1 L9.4 0.6 L9.2 0.3 L8.9 0.1 L8.5"
+      "0Z M8 2 L8 3.25 L4 3.25 L4 2Z M4 4.5 L8 4.5 L8 5.75 L4 5.75Z M6.85 9.15 L6.9 9.5 L6.85"
+      "9.85 L6.65 10.15 L6.35 10.35 L6 10.4 L5.65 10.35 L5.35 10.15 L5.15 9.85 L5.1 9.5 L5.15"
+      "9.15 L5.35 8.85 L5.65 8.65 L6 8.6 L6.35 8.65 L6.65 8.85Z"
+    ];
   };
   connect = {
     glyph = nerd "f00b1";

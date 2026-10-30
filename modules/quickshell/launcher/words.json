@@ -3132,6 +3132,13 @@
       "glyph": "saver"
     },
     {
+      "id": "verb:on:device:go",
+      "in": "on",
+      "name": "Go To",
+      "verb": "go",
+      "glyph": "bluetooth"
+    },
+    {
       "id": "verb:on:muted:unmute",
       "in": "on",
       "name": "Unmute It",
@@ -5294,6 +5301,14 @@
         "bluetooth"
       ],
       "why": "Both list devices: sound's outputs and inputs, and what's paired."
+    },
+    {
+      "word": "go to",
+      "things": [
+        "verb:on:waiting:go",
+        "verb:on:device:go"
+      ],
+      "why": "What's on goes to where each thing is, a session's window or a device in Bluetooth, and each row says which thing it is."
     },
     {
       "word": "tabs",

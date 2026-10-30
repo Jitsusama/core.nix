@@ -342,10 +342,15 @@ def test_a_notices_right_arrow_holds_what_return_does_on_its_card_and_in_the_lau
         machine.send_key("down")
     with desktop.told("notice back"):
         machine.send_key("left")
-    # Super+N again hands on to the history, opened on the newest notice's
-    # acts, which hold the same.
+    # Super+N again hands on to the history, which opens on its first row,
+    # the newest notice, as every place opens on its first; the right arrow
+    # steps into its acts, which hold the same.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Ana")
+    )
+    machine.send_key("right")
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Play it"])
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
@@ -1018,10 +1023,15 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     machine.succeed(offered.format("leave"))
     desktop.photograph("notice-alone")
     # Leaving runs tuple call leave, which starts the stopped daemon,
-    # whose new log ends the call. Super+N again opens the history on the
-    # newest notice's offers, Return's own Open first.
+    # whose new log ends the call. Super+N again opens the history on its
+    # first row, the newest notice, and the right arrow steps into its
+    # offers, Return's own Open first.
     machine.send_key("meta_l-n")
     desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Someone left the call")
+    )
+    machine.send_key("right")
     desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Open", "Leave the Call"])
     machine.send_key("down")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the Call")

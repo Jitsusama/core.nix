@@ -65,6 +65,9 @@ let
     "Marks.js"
     "Arrivals.qml"
     "Levels.js"
+    "Crossing.js"
+    "Devices.js"
+    "Facts.js"
     "Stack.js"
     "Notifications.qml"
     "Music.qml"
@@ -477,6 +480,7 @@ let
   builtIn = {
     clock = ./pieces/Clock.qml;
     battery = ./pieces/Battery.qml;
+    devices = ./pieces/Devices.qml;
     network = ./pieces/Network.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
@@ -1255,6 +1259,17 @@ in
         critical = 10;
         collapse = 20;
         mark = "low";
+      };
+      # Each Bluetooth device running low, only while one is, by the
+      # laptop battery's own marks, so one rule holds for every battery.
+      devices = {
+        order = 31;
+        source = "devices";
+        label = "devices";
+        tier = "when";
+        low = 20;
+        critical = 10;
+        mark = "bluetooth";
       };
       network = {
         order = 40;
