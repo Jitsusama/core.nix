@@ -11,7 +11,8 @@
 // switch after, and their address last; flipping Favourite tells Tuple
 // and moves their row at once; a change of presence changes only how they
 // stand, everyone kept as they were; stopping the helper stops Tuple's
-// follow with it; opening the launcher again starts it again; once
+// follow with it; opening the launcher again starts it again, and
+// everyone made again matches each address as it was made ready; once
 // Tuple's follow ends, its favourites and those called lately stay,
 // saying nothing of how they stand; and with Tuple's daemon stopped,
 // opening the launcher doesn't run it, which the check counts. It exits 0
@@ -314,6 +315,18 @@ ShellRoot {
 
         function onEveryoneChanged() {
             if (root.waiting === "everyone again" && people.everyone !== root.first) {
+                // Made again, each address reading as it did is matched as
+                // it was made ready before, not made ready anew: that was
+                // most of a first search's time with everyone known.
+                const before = {};
+                for (const row of root.first)
+                    before[row.key] = row;
+                const anew = people.everyone.filter(row => row.person.emails.length > 0
+                    && before[row.key] && before[row.key].also !== row.also);
+                if (anew.length > 0) {
+                    root.fail(`addresses made ready again: ${root.names(anew)}`);
+                    return;
+                }
                 root.waiting = "the follow ended";
                 stopping.running = true;
             }
