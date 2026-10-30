@@ -60,6 +60,27 @@
         && lib.hasSuffix "sl4a_spi_amd sl4a_spi_hid" touchscreen.serviceConfig.ExecStart
       );
 
+  # fwupd, run against this model's ESRT with the UEFI and the TPM behind,
+  # offers the UEFI's update from the remote the module writes and nothing
+  # for the TPM (firmware/tests/offers-its-uefi.sh). Building the remote's
+  # cabinet checks the capsule is the UEFI's at the version it's offered as.
+  the-surface-offers-its-uefi-through-fwupd =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      inherit (surface.config) environment services;
+      remote =
+        pkgs.writeText "surface-laptop-4-amd.conf"
+          environment.etc."fwupd/remotes.d/surface-laptop-4-amd.conf".text;
+    in
+    pkgs.runCommandLocal "the-surface-offers-its-uefi-through-fwupd" { } ''
+      ${lib.getExe pkgs.bash} ${./firmware/tests/offers-its-uefi.sh} ${remote} \
+        ${services.fwupd.package} ${lib.getExe pkgs.jq}
+      touch $out
+    '';
+
   # The Surface Laptop 4's keyboard is behind Surface's embedded controller,
   # so its disk can be unlocked from it only when the initrd has every driver
   # on the way there, and keyd gives that keyboard Colemak there too.
