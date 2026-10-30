@@ -20,23 +20,46 @@
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "znver2";
 
-  # The devices this laptop always has. The battery and the charger come
-  # through the Surface Aggregator, as the keyboard does, so either one gone
-  # means the controller's drivers didn't bind.
+  # The devices this laptop always has, each where its driver binds it where
+  # it has one, since a device the kernel found but no driver took works no
+  # better than one that's gone. The battery, the charger, the keyboard and
+  # the touchpad come through the Surface Aggregator, so those gone together
+  # mean the controller's drivers didn't bind. The microphones aren't here
+  # yet: their driver doesn't bind at boot.
   jitsusama.devices.expected = {
-    "Wi-Fi" = "/sys/class/ieee80211/phy*";
-    "Bluetooth" = "/sys/class/bluetooth/hci0";
+    "Wi-Fi" = "/sys/bus/pci/drivers/iwlwifi/0000:02:00.0";
+    "Wi-Fi's radio" = "/sys/class/ieee80211/phy*";
+    # The AX200's Bluetooth half is a USB device inside the laptop.
+    "Bluetooth" = "/sys/bus/usb/drivers/btusb/3-4:1.0";
+    "Bluetooth's adapter" = "/sys/class/bluetooth/hci0";
+    "The disk" = "/sys/bus/pci/drivers/nvme/0000:01:00.0";
+    "The graphics" = "/sys/bus/pci/drivers/amdgpu/0000:03:00.0";
+    "The screen" = "/sys/class/drm/card*-eDP-1";
+    "The screen's brightness" = "/sys/class/backlight/amdgpu_bl*";
+    # The analog codec's controller; 03:00.1 is the GPU's, for HDMI and DP.
+    "The speakers" = "/sys/bus/pci/drivers/snd_hda_intel/0000:03:00.6";
+    "The keyboard" = "/sys/bus/surface_aggregator/drivers/surface_hid/01:15:02:01:00";
+    "The touchpad" = "/sys/bus/surface_aggregator/drivers/surface_hid/01:15:02:03:00";
+    # The panel, bound once the touchscreen's driver loads after boot.
+    "The touchscreen" = "/sys/bus/spi/drivers/sl4a_spi_hid/spi-MSHW0231:00";
+    "The light sensor" = "/sys/bus/i2c/drivers/apds9960/i2c-MSHW0184:00";
+    "The lid's switch" = "/sys/bus/platform/drivers/acpi-button/PNP0C0D:00";
+    "The camera" = "/sys/class/video4linux/video*";
     "The battery" = "/sys/class/power_supply/BAT1";
     "The charger" = "/sys/class/power_supply/ADP1";
-    "The camera" = "/sys/class/video4linux/video*";
-    "The watchdog" = "/sys/class/watchdog/watchdog0";
+    "The power profiles" =
+      "/sys/bus/surface_aggregator/drivers/surface_platform_profile/01:03:01:00:01";
     # The controller's sensors and fan, which the kernel patch below names.
-    "The temperature sensors" = "/sys/bus/surface_aggregator/devices/01:03:01:00:02";
-    "The fan" = "/sys/bus/surface_aggregator/devices/01:05:01:01:01";
+    "The temperature sensors" = "/sys/bus/surface_aggregator/drivers/surface_temp/01:03:01:00:02";
+    "The fan" = "/sys/bus/surface_aggregator/drivers/surface_fan/01:05:01:01:01";
+    "The processor's temperature" = "/sys/bus/pci/drivers/k10temp/0000:00:18.3";
     # The device surface-clock sets the controller's clock through.
     "The controller's clock" = "/sys/class/misc/surface_aggregator";
-    # The panel, which the touchscreen's driver finds once it loads.
-    "The touchscreen" = "/sys/bus/spi/devices/spi-MSHW0231:00";
+    # What tells the kernel how deep each sleep went, which device-check reads.
+    "The sleep controller" = "/sys/bus/platform/drivers/amd_pmc/AMD0005:00";
+    # What the disk's seal and the accounts' SSH keys are kept in.
+    "The TPM" = "/sys/bus/platform/drivers/tpm_tis/NTC0702:00";
+    "The watchdog" = "/sys/class/watchdog/watchdog0";
   };
 
   # The keyboard reaches the system through the Surface Aggregator, as

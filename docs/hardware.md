@@ -1029,7 +1029,7 @@ the kernel's tree adds.
 | Keyboard | named as the built-in one, `045e:09ae`, and its drivers in the initrd     |
 | Boot     | NVMe and USB drivers in the initrd                                        |
 | Graphics | named as the GPU the desktop waits for, its driver in the initrd          |
-| Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
+| Devices  | the parts device-check watches, each where its driver binds it            |
 | Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 | RTC      | the CMOS clock as rtc0, and the clock the firmware sets it from kept true |
 | Sensors  | the Aggregator's thermal sensors and fan, through a kernel patch          |
@@ -1296,10 +1296,15 @@ as the machine shuts down with the update waiting ([installing.md][8]).
 UEFI 4.501.140, of August 2026, follows 4.355.140 by five releases, each
 with security or stability fixes, which its metadata lists.
 
-The package's other capsules stay out. The TPM's waits until it's known
+The package's other capsules stay out. On the laptop measured, the
+Aggregator, the USB-C controller, the touchscreen, the panel's timing
+controller and the SMF already run what the package carries. The keyboard's
+and trackpad's ESRT entries still report old versions (14.204.139, and 1),
+but their last attempts record the package's 20.5.139 and 20.3.139 applied
+with success. So those entries don't follow their firmware, and fwupd would
+offer the same capsule at every look. The TPM's waits until it's known
 whether its upgrade keeps the TPM's owner state, which the disk's key is
-sealed to. The Aggregator's, the touchscreen's, the trackpad's and the rest
-wait until the laptop's ESRT shows which are newer than what it runs.
+sealed to.
 
 ### What's Left
 
@@ -1310,7 +1315,7 @@ wait until the laptop's ESRT shows which are newer than what it runs.
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
-| Firmware   | the UEFI's update isn't applied yet; the other parts' capsules wait, as above  |
+| Firmware   | the TPM's capsule waits on whether its upgrade keeps the TPM's owner state     |
 | Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
 
 [1]: kernel.md
