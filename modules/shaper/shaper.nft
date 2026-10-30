@@ -19,6 +19,7 @@ set bulk4 { typeof socket cgroupv2 level 4; }
 set app4 { typeof socket cgroupv2 level 4; }
 set video5 { typeof socket cgroupv2 level 5; }
 set awaited5 { typeof socket cgroupv2 level 5; }
+set bulk5 { typeof socket cgroupv2 level 5; }
 # Meet's media servers, as Google lists them for a firewall to let calls
 # through. Meet sends a call to them on 443, as a page would, so only where
 # it goes tells the two apart, and these addresses carry nothing but calls.
@@ -86,7 +87,11 @@ chain classify {
   # so it goes as an app's would; the rest of jobs he isn't waiting on.
   socket cgroupv2 level 5 @awaited5 goto best
 
-  # The work Joel started rather than the programs he's using.
+  # The work Joel started rather than the programs he's using, and a pi
+  # window running a turn nobody typed, which sends its whole conversation
+  # each time and with 30 others filled the upload ahead of the turn Joel
+  # had typed.
+  socket cgroupv2 level 5 @bulk5 goto bulk
   socket cgroupv2 level 1 @bulk1 goto bulk
   socket cgroupv2 level 2 @bulk2 goto bulk
   socket cgroupv2 level 4 @bulk4 goto bulk

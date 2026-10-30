@@ -59,6 +59,10 @@ struct Options {
     state: PathBuf,
     runtime: PathBuf,
     cgroups: PathBuf,
+    /// Where processes are listed, and the accounts' runtime folders,
+    /// where the harness says which pi sessions run a turn a person typed.
+    proc: PathBuf,
+    users: PathBuf,
     vpns: Vec<String>,
 }
 
@@ -72,6 +76,8 @@ fn options(args: &[String]) -> Options {
         state: "/var/lib/shaper".into(),
         runtime: "/run/shaper".into(),
         cgroups: "/sys/fs/cgroup".into(),
+        proc: "/proc".into(),
+        users: "/run/user".into(),
         vpns: Vec::new(),
     };
     // A network of its own, a test's among them, names its own distant hosts.
@@ -86,6 +92,8 @@ fn options(args: &[String]) -> Options {
             "--state" => o.state = value().into(),
             "--runtime" => o.runtime = value().into(),
             "--cgroups" => o.cgroups = value().into(),
+            "--proc" => o.proc = value().into(),
+            "--users" => o.users = value().into(),
             "--vpns" => {
                 o.vpns = value()
                     .split(',')
@@ -357,8 +365,17 @@ fn run(options: &Options) -> ExitCode {
     let mut reach = classes::Local::default();
     let mut vpns: BTreeMap<String, Vpn> = BTreeMap::new();
     let mut last_kept = Instant::now();
+    // Listing every process costs more than a step can spend, so the pi
+    // sessions are found every few seconds, and whether each runs a typed
+    // turn is read at every step.
+    let mut sessions = Vec::new();
+    let mut last_sessions: Option<Instant> = None;
     loop {
         let now = Instant::now();
+        if last_sessions.is_none_or(|at| now - at >= Duration::from_secs(5)) {
+            last_sessions = Some(now);
+            sessions = classes::sessions(&options.proc, &options.users);
+        }
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
             let order = look(&mut shaped, &mut memory, options, &send);
@@ -388,7 +405,9 @@ fn run(options: &Options) -> ExitCode {
         // A slice or unit made a moment ago reaches its set at the next
         // step. nixos-rebuild loads the table afresh on a switch, empty, so
         // the sets are also written every few seconds, changed or not.
-        let text = classes::transaction(TABLE, &classes::read(&options.cgroups), &reach);
+        let mut sets = classes::read(&options.cgroups);
+        sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
+        let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
             refill(&text);

@@ -6,9 +6,10 @@
 //! cgroup tree as it stands. nft takes a cgroup by its path and looks the ID
 //! up itself, so the sets are written as paths.
 
+use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The sets the table declares, each with the depth its rule matches at.
 /// The depths count from /sys/fs/cgroup: build.slice is 1,
@@ -38,6 +39,9 @@ pub struct Sets {
     /// jobs and ahead of the rest of it: it goes at an app's pace, not
     /// bulk's.
     pub awaited5: Vec<String>,
+    /// The windows in an account's apps whose pi sessions run turns nobody
+    /// typed, which `untyped` finds.
+    pub bulk5: Vec<String>,
 }
 
 const SYSTEM_BULK: [&str; 2] = ["build.slice", "machine.slice"];
@@ -89,6 +93,79 @@ pub fn read(root: &Path) -> Sets {
         }
     }
     sets
+}
+
+/// A pi session in an account's apps: its process, the unit it runs in
+/// there, and the folder where the harness keeps a file named for each pi
+/// running a turn a person typed, while it runs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Session {
+    pid: u32,
+    unit: String,
+    typed: PathBuf,
+}
+
+/// Every pi running in a unit of an account's app.slice, read from `proc`,
+/// with its typed folder under `run`, the accounts' runtime folders. About
+/// 30 sessions, each sending its whole conversation at every turn, filled
+/// the upload ahead of the turn Joel had typed and waited on. A pi
+/// elsewhere is sorted by its slice already.
+pub fn sessions(proc: &Path, run: &Path) -> Vec<Session> {
+    let mut found = Vec::new();
+    let Ok(entries) = fs::read_dir(proc) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse().ok()) else {
+            continue;
+        };
+        let dir = entry.path();
+        if fs::read_to_string(dir.join("comm")).is_ok_and(|comm| comm.trim() == "pi")
+            && let Some((unit, uid)) = fs::read_to_string(dir.join("cgroup"))
+                .ok()
+                .as_deref()
+                .and_then(app_unit)
+        {
+            found.push(Session {
+                pid,
+                unit,
+                typed: run.join(uid).join("pi/typed"),
+            });
+        }
+    }
+    found.sort_by_key(|session| session.pid);
+    found
+}
+
+/// The unit of an account's app.slice a process's cgroup file names, and
+/// the account's uid, or none for any cgroup else.
+fn app_unit(cgroup: &str) -> Option<(String, String)> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
+    let parts: Vec<&str> = path.split('/').collect();
+    let ["user.slice", account, manager, "app.slice", unit] = parts[..] else {
+        return None;
+    };
+    let uid = account.strip_prefix("user-")?.strip_suffix(".slice")?;
+    (manager == format!("user@{uid}.service") && !unit.is_empty())
+        .then(|| (path.to_string(), uid.to_string()))
+}
+
+/// The units under `root` whose every pi session runs a turn nobody
+/// typed. A unit where one is typed stays an app's, and one that has gone
+/// is left out, since nft refuses a path it can't find. The typed files
+/// are read afresh each time, so a typed turn leaves bulk at the next
+/// step.
+pub fn untyped(root: &Path, sessions: &[Session]) -> Vec<String> {
+    let mut typed: BTreeMap<&str, bool> = BTreeMap::new();
+    for session in sessions {
+        let this = session.typed.join(session.pid.to_string()).exists();
+        *typed.entry(&session.unit).or_default() |= this;
+    }
+    typed
+        .into_iter()
+        .filter(|&(unit, typed)| !typed && root.join(unit).is_dir())
+        .map(|(unit, _)| unit.to_string())
+        .collect()
 }
 
 /// Every account's user manager: user.slice/user-<uid>.slice/user@<uid>.service.
@@ -148,6 +225,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("app4", &sets.app4, true);
     fill("video5", &sets.video5, true);
     fill("awaited5", &sets.awaited5, true);
+    fill("bulk5", &sets.bulk5, true);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
     fill("uplinks", &local.links, true);
@@ -230,6 +308,51 @@ mod tests {
         assert_eq!(sets.bulk4.len(), 2);
     }
 
+    /// A process in a stand-in for /proc, named `comm`, in `cgroup`.
+    fn process(proc: &Path, pid: u32, comm: &str, cgroup: &str) {
+        let dir = proc.join(pid.to_string());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("comm"), format!("{comm}\n")).unwrap();
+        fs::write(dir.join("cgroup"), format!("0::/{cgroup}\n")).unwrap();
+    }
+
+    #[test]
+    fn a_pi_whose_turn_nobody_typed_is_bulk_and_one_a_person_typed_is_not() {
+        let apps = format!("{ACCOUNT}/app.slice");
+        let root = tree(&[
+            &format!("{apps}/kitty-1-1.scope"),
+            &format!("{apps}/kitty-2-2.scope"),
+            &format!("{apps}/kitty-3-3.scope"),
+            &format!("{apps}/kitty-4-4.scope"),
+        ]);
+        let proc = root.join("proc");
+        let run = root.join("run");
+        process(&proc, 10, "pi", &format!("{apps}/kitty-1-1.scope"));
+        process(&proc, 11, "kitty", &format!("{apps}/kitty-1-1.scope"));
+        process(&proc, 20, "pi", &format!("{apps}/kitty-2-2.scope"));
+        // Two in one window: one typed keeps the window best effort.
+        process(&proc, 30, "pi", &format!("{apps}/kitty-3-3.scope"));
+        process(&proc, 31, "pi", &format!("{apps}/kitty-3-3.scope"));
+        // A pi that's gone since it was found names no cgroup.
+        process(&proc, 40, "pi", &format!("{apps}/kitty-9-9.scope"));
+        // Outside the apps, where its slice already sorts it.
+        process(
+            &proc,
+            50,
+            "pi",
+            &format!("{ACCOUNT}/jobs.slice/jobs.service"),
+        );
+        fs::create_dir_all(run.join("1000/pi/typed")).unwrap();
+        fs::write(run.join("1000/pi/typed/20"), "").unwrap();
+        fs::write(run.join("1000/pi/typed/31"), "").unwrap();
+        let found = sessions(&proc, &run);
+        assert_eq!(found.len(), 5, "{found:?}");
+        assert_eq!(untyped(&root, &found), [format!("{apps}/kitty-1-1.scope")]);
+        // The turn ends and its file goes: it's bulk at once.
+        fs::remove_file(run.join("1000/pi/typed/20")).unwrap();
+        assert_eq!(untyped(&root, &found).len(), 2);
+    }
+
     #[test]
     fn a_cgroup_that_isnt_there_is_left_out() {
         let root = tree(&["system.slice"]);
@@ -251,7 +374,10 @@ mod tests {
         assert!(text.contains(
             "flush set inet shaper bulk1\nadd element inet shaper bulk1 { \"build.slice\" }\n"
         ));
-        assert!(text.contains("flush set inet shaper awaited5\nflush set inet shaper local4\n"));
+        assert!(text.contains(
+            "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
+             flush set inet shaper local4\n"
+        ));
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));
         assert!(text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"));
         assert!(text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"));

@@ -370,6 +370,43 @@ def test_apps(connection: Connection) -> None:
     connection.lands("video", "app.slice", connection.datagrams(443, to=MEET))
 
 
+def test_pi_sessions(connection: Connection) -> None:
+    """A pi window running a turn nobody typed goes in bulk, and one a person typed doesn't.
+
+    The harness keeps /run/user/<uid>/pi/typed/<pid> while a pi runs a typed turn, so
+    the shaper reads it through its sandbox. A send is run inside the window's cgroup, as
+    the window's own sockets are.
+    """
+    client = connection.client
+    client.succeed(f"mkdir -p /tmp/window && ln -sf {BIN}/bash /tmp/window/pi")
+    client.succeed(
+        "systemd-run -M alice@ --user --slice=app.slice --unit=pi-window"
+        # A command after the sleep keeps the process named pi running.
+        " /tmp/window/pi -c 'sleep infinity; true'"
+    )
+    pid = client.succeed(
+        "systemctl -M alice@ --user show -p MainPID --value pi-window.service"
+    ).strip()
+    window = "user.slice/user-1000.slice/user@1000.service/app.slice/pi-window.service"
+
+    def send() -> None:
+        """Upload from inside the window's cgroup."""
+        client.succeed(
+            f"{BIN}/bash -c 'echo $$ > /sys/fs/cgroup/{window}/cgroup.procs; {connection.upload}'"
+        )
+
+    listed = "nft list set inet shaper bulk5 | grep -q pi-window"
+    # The shaper looks for pi sessions every few seconds.
+    client.wait_until_succeeds(listed, timeout=SHAPING)
+    connection.reaches("bulk", "an untyped pi", send, "eth1", LEAST_TRANSFER)
+    client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
+    client.wait_until_fails(listed, timeout=HOLDING)
+    connection.reaches("best effort", "a typed pi", send, "eth1", LEAST_TRANSFER)
+    client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
+    client.wait_until_succeeds(listed, timeout=HOLDING)
+    client.succeed("systemctl -M alice@ --user stop pi-window.service")
+
+
 def test_real_time(connection: Connection) -> None:
     """A call's packets make the shaper keep the connection's queue here.
 
