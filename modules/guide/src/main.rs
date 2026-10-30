@@ -89,16 +89,24 @@ fn main() -> ExitCode {
         ["host", image, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
                 let _awake = guide::awake::hold("writing a stick");
-                reported(written.open().and_then(|(signers, payload, bundle)| {
-                    writer(
-                        image,
-                        signers,
-                        payload,
-                        bundle,
-                        written.uses_kept(),
-                        written.every_machine,
-                    )
-                }))
+                // Rooted before anything is read from them, and held until
+                // the writer is done, whichever way it ends.
+                reported(
+                    hold_what_is_written(image, written.install).and_then(|held| {
+                        let wrote = written.open().and_then(|(signers, payload, bundle)| {
+                            writer(
+                                image,
+                                signers,
+                                payload,
+                                bundle,
+                                written.uses_kept(),
+                                written.every_machine,
+                            )
+                        });
+                        drop(held);
+                        wrote
+                    }),
+                )
             } else {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
@@ -311,6 +319,24 @@ fn write_stick(
         ),
     }
     Ok(())
+}
+
+/// The stick's image and the payload, kept in the Nix store for as long as
+/// the writer runs, by roots in the person's own state for the guide.
+fn hold_what_is_written(image: &str, payload: Option<&str>) -> Result<writer::roots::Held, Fault> {
+    let Some(state) = own_state() else {
+        return Ok(writer::roots::Held::default());
+    };
+    let folder = state.join("roots");
+    std::os::unix::fs::DirBuilderExt::mode(std::fs::DirBuilder::new().recursive(true), 0o700)
+        .create(&folder)
+        .map_err(|why| Fault::Unkept {
+            path: folder.display().to_string(),
+            why: why.to_string(),
+        })?;
+    let mut machine = System::new(Journal::in_memory(), writer_log());
+    let paths: Vec<&str> = std::iter::once(image).chain(payload).collect();
+    writer::roots::hold(&mut machine, &folder, &paths)
 }
 
 /// The person's own state for the guide, made readable only by them.
