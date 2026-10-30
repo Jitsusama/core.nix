@@ -36,6 +36,9 @@ SHOWN = ("name", "noun", "what", "ask", "empty", "said", "sure", "part", "verb",
 
 # Things whose word means something the glossary doesn't replace.
 OTHER_SENSE = {
+    "drive:drive": "Google Drive, as Google names its file store, not a disk",
+    "drive:drives": "Google Drive's shared drives, as Google names them, not disks",
+    "drive:mine": "Google Drive's My Drive, as Google names it, not a disk",
     "heat:display-engine": "the processor's part that drives the screens, as Intel names it",
     "machine:cpu:kept-by-display-engine": "Heat's Display Engine, as Intel names it",
     "power:limit": "a battery's charge limit, not an allowance",
