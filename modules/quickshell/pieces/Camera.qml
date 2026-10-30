@@ -7,9 +7,10 @@
 // for the camera and listing programs only while they stream. So the
 // cameras are the ones the machine names and whatever else the folder
 // holds, and a machine with neither has no piece. The files are replaced
-// whole as programs come and go, which each file's watch hears, and the
-// folder's watch hears a camera come and go; the folder stays from boot
-// to shutdown, so neither watch is lost and nothing is asked.
+// whole as programs come and go, written beside and renamed over, so the
+// folder's one watch hears every change, and one reader reads every file
+// as it does; the folder stays from boot to shutdown, so the watch is
+// never lost and nothing is asked.
 //
 // A holder is named by the program itself, so this says who has a camera,
 // not who may: it's for seeing at a glance, not for trusting.
@@ -40,8 +41,8 @@ Piece {
     // beside it first, under its name and a number, and is no camera of its
     // own; that file renamed onto a new camera's leaves the count as it
     // was, and the model says so only as changed rows, so the count alone
-    // won't do. The list is kept when the names are the same, so each
-    // file's watch stays rather than being made again.
+    // won't do. The list is kept when the names are the same, so nothing
+    // drawn from it is made again.
     property var listed: []
 
     function list() {
@@ -55,6 +56,11 @@ Piece {
             listed = names;
     }
     readonly property var names: [...new Set(configured.concat(listed))]
+
+    function changed() {
+        list();
+        read();
+    }
     property var held: ({})
     readonly property var reading: names.map(name => ({
         name: called(name),
@@ -86,28 +92,58 @@ Piece {
         folder: "file:///run/camera-holders"
         showDirs: false
         showDotAndDotDot: false
-        onRowsInserted: piece.list()
-        onRowsRemoved: piece.list()
-        onDataChanged: piece.list()
-        onModelReset: piece.list()
+        onRowsInserted: piece.changed()
+        onRowsRemoved: piece.changed()
+        onDataChanged: piece.changed()
+        onModelReset: piece.changed()
     }
 
-    Instantiator {
-        model: piece.names
-
-        FileView {
-            required property string modelData
-            path: `/run/camera-holders/${modelData}`
-            watchChanges: true
-            printErrors: false
-            onFileChanged: reload()
-            onLoaded: piece.heard(modelData, text())
-            onLoadFailed: piece.heard(modelData, "")
+    // Every file in the folder read in one run, each after a record
+    // separator and its name on a line of its own, since a program's name
+    // may hold anything but that.
+    Process {
+        id: reader
+        command: ["sh", "-c", "for file in \"$1\"/*; do [ -f \"$file\" ] || continue;"
+            + " printf '\\036%s\\n' \"${file##*/}\"; cat \"$file\"; done", "sh",
+            "/run/camera-holders"]
+        onExited: {
+            if (piece.again) {
+                piece.again = false;
+                reader.running = true;
+            }
+        }
+        stdout: StdioCollector {
+            onStreamFinished: piece.heard(text)
         }
     }
 
-    function heard(name, text) {
-        const programs = text.split("\n").map(line => line.trim()).filter(line => line !== "");
-        held = Object.assign({}, held, { [name]: programs });
+    // Asked to read while reading, so the last change always counts.
+    property bool again: false
+
+    function read() {
+        if (reader.running)
+            again = true;
+        else
+            reader.running = true;
+    }
+
+    Component.onCompleted: read()
+
+    // Who holds each camera, kept as it was when nobody came or went, so
+    // nothing drawn from it is made again.
+    function heard(text) {
+        const next = {};
+        for (const part of text.split("\x1e")) {
+            const end = part.indexOf("\n");
+            if (end < 0)
+                continue;
+            const name = part.slice(0, end);
+            if (/\.\d+$/.test(name))
+                continue;
+            next[name] = part.slice(end + 1).split("\n").map(line => line.trim())
+                .filter(line => line !== "");
+        }
+        if (JSON.stringify(next) !== JSON.stringify(held))
+            held = next;
     }
 }
