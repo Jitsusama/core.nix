@@ -307,10 +307,41 @@ QtObject {
             }
         }
 
+        // A kept text is found again at once however many are kept, against
+        // the least finding it could take, a look in an object by its text.
+        // The last kept are the ones a table that looks through them all
+        // finds last: kept in a Map, Qt's engine compared each with every
+        // text before it, 89 times the least, while by name it's 1.1 to
+        // 1.5 times (2026-10-30).
+        const fewest = 20;
+        const recent = Array.from({ length: 1000 }, (_, at) => `another name ${others - 1 - at}`);
+        const looked = Object.create(null);
+        for (const text of recent)
+            looked[text] = true;
+        const finding = work => {
+            const started = Date.now();
+            for (let r = 0; r < 50; r++)
+                for (const text of recent)
+                    work(text);
+            return Date.now() - started;
+        };
+        let found = Infinity;
+        let least = Infinity;
+        for (let batch = 0; batch < 5; batch++) {
+            least = Math.min(least, finding(text => looked[String(text)]));
+            found = Math.min(found, finding(text => Fuzzy.kept(text)));
+        }
+        const keptTimes = found / Math.max(least, 1);
+        console.warn(`finding a kept text again: ${keptTimes.toFixed(1)} times `
+            + "the least it could take");
+        if (keptTimes > fewest)
+            slow.push(`finding a kept text again took ${keptTimes.toFixed(1)} times the least, `
+                + `more than ${fewest}`);
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures.concat(slow))
             console.warn(failure);
-        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 6;
+        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 7;
         console.warn(failures.length > 0 ? `${failures.length} of ${asked} went wrong`
             : slow.length > 0 ? `${slow.length} of ${asked} too slow in this process`
             : `all ${asked} held`);

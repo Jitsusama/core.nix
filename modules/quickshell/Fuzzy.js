@@ -187,22 +187,28 @@ function prepare(text) {
 // one. Forgetting everything at once has every collection make everything
 // ready again on the same key; Joel's slowest keys are ones where Quests,
 // Notices and People were all slow together, up to 2 s (launcher-trials.json,
-// 2026-10-26 to 30).
+// 2026-10-26 to 30). Each lot is an object by text rather than a Map: Qt's
+// engine finds a Map's key by comparing it with every key it holds
+// (qv4estable.cpp), 36 us a text in a full lot against 0.35 for an
+// object's, whose names it hashes, for about 8 MB more (2026-10-30).
 const KEPT = 20000;
-let keptItems = new Map();
-let keptBefore = new Map();
+let keptItems = Object.create(null);
+let keptCount = 0;
+let keptBefore = Object.create(null);
 
 // The text made ready to match, once while it reads the same.
 function kept(text) {
     const key = String(text);
-    let item = keptItems.get(key);
+    let item = keptItems[key];
     if (item === undefined) {
-        if (keptItems.size >= KEPT) {
+        if (keptCount >= KEPT) {
             keptBefore = keptItems;
-            keptItems = new Map();
+            keptItems = Object.create(null);
+            keptCount = 0;
         }
-        item = keptBefore.get(key) ?? prepare(key);
-        keptItems.set(key, item);
+        item = keptBefore[key] ?? prepare(key);
+        keptItems[key] = item;
+        keptCount += 1;
     }
     return item;
 }
