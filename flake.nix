@@ -147,6 +147,7 @@
         eero = ./modules/eero/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
+        firmware-notice = ./modules/firmware-notice/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
         gh = ./modules/gh/home.nix;
