@@ -40,8 +40,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       isNormalUser = true;
       linger = true;
     };
+    # The client's VPN runs in userspace on a tun device, as a VPN's daemon
+    # does, so its packets on the connection are the daemon's own rather
+    # than carrying the socket of whoever sent what they hold.
     environment.systemPackages = [
       pkgs.jq
+      pkgs.wireguard-go
       pkgs.wireguard-tools
     ];
   };

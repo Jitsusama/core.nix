@@ -227,12 +227,18 @@ def tunnel(connection: Connection) -> Connection:
     for node in (connection.client, connection.server):
         node.succeed("wg genkey > /root/key")
         keys[node.name] = node.succeed("wg pubkey < /root/key").strip()
+    # The client's runs in userspace, in a system service, as a VPN's daemon does: the
+    # kernel's would leave each packet on the connection with its sender's socket.
+    connection.client.succeed(
+        "systemd-run --unit=tunnel --setenv=WG_PROCESS_FOREGROUND=1 wireguard-go -f wg0"
+    )
+    connection.client.wait_until_succeeds("ip link show wg0", timeout=COMING_UP)
+    connection.server.succeed("ip link add wg0 type wireguard")
     for node, me, peer, there in (
         (connection.client, "10.9.0.1", connection.server, connection.far),
         (connection.server, "10.9.0.2", connection.client, connection.near),
     ):
         node.succeed(
-            "ip link add wg0 type wireguard",
             f"wg set wg0 private-key /root/key listen-port 51820 peer {keys[peer.name]}"
             f" endpoint {there}:51820 allowed-ips 10.9.0.0/24",
             f"ip addr add {me}/24 dev wg0",
