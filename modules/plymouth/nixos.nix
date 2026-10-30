@@ -419,9 +419,17 @@ in
         # Nothing waits on Plymouth's quitting now, which comes after the
         # boot's other jobs.
         plymouth-quit-wait.wantedBy = lib.mkForce [ ];
+        # The client waits on plymouthd without a limit of its own, so a
+        # hung plymouthd would hold the sign-in for greetd's whole start
+        # timeout; five seconds leaves one request plenty of room.
         greetd = {
           serviceConfig.ExecStartPre = [
-            "-${config.boot.plymouth.package}/bin/plymouth deactivate"
+            (lib.concatStringsSep " " [
+              "-${lib.getExe' pkgs.coreutils "timeout"}"
+              "5"
+              "${config.boot.plymouth.package}/bin/plymouth"
+              "deactivate"
+            ])
           ];
         };
 
