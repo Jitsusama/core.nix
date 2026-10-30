@@ -240,6 +240,39 @@ onLinux {
         touch $out
       '';
 
+  # In a kitty window, the account's Neovim says the file it has open to
+  # the window, for the launcher's Recent (showing.lua): the one it starts
+  # with once its terminal attaches, the next as it's entered, nothing for
+  # help, which isn't a file, and nothing once it leaves. Run in a terminal
+  # of its own, as script gives it, which keeps what Neovim wrote to it.
+  neovim-says-the-file-it-has-open =
+    let
+      home = account workstation;
+    in
+    pkgs.runCommandLocal "neovim-says-the-file-it-has-open"
+      {
+        nativeBuildInputs = [
+          home.home.path
+          pkgs.util-linux
+        ];
+      }
+      ''
+        ${neovimAt home}
+        echo one > one.txt
+        echo two > two.txt
+        export KITTY_WINDOW_ID=1 TERM=xterm-256color
+        timeout 60 script -q -e -c "nvim --cmd 'luafile ${./probes/says-what-it-has-open.lua}' one.txt" \
+          written < /dev/null > /dev/null || true
+        said=$({ grep -a -o $'\e]1337;SetUserVar=neovim_file[^\a]*' written || true; } \
+          | sed 's/.*neovim_file//' | tr '\n' ' ')
+        wanted="=$(printf %s "$PWD/one.txt" | base64 -w0) =$(printf %s "$PWD/two.txt" | base64 -w0)  "
+        [ "$said" = "$wanted" ] || {
+          echo "Neovim said '$said' to its kitty window, not '$wanted'"
+          exit 1
+        }
+        touch $out
+      '';
+
   # The account's Neovim binds every key in the map, and only those: each
   # action a key names is one a file registered, or one a plugin that
   # waits provides, each key is bound as it says, a scope's in a buffer it

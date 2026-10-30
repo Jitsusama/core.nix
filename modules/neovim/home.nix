@@ -1,8 +1,9 @@
 # Neovim, the account's editor: its plugins, each set up by its own file in
 # plugins/ as Neovim starts or once it's wanted (later.lua); its keys, from
 # keys.nix, bound by keys.lua and listed for the launcher; the theme as its
-# colour scheme; and a status line that tells a file's place and git's state
-# as the prompt does.
+# colour scheme; a status line that tells a file's place and git's state
+# as the prompt does; and, on Linux, the file each Neovim has open leading
+# its Recent in the launcher (showing.lua).
 { neovim-pi }:
 {
   config,
@@ -12,6 +13,7 @@
 }:
 let
   inherit (pkgs) vimPlugins;
+  open-now = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
   # Most plugins are configured by a Lua file of the same name in ./plugins.
   configured = plugin: file: {
     inherit plugin;
@@ -150,6 +152,7 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
+    ../quickshell/recents.nix
   ];
 
   # nixpkgs' wrapper renames Neovim's entry "Neovim wrapper", which the
@@ -222,6 +225,7 @@ in
         "lua/theme.lua"
         "lua/where.lua"
         "lua/status.lua"
+        "lua/showing.lua"
         "lua/later.lua"
         "colors/jitsusama.lua"
       ];
@@ -260,6 +264,26 @@ in
   # The status line, and what it tells a file's place and git's state by:
   # the prompt's root markers and its git-engine, so the two agree.
   xdg.configFile."nvim/lua/status.lua".source = ./status.lua;
+  # The file open here, said to the kitty window it runs in, which
+  # open-now reads for its Recent in the launcher to lead with; Go To
+  # focuses that window inside kitty as well as kitty's in niri.
+  xdg.configFile."nvim/lua/showing.lua".source = ./showing.lua;
+  jitsusama.quickshell.launcher.recents = lib.mkIf pkgs.stdenv.hostPlatform.isLinux [
+    {
+      app = "nvim";
+      kind = "file";
+      opened = [
+        open-now
+        "neovim"
+      ];
+      go = [
+        open-now
+        "neovim"
+        "go"
+        "{id}"
+      ];
+    }
+  ];
   xdg.configFile."nvim/lua/where.lua".text = "return ${
     lib.generators.toLua { } {
       engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });

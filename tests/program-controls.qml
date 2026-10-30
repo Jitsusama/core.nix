@@ -35,7 +35,9 @@
 // source saying what's open, as mpv's does, leads the same way, one row a
 // file only while its process has a window, Return going to that window,
 // Close It closing it and leaving the file dimmed, the rest of its Recent
-// still the list programs share. A program whose
+// still the list programs share; a file open in two windows says so, and
+// one in a window named by niri's id, as Neovim's in kitty's, goes there
+// through its source's command too, with no Close It. A program whose
 // entry hides itself is listed only when another provider gives it acts,
 // and then steps in on Return rather than starting. Typing on
 // looks only through what the last key found, and finds what looking
@@ -158,7 +160,8 @@ ShellRoot {
                 // nothing else, so the rest stays the shared list's.
                 app: "org.example.viewer",
                 kind: "file",
-                opened: [Quickshell.env("VIEWING_LIST")]
+                opened: [Quickshell.env("VIEWING_LIST")],
+                go: ["editor", "go", "{id}"]
             }]
         })
         // Desktop entries and what quiet had open are read in the
@@ -385,7 +388,11 @@ ShellRoot {
             "32": { id: 32, app_id: "org.example.viewer", pid: 5252, title: "paper.pdf",
                 workspace_id: 1, focus_timestamp: { secs: 350, nanos: 0 } },
             "33": { id: 33, app_id: "org.example.viewer", pid: 5353, title: "open.pdf",
-                workspace_id: 1, focus_timestamp: { secs: 100, nanos: 0 } }
+                workspace_id: 1, focus_timestamp: { secs: 100, nanos: 0 } },
+            "34": { id: 34, app_id: "org.example.terminal", pid: 6060, title: "notes",
+                workspace_id: 1, focus_timestamp: { secs: 300, nanos: 0 } },
+            "35": { id: 35, app_id: "org.example.terminal", pid: 6060, title: "more notes",
+                workspace_id: 1, focus_timestamp: { secs: 200, nanos: 0 } }
         });
         Niri.revision += 1;
         root.waiting = "the viewer";
@@ -398,15 +405,24 @@ ShellRoot {
         try {
             const recent = program("org.example.viewer").verbs().find(row => row.name === "Recent");
             const files = recent.targets();
-            same("what it has open first, one row a file while its process has a window, newest "
+            same("what it has open first, one row a file while its window is open, newest "
                 + "looked at first, then the list programs share, never a file open now",
-                names(files), "open.pdf, paper.pdf, old.pdf");
-            same("each made as every file is, beside its folder, saying it's open",
+                names(files), "open.pdf, paper.pdf, notes.md, old.pdf");
+            same("each made as every file is, beside its folder, saying it's open, and in how many",
                 files.map(row => `${row.component} ${row.key} ${row.side}`).join(" | "),
-                `file file:${root.home}/open.pdf ~ \u00b7 open | file file:${root.home}/paper.pdf `
-                + `~ \u00b7 open | file file:${root.home}/old.pdf ~`);
+                `file file:${root.home}/open.pdf ~ \u00b7 open in 2 windows | file `
+                + `file:${root.home}/paper.pdf ~ \u00b7 open | file file:${root.home}/notes.md ~ `
+                + `\u00b7 open in 2 windows | file file:${root.home}/old.pdf ~`);
             same("Return goes to one open, and opens one that was",
-                files.map(row => row.verb).join(" "), "go go open");
+                files.map(row => row.verb).join(" "), "go go go open");
+            same("one in a window niri names holds Go To, then Copy the Path, and no Close It",
+                names(files[2].verbs()), "Go To, Copy the Path");
+            Niri.acted = [];
+            Niri.spawns = [];
+            files[2].run();
+            same("it goes there inside the window through its source, then to the window looked "
+                + "at last", `${JSON.stringify(Niri.spawns)} ${acted()}`,
+                '[["editor","go","10:6"]] [{"FocusWindow":{"id":34}}]');
             const inside = files[0].verbs();
             same("one open holds Go To, Close It, then Copy the Path", names(inside),
                 "Go To, Close It, Copy the Path");

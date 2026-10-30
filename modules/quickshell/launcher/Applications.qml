@@ -111,17 +111,20 @@ Provider {
     // drawn or run, so a window opening never prepares every program again.
     readonly property var running: {
         Niri.revision;
-        const when = window => {
-            const stamp = window.focus_timestamp;
-            return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
-        };
         const by = {};
-        for (const window of Object.values(Niri.windows).sort((a, b) => when(b) - when(a))) {
+        for (const window of Object.values(Niri.windows)
+            .sort((a, b) => provider.focusedAt(b) - provider.focusedAt(a))) {
             const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
             if (entry)
                 (by[entry.id] ?? (by[entry.id] = [])).push(window);
         }
         return by;
+    }
+
+    // When a window was last looked at, in nanoseconds, or 0 for never.
+    function focusedAt(window) {
+        const stamp = window.focus_timestamp;
+        return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
     }
 
     // How many windows a program has open, as the row says it beside the
@@ -578,7 +581,7 @@ Provider {
         provider.recents.ask(entry.id);
         const listed = () => {
             const open = source?.kind === "site" ? provider.openSites(entry, source)
-                : source?.opened ? provider.openFiles(entry) : [];
+                : source?.opened ? provider.openFiles(entry, source) : [];
             const shown = open.map(row => row.key);
             return open.concat(provider.recents.of(entry.id)
                 .map(path => source?.kind === "site"
@@ -769,45 +772,65 @@ Provider {
     }
 
     // What a program has open now, as its file source's `opened` prints
-    // it, a file a line: the process that has it and its whole path. One
-    // row a file, the file's own wherever it shows, and only while that
-    // process has a window, newest looked at first; two windows on one
-    // file are one row, going to the one looked at last. Return goes to
-    // its window, and inside are Go To, Close It and Copy the Path. Close
-    // It keeps the launcher, and the file stays where it was, said closed
-    // and holding only Copy the Path, until the launcher opens again.
-    function openFiles(entry) {
+    // it, a file a line: the process that has it, or `@` and niri's window
+    // it's in where one process has many windows, as kitty does for each
+    // Neovim, then its whole path, and after another tab what `go` is
+    // given ({id}) to bring it forward inside that window. One row a file,
+    // the file's own wherever it shows, and only while its window is open,
+    // newest looked at first; two windows on one file are one row, said
+    // open in both, going to the one looked at last. Return goes to its
+    // window, and inside are Go To, Close It and Copy the Path. Close It is
+    // there only where the process is the window's own, so closing it
+    // closes nothing else; it keeps the launcher, and the file stays where
+    // it was, said closed and holding only Copy the Path, until the
+    // launcher opens again.
+    function openFiles(entry, source) {
         const words = Words.of("path:file").said ?? {};
-        const held = provider.recents.openIn(entry.id).map(line => {
-            const tab = line.indexOf("\t");
-            return { pid: Number(line.slice(0, tab)), path: tab < 0 ? "" : line.slice(tab + 1) };
-        });
+        const held = [];
+        for (const line of provider.recents.openIn(entry.id)) {
+            const [who, path, go] = line.split("\t");
+            if (!path)
+                continue;
+            const own = !who.startsWith("@");
+            const window = own
+                ? (running[entry.id] ?? []).find(one => one.pid === Number(who)) ?? null
+                : Niri.windows[who.slice(1)] ?? null;
+            if (window)
+                held.push({ window: window, path: path, go: go ?? "", own: own });
+        }
+        held.sort((a, b) => provider.focusedAt(b.window) - provider.focusedAt(a.window));
         const closed = provider.recents.closed[entry.id] ?? [];
         const rows = [];
         const paths = [];
-        for (const window of running[entry.id] ?? []) {
-            const open = held.find(one => one.pid === window.pid && one.path !== "");
-            if (!open || paths.includes(open.path))
+        for (const open of held) {
+            if (paths.includes(open.path))
                 continue;
             paths.push(open.path);
-            rows.push(closed.includes(open.path)
-                ? Files.held(open.path, thing, [], words.closed ?? "", true)
-                : Files.held(open.path, thing, [
-                    said("verb:path:file:go", "", {
-                        key: `verb:path:file:go:${open.path}`,
-                        hue: "action",
-                        run: () => Niri.act({ FocusWindow: { id: window.id } })
-                    }),
-                    said("verb:path:file:close", "", {
-                        key: `verb:path:file:close:${open.path}`,
-                        hue: "action",
-                        stays: true,
-                        run: () => {
-                            Niri.act({ CloseWindow: { id: window.id } });
-                            provider.recents.closing(entry.id, open.path);
-                        }
-                    })
-                ], words.open ?? ""));
+            if (closed.includes(open.path)) {
+                rows.push(Files.held(open.path, thing, [], words.closed ?? "", true));
+                continue;
+            }
+            const windows = held.filter(one => one.path === open.path).length;
+            const goes = said("verb:path:file:go", "", {
+                key: `verb:path:file:go:${open.path}`,
+                hue: "action",
+                run: () => {
+                    if (source?.go && open.go !== "")
+                        Niri.spawn(source.go.map(part => part.replace("{id}", open.go)));
+                    Niri.act({ FocusWindow: { id: open.window.id } });
+                }
+            });
+            const closes = !open.own ? [] : [said("verb:path:file:close", "", {
+                key: `verb:path:file:close:${open.path}`,
+                hue: "action",
+                stays: true,
+                run: () => {
+                    Niri.act({ CloseWindow: { id: open.window.id } });
+                    provider.recents.closing(entry.id, open.path);
+                }
+            })];
+            rows.push(Files.held(open.path, thing, [goes].concat(closes), windows > 1
+                ? (words.windows ?? "").replace("{count}", String(windows)) : words.open ?? ""));
         }
         return rows;
     }
