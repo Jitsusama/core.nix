@@ -409,7 +409,11 @@ Scope {
         } else if (category !== null && (steps[last].rows.some(row => row.asker === source)
             || (answer && answer.asker === source))) {
             // A row a condition holds back stays dimmed as it's said again,
-            // or each new reading would light it for a moment.
+            // or each new reading would light it for a moment. A row its
+            // asker no longer answers is kept as it was, dimmed or not: if
+            // the condition moves meanwhile, conditionMoved remakes the step
+            // from the place's members, so it lights again once its asker
+            // answers, and stays dimmed only while the asker is silent.
             const place = steps[last].row.category ?? category;
             steps[last] = Object.assign({}, steps[last], {
                 rows: steps[last].rows.map(row => row.asker === source
@@ -2253,7 +2257,8 @@ Scope {
     // row said again from a new reading is held back the same as one
     // Steady kept.
     function heldBack(category, row) {
-        const id = (row.is ?? "").startsWith("answer:") ? row.is.slice(7) : "";
+        const asked = "answer:";
+        const id = (row.is ?? "").startsWith(asked) ? row.is.slice(asked.length) : "";
         const named = (category.while ?? {})[id];
         if (named === undefined || holdsNow(category, id))
             return row;
