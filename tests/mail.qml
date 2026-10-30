@@ -280,16 +280,16 @@ QtObject {
         check("none with none open before", Mail.superseded([], [6]), []);
 
         // Only the parts whose text changed are taken again.
-        const minute = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
+        const answered = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
             mail: [mail], unread: 2, heard: now }));
-        const first = Google.changed({}, minute);
-        check("every part is taken the first time", first.parts, Object.keys(minute));
+        const first = Google.changed({}, answered);
+        check("every part is taken the first time", first.parts, Object.keys(answered));
         const later = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
-            mail: [mail], unread: 2, heard: now + 60000 }));
+            mail: [mail], unread: 2, heard: now + minute }));
         const after = Google.changed(first.texts, later);
         check("a minute on, only when Google answered", after.parts, ["heard"]);
         const more = Google.heard(JSON.stringify({ account: "ready", meetings: [standup],
-            mail: [], unread: 1, heard: now + 120000 }));
+            mail: [], unread: 1, heard: now + 2 * minute }));
         check("mail read, the mail and its count too",
             Google.changed(after.texts, more).parts, ["mail", "unread", "heard"]);
 
