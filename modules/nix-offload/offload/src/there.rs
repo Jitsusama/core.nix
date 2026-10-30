@@ -1,6 +1,6 @@
-//! `nix-offload there [-L] [--keep-going] FLAKE ATTR...`: builds a flake's
-//! attributes on the lent builder by sending it a command, or here when
-//! none stands.
+//! `nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR]
+//! FLAKE ATTR...`: builds a flake's attributes on the lent builder by
+//! sending it a command, or here when none stands.
 //!
 //! The build hook builds a build's inputs here and copies each up, and a
 //! VM test took 1025 s that way against 60 s here, nearly all of it the
@@ -8,17 +8,39 @@
 //! commit of a public repository, goes as one command: the builder
 //! fetches it and every input, evaluates and builds, and only the command
 //! goes up while the log comes down. Evaluation leaves this machine too.
+//! A flake that's a git tree here goes the same way at its commit when
+//! GitHub has it, clean. Otherwise its commits since the newest one GitHub
+//! has go up as a git bundle, a few kilobytes, with any change to its
+//! tracked files as one more commit made without touching its branch or
+//! index, and the builder fetches the rest from GitHub.
+//!
+//! With no builder standing, it asks the lender for one and waits, since
+//! one stands in about 70 s, while a VM test here holds the person's
+//! machine for minutes. With no lender running, or none being made, it
+//! builds here.
+//!
+//! `--apply` builds a Nix function applied to the one attribute, and
+//! `--out` copies its output back into a folder, as a VM test's pictures.
+//! `there --takes` says which of these it takes, a word a line.
+//!
+//! An attribute for a system a machine nearby takes, named by its second
+//! word as in `checks.aarch64-darwin.x`, goes to that machine instead
+//! while it answers, since this one can't build it at all. A flake that's
+//! a folder here, which no machine could fetch, goes with it as a
+//! tarball, and any input its lock pins to a store path is copied too, so
+//! the nearby machine fetches the rest itself and can read inputs only it
+//! has.
 //!
 //! A caller may rewrite any `nix build --no-link` into this without ever
 //! failing for the routing: with no builder, or none ssh can reach, the
 //! same build runs here, saying so. It exits with the build's own status,
-//! and journals where each ran and what it sent, in `there.jsonl` beside
-//! the lender's journal.
+//! or the first that failed, and journals where each part ran and what it
+//! sent, in `there.jsonl` beside the lender's journal.
 
 use std::fs;
 use std::io::Write;
-use std::path::Path;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 /// What a `there` was asked to build, and how.
 #[derive(Debug, PartialEq, Eq)]
@@ -27,55 +49,128 @@ pub struct Asked {
     attributes: Vec<String>,
     /// The flags passed through to `nix build`: `-L` and `--keep-going`.
     flags: Vec<String>,
+    /// A Nix function applied to the one attribute before it's built, as
+    /// `--apply` gives it.
+    apply: Option<String>,
+    /// Where the one attribute's output is copied back to, as plain files,
+    /// as `--out` gives it.
+    out: Option<PathBuf>,
 }
 
 /// Reads `there`'s arguments: its flags, in any place, then the flake and
-/// at least one attribute. Anything else is refused, since only a build
-/// whose every word is known can be sent whole.
+/// at least one attribute. `--apply FUNCTION` and `--out DIR` take one
+/// attribute only. Anything else is refused, since only a build whose
+/// every word is known can be sent whole.
 pub fn asked(arguments: &[String]) -> Option<Asked> {
     let mut flags = Vec::new();
     let mut words = Vec::new();
-    for argument in arguments {
+    let (mut apply, mut out) = (None, None);
+    let mut arguments = arguments.iter();
+    while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "-L" | "--print-build-logs" | "--keep-going" => {
                 if !flags.contains(argument) {
                     flags.push(argument.clone());
                 }
             }
+            "--apply" => apply = Some(arguments.next()?.clone()),
+            "--out" => out = Some(PathBuf::from(arguments.next()?)),
             flag if flag.starts_with('-') => return None,
             word => words.push(word.to_owned()),
         }
     }
     let (flake, attributes) = words.split_first()?;
-    (!attributes.is_empty()).then(|| Asked {
+    let one = attributes.len() == 1;
+    (!attributes.is_empty() && (one || (apply.is_none() && out.is_none()))).then(|| Asked {
         flake: flake.clone(),
         attributes: attributes.to_vec(),
         flags,
+        apply,
+        out,
     })
 }
 
 impl Asked {
+    /// The same build of other attributes, or of the same flake named
+    /// otherwise.
+    fn with(&self, flake: &str, attributes: Vec<String>) -> Self {
+        Self {
+            flake: flake.to_owned(),
+            attributes,
+            flags: self.flags.clone(),
+            apply: self.apply.clone(),
+            out: self.out.clone(),
+        }
+    }
+
     /// `nix build`'s arguments for this, wherever it runs.
     fn build(&self) -> Vec<String> {
-        ["build", "--no-link"]
+        self.build_of(&self.flake, false)
+    }
+
+    /// `nix build`'s arguments for this from `flake`. An applied function
+    /// is built as an expression, which a flake that isn't locked, as one
+    /// here is, needs `--impure` to read.
+    fn build_of(&self, flake: &str, locked: bool) -> Vec<String> {
+        let mut words: Vec<String> = ["build", "--no-link"]
             .iter()
             .map(|word| (*word).to_owned())
-            .chain(self.flags.iter().cloned())
-            .chain(
+            .collect();
+        if self.out.is_some() {
+            words.push("--print-out-paths".to_owned());
+        }
+        words.extend(self.flags.iter().cloned());
+        match &self.apply {
+            Some(function) => {
+                if !locked {
+                    words.push("--impure".to_owned());
+                }
+                words.push("--expr".to_owned());
+                words.extend(self.attributes.iter().map(|attribute| {
+                    format!(
+                        "({function}) (builtins.getFlake {}).{attribute}",
+                        nix_string(flake)
+                    )
+                }));
+            }
+            None => words.extend(
                 self.attributes
                     .iter()
-                    .map(|attribute| format!("{}#{attribute}", self.flake)),
-            )
-            .collect()
+                    .map(|attribute| format!("{flake}#{attribute}")),
+            ),
+        }
+        words
     }
 
     /// The command the builder's shell is given.
     fn command(&self) -> String {
-        std::iter::once("nix".to_owned())
-            .chain(self.build().iter().map(|word| quoted(word)))
-            .collect::<Vec<_>>()
-            .join(" ")
+        self.command_of(&self.flake)
     }
+
+    /// The command a builder's shell is given to build this from `flake`,
+    /// which there is always locked. With `--out`, the output comes back
+    /// as a tarball on its standard output, the log staying on its error.
+    fn command_of(&self, flake: &str) -> String {
+        let build = std::iter::once("nix".to_owned())
+            .chain(self.build_of(flake, true).iter().map(|word| quoted(word)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if self.out.is_some() {
+            format!("out=$({build}) && tar -czf - -C \"$out\" .")
+        } else {
+            build
+        }
+    }
+}
+
+/// A string as Nix reads one, quoted.
+fn nix_string(text: &str) -> String {
+    format!(
+        "\"{}\"",
+        text.replace('\\', r"\\")
+            .replace('"', "\\\"")
+            .replace("${", "\\${")
+    )
 }
 
 /// The lent builder, as nix-offload names its store: where ssh reaches it,
@@ -139,7 +234,21 @@ pub fn run(asked: &Asked, store: Option<&str>, scratch: &Path, ssh: &str, nix: &
         eprintln!("nix-offload: no builder is lent, so this builds here");
         return here(asked, nix);
     };
-    match on(&lent, asked, scratch, ssh) {
+    let reached = match folder_of(&asked.flake) {
+        None => Ok(Sending {
+            command: asked.command(),
+            bundle: None,
+        }),
+        Some(folder) => source(&folder, scratch).map(|source| source.sending(asked)),
+    };
+    let reached = reached.and_then(|sending| {
+        let ran = on(&lent, &sending, asked.out.as_deref(), scratch, ssh);
+        if let Some(bundle) = &sending.bundle {
+            let _ = fs::remove_file(bundle);
+        }
+        ran
+    });
+    match reached {
         Ok(ran) if ran.status != UNREACHED => ran,
         Ok(_) => {
             eprintln!(
@@ -156,10 +265,20 @@ pub fn run(asked: &Asked, store: Option<&str>, scratch: &Path, ssh: &str, nix: &
 }
 
 fn here(asked: &Asked, nix: &str) -> Ran {
-    let status = Command::new(nix)
-        .args(asked.build())
-        .status()
-        .map_or(1, |status| status.code().unwrap_or(1));
+    let mut command = Command::new(nix);
+    command.args(asked.build());
+    let status = match &asked.out {
+        None => command
+            .status()
+            .map_or(1, |status| status.code().unwrap_or(1)),
+        Some(out) => command.stdout(Stdio::piped()).output().map_or(1, |built| {
+            let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
+            match built.status.code() {
+                Some(0) => copied(Path::new(&path), out),
+                code => code.unwrap_or(1),
+            }
+        }),
+    };
     Ran {
         on: None,
         status,
@@ -167,18 +286,241 @@ fn here(asked: &Asked, nix: &str) -> Ran {
     }
 }
 
-fn on(lent: &Builder, asked: &Asked, scratch: &Path, ssh: &str) -> Result<Ran, String> {
+/// Copies a build's output into `out` as plain files the account owns,
+/// giving 0 once it has.
+fn copied(built: &Path, out: &Path) -> i32 {
+    let copied = fs::create_dir_all(out).is_ok()
+        && Command::new("cp")
+            .args(["-rL", "--no-preserve=mode,ownership"])
+            .arg(built.join("."))
+            .arg(out)
+            .status()
+            .is_ok_and(|status| status.success());
+    if copied {
+        0
+    } else {
+        eprintln!(
+            "nix-offload: couldn't copy {} to {}",
+            built.display(),
+            out.display()
+        );
+        1
+    }
+}
+
+/// What the lent builder is given for a build: the command its shell
+/// runs, and a bundle of commits it lacks, sent on its standard input.
+struct Sending {
+    command: String,
+    bundle: Option<PathBuf>,
+}
+
+/// How a flake that's a git tree here reaches the builder: as a commit
+/// GitHub has, or as the commits since the newest one it has, bundled.
+#[derive(Debug, PartialEq, Eq)]
+enum Source {
+    Pushed {
+        flake: String,
+    },
+    Bundled {
+        /// The repository on GitHub, `owner/name`.
+        github: String,
+        base: String,
+        commit: String,
+        /// The flake's folder in the repository, when not its top.
+        dir: Option<String>,
+        bundle: PathBuf,
+    },
+}
+
+impl Source {
+    fn sending(self, asked: &Asked) -> Sending {
+        match self {
+            Source::Pushed { flake } => Sending {
+                command: asked.command_of(&flake),
+                bundle: None,
+            },
+            Source::Bundled {
+                github,
+                base,
+                commit,
+                dir,
+                bundle,
+            } => {
+                // A folder named for this run, gone when its shell ends.
+                let into = format!("/tmp/nix-offload-there-{}", std::process::id());
+                let flake = format!(
+                    "git+file://{into}?rev={commit}{}",
+                    dir.map(|dir| format!("&dir={dir}")).unwrap_or_default()
+                );
+                // The builder has no git of its own, so Nix gives it one.
+                let command = format!(
+                    "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
+                     cd {into}; cat > there.bundle; \
+                     git() {{ nix shell nixpkgs#git -c git \"$@\"; }}; \
+                     git init -q; git fetch -q https://github.com/{github} {base}; \
+                     git fetch -q there.bundle {BUNDLED}:refs/heads/there; {}",
+                    asked.command_of(&flake)
+                );
+                Sending {
+                    command,
+                    bundle: Some(bundle),
+                }
+            }
+        }
+    }
+}
+
+/// What `there --takes` says it takes: a flake that's a git tree here,
+/// `--apply`, `--out`, and waiting for a builder it asks for.
+pub const TAKES: [&str; 4] = ["tree", "apply", "out", "wants"];
+
+/// The ref a bundle carries its commit under, here only while it's made.
+const BUNDLED: &str = "refs/nix-offload/there";
+
+/// The GitHub repository a remote's URL names, `owner/name`.
+fn github_of(url: &str) -> Option<String> {
+    let path = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("git@github.com:"))
+        .or_else(|| url.strip_prefix("ssh://git@github.com/"))?;
+    let path = path.trim_end_matches('/').trim_end_matches(".git");
+    (path.split('/').count() == 2 && !path.starts_with('/')).then(|| path.to_owned())
+}
+
+/// git's answer, trimmed, in `top`, or none when it fails.
+fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(top).args(arguments);
+    if let Some(index) = index {
+        command.env("GIT_INDEX_FILE", index);
+    }
+    let output = command.stderr(Stdio::null()).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// How the flake in `folder` reaches the builder. Its commit is the
+/// tree's HEAD, or, with changes to tracked files, a commit of them made
+/// without touching the branch or the index, as `nix build` of the tree
+/// here would read them. The newest commit GitHub has is where it meets
+/// its upstream branch, else origin's main. A tree that isn't git, or
+/// whose origin isn't on GitHub, can't reach it.
+fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
+    let folder =
+        fs::canonicalize(folder).map_err(|error| format!("{}: {error}", folder.display()))?;
+    let not = |what: &str| format!("{} {what}", folder.display());
+    let top = git(&folder, &["rev-parse", "--show-toplevel"], None)
+        .map(PathBuf::from)
+        .ok_or_else(|| not("isn't in a git tree"))?;
+    let github = git(&top, &["remote", "get-url", "origin"], None)
+        .as_deref()
+        .and_then(github_of)
+        .ok_or_else(|| not("has no origin on GitHub"))?;
+    let dir = folder
+        .strip_prefix(&top)
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .filter(|dir| !dir.is_empty());
+    let head = git(&top, &["rev-parse", "HEAD"], None).ok_or_else(|| not("has no commit"))?;
+    let commit = if git(&top, &["diff", "--quiet", "HEAD"], None).is_some() {
+        head.clone()
+    } else {
+        fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+        let index = mine(scratch, "index");
+        let made = git(&top, &["read-tree", "HEAD"], Some(&index))
+            .and_then(|_| git(&top, &["add", "-u"], Some(&index)))
+            .and_then(|_| git(&top, &["write-tree"], Some(&index)))
+            .and_then(|tree| {
+                git(
+                    &top,
+                    &[
+                        "commit-tree",
+                        &tree,
+                        "-p",
+                        &head,
+                        "-m",
+                        "nix-offload there: uncommitted changes",
+                    ],
+                    None,
+                )
+            });
+        let _ = fs::remove_file(&index);
+        made.ok_or_else(|| not("has changes git couldn't commit"))?
+    };
+    let base = ["@{upstream}", "origin/main"]
+        .iter()
+        .find_map(|theirs| git(&top, &["merge-base", &commit, theirs], None))
+        .ok_or_else(|| not("shares no commit with origin"))?;
+    if base == commit {
+        let flake = format!(
+            "github:{github}/{commit}{}",
+            dir.as_deref()
+                .map(|dir| format!("?dir={dir}"))
+                .unwrap_or_default()
+        );
+        return Ok(Source::Pushed { flake });
+    }
+    let bundle = mine(scratch, "bundle");
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
-    let mine = |name: &str| scratch.join(format!("{name}-{}", std::process::id()));
-    let known = mine("known");
-    let said = mine("ssh.log");
-    let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
+    let referenced = git(&top, &["update-ref", BUNDLED, &commit], None).is_some();
+    let bundled = referenced
+        && git(
+            &top,
+            &[
+                "bundle",
+                "create",
+                "-q",
+                &bundle.to_string_lossy(),
+                &format!("^{base}"),
+                BUNDLED,
+            ],
+            None,
+        )
+        .is_some();
+    let _ = git(&top, &["update-ref", "-d", BUNDLED], None);
+    if !bundled {
+        return Err(not("couldn't be bundled"));
+    }
+    Ok(Source::Bundled {
+        github,
+        base,
+        commit,
+        dir,
+        bundle,
+    })
+}
+
+/// ssh to `host`, never asking anything, logging where `said` names, whose
+/// verbose log ends with what it sent, which is what a build put on the
+/// connection.
+fn reaching(ssh: &str, said: &Path) -> Command {
     let mut command = Command::new(ssh);
-    // ssh's verbose log ends with what it sent, which is what this build
-    // put on the upload.
     command
         .args(["-o", "BatchMode=yes", "-o", "LogLevel=VERBOSE", "-E"])
-        .arg(&said);
+        .arg(said);
+    command
+}
+
+/// A file of this run's own in `scratch`.
+fn mine(scratch: &Path, name: &str) -> PathBuf {
+    scratch.join(format!("{name}-{}", std::process::id()))
+}
+
+fn on(
+    lent: &Builder,
+    sending: &Sending,
+    out: Option<&Path>,
+    scratch: &Path,
+    ssh: &str,
+) -> Result<Ran, String> {
+    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+    let known = mine(scratch, "known");
+    let said = mine(scratch, "ssh.log");
+    let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
+    let mut command = reaching(ssh, &said);
     if let Some(key) = &lent.key {
         command.args(["-o", "IdentitiesOnly=yes", "-i", key]);
     }
@@ -190,8 +532,16 @@ fn on(lent: &Builder, asked: &Asked, scratch: &Path, ssh: &str) -> Result<Ran, S
             .arg(format!("UserKnownHostsFile={}", known.display()))
             .args(["-o", &format!("HostKeyAlias={alias}")]);
     }
-    eprintln!("nix-offload: building on the lent builder, {}", asked.flake);
-    let status = command.arg(&lent.host).arg(asked.command()).status();
+    eprintln!("nix-offload: building on the lent builder");
+    command.arg(&lent.host).arg(&sending.command);
+    if let Some(bundle) = &sending.bundle {
+        let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
+        command.stdin(bundle);
+    }
+    let status = match out {
+        None => command.status(),
+        Some(out) => unpacked_into(&mut command, out),
+    };
     let sent = fs::read_to_string(&said).ok().and_then(|log| sent(&log));
     let _ = fs::remove_file(&known);
     let _ = fs::remove_file(&said);
@@ -202,6 +552,368 @@ fn on(lent: &Builder, asked: &Asked, scratch: &Path, ssh: &str) -> Result<Ran, S
         status: status.code().unwrap_or(UNREACHED),
         sent,
     })
+}
+
+/// Runs `command`, unpacking the tarball it writes into `out`, and gives
+/// its status. A build that failed writes none, so nothing is unpacked.
+fn unpacked_into(command: &mut Command, out: &Path) -> std::io::Result<std::process::ExitStatus> {
+    fs::create_dir_all(out)?;
+    let mut running = command.stdout(Stdio::piped()).spawn()?;
+    let tarball = running
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("no output to unpack"))?;
+    let unpacking = Command::new("tar")
+        .arg("-xzf")
+        .arg("-")
+        .arg("-C")
+        .arg(out)
+        .stdin(tarball)
+        .stderr(Stdio::null())
+        .status();
+    let status = running.wait()?;
+    if status.success() && !unpacking.is_ok_and(|unpacked| unpacked.success()) {
+        eprintln!(
+            "nix-offload: couldn't unpack the output into {}",
+            out.display()
+        );
+    }
+    Ok(status)
+}
+
+/// How a build waits for a builder when none stands: how long the lender
+/// has to start making one, since it reads what's wanted every 20 s, and
+/// how long one may take to stand, about 70 s on 29 October.
+#[derive(Clone, Copy)]
+pub struct Waiting {
+    pub answered: std::time::Duration,
+    pub longest: std::time::Duration,
+}
+
+pub const WAITING: Waiting = Waiting {
+    answered: std::time::Duration::from_secs(30),
+    longest: std::time::Duration::from_secs(240),
+};
+
+/// Whether a pid runs, as signal 0 says.
+fn runs(pid: i32) -> bool {
+    // SAFETY: signal 0 only asks whether the process exists.
+    pid > 0 && unsafe { libc::kill(pid, 0) } == 0
+}
+
+/// The pid a file holds, when it holds one.
+fn pid_in(path: &Path) -> Option<i32> {
+    fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+/// Waits for a builder when none stands, rather than building here: it
+/// says it wants one by a file in `dir`'s `wanted` named for its pid,
+/// which the lender counts as queued work, for as long as it waits. It
+/// waits only while the lender whose pid `dir`'s `lender` holds runs, and
+/// gives up once that lender hasn't begun making one (`lending` is empty)
+/// within `answered`, or none stands within `longest`. It gives the
+/// store's text once one stands.
+pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
+    if !pid_in(&dir.join("lender")).is_some_and(runs) {
+        return None;
+    }
+    let wanted = dir.join("wanted");
+    let want = wanted.join(std::process::id().to_string());
+    fs::create_dir_all(&wanted).ok()?;
+    fs::write(&want, "").ok()?;
+    eprintln!("nix-offload: no builder stands, so this asks for one and waits for it");
+    let began = std::time::Instant::now();
+    let read = |name: &str| {
+        fs::read_to_string(dir.join(name))
+            .ok()
+            .filter(|text| !text.trim().is_empty())
+    };
+    let stood = loop {
+        if let Some(store) = read("store") {
+            break Some(store);
+        }
+        let so_far = began.elapsed();
+        if so_far >= waiting.longest || (so_far >= waiting.answered && read("lending").is_none()) {
+            break None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250).min(waiting.answered));
+    };
+    let _ = fs::remove_file(&want);
+    stood
+}
+
+/// Whether a build in `dir`'s `wanted` is waiting for a builder: a file
+/// there is named for a pid that still runs. One whose build ended
+/// without taking it away is taken away here.
+pub fn wanted(dir: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(dir.join("wanted")) else {
+        return false;
+    };
+    let mut waiting = false;
+    for entry in entries.filter_map(Result::ok) {
+        let pid = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse().ok());
+        if pid.is_some_and(runs) {
+            waiting = true;
+        } else {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    waiting
+}
+
+/// A machine nearby that builds for systems this one can't, such as a Mac
+/// at home for its own: where it answers, `host:port`, the host ssh is
+/// given, and the systems it takes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Nearby {
+    pub address: String,
+    pub host: String,
+    pub systems: Vec<String>,
+}
+
+/// The machines nearby in a file of them, a line each:
+/// `ADDRESS HOST SYSTEM,SYSTEM`. Blank lines and those starting `#` say
+/// nothing, and a line short of a word names no machine.
+pub fn nearby(text: &str) -> Vec<Nearby> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            let (address, host, systems) = (words.next()?, words.next()?, words.next()?);
+            Some(Nearby {
+                address: address.to_owned(),
+                host: host.to_owned(),
+                systems: systems.split(',').map(str::to_owned).collect(),
+            })
+        })
+        .collect()
+}
+
+/// The system an attribute is built for: its second word, as flakes name
+/// their outputs, `checks.aarch64-darwin.x`.
+fn system_of(attribute: &str) -> Option<&str> {
+    attribute.split('.').nth(1)
+}
+
+/// What was asked, shared out: each attribute whose system a machine
+/// nearby takes goes to the first that does and `answers`, and the rest is
+/// left for the lent builder or here. Whether one answers is asked once.
+pub fn shared<'a>(
+    asked: &Asked,
+    nearby: &'a [Nearby],
+    answers: impl Fn(&str) -> bool,
+) -> (Vec<(&'a Nearby, Asked)>, Option<Asked>) {
+    // An applied function or an output copied back goes the lent way,
+    // which knows them.
+    if asked.apply.is_some() || asked.out.is_some() {
+        return (
+            Vec::new(),
+            Some(asked.with(&asked.flake, asked.attributes.clone())),
+        );
+    }
+    let answering: Vec<&Nearby> = nearby
+        .iter()
+        .filter(|machine| answers(&machine.address))
+        .collect();
+    let mut parts: Vec<(&Nearby, Vec<String>)> = Vec::new();
+    let mut left = Vec::new();
+    for attribute in &asked.attributes {
+        let taker = system_of(attribute).and_then(|system| {
+            answering
+                .iter()
+                .find(|machine| machine.systems.iter().any(|taken| taken == system))
+        });
+        match taker {
+            Some(machine) => match parts.iter_mut().find(|(had, _)| had == machine) {
+                Some((_, attributes)) => attributes.push(attribute.clone()),
+                None => parts.push((machine, vec![attribute.clone()])),
+            },
+            None => left.push(attribute.clone()),
+        }
+    }
+    let parts = parts
+        .into_iter()
+        .map(|(machine, attributes)| (machine, asked.with(&asked.flake, attributes)))
+        .collect();
+    let left = (!left.is_empty()).then(|| asked.with(&asked.flake, left));
+    (parts, left)
+}
+
+/// The folder here a flake is, when it's one no other machine could fetch:
+/// `path:DIR`, or a path itself.
+fn folder_of(flake: &str) -> Option<PathBuf> {
+    let path = flake.strip_prefix("path:").unwrap_or(flake);
+    let path = path.split('?').next().unwrap_or(path);
+    (path.starts_with('/') || path.starts_with('.')).then(|| PathBuf::from(path))
+}
+
+/// The store paths a flake's lock pins inputs to, which only a store that
+/// already has them can read: a nearby machine is sent them.
+fn pinned(lock: &str) -> Vec<String> {
+    let Ok(lock) = serde_json::from_str::<serde_json::Value>(lock) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = lock["nodes"]
+        .as_object()
+        .into_iter()
+        .flat_map(|nodes| nodes.values())
+        .filter(|node| node["locked"]["type"] == "path")
+        .filter_map(|node| node["locked"]["path"].as_str())
+        .filter(|path| path.starts_with("/nix/store/"))
+        .map(str::to_owned)
+        .collect();
+    found.sort();
+    found.dedup();
+    found
+}
+
+/// Where on a nearby machine, under its account's home, a flake sent as a
+/// folder is unpacked for the length of its build.
+fn unpacked() -> String {
+    format!(".cache/nix-offload/there/{}", std::process::id())
+}
+
+/// Builds what was asked on a machine nearby, or here when ssh can't reach
+/// it, sending a flake that's a folder here with it. `tar` and `nix` are
+/// the programs run here, beside `ssh`.
+pub fn nearby_run(machine: &Nearby, asked: &Asked, scratch: &Path, programs: [&str; 3]) -> Ran {
+    let [ssh, tar, nix] = programs;
+    match sent_nearby(machine, asked, scratch, ssh, tar, nix) {
+        Ok(ran) if ran.status != UNREACHED => ran,
+        Ok(_) => {
+            eprintln!(
+                "nix-offload: ssh couldn't reach {}, so this builds here",
+                machine.host
+            );
+            here(asked, nix)
+        }
+        Err(error) => {
+            eprintln!("nix-offload: {error}, so this builds here");
+            here(asked, nix)
+        }
+    }
+}
+
+fn sent_nearby(
+    machine: &Nearby,
+    asked: &Asked,
+    scratch: &Path,
+    ssh: &str,
+    tar: &str,
+    nix: &str,
+) -> Result<Ran, String> {
+    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+    let said = mine(scratch, "ssh.log");
+    let mut sent: Option<u64> = None;
+    let command = match folder_of(&asked.flake) {
+        None => asked.command(),
+        Some(folder) => {
+            let into = unpacked();
+            let status = send(&folder, &into, &machine.host, &said, ssh, tar)?;
+            counted(&mut sent, &said);
+            if status != 0 {
+                return Ok(Ran {
+                    on: Some(machine.host.clone()),
+                    status,
+                    sent,
+                });
+            }
+            copy_pinned(&folder, &machine.host, nix);
+            // Built where it was unpacked, which goes once the build ends,
+            // its status kept.
+            format!(
+                "cd {into} && {}; ended=$?; cd && rm -rf {into}; exit $ended",
+                asked.with("path:.", asked.attributes.clone()).command()
+            )
+        }
+    };
+    eprintln!("nix-offload: building on {}, {}", machine.host, asked.flake);
+    let status = reaching(ssh, &said)
+        .arg(&machine.host)
+        .arg(command)
+        .status()
+        .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
+    counted(&mut sent, &said);
+    Ok(Ran {
+        on: Some(machine.host.clone()),
+        status: status.code().unwrap_or(UNREACHED),
+        sent,
+    })
+}
+
+/// Adds what ssh's log at `said` says it sent to `sent`, and drops the log.
+fn counted(sent: &mut Option<u64>, said: &Path) {
+    if let Some(bytes) = fs::read_to_string(said)
+        .ok()
+        .and_then(|log| self::sent(&log))
+    {
+        *sent = Some(sent.unwrap_or(0) + bytes);
+    }
+    let _ = fs::remove_file(said);
+}
+
+/// Sends `folder` to `into` on `host` as a compressed tarball, leaving out
+/// the `result` links builds leave there, and gives ssh's status.
+fn send(
+    folder: &Path,
+    into: &str,
+    host: &str,
+    said: &Path,
+    ssh: &str,
+    tar: &str,
+) -> Result<i32, String> {
+    let mut packing = Command::new(tar)
+        .args(["-czf", "-", "--exclude=./result*", "-C"])
+        .arg(folder)
+        .arg(".")
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("couldn't run {tar}: {error}"))?;
+    let packed = packing
+        .stdout
+        .take()
+        .ok_or_else(|| format!("{tar} gave nothing to send"))?;
+    let status = reaching(ssh, said)
+        .arg(host)
+        .arg(format!(
+            "rm -rf {into} && mkdir -p {into} && tar -xzf - -C {into}"
+        ))
+        .stdin(packed)
+        .status()
+        .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
+    let packing = packing
+        .wait()
+        .map_err(|error| format!("couldn't run {tar}: {error}"))?;
+    if !packing.success() {
+        return Err(format!("{tar} couldn't pack {}", folder.display()));
+    }
+    Ok(status.code().unwrap_or(UNREACHED))
+}
+
+/// Copies to `host` the store paths `folder`'s lock pins inputs to. One
+/// that can't be copied is said and left, since a build that never reads
+/// that input still builds.
+fn copy_pinned(folder: &Path, host: &str, nix: &str) {
+    let paths = fs::read_to_string(folder.join("flake.lock"))
+        .map(|lock| pinned(&lock))
+        .unwrap_or_default();
+    if paths.is_empty() {
+        return;
+    }
+    // ssh's control socket goes in TMPDIR, and a long one is past what a
+    // socket's path may be.
+    let copied = Command::new(nix)
+        .args(["copy", "--to", &format!("ssh-ng://{host}")])
+        .args(&paths)
+        .env("TMPDIR", "/tmp")
+        .status();
+    if !copied.is_ok_and(|status| status.success()) {
+        eprintln!("nix-offload: couldn't copy the inputs pinned to the store to {host}");
+    }
 }
 
 /// Adds a line for a build to `journal`: when it ended, how long it took,
@@ -298,8 +1010,143 @@ mod tests {
                 flake: "github:o/r/abc".to_owned(),
                 attributes: words("checks.x.a checks.x.b"),
                 flags: words("-L --keep-going"),
+                apply: None,
+                out: None,
             })
         );
+    }
+
+    #[test]
+    fn an_applied_function_or_an_output_copied_back_takes_one_attribute() {
+        let one = asked(&words("--apply f --out /o github:o/r/abc checks.x.a")).unwrap();
+        assert_eq!(one.apply.as_deref(), Some("f"));
+        assert_eq!(one.out, Some(PathBuf::from("/o")));
+        assert_eq!(
+            asked(&words("--apply f github:o/r/abc checks.x.a checks.x.b")),
+            None
+        );
+        assert_eq!(
+            asked(&words("--out /o github:o/r/abc checks.x.a checks.x.b")),
+            None
+        );
+        assert_eq!(asked(&words("github:o/r/abc checks.x.a --apply")), None);
+    }
+
+    #[test]
+    fn an_applied_function_is_built_as_an_expression_impure_only_here() {
+        let asked = asked(&[
+            "--apply".to_owned(),
+            "c: c.extend {}".to_owned(),
+            "/t".to_owned(),
+            "checks.x.a".to_owned(),
+        ])
+        .unwrap();
+        assert_eq!(
+            asked.build(),
+            [
+                "build",
+                "--no-link",
+                "--impure",
+                "--expr",
+                r#"(c: c.extend {}) (builtins.getFlake "/t").checks.x.a"#,
+            ]
+        );
+        assert_eq!(
+            asked.command_of("github:o/r/abc"),
+            r#"nix build --no-link --expr '(c: c.extend {}) (builtins.getFlake "github:o/r/abc").checks.x.a'"#
+        );
+    }
+
+    #[test]
+    fn an_output_copied_back_comes_as_a_tarball_on_the_builders_output() {
+        let asked = asked(&words("--out /o github:o/r/abc checks.x.a")).unwrap();
+        assert_eq!(
+            asked.command(),
+            "out=$(nix build --no-link --print-out-paths 'github:o/r/abc#checks.x.a') \
+             && tar -czf - -C \"$out\" ."
+        );
+    }
+
+    const QUICK: Waiting = Waiting {
+        answered: std::time::Duration::from_millis(300),
+        longest: std::time::Duration::from_secs(5),
+    };
+
+    #[test]
+    fn with_no_lender_running_nothing_is_waited_for() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(waited(dir.path(), QUICK), None);
+        fs::write(dir.path().join("lender"), "999999999\n").unwrap();
+        assert_eq!(
+            waited(dir.path(), QUICK),
+            None,
+            "one that ended lends nothing"
+        );
+        assert!(!dir.path().join("wanted").exists());
+    }
+
+    #[test]
+    fn a_build_waits_wanting_a_builder_until_one_stands() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let lender = dir.path().to_owned();
+        let making = std::thread::spawn(move || {
+            while !wanted(&lender) {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            fs::write(lender.join("lending"), "a-builder\n").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            fs::write(lender.join("store"), "ssh-ng://far\n").unwrap();
+        });
+        assert_eq!(waited(dir.path(), QUICK).as_deref(), Some("ssh-ng://far\n"));
+        making.join().unwrap();
+        assert!(!wanted(dir.path()), "nothing is wanted once it stands");
+    }
+
+    #[test]
+    fn a_build_stops_waiting_once_the_lender_makes_none() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), QUICK), None);
+        assert!(
+            began.elapsed() < QUICK.longest,
+            "it gave up once nothing was being made"
+        );
+    }
+
+    #[test]
+    fn a_want_whose_build_ended_is_taken_away() {
+        let dir = tempfile::tempdir().unwrap();
+        let wanting = dir.path().join("wanted");
+        fs::create_dir(&wanting).unwrap();
+        fs::write(wanting.join("999999999"), "").unwrap();
+        assert!(!wanted(dir.path()));
+        assert!(!wanting.join("999999999").exists());
+        fs::write(wanting.join(std::process::id().to_string()), "").unwrap();
+        assert!(wanted(dir.path()));
+    }
+
+    #[test]
+    fn a_github_remote_names_its_repository() {
+        for url in [
+            "https://github.com/o/r",
+            "https://github.com/o/r.git",
+            "git@github.com:o/r.git",
+            "ssh://git@github.com/o/r",
+        ] {
+            assert_eq!(github_of(url).as_deref(), Some("o/r"), "{url}");
+        }
+        assert_eq!(github_of("https://delta.example/o/r"), None);
+        assert_eq!(github_of("https://github.com/o"), None);
     }
 
     #[test]
@@ -344,6 +1191,69 @@ mod tests {
         assert_eq!(decoded("YWI=").as_deref(), Some("ab"));
         assert_eq!(decoded("YWJj").as_deref(), Some("abc"));
         assert_eq!(decoded("not base64!"), None);
+    }
+
+    fn mac() -> Nearby {
+        Nearby {
+            address: "mac.local:22".to_owned(),
+            host: "mac".to_owned(),
+            systems: words("aarch64-darwin aarch64-linux"),
+        }
+    }
+
+    #[test]
+    fn nearby_machines_are_read_a_line_each() {
+        let text = "# at home\n\nmac.local:22 mac aarch64-darwin,aarch64-linux\nshort line\n";
+        assert_eq!(nearby(text), vec![mac()]);
+    }
+
+    #[test]
+    fn each_attribute_goes_to_a_nearby_machine_taking_its_system_while_it_answers() {
+        let machines = [mac()];
+        let asked = asked(&words(
+            "-L path:/z checks.x86_64-linux.a checks.aarch64-darwin.b \
+             checks.aarch64-linux.c equilibrium",
+        ))
+        .unwrap();
+        let (near, left) = shared(&asked, &machines, |_| true);
+        assert_eq!(near.len(), 1);
+        assert_eq!(near[0].0, &machines[0]);
+        assert_eq!(
+            near[0].1.command(),
+            "nix build --no-link -L 'path:/z#checks.aarch64-darwin.b' \
+             'path:/z#checks.aarch64-linux.c'"
+        );
+        assert_eq!(
+            left.map(|left| left.attributes),
+            Some(words("checks.x86_64-linux.a equilibrium"))
+        );
+
+        let (near, left) = shared(&asked, &machines, |_| false);
+        assert!(near.is_empty(), "one away takes nothing");
+        assert_eq!(left.map(|left| left.attributes.len()), Some(4));
+
+        let darwin = super::asked(&words("path:/z checks.aarch64-darwin.b")).unwrap();
+        assert_eq!(shared(&darwin, &machines, |_| true).1, None);
+    }
+
+    #[test]
+    fn only_a_flake_that_is_a_folder_here_is_sent_as_one() {
+        assert_eq!(folder_of("path:/z?dir=x"), Some(PathBuf::from("/z")));
+        assert_eq!(folder_of("./z"), Some(PathBuf::from("./z")));
+        assert_eq!(folder_of("github:o/r/abc"), None);
+        assert_eq!(folder_of("git+https://h/r"), None);
+    }
+
+    #[test]
+    fn the_inputs_a_lock_pins_to_the_store_are_named() {
+        let lock = r#"{"nodes": {
+            "mint": {"locked": {"type": "path", "path": "/nix/store/abc-mint"}},
+            "near": {"locked": {"type": "path", "path": "/home/me/near"}},
+            "core": {"locked": {"type": "github", "owner": "o"}},
+            "root": {"inputs": {}}
+        }}"#;
+        assert_eq!(pinned(lock), words("/nix/store/abc-mint"));
+        assert!(pinned("not a lock").is_empty());
     }
 
     #[test]

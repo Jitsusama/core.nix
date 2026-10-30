@@ -5,8 +5,11 @@
 //! --first-start HH:MM --last-start HH:MM --deadline HH:MM [--standing
 //! PATH]`, or `nix-offload stand --standing PATH` to name standing
 //! builders alone and lend none, or `nix-offload report --rate DOLLARS` for
-//! today's line, or `nix-offload there [-L] [--keep-going] FLAKE ATTR...`
-//! to build a flake the builder can fetch on it, as src/there.rs says.
+//! today's line, or `nix-offload there [-L] [--keep-going] [--apply
+//! FUNCTION] [--out DIR] FLAKE ATTR...` to build a flake on the builder, or
+//! on a machine nearby for systems this one can't build, as src/there.rs
+//! says. A build waiting for a builder says so in /run/nix-offload/wanted,
+//! which counts as queued work.
 //!
 //! Every 20 seconds it reads the machine queue. The moment a build or a VM
 //! check is queued or running, it asks the helper for a builder, names it
@@ -94,6 +97,10 @@ const WITH_STANDING: &str = "/run/nix-offload/machines-with-standing";
 /// Where a build sent to the lent builder as a command reads how to reach
 /// it, as its store's URI, while one stands.
 const STORE: &str = "/run/nix-offload/store";
+/// The folder all of these are in, where the lender also says its pid in
+/// `lender`, and a build waiting for a builder says it wants one in
+/// `wanted`.
+const DIR: &str = "/run/nix-offload";
 /// Where the machine queue reads the builder being made, to hold the
 /// builds it could take until Nix can see it.
 const LENDING: &str = "/run/nix-offload/lending";
@@ -102,7 +109,8 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--standing PATH] | nix-offload stand --standing PATH \
                     | nix-offload report --rate DOLLARS \
-                    | nix-offload there [-L] [--keep-going] FLAKE ATTR...";
+                    | nix-offload there [-L] [--keep-going] [--apply FUNCTION] [--out DIR] \
+                    FLAKE ATTR...";
 
 /// Set when the service is told to end, so its builder is journalled for the
 /// next start to give back.
@@ -198,25 +206,7 @@ fn main() -> ExitCode {
             .cloned()
     };
     if arguments.first().map(String::as_str) == Some("there") {
-        let Some(asked) = there::asked(&arguments[1..]) else {
-            eprintln!("nix-offload: there takes a flake and its attributes\n{USED}");
-            return ExitCode::from(64);
-        };
-        // A test names its own folder, as changed-checks lets one.
-        let store = env::var_os("NIX_OFFLOAD_DIR").map_or_else(
-            || PathBuf::from(STORE),
-            |dir| PathBuf::from(dir).join("store"),
-        );
-        let store = fs::read_to_string(store).ok();
-        let scratch = env::var_os("XDG_RUNTIME_DIR")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("nix-offload-there");
-        let began = now();
-        let ran = there::run(&asked, store.as_deref(), &scratch, "ssh", "nix");
-        let ended = now();
-        let journal = state().join("nix-offload/there.jsonl");
-        there::note(&journal, ended, ended.saturating_sub(began), &asked, &ran);
-        return ExitCode::from(u8::try_from(ran.status).unwrap_or(1));
+        return there(&arguments[1..]);
     }
     if arguments.first().map(String::as_str) == Some("stand") {
         let Some(standing) = given("--standing") else {
@@ -226,6 +216,64 @@ fn main() -> ExitCode {
         stand(&read_standing(Path::new(&standing)));
         return ExitCode::SUCCESS;
     }
+    serving(&arguments, given)
+}
+
+/// `there`: builds a flake's attributes where src/there.rs says, each part
+/// journalled, exiting with the first status that failed.
+fn there(arguments: &[String]) -> ExitCode {
+    // What this `there` takes, a word each, so a caller can tell it from
+    // an older one, which refuses the flag with 64.
+    if arguments == ["--takes"] {
+        println!("{}", there::TAKES.join("\n"));
+        return ExitCode::SUCCESS;
+    }
+    let Some(asked) = there::asked(arguments) else {
+        eprintln!("nix-offload: there takes a flake and its attributes\n{USED}");
+        return ExitCode::from(64);
+    };
+    // A test names its own folder, as changed-checks lets one.
+    let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
+    let store = fs::read_to_string(dir.join("store"))
+        .ok()
+        .filter(|store| !store.trim().is_empty());
+    let scratch = env::var_os("XDG_RUNTIME_DIR")
+        .map_or_else(env::temp_dir, PathBuf::from)
+        .join("nix-offload-there");
+    let nearby = fs::read_to_string(config().join("nix-offload/nearby"))
+        .map(|text| there::nearby(&text))
+        .unwrap_or_default();
+    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let journal = state().join("nix-offload/there.jsonl");
+    let mut status = 0;
+    let mut timed = |part: &there::Asked, build: &dyn Fn() -> there::Ran| {
+        let began = now();
+        let ran = build();
+        let ended = now();
+        there::note(&journal, ended, ended.saturating_sub(began), part, &ran);
+        // The first that failed says how the whole did.
+        if status == 0 {
+            status = ran.status;
+        }
+    };
+    for (machine, part) in &near {
+        timed(part, &|| {
+            there::nearby_run(machine, part, &scratch, ["ssh", "tar", "nix"])
+        });
+    }
+    if let Some(part) = &left {
+        // Asked for and waited on, rather than built here, while a lender
+        // runs: a builder stands about 70 s after it's asked for.
+        let store = store.or_else(|| there::waited(&dir, there::WAITING));
+        timed(part, &|| {
+            there::run(part, store.as_deref(), &scratch, "ssh", "nix")
+        });
+    }
+    ExitCode::from(u8::try_from(status).unwrap_or(1))
+}
+
+/// `serve`: lends builders while the queue has builds one could take.
+fn serving(arguments: &[String], given: impl Fn(&str) -> Option<String>) -> ExitCode {
     let Some(rate) = given("--rate").as_deref().and_then(journal::price) else {
         eprintln!("nix-offload: --rate takes a price, such as 0.68\n{USED}");
         return ExitCode::from(64);
@@ -336,6 +384,15 @@ fn serve(settings: &Settings) {
     );
     machines.show(None);
     machines.asking(None);
+    // Said so a build with no builder waits for one only while a lender
+    // runs to make it.
+    let lender = Path::new(DIR).join("lender");
+    if let Err(error) = fs::write(&lender, format!("{}\n", std::process::id())) {
+        eprintln!(
+            "nix-offload: couldn't say I lend in {}: {error}",
+            lender.display()
+        );
+    }
     let mut lent = adopt(settings, &mut machines, into_day());
     let mut not_before = 0;
     let mut said_on = None;
@@ -344,7 +401,8 @@ fn serve(settings: &Settings) {
             now: now(),
             into_day: into_day(),
             wants: fs::read_to_string(&settings.queue)
-                .is_ok_and(|queue| queue::wants(&queue, now())),
+                .is_ok_and(|queue| queue::wants(&queue, now()))
+                || there::wanted(Path::new(DIR)),
         };
         let unreturned = give_back_unreturned(settings, lent.as_ref());
         lent = match lent.take() {
@@ -715,6 +773,14 @@ fn today() -> u64 {
 fn state() -> PathBuf {
     env::var_os("XDG_STATE_HOME").map_or_else(
         || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".local/state"),
+        PathBuf::from,
+    )
+}
+
+/// XDG's config folder, where the machines nearby are named.
+fn config() -> PathBuf {
+    env::var_os("XDG_CONFIG_HOME").map_or_else(
+        || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".config"),
         PathBuf::from,
     )
 }
