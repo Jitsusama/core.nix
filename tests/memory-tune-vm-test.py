@@ -54,9 +54,9 @@ def reverted(machine: BaseMachine) -> Iterator[BaseMachine]:
 def test_an_administrator_spaces_the_watermarks_without_a_password(
     reverted: BaseMachine,
 ) -> None:
-    status, said = start(reverted, "someone", "memory-watermarks@50")
+    status, said = start(reverted, "someone", "memory-watermarks@100")
     assert status == 0, said
-    assert read(reverted, SCALE) == "50"
+    assert read(reverted, SCALE) == "100"
 
 
 def test_an_administrator_chooses_huge_pages_without_a_password(reverted: BaseMachine) -> None:
@@ -75,7 +75,7 @@ def test_an_administrator_turns_the_multi_gen_lru_off_without_a_password(
 
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:
     before = read(reverted, SCALE)
-    status, said = start(reverted, "other", "memory-watermarks@50")
+    status, said = start(reverted, "other", "memory-watermarks@100")
     assert status != 0, said
     assert read(reverted, SCALE) == before
 
