@@ -957,20 +957,19 @@ works the same way everywhere.
   worked out for the screen as the launcher opens, the card centred
   unless the screen is too narrow for the drawer beside it, so the card
   never moves and never changes size for what's selected. It's out
-  exactly while the selected row is a thing with details (a program, a
-  session, a quest, a mail, a meeting, a person, a file, a folder, a
-  notice, a window, a device, a network, a copy, a value with a
-  history), the same at home, in a search and in every place; an act, a
-  switch, a choice or a place has none (Joel, 2026-10-29: "the side
-  drawer shows when it's not needed, and only shows in certain
-  places"). It opens only when it holds something the row doesn't
-  already say, a fact, a picture or other words; one that would only
-  repeat the selected row is never shown, for any kind (Joel,
-  2026-10-29: "we should never show the side panel when it is just
-  repeating the currently selected text"). Between two rows that both
-  have one it stays and what it shows changes in place; onto or off one
-  it fades in place once the selection rests, so holding an arrow never
-  flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
+  only while the selected row is a thing (a program, a session, a
+  quest, a mail, a meeting, a person, a file, a folder, a notice, a
+  window, a device, a network, a copy, a value with a history) and the
+  drawer holds something the row doesn't already say: facts, a picture,
+  words beyond its name, side and note, or more. A drawer that would
+  only repeat the row is never shown (Joel, 2026-10-29: "we should
+  never show the side panel when it is just repeating the currently
+  selected text"). It's the same at home, in a search and in every
+  place; an act, a switch, a choice or a place has none (Joel,
+  2026-10-29: "the side drawer shows when it's not needed, and only
+  shows in certain places"). Between two things it stays and what it
+  shows changes in place; onto or off one it fades in place once the
+  selection rests, so holding an arrow never flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
   while it holds more than fits, since Page Up and Page Down page the
   list. Another program's words are shown plain, never as markup.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies

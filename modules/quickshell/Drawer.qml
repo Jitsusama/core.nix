@@ -50,6 +50,13 @@ Floating {
     height: tall
     opacity: out ? 1 : 0
     visible: opacity > 0
+    // Gone once it has faded away, so what it showed is let go: a picture
+    // kept while hidden would be read again as the screen's scale changes,
+    // after its file may be gone.
+    onVisibleChanged: {
+        if (!visible && !out)
+            shown = null;
+    }
     // It fades in where it rests and out again, on the one curve, never
     // sliding, so nothing beside the card moves as the selection does
     // (VKCF3Z, 2026-10-29).
