@@ -1,6 +1,7 @@
 //! The program against a stand-in for Slack on this machine: what it asks,
-//! with which sign-in, what it tells the shell, and that it asks each
-//! address once and nobody once Slack refuses the sign-in.
+//! with which sign-in, what it tells the shell, that it finds who each
+//! address is once and asks how they are each time, and that it asks
+//! nobody once Slack refuses the sign-in.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -108,18 +109,52 @@ fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
         .collect()
 }
 
-/// Ada as the program says her, her zone with her.
+/// Ada as the program says her, her zone with her, active.
 const ADA: &str = concat!(
     r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London"}"#
+    r#""zone":"Europe/London","presence":"active","status":"","emoji":""}"#
+);
+
+/// Ada asked about again, once she's set a status.
+const ADA_WRITING: &str = concat!(
+    r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
+    r#""zone":"Europe/London","presence":"active","status":"Writing","emoji":"📝"}"#
+);
+
+/// Ada while Slack can't say whether she's active or away.
+const ADA_UNSAID: &str = concat!(
+    r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
+    r#""zone":"Europe/London","presence":"","status":"","emoji":""}"#
 );
 
 /// Grace as the program says her, found by a search, as an enterprise
-/// grid has it.
+/// grid has it, and away.
 const GRACE: &str = concat!(
     r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
-    r#""zone":"America/New_York"}"#
+    r#""zone":"America/New_York","presence":"away","status":"","emoji":""}"#
 );
+
+/// Someone Slack knows nobody by, as the program says them.
+fn nobody(email: &str) -> String {
+    format!(r#"{{"email":"{email}","id":null,"team":"T1","name":"","zone":"","presence":"","#)
+        + r#""status":"","emoji":""}"#
+}
+
+/// Every method the program may ask, each only reading.
+const READS: [&str; 4] = [
+    "users.lookupByEmail?",
+    "search.messages?",
+    "users.info?",
+    "users.getPresence?",
+];
+
+/// Whether everything the stand-in heard was a GET of one of the reads.
+fn only_read(heard: &[Heard]) -> bool {
+    heard.iter().all(|heard| {
+        let method = heard.line.trim_start_matches("GET /api/");
+        heard.line.starts_with("GET /api/") && READS.iter().any(|read| method.starts_with(read))
+    })
+}
 
 /// Slack as a workspace that looks Ada up by her address, and as an
 /// enterprise grid for Grace and Eve, refusing that to the sign-in: a
@@ -141,6 +176,15 @@ fn slack(line: &str) -> String {
         r#"{"ok": true, "user": {"id": "U2", "team_id": "T1", "tz": "America/New_York",
             "profile": {"real_name": "Grace Hopper", "email": "Grace@Example.com"}}}"#
             .into()
+    } else if line.contains("users.info") && line.contains("user=U1") {
+        r#"{"ok": true, "user": {"id": "U1", "team_id": "T1", "tz": "Europe/London",
+            "profile": {"real_name": "Ada Lovelace", "status_text": "Writing",
+                "status_emoji_display_info": [{"emoji_name": "memo", "unicode": "1f4dd"}]}}}"#
+            .into()
+    } else if line.contains("users.getPresence") && line.contains("user=U1") {
+        r#"{"ok": true, "presence": "active"}"#.into()
+    } else if line.contains("users.getPresence") && line.contains("user=U2") {
+        r#"{"ok": true, "presence": "away"}"#.into()
     } else if line.contains("users.info") && line.contains("user=U3") {
         r#"{"ok": true, "user": {"id": "U3", "team_id": "T1",
             "profile": {"real_name": "Another Eve", "email": "eve@elsewhere.example"}}}"#
@@ -150,25 +194,43 @@ fn slack(line: &str) -> String {
     }
 }
 
+/// Slack as `slack` has it, but too busy to say who anyone is again or
+/// whether they're active.
+fn busy(line: &str) -> String {
+    if line.contains("users.info") || line.contains("users.getPresence") {
+        r#"{"ok": false, "error": "ratelimited"}"#.into()
+    } else {
+        slack(line)
+    }
+}
+
 #[test]
-fn each_address_is_asked_once_with_the_harness_sign_in_and_said_a_line() {
+fn who_an_address_is_is_found_once_and_how_they_are_asked_each_time() {
     let stand_in = StandIn::new(slack);
     let path = credentials("found");
     let said = told(
         &stand_in,
         &path,
-        "Ada@Example.com\nnobody@example.com\nnot an address\nada@example.com\n",
+        "Ada@Example.com\nnobody@example.com\nnot an address\nada@example.com\n\
+         nobody@example.com\n",
     );
+    let nobody = nobody("nobody@example.com");
+    assert_eq!(said, [ADA, &nobody, ADA_WRITING, &nobody]);
+    let heard = stand_in.heard();
+    let asked: Vec<&str> = heard
+        .iter()
+        .map(|heard| heard.line.split('?').next().unwrap_or_default())
+        .collect();
     assert_eq!(
-        said,
+        asked,
         [
-            ADA,
-            r#"{"email":"nobody@example.com","id":null,"team":"T1","name":"","zone":""}"#,
-            ADA,
+            "GET /api/users.lookupByEmail",
+            "GET /api/users.getPresence",
+            "GET /api/users.lookupByEmail",
+            "GET /api/users.info",
+            "GET /api/users.getPresence",
         ]
     );
-    let heard = stand_in.heard();
-    assert_eq!(heard.len(), 2, "{heard:?}");
     assert!(
         heard[0].line.starts_with("GET /api/users.lookupByEmail?"),
         "{}",
@@ -187,12 +249,17 @@ fn each_address_is_asked_once_with_the_harness_sign_in_and_said_a_line() {
             .iter()
             .any(|header| header.ends_with("d=d-cookie"))
     );
-    // Only ever a look-up: nothing is posted, nothing sent.
-    assert!(
-        heard
-            .iter()
-            .all(|heard| heard.line.starts_with("GET /api/users.lookupByEmail?"))
-    );
+    // Only ever reading: nothing is posted, nothing sent.
+    assert!(only_read(&heard), "{heard:?}");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn slack_too_busy_to_say_how_they_are_leaves_who_they_are_said() {
+    let stand_in = StandIn::new(busy);
+    let path = credentials("busy");
+    let said = told(&stand_in, &path, "ada@example.com\nada@example.com\n");
+    assert_eq!(said, [ADA_UNSAID, ADA_UNSAID]);
     let _ = std::fs::remove_file(path);
 }
 
@@ -201,13 +268,7 @@ fn a_grid_refusing_the_look_up_finds_them_by_a_search_their_profile_confirms() {
     let stand_in = StandIn::new(slack);
     let path = credentials("grid");
     let said = told(&stand_in, &path, "grace@example.com\neve@example.com\n");
-    assert_eq!(
-        said,
-        [
-            GRACE,
-            r#"{"email":"eve@example.com","id":null,"team":"T1","name":"","zone":""}"#,
-        ]
-    );
+    assert_eq!(said, [GRACE.to_owned(), nobody("eve@example.com")]);
     let heard = stand_in.heard();
     assert!(
         heard
@@ -215,17 +276,8 @@ fn a_grid_refusing_the_look_up_finds_them_by_a_search_their_profile_confirms() {
             .any(|heard| heard.line.contains("query=from%3A%40grace")),
         "{heard:?}"
     );
-    // Still only reading: a look-up, a search and a profile, each a GET.
-    for heard in &heard {
-        let method = heard.line.trim_start_matches("GET /api/");
-        assert!(
-            ["users.lookupByEmail?", "search.messages?", "users.info?"]
-                .iter()
-                .any(|read| method.starts_with(read)),
-            "{}",
-            heard.line
-        );
-    }
+    // Still only reading: a look-up, a search, a profile and presence.
+    assert!(only_read(&heard), "{heard:?}");
     let _ = std::fs::remove_file(path);
 }
 
