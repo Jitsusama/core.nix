@@ -720,6 +720,82 @@ def test_agents_reopens_the_sessions_the_last_boot_took_away(desktop: Desktop) -
     desktop.as_account(f"rm -rf {opened} ~/harbour")
 
 
+def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
+    """Give each stand-in session's workspace and column, by its session, as niri lists them."""
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    idx = {one["id"]: one["idx"] for one in spaces}
+    return {
+        window["title"].split()[-1]: (
+            idx[window["workspace_id"]],
+            window["layout"]["pos_in_scrolling_layout"][0],
+        )
+        for window in desktop.windows()
+        if window["title"].startswith(f"pi --session {prefix}")
+    }
+
+
+def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
+    """Where each session sits is kept, and Reopen Them All puts each back there, in order."""
+    machine = desktop.machine
+    # A session's workspace, column and tile are kept by its own id for
+    # this boot, once its windows have been still a moment.
+    desktop.pi_session()
+    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
+    arranged = f"{folder}/session-arrangement.json"
+    machine.wait_until_succeeds(
+        desktop.in_session(f"grep -q 01a1face-test {arranged}"), timeout=dt.timedelta(seconds=30)
+    )
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    pi = desktop.window_titled(PI_WINDOW)
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    space = next(one for one in spaces if one["id"] == pi["workspace_id"])
+    at = pi["layout"]["pos_in_scrolling_layout"]
+    held = json.loads(desktop.as_account(f"cat {arranged}"))["boots"][boot]["01a1face-test"]
+    assert held == {
+        "output": space["output"],
+        "workspace": space["idx"],
+        "column": at[0],
+        "tile": at[1],
+    }, held
+    # The last boot's three, listed out of order: two on the first
+    # workspace, west then east, and one on the second.
+    where = {
+        "01c3-east": {"output": space["output"], "workspace": 1, "column": 2, "tile": 1},
+        "01c3-north": {"output": space["output"], "workspace": 2, "column": 1, "tile": 1},
+        "01c3-west": {"output": space["output"], "workspace": 1, "column": 1, "tile": 1},
+    }
+    lost = {
+        "v": 1,
+        "boot": "a-boot-before",
+        "sessions": [
+            {"id": one, "title": one[5:].title(), "cwd": f"/home/jitsusama/{one[5:]}"}
+            for one in where
+        ],
+    }
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/east ~/north ~/west")
+    kept(desktop, "~/.local/state/pi/restore.json", lost)
+    kept(desktop, arranged, {"v": 1, "boots": {"a-boot-before": where}})
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
+    machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+    machine.send_key("ret")
+    opening = "niri msg --json windows | grep -o 'pi --session 01c3-' | wc -l"
+    machine.wait_until_succeeds(
+        desktop.in_session(f"[ $({opening}) = 3 ]"), timeout=dt.timedelta(seconds=60)
+    )
+    desktop.launcher_until(lambda shown: not shown["open"])
+    back = sat(desktop, "01c3-")
+    assert back["01c3-west"][0] == back["01c3-east"][0] == 1, back
+    assert back["01c3-west"][1] < back["01c3-east"][1], back
+    assert back["01c3-north"][0] == 2, back  # noqa: PLR2004
+    # Nothing's left to reopen once this boot is the one kept.
+    desktop.as_account("rm $XDG_RUNTIME_DIR/pi-stays && pkill -f 'sleep 600'")
+    kept(desktop, "~/.local/state/pi/restore.json", {"v": 1, "boot": boot, "sessions": []})
+    desktop.as_account("rm -rf ~/east ~/north ~/west")
+
+
 def test_the_launcher_finds_pis_runs_going_to_the_session_that_started_one_and_reading_an_answer(
     desktop: Desktop,
 ) -> None:
