@@ -61,15 +61,18 @@ in
     # the tools that walk them depend on.
     "vm.vfs_cache_pressure" = 50;
 
-    # Wake kswapd 2% of memory before it runs out, not 0.1%, so it frees
-    # pages ahead of the builds' allocations rather than leaving them to
-    # reclaim and compact for themselves, which every program then waits
-    # behind. In seven interleaved five-minute rounds under agents' builds,
-    # 200 against 10 took allocation stalls from 50 to 154 a second to 0 to
-    # 16, slow touches of an app's memory (8 ms or more) from 19 to 2, and
-    # lag-watch's marks for waits on memory from 11 to 3. kswapd then keeps
-    # 1.2 to 2.5 GiB more free, two of its 2% steps at most.
-    "vm.watermark_scale_factor" = 200;
+    # Wake kswapd 0.5% of memory before it runs out, so it frees pages
+    # ahead of the builds' allocations rather than leaving them to reclaim
+    # for themselves, which every program then waits behind. 0.1% woke it
+    # too late: against it, 2% took allocation stalls from 50 to 154 a
+    # second to 0 to 16. But at 2% kswapd must free 2.5 GiB before it may
+    # rest, and under builds it fails sixteen times running and gives up
+    # until memory frees by itself. In eight interleaved four-minute rounds,
+    # the five under real pressure, 0.5% against 2% took those give-ups
+    # from half the time to 3%, stalls from 430 a second to 61 (the worst
+    # one in twenty from 3,410 to 264), and every program's full pressure
+    # from 4.6 to 3.2, while apps' own stayed at 0.06 to 0.07.
+    "vm.watermark_scale_factor" = 50;
 
     # Never raise those watermarks after a fragmentation event. The boost
     # is a share of the high watermark, 150% by default, so at the spacing
@@ -100,7 +103,7 @@ in
   # whole machine under builds, and the settings that might have caused it,
   # the watermarks' spacing, transparent huge pages and the multi-gen LRU,
   # could each be tried only by a switch. Each unit writes its instance and
-  # only a value the rules list: `systemctl start memory-watermarks@50`,
+  # only a value the rules list: `systemctl start memory-watermarks@100`,
   # `memory-hugepages@madvise` or `memory-lru-gen@n`. The most one can do is
   # make reclaim worse until it's put back, never reach another setting. A
   # switch that changes the sysctls writes them back; otherwise start the
