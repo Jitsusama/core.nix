@@ -16,6 +16,8 @@ let
   };
   write = file: "${pkgs.bash}/bin/bash -c 'echo %i > ${file}'";
   space = "${pkgs.procps}/bin/sysctl -w vm.watermark_scale_factor=%i";
+  hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
+  lruGen = "/sys/kernel/mm/lru_gen/enabled";
 in
 {
   # Swap to zstd-compressed RAM, as much as memory holds. At NixOS's half,
@@ -107,12 +109,8 @@ in
   security.polkit.enable = true;
   security.polkit.extraConfig = builtins.readFile ./memory-tune.rules;
   systemd.services."memory-watermarks@" = tune "watermark spacing" space;
-  systemd.services."memory-hugepages@" = tune "transparent huge pages" (
-    write "/sys/kernel/mm/transparent_hugepage/enabled"
-  );
-  systemd.services."memory-lru-gen@" = tune "multi-gen LRU" (
-    write "/sys/kernel/mm/lru_gen/enabled"
-  );
+  systemd.services."memory-hugepages@" = tune "transparent huge pages" (write hugepages);
+  systemd.services."memory-lru-gen@" = tune "multi-gen LRU" (write lruGen);
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.
