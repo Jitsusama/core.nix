@@ -3132,10 +3132,10 @@
       "glyph": "saver"
     },
     {
-      "id": "verb:on:device:go",
+      "id": "verb:on:device:show",
       "in": "on",
-      "name": "Go To",
-      "verb": "go",
+      "name": "Show in Bluetooth",
+      "verb": "show",
       "glyph": "bluetooth"
     },
     {
@@ -5307,14 +5307,6 @@
         "bluetooth"
       ],
       "why": "Both list devices: sound's outputs and inputs, and what's paired."
-    },
-    {
-      "word": "go to",
-      "things": [
-        "verb:on:waiting:go",
-        "verb:on:device:go"
-      ],
-      "why": "What's on goes to where each thing is, a session's window or a device in Bluetooth, and each row says which thing it is."
     },
     {
       "word": "tabs",

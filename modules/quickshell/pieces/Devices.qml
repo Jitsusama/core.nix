@@ -2,8 +2,9 @@
 // falls to `low` percent is a thing of its own (Piece.qml's `each`), said
 // once as a notice signed by its name, and once more, urgent, at `critical`,
 // the laptop battery's own marks, so one rule holds for every battery
-// (docs/design.md). It's in the margin by its kind's glyph and in Now
-// until it rises past the mark or goes. Its charge is read from the
+// (docs/design.md). It's in the margin by its kind's glyph and in Now, as
+// its own row in Bluetooth, until it rises past the mark or goes. Its
+// notice offers to show it there. Its charge is read from the
 // devices Quickshell.Bluetooth already holds, as the Bluetooth place
 // reads it, so nothing more is opened for it, and nothing for each device.
 import qs
@@ -46,17 +47,17 @@ Piece {
         standing = Devices.standings(readings, standing, marks);
         each = Devices.low(readings, standing).map(own => thing(Object.assign(own, {
             actions: [{
-                glyph: Words.glyph("verb:on:device:go"),
-                name: Words.name("verb:on:device:go"),
-                verb: Words.verb("verb:on:device:go"),
-                run: shell => piece.goTo(shell, own.address)
+                glyph: Words.glyph("verb:on:device:show"),
+                name: Words.name("verb:on:device:show"),
+                verb: Words.verb("verb:on:device:show"),
+                run: shell => piece.show(shell, own.address)
             }]
         })));
     }
 
     // Into the device's own place in Bluetooth, where its battery is, or
     // Bluetooth itself should it have gone by then.
-    function goTo(shell, address) {
+    function show(shell, address) {
         shell.launcher.into("bluetooth");
         shell.launcher.enter(shell.launcher.matches.find(row => row.key === `bluetooth:${address}`));
     }

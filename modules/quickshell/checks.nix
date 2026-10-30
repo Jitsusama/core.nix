@@ -2064,6 +2064,8 @@ onLinux {
   # with their last reads and how each is held, and the adapter's traffic
   # and version, as bluetooth-links would write it: the headphones'
   # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
+  # A stand-in Facts says the headphones are running low, as the devices
+  # piece would.
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -2110,6 +2112,17 @@ onLinux {
           import QtQuick
           Singleton { function spawn(command) {} }
         ''} Niri.qml
+        # The headphones running low, as the devices piece would say them.
+        cp ${pkgs.writeText "Facts.qml" ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton {
+            readonly property var all: [
+              { entry: { mark: "bluetooth:00:1B:66:AA:BB:CC" }, piece: { place: "bluetooth" } }
+            ]
+          }
+        ''} Facts.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${shellFolderLint}

@@ -15,6 +15,8 @@
 // each a setting whose choices set it; and its Address, which Return
 // copies. The adapter holds its Radio, Visible to others and Pairable as
 // settings, its Traffic as a spark, and its Name, Address, Version and Chip.
+// A device the devices piece says is running low (the check's Facts.qml)
+// says so at its side, and one that isn't says it's connected.
 // How the links are doing is answered too; with no such file, neither the
 // links nor the answer say a thing. It exits 0 once every case holds, and
 // otherwise 1, saying which case didn't.
@@ -192,6 +194,15 @@ ShellRoot {
             "it answered with no file");
     }
 
+    // A device running low says so at its side, as Now lists it too.
+    function lowHolds() {
+        const low = bluetooth.made(headphones);
+        expect("one running low says so at its side", low.side === "15%, running low"
+            && low.note === "connected", `${low.side}; ${low.note}`);
+        const fine = bluetooth.made(mouse);
+        expect("one not low says it's connected", fine.side === "connected", fine.side);
+    }
+
     // The adapter's parts: its settings, its traffic, and what it is.
     function adapterHolds() {
         const parts = bluetooth.adapterParts(radio);
@@ -285,6 +296,7 @@ ShellRoot {
                     .every(row => !row.key.endsWith(":input")), "a stranger got facts");
                 root.linksHold();
                 root.adapterHolds();
+                root.lowHolds();
                 Qt.callLater(() => Qt.exit(0));
             } catch (error) {
                 facts.stop();
