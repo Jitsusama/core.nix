@@ -33,6 +33,41 @@ let
   mathsModules = "${pkgs.callPackage ./maths/package.nix { }}/lib/qt-6/qml";
   # Fonts for a shell drawn offscreen, which needs none of its own.
   noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
+  # The account's shell as it gets it, laid out in qs, with Slack's source for
+  # People and the greeter beside it, for a check to read every file of.
+  shellAsGiven =
+    let
+      files =
+        lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name)
+          (account graphical).xdg.configFile;
+    in
+    ''
+      ${lib.concatLines (
+        lib.mapAttrsToList (name: file: ''
+          mkdir -p "$(dirname ${lib.escapeShellArg name})"
+          cp ${file.source} ${lib.escapeShellArg name}
+        '') files
+      )}
+      mv quickshell qs
+      # Slack's source for People is installed only where a machine brings
+      # Slack, as no example does, so it's read here as if one had.
+      mkdir -p qs/launcher/people
+      cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
+      # The greeter runs beside the account's files, as greetd's module lays
+      # them out, with what it's built with standing in.
+      cp ${
+        pkgs.replaceVars ../greetd/greeter.qml {
+          accounts = builtins.toJSON [
+            {
+              name = "someone";
+              called = "Someone";
+            }
+          ];
+          session = builtins.toJSON [ "niri-session" ];
+          analyze = "systemd-analyze";
+        }
+      } qs/greeter.qml
+    '';
 
   # The account's notices on its real niri, with its own configuration,
   # nested in a headless sway in the sandbox rather than in a machine
@@ -214,6 +249,21 @@ onLinux {
         && "${home.xdg.configFile."quickshell/pieces/wide.qml".source}" == "${own}"
       );
 
+  # Qt's own compiler takes every file of the shell as the account gets it,
+  # the greeter's included, on the Qt the shell runs on (tests/qml-compiles.sh).
+  # It refuses what the shell's engine can't run, such as an object spread,
+  # and crashes on what would crash the shell as it loads the file, which
+  # qmllint and the checks that run a file offscreen can both pass.
+  quickshell-compiles-every-file =
+    let
+      qt = graphical.pkgs.kdePackages.qtdeclarative;
+    in
+    pkgs.runCommandLocal "quickshell-compiles-every-file" { LC_ALL = "C.UTF-8"; } ''
+      ${shellAsGiven}
+      ${lib.getExe pkgs.bash} ${../../tests/qml-compiles.sh} ${qt}/libexec/qmlcachegen qs
+      touch $out
+    '';
+
   # qmllint reads the shell as the account gets it, and the greeter beside it,
   # as the module qs, against
   # Quickshell's own type files as quickshellTypes corrects them, and any
@@ -223,38 +273,11 @@ onLinux {
   # whose parameter is a Qt enum QML can't see (QProcess::ExitStatus).
   quickshell-passes-qmllint =
     let
-      files =
-        lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name)
-          (account graphical).xdg.configFile;
       qt = pkgs.kdePackages.qtdeclarative;
     in
     # In UTF-8, which Qt otherwise switches to and says so.
     pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''
-      ${lib.concatLines (
-        lib.mapAttrsToList (name: file: ''
-          mkdir -p "$(dirname ${lib.escapeShellArg name})"
-          cp ${file.source} ${lib.escapeShellArg name}
-        '') files
-      )}
-      mv quickshell qs
-      # Slack's source for People is installed only where a machine brings
-      # Slack, as no example does, so it's read here as if one had.
-      mkdir -p qs/launcher/people
-      cp ${../slack/SlackSource.qml} qs/launcher/people/slack.qml
-      # The greeter runs beside the account's files, as greetd's module lays
-      # them out, with what it's built with standing in.
-      cp ${
-        pkgs.replaceVars ../greetd/greeter.qml {
-          accounts = builtins.toJSON [
-            {
-              name = "someone";
-              called = "Someone";
-            }
-          ];
-          session = builtins.toJSON [ "niri-session" ];
-          analyze = "systemd-analyze";
-        }
-      } qs/greeter.qml
+      ${shellAsGiven}
       # Quickshell finds a folder's files as a module by its path; qmllint
       # needs a qmldir saying so (tests/qmldir.sh).
       ${lib.getExe pkgs.bash} ${../../tests/qmldir.sh} qs
