@@ -1784,6 +1784,34 @@ def google(desktop: Desktop) -> Iterator[None]:
 
 
 @pytest.mark.usefixtures("google")
+def test_the_first_search_after_the_shell_starts_finds_details_made_already(
+    desktop: Desktop,
+) -> None:
+    """The first search after the shell starts finds the details inside things made already."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    # Every switch restarts the shell, and its first search of three letters
+    # made every detail inside things there and then, that opening's slowest
+    # key; a few seconds after it starts, they're made while it's closed.
+    since = desktop.mark()
+    desktop.as_account("systemctl --user restart quickshell")
+    desktop.reported(
+        "spots made while closed", lambda rest: rest == "", since, dt.timedelta(seconds=60)
+    )
+    since = desktop.mark()
+    desktop.answer("rotation")
+    desktop.launcher_until(
+        lambda shown: any(thing["reads"].startswith("Rotation ") for thing in shown["things"])
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    said = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    assert "report[spots made on a key]" not in said, said
+
+
 def test_a_meeting_about_to_start_is_found_by_its_name_and_return_joins_it(
     desktop: Desktop,
 ) -> None:
