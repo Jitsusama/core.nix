@@ -100,13 +100,26 @@ pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
     all
 }
 
+/// The most a VPN adds to each packet it carries: an outer IPv6 and UDP
+/// header with MASQUE's framing and tag, or `WireGuard`'s, about 80 bytes.
+/// CAKE on a VPN counts it, so the VPN is held to what its packets cost
+/// the connection, however small they are. Counted as a share of the rate
+/// instead, small packets, where it's most, would overrun the connection,
+/// and the queue would form again in its CAKE, where the VPN is one flow.
+const VPN_OVERHEAD: u32 = 80;
+
 /// A VPN's queue: CAKE alone at its root, under the same handle as a
 /// connection's, so the priority nftables gives a packet names its tin there
 /// too. A VPN reaches nothing local, so it needs no HTB.
 pub fn vpn(dev: &str, kbit: u64) -> Vec<String> {
     cmd(&format!(
-        "tc qdisc replace dev {dev} root handle 2: cake bandwidth {kbit}kbit diffserv4 ack-filter"
+        "tc qdisc replace dev {dev} root handle 2: \
+         cake bandwidth {kbit}kbit diffserv4 ack-filter overhead {VPN_OVERHEAD}"
     ))
+}
+
+fn vpn_ingress_cake(kbit: u64) -> String {
+    format!("{} overhead {VPN_OVERHEAD}", ingress_cake(kbit))
 }
 
 /// What a VPN brings in, turned round through an IFB of its own to a CAKE
@@ -122,7 +135,7 @@ pub fn vpn_ingress(dev: &str, ifb: &str, kbit: u64) -> Vec<Vec<String>> {
         cmd(&format!("ip link set {ifb} up")),
         cmd(&format!(
             "tc qdisc replace dev {ifb} root handle 2: {}",
-            ingress_cake(kbit)
+            vpn_ingress_cake(kbit)
         )),
         cmd(&format!("tc qdisc replace dev {dev} handle ffff: ingress")),
         cmd(&format!(
@@ -136,7 +149,7 @@ pub fn vpn_ingress(dev: &str, ifb: &str, kbit: u64) -> Vec<Vec<String>> {
 pub fn vpn_ingress_change(ifb: &str, kbit: u64) -> Vec<String> {
     cmd(&format!(
         "tc qdisc change dev {ifb} root handle 2: {}",
-        ingress_cake(kbit)
+        vpn_ingress_cake(kbit)
     ))
 }
 
@@ -369,7 +382,7 @@ mod tests {
         assert!(
             all.contains(
                 &"tc qdisc replace dev shaper9 root handle 2: \
-              cake bandwidth 45000kbit diffserv4 nat ingress fwmark 0x7000000"
+              cake bandwidth 45000kbit diffserv4 nat ingress fwmark 0x7000000 overhead 80"
                     .to_string()
             )
         );
@@ -383,7 +396,7 @@ mod tests {
         assert_eq!(
             vpn_ingress_change("shaper9", 40_000).join(" "),
             "tc qdisc change dev shaper9 root handle 2: \
-             cake bandwidth 40000kbit diffserv4 nat ingress fwmark 0x7000000"
+             cake bandwidth 40000kbit diffserv4 nat ingress fwmark 0x7000000 overhead 80"
         );
     }
 
@@ -391,7 +404,8 @@ mod tests {
     fn a_vpns_cake_sits_at_its_root_under_the_connections_handle() {
         assert_eq!(
             vpn("wg0", 9_000).join(" "),
-            "tc qdisc replace dev wg0 root handle 2: cake bandwidth 9000kbit diffserv4 ack-filter"
+            "tc qdisc replace dev wg0 root handle 2: \
+             cake bandwidth 9000kbit diffserv4 ack-filter overhead 80"
         );
         assert!(vpn_ours(r#"[{"kind":"cake","handle":"2:","root":true}]"#));
         assert!(!vpn_ours(
