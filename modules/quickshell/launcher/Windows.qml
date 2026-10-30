@@ -146,6 +146,7 @@ Provider {
                     ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
                 return thing({
                     // What learning knows it by, which outlives the window.
+                    thing: true,
                     key: `window:${window.app_id}:${title}`,
                     // What it is now: this window, or its program when the
                     // program's name is all its title says.
@@ -181,6 +182,7 @@ Provider {
         const below = entry
             ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
         return thing({
+            thing: true,
             key: "windows:this",
             is: "windows:this",
             verb: Words.verb("windows:this"),

@@ -343,6 +343,7 @@ Provider {
             })
         ].filter(row => row !== null).concat(provider.facts(each));
         const row = member({
+            thing: true,
             key: `on:waiting:${WaitingOnYou.identity(each)}`,
             verb: "more",
             stays: true,

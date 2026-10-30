@@ -295,6 +295,8 @@ Scope {
             // and Memory, knows which is held.
             asker: said.asker ?? null,
             heard: said.heard ?? "",
+            // An answer that is a thing, as a pi's whole words are, says so.
+            thing: said.thing ?? false,
             live: said.live ?? null,
             about: said.about ?? "",
             side: "",
@@ -435,6 +437,7 @@ Scope {
         verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
         now: true,
         stays: answer.stays ?? false,
+        thing: answer.thing ?? false,
         reads: answer.reads ?? "",
         note: answer.note ?? "",
         // Asked by a name it had, it says so, as a row found by one does.
@@ -801,6 +804,11 @@ Scope {
         // What each row's drawer would show beside the row's own words, so
         // a check can judge for itself that none only repeats its row.
         const drawers = [];
+        // Every row holding something for the drawer, though it isn't a
+        // thing, so the drawer never shows it: a maker that forgot to mark
+        // its thing, or words with nowhere to be read (VKCF3Z, 2026-10-29:
+        // a row gets no drawer unless it's one of the kinds).
+        const undrawn = [];
         const seen = new Set();
         const walk = (rows, above, ids, names, depth) => {
             for (const row of rows.filter(one => !!one && (one.name ?? "") !== "")) {
@@ -830,6 +838,10 @@ Scope {
                             facts: (drawn.facts ?? []).filter(fact => fact).length,
                             picture: (drawn.picture ?? "") !== ""
                         });
+                    if (!detailed(row) && (!!row.drawer || (row.reads ?? "") !== ""
+                        || (row.picture ?? "") !== ""))
+                        undrawn.push(`${names.concat([row.name]).join(" \u203a ")}`
+                            + ` (${row.key ?? row.is})`);
                     const deeper = depth < actlessDeepest
                         && !(row.opens && Catalogue.long(row.opens));
                     const inside = deeper
@@ -851,7 +863,7 @@ Scope {
         // How many it walked too, so a check that finds none knows it
         // looked.
         return { walked: seen.size, rows: out, ownVersions: own, copyFirst, skipped,
-            uncomposed: loose, composed: composed, drawers };
+            uncomposed: loose, composed: composed, drawers, undrawn };
     }
 
     // Whether Return on a row steps in where the row has an act of its own
@@ -3016,16 +3028,16 @@ Scope {
 
     // The drawer beside the card (Drawer.qml): what the selected row shows
     // beyond its line, its own or one made of the picture and the whole
-    // words it has. It's out exactly while the selected row is a thing with
-    // details, the same at home, in a search and in every place; an act, a
-    // switch, a choice or a place has none (VKCF3Z, 2026-10-29, after
-    // Joel's "shows when it's not needed, and only shows in certain
-    // places"). Between two rows that both have one it stays, and what it
+    // words it has. It's out only while the selected row is a thing and the
+    // drawer says something the row doesn't, the same at home, in a search
+    // and in every place; an act, a switch, a choice or a place has none
+    // (VKCF3Z, 2026-10-29, after Joel's "shows when it's not needed, and
+    // only shows in certain places"). Between two rows that both have one it stays, and what it
     // shows changes in place; onto a row without one, or from one, it fades
     // only once the selection has rested, so holding an arrow never
     // flickers it.
     function drawerOf(row) {
-        if (!row)
+        if (!detailed(row))
             return null;
         const own = typeof row.drawer === "function" ? row.drawer() : row.drawer;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
@@ -3044,6 +3056,26 @@ Scope {
         return [drawer.title, drawer.body].map(words => String(words ?? "").trim())
             .some(words => words !== "" && !own.includes(words));
     }
+
+    // Whether a row is a thing with details, by its kind rather than by
+    // what it happens to hold, so the drawer stays out between two things
+    // that each have more to say (VKCF3Z, 2026-10-29). A thing's maker says so with `thing`, as each
+    // provider's maker of a program, a session, a device and the rest
+    // does; a drawer composed for a row never makes it one, or the rule
+    // would go by content again. A component's row (a mail, a meeting, a file, a person, a document)
+    // is one by its kind, made by it or keyed as one; a value is one only
+    // while it has a history, its graph a spark. An act, a switch, a
+    // choice, a place and a plain value have none.
+    function detailed(row) {
+        if (!row || row.opens || row.category)
+            return false;
+        if (row.thing === true || !!row.component)
+            return true;
+        if (row.graph?.shape === "spark")
+            return true;
+        return components.some(one => one.keyed.test(row.key ?? ""));
+    }
+
     // What the selected row has for the drawer, or null: typed to nothing,
     // nothing is selected, and it has none.
     readonly property var drawerWanted: open && selected ? drawerOf(selected) : null

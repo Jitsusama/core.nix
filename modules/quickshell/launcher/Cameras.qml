@@ -59,6 +59,7 @@ Provider {
         const programs = heldBy[name] ?? [];
         const known = Words.of(`cameras:${name}`).name !== `cameras:${name}`;
         const fields = {
+            thing: true,
             key: `camera:${name}`,
             name: called(name),
             glyph: Theme.glyph.camera,

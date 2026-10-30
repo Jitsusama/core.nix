@@ -102,6 +102,7 @@ Provider {
         const where = session.here ? ""
             : elsewhere(session.reachable ? "on" : "away", session);
         return member({
+            thing: true,
             key: `agent:${session.address}`,
             kind: SessionRow.KIND,
             // The session is its window, which the windows and its quest
@@ -312,6 +313,7 @@ Provider {
             String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd)));
         const reopen = one => Sessions.reopen(one, cwd => unopened(one, cwd));
         const closed = one => thing({
+            thing: true,
             key: `agents:last-boot:${one.id}`,
             name: String(one.title || one.address || one.id),
             // One held elsewhere says where, as a session there does.

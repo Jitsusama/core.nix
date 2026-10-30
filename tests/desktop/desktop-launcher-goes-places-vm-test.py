@@ -461,14 +461,17 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
     desktop.launcher_until(lambda shown: "keep watch tonight" in shown["rows"])
     desktop.type_in("keep watch", selecting="keep watch tonight")
     assert desktop.showing()["selected"]["side"] == "replied", desktop.showing()["selected"]
-    # Read, it says his words, how it went, and the reply below.
-    desktop.step_in()
+    # The talk is a thing, its reply in its own drawer beside it.
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:2] == ["You Said", "How It Went"]
-            and "Watching" in str((shown["selected"] or {}).get("reads", ""))
+            (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["drawn"] == "keep watch tonight"
+            and "Watching" in shown["drawer"]["body"]
         )
     )
+    # Read, it says his words and how it went, each a part to copy.
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["You Said", "How It Went"])
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
@@ -1040,6 +1043,38 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
         {"field": [], "foot": after["foot"], "rows": []},
     )
     assert not shifts, "the foot's facts slid as the battery read shorter:\n" + "\n".join(shifts)
+
+
+def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
+    """The drawer stays in for a place, a thing with nothing more to say, and an act."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    # Home opens on a place, which has no details (docs/design.md, the
+    # drawer: it goes by kind, not by what a row happens to hold).
+    desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("out") is False)
+    # A program found by a search is a thing, but with nothing beyond its
+    # name and side the drawer would only repeat it, so it stays in (Joel,
+    # 2026-10-29: "never show the side panel when it is just repeating the
+    # currently selected text"). Now's meeting shows one that's out.
+    desktop.type_in("kitty", selecting="kitty")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "kitty"
+            and (shown.get("drawer") or {}).get("out") is False
+        )
+    )
+    # Its acts are not things, so stepping in to them puts it away.
+    desktop.step_in("right")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") != "kitty"
+            and (shown.get("drawer") or {}).get("out") is False
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 
 def test_the_launcher_finds_and_opens_kitty_and_learns_that_kitty_was_meant(
@@ -2338,6 +2373,10 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
     assert said["composed"] > 0, "the walk found no mail to ask of"
     # Nor does a mail's or a meeting's drawer only say its row again.
     assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
+    # Nor holds a mail's surface anything for a drawer it never gets.
+    assert said["undrawn"] == [], "Held for a drawer, though not a thing:\n" + "\n".join(
+        said["undrawn"]
+    )
 
 
 @pytest.mark.usefixtures("google")
@@ -3156,6 +3195,12 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     # And no row's drawer only says the row again (docs/design.md, the
     # drawer).
     assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
+    # And nothing holds words or a picture for a drawer it never gets,
+    # since the drawer goes by kind (docs/design.md, the drawer): a thing
+    # whose maker forgot to say so, or words with nowhere to be read.
+    assert said["undrawn"] == [], "Held for a drawer, though not a thing:\n" + "\n".join(
+        said["undrawn"]
+    )
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

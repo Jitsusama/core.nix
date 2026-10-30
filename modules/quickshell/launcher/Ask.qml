@@ -140,6 +140,8 @@ Provider {
             headline: failed ? why : whole === "" ? "\u2026" : first,
             copy: failed ? "" : whole,
             reads: failed || first === whole ? "" : whole,
+            // A pi's answer is a thing, its whole words in the drawer.
+            thing: true,
             asking: stage === "asking",
             rows: talkOn(question, whole).concat([onward(question, whole)]),
             note: notes[stage] ?? "",

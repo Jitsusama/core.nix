@@ -199,6 +199,7 @@ Provider {
             return unknown;
         const shown = listed(now);
         const rows = shown.map(link => thingRow({
+            thing: true,
             key: `networks:${link.name}`,
             name: linkName(link, shown),
             side: addressOf(link) || stateSaid[link.state],

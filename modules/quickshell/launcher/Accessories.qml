@@ -137,6 +137,7 @@ Provider {
         const warns = provider.runningLow.includes(`bluetooth:${device.address}`);
         const note = warns ? stood : device.batteryAvailable ? `${charge}% battery` : told;
         return member({
+            thing: true,
             key: `bluetooth:${device.address}`,
             verb: joined ? "disconnect" : device.paired ? "connect" : "pair",
             name: device.name,
@@ -158,6 +159,7 @@ Provider {
     // connects the likeliest device: a thing holding how it's set and what
     // it is.
     readonly property var adapterRow: adapter === null ? null : thingRow({
+        thing: true,
         key: "bluetooth:adapter",
         name: Words.name("bluetooth:adapter"),
         side: on ? "on" : "off",
@@ -580,6 +582,7 @@ Provider {
             glyph: glyph,
             note: "",
             rows: told.map(each => thingRow({
+                thing: true,
                 key: `link:bluetooth:${each.device.address}`,
                 name: each.device.name,
                 side: said(each),

@@ -63,6 +63,7 @@ Provider {
                 Quickshell.clipboardText = e.emoji;
             };
             const made = member({
+                thing: true,
                 key: `emoji:${e.name}`,
                 // Capitalised, as every row's name is; learning keeps its key.
                 name: e.name.charAt(0).toUpperCase() + e.name.slice(1),

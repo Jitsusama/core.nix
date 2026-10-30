@@ -498,12 +498,8 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         " && mv /run/disk-guard/.status /run/disk-guard/status.json"
     )
     desktop.answer("disk")
-    # The guard's own words are read below the rows.
     desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
-            and shown["selected"]["reads"] == "The disk is filling, with 20.0 GiB free."
-        )
+        lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
     )
     desktop.photograph("launcher-disks")
     # Its first part, a step in after Return's own Copy, is the space the
@@ -519,11 +515,17 @@ def test_the_launcher_answers_whats_asked_and_copies_the_answer(  # noqa: PLR091
         )
     )
     # A step further, each disk the guard watches, the headline's first.
+    # A disk is a thing, so the drawer is out for it: one that's short
+    # says beside it what the guard is doing, and in the drawer its
+    # figures and the guard's own words (docs/design.md, the drawer).
     desktop.step_in()
     desktop.launcher_until(
         lambda shown: (
             shown["rows"][:1] == ["/nix"]
-            and shown["selected"]["side"] == "20.0 GiB free \u00b7 filling"
+            and shown["selected"]["side"] == "20.0 GiB free \u00b7 clearing old builds"
+            and (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["facts"] == ["Free", "Size"]
+            and shown["drawer"]["body"] == "The disk is filling, with 20.0 GiB free."
         )
     )
     machine.send_key("esc")

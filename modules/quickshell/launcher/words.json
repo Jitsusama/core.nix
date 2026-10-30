@@ -670,7 +670,27 @@
     {
       "id": "machine:disk:space",
       "in": "machine:disk",
-      "name": "Space"
+      "name": "Space",
+      "said": {
+        "clearing": "clearing old builds",
+        "clearingAll": "clearing all it can",
+        "cleared": "nothing left to clear"
+      }
+    },
+    {
+      "id": "machine:disk:free",
+      "in": "machine:disk:space",
+      "name": "Free"
+    },
+    {
+      "id": "machine:disk:size",
+      "in": "machine:disk:space",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:full-in",
+      "in": "machine:disk:space",
+      "name": "Full In"
     },
     {
       "id": "machine:disk:filling",

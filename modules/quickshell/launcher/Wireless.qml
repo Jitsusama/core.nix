@@ -232,6 +232,7 @@ Provider {
         // left to do there; otherwise it leaves a network joined or joins one.
         const signing = joined && SignIn.network === network.name;
         return member({
+            thing: true,
             key: `wifi:${network.name}`,
             verb: signing ? Words.verb("verb:wifi-sign-in") : joined ? "disconnect" : "connect",
             name: network.name,

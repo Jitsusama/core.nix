@@ -121,6 +121,7 @@ Provider {
                 verbs: () => (inside ? inside() : []).concat(provider.talksOf(one.address))
             });
         const row = member({
+            thing: true,
             key: `orchestrator:${one.address}`,
             verb: "open",
             name: one.short || one.title || one.address,
@@ -225,6 +226,7 @@ Provider {
     function talksOf(asked) {
         const address = String(asked).toUpperCase();
         return (talks[address] ?? []).filter(talk => talk.words !== "").map(talk => thing({
+            thing: true,
             key: `talk:${address}:${talk.id}`,
             verb: "read",
             name: talk.words,
@@ -241,7 +243,7 @@ Provider {
     }
 
     // A talk read: his words, how it went, and what came of it, each a row
-    // Return copies, the reply below the rows.
+    // Return copies, the reply in the talk's own drawer.
     function talkRows(address, id) {
         const talk = (talks[String(address).toUpperCase()] ?? []).find(one => one.id === id);
         if (!talk)
@@ -251,8 +253,7 @@ Provider {
             name: Words.name(`orchestrators:talk:${key}`),
             side: side,
             copy: copy,
-            glyph: "",
-            reads: talk.reply
+            glyph: ""
         });
         return [
             row("yours", talk.words, talk.words),

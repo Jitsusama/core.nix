@@ -84,6 +84,7 @@ Provider {
     function made(copy) {
         const lines = copy.text.trim().split("\n").length;
         const row = member({
+            thing: true,
             key: `copy:${shown(copy.text)}`,
             name: shown(copy.text),
             glyph: kind(copy.text, lines),
@@ -152,6 +153,7 @@ Provider {
     function pictured(copy) {
         const size = copy.width ? ` ${copy.width} \u00d7 ${copy.height}` : "";
         const row = member({
+            thing: true,
             key: `picture:${copy.picture}`,
             name: `Image${size}`,
             glyph: Theme.glyph.picture,

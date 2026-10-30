@@ -98,6 +98,7 @@ Provider {
     function made(quest) {
         const session = loaded[quest.id];
         const row = member({
+            thing: true,
             key: `quest:${quest.id}`,
             // A quest a session has loaded is that session's window, which
             // its Agents row says more of (Launcher.qml's compose).

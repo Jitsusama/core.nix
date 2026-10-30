@@ -185,6 +185,8 @@ Singleton {
         const key = "mail:attachment";
         const how = file.runs ? "save" : "open";
         return thing({
+            // A file, so a thing with details (docs/design.md, the drawer).
+            thing: true,
             key: `attachment:${mail.id}:${at}`,
             what: "file",
             name: file.name,

@@ -117,6 +117,7 @@ Provider {
         const done = states.filter(state => !running(state)).length;
         const spent = cost(run.participants);
         const row = member({
+            thing: true,
             key: `run:${run.id}`,
             verb: session ? "go" : "copy",
             name: named(run),

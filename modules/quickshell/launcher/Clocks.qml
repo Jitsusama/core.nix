@@ -218,6 +218,9 @@ Provider {
             side: [keptWord("stratum").replace("{stratum}", at.stratum), millis(at.offset, true)]
                 .join(", "),
             glyph: Theme.glyph.clock,
+            // The server is a thing, one Joel digs into, so its drawer is
+            // out beside it.
+            thing: true,
             drawer: () => ({
                 title: at.server || at.address,
                 facts: parts.map(each => ({ label: Words.name(`time:server:${each.id}`),
