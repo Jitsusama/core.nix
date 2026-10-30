@@ -192,7 +192,26 @@ fn now() -> Result<i64, String> {
     i64::try_from(since.as_secs()).map_err(|_| "the system's time is past 64 bits".to_string())
 }
 
+/// The offset kept by the last `calibrate`, or none when no boot has
+/// measured one yet.
+fn kept_offset(path: &Path) -> Result<Option<i64>, String> {
+    match fs::read_to_string(path) {
+        Ok(text) => parse_offset(&text).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("can't read {}: {error}", path.display())),
+    }
+}
+
 fn calibrate(state: &Path) -> Result<String, String> {
+    // Once the time is synchronised the kernel writes it to the CMOS clock,
+    // so the two clocks' difference is no longer the firmware's. That is so
+    // whenever this starts after boot, as on a switch to a system that has it.
+    if synchronised() {
+        return Ok(
+            "the system's time is synchronised, so the CMOS clock may follow it; the offset kept stays"
+                .into(),
+        );
+    }
     let device = open_controller()?;
     let controller = read_controller(&device)?;
     let cmos = read_cmos(Path::new("/sys/class/rtc"))?;
@@ -211,10 +230,12 @@ fn keep(state: &Path) -> Result<String, String> {
             "the system's time isn't synchronised, so the Aggregator's clock is left alone".into(),
         );
     }
-    let path = state.join("offset");
-    let text = fs::read_to_string(&path)
-        .map_err(|error| format!("can't read {}: {error}", path.display()))?;
-    let offset = parse_offset(&text)?;
+    let Some(offset) = kept_offset(&state.join("offset"))? else {
+        return Ok(
+            "no boot has measured the firmware's offset yet, so the Aggregator's clock is left alone"
+                .into(),
+        );
+    };
     let device = open_controller()?;
     let before = read_controller(&device)?;
     let target = controller_time(now()?, offset)?;
@@ -269,6 +290,20 @@ mod tests {
     fn a_kept_offset_is_read_back() {
         assert_eq!(parse_offset("28800\n"), Ok(28_800));
         assert!(parse_offset("eight hours").is_err());
+    }
+
+    #[test]
+    fn no_kept_offset_is_none_and_a_kept_one_is_read() {
+        let state =
+            std::env::temp_dir().join(format!("surface-clock-offset-{}", std::process::id()));
+        fs::create_dir_all(&state).unwrap();
+        let path = state.join("offset");
+        let before = kept_offset(&path);
+        fs::write(&path, "28800\n").unwrap();
+        let after = kept_offset(&path);
+        fs::remove_dir_all(&state).unwrap();
+        assert_eq!(before, Ok(None));
+        assert_eq!(after, Ok(Some(28_800)));
     }
 
     #[test]
