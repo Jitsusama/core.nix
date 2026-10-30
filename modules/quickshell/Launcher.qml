@@ -3059,8 +3059,7 @@ Scope {
 
     // Whether a row is a thing with details, by its kind rather than by
     // what it happens to hold, so the drawer stays out between two things
-    // and a thing with nothing more shows its title alone (VKCF3Z,
-    // 2026-10-29). A thing's maker says so with `thing`, as each
+    // that each have more to say (VKCF3Z, 2026-10-29). A thing's maker says so with `thing`, as each
     // provider's maker of a program, a session, a device and the rest
     // does; a drawer composed for a row never makes it one, or the rule
     // would go by content again. A component's row (a mail, a meeting, a file, a person, a document)

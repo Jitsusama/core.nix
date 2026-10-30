@@ -1043,7 +1043,7 @@ def test_the_foots_facts_keep_their_room_as_they_read_shorter(desktop: Desktop) 
 
 
 def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
-    """The drawer is out for a thing, its title alone with nothing more, and in for an act."""
+    """The drawer stays in for a place, a thing with nothing more to say, and an act."""
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)
     desktop.as_account("qs ipc call launcher toggle")
@@ -1051,13 +1051,15 @@ def test_the_drawer_goes_by_the_selected_rows_kind(desktop: Desktop) -> None:
     # Home opens on a place, which has no details (docs/design.md, the
     # drawer: it goes by kind, not by what a row happens to hold).
     desktop.launcher_until(lambda shown: (shown.get("drawer") or {}).get("out") is False)
-    # A program found by a search is a thing, so the drawer is out, saying
-    # its title alone when it has nothing more to say.
+    # A program found by a search is a thing, but with nothing beyond its
+    # name and side the drawer would only repeat it, so it stays in (Joel,
+    # 2026-10-29: "never show the side panel when it is just repeating the
+    # currently selected text"). Now's meeting shows one that's out.
     desktop.type_in("kitty", selecting="kitty")
     desktop.launcher_until(
         lambda shown: (
-            (shown.get("drawer") or {}).get("out") is True
-            and shown["drawer"]["title"] == (shown["selected"] or {}).get("name")
+            (shown["selected"] or {}).get("name") == "kitty"
+            and (shown.get("drawer") or {}).get("out") is False
         )
     )
     # Its acts are not things, so stepping in to them puts it away.
