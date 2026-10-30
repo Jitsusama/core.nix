@@ -2,6 +2,7 @@
 // is a file beside this one, and all of them draw from Theme.qml, which
 // home.nix writes from jitsusama.theme. Quickshell's own guide to every type:
 // https://quickshell.org/docs/
+import qs
 import Quickshell
 import QtQuick
 
@@ -36,6 +37,14 @@ ShellRoot {
 
     Margin {
         launcher: launcher
+    }
+
+    // The machine queue is drawn only in the launcher, so it's read only
+    // while that's open (Jobs.qml).
+    Binding {
+        target: Jobs
+        property: "showing"
+        value: launcher.open
     }
 
     Arrivals {

@@ -55,31 +55,33 @@ def test_the_launcher_shows_the_volumes_chords_and_escape_closes_it(desktop: Des
 
 
 def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) -> None:
-    """Rewrite the machine queue's file while the launcher is closed, and see nothing rejoined.
+    """Rewrite the machine queue's file while the launcher is closed, and see it read once open.
 
-    On a busy machine the file is rewritten about twice a second, and the search's rows,
-    which read Queue's note, were made again whole on each write with the launcher closed:
-    two thirds of the shell's idle processor on 2026-10-29. Opened, the note says the
-    last write, so every write was heard, and the rows were joined only as it opened.
+    On a busy machine the file is rewritten up to 12 times a second. The search's rows, which
+    read Queue's note, were made again whole on each write with the launcher closed: two
+    thirds of the shell's idle processor on 2026-10-29. Then each write was still read and
+    heard, about 20 wakeups and 14 ms a write (2026-10-30). Now a closed launcher's queue is
+    only noted as written, and read once as it opens, its note saying the last write.
     """
     machine = desktop.machine
     jobs = "$XDG_RUNTIME_DIR/jobs"
-    # Once as it opens, once as Agents makes its rows on opening, and one
-    # to spare for anything else the desktop changes meanwhile; made again
-    # on each write, it would be ten more.
-    joins_on_opening = 3
+    # Once as it opens, once as Agents makes its rows on opening, once as
+    # the queue is read on opening, and three to spare for anything else
+    # the desktop changes meanwhile: run soon after the VM starts, its
+    # displays, networks and Machine were still said again as it opened,
+    # which made one more (2026-10-30). Made again on each write, it would
+    # be ten more.
+    joins_on_opening = 6
     before = int(desktop.as_account("qs ipc call launcher joined"))
+    since = desktop.mark()
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}
-    # The last write heard while closed, so none is heard, and joined
-    # for, once open: a write heard late was the spare's flake.
-    with desktop.told("heard jobs 20"):
-        for gib in range(11, 21):
-            lined["heartbeat"] = float(gib)
-            lined["machine"] = {"availableGib": gib}
-            desktop.as_account(
-                f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
-                f" && mv {jobs}/.q {jobs}/queue.json"
-            )
+    for gib in range(11, 21):
+        lined["heartbeat"] = float(gib)
+        lined["machine"] = {"availableGib": gib}
+        desktop.as_account(
+            f"mkdir -p {jobs} && echo '{json.dumps(lined)}' > {jobs}/.q"
+            f" && mv {jobs}/.q {jobs}/queue.json"
+        )
     try:
         desktop.answer("queue")
         desktop.launcher_until(
@@ -88,6 +90,12 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
                 and shown["selected"]["note"].startswith("20 GiB to spare")
             )
         )
+        said = desktop.as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            f" --after-cursor={shlex.quote(since)}"
+        )
+        heard = re.findall(r"report\[(heard jobs [^\]]*)\]", said)
+        assert heard == ["heard jobs 20"], f"the closed launcher heard the queue: {heard}"
         joined = int(desktop.as_account("qs ipc call launcher joined")) - before
         assert joined <= joins_on_opening, f"the closed launcher joined its rows {joined} times"
     finally:
