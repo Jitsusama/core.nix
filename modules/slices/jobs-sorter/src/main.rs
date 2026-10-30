@@ -37,7 +37,8 @@
 //! unit's own holder stays, so the cgroup is there for the next write.
 //!
 //! Work under a `--no-real-time` cgroup runs without real time, which
-//! `src/real_time.rs` says why and how.
+//! `src/real_time.rs` says why and how, and goes first when memory runs
+//! out, as `src/oom.rs` says.
 //!
 //! Work split into a `--by-quest` slice goes in its quest's slice there,
 //! weighted as the `--quests` file says, which `src/quests.rs` says why and
@@ -49,6 +50,7 @@
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
 
+mod oom;
 mod quests;
 mod real_time;
 
@@ -730,6 +732,8 @@ fn run() -> Result<(), String> {
         if pass.is_multiple_of(real_time::EVERY) {
             for cgroup in &settings.no_real_time {
                 real_time::take(&root.join(cgroup), &mut warned);
+                let work = real_time::processes_under(&root.join(cgroup));
+                oom::raise(Path::new("/proc"), &work, &mut warned);
             }
         }
         pass = pass.wrapping_add(1);
