@@ -355,6 +355,13 @@
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';
+  firmware-notice-passes-clippy = ''
+    clippy finds nothing in firmware-notice or its tests
+  '';
+  firmware-notice-says-each-release-once = ''
+    firmware-notice says each device's newest offered release once, with whether it finishes at a
+    restart, says nothing when nothing is offered, and keeps what it said when fwupd doesn't answer
+  '';
   firmware-settings-passes-clippy = ''
     clippy finds nothing in firmware-settings or its tests
   '';

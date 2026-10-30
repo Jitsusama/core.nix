@@ -20,6 +20,7 @@
 # network before the work he started, and a write a program makes behind an
 # upload goes out soon after; lag-watch keeps a standing watch on whether
 # they wait, and load-proof proves on demand that they don't under full load.
+# Where fwupd runs, each firmware update it offers is said once, as a notice.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -61,6 +62,7 @@
     homeModules.backlight
     homeModules.camera
     homeModules.dictation
+    homeModules.firmware-notice
     homeModules.fontconfig
     homeModules.gimp
     homeModules.google

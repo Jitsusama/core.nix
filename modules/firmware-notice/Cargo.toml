@@ -1,0 +1,12 @@
+# firmware-notice says, once, each firmware update fwupd offers the
+# machine (src/main.rs says how).
+[package]
+name = "firmware-notice"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

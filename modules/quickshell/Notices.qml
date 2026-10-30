@@ -75,7 +75,10 @@ Singleton {
         "camera": { glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true },
         // A meeting about to start (Starting.qml), with others in it.
         "calendar": { glyph: Theme.glyph.meeting.codePointAt(0), hue: "person", answers: true },
-        "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true }
+        "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true },
+        // A firmware update fwupd offers (modules/firmware-notice), said
+        // once a release, and missed until seen, since nothing else says it.
+        "firmware": { glyph: Theme.glyph.firmware.codePointAt(0), hue: "machine" }
     })
 
     function sender(name) {
