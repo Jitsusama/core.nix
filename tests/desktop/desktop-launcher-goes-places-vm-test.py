@@ -461,14 +461,17 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
     desktop.launcher_until(lambda shown: "keep watch tonight" in shown["rows"])
     desktop.type_in("keep watch", selecting="keep watch tonight")
     assert desktop.showing()["selected"]["side"] == "replied", desktop.showing()["selected"]
-    # Read, it says his words, how it went, and the reply below.
-    desktop.step_in()
+    # The talk is a thing, its reply in its own drawer beside it.
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:2] == ["You Said", "How It Went"]
-            and "Watching" in str((shown["selected"] or {}).get("reads", ""))
+            (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["drawn"] == "keep watch tonight"
+            and "Watching" in shown["drawer"]["body"]
         )
     )
+    # Read, it says his words and how it went, each a part to copy.
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["You Said", "How It Went"])
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
