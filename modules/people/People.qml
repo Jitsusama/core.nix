@@ -234,11 +234,17 @@ Provider {
 
     // Their Recent: what each source has had with them, newest first, each
     // its own thing's row, the same word as a program's Recent, or nothing
-    // when no source has any.
+    // when no source has any. It's gathered once as they're stepped into,
+    // and stepping into it lists what was gathered then.
     function recent(person) {
-        const had = () => sources.reduce((each, source) => each.concat(source.recent(person,
-            provider)), []).sort((a, b) => b.at - a.at).map(one => one.row);
-        const count = had().length;
+        const gathered = [];
+        for (const source of sources) {
+            for (const one of source.recent(person, provider))
+                gathered.push(one);
+        }
+        const rows = gathered.sort((a, b) => b.at - a.at).map(one => one.row);
+        const had = () => rows;
+        const count = rows.length;
         if (count === 0)
             return [];
         // Its rows are both what it holds and what it steps into, as a
