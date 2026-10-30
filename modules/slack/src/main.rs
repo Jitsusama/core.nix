@@ -147,8 +147,9 @@ struct Asker {
 }
 
 impl Asker {
-    /// What to say as Joel steps into someone: who they are, at once when
-    /// it's known, then as Slack says they are now.
+    /// What to say as Joel steps into someone, once Slack has answered:
+    /// who they are, said here at once when it's known, before Slack is
+    /// asked, then what Slack says of them now, unless it's the same.
     fn step_in(&mut self, email: &str) -> Vec<String> {
         if !asked(email) {
             return Vec::new();
@@ -163,21 +164,25 @@ impl Asker {
             .get(email)
             .cloned()
             .or_else(|| self.kept.get(email, now()).cloned());
-        let mut said: Vec<String> = had.iter().filter_map(line).collect();
+        let said: Vec<String> = had.iter().filter_map(line).collect();
+        // A shell gone is found by the next line said, so nothing more
+        // is needed of this one.
+        let _ = say(&said);
         let found = match &had {
-            Some(had) if had.id.is_none() => return said,
+            Some(had) if had.id.is_none() => return Vec::new(),
             Some(had) => self.slack.again(&account, had),
             None => self.slack.look_up(&account, email),
         }
         .and_then(|found| present(&self.slack, &account, found));
         match self.heard(found) {
-            Heard::Found(found) => said.extend(line(&found)),
-            Heard::SignedOut(line) => said = vec![line],
+            Heard::Found(found) => line(&found)
+                .filter(|fresh| !said.contains(fresh))
+                .into_iter()
+                .collect(),
+            Heard::SignedOut(line) => vec![line],
             // What was said already, from what was known, stands.
-            Heard::Unreachable => {}
+            Heard::Unreachable => Vec::new(),
         }
-        said.dedup();
-        said
     }
 
     /// What to say of someone asked about ahead: who they are, kept or

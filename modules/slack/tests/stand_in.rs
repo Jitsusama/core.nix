@@ -89,15 +89,7 @@ fn credentials(test: &str) -> PathBuf {
 /// it said back, a line each. What it keeps goes in a cache home beside
 /// the sign-in's file, so a second run with the same file finds it.
 fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
-    let mut program = Command::new(env!("CARGO_BIN_EXE_slack-people"))
-        .arg(credentials)
-        .arg(&stand_in.origin)
-        .env("XDG_CACHE_HOME", cache(credentials))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut program = started(&stand_in.origin, credentials);
     program
         .stdin
         .take()
@@ -110,6 +102,19 @@ fn told(stand_in: &StandIn, credentials: &PathBuf, lines: &str) -> Vec<String> {
         .lines()
         .map(str::to_owned)
         .collect()
+}
+
+/// The program, started over Slack at `origin` with this sign-in.
+fn started(origin: &str, credentials: &PathBuf) -> std::process::Child {
+    Command::new(env!("CARGO_BIN_EXE_slack-people"))
+        .arg(credentials)
+        .arg(origin)
+        .env("XDG_CACHE_HOME", cache(credentials))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
 }
 
 /// The cache home a run with this sign-in's file keeps in.
@@ -293,6 +298,26 @@ fn who_was_found_is_said_at_once_after_a_restart_then_how_they_are() {
         .collect();
     // Nobody is looked up by address again; Ada is only asked how she is.
     assert_eq!(asked, ["GET /api/users.info", "GET /api/users.getPresence"]);
+    forget(&path);
+}
+
+#[test]
+fn who_was_kept_is_said_before_slack_answers() {
+    let first = StandIn::new(slack);
+    let path = credentials("before");
+    told(&first, &path, "ada@example.com\n");
+    // A Slack that takes each request and never answers it.
+    let silent = TcpListener::bind("127.0.0.1:0").unwrap();
+    let mut program = started(&format!("http://{}", silent.local_addr().unwrap()), &path);
+    let mut asking = program.stdin.take().unwrap();
+    writeln!(asking, "ada@example.com").unwrap();
+    let mut said = String::new();
+    BufReader::new(program.stdout.take().unwrap())
+        .read_line(&mut said)
+        .unwrap();
+    program.kill().unwrap();
+    program.wait().unwrap();
+    assert_eq!(said.trim_end(), ADA_UNSAID);
     forget(&path);
 }
 
