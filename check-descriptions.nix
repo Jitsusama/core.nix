@@ -1827,6 +1827,10 @@
     zathura's Left and Right turn the pages, Tab goes back to the place used last and again returns,
     and the question mark key asks the launcher for the keys
   '';
+  zathura-says-the-document-it-has-open = ''
+    zathura says the document it has open, read by its Recent's command as its process and whole
+    path, and nothing once it quits
+  '';
   zathura-says-the-files-it-opens = ''
     zathura says each document it's started with to the desktop's list of files opened lately, then
     runs

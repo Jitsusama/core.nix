@@ -17,7 +17,9 @@
 # selection. zathura remembers where each document was left and opens it
 # there again. Each document it's started with is said to the desktop's
 # list of files opened lately (../open-with/says-what-it-opens.nix), so its
-# Recent in the launcher lists them.
+# Recent in the launcher lists them, led by the document each zathura has
+# open now, which zathura says over its bus and open-now reads, and which
+# Return goes to.
 #
 # Its keys speak the keyboard's language: Left and Right turn the pages and
 # Up and Down scroll, Tab goes back to the place used last (a link followed,
@@ -42,6 +44,7 @@ let
     ;
   rgba = import ../theme/rgba.nix { inherit lib; };
   says = pkgs.callPackage ../open-with/says-what-it-opens.nix { };
+  open-now = lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now";
   plugins = pkgs.zathuraPkgs;
 
   # zathura's jumplist goes back and forward, but only Ctrl+O and Ctrl+I
@@ -162,7 +165,22 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/recents.nix
     ../theme/home.nix
+  ];
+
+  # What each zathura has open now, for its Recent to lead with, read as
+  # it's stepped into; its other files stay the desktop's list of files
+  # opened lately.
+  jitsusama.quickshell.launcher.recents = [
+    {
+      app = "org.pwmt.zathura";
+      kind = "file";
+      opened = [
+        open-now
+        "zathura"
+      ];
+    }
   ];
 
   programs.zathura = {

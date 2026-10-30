@@ -1,7 +1,9 @@
 # recent-files alone, from this directory's crate, for what adds to the
 # desktop's list of files opened lately without the portal or the shell
-# beside it (src/bin/recent-files.rs says how it's used). Its tests are
-# package.nix's, which builds the whole crate.
+# beside it (src/bin/recent-files.rs says how it's used), with open-now,
+# which says what a program has open now for the launcher to read
+# (src/bin/open-now.rs). Their tests are package.nix's, which builds the
+# whole crate.
 {
   lib,
   rustPlatform,
@@ -23,6 +25,8 @@ rustPlatform.buildRustPackage (_finalAttrs: {
   cargoBuildFlags = [
     "--bin"
     "recent-files"
+    "--bin"
+    "open-now"
   ];
   doCheck = false;
 
@@ -30,7 +34,7 @@ rustPlatform.buildRustPackage (_finalAttrs: {
   buildInputs = [ glib ];
 
   meta = {
-    description = "Adds to the desktop's list of files opened lately, and reads it";
+    description = "Adds to the desktop's list of files opened lately and reads it, and says what's open now";
     license = lib.licenses.mit;
     mainProgram = "recent-files";
     platforms = lib.platforms.linux;
