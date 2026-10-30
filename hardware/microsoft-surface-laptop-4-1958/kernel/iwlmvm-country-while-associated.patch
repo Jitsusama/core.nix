@@ -1,0 +1,64 @@
+wifi: iwlwifi: mvm: take a country learned while still on the world domain
+
+Under location-aware regulatory (LAR) the firmware learns its country
+from the access points it hears and reports it in MCC_CHUB_UPDATE_CMD.
+iwl_mvm_rx_chub_update_mcc() drops every such report while an interface
+is associated, so a country can't change under a live connection.
+
+On the Surface Laptop 4 (AMD), whose AX200 takes no country from the
+BIOS, the card associates 2.9 s after cfg80211 loads, before the
+firmware has reported a country. Every report after that is
+dropped, so the phy stays on the world domain (00) for as long as it
+stays connected, which from boot is always. Disconnecting by hand and
+scanning set the access point's country within 2 s, and the card kept
+it after joining again.
+
+Take the report while associated when the current domain is still the
+world one. Leaving the world domain for the country the access point
+itself announces keeps the channel it serves allowed; once the device
+has a country, reports while associated are still ignored as before.
+
+diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/nvm.c b/drivers/net/wireless/intel/iwlwifi/mvm/nvm.c
+--- a/drivers/net/wireless/intel/iwlwifi/mvm/nvm.c
++++ b/drivers/net/wireless/intel/iwlwifi/mvm/nvm.c
+@@ -617,6 +617,23 @@
+ 	return retval;
+ }
+ 
++/*
++ * Whether the device still runs on the world regulatory domain, having never
++ * learned a country.
++ */
++static bool iwl_mvm_regdom_is_world(struct iwl_mvm *mvm)
++{
++	const struct ieee80211_regdomain *regd;
++	bool world;
++
++	rcu_read_lock();
++	regd = rcu_dereference(mvm->hw->wiphy->regd);
++	world = !regd || (regd->alpha2[0] == '0' && regd->alpha2[1] == '0');
++	rcu_read_unlock();
++
++	return world;
++}
++
+ void iwl_mvm_rx_chub_update_mcc(struct iwl_mvm *mvm,
+ 				struct iwl_rx_cmd_buffer *rxb)
+ {
+@@ -630,7 +647,15 @@
+ 
+ 	lockdep_assert_held(&mvm->mutex);
+ 
+-	if (iwl_mvm_is_vif_assoc(mvm) && notif->source_id == MCC_SOURCE_WIFI) {
++	/*
++	 * A country learned while associated is applied only when it replaces
++	 * the world domain. A device that associates before its first scan
++	 * reports a country would otherwise stay on the world domain for as
++	 * long as it stays connected, and the access point's own country
++	 * allows the channel it serves.
++	 */
++	if (iwl_mvm_is_vif_assoc(mvm) && notif->source_id == MCC_SOURCE_WIFI &&
++	    !iwl_mvm_regdom_is_world(mvm)) {
+ 		IWL_DEBUG_LAR(mvm, "Ignore mcc update while associated\n");
+ 		return;
+ 	}

@@ -11,7 +11,9 @@
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ./clock/clock.nix
     ./sound/microphones.nix
+    ./touch/touchscreen.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
@@ -30,6 +32,10 @@
     # The controller's sensors and fan, which the kernel patch below names.
     "The temperature sensors" = "/sys/bus/surface_aggregator/devices/01:03:01:00:02";
     "The fan" = "/sys/bus/surface_aggregator/devices/01:05:01:01:01";
+    # The device surface-clock sets the controller's clock through.
+    "The controller's clock" = "/sys/class/misc/surface_aggregator";
+    # The panel, which the touchscreen's driver finds once it loads.
+    "The touchscreen" = "/sys/bus/spi/devices/spi-MSHW0231:00";
   };
 
   # The keyboard reaches the system through the Surface Aggregator, as
@@ -92,9 +98,11 @@
   # keeps in step while NTP answers. docs/hardware.md has what was seen.
   boot.blacklistedKernelModules = [ "acpi_tad" ];
 
-  # The firmware sets the CMOS clock back to a day in 2025 at every
-  # restart, warm or cold, whatever the kernel wrote to it, and the kernel
-  # sets the system's time from rtc0 when it registers. Loaded late by udev,
+  # The firmware sets the CMOS clock from the controller's own clock at every
+  # restart, warm or cold, whatever the kernel wrote to it, and the controller's
+  # clock, which nothing set, read a day in 2025; clock/clock.nix keeps it at
+  # the true time. The kernel sets the system's time from rtc0 when it
+  # registers. Loaded late by udev,
   # it set each boot back to 2025 after systemd had moved the time forward
   # to its last saved one. Loaded in the initrd, it sets the time before systemd's
   # own advance, so the time only moves forward from there.
@@ -145,6 +153,13 @@
     {
       name = "amd-pstate-fixed-autonomous-selection";
       patch = ./kernel/amd-pstate-fixed-autonomous-selection.patch;
+    }
+    # The AX200 joined Wi-Fi at boot before it had heard a country, and the
+    # driver ignored the one it heard while connected, so it stayed on the
+    # world domain.
+    {
+      name = "iwlmvm-country-while-associated";
+      patch = ./kernel/iwlmvm-country-while-associated.patch;
     }
   ];
 }

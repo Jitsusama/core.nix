@@ -4,11 +4,62 @@
   bareNixos,
   holds,
   lib,
+  passesClippy,
   pkgs,
   self,
   ...
 }:
 {
+  # clippy finds nothing in surface-clock, its tests included.
+  surface-clock-passes-clippy = passesClippy "surface-clock-passes-clippy" (
+    pkgs.callPackage ./clock/package.nix { }
+  );
+
+  # The controller's clock is read for the firmware's offset before timesyncd
+  # can have the kernel write the CMOS clock, through the device its module
+  # gives, and set at shutdown and every hour.
+  the-surface-keeps-the-clock-its-firmware-starts-from =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      inherit (surface.config) boot systemd;
+      clock = systemd.services.surface-clock;
+    in
+    holds "the-surface-keeps-the-clock-its-firmware-starts-from"
+      "The Surface Laptop 4 reads its controller's clock after timesyncd may have written the CMOS clock, lacks the controller's device, or doesn't set the controller's clock at shutdown and hourly."
+      (
+        lib.elem "surface_aggregator_cdev" boot.kernelModules
+        && lib.elem "systemd-timesyncd.service" clock.before
+        && lib.elem "dev-surface-aggregator.device" clock.after
+        && lib.hasSuffix "calibrate" clock.serviceConfig.ExecStart
+        && lib.hasSuffix "keep" clock.serviceConfig.ExecStop
+        && systemd.timers.surface-clock-keep.timerConfig.OnUnitActiveSec == "1h"
+      );
+
+  # The touchscreen's driver is installed with the panel's qualified settings,
+  # and loaded by a unit once the system is up, never while it starts.
+  the-surface-loads-its-touchscreen-once-up =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      inherit (surface.config) boot systemd;
+      touchscreen = systemd.services.surface-touchscreen;
+    in
+    holds "the-surface-loads-its-touchscreen-once-up"
+      "The Surface Laptop 4 lacks its touchscreen's driver or its panel's settings, or loads the driver before the system is up."
+      (
+        lib.any (package: lib.hasPrefix "sl4a-touchscreen-" package.name) boot.extraModulePackages
+        && lib.hasInfix "options sl4a_spi_hid raw_mode=N" boot.extraModprobeConfig
+        && !(lib.elem "sl4a_spi_amd" boot.kernelModules)
+        && !(lib.elem "sl4a_spi_hid" boot.kernelModules)
+        && lib.elem "multi-user.target" touchscreen.after
+        && lib.hasSuffix "sl4a_spi_amd sl4a_spi_hid" touchscreen.serviceConfig.ExecStart
+      );
+
   # The Surface Laptop 4's keyboard is behind Surface's embedded controller,
   # so its disk can be unlocked from it only when the initrd has every driver
   # on the way there, and keyd gives that keyboard Colemak there too.
