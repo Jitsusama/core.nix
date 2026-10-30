@@ -96,7 +96,9 @@ driven on; the installed machine's steps come later.
   the stick in with the machine off, and clearing its keys first only
   when the stick carries none, switched off as the firmware's setup is
   left, so a system already on its disk never starts and puts its keys
-  back.
+  back. A stick written on the machine it's for, as its `/etc/hostname`
+  names it, is kept for when that machine needs it: the card says to
+  keep it away until then, rather than to start from it now.
 - **The install.** On the stick, as root, from what the vault holds for the
   machine (`payload.nix`): its target, its disk's layout and its system as
   a binary cache. Before the disk is touched, the firmware is checked to

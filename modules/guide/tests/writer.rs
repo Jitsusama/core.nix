@@ -277,7 +277,9 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
         &directory,
         r#"{"machine":"laptop","disk":"/dev/x","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":["the Nano"],"recipients":["age1fido2-hmac1x"],"start_from_stick":"Hold volume-down, press and release power.","clear_secure_boot_keys":"Hold volume-up; set Secure Boot to None."}"#,
     );
-    let said = surface.next();
+    // Written on another machine, or one with no name.
+    assert_eq!(surface.next(Some("desktop")), surface.next(None));
+    let said = surface.next(None);
     // Carrying no keys, the firmware is cleared first, then started.
     let clear = said.find("Hold volume-up").expect("how to clear the keys");
     let start = said
@@ -316,9 +318,22 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
     assert!(other.with_secure_boot_keys("desktop", keys()).is_err());
     let carrying = surface.with_secure_boot_keys("laptop", keys()).unwrap();
     assert!(
-        !carrying.next().contains("Hold volume-up"),
+        !carrying.next(None).contains("Hold volume-up"),
         "{}",
-        carrying.next()
+        carrying.next(None)
+    );
+
+    // Written on the machine it's for, it's kept for when that machine
+    // needs it, never started from at once, though it still says how.
+    let own = carrying.next(Some("laptop\n"));
+    assert!(
+        own.starts_with("Keep this stick away from laptop until you need it. When laptop won't start, or needs installing again, switch it off and plug the stick in."),
+        "{own}"
+    );
+    assert!(!own.contains("Take the stick to"), "{own}");
+    assert!(
+        own.contains("Then start it from the stick: Hold volume-down"),
+        "{own}"
     );
 }
 

@@ -467,8 +467,13 @@ fn writer(
         &mut terminal,
     )?);
 
+    // Named as an installed machine names itself; a Mac has no
+    // /etc/hostname, and isn't a machine a stick is written for.
+    let here = machine
+        .read("/etc/hostname")?
+        .map(|name| String::from_utf8_lossy(&name).into_owned());
     let next = match &payload {
-        Some(payload) => payload.next(),
+        Some(payload) => payload.next(here.as_deref()),
         None => "Start the machine to repair from the stick.".into(),
     };
     // Only a writer that gathered bundles carries them, and then writes over
