@@ -1320,7 +1320,7 @@ def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     machine.wait_until_succeeds(
         'test "$(systemctl show -P ConditionResult guide-installed)" = yes'
         ' && test "$(systemctl show -P ActiveState guide-installed)" = inactive',
-        timeout=300,
+        timeout=STEP,
     )
     assert machine.succeed("systemctl show -P Result guide-installed").strip() == "success"
     assert "Finish machine" not in screen(machine), screen(machine)
