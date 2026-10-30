@@ -184,7 +184,8 @@ driven on; the installed machine's steps come later.
   until the desktop draws over it, so the guide quits it (`plymouth quit`,
   once `plymouth --ping` answers) only when it has something to show.
   While it runs, systemd holds its lines about the units still
-  starting, which would otherwise land across the guide wherever the console is the screen, as on a laptop.
+  starting, which would otherwise land across the guide wherever the
+  console is the screen, as on a laptop.
   NixOS's test driver turns those lines off, so the install test turns
   them back on, as a laptop has them. Its last card signs in rather
   than restarting, since a boot it holds back hasn't counted as good and
