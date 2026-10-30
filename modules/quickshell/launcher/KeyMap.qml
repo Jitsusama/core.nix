@@ -184,10 +184,14 @@ Provider {
     property var leads: ["desktop"]
 
     // Read once as Shortcuts opens, from what niri last said, since the
-    // window under the launcher can't change while it holds the keys.
+    // window under the launcher can't change while it holds the keys. Kept
+    // as it was when it names the same layers, so opening over the same
+    // kind of window again rebuilds none of them.
     function opened() {
         const under = provider.launcher?.cameFrom() ?? null;
-        leads = KeyGroups.over(under?.app_id ?? "", under?.title ?? "");
+        const now = KeyGroups.over(under?.app_id ?? "", under?.title ?? "");
+        if (now.length !== leads.length || now.some((name, at) => name !== leads[at]))
+            leads = now;
     }
 
     // The layers in the order the window opened over puts them, the first
@@ -231,12 +235,27 @@ Provider {
         return ranked.length > 0 && ranked[0].name !== "desktop" ? ranked[0].row : null;
     }
 
-    readonly property var all: ranked.reduce((rows, layer) => rows.concat(layer.chords), [])
+    // Built once with push, since a reduce that concatenates copies the
+    // list at every layer.
+    readonly property var all: {
+        const rows = [];
+        for (const layer of ranked)
+            for (const chord of layer.chords)
+                rows.push(chord);
+        return rows;
+    }
 
     // Every level, found by its name from the top, a group saying what
     // holds it beside it, since the terminal and Neovim both have tabs.
-    readonly property var levels: ranked.reduce((rows, layer) => rows.concat([layer.row],
-        layer.deeper), [])
+    readonly property var levels: {
+        const rows = [];
+        for (const layer of ranked) {
+            rows.push(layer.row);
+            for (const deeper of layer.deeper)
+                rows.push(deeper);
+        }
+        return rows;
+    }
 
     function search(typed) {
         return found(typed, levels, all);
