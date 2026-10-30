@@ -1780,8 +1780,10 @@ def test_the_first_search_after_the_shell_starts_finds_details_made_already(
     # Every switch restarts the shell, and its first search of three letters
     # made every detail inside things there and then, that opening's slowest
     # key; a few seconds after it starts, they're made while it's closed.
-    since = desktop.mark()
+    # The mark comes after the restart, since the shell being stopped makes
+    # them too, half a second after the last subtest closed it.
     desktop.as_account("systemctl --user restart quickshell")
+    since = desktop.mark()
     desktop.reported(
         "spots made while closed", lambda rest: rest == "", since, dt.timedelta(seconds=60)
     )
