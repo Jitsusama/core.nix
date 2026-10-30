@@ -29,6 +29,10 @@ FOLLOWING = timedelta(seconds=10)
 LOOKING = timedelta(seconds=4)
 # How long the holders are given to see an open they'd name, which they look at as it happens.
 NOTICING = timedelta(seconds=1)
+# How long udev may take to finish with a new loopback. It's done at once on a quiet host, but
+# on a busy builder the machine took 195 s to boot, its udev far behind, and 10 s ran out. The
+# wait ends as soon as udev is done, so a long bound costs nothing when it's quick.
+SETTLING = timedelta(minutes=2)
 
 
 class Camera:
@@ -48,7 +52,7 @@ class Camera:
     def device(self) -> str:
         """Give the loopback the stand-in's service made, once udev has it."""
         device = self.machine.succeed(f"cat {DEVICE}").strip()
-        self.machine.succeed(f"udevadm wait --timeout 10 {device}")
+        self.machine.succeed(f"udevadm wait --timeout {SETTLING.seconds} {device}")
         return device
 
     def holders(self) -> list[str]:
@@ -215,7 +219,7 @@ def test_another_cameras_loopback_isnt_taken_for_it(
 ) -> None:
     """Another camera's loopback isn't taken for it, even pointed at, since its name differs."""
     other = camera.machine.succeed("v4l2loopback-ctl add -n 'Other'").strip()
-    camera.machine.succeed(f"udevadm wait --timeout 10 {other}")
+    camera.machine.succeed(f"udevadm wait --timeout {SETTLING.seconds} {other}")
     pointed(other)
     hold("elsewhere", camera.holding(camera.sleep, other))
     camera.machine.sleep(duration=LOOKING)
