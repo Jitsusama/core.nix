@@ -106,9 +106,16 @@ in
 
   nix.settings.auto-allocate-uids = true;
   nix.settings.use-cgroups = true;
+  # Every machine here is built from a flake and rebuilds from one, and core's
+  # own programs, `nix-offload there` and changed-checks among them, build
+  # flakes by their attributes. Stock Nix still calls both commands and
+  # flakes experimental, so a machine whose own config didn't add them
+  # refused every `nix build github:...` sent to it.
   nix.settings.experimental-features = [
     "auto-allocate-uids"
     "cgroups"
+    "flakes"
+    "nix-command"
   ];
   nix.settings.extra-system-features = [ "uid-range" ];
 
