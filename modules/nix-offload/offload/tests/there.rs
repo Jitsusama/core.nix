@@ -417,7 +417,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert_eq!(
         fs::read_to_string(bin.join("nix-was-given")).unwrap(),
         format!(
-            "copy --to ssh-ng://mac /nix/store/abc-mint\n\
+            "copy --no-check-sigs --to ssh-ng://mac /nix/store/abc-mint\n\
              build --no-link -L {flake}#checks.x86_64-linux.b\n"
         ),
         "the pinned input goes to it, and the rest builds here"
@@ -431,6 +431,70 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert_eq!(lines[0]["sent"], 2 * 3812);
     assert_eq!(lines[0]["attributes"][0], "checks.aarch64-darwin.a");
     assert!(lines[1]["on"].is_null());
+}
+
+#[test]
+fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
+    // A working tree's zone held 509 MB, almost all one ignored target.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        let path = bin.join(name);
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    let config = folder.path().join("gitconfig");
+    fs::write(&config, "[user]\n  name = t\n  email = t@t\n").unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir_all(tree.join("target/debug")).unwrap();
+    git(&tree, &config, &["init", "-q"]);
+    fs::write(tree.join(".gitignore"), "/target\n").unwrap();
+    fs::write(tree.join("flake.nix"), "{ }").unwrap();
+    git(&tree, &config, &["add", "."]);
+    git(&tree, &config, &["commit", "-qm", "one"]);
+    fs::write(tree.join("new.nix"), "{ }").unwrap();
+    fs::write(tree.join("target/debug/big"), "built").unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let nearby = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&nearby).unwrap();
+    fs::write(
+        nearby.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args([
+            "there",
+            &format!("path:{}", tree.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let listed = Command::new("tar")
+        .arg("-tzf")
+        .arg(bin.join("received"))
+        .output()
+        .unwrap();
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    for kept in ["flake.nix", "new.nix", ".gitignore"] {
+        assert!(listed.contains(kept), "{listed}");
+    }
+    assert!(!listed.contains("target"), "{listed}");
+    assert!(!listed.contains(".git/"), "{listed}");
 }
 
 /// git in `tree`, with a config of the test's own, giving its answer.
