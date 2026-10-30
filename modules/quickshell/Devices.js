@@ -54,7 +54,9 @@ function standings(devices, before, marks) {
 // The devices running low, as things of a piece (pieces/Piece.qml's
 // `each`), each signed by its own name and drawn by its own kind's glyph, so
 // it reads as that device and never as the laptop's battery. It wants Joel
-// to charge it, and at the critical mark wants him now.
+// to charge it, and at the critical mark wants him now. In Now it's the
+// device's own row in Bluetooth, its key the thing's mark, so one device is
+// drawn one way wherever it's listed (VKCF3Z, 2026-10-29).
 function low(devices, standing) {
     return devices.filter(device => (standing[device.address] ?? "") !== "")
         .map(device => {
@@ -69,6 +71,7 @@ function low(devices, standing) {
                 title: device.name,
                 app: device.name,
                 markGlyph: kind(device.icon),
+                place: "bluetooth",
                 value: `${charge(device)}%`,
                 hint: `${charge(device)}% left`,
                 context: critical ? "charge it now" : "charge it soon",

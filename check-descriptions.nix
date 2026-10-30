@@ -137,8 +137,8 @@
     sparks of the reads bluetooth-links would write, its channels, connection, an input device's
     facts held by how it's carried, whether it reconnects by itself and wakes the machine as
     settings whose choices set them, and its address to copy; lists the adapter's radio,
-    visibility and pairing as settings, its traffic as a spark and what it is; and answers how the
-    links are doing
+    visibility and pairing as settings, its traffic as a spark and what it is; answers how the
+    links are doing; and says a device running low at its row's side
   '';
   bluetooth-seal-keeps-only-what-a-keyboard-needs = ''
     the Bluetooth seal puts a paired keyboard's keys and service records on the ESP only sealed to

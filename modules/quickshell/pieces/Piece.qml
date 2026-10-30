@@ -123,6 +123,11 @@ Item {
             telling: "",
             collected: false,
             markGlyph: "",
+            // The launcher's place that lists it as a row of its own, by the
+            // place's name, its row's key the thing's mark, so Now draws it
+            // as that row rather than a second way (launcher/WhatsOn.qml's
+            // own); "" for one that's only a fact.
+            place: "",
             hue: "machine",
             actions: [],
             rows: null

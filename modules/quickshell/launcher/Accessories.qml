@@ -129,14 +129,20 @@ Provider {
         // doesn't: the battery, or that the device is new.
         const told = joined || device.paired ? "" : "new";
         const charge = Math.round(device.battery * 100);
-        const note = device.batteryAvailable ? `${charge}% battery` : told;
+        const stood = joined ? "connected" : device.paired ? "paired" : "";
+        // One running low says so at its side, where it warns, and its note
+        // says what the side would. Running low is the devices piece's own
+        // word on it, so this row and Now, which lists it as this row,
+        // never disagree while its charge wavers about the mark.
+        const warns = provider.runningLow.includes(`bluetooth:${device.address}`);
+        const note = warns ? stood : device.batteryAvailable ? `${charge}% battery` : told;
         return member({
             key: `bluetooth:${device.address}`,
             verb: joined ? "disconnect" : device.paired ? "connect" : "pair",
             name: device.name,
             glyph: kind(device),
             hue: "machine",
-            side: joined ? "connected" : device.paired ? "paired" : "",
+            side: warns ? `${charge}%, running low` : stood,
             note: note,
             device: device,
             state: () => provider.said(device, note),
@@ -292,6 +298,11 @@ Provider {
             run: run
         });
     }
+
+    // The marks of the devices running low (pieces/Devices.qml).
+    readonly property var runningLow: Facts.all
+        .filter(fact => fact.piece?.place === "bluetooth")
+        .map(fact => fact.entry.mark)
 
     // A battery at this share or below warns.
     readonly property real low: 0.2

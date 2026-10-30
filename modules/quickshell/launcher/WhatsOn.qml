@@ -55,7 +55,7 @@ Provider {
         const rows = lit.map(fact => ({
             group: fact.piece.group,
             name: fact.piece.title,
-            row: made(fact)
+            row: own(fact) ?? made(fact)
         }));
         // The sessions the last boot's end took away, Agents' own row,
         // among what else wants Joel while any are left to reopen (VKCF3Z's
@@ -419,6 +419,15 @@ Provider {
     // The launcher, as a piece's actions are given it, so one that opens a
     // collection opens it here.
     readonly property var shell: ({ launcher: provider.launcher })
+
+    // A thing a place of the launcher's own lists, such as a Bluetooth
+    // device running low, is that place's own row, by its mark: drawn and
+    // stepped into as it is there, never a second way (VKCF3Z, 2026-10-29).
+    // Null for any other, or while the place doesn't list it.
+    function own(fact) {
+        const place = fact.piece.place ? source(fact.piece.place) : null;
+        return place?.all.find(row => row.key === fact.entry.mark) ?? null;
+    }
 
     function made(fact) {
         const piece = fact.piece;

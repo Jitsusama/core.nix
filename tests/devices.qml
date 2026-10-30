@@ -64,6 +64,8 @@ QtObject {
         check("and says its charge and what to do",
             [low.value, low.hint, low.context], ["18%", "18% left", "charge it soon"]);
         check("critical, it says to charge it now", critical.context, "charge it now");
+        check("in Now it's its own row in Bluetooth", [low.place, critical.place],
+            ["bluetooth", "bluetooth"]);
 
         check("its mark is its own kind's glyph",
             Devices.low([device("aa", 0.1, { icon: "input-keyboard" })], { aa: "critical" })
