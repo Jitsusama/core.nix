@@ -1,9 +1,10 @@
 """The machine's administrators tune the kernel's memory with no password, and no more.
 
 tests/memory-tune.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py).
-An account in wheel sets the watermarks' spacing, transparent huge pages and the multi-gen
-LRU to a listed value, as an agent measuring them under load would, outside any session. An
-account outside wheel can't, and an administrator can't set a value the rules don't list.
+An account in wheel sets the watermarks' spacing, transparent huge pages, the multi-gen LRU
+and swappiness to a listed value, as an agent measuring them under load would, outside any
+session. An account outside wheel can't, and an administrator can't set a value the rules
+don't list.
 Each test puts what it changed back as it ends, so any runs alone.
 """
 
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 SCALE = "/proc/sys/vm/watermark_scale_factor"
 HUGEPAGES = "/sys/kernel/mm/transparent_hugepage/enabled"
 LRU_GEN = "/sys/kernel/mm/lru_gen/enabled"
+SWAPPINESS = "/proc/sys/vm/swappiness"
 
 
 def start(machine: BaseMachine, account: str, unit: str) -> tuple[int, str]:
@@ -45,7 +47,9 @@ def reverted(machine: BaseMachine) -> Iterator[BaseMachine]:
     scale = read(machine, SCALE)
     hugepages = chosen(read(machine, HUGEPAGES))
     lru_gen = read(machine, LRU_GEN)
+    swappiness = read(machine, SWAPPINESS)
     yield machine
+    machine.succeed(f"sysctl -w vm.swappiness={swappiness}")
     machine.succeed(f"sysctl -w vm.watermark_scale_factor={scale}")
     machine.succeed(f"echo {hugepages} > {HUGEPAGES}")
     machine.succeed(f"echo {lru_gen} > {LRU_GEN}")
@@ -71,6 +75,12 @@ def test_an_administrator_turns_the_multi_gen_lru_off_without_a_password(
     status, said = start(reverted, "someone", "memory-lru-gen@n")
     assert status == 0, said
     assert read(reverted, LRU_GEN) == "0x0000"
+
+
+def test_an_administrator_sets_swappiness_without_a_password(reverted: BaseMachine) -> None:
+    status, said = start(reverted, "someone", "memory-swappiness@60")
+    assert status == 0, said
+    assert read(reverted, SWAPPINESS) == "60"
 
 
 def test_an_account_outside_wheel_is_refused(reverted: BaseMachine) -> None:

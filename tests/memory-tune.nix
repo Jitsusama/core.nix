@@ -1,4 +1,4 @@
-# The machine's administrators set three of the kernel's memory settings to
+# The machine's administrators set four of the kernel's memory settings to
 # listed values with no password, and nothing else (modules/memory). The
 # tests are memory-tune-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).

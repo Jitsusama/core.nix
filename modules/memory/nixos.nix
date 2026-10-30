@@ -16,6 +16,7 @@ let
   };
   write = file: "${pkgs.bash}/bin/bash -c 'echo %i > ${file}'";
   space = "${pkgs.procps}/bin/sysctl -w vm.watermark_scale_factor=%i";
+  swappiness = "${pkgs.procps}/bin/sysctl -w vm.swappiness=%i";
   hugepages = "/sys/kernel/mm/transparent_hugepage/enabled";
   lruGen = "/sys/kernel/mm/lru_gen/enabled";
 in
@@ -108,14 +109,16 @@ in
   ];
 
   # The machine's administrators, agents included since they work as Joel's
-  # account, may change three of the kernel's memory settings for as long as
+  # account, may change four of the kernel's memory settings for as long as
   # the machine runs without a password (memory-tune.rules), so an A/B of
   # them under load waits for no one. On 30 October kswapd gave up on the
   # whole machine under builds, and the settings that might have caused it,
   # the watermarks' spacing, transparent huge pages and the multi-gen LRU,
-  # could each be tried only by a switch. Each unit writes its instance and
-  # only a value the rules list: `systemctl start memory-watermarks@100`,
-  # `memory-hugepages@madvise` or `memory-lru-gen@n`. The most one can do is
+  # could each be tried only by a switch; so could swappiness, once every
+  # kill that day came with half of memory in clean cache. Each unit writes
+  # its instance and only a value the rules list:
+  # `systemctl start memory-watermarks@100`, `memory-hugepages@madvise`,
+  # `memory-lru-gen@n` or `memory-swappiness@60`. The most one can do is
   # make reclaim worse until it's put back, never reach another setting. A
   # switch that changes the sysctls writes them back; otherwise start the
   # unit again with the value this file sets. At boot huge pages return to
@@ -125,6 +128,7 @@ in
   systemd.services."memory-watermarks@" = tune "watermark spacing" space;
   systemd.services."memory-hugepages@" = tune "transparent huge pages" (write hugepages);
   systemd.services."memory-lru-gen@" = tune "multi-gen LRU" (write lruGen);
+  systemd.services."memory-swappiness@" = tune "swappiness" swappiness;
 
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.
