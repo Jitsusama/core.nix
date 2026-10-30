@@ -1157,6 +1157,8 @@ onLinux {
         property int watching: 0
         property var reading: null
         property var kept: null
+        property bool refused: false
+        property bool missing: false
       ''} ProcessorTelemetry.qml
       cp ${../../tests/machine.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

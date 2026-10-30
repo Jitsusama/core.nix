@@ -37,6 +37,17 @@ Singleton {
     property var kept: null
     readonly property int remembered: 10
 
+    // Whether the reader has failed to answer since it was last heard:
+    // refused, gone, or saying it has no telemetry. A row already shown
+    // stays where it is, dimmed, rather than leaving and moving the rows
+    // under it. It's cleared once nothing watches.
+    property bool refused: false
+    // Whether it has refused without ever being heard, for as long as the
+    // shell runs: a machine with no reader. A place made then leaves out
+    // what only it would say, rather than showing it dimmed for good.
+    property bool missing: false
+    property bool heardOnce: false
+
     readonly property string path: "/run/processor-telemetry/io.jitsusama.ProcessorTelemetry"
 
     // Whether a connection may be made now: false for a moment after one
@@ -47,6 +58,16 @@ Singleton {
         reading = null;
         rested = [];
         kept = null;
+    }
+
+    // The reader didn't answer: it refused, went, or has no telemetry. A
+    // connection closed because nothing watches any more says nothing.
+    function unanswered() {
+        if (watching === 0)
+            return;
+        refused = true;
+        if (!heardOnce)
+            missing = true;
     }
 
     // One reply from the reader. A line that isn't JSON is passed over, so
@@ -60,6 +81,13 @@ Singleton {
             return;
         }
         reading = reply.error ? null : reply.parameters ?? null;
+        if (reading === null) {
+            unanswered();
+            return;
+        }
+        refused = false;
+        missing = false;
+        heardOnce = true;
         const resting = reading?.keptFromResting ?? null;
         if (resting !== null) {
             rested = rested.concat([resting]).slice(-remembered);
@@ -68,8 +96,10 @@ Singleton {
     }
 
     onWatchingChanged: {
-        if (watching === 0)
+        if (watching === 0) {
             dropped();
+            refused = false;
+        }
     }
 
     // A fresh connection each time, as Copies.qml makes its own: a socket
@@ -93,10 +123,14 @@ Singleton {
                     flush();
                 } else {
                     root.dropped();
+                    root.unanswered();
                     again.restart();
                 }
             }
-            onError: again.restart()
+            onError: {
+                root.unanswered();
+                again.restart();
+            }
             parser: SplitParser {
                 splitMarker: "\u0000"
                 onRead: data => root.heard(data)

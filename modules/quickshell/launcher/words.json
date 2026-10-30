@@ -65,6 +65,7 @@
       "stands": "power",
       "holds": [
         "power",
+        "machine:cpu:kept-from-resting",
         "session:profile",
         "session:awake",
         "session:Suspend",
@@ -72,7 +73,13 @@
         "session:Log Out",
         "session:Reboot",
         "session:Power Off"
-      ]
+      ],
+      "while": {
+        "machine:cpu:kept-from-resting": "on battery"
+      },
+      "said": {
+        "on battery": "on the charger"
+      }
     },
     {
       "id": "network",
@@ -572,7 +579,12 @@
     {
       "id": "machine:cpu:kept-from-resting",
       "in": "machine:cpu",
-      "name": "Kept From Resting"
+      "name": "Kept From Resting",
+      "provider": "machine",
+      "question": "kept from resting",
+      "answers": [
+        "kept from resting"
+      ]
     },
     {
       "id": "machine:cpu:kept-by-npu",

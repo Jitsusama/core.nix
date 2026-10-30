@@ -1854,46 +1854,76 @@ def test_a_step_finds_its_rows_by_their_hidden_words_and_its_parts_move_in_place
 # the rows below it never move down when it comes, or when it doesn't.
 
 
-def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
-    desktop: Desktop,
-) -> None:
-    """The processor's telemetry shows its own parts in Heat, what held it back and kept it up."""
-    machine = desktop.machine
-    held = "/run/processor-telemetry"
-    socket = f"{held}/io.jitsusama.ProcessorTelemetry"
-    own = ["NPU", "Image Processor", "Media Engine", "Display Engine"]
-    # The reader's reading, as it gives one on the laptop, a part Heat
-    # doesn't list among them; a stand-in says it each second, as it does.
-    reading = {
-        "temperatures": [
-            {"part": "npu", "celsius": 62},
-            {"part": "imageProcessor", "celsius": 63},
-            {"part": "media", "celsius": 59},
-            {"part": "display", "celsius": 60},
-            {"part": "systemAgent", "celsius": 65},
-        ],
-        "heldBack": [{"by": "pl1", "share": 1.0}],
-        "clusters": [
-            {"cpus": "0", "heldBack": [{"by": "power", "share": 0.98}]},
-            {"cpus": "1", "heldBack": []},
-        ],
-        "npu": [],
-        "keptFromResting": {"kept": 0.12, "by": [{"by": "display", "share": 0.12}]},
-    }
-    # Heat is looked at before the reader is there, so its connection is
-    # refused first, as when the reader's socket is missing on a machine.
-    desktop.answer("heat")
-    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
-    desktop.step_in()
-    machine.succeed(f"install -d -o 1000 {held}")
-    told = json.dumps({"parameters": reading})
-    desktop.as_account(f"printf '%s\\0' '{told}' > /tmp/telemetry-said")
+# The processor telemetry reader's reading, as it gives one on the laptop,
+# with a part Heat doesn't list among them; a stand-in says it each second,
+# as the reader does.
+TELEMETRY_READING: Json = {
+    "temperatures": [
+        {"part": "npu", "celsius": 62},
+        {"part": "imageProcessor", "celsius": 63},
+        {"part": "media", "celsius": 59},
+        {"part": "display", "celsius": 60},
+        {"part": "systemAgent", "celsius": 65},
+    ],
+    "heldBack": [{"by": "pl1", "share": 1.0}],
+    "clusters": [
+        {"cpus": "0", "heldBack": [{"by": "power", "share": 0.98}]},
+        {"cpus": "1", "heldBack": []},
+    ],
+    "npu": [],
+    "keptFromResting": {"kept": 0.12, "by": [{"by": "display", "share": 0.12}]},
+}
+TELEMETRY_HELD = "/run/processor-telemetry"
+
+
+def stand_in_for_the_telemetry(desktop: Desktop) -> None:
+    """Serve the reader's reading on its socket, each second, as the reader does."""
+    socket = f"{TELEMETRY_HELD}/io.jitsusama.ProcessorTelemetry"
+    desktop.machine.succeed(f"install -d -o 1000 {TELEMETRY_HELD}")
+    the_telemetry_says(desktop, TELEMETRY_READING)
     desktop.as_account(
         "systemd-run --user --collect --quiet --unit=telemetry-stand-in -- "
         f"systemd-socket-activate --inetd --accept --listen={socket} "
         "sh -c 'while cat /tmp/telemetry-said; do sleep 1; done'"
     )
-    machine.wait_until_succeeds(f"test -S {socket}", timeout=dt.timedelta(seconds=10))
+    desktop.machine.wait_until_succeeds(f"test -S {socket}", timeout=dt.timedelta(seconds=10))
+
+
+def the_telemetry_says(desktop: Desktop, reading: Json) -> None:
+    """Have the reader's stand-in serve this reading from its next second on."""
+    told = json.dumps({"parameters": reading})
+    desktop.as_account(
+        f"printf '%s\\0' '{told}' > /tmp/telemetry-said.new"
+        " && mv /tmp/telemetry-said.new /tmp/telemetry-said"
+    )
+
+
+def the_telemetry_is_let_go(desktop: Desktop) -> None:
+    """Wait until nothing watches the reader, then take its stand-in away."""
+    # With the launcher shut nothing watches, so the reader is let go: the
+    # stand-in's one shell for the connection ends, leaving it listening alone.
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(
+            'test "$(systemctl --user show -P TasksCurrent telemetry-stand-in)" = 1'
+        ),
+        timeout=dt.timedelta(seconds=10),
+    )
+    desktop.as_account("systemctl --user stop telemetry-stand-in")
+    desktop.machine.succeed(f"rm -rf {TELEMETRY_HELD}")
+
+
+def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
+    desktop: Desktop,
+) -> None:
+    """The processor's telemetry shows its own parts in Heat, what held it back and kept it up."""
+    machine = desktop.machine
+    own = ["NPU", "Image Processor", "Media Engine", "Display Engine"]
+    # Heat is looked at before the reader is there, so its connection is
+    # refused first, as when the reader's socket is missing on a machine.
+    desktop.answer("heat")
+    desktop.launcher_until(lambda shown: shown["kind"] == "answer")
+    desktop.step_in()
+    stand_in_for_the_telemetry(desktop)
     # Listed once the first reading comes, stepped in already, in order:
     # the refused connection is made afresh while Heat is still shown.
     desktop.launcher_until(
@@ -1945,16 +1975,93 @@ def test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back(
     desktop.launcher_until(lambda shown: shown["rows"] == ["Display Engine", "Copy"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
-    # With the launcher shut nothing watches, so the reader is let go: the
-    # stand-in's one shell for the connection ends, leaving it listening alone.
-    machine.wait_until_succeeds(
-        desktop.in_session(
-            'test "$(systemctl --user show -P TasksCurrent telemetry-stand-in)" = 1'
-        ),
-        timeout=dt.timedelta(seconds=10),
+    the_telemetry_is_let_go(desktop)
+
+
+def open_power(desktop: Desktop) -> None:
+    """Open Power where it lives, in Machine, found by its name from the top.
+
+    Its word and a space don't step into it, since "power off" goes on from them.
+    """
+    desktop.answer("power")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
+    desktop.step_in("ret")
+
+
+def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Desktop) -> None:
+    """Power says what kept the processor from resting while on battery, and not on mains."""
+    machine = desktop.machine
+    stand_in_for_the_telemetry(desktop)
+    # On battery, Power holds it too, right after Battery, where Joel looks
+    # when the battery drains; nothing else shown asks for the reading, so
+    # Power's holding it is what has it read. It's held whole, with no
+    # parts, until that reading comes: were it dropped then, it would come
+    # later at the end, after the commands, not second. On mains it isn't
+    # there.
+    desktop.power("off")
+    try:
+        open_power(desktop)
+        desktop.launcher_until(
+            lambda shown: (
+                shown["path"] == ["Machine", "Power"]
+                and shown["rows"][:2] == ["Battery", "Kept From Resting"]
+            )
+        )
+        desktop.down_to("Kept From Resting")
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "12%")
+        desktop.photograph("launcher-kept-from-resting-on-battery")
+        # The charger going in while it's shown doesn't move it: it stays
+        # where it was, dimmed, saying why, until Power is opened again.
+        desktop.power("on")
+
+        def kept_from_resting(shown: Json) -> Json:
+            return next(
+                (
+                    thing
+                    for thing in shown["things"]
+                    if str(thing["reads"]).startswith("Kept From Resting")
+                ),
+                {},
+            )
+
+        desktop.launcher_until(
+            lambda shown: (
+                cast("list[str]", shown["rows"])[:2] == ["Battery", "Kept From Resting"]
+                and kept_from_resting(shown).get("gone") is True
+                and (shown["selected"] or {}).get("note") == "on the charger"
+            )
+        )
+        # It stays so as readings go on coming, rather than lighting again
+        # with each: a new one is said on the dimmed row, and every report
+        # until then has it dimmed and second.
+        lit: list[str] = []
+
+        def said_dimmed(shown: Json) -> bool:
+            rows = cast("list[str]", shown["rows"])
+            kept = kept_from_resting(shown)
+            if rows[:2] != ["Battery", "Kept From Resting"] or kept.get("gone") is not True:
+                lit.append(str(shown["things"]))
+            return str(kept.get("reads", "")).startswith("Kept From Resting \u00b7 20%")
+
+        more = dict(TELEMETRY_READING)
+        more["keptFromResting"] = {"kept": 0.2, "by": [{"by": "display", "share": 0.2}]}
+        the_telemetry_says(desktop, more)
+        desktop.launcher_until(said_dimmed)
+        assert lit == [], lit
+        machine.send_key("esc")
+        machine.wait_until_fails(
+            desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
+        )
+    finally:
+        desktop.power("on")
+    open_power(desktop)
+    desktop.launcher_until(
+        lambda shown: shown["path"] == ["Machine", "Power"] and "Battery" in shown["rows"]
     )
-    desktop.as_account("systemctl --user stop telemetry-stand-in")
-    machine.succeed(f"rm -rf {held}")
+    assert "Kept From Resting" not in desktop.showing()["rows"], desktop.showing()["rows"]
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+    the_telemetry_is_let_go(desktop)
 
 
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(desktop: Desktop) -> None:
