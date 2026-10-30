@@ -1,6 +1,6 @@
 # A paired Bluetooth keyboard types at the disk prompt, as the built-in one
 # does. The kernel's Bluetooth drivers, BlueZ and D-Bus run in the systemd
-# initrd, and BlueZ has the machine's pairings there before the disk is
+# initrd, and BlueZ takes the machine's pairings there while the disk is
 # asked for. Each hardware module names its controller's firmware in
 # boot.initrd.extraFirmwarePaths, since the drivers don't list it.
 #
@@ -99,24 +99,24 @@ in
       };
     };
 
-    # bluetoothd, started before the disk is asked for so a keyboard can
-    # reconnect while the prompt waits. It's only ordered before the prompt,
-    # never needed by it, so a bluetoothd that fails keeps nothing waiting.
-    # It stops at the switch to the running system, whose own takes over.
+    # bluetoothd, started beside the disk prompt so a keyboard can reconnect
+    # while it waits. It's neither needed by the prompt nor ordered before
+    # it: opening the sealed pairings takes the TPM about two seconds, and a
+    # keyboard that joins later still types at a prompt already up, so the
+    # prompt waits for none of it. It stops at the switch to the running
+    # system, whose own takes over.
     services.bluetooth = {
       description = "Bluetooth for the disk prompt";
       wantedBy = [ "sysinit.target" ];
       wants = [
         "bluetooth-pairing.service"
         "dbus.socket"
-        "cryptsetup-pre.target"
       ];
       after = [
         "bluetooth-pairing.service"
         "dbus.socket"
         "systemd-udevd.service"
       ];
-      before = [ "cryptsetup-pre.target" ];
       unitConfig.DefaultDependencies = false;
       serviceConfig = {
         Type = "dbus";
