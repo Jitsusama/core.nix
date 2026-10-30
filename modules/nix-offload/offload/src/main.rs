@@ -222,6 +222,12 @@ fn main() -> ExitCode {
 /// `there`: builds a flake's attributes where src/there.rs says, each part
 /// journalled, exiting with the first status that failed.
 fn there(arguments: &[String]) -> ExitCode {
+    // What this `there` takes, a word each, so a caller can tell it from
+    // an older one, which refuses the flag with 64.
+    if arguments == ["--takes"] {
+        println!("{}", there::TAKES.join("\n"));
+        return ExitCode::SUCCESS;
+    }
     let Some(asked) = there::asked(arguments) else {
         eprintln!("nix-offload: there takes a flake and its attributes\n{USED}");
         return ExitCode::from(64);

@@ -21,6 +21,7 @@
 //!
 //! `--apply` builds a Nix function applied to the one attribute, and
 //! `--out` copies its output back into a folder, as a VM test's pictures.
+//! `there --takes` says which of these it takes, a word a line.
 //!
 //! An attribute for a system a machine nearby takes, named by its second
 //! word as in `checks.aarch64-darwin.x`, goes to that machine instead
@@ -369,6 +370,10 @@ impl Source {
         }
     }
 }
+
+/// What `there --takes` says it takes: a flake that's a git tree here,
+/// `--apply`, `--out`, and waiting for a builder it asks for.
+pub const TAKES: [&str; 4] = ["tree", "apply", "out", "wants"];
 
 /// The ref a bundle carries its commit under, here only while it's made.
 const BUNDLED: &str = "refs/nix-offload/there";

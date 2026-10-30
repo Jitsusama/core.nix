@@ -320,6 +320,19 @@ fn a_tree_github_lacks_goes_as_a_bundle_over_the_newest_commit_it_has() {
 }
 
 #[test]
+fn it_says_what_it_takes_a_word_a_line() {
+    let said = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "--takes"])
+        .output()
+        .unwrap();
+    assert_eq!(said.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&said.stdout),
+        "tree\napply\nout\nwants\n"
+    );
+}
+
+#[test]
 fn with_no_builder_or_none_reached_it_builds_here_and_says_so() {
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
