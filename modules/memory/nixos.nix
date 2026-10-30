@@ -94,7 +94,18 @@ in
   # with 85 to 128 GiB of swap free and up to 27.5 GB of file cache. A
   # runaway group is stopped by systemd-oomd below instead. Written rather
   # than left out, so a running kernel that kept a second learns it too.
-  systemd.tmpfiles.rules = [ "w /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 0" ];
+  #
+  # Give huge pages only to memory a program asks to have them for, not to
+  # every allocation that could take one, as the kernel is built to. Under
+  # the same load proof, twenty builds at most with the line full, every
+  # allocation taking one left kswapd given up 22% of the time, 479 stalls
+  # a second and apps' memory fully stalled 0.75% of the time, up to 4.4%,
+  # with seven missed turns of sound. Only those asked for took none of
+  # the first, 9 stalls a second, and 0.04%, up to 0.54%, with none missed.
+  systemd.tmpfiles.rules = [
+    "w /sys/kernel/mm/lru_gen/min_ttl_ms - - - - 0"
+    "w ${hugepages} - - - - madvise"
+  ];
 
   # The machine's administrators, agents included since they work as Joel's
   # account, may change three of the kernel's memory settings for as long as
@@ -107,8 +118,8 @@ in
   # `memory-hugepages@madvise` or `memory-lru-gen@n`. The most one can do is
   # make reclaim worse until it's put back, never reach another setting. A
   # switch that changes the sysctls writes them back; otherwise start the
-  # unit again with the value this file sets, and huge pages and the LRU
-  # return to the kernel's own at boot.
+  # unit again with the value this file sets. At boot huge pages return to
+  # this file's choice, and the LRU to the kernel's own.
   security.polkit.enable = true;
   security.polkit.extraConfig = builtins.readFile ./memory-tune.rules;
   systemd.services."memory-watermarks@" = tune "watermark spacing" space;
