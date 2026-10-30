@@ -46,8 +46,12 @@ if grep -qF -e "report[counts card While away]" -e "report[gone notifications]" 
   cat "$said" >&2
   exit 1
 fi
-if ! niri msg layers | grep -q notifications; then
+# Read whole before it's matched: piped into grep -q, niri could still be
+# writing when grep stops at the match, and its broken pipe would fail the
+# pipeline under pipefail, as if the layer were missing.
+layers=$(niri msg layers)
+if ! grep -q notifications <<< "$layers"; then
   echo "niri lists no notices' layer while Joel's away:" >&2
-  niri msg layers >&2
+  echo "$layers" >&2
   exit 1
 fi
