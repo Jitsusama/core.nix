@@ -56,6 +56,24 @@ function ahead(listed, known, sent) {
     return asked;
 }
 
+// What Slack said of the first of their addresses it found a
+// conversation with Joel for, or null.
+function talked(emails, known) {
+    return emails.map(email => known[email])
+        .find(said => said?.id && said.conversation) ?? null;
+}
+
+// A conversation's drawer: who it's with, then its last few messages,
+// plain, newest last, each after who said it, Joel's as his own.
+function drawn(said) {
+    const who = one => (one.mine ? "You" : said.name);
+    return {
+        title: said.name,
+        facts: [],
+        body: said.conversation.messages.map(one => `${who(one)}: ${one.text}`).join("\n\n")
+    };
+}
+
 // The drawer's facts of someone Slack found, each only while it says.
 function facts(said) {
     const status = [said.emoji, said.status].filter(word => word).join(" ");

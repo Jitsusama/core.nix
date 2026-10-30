@@ -3739,6 +3739,27 @@
       }
     },
     {
+      "id": "slack:conversation",
+      "of": "program:slack",
+      "name": "Conversation",
+      "glyph": "chat",
+      "verb": "open"
+    },
+    {
+      "id": "verb:slack:open",
+      "in": "slack:conversation",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:slack:link",
+      "in": "slack:conversation",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
       "id": "verb:person:favourite",
       "in": "people",
       "name": "Favourite",

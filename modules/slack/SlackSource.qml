@@ -19,13 +19,24 @@
 // such row (VKCF3Z, 8a0f14ea). Slack refusing the sign-in stops the
 // asking until the shell starts again; with no sign-in, nothing stands
 // in waiting.
+//
+// Their direct messages with Joel are one conversation in their Recent,
+// named by its newest message's first words, beside "Slack" and noted
+// with when, among mail and meetings by that time; Return opens it in
+// Slack, and inside are Open in Slack then Copy the Link, its drawer its
+// last few messages (VKCF3Z, 42b57b7d). It's asked ahead too, so their
+// Recent is there as Joel steps in rather than coming late.
 import qs
+import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Slack.js" as Slack
+import "../Ago.js" as Ago
 
 PersonSource {
     id: source
+
+    called: "Slack"
 
     // What Slack said of each address asked about: { id, team, name,
     // zone, presence, status, emoji }, with no id for one Slack knows
@@ -106,6 +117,52 @@ PersonSource {
             side: String(said[waiting] ?? ""),
             run: () => {}
         }))];
+    }
+
+    // Their conversation with Joel, when Slack found one.
+    function recent(person, provider) {
+        const said = Slack.talked(person.emails, known);
+        return said ? [{ at: said.conversation.at, row: conversation(said, provider) }] : [];
+    }
+
+    function conversation(said, provider) {
+        const talk = said.conversation;
+        const open = () => Niri.spawn(["xdg-open",
+            `slack://channel?team=${said.team}&id=${talk.channel}`]);
+        const act = (key, fields) => provider.thing(Object.assign({
+            key: key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action"
+        }, fields));
+        const name = talk.last !== "" ? talk.last : Words.name("slack:conversation");
+        return provider.thing({
+            key: `slack:conversation:${talk.channel}`,
+            what: "conversation",
+            thing: true,
+            of: "program:slack",
+            part: name,
+            name: name,
+            verb: Words.verb("verb:slack:open"),
+            glyph: Words.glyph("slack:conversation"),
+            hue: "program",
+            side: source.called,
+            note: Ago.ago(talk.at, Date.now()),
+            drawer: Slack.drawn(said),
+            later: true,
+            run: open,
+            verbs: () => [
+                act("verb:slack:open", { later: true, run: open }),
+                // Copy is last, as everywhere.
+                act("verb:slack:link", {
+                    now: true,
+                    run: () => {
+                        Quickshell.clipboardText = talk.link;
+                    }
+                })
+            ]
+        });
     }
 
     // Asks Slack about each of their addresses that's due (Slack.due).

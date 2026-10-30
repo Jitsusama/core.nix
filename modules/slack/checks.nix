@@ -15,15 +15,17 @@ onLinux {
   # and their status while it lasts; one it knows nobody by said so, a
   # sign-in it refuses said once and nobody more asked about, who each
   # address is found once, kept across a restart, and how they are asked
-  # each time, asking ahead taken only after a step-in and never asking
-  # how they are, nothing but reads ever asked, and with no sign-in
+  # each time, their conversation with Joel found in plain words, asking
+  # ahead taken only after a step-in, finding their conversation once and
+  # never asking how they are, nothing but reads ever asked, and with no sign-in
   # nothing asked at all, said so. A stand-in on the machine answers for
   # Slack.
   slack-finds-who-it-knows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
   # Who the source asks about and when, what stands in Write in Slack's
-  # place before Slack answers, and the drawer's facts are Slack.js's, run
+  # place before Slack answers, the drawer's facts and a conversation's
+  # drawer are Slack.js's, run
   # in Qt's own engine (tests/slack.qml).
   slack-waits-in-its-place =
     let

@@ -83,6 +83,18 @@ QtObject {
             Slack.facts({ presence: "in a huddle", zone: "" }),
             [{ label: "Presence", value: "In a huddle" }]);
 
+        const talk = { channel: "D1", link: "", last: "See you", at: 2, messages: [
+            { mine: true, text: "Lunch?", at: 1 }, { mine: false, text: "See you", at: 2 }] };
+        const talking = Object.assign({}, ada, { conversation: talk });
+        check("their conversation, by any address",
+            Slack.talked(both, { "ada@example.com": talking }), talking);
+        check("none until Slack finds one", Slack.talked(both, known), null);
+        check("its drawer, who said each, newest last", Slack.drawn(talking), {
+            title: "Ada Lovelace",
+            facts: [],
+            body: "You: Lunch?\n\nAda Lovelace: See you"
+        });
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);
