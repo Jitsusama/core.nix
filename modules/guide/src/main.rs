@@ -651,10 +651,7 @@ fn installed() -> Result<(), Fault> {
     // shows nothing, and the sign-in follows at once.
     let journey = Journey::new(guide::installed::steps(&mut machine)?)
         .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
-    if matches!(
-        journey.next(Place::Installed, &mut machine),
-        Ok(guide::Next::Finished)
-    ) {
+    if !guide::installed::takes_the_screen(&journey, &mut machine) {
         return Ok(());
     }
     let name = machine.read("/etc/hostname")?.map_or_else(
@@ -1034,6 +1031,7 @@ fn tools() -> ExitCode {
                 missing += 1;
                 println!("{tool}: {program} isn't there");
             }
+            None if tool.optional() => println!("{tool}: not in this build, which needs none"),
             None => {
                 missing += 1;
                 println!("{tool}: this build has no path for it");

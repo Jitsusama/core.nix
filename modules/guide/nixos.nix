@@ -9,7 +9,10 @@
   ...
 }:
 let
-  guide = pkgs.callPackage ./package.nix { systemd = config.systemd.package; };
+  guide = pkgs.callPackage ./package.nix {
+    systemd = config.systemd.package;
+    bootSplash = if config.boot.plymouth.enable then config.boot.plymouth.package else null;
+  };
   showStatus = "${config.systemd.package}/bin/busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager SetShowStatus s";
   # Made when the installed guide starts, and gone with the boot.
   started = "/run/guide-installed-started";
@@ -166,9 +169,10 @@ in
     # the install, or a TPM seal the boot no longer matches. Otherwise it
     # leaves at once. It follows the unit that makes the disk's measured-boot
     # policy, which its seal has to match, and lanzaboote's, which restarts
-    # the first boot to enrol the keys, and Plymouth's quitting, whose
-    # splash would hide it, and holds the sign-in back until it's done;
-    # Ctrl+C leaves it for the next boot.
+    # the first boot to enrol the keys, and holds the sign-in back until
+    # it's done; Ctrl+C leaves it for the next boot. Plymouth's splash stays
+    # up until the desktop draws over it, so the guide quits it itself when
+    # it has something to show, and leaves it up when it hasn't.
     #
     # Where the console is the screen the guide draws on, systemd's lines
     # about the units still starting would land across it, so it asks the
@@ -186,7 +190,6 @@ in
       restartIfChanged = false;
       unitConfig.ConditionPathExists = "!${started}";
       after = [
-        "plymouth-quit.service"
         "prepare-sb-auto-enroll.service"
         "systemd-pcrlock-make-policy.service"
         "systemd-user-sessions.service"

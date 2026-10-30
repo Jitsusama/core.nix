@@ -337,6 +337,23 @@ let
 in
 {
   config = lib.mkIf (theme != null) {
+    # greetd starts as Plymouth lets go of the screen, below, rather than
+    # once it's quit.
+    services.greetd.greeterManagesPlymouth = true;
+    # Counted from greetd's start, since niri opens the GPU about a second
+    # after; ten seconds leaves a slow boot room. Should niri not have
+    # opened it by then, the console shows until it does, as it did before,
+    # and a boot whose greetd fails still quits the splash. Timers start
+    # before basic.target, which greetd waits on, so this one leaves its
+    # usual order out.
+    systemd.timers.plymouth-quit = {
+      wantedBy = [ "multi-user.target" ];
+      after = [ "greetd.service" ];
+      before = [ "shutdown.target" ];
+      conflicts = [ "shutdown.target" ];
+      unitConfig.DefaultDependencies = false;
+      timerConfig.OnActiveSec = "10s";
+    };
     boot.plymouth = {
       enable = true;
       # plymouth quits with the splash kept (plymouth-quit below), which
@@ -384,12 +401,29 @@ in
       })
       // {
         # Plymouth's last frame stays on the screen until niri draws over
-        # it, rather than clearing to the console for the half second
-        # between.
-        plymouth-quit.serviceConfig.ExecStart = [
-          ""
-          "-${config.boot.plymouth.package}/bin/plymouth quit --retain-splash"
-        ];
+        # it. Quit before niri opened the GPU, plymouthd closed the last
+        # hold on it, and the kernel put its console's framebuffer back for
+        # the seconds between (drm_lastclose): on a laptop docked with its
+        # lid shut, a console sized for the shut panel in the monitor's top
+        # corner. So, as GDM does, Plymouth lets go of the screen as greetd
+        # starts, keeping the GPU open (`plymouth deactivate` drops only its
+        # hold on the display), and quits once niri has had time to open it.
+        # The guide quits it sooner when it has something to show.
+        plymouth-quit = {
+          wantedBy = lib.mkForce [ ];
+          serviceConfig.ExecStart = [
+            ""
+            "-${config.boot.plymouth.package}/bin/plymouth quit --retain-splash"
+          ];
+        };
+        # Nothing waits on Plymouth's quitting now, which comes after the
+        # boot's other jobs.
+        plymouth-quit-wait.wantedBy = lib.mkForce [ ];
+        greetd = {
+          serviceConfig.ExecStartPre = [
+            "-${config.boot.plymouth.package}/bin/plymouth deactivate"
+          ];
+        };
 
         # From the switch to the disk's system until Plymouth quits, and
         # from a shutdown's start to its end. It needs nothing started
