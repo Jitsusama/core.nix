@@ -454,7 +454,30 @@ Singleton {
             Niri.act({ ConsumeOrExpelWindowLeft: { id: waiting.opened } });
         reopening.waiting = null;
         reopenPatience.stop();
-        reopenNext();
+        reopenSoon();
+    }
+
+    // The next is begun no sooner than this after the last was, since
+    // every pi starting at once is a load Joel skipped Reopen Them All
+    // for (Joel, 2026-10-30: "i would just like about a second or two
+    // between each individual launch"). Each still waits for the one
+    // before to open first, since niri puts a window beside the column
+    // focused as it opens, and the next one's place would be focused by
+    // then.
+    readonly property int reopenPace: 2000
+    property real reopenStartedAt: 0
+    function reopenSoon() {
+        const wait = reopenStartedAt + reopenPace - Date.now();
+        if (wait > 0 && reopening && reopening.queue.length > 0) {
+            reopenPacing.interval = wait;
+            reopenPacing.restart();
+        } else {
+            reopenNext();
+        }
+    }
+    Timer {
+        id: reopenPacing
+        onTriggered: root.reopenNext()
     }
 
     // Reopens every session the last boot took away, each in its own
@@ -463,8 +486,9 @@ Singleton {
     // workspaces in the order niri numbers them and each column after the
     // last, since niri opens a window right of the focused column. Each
     // waits for niri to open the one before, or a few seconds if it never
-    // does. One with nowhere kept opens beside where Joel was, after the
-    // rest, and Joel is taken back there at the end. `gone(one, cwd)` is
+    // does, and for two seconds after it began (reopenPace). One with
+    // nowhere kept opens beside where Joel was, after the rest, and Joel
+    // is taken back there at the end. `gone(one, cwd)` is
     // told of one whose folder is gone, which isn't opened.
     property var reopening: null
     function reopenAll(lost, gone) {
@@ -509,6 +533,7 @@ Singleton {
             }
             reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
                 into: next.at ? root.into(next.at) : null, opened: null };
+            reopenStartedAt = Date.now();
             reopened(next.one.id, next.one.cwd);
             reopenPatience.restart();
         });

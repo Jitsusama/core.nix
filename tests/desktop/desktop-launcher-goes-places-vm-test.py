@@ -10,6 +10,7 @@ for what it needs, so any test runs alone.
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import json
 import re
 import shlex
@@ -745,6 +746,19 @@ def sat(desktop: Desktop, prefix: str) -> dict[str, tuple[int, int]]:
     }
 
 
+def started_apart(desktop: Desktop, since: str, said: str) -> list[float]:
+    """Give the seconds between each journal line of the shell's saying `said`, since a mark.
+
+    The first is zero, so there's one for every line.
+    """
+    lines = desktop.as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=short-unix"
+        f" --after-cursor={shlex.quote(since)}"
+    ).splitlines()
+    times = [float(line.split()[0]) for line in lines if said in line]
+    return [0.0] + [later - sooner for sooner, later in itertools.pairwise(times)]
+
+
 def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     """Where each session sits is kept, and Reopen Them All puts each back there, in order."""
     machine = desktop.machine
@@ -800,12 +814,18 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
         " niri msg action focus-workspace 1; sleep 0.05; done"
     )
     desktop.as_account(f"setsid sh -c {shlex.quote(pulling)} > /dev/null 2>&1 &")
+    since = desktop.mark()
     machine.send_key("ret")
     opening = "niri msg --json windows | grep -o 'pi --session 01c3-' | wc -l"
     machine.wait_until_succeeds(
         desktop.in_session(f"[ $({opening}) = 3 ]"), timeout=dt.timedelta(seconds=60)
     )
     desktop.launcher_until(lambda shown: not shown["open"])
+    # Each began two seconds or more after the one before, so they don't
+    # all start at once.
+    began = started_apart(desktop, since, "report[resumed session 01c3-")
+    assert len(began) == len(where), began
+    assert all(gap >= 2 for gap in began[1:]), began  # noqa: PLR2004
     back = sat(desktop, "01c3-")
     assert back["01c3-west"][0] == back["01c3-east"][0] == 1, back
     assert back["01c3-west"][1] < back["01c3-east"][1], back
