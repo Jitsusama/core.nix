@@ -1135,7 +1135,10 @@ CMOS clock, it reads both clocks and keeps their difference as the firmware's
 offset. While the time is synchronised, at shutdown and every hour, it sets
 the Aggregator's clock to the true time plus that offset, so the next start's
 CMOS clock reads the true time. It takes the offset as measured rather than as
-eight hours, and refuses one past any time zone's.
+eight hours, and refuses one past any time zone's. Started once the time is
+already synchronised, as on a switch to a system that has it, it measures
+nothing and leaves the Aggregator's clock alone until a boot has kept an
+offset.
 
 ### The Graphics Driver
 
