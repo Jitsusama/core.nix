@@ -1740,6 +1740,16 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Time"
             and (shown.get("drawer") or {}).get("out") is False
+            and shown["drawer"]["drawn"] == ""
+        )
+    )
+    # Back on the meeting, gone and let go of, the drawer draws the meeting
+    # again, though it's given the very details it was given before.
+    desktop.down_to("Design Review")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["drawn"] == "Design Review"
         )
     )
     machine.send_key("esc")

@@ -3037,10 +3037,12 @@ Scope {
             keysAt: Math.round(foot.returnAt),
             // How far the list is scrolled, which only a key changes.
             scrolled: Math.round(list.contentY),
-            // The drawer: whether it's out, what it's titled and says,
-            // whether it holds more than fits, and where it and the card sit.
+            // The drawer: whether it's out, what it's titled and says, the
+            // title it draws itself, whether it holds more than fits, and
+            // where it and the card sit.
             drawer: {
                 out: root.drawerOut,
+                drawn: drawerCard.title,
                 title: root.drawerShows?.title ?? "",
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
                     .map(fact => fact.label ?? ""),
