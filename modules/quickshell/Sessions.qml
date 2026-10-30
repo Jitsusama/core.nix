@@ -363,6 +363,159 @@ Singleton {
         putOffFile.setText(JSON.stringify({ boot: putOff }));
     }
 
+    // Where each session's window sits, kept so Reopen Them All puts every
+    // one back on its workspace in its order after a cold boot (Joel,
+    // 2026-10-29, after a restore: "every session is all over the place on
+    // one workspace, out of order"). Each is kept by the session's own id,
+    // which pi keeps as a session is reopened: the screen and the
+    // workspace as niri numbers it there, then its column and its tile in
+    // that column. One's kept after it ends, since a boot's end ends them
+    // one by one, and only this boot's and the boot being restored are
+    // kept. It's written once the windows have been still a moment, never
+    // for each change.
+    FileView {
+        id: arrangementFile
+        path: Quickshell.statePath("session-arrangement.json")
+        blockLoading: true
+        printErrors: false
+        // Read again whenever it's written, by this shell or another hand.
+        watchChanges: true
+        onFileChanged: reload()
+    }
+    readonly property var arrangement: {
+        try {
+            const read = JSON.parse(arrangementFile.text());
+            return read?.v === 1 && read.boots && typeof read.boots === "object" ? read.boots : {};
+        } catch (error) {
+            return {};
+        }
+    }
+    function arrangedNow() {
+        const now = {};
+        running.forEach(session => {
+            const id = session.presence.session;
+            const at = session.window?.layout?.pos_in_scrolling_layout;
+            const workspace = session.window ? Niri.workspace(session.window.workspace_id) : null;
+            if (session.here && typeof id === "string" && at && workspace)
+                now[id] = { output: workspace.output ?? "", workspace: workspace.idx,
+                    column: at[0], tile: at[1] };
+        });
+        return now;
+    }
+    function keepArrangement() {
+        if (bootId === "")
+            return;
+        const boots = { [bootId]: Object.assign({}, arrangement[bootId] ?? {}, arrangedNow()) };
+        if (restoring.boot !== "" && restoring.boot !== bootId && arrangement[restoring.boot])
+            boots[restoring.boot] = arrangement[restoring.boot];
+        const text = JSON.stringify({ v: 1, boots });
+        if (text !== arrangementFile.text())
+            arrangementFile.setText(text);
+    }
+    Timer {
+        id: arranging
+        interval: 2000
+        onTriggered: root.keepArrangement()
+    }
+    onRunningChanged: arranging.restart()
+    Connections {
+        target: Niri
+        function onLayoutsChanged() {
+            arranging.restart();
+        }
+        // The window a session being reopened opens in. niri lists it
+        // before it focuses it, and focusing it focuses its workspace, so
+        // the next is only begun once it has.
+        function onWindowOpenedOrChanged(window) {
+            const waiting = root.reopening?.waiting;
+            if (waiting && window.app_id === "kitty" && !waiting.known.includes(String(window.id)))
+                waiting.opened = window.id;
+            root.reopenedYet();
+        }
+        function onFocusedChanged() {
+            root.reopenedYet();
+        }
+    }
+    // Whether the session being reopened is open and focused, when one
+    // that sat below another in its column goes back into the column to
+    // its left, as it was, and the next is begun.
+    function reopenedYet() {
+        const waiting = reopening?.waiting;
+        if (!waiting || waiting.opened === null || Niri.focused !== waiting.opened)
+            return;
+        if (waiting.tile > 1)
+            Niri.act({ ConsumeOrExpelWindowLeft: { id: waiting.opened } });
+        reopening.waiting = null;
+        reopenPatience.stop();
+        reopenNext();
+    }
+
+    // Reopens every session the last boot took away, each in its own
+    // folder, back where it sat: those held on another machine joined
+    // again at once, then this machine's one at a time, a screen and its
+    // workspaces in the order niri numbers them and each column after the
+    // last, since niri opens a window right of the focused column. Each
+    // waits for niri to open the one before, or a few seconds if it never
+    // does. One with nowhere kept opens beside where Joel was, after the
+    // rest, and Joel is taken back there at the end. `gone(one, cwd)` is
+    // told of one whose folder is gone, which isn't opened.
+    property var reopening: null
+    function reopenAll(lost, gone) {
+        const kept = arrangement[restoring.boot] ?? {};
+        lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one));
+        const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
+            : a.at.output.localeCompare(b.at.output) || a.at.workspace - b.at.workspace
+                || a.at.column - b.at.column || a.at.tile - b.at.tile;
+        reopening = {
+            queue: lost.filter(one => one.machine === undefined)
+                .map(one => ({ one, at: kept[one.id] ?? null })).sort(order),
+            gone,
+            back: Niri.current,
+            waiting: null
+        };
+        reopenNext();
+    }
+    function reopenNext() {
+        const next = reopening?.queue[0];
+        if (!next) {
+            if (reopening && reopening.back !== null)
+                Niri.act({ FocusWindow: { id: reopening.back } });
+            reopening = null;
+            return;
+        }
+        reopening.queue = reopening.queue.slice(1);
+        lookFor([next.one.cwd], there => {
+            if (!there[0]) {
+                reopening.gone?.(next.one, next.one.cwd);
+                reopenNext();
+                return;
+            }
+            if (next.at) {
+                // A screen that's gone leaves it on the screen in use, at
+                // the same workspace.
+                if (Object.values(Niri.workspaces).some(one => one.output === next.at.output))
+                    Niri.act({ FocusMonitor: { output: next.at.output } });
+                Niri.act({ FocusWorkspace: { reference: { Index: next.at.workspace } } });
+                Niri.act({ FocusColumnLast: {} });
+            } else if (reopening.back !== null) {
+                Niri.act({ FocusWindow: { id: reopening.back } });
+            }
+            reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
+                opened: null };
+            reopened(next.one.id, next.one.cwd);
+            reopenPatience.restart();
+        });
+    }
+    Timer {
+        id: reopenPatience
+        interval: 10000
+        onTriggered: {
+            if (root.reopening)
+                root.reopening.waiting = null;
+            root.reopenNext();
+        }
+    }
+
     // Go to a session: its window, or, when niri's isn't known, kitty's,
     // which kitty raises if niri lets it. A held session in no window is
     // attached in a new one, and only then: Go To never makes a second

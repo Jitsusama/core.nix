@@ -308,8 +308,9 @@ Provider {
         // In its own folder only; when that's gone, a notice says so and
         // nothing opens, never one in the home folder instead.
         const gone = String((Words.of("verb:agents:last-boot:one").said ?? {}).gone ?? "");
-        const reopen = one => Sessions.reopen(one, cwd => Sessions.sayUnopened(
-            String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd))));
+        const unopened = (one, cwd) => Sessions.sayUnopened(
+            String(one.title || one.address || one.id), gone.replace("{cwd}", homely(cwd)));
+        const reopen = one => Sessions.reopen(one, cwd => unopened(one, cwd));
         const closed = one => thing({
             key: `agents:last-boot:${one.id}`,
             name: String(one.title || one.address || one.id),
@@ -330,7 +331,8 @@ Provider {
             hue: "action"
         }, () => [act("all", {
             later: true,
-            run: () => lost.forEach(one => reopen(one))
+            // Each back where it sat (Sessions.qml's reopenAll).
+            run: () => Sessions.reopenAll(lost, unopened)
         })].concat(lost.map(closed), [act("notNow", {
             run: () => Sessions.putOffLastBoot()
         })]));
