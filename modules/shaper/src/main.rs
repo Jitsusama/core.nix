@@ -410,7 +410,7 @@ fn run(options: &Options) -> ExitCode {
         // the sets are also written every few seconds, changed or not.
         let mut sets = classes::read(&options.cgroups);
         sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
-        sets.vpnbulk = quiet_vpns(&vpns, &mut quiet, t, classes::typed(&sessions));
+        sets.vpnbulk = quiet_vpns(&vpns, &mut quiet, t);
         let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
@@ -510,13 +510,11 @@ struct Vpn {
 }
 
 /// The marks of the VPNs carrying only bulk now, whose own packets go as
-/// bulk on the connection: none while a typed turn runs, which may be
-/// inside one. Each VPN's CAKE is counted at every step, typed or not.
+/// bulk on the connection. Each VPN's CAKE is counted at every step.
 fn quiet_vpns(
     vpns: &BTreeMap<String, Vpn>,
     quiet: &mut BTreeMap<String, quiet::Quiet>,
     t: f64,
-    typed: bool,
 ) -> Vec<String> {
     quiet.retain(|name, _| vpns.contains_key(name));
     let mut marks = Vec::new();
@@ -526,10 +524,7 @@ fn quiet_vpns(
             continue;
         };
         let still = quiet.entry(name.clone()).or_default().sample(unbulk, t);
-        if still
-            && !typed
-            && let Some(mark) = &vpn.mark
-        {
+        if still && let Some(mark) = &vpn.mark {
             marks.push(mark.clone());
         }
     }

@@ -9,8 +9,7 @@
 # and when the shaper stops, it takes them all away. Inside a WireGuard VPN
 # to the server, named as a machine names its VPN, the same classes reach
 # the VPN's own CAKEs, sending and receiving, and the VPN's own packets go
-# as bulk on the connection while it carries only bulk and no typed turn
-# runs. The tests are shaper-vm-test.py, run through pytest.
+# as bulk on the connection while it carries only bulk. The tests are shaper-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;

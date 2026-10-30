@@ -171,13 +171,6 @@ pub fn untyped(root: &Path, sessions: &[Session]) -> Vec<String> {
         .collect()
 }
 
-/// Whether any pi session runs a turn someone typed.
-pub fn typed(sessions: &[Session]) -> bool {
-    sessions
-        .iter()
-        .any(|session| session.typed.join(session.pid.to_string()).exists())
-}
-
 /// Every account's user manager: user.slice/user-<uid>.slice/user@<uid>.service.
 fn managers(root: &Path) -> Vec<String> {
     let mut found = Vec::new();
@@ -359,12 +352,9 @@ mod tests {
         let found = sessions(&proc, &run);
         assert_eq!(found.len(), 5, "{found:?}");
         assert_eq!(untyped(&root, &found), [format!("{apps}/kitty-1-1.scope")]);
-        assert!(typed(&found));
         // The turn ends and its file goes: it's bulk at once.
         fs::remove_file(run.join("1000/pi/typed/20")).unwrap();
         assert_eq!(untyped(&root, &found).len(), 2);
-        fs::remove_file(run.join("1000/pi/typed/31")).unwrap();
-        assert!(!typed(&found), "no turn typed anywhere");
     }
 
     #[test]
