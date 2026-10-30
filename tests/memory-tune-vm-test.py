@@ -60,9 +60,9 @@ def test_an_administrator_spaces_the_watermarks_without_a_password(
 
 
 def test_an_administrator_chooses_huge_pages_without_a_password(reverted: BaseMachine) -> None:
-    status, said = start(reverted, "someone", "memory-hugepages@madvise")
+    status, said = start(reverted, "someone", "memory-hugepages@always")
     assert status == 0, said
-    assert chosen(read(reverted, HUGEPAGES)) == "madvise"
+    assert chosen(read(reverted, HUGEPAGES)) == "always"
 
 
 def test_an_administrator_turns_the_multi_gen_lru_off_without_a_password(
