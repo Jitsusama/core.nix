@@ -3406,6 +3406,18 @@ Scope {
             }
         }
 
+        // Each frame while open, so how smoothly it moves is kept with the
+        // opening (Trials.qml). Its fade as it closes comes after the
+        // opening is kept, so isn't counted.
+        Connections {
+            target: card.Window.window
+            enabled: root.open
+
+            function onFrameSwapped() {
+                trials.drew(Date.now(), card.Screen.refreshRate);
+            }
+        }
+
         Connections {
             target: card.Window.window
             enabled: root.framesCounted

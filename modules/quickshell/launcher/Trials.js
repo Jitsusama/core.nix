@@ -16,6 +16,16 @@ const KINDS = ["letters", "erased", "arrows", "steps", "backs", "tabs", "returns
 const FELT_MS = 8;
 // How many of an opening's felt keys are kept, each with what took the time.
 const FELT_KEPT = 20;
+// A frame drawn within this long of the one before is part of one stretch
+// of drawing, a motion or a key's rows; a longer gap is the launcher at
+// rest, as between a caret's blinks, and isn't a frame come late.
+const STILL_MS = 100;
+// A frame later than this many of the screen's refreshes after the one
+// before it missed at least one, which is what Joel sees as a stutter.
+const LATE_REFRESHES = 1.5;
+// What a screen that doesn't say its rate is taken to refresh at.
+const SOME_HZ = 60;
+const A_SECOND = 1000;
 
 // An opening at `at` milliseconds, on the home called `home`.
 function begun(at, home) {
@@ -107,6 +117,39 @@ function ended(trial, at) {
     }
     return Object.assign({}, trial, { open: at - trial.at,
         missed: trial.picked === "" && trial.keys.letters > 0 });
+}
+
+// The frames of an opening so far: how many were drawn while it moved,
+// how many of those came late, and the longest gap before one.
+function unpaced() {
+    return { drawn: 0, late: 0, longest: 0, last: -1 };
+}
+
+// A frame drawn at `at` milliseconds on a screen refreshing `hz` times a
+// second, counted into `pace`. It's changed in place rather than copied,
+// as everything else here is, since it's told of every frame drawn.
+function drew(pace, at, hz) {
+    const gap = pace.last < 0 ? STILL_MS + 1 : at - pace.last;
+    pace.last = at;
+    if (gap > STILL_MS) {
+        return pace;
+    }
+    pace.drawn += 1;
+    if (gap > (LATE_REFRESHES * A_SECOND) / (hz > 0 ? hz : SOME_HZ)) {
+        pace.late += 1;
+        pace.longest = Math.max(pace.longest, gap);
+    }
+    return pace;
+}
+
+// The trial with its frames, when any were drawn while it moved.
+function paced(trial, pace) {
+    if (!trial || !pace || pace.drawn === 0) {
+        return trial;
+    }
+    return Object.assign({}, trial, {
+        frames: { drawn: pace.drawn, late: pace.late, longest: pace.longest }
+    });
 }
 
 // The trials kept, this one last, the oldest let go past `most`.

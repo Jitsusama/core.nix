@@ -24,6 +24,17 @@ Scope {
 
     function opened() {
         trial = Trials.begun(Date.now(), home);
+        pace = Trials.unpaced();
+    }
+
+    // The frames of the opening under way, counted as each is drawn. Nothing
+    // binds to it, so it's changed in place, not handed on.
+    property var pace: Trials.unpaced()
+
+    // A frame the card drew at `at`, on a screen refreshing `hz` times a
+    // second.
+    function drew(at, hz) {
+        Trials.drew(pace, at, hz);
     }
 
     function pressed(kind) {
@@ -68,7 +79,13 @@ Scope {
     function closed() {
         if (!trial)
             return;
-        trials = Trials.kept(trials, Trials.ended(trial, Date.now()), remember);
+        // An opening that stuttered is said in the journal, as a slow key
+        // is, so how smooth it moves can be read from Joel's own use.
+        if (pace.late > 0)
+            console.info(`launcher: ${pace.late} of ${pace.drawn} frames came late while`
+                + ` it moved, the longest ${pace.longest} ms after the one before`);
+        trials = Trials.kept(trials, Trials.ended(Trials.paced(trial, pace), Date.now()),
+            remember);
         trial = null;
         file.setText(JSON.stringify(trials));
     }
