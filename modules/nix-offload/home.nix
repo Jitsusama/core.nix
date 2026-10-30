@@ -83,6 +83,33 @@ in
         beside any lent one, so a build of code they mustn't hold never does.
       '';
     };
+    nearby = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            address = lib.mkOption {
+              type = lib.types.str;
+              description = "Where it answers, `host:port`, when it can be reached.";
+            };
+            host = lib.mkOption {
+              type = lib.types.str;
+              description = "The host ssh is given to reach it.";
+            };
+            systems = lib.mkOption {
+              type = lib.types.nonEmptyListOf lib.types.str;
+              description = "The systems it builds for, such as `aarch64-darwin`.";
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        Machines nearby that build for systems this one can't, such as a Mac at
+        home for its own. `nix-offload there` sends each attribute for one of
+        their systems to the first that answers, with the flake itself when
+        it's a folder here, so the build needs nothing this machine builds.
+      '';
+    };
     timeZone = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -90,10 +117,16 @@ in
     };
   };
 
-  config = lib.mkIf (cfg.helper != null || cfg.standing != [ ]) {
+  config = lib.mkIf (cfg.helper != null || cfg.standing != [ ] || cfg.nearby != [ ]) {
     home.packages = [ offload ];
 
-    systemd.user.services.nix-offload = {
+    xdg.configFile."nix-offload/nearby" = lib.mkIf (cfg.nearby != [ ]) {
+      text = lib.concatMapStrings (
+        machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.systems}\n"
+      ) cfg.nearby;
+    };
+
+    systemd.user.services.nix-offload = lib.mkIf (cfg.helper != null || cfg.standing != [ ]) {
       Unit.Description = "Names this machine's builders, lending one while its queue has builds one could take";
       Service = {
         ExecStart = lib.concatStringsSep " " (
