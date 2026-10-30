@@ -5,16 +5,19 @@
 //! input, as Joel steps into someone, and hears one JSON line back for
 //! each (lib.rs's `Found`): their id in Slack and its workspace, which
 //! open them there, their name, their time zone, whether they're active,
-//! away or in a huddle, and their status, or no id for an address Slack
-//! knows nobody by. Who an address is is found once and kept between runs
-//! (lib.rs's `Kept`, in the cache home), so someone known is said at once,
-//! then again once Slack says how they are, which is asked each time; when
-//! Slack can't be reached then, what it said last is said again.
+//! away or in a huddle, their status, and their direct messages with Joel
+//! (lib.rs's `Conversation`), or no id for an address Slack knows nobody
+//! by. Who an address is is found once and kept between runs (lib.rs's
+//! `Kept`, in the cache home), so someone known is said at once, then
+//! again once Slack says how they are and what they last said, which is
+//! asked each time; when Slack can't be reached then, what it said last
+//! is said again. What they said is only ever held while it runs.
 //!
 //! A line `?ADDRESS` asks ahead, for someone Joel may step into: who they
-//! are is found, not how they are, and only while no step-in is waiting,
-//! one look-up every few seconds, so asking ahead about everyone People
-//! lists stays inside Slack's limits and never holds up a step-in.
+//! are and their conversation are found, once a run, not how they are,
+//! and only while no step-in is waiting, a search every few seconds, so
+//! asking ahead about everyone People lists stays inside Slack's limits
+//! and never holds up a step-in.
 //!
 //! Once Slack refuses the sign-in, the line `{"signedOut":true}` is said
 //! and nobody more is asked about. With no sign-in in CREDENTIALS, the
@@ -30,9 +33,9 @@ use std::time::Duration;
 
 use slack_people::{Account, Found, Kept, Refused, Slack, asked, now};
 
-/// How long after a look-up made ahead the next one waits: four calls to
-/// Slack each on an enterprise grid, whose search allows about twenty a
-/// minute.
+/// How long the next look-up ahead waits for each search Slack was asked
+/// since the last, a step-in's too: an enterprise grid's search allows
+/// about twenty a minute.
 const PACE: Duration = Duration::from_secs(3);
 
 /// How long any look-up ahead waits at least, so a step-in the shell
@@ -54,6 +57,7 @@ fn main() {
         credentials,
         known: HashMap::new(),
         kept: Kept::at(kept_in()),
+        talked: HashSet::new(),
         signed_out: false,
     };
     let (lines, heard) = mpsc::channel();
@@ -102,8 +106,11 @@ fn main() {
                 }
                 continue;
             };
-            let (said, asked_slack) = asker.ahead(&email);
-            wait = if asked_slack { PACE } else { SETTLE };
+            let said = asker.ahead(&email);
+            wait = match asker.slack.searched() {
+                0 => SETTLE,
+                searches => PACE * searches,
+            };
             said
         };
         if !say(&said) {
@@ -143,6 +150,8 @@ struct Asker {
     /// Who each address is, as said last while running, how they are too.
     known: HashMap<String, Found>,
     kept: Kept,
+    /// Whose conversation Slack has been asked for this run.
+    talked: HashSet<String>,
     signed_out: bool,
 }
 
@@ -173,7 +182,8 @@ impl Asker {
             Some(had) => self.slack.again(&account, had),
             None => self.slack.look_up(&account, email),
         }
-        .and_then(|found| present(&self.slack, &account, found));
+        .and_then(|found| present(&self.slack, &account, found))
+        .map(|found| self.talking(&account, found));
         match self.heard(found) {
             Heard::Found(found) => line(&found)
                 .filter(|fresh| !said.contains(fresh))
@@ -186,25 +196,54 @@ impl Asker {
     }
 
     /// What to say of someone asked about ahead: who they are, kept or
-    /// found now, and whether Slack was asked to find it.
-    fn ahead(&mut self, email: &str) -> (Vec<String>, bool) {
-        if let Some(had) = self
+    /// found now, with their conversation, asked once a run.
+    fn ahead(&mut self, email: &str) -> Vec<String> {
+        let had = self
             .known
             .get(email)
-            .or_else(|| self.kept.get(email, now()))
+            .cloned()
+            .or_else(|| self.kept.get(email, now()).cloned());
+        if let Some(had) = had
+            .as_ref()
+            .filter(|had| had.id.is_none() || self.talked.contains(email))
         {
-            return (line(had).into_iter().collect(), false);
+            return line(had).into_iter().collect();
         }
         let Some(account) = Account::read(&self.credentials) else {
-            return (vec![NOT_SIGNED_IN.to_owned()], false);
+            return vec![NOT_SIGNED_IN.to_owned()];
         };
-        let found = self.slack.look_up(&account, email);
-        let said = match self.heard(found) {
+        let found = match had {
+            Some(had) if !had.handle.is_empty() => Ok(had),
+            // Kept before handles were, so asked who they are again.
+            Some(had) => self.slack.again(&account, &had),
+            None => self.slack.look_up(&account, email),
+        }
+        .map(|found| self.talking(&account, found));
+        match self.heard(found) {
             Heard::Found(found) => line(&found).into_iter().collect(),
             Heard::SignedOut(line) => vec![line],
             Heard::Unreachable => Vec::new(),
+        }
+    }
+
+    /// Someone found, with their conversation with Joel as Slack finds it
+    /// now, or as it was last found when Slack can't say.
+    fn talking(&self, account: &Account, found: Found) -> Found {
+        let conversation = match self.slack.conversation(account, &found) {
+            Ok(conversation) => conversation,
+            Err(refused) => {
+                if let Refused::Unreachable(why) = refused {
+                    eprintln!("<4>{why}");
+                }
+                self.known
+                    .get(&found.email)
+                    .and_then(|had| had.conversation.clone())
+            }
         };
-        (said, true)
+        Found {
+            conversation,
+            ..found
+        }
     }
 
     /// Takes what Slack answered: keeps who was found, or stops asking
@@ -213,8 +252,9 @@ impl Asker {
         match found {
             Ok(found) => {
                 self.kept.keep(&found, now());
+                self.talked.insert(found.email.clone());
                 self.known.insert(found.email.clone(), found.clone());
-                Heard::Found(found)
+                Heard::Found(Box::new(found))
             }
             Err(Refused::SignedOut) => {
                 self.signed_out = true;
@@ -230,7 +270,8 @@ impl Asker {
 
 /// What came of asking Slack.
 enum Heard {
-    Found(Found),
+    /// Boxed, since what they said makes it far the largest.
+    Found(Box<Found>),
     SignedOut(String),
     Unreachable,
 }

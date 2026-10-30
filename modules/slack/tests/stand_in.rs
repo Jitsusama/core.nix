@@ -131,38 +131,38 @@ fn forget(credentials: &std::path::Path) {
 /// Ada as the program says her, her zone with her, active.
 const ADA: &str = concat!(
     r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London","presence":"active","status":"","emoji":""}"#
+    r#""zone":"Europe/London","presence":"active","status":"","emoji":"","handle":""}"#
 );
 
 /// Ada asked about again, once she's set a status.
 const ADA_WRITING: &str = concat!(
     r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London","presence":"active","status":"Writing","emoji":"📝"}"#
+    r#""zone":"Europe/London","presence":"active","status":"Writing","emoji":"📝","handle":""}"#
 );
 
 /// Ada while Slack can't say whether she's active or away.
 const ADA_UNSAID: &str = concat!(
     r#"{"email":"ada@example.com","id":"U1","team":"T1","name":"Ada Lovelace","#,
-    r#""zone":"Europe/London","presence":"","status":"","emoji":""}"#
+    r#""zone":"Europe/London","presence":"","status":"","emoji":"","handle":""}"#
 );
 
 /// Grace as the program says her, found by a search, as an enterprise
 /// grid has it, and away.
 const GRACE: &str = concat!(
     r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
-    r#""zone":"America/New_York","presence":"away","status":"","emoji":""}"#
+    r#""zone":"America/New_York","presence":"away","status":"","emoji":"","handle":""}"#
 );
 
 /// Grace found ahead, before anyone asked how she is.
 const GRACE_WHO: &str = concat!(
     r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
-    r#""zone":"America/New_York","presence":"","status":"","emoji":""}"#
+    r#""zone":"America/New_York","presence":"","status":"","emoji":"","handle":""}"#
 );
 
 /// Someone Slack knows nobody by, as the program says them.
 fn nobody(email: &str) -> String {
     format!(r#"{{"email":"{email}","id":null,"team":"T1","name":"","zone":"","presence":"","#)
-        + r#""status":"","emoji":""}"#
+        + r#""status":"","emoji":"","handle":""}"#
 }
 
 /// Every method the program may ask, each only reading.
@@ -186,7 +186,25 @@ fn only_read(heard: &[Heard]) -> bool {
 /// search finds each by their handle, and only Grace's profile keeps the
 /// address asked about.
 fn slack(line: &str) -> String {
-    if line.contains("email=ada%40example.com") {
+    if line.contains("email=lin%40example.com") || line.contains("users.info?user=U4") {
+        r#"{"ok": true, "user": {"id": "U4", "team_id": "T1", "name": "lin",
+            "profile": {"real_name": "Lin Chen"}}}"#
+            .into()
+    } else if line.contains("search.messages") && line.contains("lin") {
+        // Lin's direct messages with Joel, U0, newest first, and one of
+        // hers elsewhere that isn't theirs.
+        concat!(
+            r#"{"ok": true, "messages": {"matches": ["#,
+            r#"{"channel": {"id": "D4", "is_im": true, "name": "U4"}, "user": "U4","#,
+            r#""text": "See you there &amp; then", "ts": "1730312345.000100","#,
+            r#""permalink": "https://slack.example/archives/D4/p2"},"#,
+            r#"{"channel": {"id": "C1", "is_im": false, "name": "general"}, "user": "U4","#,
+            r#""text": "Hello all", "ts": "1730312320.000000"},"#,
+            r#"{"channel": {"id": "D4", "is_im": true, "name": "U4"}, "user": "U0","#,
+            r#""text": "Lunch, <@U4>?", "ts": "1730312300.000000"}]}}"#
+        )
+        .into()
+    } else if line.contains("email=ada%40example.com") {
         r#"{"ok": true, "user": {"id": "U1", "team_id": "T1", "tz": "Europe/London",
             "profile": {"real_name": "Ada Lovelace"}}}"#
             .into()
@@ -298,6 +316,66 @@ fn who_was_found_is_said_at_once_after_a_restart_then_how_they_are() {
         .collect();
     // Nobody is looked up by address again; Ada is only asked how she is.
     assert_eq!(asked, ["GET /api/users.info", "GET /api/users.getPresence"]);
+    forget(&path);
+}
+
+#[test]
+fn their_conversation_with_joel_is_found_ahead_once_and_again_at_each_step_in() {
+    let first = StandIn::new(slack);
+    let path = credentials("talk");
+    let ahead = told(&first, &path, "?lin@example.com\n?lin@example.com\n");
+    let asked = |stand_in: &StandIn| -> Vec<String> {
+        stand_in
+            .heard()
+            .iter()
+            .map(|heard| heard.line.split('?').next().unwrap_or_default().to_owned())
+            .collect()
+    };
+    // Asked ahead twice, found once with what they said, never how they are.
+    assert_eq!(
+        asked(&first),
+        ["GET /api/users.lookupByEmail", "GET /api/search.messages"]
+    );
+    let said: Vec<serde_json::Value> = ahead
+        .iter()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(said.len(), 1, "{ahead:?}");
+    assert_eq!(said[0]["handle"], "lin");
+    assert_eq!(
+        said[0]["conversation"],
+        serde_json::json!({
+            "channel": "D4",
+            "link": "https://slack.example/archives/D4/p2",
+            "last": "See you there & then",
+            "at": 1_730_312_345_000_u64,
+            "messages": [
+                { "mine": true, "text": "Lunch, @Lin Chen?", "at": 1_730_312_300_000_u64 },
+                { "mine": false, "text": "See you there & then", "at": 1_730_312_345_000_u64 }
+            ]
+        })
+    );
+    assert!(
+        first
+            .heard()
+            .iter()
+            .any(|heard| heard.line.contains("in%3A%40lin") || heard.line.contains("in:@lin"))
+    );
+    // After a restart, who she is is said at once, kept without what she
+    // said, then with how she is and what she said, asked again.
+    let again = StandIn::new(slack);
+    let stepped = told(&again, &path, "lin@example.com\n");
+    assert_eq!(
+        asked(&again),
+        [
+            "GET /api/users.info",
+            "GET /api/users.getPresence",
+            "GET /api/search.messages"
+        ]
+    );
+    assert_eq!(stepped.len(), 2, "{stepped:?}");
+    assert!(!stepped[0].contains("conversation"), "{}", stepped[0]);
+    assert!(stepped[1].contains(r#""channel":"D4""#), "{}", stepped[1]);
     forget(&path);
 }
 
