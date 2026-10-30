@@ -132,11 +132,20 @@ impl Payload {
     }
 
     /// What the person does with the stick once it's written, from what
-    /// the machine's hardware says of its firmware: a card's words.
-    pub fn next(&self) -> String {
+    /// the machine's hardware says of its firmware: a card's words. `here`
+    /// is the name of the machine writing it, when it has one: a stick
+    /// written on the machine it's for is kept for when that machine
+    /// needs it, so it's never told to be started from at once.
+    pub fn next(&self, here: Option<&str>) -> String {
         let target = &self.target;
         let machine = &target.machine;
-        let mut said = format!("Take the stick to {machine}, switched off, and plug it in.");
+        let mut said = if here.is_some_and(|here| here.trim().eq_ignore_ascii_case(machine)) {
+            format!(
+                "Keep this stick away from {machine} until you need it. When {machine} won't start, or needs installing again, switch it off and plug the stick in."
+            )
+        } else {
+            format!("Take the stick to {machine}, switched off, and plug it in.")
+        };
         if !self.carries_keys()
             && let Some(clear) = &target.clear_secure_boot_keys
         {
