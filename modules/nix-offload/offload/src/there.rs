@@ -308,13 +308,18 @@ fn here(asked: &Asked, nix: &str) -> Ran {
         None => command
             .status()
             .map_or(1, |status| status.code().unwrap_or(1)),
-        Some(out) => command.stdout(Stdio::piped()).output().map_or(1, |built| {
-            let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
-            match built.status.code() {
-                Some(0) => copied(Path::new(&path), out),
-                code => code.unwrap_or(1),
-            }
-        }),
+        // Its log still shows: output() would keep standard error too.
+        Some(out) => command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .output()
+            .map_or(1, |built| {
+                let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
+                match built.status.code() {
+                    Some(0) => copied(Path::new(&path), out),
+                    code => code.unwrap_or(1),
+                }
+            }),
     };
     Ran {
         on: None,
@@ -352,6 +357,15 @@ fn copied(built: &Path, out: &Path) -> i32 {
 /// tree's flake. It costs the folder's size, 4.7 MB for a checkout of
 /// this repository, so a commit GitHub has is sent by name instead.
 fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, String> {
+    let lock = fs::read_to_string(folder.join("flake.lock")).unwrap_or_default();
+    let kept = kept_here(&lock);
+    if !kept.is_empty() {
+        return Err(format!(
+            "{} takes {} from this machine alone",
+            folder.display(),
+            kept.join(", ")
+        ));
+    }
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
     let tarball = mine(scratch, "folder.tgz");
     let mut tar = Command::new("tar");
@@ -874,6 +888,31 @@ fn pinned(lock: &str) -> Vec<String> {
         .collect();
     found.sort();
     found.dedup();
+    found
+}
+
+/// The inputs a flake's lock takes from this machine alone, a store path
+/// or a repository at a `file:` URL, which the lent builder can't fetch:
+/// such a flake is built here rather than failing there, since what they
+/// hold, as a machine's secrets, isn't for sending.
+fn kept_here(lock: &str) -> Vec<String> {
+    let Ok(lock) = serde_json::from_str::<serde_json::Value>(lock) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = lock["nodes"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, node)| {
+            let locked = &node["locked"];
+            locked["type"] == "path"
+                || locked["url"]
+                    .as_str()
+                    .is_some_and(|url| url.starts_with("file:"))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    found.sort();
     found
 }
 

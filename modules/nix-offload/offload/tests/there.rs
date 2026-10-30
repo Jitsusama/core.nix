@@ -147,6 +147,68 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
 }
 
 #[test]
+fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let built = folder.path().join("built");
+    fs::create_dir(&built).unwrap();
+    fs::write(built.join("guide"), "a guide").unwrap();
+    // nix as it builds here: a log line on its error, its output's path
+    // on its standard output.
+    let nix = format!(
+        "#!/bin/sh\necho \"$@\" > \"$(dirname \"$0\")/nix-was-given\"\n\
+         echo 'the build said this' >&2\necho {}\n",
+        built.display()
+    );
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", nix.as_str())] {
+        let path = bin.join(name);
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    let copy = folder.path().join("copy");
+    fs::create_dir(&copy).unwrap();
+    fs::write(copy.join("flake.nix"), "{ }").unwrap();
+    fs::write(
+        copy.join("flake.lock"),
+        r#"{"nodes": {"root": {"inputs": {"mint": "mint"}},
+            "mint": {"locked": {"type": "path", "path": "/nix/store/x-mint"}},
+            "secrets": {"locked": {"type": "git", "url": "file:///home/s"}},
+            "nixpkgs": {"locked": {"type": "github", "owner": "o"}}}}"#,
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let out = folder.path().join("out");
+    let flake = format!("path:{}", copy.display());
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", "-L", "--out"])
+        .arg(&out)
+        .args([flake.as_str(), "packages.x.guide"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(!bin.join("ssh-was-given").exists(), "not sent");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("takes mint, secrets from this machine alone"),
+        "{said}"
+    );
+    assert!(said.contains("the build said this"), "{said}");
+    assert_eq!(fs::read_to_string(out.join("guide")).unwrap(), "a guide");
+}
+
+#[test]
 fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
