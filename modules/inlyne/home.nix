@@ -16,8 +16,9 @@
 # forward through the pages followed, ↑ and ↓ a few lines, Page Up and Page
 # Down a screen, Home and End the top and the bottom, + and - larger and
 # smaller, 0 as it was, Ctrl+C copies what's selected, Escape or q closes,
-# and ? opens a page saying all of them, which ← leaves. Two patches give
-# it what it lacked: a colour for headings, and that page.
+# and ? opens a page saying all of them, which ← leaves. Three patches give
+# it what it lacked: a colour for headings, that page, and opening without
+# asking the desktop for a theme when its settings name one.
 {
   config,
   lib,
@@ -40,6 +41,7 @@ let
     patches = (old.patches or [ ]) ++ [
       ./heading-colour.patch
       ./keys-page.patch
+      ./named-theme.patch
     ];
     postFixup =
       (old.postFixup or "")
