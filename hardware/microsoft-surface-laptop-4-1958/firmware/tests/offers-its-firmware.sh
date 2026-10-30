@@ -4,7 +4,7 @@
 # from the remote the module writes, as a trusted upgrade, and nothing for
 # the TPM. Only fwupd's UEFI capsule plugin loads, and every path it reads
 # is a folder here, so it touches no firmware of the machine it runs on.
-# usage: offers-its-uefi.sh <remote's .conf> <fwupd> <jq>
+# usage: offers-its-firmware.sh <remote's .conf> <fwupd> <jq>
 set -euo pipefail
 
 remote=$1

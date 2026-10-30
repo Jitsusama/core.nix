@@ -1386,7 +1386,7 @@
     the Surface Laptop 4 installs its touchscreen's driver with the panel's qualified settings, and
     loads it from a unit after multi-user.target rather than while the system starts
   '';
-  the-surface-offers-its-uefi-through-fwupd = ''
+  the-surface-offers-its-firmware-through-fwupd = ''
     fwupd, given the Surface Laptop 4's ESRT with its UEFI at 4.355.140 and its TPM at 7.2.2.0,
     offers the UEFI's capsule from the remote the module writes, at the version the capsule itself
     carries, as a trusted upgrade, and nothing for the TPM
