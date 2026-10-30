@@ -161,17 +161,21 @@ struct Shaped {
 }
 
 impl Shaped {
+    /// What the connection has carried each way, in bytes, as each
+    /// direction's CAKE counts it. The link's own counts take in copies to
+    /// this network's machines as well, which never cross the connection:
+    /// on 29 October they took a home upload's rate from 8 Mbit/s to 458
+    /// within three hours, on a connection carrying about 11, and a cut
+    /// could go no further under that than Wi-Fi's floor, so the queue
+    /// formed in the router behind every session's requests.
     fn bytes(&self) -> (u64, u64) {
-        let stat = |name: &str| {
-            read_number(
-                &Path::new("/sys/class/net")
-                    .join(&self.uplink.name)
-                    .join("statistics")
-                    .join(name),
-            )
-            .unwrap_or(0)
+        let sent = |dev: &str| {
+            sh(&words(&format!("tc -s -j qdisc show dev {dev}")))
+                .ok()
+                .and_then(|json| qdisc::shaped_bytes(&json))
+                .unwrap_or(0)
         };
-        (stat("tx_bytes"), stat("rx_bytes"))
+        (sent(&self.uplink.name), sent(&self.ifb))
     }
 
     /// What the link sent and received since it was last counted, in

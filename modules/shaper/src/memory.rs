@@ -1,6 +1,12 @@
 //! The best rates each network held, so a network met before starts right.
 //! A network is named by its router's hardware address, kept in one JSON
 //! file of name to rates.
+//!
+//! Until 30 October the rates were learned from everything a link carried,
+//! copies to the network's own machines included, and a home connection
+//! of about 11 Mbit/s up was remembered at 458. Those were kept in
+//! networks.json, which is removed unread so each network learns again.
+//! The shaper is the only thing that writes either file.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -20,7 +26,8 @@ pub struct Memory {
 
 impl Memory {
     pub fn open(dir: &Path) -> Memory {
-        let path = dir.join("networks.json");
+        let _ = fs::remove_file(dir.join("networks.json"));
+        let path = dir.join("connections.json");
         let networks = fs::read_to_string(&path)
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
@@ -83,6 +90,18 @@ mod tests {
             })
         );
         assert_eq!(Memory::open(&d).get("00:11:22:33:44:55"), None);
+    }
+
+    #[test]
+    fn rates_learned_from_local_copies_are_forgotten() {
+        let d = dir("local");
+        fs::write(
+            d.join("networks.json"),
+            r#"{"net":{"up":457957,"down":244564}}"#,
+        )
+        .unwrap();
+        assert_eq!(Memory::open(&d).get("net"), None);
+        assert!(!d.join("networks.json").exists());
     }
 
     #[test]
