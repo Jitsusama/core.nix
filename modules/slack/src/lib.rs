@@ -70,6 +70,7 @@ pub struct Found {
 impl Found {
     /// Who they are without how they are, as it's kept: whether they're
     /// active and their status are only ever as fresh as Slack's answer.
+    #[must_use]
     pub fn who(&self) -> Found {
         Found {
             presence: String::new(),
@@ -105,6 +106,7 @@ struct KeptOne {
 
 impl Kept {
     /// What the file at `path` keeps, or nothing yet.
+    #[must_use]
     pub fn at(path: Option<PathBuf>) -> Kept {
         let by = path
             .as_deref()

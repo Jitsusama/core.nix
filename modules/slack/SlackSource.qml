@@ -58,15 +58,17 @@ PersonSource {
         facts: Slack.facts(said)
     }))
 
-    // How each stands in Slack, by address, in their note: active, away
-    // or in a huddle, then their status's emoji.
+    // How each stands in Slack, by address, for their note: active, away
+    // or in a huddle, and their status's emoji as its mark, which People
+    // weighs with what other sources say (Person.standing).
     stands: {
         const by = {};
         for (const said of Object.values(known)) {
-            if (said.id && said.presence)
+            if (said.id && (said.presence || said.emoji))
                 by[said.email] = {
-                    said: [said.presence, said.emoji].filter(word => word).join(" "),
-                    order: presenceOrder[said.presence] ?? presenceOrder.away
+                    said: said.presence,
+                    order: presenceOrder[said.presence] ?? 4,
+                    mark: said.emoji
                 };
         }
         return by;

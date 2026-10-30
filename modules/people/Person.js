@@ -117,25 +117,43 @@ function joined(person, other) {
     other.gone = true;
 }
 
-// How someone stands, from the first source that says, each source's
+// How someone stands, from every source that says, each source's
 // standing being its stands by address, or by what a person of its own
-// alone is known as: { said, order, favourite }, as Tuple says
-// "available", 0. Nobody says anything of most, who come after everyone
-// who's said to stand anyhow.
+// alone is known as: { said, order, favourite, recent, mark }, as Tuple
+// says "available", 0, and Slack "active", 0, with a status's emoji as
+// its mark. The note says what most limits reaching them now, whichever
+// source knows it (VKCF3Z, e633d330): in a call or a huddle, then away,
+// then available or active, then offline, which only says a program is
+// closed; a tie goes to the source asked first. The first mark follows
+// it. They're a favourite, or recent, if any source says so. Nobody says
+// anything of most, who come after everyone who's said to stand anyhow.
 const UNSAID_ORDER = 4;
 const UNSAID = { said: "", order: UNSAID_ORDER, favourite: false, recent: false };
+// How much each order limits reaching them, by order: available 0, busy
+// 1, away 2, offline 3, unsaid 4.
+const LIMITS = [2, 4, 3, 1, 0];
 
 function standing(person, stands) {
     const known = person.emails.length > 0 ? person.emails : [person.key];
+    const said = [];
     for (const by of stands) {
-        for (const email of known) {
-            const stood = by[email];
-            if (stood) {
-                return Object.assign({}, UNSAID, stood);
-            }
+        const stood = known.map(email => by[email]).find(Boolean);
+        if (stood) {
+            said.push(stood);
         }
     }
-    return UNSAID;
+    if (said.length === 0) {
+        return UNSAID;
+    }
+    const limit = stood => (stood.said ? LIMITS[stood.order ?? UNSAID_ORDER] ?? 0 : 0);
+    const most = said.reduce((held, stood) => (limit(stood) > limit(held) ? stood : held));
+    const mark = said.map(stood => stood.mark).find(Boolean);
+    return {
+        said: [most.said, mark].filter(Boolean).join(" "),
+        order: most.said ? (most.order ?? UNSAID_ORDER) : UNSAID_ORDER,
+        favourite: said.some(stood => stood.favourite === true),
+        recent: said.some(stood => stood.recent === true)
+    };
 }
 
 // When the last thing between them and Joel was, in milliseconds since

@@ -70,8 +70,28 @@ QtObject {
         const stands = [{ "ben@example.com": { said: "in a call", order: 1, favourite: true } },
             { "ben@example.com": { said: "away", order: 2 } }];
         const ben = everyone[1];
-        check("the first source that says", Person.standing(ben, stands),
+        check("what most limits reaching them", Person.standing(ben, stands),
             { said: "in a call", order: 1, favourite: true, recent: false });
+        // Slack, asked first, against Tuple (VKCF3Z, e633d330).
+        const slackThen = (slack, tuple) => Person.standing(ben,
+            [{ "ben@example.com": slack }, { "ben@example.com": tuple }]);
+        const active = { said: "active", order: 0, mark: "\u{1f334}" };
+        check("a call beats active, with Slack's mark",
+            slackThen(active, { said: "in a call", order: 1 }).said, "in a call \u{1f334}");
+        check("a huddle beats available",
+            slackThen({ said: "in a huddle", order: 1 }, { said: "available", order: 0 }).said,
+            "in a huddle");
+        check("away beats available",
+            slackThen({ said: "away", order: 2 }, { said: "available", order: 0 }).said, "away");
+        check("a tie goes to the source asked first",
+            slackThen(active, { said: "available", order: 0 }).said, "active \u{1f334}");
+        check("active beats a program closed",
+            slackThen(active, { said: "offline", order: 3 }).said, "active \u{1f334}");
+        check("a favourite from any source",
+            slackThen(active, { said: "available", order: 0, favourite: true }).favourite, true);
+        check("a mark alone follows the other's words",
+            slackThen({ said: "", order: 4, mark: "\u{1f334}" }, { said: "away", order: 2 }),
+            { said: "away \u{1f334}", order: 2, favourite: false, recent: false });
         check("nothing said", Person.standing(everyone[2], stands),
             { said: "", order: 4, favourite: false, recent: false });
         check("listed: a favourite", Person.listed(ben, Person.standing(ben, stands), 0), true);
