@@ -84,6 +84,69 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
 }
 
 #[test]
+fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        let path = bin.join(name);
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    // A throwaway copy, as one cut from an archive is: git, but no
+    // commit of origin's.
+    let copy = folder.path().join("copy");
+    fs::create_dir_all(copy.join(".git")).unwrap();
+    fs::write(copy.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+    fs::write(copy.join("flake.nix"), "{ }").unwrap();
+    std::os::unix::fs::symlink("/nix/store/x", copy.join("result")).unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args([
+            "there",
+            "-L",
+            &format!("path:{}", copy.display()),
+            "checks.x.a",
+        ])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(!bin.join("nix-was-given").exists(), "not built here");
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap();
+    let command = given.lines().nth(1).unwrap();
+    assert!(
+        command.contains("tar -xzf - -C /tmp/nix-offload-there-"),
+        "{command}"
+    );
+    assert!(
+        command.contains("nix build --no-link -L 'path:/tmp/nix-offload-there-"),
+        "{command}"
+    );
+    let listed = Command::new("tar")
+        .arg("-tzf")
+        .arg(bin.join("received"))
+        .output()
+        .unwrap();
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    assert!(listed.contains("./flake.nix"), "{listed}");
+    assert!(
+        !listed.contains(".git") && !listed.contains("result"),
+        "{listed}"
+    );
+}
+
+#[test]
 fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
     let folder = tempfile::tempdir().unwrap();
     let offload = folder.path().join("offload");
@@ -362,7 +425,7 @@ fn it_says_what_it_takes_a_word_a_line() {
     assert_eq!(said.status.code(), Some(0));
     assert_eq!(
         String::from_utf8_lossy(&said.stdout),
-        "tree\napply\nout\nwants\n"
+        "tree\napply\nout\nwants\nfolder\n"
     );
 }
 

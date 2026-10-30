@@ -256,7 +256,14 @@ pub fn run(
             command: asked.command(),
             bundle: None,
         }),
-        Some(folder) => source(&folder, scratch).map(|source| source.sending(asked)),
+        // A `path:` flake is read as its folder holds it, git or not.
+        Some(folder) if asked.flake.starts_with("path:") => packed(&folder, asked, scratch, true),
+        Some(folder) => source(&folder, scratch)
+            .map(|source| source.sending(asked))
+            .or_else(|why| {
+                eprintln!("nix-offload: {why}, so it goes as a tarball");
+                packed(&folder, asked, scratch, false)
+            }),
     };
     let reached = reached.and_then(|sending| {
         let ran = loop {
@@ -338,6 +345,51 @@ fn copied(built: &Path, out: &Path) -> i32 {
     }
 }
 
+/// A flake that's a folder here, sent to the builder as a tarball and
+/// built there as a `path:` flake, its inputs fetched there: `whole`, the
+/// folder as `path:` reads it, but its git history and any result links,
+/// and otherwise the files its git tree tracks, as Nix reads a git
+/// tree's flake. It costs the folder's size, 4.7 MB for a checkout of
+/// this repository, so a commit GitHub has is sent by name instead.
+fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, String> {
+    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+    let tarball = mine(scratch, "folder.tgz");
+    let mut tar = Command::new("tar");
+    tar.arg("-czf").arg(&tarball).arg("-C").arg(folder);
+    let tracked = (!whole)
+        .then(|| git(folder, &["ls-files", "-z"], None))
+        .flatten();
+    let packed = match tracked {
+        Some(files) => {
+            tar.args(["--null", "-T", "-"]).stdin(Stdio::piped());
+            tar.spawn().and_then(|mut packing| {
+                if let Some(mut input) = packing.stdin.take() {
+                    std::io::Write::write_all(&mut input, files.as_bytes())?;
+                }
+                packing.wait()
+            })
+        }
+        None => tar
+            .args(["--exclude=./.git", "--exclude=./result*", "."])
+            .status(),
+    };
+    if !packed.is_ok_and(|status| status.success()) {
+        let _ = fs::remove_file(&tarball);
+        return Err(format!("{} couldn't be packed", folder.display()));
+    }
+    // A folder named for this run, gone when its shell ends.
+    let into = format!("/tmp/nix-offload-there-{}", std::process::id());
+    let command = format!(
+        "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
+         tar -xzf - -C {into}; {}",
+        asked.command_in(&format!("path:{into}"), false)
+    );
+    Ok(Sending {
+        command,
+        bundle: Some(tarball),
+    })
+}
+
 /// What the lent builder is given for a build: the command its shell
 /// runs, and a file sent on its standard input, a bundle of commits it
 /// lacks or a tarball of a folder.
@@ -405,8 +457,9 @@ impl Source {
 }
 
 /// What `there --takes` says it takes: a flake that's a git tree here,
-/// `--apply`, `--out`, and waiting for a builder it asks for.
-pub const TAKES: [&str; 4] = ["tree", "apply", "out", "wants"];
+/// `--apply`, `--out`, waiting for a builder it asks for, and a flake
+/// that's a folder no commit names.
+pub const TAKES: [&str; 5] = ["tree", "apply", "out", "wants", "folder"];
 
 /// The ref a bundle carries its commit under, here only while it's made.
 const BUNDLED: &str = "refs/nix-offload/there";
