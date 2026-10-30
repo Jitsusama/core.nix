@@ -563,8 +563,9 @@
   '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, what a held session
-    outlives, whether work costs money, its taints) has it written where mycelium reads it, in
-    mycelium's words; one declaring nothing has no file
+    outlives, whether work costs money, its taints, its agents by realm) has it written where
+    mycelium reads it, in mycelium's words; one declaring nothing has no file, and agents in a
+    realm it doesn't join are refused
   '';
   neovim-binds-every-key = ''
     Neovim binds every key keys.nix names and only those, each action provided, in its scope's
@@ -782,6 +783,10 @@
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged
+  '';
+  pi-says-what-starts-its-sessions = ''
+    pi tells mycelium the command its sessions start with in each realm: plain pi at home, pi-claude
+    in the Claude plan's realm, and plain pi alone on a machine on that plan
   '';
   pi-says-when-the-plan-runs-out = ''
     pi says plainly when a Claude plan limit is used up, which limit and when it resets, that

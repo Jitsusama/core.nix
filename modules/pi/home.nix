@@ -154,6 +154,7 @@ let
 in
 {
   imports = [
+    ./agents.nix
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix

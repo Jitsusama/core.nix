@@ -307,6 +307,40 @@
         && onPi.jitsusama.pi.ask.plan == "pi"
       );
 
+  # pi tells mycelium what its sessions start with in each realm: plain pi
+  # at home, pi-claude in the plan's realm, plain pi alone on a machine on
+  # the plan, and nothing for a machine in no realm.
+  pi-says-what-starts-its-sessions =
+    let
+      agents =
+        settings:
+        (account (
+          workstation.extendModules {
+            modules = [ { home-manager.users.someone.jitsusama = settings; } ];
+          }
+        )).jitsusama.mycelium.agents;
+    in
+    holds "pi-says-what-starts-its-sessions"
+      "pi doesn't tell mycelium plain pi at home and pi-claude in the plan's realm, tells pi-claude on the plan, or tells a machine in no realm anything."
+      (
+        agents {
+          mycelium.realm = "home";
+          mycelium.alsoJoins.other = { };
+          pi.claude.realm = "other";
+        } == {
+          home = "pi";
+          other = "pi-claude";
+        }
+        &&
+          agents {
+            mycelium.realm = "personal";
+            pi.plan = "claude";
+          } == {
+            personal = "pi";
+          }
+        && agents { } == { }
+      );
+
   # pi's package list is declared: core's two on every machine, in order, and
   # a machine's own after them rather than in their place.
   pi-loads-its-packages =

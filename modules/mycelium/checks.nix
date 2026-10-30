@@ -75,6 +75,20 @@ let
   declared =
     bare:
     builtins.fromJSON (bare { declares = declaring; }).xdg.configFile."mycelium/declared.json".text;
+  # A machine at home naming the command its sessions there start with, or
+  # one in a realm it doesn't join.
+  saying =
+    agents:
+    linux {
+      realm = "home";
+      declares = declaring;
+      inherit agents;
+    };
+  refusesAgents =
+    home:
+    lib.any (
+      check: !check.assertion && lib.hasInfix "jitsusama.mycelium.agents" check.message
+    ) home.assertions;
 in
 {
   # A workstation in a realm runs the node in it, dialling each machine it
@@ -164,5 +178,16 @@ in
         }
         && (declared mac).outlives == [ ]
         && !(apart.xdg.configFile ? "mycelium/declared.json")
+        &&
+          (builtins.fromJSON (saying { home = "an-agent"; }).xdg.configFile."mycelium/declared.json".text)
+          .agents == {
+            home = "an-agent";
+          }
+        && !refusesAgents (saying {
+          home = "an-agent";
+        })
+        && refusesAgents (saying {
+          elsewhere = "an-agent";
+        })
       );
 }

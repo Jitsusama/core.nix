@@ -10,8 +10,8 @@
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
 # A machine may join further realms too, each run by a node of its own,
-# with its own state, mesh, steer inboxes, socket and key, where the harness keeps a realm that isn't the machine's
-# home one. A pi is in one realm, MYCELIUM_REALM, and PI_HOME_REALM tells it
+# with its own state, mesh, steer inboxes, socket and key, where the harness
+# keeps a realm that isn't the machine's home one. A pi is in one realm, MYCELIUM_REALM, and PI_HOME_REALM tells it
 # which realm keeps the harness's usual folders:
 #
 #   jitsusama.mycelium.alsoJoins.other.links = [ "third-machine" ];
@@ -37,6 +37,9 @@
 #     probes.office = [ "/run/current-system/sw/bin/test" "-e" "/run/office" ];
 #     taints = [ { key = "person-works"; effect = "prefer_not"; why = "..."; } ];
 #   };
+#
+# With it goes the command an agent session starts with in each realm, which
+# pi's module sets where pi is installed (jitsusama.mycelium.agents).
 { mycelium }:
 {
   config,
@@ -272,6 +275,20 @@ in
         reads as unknown.
       '';
     };
+    agents = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = {
+        work = "pi";
+        personal = "pi-claude";
+      };
+      description = ''
+        The command an agent session starts with here, by the realm it
+        joins, for whatever starts one, such as the launcher. Each realm's
+        node tells only its own. It is declared with the rest, so a machine
+        declaring nothing says none, and whatever starts a session picks.
+      '';
+    };
   };
 
   config = lib.mkMerge [
@@ -290,6 +307,12 @@ in
           message = "jitsusama.mycelium.alsoJoins names the home realm, which jitsusama.mycelium.realm already joins.";
         }
         {
+          assertion = lib.all (realm: realm == cfg.realm || cfg.alsoJoins ? ${realm}) (
+            lib.attrNames cfg.agents
+          );
+          message = "jitsusama.mycelium.agents names a realm this machine doesn't join.";
+        }
+        {
           assertion = lib.all (lib.types.strMatching "[a-z0-9-]+").check (lib.attrNames cfg.alsoJoins);
           message = "jitsusama.mycelium.alsoJoins names a realm in other than lowercase letters, digits and dashes.";
         }
@@ -305,13 +328,16 @@ in
     })
     (lib.mkIf (cfg.declares != null) {
       # Where mycelium reads it: XDG_CONFIG_HOME's, or ~/.config's.
-      xdg.configFile."mycelium/declared.json".text = builtins.toJSON {
-        inherit (cfg.declares) reach outlives taints;
-        probes = lib.mapAttrs (
-          _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
-        ) cfg.declares.probes;
-        costs_money = cfg.declares.costsMoney;
-      };
+      xdg.configFile."mycelium/declared.json".text = builtins.toJSON (
+        {
+          inherit (cfg.declares) reach outlives taints;
+          probes = lib.mapAttrs (
+            _: probe: if builtins.isList probe then { run = probe; } else { connect = probe; }
+          ) cfg.declares.probes;
+          costs_money = cfg.declares.costsMoney;
+        }
+        // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
+      );
     })
     (lib.mkIf (isLinux && serving) {
       systemd.user.services = {
