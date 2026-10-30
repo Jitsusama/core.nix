@@ -1343,11 +1343,12 @@ QtObject {
             { DeviceId: "ssd", Name: "PVC10 SK hynix 1024GB", Vendor: "SK hynix",
                 Version: "61001171", Flags: ["internal", "updatable", "needs-reboot"] },
             { DeviceId: "bios", Name: "System Firmware", Vendor: "Dell", Version: "1.12.0",
-                Flags: ["internal", "updatable", "needs-reboot"] },
+                Flags: ["internal", "updatable", "needs-reboot", "require-ac"] },
             { DeviceId: "region", Name: "Internal SPI Controller (BIOS)", Version: "1.12.0",
                 Flags: ["internal", "updatable-hidden"] },
             { DeviceId: "spi", Name: "Internal SPI Controller", Flags: ["internal"] },
             { DeviceId: "nameless", Version: "1" },
+            { DeviceId: "pk", Name: "Platform Key", Vendor: "Unknown", Version: "2026" },
             { DeviceId: "dock1", Name: "USB-C Controller", Vendor: "HP", Version: "69.52",
                 Flags: ["updatable"] },
             { DeviceId: "dock2", Name: "USB-C Controller", Vendor: "HP", Version: "69.64",
@@ -1363,12 +1364,12 @@ QtObject {
         ] };
         const firmware = Firmware.devices(fwupdDevices, fwupdOffered, fwupdHistory);
         machine("the firmware listed, an update first", firmware.map(device => device.name),
-            ["System Firmware", "PVC10 SK hynix 1024GB", "USB-C Controller 1",
+            ["System Firmware", "PVC10 SK hynix 1024GB", "Platform Key", "USB-C Controller 1",
                 "USB-C Controller 2"]);
         machine("the firmware with an update offered", firmware[0], {
             id: "bios", name: "System Firmware", vendor: "Dell", version: "1.12.0",
             offered: "1.13.0", notes: "This release fixes:\na & b\nc", updated: 1793278224,
-            restarts: true
+            restarts: true, waits: null, charger: true
         });
         machine("firmware never updated, or not successfully", firmware[1].updated, null);
         machine("firmware's version with an update offered", Firmware.versionOf(firmware[0]),
@@ -1379,6 +1380,31 @@ QtObject {
         machine("nothing offered, said in words", Firmware.devices(fwupdDevices, {}, {})
             .every(device => device.offered === null), true);
         machine("fwupd with no devices", Firmware.devices({}, {}, {}), []);
+        machine("a vendor fwupd doesn't know is none",
+            firmware.find(device => device.id === "pk").vendor, "");
+        // An update in but finishing at the restart, as the history says a
+        // capsule's is: offered until then, and said to wait for it; once
+        // the restart has flashed it, nothing waits.
+        const waiting = state => ({ Devices: [{ DeviceId: "bios", UpdateState: state,
+            Releases: [{ Version: "1.13.0" }] }] });
+        const waits = Firmware.devices(fwupdDevices, {}, waiting(1))[0];
+        machine("firmware waiting for the restart", [waits.offered, waits.waits],
+            ["1.13.0", "1.13.0"]);
+        machine("firmware's version waiting for the restart", Firmware.versionOf(waits),
+            "1.12.0, 1.13.0 at the restart");
+        machine("firmware needing a reboot waits too",
+            Firmware.devices(fwupdDevices, {}, waiting(4))[0].waits, "1.13.0");
+        machine("firmware that failed doesn't wait",
+            Firmware.devices(fwupdDevices, {}, waiting(3)).find(device => device.id === "bios")
+                .waits, null);
+        const flashed = { Devices: [Object.assign({}, fwupdDevices.Devices[1],
+            { Version: "1.13.0" })] };
+        machine("firmware flashed at the restart waits no more",
+            Firmware.devices(flashed, {}, waiting(1))[0].waits, null);
+        machine("why an install didn't go in", Firmware.reason(
+            "Decompressing\u2026\nSystem Firmware cannot be updated: on battery\n\n"),
+            "System Firmware cannot be updated: on battery");
+        machine("an install that said nothing", Firmware.reason(""), "");
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",
             Cameras.loopback("NV12:1920x1080@300000/10000\n"), "NV12 1920 \u00d7 1080 at 30");

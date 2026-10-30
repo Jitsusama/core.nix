@@ -1228,6 +1228,23 @@
       "name": "Offered"
     },
     {
+      "id": "verb:firmware:install",
+      "in": "firmware",
+      "name": "Install {version}",
+      "verb": "install",
+      "glyph": "firmware",
+      "sure": "Install {version} on {device} Now",
+      "said": {
+        "final": "it can't be undone",
+        "final-at-restart": "it can't be undone, and finishes at a restart",
+        "installing": "installing",
+        "waits": "restart to finish",
+        "installed": "installed",
+        "charger": "needs the charger",
+        "failed": "didn't install"
+      }
+    },
+    {
       "id": "light",
       "name": "Desk Light",
       "term": "Machine/desk light",

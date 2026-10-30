@@ -79,7 +79,9 @@ let
   # Stands in for fwupd's fwupdmgr, which the VM doesn't run: each command's
   # --json answer is what the test wrote to the runtime folder's
   # fwupd/<command>.json, or else the laptop's two devices with nothing
-  # offered, as fwupd says that, in words and failing.
+  # offered, as fwupd says that, in words and failing. An update runs what
+  # the test wrote to fwupd/update, as fwupd would install, or else fails,
+  # with nothing to install.
   fwupdDevices = pkgs.writeText "fwupd-devices.json" (
     builtins.toJSON {
       Devices = [
@@ -108,6 +110,8 @@ let
     }
   );
   standInFwupdmgr = pkgs.writeShellScript "fwupdmgr" ''
+    installs=$XDG_RUNTIME_DIR/fwupd/update
+    if [ "$1" = update ] && [ -x "$installs" ]; then exec "$installs" "$@"; fi
     said=$XDG_RUNTIME_DIR/fwupd/$1.json
     if [ -e "$said" ]; then exec cat "$said"; fi
     case $1 in

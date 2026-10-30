@@ -1489,7 +1489,80 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
         assert reads[1].startswith("PVC10 SK hynix 1024GB \u00b7 61001171"), reads
         desktop.photograph("launcher-firmware")
         desktop.step_in()
-        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Version"])
+        desktop.launcher_until(lambda shown: shown["rows"] == ["Install 1.13.0", "Version"])
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+    finally:
+        desktop.as_account(f"rm -rf {said}")
+
+
+def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
+    desktop: Desktop,
+) -> None:
+    """Install asks once, installs once however often Return is pressed, then waits."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    said = "$XDG_RUNTIME_DIR/fwupd"
+    offered = {"Devices": [{"DeviceId": "bios", "Releases": [{"Version": "1.13.0"}]}]}
+    # Once in, fwupd's history says the BIOS's update waits for the
+    # restart, as a capsule does; each run is counted, so a second Return
+    # that started a second would show.
+    pending = {
+        "Devices": [{"DeviceId": "bios", "UpdateState": 1, "Releases": [{"Version": "1.13.0"}]}]
+    }
+    installs = "\n".join(
+        [
+            "#!/bin/sh",
+            f'echo "$*" >> {said}/installed',
+            "sleep 3",
+            f"echo {shlex.quote(json.dumps(pending))} > {said}/get-history.json",
+            f"rm {said}/get-updates.json",
+        ]
+    )
+    desktop.as_account(
+        f"mkdir -p {said} && echo {shlex.quote(json.dumps(offered))} > {said}/get-updates.json"
+        f" && printf '%s\\n' {shlex.quote(installs)} > {said}/update && chmod +x {said}/update"
+    )
+    asked = "Install 1.13.0 on System Firmware Now"
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        machine.send_chars("machine ", delay=KEY_PACE)
+        desktop.launcher_until(
+            lambda shown: firmware_reads(shown).startswith("Firmware \u00b7 1 update ready")
+        )
+        desktop.type_in("firm", "Firmware")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["System Firmware"])
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Install 1.13.0"])
+        # Return asks, its foot saying what it ends; nothing has run yet.
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][:1] == [asked]
+                and shown["footer"] == "it can't be undone, and finishes at a restart"
+            )
+        )
+        desktop.photograph("launcher-firmware-install-asks")
+        machine.fail(desktop.in_session(f"test -e {said}/installed"))
+        # Return again installs, keeping the launcher and saying so; a
+        # third Return while it goes in does nothing more.
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["footer"] == "installing")
+        machine.send_key("ret")
+        # Once in, Install waits for the restart, dimmed in place.
+        machine.send_key("left")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["rows"][:1] == ["Install 1.13.0"]
+                and shown["things"][0]["gone"] is True
+                and shown["footer"] == "restart to finish"
+            )
+        )
+        desktop.photograph("launcher-firmware-install-waits")
+        ran = desktop.as_account(f"cat {said}/installed").splitlines()
+        assert ran == ["update bios --assume-yes --no-reboot-check"], ran
         machine.send_key("esc")
         machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     finally:
