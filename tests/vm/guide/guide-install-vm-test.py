@@ -1313,9 +1313,14 @@ def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     assert log[enrolled:].count("Linux version") == 1
     # Refusing for the boot, not the PIN, cost the TPM no tries.
     assert lockouts(machine, values) == firmware_cleared.lockouts
-    # The guide finds the TPM still sealed, and goes on to alice's keys,
-    # carried across.
-    on_screen(machine, "the TPM holds the SSH keys", timeout=STEP)
+    # The guide finds the TPM still sealed, and alice's keys and spares,
+    # carried across, still there, so it finishes asking nothing.
+    machine.wait_until_succeeds(
+        "systemctl show -P ActiveState guide-installed | grep -qx inactive", timeout=300
+    )
+    assert machine.succeed("systemctl show -P ConditionResult guide-installed").strip() == "yes"
+    assert machine.succeed("systemctl show -P Result guide-installed").strip() == "success"
+    assert "Finish machine" not in screen(machine), screen(machine)
     assert "Secure Boot: enabled (user)" in machine.succeed("bootctl status")
     assert writer_stick.owner in machine.succeed("sbctl status")
     # And the files it enrolled from go, so a later clearing can't have
