@@ -124,7 +124,8 @@ Provider {
     // listed rather than hidden. A display's output desk-facts says nothing
     // of waits for a display.
     function listed(node) {
-        const told = factsOf(node);
+        const key = factKey(node, jacks);
+        const told = key === "" ? [] : jacks[key];
         if (Sounds.plugged(told) !== "")
             return !Sounds.hidden(told, jacksCurrent) || chosen(node);
         return displayed || !display(node);
@@ -218,6 +219,20 @@ Provider {
     // card it says nothing of, or no file at all, has no facts.
     property var facts: ({})
 
+    // What desk-facts says of each card's jack alone, which is all whether a
+    // device is listed reads. desk-facts says a card is playing as sound
+    // starts and stops, every few seconds while a call or a notice sounds,
+    // and every device was listed again each time, reading each sound
+    // node's properties, which Quickshell makes afresh at every read, even
+    // with the launcher closed. So this changes only as a jack's facts do.
+    property var jacks: ({})
+
+    onFactsChanged: {
+        const now = Sounds.jacks(facts);
+        if (JSON.stringify(now) !== JSON.stringify(jacks))
+            jacks = now;
+    }
+
     FileView {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/sound.json`
         watchChanges: true
@@ -286,15 +301,18 @@ Provider {
     // ("MV7:in"); one with several, as the machine's own has its speakers,
     // headphones and displays, by its device's number too
     // ("sofsoundwire,2:out"), and whichever the file holds is the one.
-    function factKey(node) {
-        const card = node.properties["alsa.id"];
+    function factKey(node, among) {
+        // Read once: Quickshell makes a node's properties afresh each time.
+        const properties = node.properties;
+        const card = properties["alsa.id"];
         if (!card)
             return "";
         const way = node.isSink ? "out" : "in";
-        const device = node.properties["alsa.device"] ?? node.properties["api.alsa.pcm.device"];
+        const device = properties["alsa.device"] ?? properties["api.alsa.pcm.device"];
         const keys = (device !== undefined ? [`${card},${device}:${way}`] : [])
             .concat([`${card}:${way}`]);
-        return keys.find(each => facts[each] !== undefined) ?? "";
+        const known = among ?? facts;
+        return keys.find(each => known[each] !== undefined) ?? "";
     }
 
     function factsOf(node) {
@@ -746,7 +764,8 @@ Provider {
 
     readonly property var porting: routed(watched) ? watched : null
     onPortingChanged: readPorts(porting)
-    onFactsChanged: readPorts(porting)
+    // A jack, not a card starting to play, changes which port is in use.
+    onJacksChanged: readPorts(porting)
 
     // One read at a time (Sounds.portReads): a read asked while another
     // runs, as a jack changing or a port moved asks one, waits for it, and
