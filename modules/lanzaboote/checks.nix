@@ -21,6 +21,17 @@
         touch $out
       '';
 
+  # loader-first.sh puts the loader's own entry first in BootOrder, as
+  # tests/loader-first.sh says, with stand-ins for findmnt, lsblk and
+  # efibootmgr, with a Surface's entries and a past install's.
+  # vm-secure-boot-installs shows a firmware starting it, in minutes; this
+  # holds which entry it takes for the loader's and what it writes, in
+  # seconds.
+  loader-goes-first-in-boot-order = pkgs.runCommandLocal "loader-goes-first-in-boot-order" { } ''
+    ${lib.getExe pkgs.bash} ${./tests/loader-first.sh} ${./loader-first.sh}
+    touch $out
+  '';
+
   # Every switch keeps the generation the machine booted on the ESP, so
   # systemd-pcrlock can always account for the running boot and the disk's
   # policy keeps PCR 4.

@@ -183,7 +183,11 @@ def keep_the_recovery_key(machine: QemuMachine) -> str:
 # leaves it asking, so each prompt is answered until the disk opens.
 def unlock(machine: QemuMachine, secret: str) -> None:
     """Answer the disk's prompts with the secret until it opens."""
-    machine.wait_for_console_text("Please enter")
+    # The driver hands over only whole lines, and the prompt ends without
+    # one, so it's seen only once something else is printed after it. The
+    # agent's own line, just before the prompt, is whole; a PIN sent a
+    # moment early is sent again below.
+    machine.wait_for_console_text(r"Please enter|Starting password query on /dev/ttyS0")
     for _ in range(4):
         machine.send_console(secret + "\n")
         # A prompt left asking times the wait out, and the next try answers it.
@@ -1168,12 +1172,18 @@ def console_session(machine: QemuMachine) -> str | None:
     return next((s["session"] for s in sessions if s.get("tty") == "tty1"), None)
 
 
+# [   60.893214] sd 6:0:0:0: [sda] Attached SCSI disk, any number of them.
+KERNEL_LINES = r"(?:\[\s*[0-9]+\.[0-9]+\][^\n]*\s*)*"
+
+
 def sign_in_on_the_console(machine: QemuMachine, values: dict[str, Any]) -> str:
     """Sign alice in at the first console's prompt, and give her session."""
-    # Anchored to the screen's end, since an earlier sign-in's lines stay.
-    machine.wait_until_tty_matches("1", r"login: \s*\Z")
+    # Anchored to the screen's end, since an earlier sign-in's lines stay,
+    # with only the kernel's lines after it, which land on the console
+    # whenever a device turns up, the prompt still asking.
+    machine.wait_until_tty_matches("1", rf"login: \s*{KERNEL_LINES}\Z")
     enter(machine, "alice")
-    machine.wait_until_tty_matches("1", r"Password: \s*\Z")
+    machine.wait_until_tty_matches("1", rf"Password: \s*{KERNEL_LINES}\Z")
     enter(machine, values["password"])
     machine.wait_until_succeeds("loginctl list-sessions --json=short | grep -q tty1")
     session = console_session(machine)

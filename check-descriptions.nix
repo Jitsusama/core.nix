@@ -539,6 +539,11 @@
   load-proof-passes-clippy = ''
     clippy finds nothing in load-proof or its tests
   '';
+  loader-goes-first-in-boot-order = ''
+    the boot step gives the loader an entry of its own on the ESP, never taking a past install's
+    entry on another partition for it, makes it active and first in BootOrder, and writes nothing
+    once it is
+  '';
   machines-yield-to-what-the-person-works-in = ''
     system virtual machines are weighed as a build is, and the account's containers and session
     machines are idle
@@ -1734,7 +1739,8 @@
     back
   '';
   vm-secure-boot-installs = ''
-    the whole install works, and the disk opens only for it; shut down with fwupd's firmware
+    the whole install works, and the disk opens only for it; the firmware starts the loader by
+    an entry of its own, first in BootOrder; shut down with fwupd's firmware
     update waiting, it frees PCR 0, and the boot after opens with the PIN and locks PCR 0 again
   '';
   vm-speakers-are-tuned = ''
