@@ -842,17 +842,53 @@ pub fn wanted(dir: &Path) -> bool {
 
 /// A machine nearby that builds for systems this one can't, such as a Mac
 /// at home for its own: where it answers, `host:port`, the host ssh is
-/// given, and the systems it takes.
+/// given, the systems it takes, and the attributes it takes whatever their
+/// system, as patterns where `*` stands for any run of characters. A Mac's
+/// Linux builder runs under emulation, so it may take the checks that are
+/// only evaluation, which it does itself, without taking every Linux build.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Nearby {
     pub address: String,
     pub host: String,
     pub systems: Vec<String>,
+    pub attributes: Vec<String>,
+}
+
+impl Nearby {
+    fn takes(&self, attribute: &str) -> bool {
+        system_of(attribute).is_some_and(|system| self.systems.iter().any(|s| s == system))
+            || self
+                .attributes
+                .iter()
+                .any(|pattern| matches(pattern, attribute))
+    }
+}
+
+/// Whether `text` is what `pattern` describes, where each `*` stands for
+/// any run of characters, none included.
+fn matches(pattern: &str, text: &str) -> bool {
+    let mut parts = pattern.split('*');
+    let first = parts.next().unwrap_or_default();
+    let Some(mut rest) = text.strip_prefix(first) else {
+        return false;
+    };
+    let mut parts: Vec<&str> = parts.collect();
+    let Some(last) = parts.pop() else {
+        // No star: the whole of it had to be the first part.
+        return rest.is_empty();
+    };
+    for part in parts {
+        match rest.find(part) {
+            Some(at) => rest = &rest[at + part.len()..],
+            None => return false,
+        }
+    }
+    rest.ends_with(last)
 }
 
 /// The machines nearby in a file of them, a line each:
-/// `ADDRESS HOST SYSTEM,SYSTEM`. Blank lines and those starting `#` say
-/// nothing, and a line short of a word names no machine.
+/// `ADDRESS HOST SYSTEM,SYSTEM [PATTERN,PATTERN]`. Blank lines and those
+/// starting `#` say nothing, and a line short of a word names no machine.
 pub fn nearby(text: &str) -> Vec<Nearby> {
     text.lines()
         .map(str::trim)
@@ -864,6 +900,10 @@ pub fn nearby(text: &str) -> Vec<Nearby> {
                 address: address.to_owned(),
                 host: host.to_owned(),
                 systems: systems.split(',').map(str::to_owned).collect(),
+                attributes: words
+                    .next()
+                    .map(|patterns| patterns.split(',').map(str::to_owned).collect())
+                    .unwrap_or_default(),
             })
         })
         .collect()
@@ -875,9 +915,10 @@ fn system_of(attribute: &str) -> Option<&str> {
     attribute.split('.').nth(1)
 }
 
-/// What was asked, shared out: each attribute whose system a machine
-/// nearby takes goes to the first that does and `answers`, and the rest is
-/// left for the lent builder or here. Whether one answers is asked once.
+/// What was asked, shared out: each attribute a machine nearby takes, by
+/// its system or by name, goes to the first that does and `answers`, and
+/// the rest is left for the lent builder or here. Whether one answers is
+/// asked once.
 pub fn shared<'a>(
     asked: &Asked,
     nearby: &'a [Nearby],
@@ -898,11 +939,7 @@ pub fn shared<'a>(
     let mut parts: Vec<(&Nearby, Vec<String>)> = Vec::new();
     let mut left = Vec::new();
     for attribute in &asked.attributes {
-        let taker = system_of(attribute).and_then(|system| {
-            answering
-                .iter()
-                .find(|machine| machine.systems.iter().any(|taken| taken == system))
-        });
+        let taker = answering.iter().find(|machine| machine.takes(attribute));
         match taker {
             Some(machine) => match parts.iter_mut().find(|(had, _)| had == machine) {
                 Some((_, attributes)) => attributes.push(attribute.clone()),
@@ -1106,9 +1143,15 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
         return;
     }
     // ssh's control socket goes in TMPDIR, and a long one is past what a
-    // socket's path may be.
+    // socket's path may be. This machine signs nothing it builds, so the
+    // machine nearby takes the copy on its account's trust.
     let copied = Command::new(nix)
-        .args(["copy", "--to", &format!("ssh-ng://{host}")])
+        .args([
+            "copy",
+            "--no-check-sigs",
+            "--to",
+            &format!("ssh-ng://{host}"),
+        ])
         .args(&paths)
         .env("TMPDIR", "/tmp")
         .status();
@@ -1439,6 +1482,7 @@ mod tests {
             address: "mac.local:22".to_owned(),
             host: "mac".to_owned(),
             systems: words("aarch64-darwin aarch64-linux"),
+            attributes: Vec::new(),
         }
     }
 
@@ -1446,6 +1490,51 @@ mod tests {
     fn nearby_machines_are_read_a_line_each() {
         let text = "# at home\n\nmac.local:22 mac aarch64-darwin,aarch64-linux\nshort line\n";
         assert_eq!(nearby(text), vec![mac()]);
+        let named = "mac.local:22 mac aarch64-darwin,aarch64-linux \
+                     checks.x86_64-linux.formatting,checks.x86_64-linux.*-evaluates\n";
+        assert_eq!(
+            nearby(named)[0].attributes,
+            words("checks.x86_64-linux.formatting checks.x86_64-linux.*-evaluates")
+        );
+    }
+
+    #[test]
+    fn a_star_in_a_pattern_stands_for_any_run_of_characters() {
+        assert!(matches("checks.x.formatting", "checks.x.formatting"));
+        assert!(!matches("checks.x.formatting", "checks.x.formatting-too"));
+        assert!(matches(
+            "checks.x.*-evaluates",
+            "checks.x.linux-dev-evaluates"
+        ));
+        assert!(matches("checks.x.*-evaluates", "checks.x.-evaluates"));
+        assert!(!matches("checks.x.*-evaluates", "checks.y.dev-evaluates"));
+        assert!(matches("checks.*.a*b", "checks.x.aXbYb"));
+        assert!(!matches("checks.*.a*b", "checks.x.aXbY"));
+    }
+
+    #[test]
+    fn an_attribute_a_nearby_machine_names_goes_to_it_whatever_its_system() {
+        let machines = [Nearby {
+            attributes: words("checks.x86_64-linux.formatting checks.x86_64-linux.*-evaluates"),
+            ..mac()
+        }];
+        let asked = asked(&words(
+            "path:/z checks.x86_64-linux.formatting checks.x86_64-linux.dev-evaluates \
+             checks.x86_64-linux.vm-boots checks.aarch64-darwin.b",
+        ))
+        .unwrap();
+        let (near, left) = shared(&asked, &machines, |_| true);
+        assert_eq!(
+            near[0].1.attributes,
+            words(
+                "checks.x86_64-linux.formatting checks.x86_64-linux.dev-evaluates \
+                 checks.aarch64-darwin.b"
+            )
+        );
+        assert_eq!(
+            left.map(|left| left.attributes),
+            Some(words("checks.x86_64-linux.vm-boots"))
+        );
     }
 
     #[test]

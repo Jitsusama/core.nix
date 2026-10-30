@@ -99,6 +99,16 @@ in
               type = lib.types.nonEmptyListOf lib.types.str;
               description = "The systems it builds for, such as `aarch64-darwin`.";
             };
+            attributes = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = ''
+                Attributes it takes whatever their system, as patterns where `*` stands
+                for any run of characters, such as `checks.x86_64-linux.formatting`: those
+                that are mostly evaluation, which it does itself, for a system it only
+                emulates.
+              '';
+            };
           };
         }
       );
@@ -122,7 +132,16 @@ in
 
     xdg.configFile."nix-offload/nearby" = lib.mkIf (cfg.nearby != [ ]) {
       text = lib.concatMapStrings (
-        machine: "${machine.address} ${machine.host} ${lib.concatStringsSep "," machine.systems}\n"
+        machine:
+        lib.concatStringsSep " " (
+          [
+            machine.address
+            machine.host
+            (lib.concatStringsSep "," machine.systems)
+          ]
+          ++ lib.optional (machine.attributes != [ ]) (lib.concatStringsSep "," machine.attributes)
+        )
+        + "\n"
       ) cfg.nearby;
     };
 

@@ -417,7 +417,7 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert_eq!(
         fs::read_to_string(bin.join("nix-was-given")).unwrap(),
         format!(
-            "copy --to ssh-ng://mac /nix/store/abc-mint\n\
+            "copy --no-check-sigs --to ssh-ng://mac /nix/store/abc-mint\n\
              build --no-link -L {flake}#checks.x86_64-linux.b\n"
         ),
         "the pinned input goes to it, and the rest builds here"
