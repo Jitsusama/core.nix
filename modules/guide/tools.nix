@@ -68,6 +68,9 @@ in
   GUIDE_SSH_TPM_KEYGEN = lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-keygen";
   GUIDE_SYSTEMD_CRYPTENROLL = lib.getExe' systemd "systemd-cryptenroll";
   GUIDE_SYSTEMCTL = lib.getExe' systemd "systemctl";
+  # GNU tar, built with ACLs and extended attributes, which a home carried
+  # across a reinstall keeps.
+  GUIDE_TAR = lib.getExe pkgs.gnutar;
   GUIDE_TPM2_CREATEPRIMARY = lib.getExe' pkgs.tpm2-tools "tpm2_createprimary";
   GUIDE_TPM2_GETCAP = lib.getExe' pkgs.tpm2-tools "tpm2_getcap";
   GUIDE_TPM2_LOAD = lib.getExe' pkgs.tpm2-tools "tpm2_load";
@@ -77,6 +80,7 @@ in
   GUIDE_UMOUNT = lib.getExe' pkgs.util-linux "umount";
   GUIDE_VERITYSETUP = lib.getExe' pkgs.cryptsetup "veritysetup";
   GUIDE_WIPEFS = lib.getExe' pkgs.util-linux "wipefs";
+  GUIDE_ZSTD = lib.getExe pkgs.zstd;
 
   GUIDE_DISK_TOOLS = lib.makeBinPath diskTools;
   GUIDE_DISK_PACKAGES = lib.concatMapStringsSep " " lib.getName diskTools;

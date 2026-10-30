@@ -50,6 +50,7 @@ fn target(disk: &str) -> Target {
         recipients: vec![],
         start_from_stick: None,
         clear_secure_boot_keys: None,
+        leave_out: vec![],
     }
 }
 

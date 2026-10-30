@@ -7,7 +7,7 @@
 //! none is ever an argument and the log names only where each went.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -215,7 +215,83 @@ impl System {
     }
 }
 
+/// Which way a streamed program's bytes go: out of it into a writer, or
+/// from a reader into it.
+enum Stream<'s> {
+    Out(&'s mut dyn Write),
+    In(&'s mut dyn Read),
+}
+
 impl System {
+    /// Runs a tool as `run_given` runs one given nothing, but with its
+    /// output or its input streamed rather than held. What it says of
+    /// itself is read beside the stream, so a program saying a lot never
+    /// stops for want of a reader.
+    fn streamed(&mut self, tool: Tool, args: &[&str], stream: Stream<'_>) -> Result<Ran, Fault> {
+        let path = tool.program().ok_or(Fault::Unbuilt { tool: tool.name() })?;
+        let unstarted = |why: std::io::Error| Fault::Unstarted {
+            program: path.into(),
+            why: why.to_string(),
+        };
+        let mut command = Command::new(path);
+        command
+            .args(args)
+            .env_clear()
+            .env("LC_ALL", "C.UTF-8")
+            .stderr(Stdio::piped());
+        match &stream {
+            Stream::Out(_) => command.stdin(Stdio::null()).stdout(Stdio::piped()),
+            Stream::In(_) => command.stdin(Stdio::piped()).stdout(Stdio::null()),
+        };
+        // Once the guide is stopping, nothing more starts.
+        crate::process::hold_if_stopping();
+        let mut child = command.spawn().map_err(unstarted)?;
+        self.meter.running(Some(child.id()));
+        let mut stderr = child.stderr.take().expect("a piped stderr");
+        let said = std::thread::spawn(move || {
+            let mut said = vec![];
+            // What it said is only kept for the log and the person, so a
+            // read cut short keeps what came before.
+            let _ = stderr.read_to_end(&mut said);
+            said
+        });
+        // Each end is dropped as its arm ends, so a program writing to a
+        // reader that failed, or waiting on more input, sees its pipe close
+        // and stops.
+        let moved = match stream {
+            Stream::Out(into) => {
+                let mut output = child.stdout.take().expect("a piped stdout");
+                std::io::copy(&mut output, into).map_err(|why| Fault::Unkept {
+                    path: format!("what {tool} made"),
+                    why: why.to_string(),
+                })
+            }
+            Stream::In(from) => {
+                let mut input = child.stdin.take().expect("a piped stdin");
+                match std::io::copy(from, &mut input) {
+                    // It stopped reading, and its status says why.
+                    Err(why) if why.kind() == std::io::ErrorKind::BrokenPipe => Ok(0),
+                    copied => {
+                        copied.map_err(|why| Fault::unreadable(format!("what {tool} read"), why))
+                    }
+                }
+            }
+        };
+        let status = child.wait();
+        self.meter.running(None);
+        let stderr = said.join().unwrap_or_default();
+        let ran = Ran {
+            program: tool.name().into(),
+            // A program killed by a signal has no status; -1 says so.
+            status: status.map_err(unstarted)?.code().unwrap_or(-1),
+            stdout: vec![],
+            stderr,
+        };
+        self.write_log(path, args, &Given::default(), &ran);
+        moved?;
+        Ok(ran)
+    }
+
     /// The credential files a call is given, each in a directory made for
     /// that one call, or none when it's given none.
     fn credentials(&self, given: &Given) -> Result<Option<Credentials>, Fault> {
@@ -335,6 +411,51 @@ impl Machine for System {
         };
         self.write_log(path, args, &given, &ran);
         Ok(ran)
+    }
+
+    /// On the disk before it returns, so a drive unplugged after holds
+    /// all of it.
+    fn run_sealed(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        key: &VaultKey,
+        path: &str,
+    ) -> Result<Ran, Fault> {
+        let at = Path::new(path);
+        if let Some(directory) = at.parent() {
+            private_directory(directory)?;
+        }
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(at)
+            .map_err(unkept(at))?;
+        let synced = file.try_clone().map_err(unkept(at))?;
+        let mut sealing = key.sealing(std::io::BufWriter::with_capacity(1 << 20, file))?;
+        let ran = self.streamed(tool, args, Stream::Out(&mut sealing))?;
+        // Ended even when the tool refused, so what it wrote can be read
+        // back to see how far it got.
+        sealing
+            .finish()
+            .and_then(|mut file| file.flush())
+            .and_then(|()| synced.sync_all())
+            .map_err(unkept(at))?;
+        Ok(ran)
+    }
+
+    fn run_unsealed(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        key: &VaultKey,
+        path: &str,
+    ) -> Result<Ran, Fault> {
+        let file = File::open(path).map_err(|why| Fault::unreadable(path, why))?;
+        let mut opened = key.unsealing(std::io::BufReader::with_capacity(1 << 20, file))?;
+        self.streamed(tool, args, Stream::In(&mut opened))
     }
 
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>, Fault> {
@@ -509,7 +630,6 @@ impl Machine for System {
     /// Streamed, a mebibyte at a time, never whole in memory but where
     /// it's kept.
     fn copy(&mut self, from: &str, to: &str, bytes: u64) -> Result<(), Fault> {
-        use std::io::Read;
         let source = File::open(from).map_err(|why| Fault::unreadable(from, why))?;
         let file = OpenOptions::new()
             .write(true)

@@ -55,6 +55,8 @@ let
       # How a person reaches its firmware, as its hardware module says.
       start_from_stick = config.jitsusama.firmware.startFromStick or null;
       clear_secure_boot_keys = config.jitsusama.firmware.clearSecureBootKeys or null;
+      # What a reinstall leaves behind of the home folders it carries.
+      leave_out = config.jitsusama.guide.carry.leaveOut or [ ];
       recipients =
         if recipients == [ ] || builtins.length recipients == builtins.length keys then
           recipients

@@ -889,6 +889,7 @@ fn what_is_there(
             machine.journal().record("confirm-disk", &disk)?;
             Chosen::Install(install::Start::CarryingOn)
         }
+        (Some(_), AlreadyThere::Machine { .. }) => Chosen::Install(install::Start::Again),
         (Some(_), _) => Chosen::Install(install::Start::Afresh),
     })
 }

@@ -8,6 +8,7 @@
 //! memory: the vault's key once it's open, the disk's first key. A stick
 //! restarted part way forgets them, and the journey starts the disk again.
 
+pub mod carry;
 pub mod disk;
 pub mod keys;
 pub mod memory;
@@ -81,6 +82,10 @@ pub struct Target {
     pub start_from_stick: Option<String>,
     #[serde(default)]
     pub clear_secure_boot_keys: Option<String>,
+    /// What's left behind when its home folders are carried across a
+    /// reinstall, each a path inside a home folder.
+    #[serde(default)]
+    pub leave_out: Vec<String>,
 }
 
 impl Target {
@@ -196,23 +201,40 @@ pub fn boot_journal() -> String {
     format!("{ROOT}/boot/{BOOT_JOURNAL}")
 }
 
-/// Whether the install starts on a wiped disk or carries on one a
+/// Whether the install starts on a disk with nothing to keep, over a
+/// machine whose home folders may be carried across, or carries on one a
 /// restart stopped part way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Start {
     Afresh,
+    Again,
     CarryingOn,
 }
 
 /// Every step of installing from the stick, the YubiKeys named as the
-/// vault's target names them, in the order they're enrolled. Carrying on,
-/// the disk is opened as it was left rather than wiped and laid out.
+/// vault's target names them, in the order they're enrolled. Again, the
+/// old system's home folders are packed first, if the person chooses,
+/// while its disk still opens. Carrying on, the disk is opened as it was
+/// left rather than wiped and laid out.
 pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
     let mut steps = opening();
     steps.push(Box::new(system::CheckFirmware));
+    if start == Start::Again {
+        steps.push(Box::new(carry::ChooseCarry));
+        steps.push(Box::new(carry::WhenCarried(Box::new(
+            crate::recover::OpenDisk,
+        ))));
+        steps.push(Box::new(carry::WhenCarried(Box::new(
+            crate::recover::CheckSystem,
+        ))));
+        steps.push(Box::new(carry::WhenCarried(Box::new(
+            crate::recover::MountSystem,
+        ))));
+        steps.push(Box::new(carry::PackHome));
+    }
     steps.push(Box::new(disk::ConfirmDisk));
     match start {
-        Start::Afresh => steps.push(Box::new(disk::LayOutDisk)),
+        Start::Afresh | Start::Again => steps.push(Box::new(disk::LayOutDisk)),
         Start::CarryingOn => steps.push(Box::new(disk::OpenStoppedInstall {
             yubikeys: yubikeys.to_vec(),
         })),
@@ -228,6 +250,9 @@ pub fn steps(yubikeys: &[String], start: Start) -> Vec<Box<dyn Step>> {
     steps.push(Box::new(system::SealRescueBundle));
     steps.push(Box::new(keys::KeepRecoveryKey));
     steps.push(Box::new(system::InstallSystem));
+    // Whatever the start, since one carrying on after a restart may follow
+    // a start that packed them.
+    steps.push(Box::new(carry::RestoreHome));
     steps.push(Box::new(system::ReadyEnrolment));
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {

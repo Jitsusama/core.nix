@@ -6,8 +6,9 @@
 //! nothing else.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 
+use crate::vault::VaultKey;
 use crate::vault::store::Store;
 use crate::{Fault, Given, Journal, Machine, Program, Ran, Tool};
 
@@ -38,6 +39,9 @@ pub struct StandIn {
     /// Each secret given, as where it went (`PIN`, `cryptenroll.fido2-pin`,
     /// `stdin`) and what it was, in order.
     pub secrets: Vec<(String, String)>,
+    /// What each program run with `run_from` read, as its call and the
+    /// bytes, in order.
+    pub fed: Vec<(String, Vec<u8>)>,
 }
 
 impl StandIn {
@@ -227,6 +231,53 @@ impl Machine for StandIn {
         {
             self.file(&path, &bytes);
         }
+        Ok(ran)
+    }
+
+    /// As `run_given` given nothing, what it printed sealed for real into
+    /// the file, so a test opens it as the guide would.
+    fn run_sealed(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        key: &VaultKey,
+        path: &str,
+    ) -> Result<Ran, Fault> {
+        let mut ran = self.run_given(Program::Tool(tool), args, Given::default())?;
+        let printed = std::mem::take(&mut ran.stdout);
+        let mut sealing = key.sealing(vec![])?;
+        let sealed = sealing
+            .write_all(&printed)
+            .and_then(|()| sealing.finish())
+            .map_err(|why| Fault::Unkept {
+                path: path.into(),
+                why: why.to_string(),
+            })?;
+        self.calls.push(format!("writing {path}"));
+        self.file(path, &sealed);
+        Ok(ran)
+    }
+
+    /// As `run_given` given nothing, the file opened for real and what it
+    /// held kept in `fed`.
+    fn run_unsealed(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        key: &VaultKey,
+        path: &str,
+    ) -> Result<Ran, Fault> {
+        let sealed = self
+            .read(path)?
+            .ok_or_else(|| Fault::unreadable(path, "it isn't there"))?;
+        let mut ran = self.run_given(Program::Tool(tool), args, Given::default())?;
+        let mut held = vec![];
+        key.unsealing(sealed.as_slice())?
+            .read_to_end(&mut held)
+            .map_err(|why| Fault::unreadable(path, why))?;
+        let call = self.calls.last().cloned().unwrap_or_default();
+        self.fed.push((call, held));
+        ran.stdout.clear();
         Ok(ran)
     }
 

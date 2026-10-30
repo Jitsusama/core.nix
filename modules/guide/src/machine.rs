@@ -79,6 +79,29 @@ pub trait Machine {
     /// kept as `write` keeps one.
     fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault>;
 
+    /// Runs a tool whose output is too big to hold, such as an archive,
+    /// sealed to `key` as it comes into the file at `path`, kept as `write`
+    /// keeps one. What it answers has its status and what it said of
+    /// itself, its output being in the file.
+    fn run_sealed(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        key: &VaultKey,
+        path: &str,
+    ) -> Result<Ran, Fault>;
+
+    /// Runs a tool reading what `run_sealed` kept at `path`, opened with
+    /// `key` as it's read, and drops what it prints. A tool that stops
+    /// reading early is no fault here: its status says why.
+    fn run_unsealed(
+        &mut self,
+        tool: Tool,
+        args: &[&str],
+        key: &VaultKey,
+        path: &str,
+    ) -> Result<Ran, Fault>;
+
     /// Sets a firmware variable through efivarfs, its value after the
     /// attributes systemd gives the boot loader's own: non-volatile, and
     /// read at boot and at run time.
