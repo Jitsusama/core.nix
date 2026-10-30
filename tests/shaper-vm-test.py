@@ -381,7 +381,8 @@ def test_pi_sessions(connection: Connection) -> None:
     client.succeed(f"mkdir -p /tmp/window && ln -sf {BIN}/bash /tmp/window/pi")
     client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=pi-window"
-        " /tmp/window/pi -c 'exec sleep infinity'"
+        # A command after the sleep keeps the process named pi running.
+        " /tmp/window/pi -c 'sleep infinity; true'"
     )
     pid = client.succeed(
         "systemctl -M alice@ --user show -p MainPID --value pi-window.service"
@@ -391,8 +392,7 @@ def test_pi_sessions(connection: Connection) -> None:
     def send() -> None:
         """Upload from inside the window's cgroup."""
         client.succeed(
-            f"{BIN}/bash -c 'echo $$ > /sys/fs/cgroup/{window}/cgroup.procs; "
-            f"{connection.upload}'"
+            f"{BIN}/bash -c 'echo $$ > /sys/fs/cgroup/{window}/cgroup.procs; {connection.upload}'"
         )
 
     listed = "nft list set inet shaper bulk5 | grep -q pi-window"
