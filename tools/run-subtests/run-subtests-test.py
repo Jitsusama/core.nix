@@ -69,6 +69,18 @@ sys.exit(int(os.environ.get("STAND_IN_STATUS", "0")))
 """
 
 
+# A stand-in for nix-offload: it notes what it was asked, puts a picture in
+# the folder it was given, and answers as told.
+NIX_OFFLOAD = """
+import json, os, sys
+with open(os.environ["STAND_IN_ASKED"], "w") as asked:
+    json.dump(sys.argv[1:], asked)
+out = sys.argv[sys.argv.index("--out") + 1]
+open(os.path.join(out, "desktop.png"), "w").close()
+sys.exit(int(os.environ.get("STAND_IN_OFFLOAD_STATUS", "0")))
+"""
+
+
 class Tool(Protocol):
     """What the tests use of run-subtests."""
 
@@ -89,6 +101,9 @@ class Tool(Protocol):
 
     def main(self, argv: Sequence[str]) -> int:
         """List a check's subtests, or run those the words name."""
+
+    def nix_string(self, text: str) -> str:
+        """Write text as a Nix string."""
 
     @property
     def USAGE(self) -> int:  # noqa: N802 the module's constant, read through the protocol
@@ -127,8 +142,11 @@ class StandIn:
         (driver / "bin").mkdir(parents=True)
         (folder / "bin").mkdir()
         program(folder / "bin" / "nix", NIX)
+        program(folder / "bin" / "nix-offload", NIX_OFFLOAD)
         program(driver / "bin" / "nixos-test-driver", DRIVER)
+        self.driver = driver
         self.script = driver / "test-script"
+        monkeypatch.setenv("STAND_IN_ASKED", str(folder / "asked.json"))
         monkeypatch.setenv("PATH", f"{folder / 'bin'}{os.pathsep}{os.environ['PATH']}")
         monkeypatch.setenv("STAND_IN_DRIVER", str(driver))
         monkeypatch.setenv("STAND_IN_RAN", str(folder / "ran.json"))
@@ -139,6 +157,11 @@ class StandIn:
         """Give how the driver was run, or None if it wasn't."""
         ran = self.folder / "ran.json"
         return cast("dict[str, object]", json.loads(ran.read_text())) if ran.exists() else None
+
+    def asked(self) -> list[str] | None:
+        """Give what nix-offload was asked, or None if it wasn't."""
+        asked = self.folder / "asked.json"
+        return cast("list[str]", json.loads(asked.read_text())) if asked.exists() else None
 
     def ran_script(self) -> str:
         """Give the script the driver was handed."""
@@ -248,3 +271,60 @@ def test_a_word_pytest_cant_take_is_refused_before_anything_runs(
 
     assert tool.main(["vm-commits-are-signed", "a'b"]) == tool.USAGE
     assert stand_in.ran() is None
+
+
+def test_there_has_the_subtests_built_elsewhere_and_runs_nothing_here(
+    tool: Tool, stand_in: StandIn, tmp_path: Path
+) -> None:
+    out = tmp_path / "pictures"
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x", "the launcher"]) == 0
+
+    assert stand_in.asked() == [
+        "there",
+        "-L",
+        "--out",
+        str(out),
+        "--apply",
+        'subtests: subtests { check = "vm-desktop-x"; words = [ "the launcher" ]; }',
+        str(Path.cwd()),
+        "legacyPackages.x86_64-linux.subtests",
+    ]
+    assert (out / "desktop.png").exists()
+    assert stand_in.ran() is None
+
+
+def test_there_gives_the_builds_status(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 1
+    assert stand_in.ran() is None
+
+
+def test_an_offload_that_cant_take_it_runs_it_here(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in.script.write_text(SCRIPT)
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", str(tool.USAGE))
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
+
+    assert stand_in.ran_script() == tool.cut(SCRIPT, ["launcher"])
+
+
+def test_inside_a_build_the_driver_given_is_run_and_none_is_built(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stand_in.script.write_text(SCRIPT)
+    monkeypatch.setenv("STAND_IN_DRIVER", "/nowhere")
+    out = tmp_path / "out"
+
+    assert tool.main(["--driver", str(stand_in.driver), "--out", str(out), "vm-desktop-x"]) == 0
+
+    assert (out / "subtests").read_text() == "the bar shows\nthe launcher opens\n"
+
+
+def test_a_word_is_written_for_nix_as_it_reads(tool: Tool) -> None:
+    assert tool.nix_string('a "b" ${c}') == '"a \\"b\\" \\${c}"'

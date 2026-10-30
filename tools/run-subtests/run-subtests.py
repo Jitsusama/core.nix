@@ -16,11 +16,17 @@ in the folder it prints at the end.
 A test written for pytest (tests/lib/vm_pytest.py) is run whole instead, and
 pytest picks the tests: each word, its spaces read as underscores, is matched
 against the tests' names, and with none they're listed, which boots nothing.
+
+With --there, all of it is built elsewhere: nix-offload builds the flake's
+`subtests` for the check and words where the VM can run (subtests.nix),
+which runs this same program on the check's driver there, and copies the
+pictures back. An nix-offload that can't take that runs it here.
 """
 
 import argparse
 import ast
 import contextlib
+import json
 import os
 import re
 import shlex
@@ -62,6 +68,8 @@ class Options:
     out: Path | None
     interactive: bool
     keep_machine_state: bool
+    driver: Path | None = None
+    there: bool = False
 
 
 def subtest_name(statement: ast.stmt) -> str | None:
@@ -187,7 +195,10 @@ def runtime_folder(check: str, *, keep: bool) -> Iterator[Path]:
         yield folder
         return
     # mkdtemp makes a new folder only its owner can enter, so /tmp is safe.
-    folder = Path(tempfile.mkdtemp(prefix="vm.", dir=base if short else "/tmp"))  # noqa: S108
+    # A Nix build has no runtime folder and maybe no /tmp, but a short TMPDIR.
+    build = os.environ.get("TMPDIR", "")
+    fallback = build if 0 < len(build) <= LONGEST_RUNTIME_BASE else "/tmp"  # noqa: S108
+    folder = Path(tempfile.mkdtemp(prefix="vm.", dir=base if short else fallback))
     try:
         yield folder
     finally:
@@ -245,7 +256,15 @@ def arguments(argv: Sequence[str]) -> Options:
         action="store_true",
         help="keep the machines' disks for the next run of the check",
     )
+    parser.add_argument(
+        "--there",
+        action="store_true",
+        help="build and run it where nix-offload builds, the pictures copied back",
+    )
+    parser.add_argument("--driver", type=Path, help="the check's driver, already built")
     parsed = parser.parse_args(argv)
+    if parsed.there and (parsed.interactive or parsed.keep_machine_state):
+        parser.error("--there runs no prompt and keeps no machines")
     return Options(
         check=parsed.check,
         words=parsed.words,
@@ -253,18 +272,67 @@ def arguments(argv: Sequence[str]) -> Options:
         out=parsed.out,
         interactive=parsed.interactive,
         keep_machine_state=parsed.keep_machine_state,
+        driver=parsed.driver,
+        there=parsed.there,
     )
+
+
+def nix_string(text: str) -> str:
+    """Write text as a Nix string, which reads JSON's escapes but not `${`."""
+    return json.dumps(text).replace("${", "\\${")
+
+
+def there(options: Options) -> int | None:
+    """Have nix-offload build and run it elsewhere, or None when it can't.
+
+    nix-offload refuses arguments it doesn't know with USAGE, as one too old
+    for --apply and --out does, and one that isn't installed can't be run.
+    """
+    system = nix("eval", "--raw", "--impure", "--expr", "builtins.currentSystem")
+    words = " ".join(nix_string(word) for word in options.words)
+    apply = f"subtests: subtests {{ check = {nix_string(options.check)}; words = [ {words} ]; }}"
+    flake = options.flake
+    if ":" not in flake:
+        flake = str(Path(flake).resolve())
+    out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
+    out.mkdir(parents=True, exist_ok=True)
+    command = ["nix-offload", "there", "-L", "--out", str(out), "--apply", apply]
+    print(f"building {options.check}'s subtests where nix-offload builds", file=sys.stderr)
+    try:
+        status = subprocess.run(  # noqa: S603
+            [*command, flake, f"legacyPackages.{system}.subtests"],
+            check=False,
+        ).returncode
+    except FileNotFoundError:
+        return None
+    if status == USAGE:
+        return None
+    listed = out / "subtests"
+    if not options.words and listed.exists():
+        print(listed.read_text(), end="")
+    else:
+        print(f"pictures: {out}", file=sys.stderr)
+    return status
 
 
 def main(argv: Sequence[str]) -> int:
     """List a check's subtests, or run those the words name."""
     options = arguments(argv)
-    driver = build_driver(options.flake, options.check)
+    if options.there:
+        status = there(options)
+        if status is not None:
+            return status
+        print("nix-offload can't build it elsewhere, so it runs here", file=sys.stderr)
+    driver = options.driver or build_driver(options.flake, options.check)
     script = (driver / "test-script").read_text()
     if pytest_driven(script):
         return run_pytest(driver, script, options)
     if not options.words:
-        print("\n".join(names(script)))
+        listed = "\n".join(names(script))
+        print(listed)
+        if options.out:
+            options.out.mkdir(parents=True, exist_ok=True)
+            (options.out / "subtests").write_text(listed + "\n")
         return 0
     chosen = [name for name in names(script) if named(name, options.words)]
     if not chosen:
