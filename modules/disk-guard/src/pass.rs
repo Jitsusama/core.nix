@@ -52,6 +52,9 @@ pub enum Outcome {
 pub enum Goal {
     /// A healthy disk's upkeep: everything due, whatever free space says.
     Upkeep,
+    /// What producers whose files said something new offer, as upkeep
+    /// takes it, without the rest of upkeep's survey.
+    Produce,
     /// Free space back to the target.
     Reach,
     /// What Joel asked cleared: everything given, as a critically full
@@ -147,7 +150,7 @@ pub fn pass(
         band = thresholds.band(&before, band);
         report.band = report.band.max(band);
         let remaining = match goal {
-            Goal::Upkeep | Goal::Clear => None,
+            Goal::Upkeep | Goal::Produce | Goal::Clear => None,
             Goal::Reach if before.free >= thresholds.target => {
                 report.end = End::Reached;
                 return report;
@@ -155,7 +158,7 @@ pub fn pass(
             Goal::Reach => Some(thresholds.target - before.free),
         };
         let windows = match goal {
-            Goal::Upkeep => Band::Healthy,
+            Goal::Upkeep | Goal::Produce => Band::Healthy,
             Goal::Clear => Band::Critical,
             Goal::Reach => report.band,
         };

@@ -318,6 +318,9 @@ pub struct Guard {
     holding: Option<Holding>,
     /// When owners were last looked at, in monotonic seconds.
     owners_at: Option<f64>,
+    /// The producers whose watched files said something new at that look,
+    /// each to run on its own rather than make all of upkeep due.
+    produced: Vec<String>,
     /// Whether a root left since the listing began, or a process holding
     /// paths ended, either of which makes garbage the listing lacks.
     root_left: bool,
@@ -624,6 +627,7 @@ impl Guard {
             stale_listing: false,
             holding: None,
             owners_at: None,
+            produced: Vec::new(),
             root_left: false,
             held_ended: false,
             collect: false,
@@ -1002,7 +1006,8 @@ impl Guard {
         self.dedupe(tick, calm_moment, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let asked = self.clear_asked(tick)?;
-        let passed = asked || !due.is_empty();
+        let produced = self.produce(tick)?;
+        let passed = asked || produced || !due.is_empty();
         if passed {
             // So a pass's heartbeat starts from what the disks are now.
             self.write_status(tick.wall)?;
@@ -1135,7 +1140,8 @@ impl Guard {
         }
         self.write_status(tick.wall)?;
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
-        let (mut scan, offers) = self.offers(tick, Some(&folders))?;
+        let scoped = crate::survey::within(&self.config, &folders);
+        let (mut scan, offers) = self.offers(tick, Some(&scoped))?;
         for (file, ask) in asks {
             // A source's root may be named through a link, and an ask's
             // folder never is.
@@ -1155,6 +1161,37 @@ impl Guard {
             cleared?;
         }
         self.remeasure = true;
+        Ok(true)
+    }
+
+    /// Runs each producer whose watched files said something new, saying
+    /// whether there were any. Only they are surveyed, so tec's cache
+    /// moving on every 11 minutes no longer walks every source, as it
+    /// did with each move on 29 October.
+    fn produce(&mut self, tick: &Tick) -> io::Result<bool> {
+        if self.produced.is_empty() {
+            return Ok(false);
+        }
+        let mut producers = self.config.clone();
+        let names = std::mem::take(&mut self.produced);
+        producers.sources.retain(|name, _| names.contains(name));
+        self.write_status(tick.wall)?;
+        let (mut scan, offers) = self.offers(tick, Some(&producers))?;
+        let devices: BTreeSet<u64> = offers.iter().map(|offer| offer.device).collect();
+        for device in devices {
+            let Some(watched) = self.watched.get(&device) else {
+                continue;
+            };
+            let space = crate::sys::space(&watched.path)?;
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            let here: Vec<Offer> = offers
+                .iter()
+                .filter(|offer| offer.device == device)
+                .cloned()
+                .collect();
+            let aim = (Band::Healthy, Goal::Produce);
+            self.pass_on(tick, device, &here, aim, thresholds, &mut scan)?;
+        }
         Ok(true)
     }
 
@@ -1285,11 +1322,12 @@ impl Guard {
 
     /// Makes upkeep due at once when an owner has ended since the last look:
     /// a tree's last holder or the quest it was kept for, a boot, which
-    /// ends every program and so everything they left in temp, a guard
-    /// with new rules, which may judge more spent, or a producer's watched
-    /// file changing, as a cache gaining a version ends an old one's use. What an owner leaves is
+    /// ends every program and so everything they left in temp, or a guard
+    /// with new rules, which may judge more spent. What an owner leaves is
     /// spent the moment it ends, so waiting six hours for routine upkeep
-    /// only keeps bytes nobody will read.
+    /// only keeps bytes nobody will read. A producer whose watched files
+    /// said something new, as a cache gaining a version ends an old one's
+    /// use, is run on its own instead, since only it has news.
     fn watch_owners(&mut self, tick: &Tick) {
         if self
             .owners_at
@@ -1316,24 +1354,25 @@ impl Guard {
                 .filter(|tree| tree.exists())
                 .collect(),
         };
-        let watched = self
+        self.produced = self
             .config
             .sources
             .iter()
-            .any(|(name, source)| match source {
+            .filter(|(name, source)| match source {
                 Source::Producer { watch, .. } => crate::survey::changed(
                     watch,
-                    self.memory.ran.get(name).copied(),
-                    self.memory.said.get(name).copied(),
+                    self.memory.ran.get(*name).copied(),
+                    self.memory.said.get(*name).copied(),
                 ),
                 _ => false,
-            });
-        let ended = watched
-            || self.memory.owners.as_ref().is_none_or(|before| {
-                before.boot != seen.boot
-                    || before.guard != seen.guard
-                    || seen.spent.iter().any(|tree| !before.spent.contains(tree))
-            });
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        let ended = self.memory.owners.as_ref().is_none_or(|before| {
+            before.boot != seen.boot
+                || before.guard != seen.guard
+                || seen.spent.iter().any(|tree| !before.spent.contains(tree))
+        });
         if ended {
             self.memory.upkept = None;
         }
@@ -1779,14 +1818,10 @@ impl Guard {
 
     /// Every process, scanned for the pass to judge by, and what every
     /// source offers.
-    /// What the sources offer now, or with `folders`, only what the
-    /// sources that touch them offer, for a clear: a survey of that part
+    /// What the sources offer now, or with `part`, only what its sources
+    /// offer, for a clear or a producer with news: a survey of that part
     /// leaves what the holders say of the rest as the last whole one did.
-    fn offers(
-        &mut self,
-        tick: &Tick,
-        folders: Option<&[PathBuf]>,
-    ) -> io::Result<(Scan, Vec<Offer>)> {
+    fn offers(&mut self, tick: &Tick, part: Option<&Config>) -> io::Result<(Scan, Vec<Offer>)> {
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
         if let Some(socket) = &self.system {
@@ -1858,15 +1893,7 @@ impl Guard {
             kept: Vec::new(),
             counted: std::cell::RefCell::default(),
         };
-        let scoped;
-        let config = match folders {
-            Some(folders) => {
-                scoped = crate::survey::within(&self.config, folders);
-                &scoped
-            }
-            None => &self.config,
-        };
-        let mut offers = survey(config, &mut world);
+        let mut offers = survey(part.unwrap_or(&self.config), &mut world);
         let kept = std::mem::take(&mut world.kept);
         drop(world);
         // Read afresh each survey, so a keep holds from the next step. One
@@ -1879,7 +1906,7 @@ impl Guard {
             let resolved = fs::canonicalize(path).unwrap_or_else(|_| path.clone());
             !crate::keeps::touches(&keeps, &resolved)
         });
-        if folders.is_some() {
+        if part.is_some() {
             return Ok((scan, offers));
         }
         self.kept = kept;
