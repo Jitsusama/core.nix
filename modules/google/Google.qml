@@ -99,16 +99,16 @@ Singleton {
         const said = Said.heard(line);
         if (!said)
             return;
-        account = said.account;
-        meetings = said.meetings;
-        mail = said.mail;
-        unread = said.unread;
-        documents = said.documents;
-        heard = said.heard;
-        fetched = said.fetched;
-        meet = said.meet;
-        drive = said.drive;
+        // Only what changed, since a part set again remakes all that reads
+        // it, and most lines only say when Google last answered.
+        const news = Said.changed(texts, said);
+        texts = news.texts;
+        for (const part of news.parts)
+            root[part] = said[part];
     }
+
+    // The text each part was last taken from (Google.js's changed).
+    property var texts: ({})
 
     // Everyone the meetings and mail name, by address, for People
     // (GoogleSource.qml), each saying when what's with them is.
@@ -125,6 +125,7 @@ Singleton {
     // The program gone, as it is once it stops, is no account: what it held
     // may not be Joel's to see any more.
     function forget() {
+        texts = {};
         account = "none";
         meetings = [];
         mail = [];
