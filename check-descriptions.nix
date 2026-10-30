@@ -1386,6 +1386,11 @@
     the Surface Laptop 4 installs its touchscreen's driver with the panel's qualified settings, and
     loads it from a unit after multi-user.target rather than while the system starts
   '';
+  the-surface-offers-its-firmware-through-fwupd = ''
+    fwupd, given the Surface Laptop 4's ESRT with its UEFI at 4.355.140 and its TPM at 7.2.2.0,
+    offers the UEFI's capsule from the remote the module writes, at the version the capsule itself
+    carries, as a trusted upgrade, and nothing for the TPM
+  '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run against
     a stand-in of busctl, stops that watchdog before a sleep and starts it again after at the same

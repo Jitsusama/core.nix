@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  What LVFS would say of Surface UEFI's capsule, for fwupd to match it to the
+  firmware's own ESRT entry and offer it. Microsoft numbers Surface firmware
+  as 8, 16 and 8 bits, which fwupd calls the surface format. The release
+  notes are Microsoft's, from the model's update history: each release's
+  fixes since 4.355.140, of July 2025.
+-->
+<component type="firmware">
+  <id>com.microsoft.surface.laptop4.amd.uefi</id>
+  <name>Surface UEFI</name>
+  <summary>System firmware for the Surface Laptop 4 with AMD</summary>
+  <description>
+    <p>Microsoft's system firmware, from its drivers and firmware package for this model.</p>
+  </description>
+  <provides>
+    <firmware type="flashed">@guid@</firmware>
+  </provides>
+  <url type="homepage">https://support.microsoft.com/en-us/surface/updates/surface-laptop-4-update-history</url>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>proprietary</project_license>
+  <developer_name>Microsoft</developer_name>
+  <categories>
+    <category>X-System</category>
+  </categories>
+  <custom>
+    <value key="LVFS::VersionFormat">surface</value>
+    <value key="LVFS::UpdateProtocol">org.uefi.capsule</value>
+  </custom>
+  <releases>
+    <release version="@version@" date="@date@" urgency="high">
+      <description>
+        <p>Addresses potential security vulnerabilities that may allow escalation of privilege, denial of service, or information disclosure: CVE-2026-6727 and CVE-2026-6726 (4.501.140).</p>
+        <p>Addresses a potential security vulnerability related to advisory CVE-2025-3770 that may allow arbitrary code execution with System Management Mode privileges (4.391.140).</p>
+        <p>Addresses a potential security vulnerability related to AMD advisory CVE-2021-26383 that may allow out-of-bounds memory access (4.380.140).</p>
+        <p>Addresses potential security vulnerabilities related to AMD advisory CVE-2024-36352 that may allow denial of service or out-of-bounds read and write (4.375.140).</p>
+        <p>Enhances the stability of the device, reducing blue screens during reboot and shutdown (4.360.140).</p>
+      </description>
+    </release>
+  </releases>
+</component>

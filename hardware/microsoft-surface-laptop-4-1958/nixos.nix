@@ -12,6 +12,7 @@
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ./clock/clock.nix
+    ./firmware/firmware.nix
     ./sound/microphones.nix
     ./touch/touchscreen.nix
   ];

@@ -61,6 +61,8 @@ in
   imports = [
     ../../modules/device-check/nixos.nix
     ../../modules/firmware-settings/nixos.nix
+    # Dell publishes this laptop's firmware updates through LVFS.
+    ../../modules/fwupd/nixos.nix
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
@@ -358,21 +360,6 @@ in
   services.hardware.bolt.package = pkgs.bolt.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./programs/bolt-panther-lake.patch ];
   });
-
-  # Dell publishes this laptop's firmware updates through LVFS.
-  services.fwupd.enable = true;
-  # The refresh asks polkit, and a switch that changes polkit's settings
-  # restarts it, so a refresh its timer starts in that gap fails and the
-  # switch with it. It tries again a minute later, three times in an hour
-  # at most, so a machine with no network still says so.
-  systemd.services.fwupd-refresh = {
-    serviceConfig = {
-      Restart = "on-failure";
-      RestartSec = "1min";
-    };
-    startLimitIntervalSec = 3600;
-    startLimitBurst = 3;
-  };
 
   # The battery stops charging at 80% and starts again below 75%: a lithium
   # cell ages fastest held near full, and with the starting point that close

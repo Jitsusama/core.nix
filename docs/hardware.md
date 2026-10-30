@@ -1049,6 +1049,7 @@ the kernel's tree adds.
 | Wi-Fi    | the country the access points give, taken while connected                 |
 | Mics     | their gain held at their own level, so a call doesn't clip                |
 | Watchdog | the chipset's watchdog armed at 30 s, and started afresh after each sleep |
+| Firmware | Surface UEFI's updates through fwupd, from Microsoft's own package        |
 
 ### The Keyboard at the Disk Prompt
 
@@ -1288,6 +1289,30 @@ gave 1,174 interrupts of touch reports in 12 s. The module
 the driver's installer, and loads it from a unit after `multi-user.target`,
 as the installer does, so a hang there leaves a login to recover from.
 
+### Firmware Updates
+
+Microsoft ships this model's firmware through Windows Update and in a
+package of drivers and firmware for each Windows release, never through
+LVFS. Each part's update in that package is a UEFI capsule in the standard
+FMP form, naming the ESRT entry it updates and signed by Microsoft. The
+firmware takes a capsule only through `UpdateCapsule`, at the next start,
+which is how fwupd's EFI program gives it one.
+
+The module ([`firmware/firmware.nix`][30]) takes Surface UEFI's capsule out
+of Microsoft's package into a folder fwupd reads as a remote of its own,
+with the metadata LVFS would give it, so fwupd offers it as it would an
+update from LVFS. The build fails unless the capsule's own headers name the
+UEFI's ESRT entry and the version it's offered as. With lanzaboote, fwupd's
+program is signed with the machine's keys, and PCR 0 leaves the TPM's policy
+as the machine shuts down with the update waiting ([installing.md][8]).
+UEFI 4.501.140, of August 2026, follows 4.355.140 by five releases, each
+with security or stability fixes, which its metadata lists.
+
+The package's other capsules stay out. The TPM's waits until it's known
+whether its upgrade keeps the TPM's owner state, which the disk's key is
+sealed to. The Aggregator's, the touchscreen's, the trackpad's and the rest
+wait until the laptop's ESRT shows which are newer than what it runs.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
@@ -1297,7 +1322,7 @@ as the installer does, so a hang there leaves a login to recover from.
 | Speakers   | the speakers aren't checked yet                                                |
 | Mics       | their level holds no clipping; a voice at that level isn't measured yet        |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
-| Firmware   | Microsoft ships firmware updates only for Windows                              |
+| Firmware   | the UEFI's update isn't applied yet; the other parts' capsules wait, as above  |
 | Touch, pen | taps, gestures and the pen aren't checked on screen yet, nor across hibernate  |
 
 [1]: kernel.md
@@ -1329,3 +1354,4 @@ as the installer does, so a hang there leaves a login to recover from.
 [27]: https://github.com/avgbob/SL4A_TouchScreen/tree/eccedfb606e579242950052de2022d445dee028c
 [28]: https://github.com/linux-surface/kernel/blob/b571ef6ecb026ac9b1e9ac7c28ef350ec2a0519b/drivers/rtc/rtc-surface.c
 [29]: ../hardware/microsoft-surface-laptop-4-1958/touch/touchscreen.nix
+[30]: ../hardware/microsoft-surface-laptop-4-1958/firmware/firmware.nix
