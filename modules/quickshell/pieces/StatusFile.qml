@@ -13,6 +13,13 @@
 // watcher says something new. The machine queue is rewritten about 13
 // times a second, its `at` alone changing in nine writes of ten
 // (2026-10-29); each was a new `said` for every reader.
+//
+// While `held`, as a file nothing shown reads is, a new file is only
+// noted, and read once it's let go, so a write costs the shell its wake
+// alone. Under load the machine queue's pressure changes in nearly every
+// write, 12 a second, each about 20 wakeups and 14 ms of the shell's
+// with the launcher closed (15J7N3, 2026-10-30). Its silence isn't kept
+// meanwhile: the read as it's let go says it.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -40,6 +47,18 @@ Scope {
     property var beats: ["heartbeat", "at"]
     // What it said last, without its beats, as JSON.
     property string saying: ""
+    property bool held: false
+    property bool unread: false
+    onHeldChanged: {
+        if (held) {
+            quiet.stop();
+        } else if (unread) {
+            unread = false;
+            file.reload();
+        } else {
+            heard();
+        }
+    }
 
     function hear(now) {
         beat = now?.heartbeat ?? 0;
@@ -63,7 +82,7 @@ Scope {
         const age = Date.now() / 1000 - beat;
         quiet.stop();
         silent = said !== null && age > silence;
-        if (said !== null && !silent) {
+        if (said !== null && !silent && !held) {
             quiet.interval = Math.max(1, (silence - age) * 1000);
             quiet.start();
         }
@@ -79,7 +98,12 @@ Scope {
         path: status.path
         watchChanges: true
         printErrors: false
-        onFileChanged: reload()
+        onFileChanged: {
+            if (status.held)
+                status.unread = true;
+            else
+                reload();
+        }
         onLoaded: status.hear(status.parse(file.text()))
         onLoadFailed: status.hear(null)
     }

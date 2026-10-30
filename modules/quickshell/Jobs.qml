@@ -22,8 +22,12 @@ Singleton {
     readonly property var running: jobs.filter(job => job.state === "running")
     readonly property var waiting: jobs.filter(job => job.state === "waiting")
 
-    // What the test waits on before opening the launcher, so a write heard
-    // late isn't counted as one the closed launcher made something of.
+    // Whether the launcher is open (shell.qml), the only place anything of
+    // the queue is drawn (Agents and Queue): closed, its writes are only
+    // noted, and the last read as it opens.
+    property bool showing: false
+
+    // What it heard, for the test that a closed launcher hears nothing.
     onSaidChanged: Report.say(`heard jobs ${said?.machine?.availableGib ?? "nothing"}`)
 
     // A pi session's jobs, by its whole id.
@@ -34,6 +38,7 @@ Singleton {
     StatusFile {
         id: status
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/jobs/queue.json`
+        held: !root.showing
         // Three heartbeats missed.
         silence: 90
         parse: text => {
