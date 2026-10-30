@@ -309,10 +309,9 @@ fn a_quests_trees_are_over_once_none_of_its_sessions_lives() {
     session("e", "QEST-20261002-EEE555", untimed);
     fs::write(sessions.join("torn.json"), "{\"quest\":").unwrap();
     let listing = |id: &str, status: &str, trees: &[&str]| {
-        let listed: String = trees
-            .iter()
-            .map(|tree| format!("  - path: /t/{tree}\n"))
-            .collect();
+        let listed = trees.iter().fold(String::new(), |listed, tree| {
+            listed + "  - path: /t/" + tree + "\n"
+        });
         quest(&quests, id, &format!("status: {status}\ntrees:\n{listed}"));
     };
     listing("QEST-20261002-AAA111", "active", &["worked", "shared"]);
