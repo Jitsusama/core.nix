@@ -74,6 +74,14 @@ chain classify {
   ip daddr @meet4 socket cgroupv2 level 4 @app4 goto video
   ip6 daddr @meet6 socket cgroupv2 level 4 @app4 goto video
 
+  # A program that marks its own socket as bulk (CS1) is sending what no
+  # person waits on, as pi does for a turn nobody typed: about 30 sessions
+  # each sending its whole conversation filled the upload ahead of the
+  # turn Joel had typed. Nothing else an app sends is sorted by its DSCP,
+  # since anything may set one, and the video tin says a call is on.
+  ip dscp cs1 goto bulk
+  ip6 dscp cs1 goto bulk
+
   # What Joel waits on at a terminal sits inside jobs, but he's waiting,
   # so it goes as an app's would; the rest of jobs he isn't waiting on.
   socket cgroupv2 level 5 @awaited5 goto best

@@ -238,6 +238,16 @@ const LIVE_PACKETS: f64 = 20.0;
 /// flowing, so a pause in talk doesn't put the floor back mid-call.
 const LIVE_HOLD_S: f64 = 30.0;
 
+/// The bytes the CAKE in `tc -s -j qdisc show dev` has sent, which is what
+/// the connection carried: traffic to this network's own machines goes
+/// to a class of its own and never reaches it.
+pub fn shaped_bytes(json: &str) -> Option<u64> {
+    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
+        return None;
+    };
+    all.iter().find(|q| q["kind"] == "cake")?["bytes"].as_u64()
+}
+
 /// The packets the video tin of the CAKE in `tc -s -j qdisc show dev` has
 /// sent.
 pub fn video_packets(json: &str) -> u64 {
@@ -298,6 +308,16 @@ mod tests {
             {"sent_packets":1},{"sent_packets":2},{"sent_packets":3},{"sent_packets":4}]}]"#;
         assert_eq!(video_packets(json), 3);
         assert_eq!(video_packets("[]"), 0);
+    }
+
+    #[test]
+    fn what_the_connection_carried_is_its_cake_s_bytes_not_the_local_class_s() {
+        let json = r#"[{"kind":"htb","handle":"1:","bytes":9000},
+                      {"kind":"cake","handle":"2:","parent":"1:2","bytes":6000},
+                      {"kind":"fq_codel","handle":"10:","parent":"1:1","bytes":3000}]"#;
+        assert_eq!(shaped_bytes(json), Some(6000));
+        assert_eq!(shaped_bytes(r#"[{"kind":"fq_codel","bytes":3000}]"#), None);
+        assert_eq!(shaped_bytes(""), None);
     }
 
     #[test]
