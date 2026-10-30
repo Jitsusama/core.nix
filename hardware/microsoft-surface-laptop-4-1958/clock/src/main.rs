@@ -68,6 +68,9 @@ unsafe extern "C" {
 /// Sends one request to the Aggregator's clock, with `payload` as its
 /// argument, and answers how many bytes of `response` it filled.
 fn send(device: &File, command: u8, payload: &[u8], response: &mut [u8]) -> Result<u16, String> {
+    let length = |buffer: usize| {
+        u16::try_from(buffer).map_err(|_| format!("a buffer of {buffer} bytes is past a request's"))
+    };
     let mut request = Request {
         target_category: TARGET_CATEGORY_SAM,
         target_id: TARGET_ID_SAM,
@@ -77,18 +80,18 @@ fn send(device: &File, command: u8, payload: &[u8], response: &mut [u8]) -> Resu
         status: 0,
         payload: Buffer {
             data: payload.as_ptr() as u64,
-            length: payload.len() as u16,
+            length: length(payload.len())?,
             pad: [0; 6],
         },
         response: Buffer {
             data: response.as_mut_ptr() as u64,
-            length: response.len() as u16,
+            length: length(response.len())?,
             pad: [0; 6],
         },
     };
     // SAFETY: the request is the layout the driver reads, and both buffers
     // outlive the call, at the lengths given.
-    let result = unsafe { ioctl(device.as_raw_fd(), SSAM_CDEV_REQUEST, &mut request) };
+    let result = unsafe { ioctl(device.as_raw_fd(), SSAM_CDEV_REQUEST, &raw mut request) };
     let status = request.status;
     if result != 0 || status != 0 {
         let error = std::io::Error::last_os_error();
@@ -176,14 +179,17 @@ fn synchronised() -> bool {
     let mut timex = Timex([0; 208]);
     // SAFETY: the buffer is the size of the kernel's struct timex, and with
     // no modes set the call only fills it in.
-    let state = unsafe { adjtimex(&mut timex) };
+    let state = unsafe { adjtimex(&raw mut timex) };
     state >= 0 && state != TIME_ERROR
 }
 
-fn now() -> i64 {
-    SystemTime::now()
+/// The system's time in seconds, refused when it is one no clock should be
+/// set to.
+fn now() -> Result<i64, String> {
+    let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs() as i64)
+        .map_err(|_| "the system's time is before 1970".to_string())?;
+    i64::try_from(since.as_secs()).map_err(|_| "the system's time is past 64 bits".to_string())
 }
 
 fn calibrate(state: &Path) -> Result<String, String> {
@@ -211,7 +217,7 @@ fn keep(state: &Path) -> Result<String, String> {
     let offset = parse_offset(&text)?;
     let device = open_controller()?;
     let before = read_controller(&device)?;
-    let target = controller_time(now(), offset)?;
+    let target = controller_time(now()?, offset)?;
     set_controller(&device, target)?;
     let after = read_controller(&device)?;
     if after.abs_diff(target) > 2 {
