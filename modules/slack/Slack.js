@@ -56,6 +56,21 @@ function ahead(listed, known, sent) {
     return asked;
 }
 
+// What Slack knows once the answers that came together are taken, as one
+// change, or null when none of them changes anything: `pending` is the
+// newest answer for each address.
+function settled(known, pending) {
+    const next = Object.assign({}, known);
+    let moved = false;
+    for (const email of Object.keys(pending)) {
+        if (JSON.stringify(known[email]) !== JSON.stringify(pending[email])) {
+            next[email] = pending[email];
+            moved = true;
+        }
+    }
+    return moved ? next : null;
+}
+
 // What Slack said of the first of their addresses it found a
 // conversation with Joel for, or null.
 function talked(emails, known) {

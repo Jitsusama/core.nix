@@ -24,8 +24,8 @@ onLinux {
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
   # Who the source asks about and when, what stands in Write in Slack's
-  # place before Slack answers, the drawer's facts and a conversation's
-  # drawer are Slack.js's, run
+  # place before Slack answers, how answers that come together are taken,
+  # the drawer's facts and a conversation's drawer are Slack.js's, run
   # in Qt's own engine (tests/slack.qml).
   slack-waits-in-its-place =
     let

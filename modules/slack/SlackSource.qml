@@ -62,6 +62,10 @@ PersonSource {
     // How long an answer, or an ask Slack never answered, holds before a
     // step-in asks again.
     readonly property int fresh: 60 * 1000
+    // The newest answer for each address not yet taken, kept in place:
+    // answers that come together, as a restart's kept people do, are
+    // taken as one change, since each change makes everyone anew.
+    property var pending: ({})
 
     people: Object.values(known).filter(said => said.id).map(said => ({
         emails: [said.email],
@@ -243,11 +247,28 @@ PersonSource {
             if (!said.id)
                 missed = Object.assign({}, missed, { [said.email]: true });
         }
-        // The same answer again changes nothing, so nobody is made anew.
-        if (JSON.stringify(known[said.email]) === JSON.stringify(said))
+        pending[said.email] = said;
+        if (!settling.running)
+            settling.start();
+    }
+
+    // Takes the answers that came together as one change, or none when
+    // they're what was known, so nobody is made anew.
+    function settle() {
+        const next = Slack.settled(known, pending);
+        pending = {};
+        if (!next)
             return;
-        known = Object.assign({}, known, { [said.email]: said });
+        known = next;
         place?.changed();
+    }
+
+    Timer {
+        id: settling
+        // Started by the first of a burst, never put off by the rest, so
+        // a step-in's answer lights within a quarter of a second.
+        interval: 250
+        onTriggered: source.settle()
     }
 
     Process {

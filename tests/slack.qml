@@ -83,6 +83,18 @@ QtObject {
             Slack.facts({ presence: "in a huddle", zone: "" }),
             [{ label: "Presence", value: "In a huddle" }]);
 
+        // A restart's kept people come together: taken as one change.
+        const burst = {};
+        for (let at = 0; at < 86; at++)
+            burst[`p${at}@example.com`] = { email: `p${at}@example.com`, id: `U${at}` };
+        const once = Slack.settled(known, burst);
+        check("answers that come together are one change",
+            Object.keys(once ?? {}).length, 88);
+        check("and what's already known is none", Slack.settled(once, burst), null);
+        check("one new among the known is a change",
+            Slack.settled(once, { "ada@example.com": Object.assign({}, ada, { presence: "away" }) })
+                ?.["ada@example.com"].presence, "away");
+
         const talk = { channel: "D1", link: "", last: "See you", at: 2, messages: [
             { mine: true, text: "Lunch?", at: 1 }, { mine: false, text: "See you", at: 2 }] };
         const talking = Object.assign({}, ada, { conversation: talk });
