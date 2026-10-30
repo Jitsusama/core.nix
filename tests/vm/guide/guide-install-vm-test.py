@@ -776,11 +776,24 @@ def reinstalled(
     enter(machine, "")
     on_screen(machine, "the disk's recovery key")
     enter(machine, recovery_key)
-    on_screen(machine, "no drive the home folders can be packed onto", timeout=STEP)
+    # Asking for a drive is the step waiting, with "look again" its key,
+    # not the guide stopping.
+    on_screen(
+        machine,
+        "no drive the home folders can be packed onto",
+        timeout=STEP,
+        stopped=r"try again",
+    )
     with tempfile.NamedTemporaryFile(suffix=".qcow2") as drive:
         overlay(values["qemuImg"], drive.name, "-b", values["drive"], "-F", "raw")
         plug_drive(machine, drive.name)
-        on_screen(machine, "Which drive should they be packed onto", timeout=PLUGGED)
+        # The guide may still be asking for one until it looks again.
+        on_screen(
+            machine,
+            "Which drive should they be packed onto",
+            timeout=PLUGGED,
+            stopped=r"try again",
+        )
         enter(machine, "")
         # The drive stays in until the machine is off, as the guide puts
         # the home folders back from it after the install.
