@@ -27,8 +27,8 @@
 # launcher lists them over its window, and init.lua binds and lists them
 # from the same list, handed over in nix.lua.
 #
-# The launcher finds the screenshots folder's gallery by typing
-# (Screenshots.qml).
+# The launcher finds the screenshots folder's gallery by typing, and holds
+# it among the picture viewer's own acts (Screenshots.qml).
 { niri, quickshell }:
 {
   config,

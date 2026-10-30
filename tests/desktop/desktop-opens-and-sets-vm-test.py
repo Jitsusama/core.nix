@@ -312,16 +312,33 @@ def test_a_screenshot_just_taken_is_found_by_typing_and_opens_in_gimp(
     desktop.as_account("niri msg action screenshot-screen")
     machine.wait_until_succeeds(f"ls {desktop.pictures}/*.png", timeout=timedelta(seconds=15))
     picture = machine.succeed(f"ls {desktop.pictures}/*.png").strip()
-    # Capture holds what's done with a screenshot once it's taken, after
-    # what it captures, so it still opens on the whole screen.
+    # Capture lodges nothing of another program's: what was taken is its
+    # Recent, and a picture there holds Edit in GIMP after Open. It still
+    # opens on the whole screen.
     desktop.as_account("qs ipc call launcher collection capture")
     desktop.launcher_ready()
+    others = {"Edit the Newest Screenshot", "Look Through the Screenshots"}
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][-2:] == ["Edit the Newest Screenshot", "Look Through the Screenshots"]
+            "Recent" in shown["rows"]
+            and not others & set(shown["rows"])
             and (shown["selected"] or {}).get("name") == "The Whole Screen"
         ),
     )
+    desktop.down_to("Recent")
+    desktop.step_in()
+    taken = picture.rsplit("/", 1)[-1]
+    desktop.launcher_until(lambda shown: shown["rows"][:1] == [taken])
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Open", "Edit in GIMP", "Copy the Path"])
+    machine.send_key("esc")
+    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    # GIMP holds the newest screenshot among its own acts.
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    desktop.type_in("gnu image", selecting="GNU Image Manipulation Program")
+    desktop.step_in()
+    desktop.launcher_until(lambda shown: "Edit the Newest Screenshot" in shown["rows"])
     machine.send_key("esc")
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
     desktop.as_account("qs ipc call launcher toggle")

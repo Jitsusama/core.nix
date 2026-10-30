@@ -1,7 +1,7 @@
-// The screenshots folder as swayimg's gallery, found by typing or in
-// Capture, newest first and selected, for a screenshot taken a while ago.
-// The newest one just taken is GIMP's row beside it; this is for going
-// back through the rest.
+// The screenshots folder as swayimg's gallery, found by typing or among the
+// picture viewer's own acts in Programs (`programActs`), newest first and
+// selected, for a screenshot taken a while ago; Capture's Recent holds the
+// newest ones taken.
 // It's offered only while there's a picture to look at, since an empty
 // folder would open nothing.
 import qs
@@ -35,4 +35,9 @@ Provider {
     })
 
     things: shots.status === FolderListModel.Ready && shots.count > 0 ? [looking] : []
+
+    // The picture viewer's own acts in Programs: the screenshots' gallery.
+    function programActs(program) {
+        return program === "swayimg" ? provider.things : [];
+    }
 }

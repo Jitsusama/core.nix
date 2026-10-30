@@ -12,8 +12,9 @@
 # replaced by this module's: preferences GIMP reads before the account's
 # own, so a choice made in Preferences still wins.
 #
-# The launcher offers the newest screenshot to edit in GIMP
-# (Screenshot.qml), at home for a couple of minutes after it's taken.
+# The launcher offers the newest screenshot to edit in GIMP among GIMP's own
+# acts, and every picture in Capture's Recent holds Edit in GIMP
+# (Screenshot.qml).
 #
 # The launcher lists GIMP's own keys over its window, as the Picture editor.
 #
