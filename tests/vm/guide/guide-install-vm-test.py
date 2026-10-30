@@ -50,6 +50,10 @@ UNASSIGNED = range(0x01800000, 0x01BFFFFF + 1)
 VOLUME = "/dev/disk/by-partlabel/system"
 # The priority LUKS gives a slot tried before the others.
 PREFERRED = 2
+# How far apart keys are typed. QEMU's keyboard holds only a few keys and drops what
+# comes while it's full, and at the driver's 10 ms a key, a guest starved on a loaded
+# builder lost keys from the TPM's PIN typed twice (2026-10-30). 50 ms holds that.
+KEY_PACE = timedelta(milliseconds=50)
 
 # Before its keyboard screen, the stick copies its whole system into memory through QEMU's
 # USB stick, which on a machine busy with other machines' disks took past five minutes. The test
@@ -115,7 +119,7 @@ def on_screen(
 
 def enter(machine: QemuMachine, text: str) -> None:
     """Type the text at the guide and press Return."""
-    machine.send_chars(text + "\n")
+    machine.send_chars(text + "\n", delay=KEY_PACE)
 
 
 def plug(machine: QemuMachine, rig: Rig, name: str) -> None:
