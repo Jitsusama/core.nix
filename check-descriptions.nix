@@ -554,6 +554,9 @@
     mpv plays a moment of video with the account's settings and its controller's without a
     complaint, and video files open in it
   '';
+  mpv-says-the-file-it-plays-now = ''
+    mpv keeps the file it plays now, read by the launcher's command as its process and whole path, never a stream, gone as it quits
+  '';
   mpv-says-the-files-it-plays = ''
     mpv says each file it plays to the desktop's list of files opened lately, a stream as it was given
   '';

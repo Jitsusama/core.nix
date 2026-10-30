@@ -31,7 +31,11 @@
 // opens again; a page open is never listed again as closed. A tab the
 // source leaves out has no row but still finds the window it's in front
 // of, and a source that only says what's open, as Chrome's session file
-// does, gives Go To bringing the window forward and no Close It. A program whose
+// does, gives Go To bringing the window forward and no Close It. A file
+// source saying what's open, as mpv's does, leads the same way, one row a
+// file only while its process has a window, Return going to that window,
+// Close It closing it and leaving the file dimmed, the rest of its Recent
+// still the list programs share. A program whose
 // entry hides itself is listed only when another provider gives it acts,
 // and then steps in on Return rather than starting. Typing on
 // looks only through what the last key found, and finds what looking
@@ -149,6 +153,12 @@ ShellRoot {
                 opened: [Quickshell.env("OPENED_LIST")],
                 go: ["tabs", "go", "{id}"],
                 close: ["tabs", "close", "{id}"]
+            }, {
+                // What the viewer has open, as mpv's source says, and
+                // nothing else, so the rest stays the shared list's.
+                app: "org.example.viewer",
+                kind: "file",
+                opened: [Quickshell.env("VIEWING_LIST")]
             }]
         })
         // Desktop entries and what quiet had open are read in the
@@ -181,6 +191,8 @@ ShellRoot {
         function onOpenNowChanged() {
             if (root.waiting === "the sites")
                 root.browsed(1);
+            else if (root.waiting === "the viewer")
+                root.viewed();
         }
     }
 
@@ -347,7 +359,7 @@ ShellRoot {
                 bare.run();
                 same("and Return brings its window forward, asking the program nothing",
                     `${JSON.stringify(Niri.spawns)} ${acted()}`, '[] [{"FocusWindow":{"id":22}}]');
-                Qt.exit(0);
+                root.view();
                 return;
             }
             sites[4].run();
@@ -359,6 +371,61 @@ ShellRoot {
             launcher.open = true;
             root.waiting = "the sites again";
             program("browser").verbs();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // The viewer's windows, each a process with a file open, and the
+    // viewer stepped into, which reads what it has open.
+    function view() {
+        Niri.windows = Object.assign({}, Niri.windows, {
+            "31": { id: 31, app_id: "org.example.viewer", pid: 5151, title: "open.pdf",
+                workspace_id: 1, focus_timestamp: { secs: 400, nanos: 0 } },
+            "32": { id: 32, app_id: "org.example.viewer", pid: 5252, title: "paper.pdf",
+                workspace_id: 1, focus_timestamp: { secs: 350, nanos: 0 } },
+            "33": { id: 33, app_id: "org.example.viewer", pid: 5353, title: "open.pdf",
+                workspace_id: 1, focus_timestamp: { secs: 100, nanos: 0 } }
+        });
+        Niri.revision += 1;
+        root.waiting = "the viewer";
+        program("org.example.viewer").verbs();
+    }
+
+    function viewed() {
+        if (applications.recents.openIn("org.example.viewer").length === 0)
+            return;
+        try {
+            const recent = program("org.example.viewer").verbs().find(row => row.name === "Recent");
+            const files = recent.targets();
+            same("what it has open first, one row a file while its process has a window, newest "
+                + "looked at first, then the list programs share, never a file open now",
+                names(files), "open.pdf, paper.pdf, old.pdf");
+            same("each made as every file is, beside its folder, saying it's open",
+                files.map(row => `${row.component} ${row.key} ${row.side}`).join(" | "),
+                `file file:${root.home}/open.pdf ~ \u00b7 open | file file:${root.home}/paper.pdf `
+                + `~ \u00b7 open | file file:${root.home}/old.pdf ~`);
+            same("Return goes to one open, and opens one that was",
+                files.map(row => row.verb).join(" "), "go go open");
+            const inside = files[0].verbs();
+            same("one open holds Go To, Close It, then Copy the Path", names(inside),
+                "Go To, Close It, Copy the Path");
+            Niri.acted = [];
+            files[0].run();
+            same("Return goes to the window looked at last of those that have it", acted(),
+                '[{"FocusWindow":{"id":31}}]');
+            Niri.acted = [];
+            files[1].run();
+            same("and another to its own", acted(), '[{"FocusWindow":{"id":32}}]');
+            Niri.acted = [];
+            same("Close It keeps the launcher", inside[1].stays, true);
+            inside[1].run();
+            same("Close It closes that window", acted(), '[{"CloseWindow":{"id":31}}]');
+            const shut = recent.targets()[0];
+            same("the file stays where it was, dimmed and said closed, holding only its path",
+                `${shut.key} ${shut.gone} ${shut.side} | ${names(shut.verbs())}`,
+                `file:${root.home}/open.pdf true ~ \u00b7 closed | Copy the Path`);
+            Qt.exit(0);
         } catch (error) {
             fail(error.message);
         }
@@ -548,7 +615,7 @@ ShellRoot {
             same("Media holds only what the player can do", names(radio[3].targets()), "Play");
             const viewed = program("org.example.viewer").verbs().find(row => row.name === "Recent");
             same("a program the list names by its command, as recent-files does",
-                viewed ? names(viewed.targets()) : "no Recent", "paper.pdf");
+                viewed ? names(viewed.targets()) : "no Recent", "paper.pdf, old.pdf");
             same("by its command, the entry shown rather than a hidden one running it too",
                 applications.recents.entryOf("viewer", [
                     { id: "org.example.viewer-pdf", name: "Viewer PDF", noDisplay: true, command: ["viewer"] },

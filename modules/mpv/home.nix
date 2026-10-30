@@ -27,7 +27,8 @@
 # ones worth knowing over its window, in their own words. It reports what
 # it plays over MPRIS, so the media keys and the shell's player reach it,
 # and says each file it plays to the desktop's list of files opened lately
-# (recent-files.lua), so its Recent in the launcher lists them.
+# (recent-files.lua), so its Recent in the launcher lists them, led by
+# the file each mpv plays now (playing.lua), which Return goes to.
 # umpv, the package's second entry, which queues files into one window,
 # stays out of the launcher, where it would sit beside mpv as a second mpv.
 {
@@ -38,6 +39,9 @@
 }:
 let
   inherit (config.jitsusama.theme) colours font;
+
+  # Where each mpv keeps the file it plays now (playing.lua).
+  playing = "${config.xdg.stateHome}/mpv/playing";
 
   # The theme's #RRGGBB as stats writes a colour, blue first.
   bgr =
@@ -159,6 +163,7 @@ in
 {
   imports = [
     ../keys/home.nix
+    ../quickshell/recents.nix
     ../theme/home.nix
     ../unlisted/home.nix
   ];
@@ -172,6 +177,36 @@ in
   jitsusama.unlisted = [ "umpv" ];
 
   xdg.configFile."mpv/scripts/recent-files.lua".source = ./recent-files.lua;
+  xdg.configFile."mpv/scripts/playing.lua".source = ./playing.lua;
+
+  # The file each mpv plays now, for its Recent in the launcher to lead
+  # with, kept in a folder made at sign-in (playing.lua), each mpv's line
+  # printed as the launcher reads it, as mpv is stepped into. The launcher
+  # runs it without a shell, so the folder is named here, in the state
+  # home rather than the runtime folder, whose path only a shell knows;
+  # what a killed mpv left is cleared by the next to start, and the
+  # launcher lists a file only while its mpv has a window. Its other paths
+  # stay the desktop's list of files opened lately.
+  systemd.user.tmpfiles.rules = [ "d ${playing} 0700 - - -" ];
+  jitsusama.quickshell.launcher.recents = [
+    {
+      app = "mpv";
+      kind = "file";
+      opened = [
+        (lib.getExe' pkgs.findutils "find")
+        playing
+        "-name"
+        "[0-9]*"
+        "-type"
+        "f"
+        "-exec"
+        (lib.getExe' pkgs.coreutils "cat")
+        "--"
+        "{}"
+        "+"
+      ];
+    }
+  ];
 
   programs.mpv = {
     enable = true;

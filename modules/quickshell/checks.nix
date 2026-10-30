@@ -1531,9 +1531,9 @@ onLinux {
       # its name and by its id, one file twice, one of no program here, and
       # one the radio was given, which can't open a file itself, and one the
       # viewer opened, named by its command as recent-files names it.
-      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\n' \
+      printf 'Tester\t%s\nnobody-here\t%s\ntester\t%s\nTester\t%s\nradio\t%s\nviewer\t%s\nviewer\t%s\n' \
         "$HOME/notes.md" "$HOME/lost.md" "$HOME/plan.md" "$HOME/notes.md" "$HOME/song.ogg" \
-        "$HOME/paper.pdf" > $HOME/shared
+        "$HOME/paper.pdf" "$HOME/old.pdf" > $HOME/shared
       export SHARED_LIST=${pkgs.writeShellScript "shared-list" ''cat "$HOME/shared"''}
       # The browser's sites, as chrome-recent-sites prints them, each
       # reading saying which it is.
@@ -1554,6 +1554,13 @@ onLinux {
           10 2 true 500 https://another.example.com/b Another \
           11 3 true 400 "" 'Left out' \
           12 3 false 450 https://behind.example.com/ Behind
+      ''}
+      # What the viewer has open now, as mpv's opened lists what each mpv
+      # plays: one file in two of its processes, one also on the list
+      # programs share, and one in a process with no window.
+      export VIEWING_LIST=${pkgs.writeShellScript "viewing-list" ''
+        printf '%s\t%s\n' 5151 "$HOME/open.pdf" 5252 "$HOME/paper.pdf" 5353 "$HOME/open.pdf" \
+          9999 "$HOME/ghost.pdf"
       ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

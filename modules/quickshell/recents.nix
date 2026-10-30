@@ -24,7 +24,12 @@
       between each), read as the program is stepped into; and where it
       can, `go` and `close`, the commands going to and closing one ({id}).
       Without `go`, Go To brings forward the window the tab is in; without
-      `close`, there's no Close It.
+      `close`, there's no Close It. A file source may say what's open now
+      too: `opened`, the command printing the process that has a file open
+      and the file's whole path, a tab between, a file a line, read as the
+      program is stepped into; Go To and Close It act on that process's
+      window. One with only `app`, `kind` and `opened` keeps the list
+      programs share for its program's other paths.
     '';
   };
 }

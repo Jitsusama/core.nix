@@ -565,19 +565,24 @@ Provider {
     // when its source names no command of its own. What it has open now,
     // where its source says (`opened`), leads, every one of it, and up to
     // nine closed follow, a page open now never listed again as closed
-    // (openSites). Any other provider may
+    // (openSites). A file source may say what's open now the same way, as
+    // mpv's says the file each mpv plays (openFiles), and one saying no
+    // more than that keeps the list programs share for the rest. Any other
+    // provider may
     // give a program's Recent its own things after these, each its one
     // row, by `recentOf(program)`, newest first, as Docs' documents are
     // given (Documents.qml).
     function recent(entry) {
         const source = (settings.recents ?? []).find(each => each.app === entry.id) ?? null;
+        const own = source?.list ? source : null;
         provider.recents.ask(entry.id);
         const listed = () => {
-            const open = source?.kind === "site" ? provider.openSites(entry, source) : [];
+            const open = source?.kind === "site" ? provider.openSites(entry, source)
+                : source?.opened ? provider.openFiles(entry) : [];
             const shown = open.map(row => row.key);
             return open.concat(provider.recents.of(entry.id)
                 .map(path => source?.kind === "site"
-                    ? provider.visited(entry, path) : provider.lately(entry, source, path))
+                    ? provider.visited(entry, path) : provider.lately(entry, own, path))
                 .filter(row => !shown.includes(row.key))
                 .concat(givenRecent(entry.id)).slice(0, provider.recents.most));
         };
@@ -761,6 +766,50 @@ Provider {
         })];
         const acts = [goes].concat(closes, window ? [windowRow(window, entry)] : []);
         return site(tab.address, tab.title, `${host} \u00b7 ${open}`, acts);
+    }
+
+    // What a program has open now, as its file source's `opened` prints
+    // it, a file a line: the process that has it and its whole path. One
+    // row a file, the file's own wherever it shows, and only while that
+    // process has a window, newest looked at first; two windows on one
+    // file are one row, going to the one looked at last. Return goes to
+    // its window, and inside are Go To, Close It and Copy the Path. Close
+    // It keeps the launcher, and the file stays where it was, said closed
+    // and holding only Copy the Path, until the launcher opens again.
+    function openFiles(entry) {
+        const words = Words.of("path:file").said ?? {};
+        const held = provider.recents.openIn(entry.id).map(line => {
+            const tab = line.indexOf("\t");
+            return { pid: Number(line.slice(0, tab)), path: tab < 0 ? "" : line.slice(tab + 1) };
+        });
+        const closed = provider.recents.closed[entry.id] ?? [];
+        const rows = [];
+        const paths = [];
+        for (const window of running[entry.id] ?? []) {
+            const open = held.find(one => one.pid === window.pid && one.path !== "");
+            if (!open || paths.includes(open.path))
+                continue;
+            paths.push(open.path);
+            rows.push(closed.includes(open.path)
+                ? Files.held(open.path, thing, [], words.closed ?? "", true)
+                : Files.held(open.path, thing, [
+                    said("verb:path:file:go", "", {
+                        key: `verb:path:file:go:${open.path}`,
+                        hue: "action",
+                        run: () => Niri.act({ FocusWindow: { id: window.id } })
+                    }),
+                    said("verb:path:file:close", "", {
+                        key: `verb:path:file:close:${open.path}`,
+                        hue: "action",
+                        stays: true,
+                        run: () => {
+                            Niri.act({ CloseWindow: { id: window.id } });
+                            provider.recents.closing(entry.id, open.path);
+                        }
+                    })
+                ], words.open ?? ""));
+        }
+        return rows;
     }
 
     // Its own keys, where Shortcuts has a layer of them (KeyMap.qml's
