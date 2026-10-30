@@ -2751,11 +2751,46 @@ Scope {
         keySearched = Date.now() - began;
         keyText = typed;
         keyWaits = true;
+        keysWaiting += 1;
     }
 
     function keyDrawn() {
         keyWaits = false;
-        trials.timed(keySearched, Date.now() - keyBegan, searchParts, keyText);
+        const drawn = Date.now();
+        trials.timed(keySearched, drawn - keyBegan, searchParts, keyText);
+        // Every key since the last frame shows in this one, so each keeps
+        // it as its own, and the list holds one time a key.
+        for (let each = 0; each < keysWaiting; each += 1)
+            keysFramed.push(drawn);
+        keysTimed += keysWaiting;
+        keysWaiting = 0;
+        if (keysFramed.length > keysKept)
+            keysFramed.splice(0, keysFramed.length - keysKept);
+    }
+
+    // When each of the last keys reached its frame, oldest first, for the
+    // check that times each key from the keyboard to the screen under load,
+    // and for the machine's own load proof. Every key is kept, however
+    // quick, since a time is only a time beside the key that made it, and
+    // with how many have been timed in all, so a key is found by its count
+    // however many the list has let go. Nothing binds to them, so they're
+    // changed in place.
+    readonly property int keysKept: 300
+    property var keysFramed: []
+    property int keysTimed: 0
+    property int keysWaiting: 0
+
+    // Moves the selection as an arrow does, timing the key to its frame as
+    // a typed one is. A key that moves nothing draws nothing, so it isn't
+    // timed: its frame would be whatever came next.
+    function arrowed(to, arrow) {
+        trials.pressed("arrows");
+        if (to === current)
+            return;
+        const began = Date.now();
+        searchParts = null;
+        current = to;
+        keyTimed(arrow, began);
     }
 
     onCurrentChanged: {
@@ -3006,6 +3041,13 @@ Scope {
             return String(root.choicesJoined);
         }
 
+        // When each of the last keys, typed or arrowed, reached its frame,
+        // as milliseconds since the epoch, oldest first, and how many keys
+        // have reached one since the shell started.
+        function framed(): string {
+            return JSON.stringify({ timed: root.keysTimed, frames: root.keysFramed });
+        }
+
         // How many frames the card has drawn since this was first asked,
         // for the check that a launcher left still draws nothing.
         function frames(): string {
@@ -3189,6 +3231,8 @@ Scope {
             held: root.held.map(step => step.row.chip ?? step.row.name),
             path: root.path,
             rows: root.matches.slice(0, 20).map(row => row.name),
+            // How many rows there are in all, beyond the twenty named.
+            count: root.matches.length,
             // What each of those rows is, and how it reads whole, so a
             // test can say no thing is listed twice.
             things: root.matches.slice(0, 20).map(row => ({
@@ -3650,26 +3694,24 @@ Scope {
                                 drawerCard.scroll(-1);
                                 return;
                             }
-                            trials.pressed("arrows");
-                            root.current = Math.max(root.current - 1, highest);
+                            root.arrowed(Math.max(root.current - 1, highest), "\u2191");
                         }
                         Keys.onDownPressed: event => {
                             if (event.modifiers & Qt.ControlModifier) {
                                 drawerCard.scroll(1);
                                 return;
                             }
-                            trials.pressed("arrows");
-                            root.current = Math.max(highest,
-                                Math.min(root.current + 1, root.matches.length - 1));
+                            root.arrowed(Math.max(highest,
+                                Math.min(root.current + 1, root.matches.length - 1)), "\u2193");
                         }
                         Keys.onPressed: event => {
                             if (event.key === Qt.Key_PageUp) {
-                                trials.pressed("arrows");
-                                root.current = Math.max(root.current - root.rows, highest);
+                                root.arrowed(Math.max(root.current - root.rows, highest),
+                                    "page up");
                             } else if (event.key === Qt.Key_PageDown) {
-                                trials.pressed("arrows");
-                                root.current
-                                    = Math.min(root.current + root.rows, root.matches.length - 1);
+                                root.arrowed(
+                                    Math.min(root.current + root.rows, root.matches.length - 1),
+                                    "page down");
                             }
                         }
                     }

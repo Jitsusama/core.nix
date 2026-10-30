@@ -38,6 +38,7 @@ class Values(TypedDict):
     ask_portal: str
     choose_a_file: str
     copilot_key: str
+    keyboard: str
     touchscreen: str
     tuple_window: str
     # A picture, a document, a text and a track to open, as a download would be.
@@ -51,6 +52,7 @@ class Values(TypedDict):
     ffmpeg_headless: str
     fontconfig_bin: str
     pipewire: str
+    stress_ng: str
     wev: str
     zenity: str
     # The theme's colours the test looks for, and its monospaced face.

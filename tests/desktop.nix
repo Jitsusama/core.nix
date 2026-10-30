@@ -182,6 +182,14 @@ let
     doCheck = false;
   } (builtins.readFile ./desktop/copilot-key.py);
 
+  # A stand-in keyboard, pressing one key each time it's told through
+  # /run/keyboard and saying when, so a key is timed from the device
+  # (desktop/keyboard.py).
+  keyboard = pkgs.writers.writePython3 "keyboard" {
+    libraries = [ pkgs.python3Packages.evdev ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/keyboard.py);
+
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
   page = import ./page.nix {
@@ -274,7 +282,11 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The laptop role's Wi-Fi, which the shell's network piece and Wi-Fi
         # collection read.
         self.nixosModules.wifid
-      ];
+      ]
+      # The workstation role's builds, in build.slice at its weight, which
+      # keeps-pace loads as a machine's builds do. Only there, since the
+      # daemon's settings change nothing any other area reads.
+      ++ lib.optional (area == "keeps-pace") self.nixosModules.nix-daemon;
 
       # The VM has no backlight, keyboard light, light sensor, lid or sound
       # card, so it gets one of each that drives nothing, which the kernel and PipeWire report
@@ -668,6 +680,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             secret
             asking
             touchscreen
+            keyboard
             picture
             page
             text
@@ -685,6 +698,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
             ;
           ffmpeg_headless = pkgs.ffmpeg-headless;
           fontconfig_bin = pkgs.fontconfig.bin;
+          stress_ng = pkgs.stress-ng;
           inherit (colours) accent action sunken;
           mono_family = font.mono.family;
           photographs = gallery;
