@@ -136,7 +136,10 @@ driven on; the installed machine's steps come later.
   folders. The archive's key is sealed to each YubiKey and to the stick's
   vault key, so it opens after a restart with nothing more asked. The
   archive is read back whole before the wipe, since the wipe takes the
-  only other copy. Right after the system is installed it's put back, and
+  only other copy. Then the old system is unmounted and its volume
+  closed before the pack counts as done, since a volume left open at
+  `/mnt` is what a laid-out disk looks like, and the wipe would take it
+  for its own and skip itself. Right after the system is installed it's put back, and
   each account numbered otherwise on the new system has its files
   `chown --from` to its new numbers.
 - **Recovering.** Any stick recovers a machine with its data left in
