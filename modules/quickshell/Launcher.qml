@@ -1436,13 +1436,14 @@ Scope {
     property var gathered: []
 
     function gathering(letters, among) {
+        // What each collection took, in milliseconds, for a key that's slow
+        // to say which (Trials.qml). Made empty first, so a key too short to
+        // search them doesn't say what the key before it took.
+        const took = {};
+        listsTook = took;
         if (letters.replace(/\s+/g, "").length < 2)
             return [];
         const rows = [];
-        // What each collection took, in milliseconds, for a key that's slow
-        // to say which (Trials.qml).
-        const took = {};
-        listsTook = took;
         for (const source of among ?? collections) {
             // One opened only by its own chord adds no row to a search, but
             // does inside a category that holds it.
