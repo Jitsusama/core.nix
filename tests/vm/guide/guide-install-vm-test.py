@@ -1316,10 +1316,12 @@ def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     assert lockouts(machine, values) == firmware_cleared.lockouts
     # The guide finds the TPM still sealed, and alice's keys and spares,
     # carried across, still there, so it finishes asking nothing.
+    # Inactive alone would hold before it starts, so it's waited for as run.
     machine.wait_until_succeeds(
-        "systemctl show -P ActiveState guide-installed | grep -qx inactive", timeout=300
+        'test "$(systemctl show -P ConditionResult guide-installed)" = yes'
+        ' && test "$(systemctl show -P ActiveState guide-installed)" = inactive',
+        timeout=300,
     )
-    assert machine.succeed("systemctl show -P ConditionResult guide-installed").strip() == "yes"
     assert machine.succeed("systemctl show -P Result guide-installed").strip() == "success"
     assert "Finish machine" not in screen(machine), screen(machine)
     assert "Secure Boot: enabled (user)" in machine.succeed("bootctl status")
