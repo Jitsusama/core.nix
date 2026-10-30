@@ -34,6 +34,9 @@ set meet6 {
 set local4 { type ipv4_addr; flags interval; }
 set local6 { type ipv6_addr; flags interval; }
 set uplinks { type ifname; }
+# The firewall marks of the VPNs carrying nothing but bulk now, which the
+# shaper fills each step (src/quiet.rs says why).
+set vpnbulk { type mark; }
 
 chain local {
   ct mark set ct mark and 0xf0ffffff or 0x0a000000
@@ -133,11 +136,13 @@ chain input {
 # CAKE reads the tin from the packet's priority when its major number is
 # CAKE's handle, 2:, and the root HTB sends priority 1:1 to its class for
 # local traffic. Only the shaper's uplinks are given one: elsewhere a
-# priority means whatever that link's own queue makes of it.
+# priority means whatever that link's own queue makes of it. A VPN's own
+# packets carry its mark, and go as bulk while it carries only bulk.
 chain postrouting {
   type filter hook postrouting priority mangle; policy accept;
   oifname != @uplinks return
   ct mark and 0x08000000 != 0 meta priority set 1:1 return
+  meta mark @vpnbulk meta priority set 2:1 return
   ct mark and 0x07000000 == 0x01000000 meta priority set 2:1 return
   ct mark and 0x07000000 == 0x02000000 meta priority set 2:2 return
   ct mark and 0x07000000 == 0x03000000 meta priority set 2:3 return

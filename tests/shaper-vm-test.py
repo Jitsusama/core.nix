@@ -34,6 +34,10 @@ type Json = dict[str, Any]
 
 # One of Meet's media servers, which takes a call on 443.
 MEET = "74.125.250.1"
+# The firewall mark the tunnel's own packets carry, and the table it routes the rest by,
+# as wg-quick chooses them.
+TUNNEL_MARK = "0xca6c"
+TUNNEL_TABLE = 51820
 
 # CAKE's diffserv4 tins, in the order its counts list them.
 TINS = ["bulk", "best effort", "video", "voice"]
@@ -223,17 +227,30 @@ def tunnel(connection: Connection) -> Connection:
     for node in (connection.client, connection.server):
         node.succeed("wg genkey > /root/key")
         keys[node.name] = node.succeed("wg pubkey < /root/key").strip()
+    # The client's runs in userspace, in a system service, as a VPN's daemon does: the
+    # kernel's would leave each packet on the connection with its sender's socket.
+    connection.client.succeed(
+        "systemd-run --unit=tunnel --setenv=WG_PROCESS_FOREGROUND=1 wireguard-go -f wg0"
+    )
+    connection.client.wait_until_succeeds("ip link show wg0", timeout=COMING_UP)
+    connection.server.succeed("ip link add wg0 type wireguard")
     for node, me, peer, there in (
         (connection.client, "10.9.0.1", connection.server, connection.far),
         (connection.server, "10.9.0.2", connection.client, connection.near),
     ):
         node.succeed(
-            "ip link add wg0 type wireguard",
             f"wg set wg0 private-key /root/key listen-port 51820 peer {keys[peer.name]}"
             f" endpoint {there}:51820 allowed-ips 10.9.0.0/24",
             f"ip addr add {me}/24 dev wg0",
             "ip link set wg0 up",
         )
+    # As wg-quick routes a VPN: its own packets carry its mark, and everything else
+    # looks in its table first.
+    connection.client.succeed(
+        f"wg set wg0 fwmark {TUNNEL_MARK}",
+        f"ip route add 10.9.0.0/24 dev wg0 table {TUNNEL_TABLE}",
+        f"ip rule add not fwmark {TUNNEL_MARK} table {TUNNEL_TABLE}",
+    )
     connection.client.wait_until_succeeds("ping -c1 -W1 10.9.0.2", timeout=COMING_UP)
     connection.client.wait_until_succeeds(
         "tc -j qdisc show dev wg0 | grep -q cake", timeout=SHAPING
@@ -506,6 +523,43 @@ def test_tunnel(tunnel: Connection) -> None:
     back = tunnel.ifb("wg0")
     tunnel.lands("bulk", "jobs.slice", inner_down, dev=back)
     tunnel.lands("best effort", "app.slice", inner_down, dev=back)
+
+
+def test_quiet_tunnel(tunnel: Connection) -> None:
+    """A tunnel carrying only bulk goes as bulk on the connection, and one carrying more doesn't.
+
+    The connection's queue sees a tunnel as one flow, so its packets take their class from
+    what the tunnel's own queue sends: bulk while that is only bulk and no typed turn runs,
+    best effort otherwise.
+    """
+    client = tunnel.client
+    quiet = "nft list set inet shaper vpnbulk | grep -q ca6c"
+    inner = f"{BIN}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
+    client.wait_until_succeeds(quiet, timeout=HOLDING)
+    tunnel.lands("bulk", "jobs.slice", inner, dev="eth1")
+
+    # An app's upload inside puts the tunnel back in best effort within a step, so all
+    # but its first moment goes so.
+    more = f"{BIN}/head -c 5000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
+    moved = tunnel.moved_by("app.slice", lambda: tunnel.run("app.slice", more), "eth1")
+    assert moved["best effort"] > 2 * moved["bulk"], f"app.slice on eth1: {moved}"
+    client.wait_until_succeeds(quiet, timeout=HOLDING)
+
+    # A typed turn may be inside, so while one runs the tunnel's bulk goes as best effort.
+    client.succeed(f"mkdir -p /tmp/typing && ln -sf {BIN}/bash /tmp/typing/pi")
+    client.succeed(
+        "systemd-run -M alice@ --user --slice=app.slice --unit=pi-typing"
+        " /tmp/typing/pi -c 'sleep infinity; true'"
+    )
+    pid = client.succeed(
+        "systemctl -M alice@ --user show -p MainPID --value pi-typing.service"
+    ).strip()
+    client.succeed(f"mkdir -p /run/user/1000/pi/typed && touch /run/user/1000/pi/typed/{pid}")
+    client.wait_until_fails(quiet, timeout=SHAPING)
+    tunnel.lands("best effort", "jobs.slice", inner, dev="eth1")
+    client.succeed(f"rm /run/user/1000/pi/typed/{pid}")
+    client.succeed("systemctl -M alice@ --user stop pi-typing.service")
+    client.wait_until_succeeds(quiet, timeout=HOLDING)
 
 
 def test_route_moves(on_eth2: Connection) -> None:

@@ -8,7 +8,9 @@
 # unplugged and plugged back in, as a dock's adapter is, it's shaped afresh;
 # and when the shaper stops, it takes them all away. Inside a WireGuard VPN
 # to the server, named as a machine names its VPN, the same classes reach
-# the VPN's own CAKEs, sending and receiving. The tests are shaper-vm-test.py, run through pytest.
+# the VPN's own CAKEs, sending and receiving, and the VPN's own packets go
+# as bulk on the connection while it carries only bulk and no typed turn
+# runs. The tests are shaper-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -38,8 +40,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       isNormalUser = true;
       linger = true;
     };
+    # The client's VPN runs in userspace on a tun device, as a VPN's daemon
+    # does, so its packets on the connection are the daemon's own rather
+    # than carrying the socket of whoever sent what they hold.
     environment.systemPackages = [
       pkgs.jq
+      pkgs.wireguard-go
       pkgs.wireguard-tools
     ];
   };
