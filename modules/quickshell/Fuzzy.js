@@ -155,17 +155,26 @@ function prepare(text) {
 // Texts already made ready, by their text, so a row made again as its list
 // changes, as Quests' are whenever a quest is written, finds its name ready
 // rather than making it again on the next key. Kept to the most a desktop
-// shows and its people's names and emails, and forgotten whole past that.
+// shows and its people's names and emails, in two lots: past that, the lot
+// before is forgotten, and what's still asked for is carried into the new
+// one. Forgetting everything at once has every collection make everything
+// ready again on the same key; Joel's slowest keys are ones where Quests,
+// Notices and People were all slow together, up to 2 s (launcher-trials.json,
+// 2026-10-26 to 30).
 const KEPT = 20000;
-const keptItems = new Map();
+let keptItems = new Map();
+let keptBefore = new Map();
 
 // The text made ready to match, once while it reads the same.
 function kept(text) {
     const key = String(text);
     let item = keptItems.get(key);
     if (item === undefined) {
-        if (keptItems.size >= KEPT) keptItems.clear();
-        item = prepare(key);
+        if (keptItems.size >= KEPT) {
+            keptBefore = keptItems;
+            keptItems = new Map();
+        }
+        item = keptBefore.get(key) ?? prepare(key);
         keptItems.set(key, item);
     }
     return item;
