@@ -105,6 +105,10 @@ const DIR: &str = "/run/nix-offload";
 /// builds it could take until Nix can see it.
 const LENDING: &str = "/run/nix-offload/lending";
 
+/// The variable, with its value, that tells jobs-sorter (modules/slices) a
+/// process waits on work done elsewhere.
+const ELSEWHERE: (&str, &str) = ("WORK_RUNS_ELSEWHERE", "1");
+
 const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate DOLLARS \
                     --first-start HH:MM --last-start HH:MM --deadline HH:MM \
                     [--standing PATH] | nix-offload stand --standing PATH \
@@ -222,6 +226,19 @@ fn main() -> ExitCode {
 /// `there`: builds a flake's attributes where src/there.rs says, each part
 /// journalled, exiting with the first status that failed.
 fn there(arguments: &[String]) -> ExitCode {
+    // A `there` run only waits on a build done elsewhere, mostly, so the
+    // machine's slices let its processes go after other work when memory
+    // runs out; they read the mark from where each started, so this starts
+    // again with it rather than only handing it on.
+    if env::var_os(ELSEWHERE.0).is_none_or(|value| value != ELSEWHERE.1) {
+        let again = Command::new("/proc/self/exe")
+            .arg("there")
+            .args(arguments)
+            .env(ELSEWHERE.0, ELSEWHERE.1)
+            .exec();
+        eprintln!("nix-offload: couldn't start there again marked: {again}");
+        return ExitCode::from(71);
+    }
     // What this `there` takes, a word each, so a caller can tell it from
     // an older one, which refuses the flag with 64.
     if arguments == ["--takes"] {

@@ -17,6 +17,7 @@ while [ "$#" -gt 2 ]; do
   shift
 done
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
+echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/ssh-marked"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
 exit "$(cat "$here/status")"
 "#;
@@ -24,6 +25,7 @@ exit "$(cat "$here/status")"
 /// nix as it builds here: it records its arguments and exits 0.
 const NIX: &str = r#"#!/bin/sh
 echo "$@" > "$(dirname "$0")/nix-was-given"
+echo "${WORK_RUNS_ELSEWHERE:-}" > "$(dirname "$0")/nix-marked"
 "#;
 
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
@@ -626,6 +628,24 @@ fn it_says_what_it_takes_a_word_a_line() {
         String::from_utf8_lossy(&said.stdout),
         "tree\napply\nout\nwants\nfolder\n"
     );
+}
+
+#[test]
+fn what_it_starts_is_marked_as_waiting_on_work_elsewhere() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    stand_ins(folder.path(), 255);
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = there(folder.path(), &offload);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    for marked in ["ssh-marked", "nix-marked"] {
+        assert_eq!(
+            fs::read_to_string(folder.path().join(marked)).unwrap(),
+            "1\n",
+            "{marked}"
+        );
+    }
 }
 
 #[test]
