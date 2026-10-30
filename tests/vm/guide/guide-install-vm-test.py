@@ -880,8 +880,9 @@ def policy_freed(reinstalled_boot: QemuMachine, values: dict[str, Any]) -> list[
     on_screen(machine, "Plug in a YubiKey, which opens the disk for the TPM")
     enter(machine, "")
     seal_tpm(machine, values)
-    # Sealed, and freed before the guide asks for the account's keys.
-    on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
+    # Sealed and freed, and alice's keys, carried across, are found in the
+    # TPM rather than made again.
+    on_screen(machine, "the TPM holds the SSH keys", timeout=STEP)
     return before
 
 
@@ -1312,8 +1313,9 @@ def test_cleared_firmware_gets_its_keys_back_once_all_is_signed(
     assert log[enrolled:].count("Linux version") == 1
     # Refusing for the boot, not the PIN, cost the TPM no tries.
     assert lockouts(machine, values) == firmware_cleared.lockouts
-    # The guide finds the TPM still sealed, and goes on to the keys.
-    on_screen(machine, "a PIN for alice's SSH keys", timeout=STEP)
+    # The guide finds the TPM still sealed, and goes on to alice's keys,
+    # carried across.
+    on_screen(machine, "the TPM holds the SSH keys", timeout=STEP)
     assert "Secure Boot: enabled (user)" in machine.succeed("bootctl status")
     assert writer_stick.owner in machine.succeed("sbctl status")
     # And the files it enrolled from go, so a later clearing can't have
