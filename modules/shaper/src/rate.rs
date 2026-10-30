@@ -691,7 +691,16 @@ impl Controller {
         let baseline = self.baselines.entry(host.to_string()).or_default();
         let over = match rtt_ms {
             Some(rtt) => baseline.update(rtt),
-            None if baseline.lost() => f64::INFINITY,
+            // A lost ping says a queue overflowed, not how deep it was, so
+            // it counts as the worst the pings around it measured, and at
+            // least twice the threshold. Read as endless, one round of them
+            // on 30 October halved a cut that was already a tenth under
+            // what the download carried, from 252 Mbit/s to 52.
+            None if baseline.lost() => self
+                .levels
+                .iter()
+                .copied()
+                .fold(self.settings.delay_ms * 2.0, f64::max),
             None => return,
         };
         self.recent.push_back(over > self.settings.delay_ms);
@@ -993,6 +1002,19 @@ mod tests {
         pings(&mut c, 20.0, 6);
         pings(&mut c, 200.0, 3);
         assert!(c.building());
+    }
+
+    #[test]
+    fn lost_pings_count_as_the_worst_delay_measured_around_them() {
+        let mut c = controller(20_000, 100_000);
+        pings(&mut c, 20.0, 6);
+        pings(&mut c, 60.0, 3);
+        for host in ["host0", "host1", "host2"] {
+            c.sample(host, None);
+        }
+        assert!(c.building());
+        let level = c.level();
+        assert!(level.is_finite() && level <= 60.0, "{level}");
     }
 
     #[test]
