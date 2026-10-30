@@ -14,13 +14,15 @@
     {
       # Without it the camera's CVS bridge holds the pin all four amplifiers
       # read their speaker ID from, so none of them bind and there's no sound
-      # card. From Intel, and accepted into the media tree.
+      # card. From Intel, and accepted into the media tree: message
+      # 20260913133017.624919-1-junjie.cao@intel.com on linux-media, as
+      # fetchpatch made it. It's kept here because the list's patchwork now
+      # turns away every fetch, under the name and hash it was fetched by, so
+      # its store path, and the kernel built from it, stay as they were.
       name = "cvs-wake-irq";
-      patch = pkgs.fetchpatch {
-        name = "cvs-wake-irq.patch";
-        url = "https://patchwork.linuxtv.org/project/linux-media/patch/20260913133017.624919-1-junjie.cao@intel.com/mbox/";
-        hash = "sha256-javJIhGW6mUlgQjgUTgKCEqpD7704+t8zZLtVTe72Dw=";
-      };
+      patch = pkgs.runCommand "cvs-wake-irq.patch" {
+        outputHash = "sha256-javJIhGW6mUlgQjgUTgKCEqpD7704+t8zZLtVTe72Dw=";
+      } "cp ${./local/cvs-wake-irq.patch} $out";
     }
     {
       # The CVS bridge's wake interrupt leaves an active-low flag on that

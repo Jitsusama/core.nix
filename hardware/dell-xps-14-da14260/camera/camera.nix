@@ -224,13 +224,15 @@ in
     {
       # The camera's privacy light stays off while it streams, since the
       # bridge's firmware lights it only when it owns it. From the media list,
-      # and tested by Intel on this bridge.
+      # and tested by Intel on this bridge: message
+      # 20261008-cvs-privacy-led-v1-1-b78d5c512cba@gmail.com on linux-media, as
+      # fetchpatch made it. It's kept here because the list's patchwork now
+      # turns away every fetch, under the name and hash it was fetched by, so
+      # its store path, and the kernel built from it, stay as they were.
       name = "cvs-privacy-led";
-      patch = pkgs.fetchpatch {
-        name = "cvs-privacy-led.patch";
-        url = "https://patchwork.linuxtv.org/project/linux-media/patch/20261008-cvs-privacy-led-v1-1-b78d5c512cba@gmail.com/mbox/";
-        hash = "sha256-wr8GO6xBzuoLJe3zJP00f9AkC6YiNh4G0B+4bewhFbM=";
-      };
+      patch = pkgs.runCommand "cvs-privacy-led.patch" {
+        outputHash = "sha256-wr8GO6xBzuoLJe3zJP00f9AkC6YiNh4G0B+4bewhFbM=";
+      } "cp ${./cvs-privacy-led.patch} $out";
     }
     {
       # The bridge's firmware sometimes answers a handover of the camera's
