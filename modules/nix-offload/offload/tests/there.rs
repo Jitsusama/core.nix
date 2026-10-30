@@ -83,6 +83,40 @@ fn a_lent_builder_is_sent_the_build_and_its_status_comes_back() {
     assert_eq!(line["status"], 100);
 }
 
+#[test]
+fn a_build_whose_builder_was_lost_is_sent_again_once_one_stands() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    // A lender runs, as this test does.
+    fs::write(offload.join("lender"), format!("{}\n", std::process::id())).unwrap();
+    stand_ins(folder.path(), 255);
+    // Lost the first time, as a takeback's restart loses its tunnel.
+    let ssh = folder.path().join("ssh");
+    fs::write(
+        &ssh,
+        SSH.replace(
+            "exit \"$(cat \"$here/status\")\"",
+            "echo x >> \"$here/tries\"; status=$(cat \"$here/status\"); \
+             echo 0 > \"$here/status\"; exit \"$status\"",
+        ),
+    )
+    .unwrap();
+    let ran = there(folder.path(), &offload);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let tries = fs::read_to_string(folder.path().join("tries")).unwrap();
+    assert_eq!(tries.lines().count(), 2, "sent again");
+    assert!(
+        !folder.path().join("nix-was-given").exists(),
+        "never built here"
+    );
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("waits for a builder to stand again"),
+        "{ran:?}"
+    );
+}
+
 /// ssh as a nearby machine answers: it adds its last two words to a
 /// record, keeps whatever it was sent, and exits as `status` says.
 const NEARBY_SSH: &str = r#"#!/bin/sh

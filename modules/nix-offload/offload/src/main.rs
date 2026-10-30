@@ -265,8 +265,15 @@ fn there(arguments: &[String]) -> ExitCode {
         // Asked for and waited on, rather than built here, while a lender
         // runs: a builder stands about 70 s after it's asked for.
         let store = store.or_else(|| there::waited(&dir, there::WAITING));
+        // Waited for from when the builder was first lost.
+        let lost = std::cell::Cell::new(None);
+        let again = || {
+            let since = lost.get().unwrap_or_else(std::time::Instant::now);
+            lost.set(Some(since));
+            there::stood_again(&dir, there::WAITING, since)
+        };
         timed(part, &|| {
-            there::run(part, store.as_deref(), &scratch, "ssh", "nix")
+            there::run(part, store.as_deref(), &again, &scratch, ["ssh", "nix"])
         });
     }
     ExitCode::from(u8::try_from(status).unwrap_or(1))
