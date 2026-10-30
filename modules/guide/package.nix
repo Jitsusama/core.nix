@@ -12,6 +12,8 @@
   sbsigntool,
   # A machine gives its own, so bootctl matches the systemd-boot it installs.
   systemd,
+  # A machine showing a splash gives its Plymouth (tools.nix).
+  bootSplash ? null,
   util-linux,
 }:
 rustPlatform.buildRustPackage {
@@ -40,7 +42,7 @@ rustPlatform.buildRustPackage {
   preCheck = ''
     export GUIDE_TEST_EFI=${systemd}/lib/systemd/boot/efi
   '';
-  env = import ./tools.nix { inherit pkgs systemd; };
+  env = import ./tools.nix { inherit bootSplash pkgs systemd; };
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck

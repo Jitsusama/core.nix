@@ -18,7 +18,8 @@ use crate::observe::efi::{Mode, SecureBoot};
 use crate::observe::{luks, pcrlock, tpm};
 use crate::tool::Path;
 use crate::{
-    Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
+    Answer, Answers, Ask, Fault, Given, Journey, Machine, Next, Place, Program, Secret, Standing,
+    Step, Tool,
 };
 
 /// What core's guide module says about the machine (../../nixos.nix).
@@ -26,6 +27,30 @@ pub const FACTS: &str = "/etc/guide/machine.json";
 /// The measured-boot policy the TPM is sealed to, which core's lanzaboote
 /// module has systemd-pcrlock keep for PCRs 0, 4 and 7.
 pub const PCRLOCK: &str = "/var/lib/systemd/pcrlock.json";
+
+/// Whether the guide takes the first console, as it does when the machine
+/// has something left to do here, and if so, with Plymouth's splash quit
+/// first. Core's Plymouth module keeps the splash up until the desktop draws
+/// over it, which would hide the guide; a machine with nothing left keeps
+/// its splash, so its desktop follows the splash with nothing between.
+pub fn takes_the_screen(journey: &Journey, machine: &mut dyn Machine) -> bool {
+    if matches!(journey.next(Place::Installed, machine), Ok(Next::Finished)) {
+        return false;
+    }
+    quit_splash(machine);
+    true
+}
+
+/// Quits Plymouth's splash when one's up. A guide built without Plymouth, as
+/// the stick's is, or run by hand with no splash up, goes no further. A quit
+/// that fails doesn't stop the guide, and the log keeps what Plymouth said,
+/// as it does for every program the guide runs.
+fn quit_splash(machine: &mut dyn Machine) {
+    let up = matches!(machine.run(Tool::Plymouth, &["--ping"]), Ok(ran) if ran.status == 0);
+    if up {
+        let _ = machine.run(Tool::Plymouth, &["quit"]);
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Facts {

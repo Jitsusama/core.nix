@@ -57,6 +57,7 @@ tools! {
     NixosEnter => "nixos-enter", "GUIDE_NIXOS_ENTER";
     NixosInstall => "nixos-install", "GUIDE_NIXOS_INSTALL";
     Pcrlock => "systemd-pcrlock", "GUIDE_PCRLOCK";
+    Plymouth => "plymouth", "GUIDE_PLYMOUTH";
     Rsync => "rsync", "GUIDE_RSYNC";
     Runuser => "runuser", "GUIDE_RUNUSER";
     Sbctl => "sbctl", "GUIDE_SBCTL";
@@ -130,6 +131,14 @@ pub fn disk_packages() -> Vec<&'static str> {
         .unwrap_or_default()
         .split_whitespace()
         .collect()
+}
+
+impl Tool {
+    /// Whether a build of the guide may go without it: Plymouth, which
+    /// only a machine showing a splash gives, and the stick doesn't.
+    pub fn optional(self) -> bool {
+        matches!(self, Tool::Plymouth)
+    }
 }
 
 impl fmt::Display for Tool {

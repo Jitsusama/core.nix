@@ -7,6 +7,9 @@
   pkgs,
   # A machine gives its own, so bootctl matches the systemd-boot it installs.
   systemd ? pkgs.systemd,
+  # A machine showing a splash gives its Plymouth, which the guide quits
+  # before it takes the first console; the stick has none.
+  bootSplash ? null,
 }:
 let
   inherit (pkgs) lib;
@@ -93,5 +96,8 @@ in
   GUIDE_TOKEN_PLUGINS = "${systemd}/lib/cryptsetup";
   # age finds its plugins on PATH, so the guide's own PATH is this alone.
   GUIDE_AGE_PLUGINS = lib.makeBinPath [ pkgs.age-plugin-fido2-hmac ];
+}
+// lib.optionalAttrs (bootSplash != null) {
+  GUIDE_PLYMOUTH = lib.getExe' bootSplash "plymouth";
 }
 // (import ./theme.nix { inherit lib; }).env

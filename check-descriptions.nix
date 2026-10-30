@@ -1387,6 +1387,11 @@
   the-splash-reads-the-generation-from-the-entry = ''
     the splash is told the generation only from an entry whose name carries one
   '';
+  the-splash-stays-until-niri-draws = ''
+    the splash lets go of the screen as greetd starts, keeping the GPU open, and quits ten seconds
+    after greetd starts rather than with the boot, so the console never shows between it and niri;
+    a machine without the splash keeps greetd waiting for Plymouth to quit
+  '';
   the-surface-boots-with-its-gpu-and-a-clock-that-reads = ''
     the Surface Laptop 4 loads its GPU's driver and the CMOS clock in the initrd, and keeps
     the firmware's unreadable clock from taking rtc0

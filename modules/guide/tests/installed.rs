@@ -625,3 +625,90 @@ fn a_cleared_tpm_on_a_boot_through_the_menu_still_needs_the_seal() {
         Standing::Needed { .. }
     ));
 }
+
+/// A step of the installed machine's, done or still to do as it's told.
+struct Finishing {
+    done: bool,
+}
+
+impl Step for Finishing {
+    fn id(&self) -> &'static str {
+        "finishing"
+    }
+
+    fn place(&self) -> guide::Place {
+        guide::Place::Installed
+    }
+
+    fn title(&self) -> &'static str {
+        "Finish the machine"
+    }
+
+    fn observe(&self, _machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        Ok(if self.done {
+            Standing::Done {
+                evidence: "it's finished".into(),
+            }
+        } else {
+            Standing::Needed { asks: vec![] }
+        })
+    }
+
+    fn run(&self, _machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        Ok(())
+    }
+}
+
+fn finishing(done: bool) -> Journey {
+    Journey::new(vec![Box::new(Finishing { done })]).unwrap()
+}
+
+#[test]
+fn a_machine_with_something_left_quits_the_splash_before_the_guide_shows() {
+    let mut stand_in = StandIn::new();
+    stand_in
+        .prints(Tool::Plymouth, &["--ping"], "")
+        .prints(Tool::Plymouth, &["quit"], "");
+    assert!(guide::installed::takes_the_screen(
+        &finishing(false),
+        &mut stand_in
+    ));
+    assert_eq!(stand_in.calls, ["plymouth --ping", "plymouth quit"]);
+}
+
+#[test]
+fn a_machine_with_no_splash_up_shows_the_guide_without_quitting_one() {
+    let mut stand_in = StandIn::new();
+    stand_in.refuses(Tool::Plymouth, &["--ping"], 1, "");
+    assert!(guide::installed::takes_the_screen(
+        &finishing(false),
+        &mut stand_in
+    ));
+    assert_eq!(stand_in.calls, ["plymouth --ping"]);
+}
+
+#[test]
+fn a_splash_that_refuses_to_quit_still_leaves_the_guide_to_show() {
+    let mut stand_in = StandIn::new();
+    stand_in.prints(Tool::Plymouth, &["--ping"], "").refuses(
+        Tool::Plymouth,
+        &["quit"],
+        1,
+        "plymouthd went away",
+    );
+    assert!(guide::installed::takes_the_screen(
+        &finishing(false),
+        &mut stand_in
+    ));
+    assert_eq!(stand_in.calls, ["plymouth --ping", "plymouth quit"]);
+}
+
+#[test]
+fn a_finished_machine_leaves_the_splash_alone() {
+    let mut stand_in = StandIn::new();
+    assert!(!guide::installed::takes_the_screen(
+        &finishing(true),
+        &mut stand_in
+    ));
+    assert!(stand_in.calls.is_empty(), "it ran {:?}", stand_in.calls);
+}

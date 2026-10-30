@@ -43,6 +43,34 @@
         touch $out
       '';
 
+  # Plymouth lets go of the screen as greetd starts, keeping the GPU open,
+  # and quits from a timer counted from greetd's start rather than with the
+  # boot's other jobs. So the GPU is never left closed between the splash
+  # and niri, which would have the kernel put its console back for those
+  # seconds. A machine without the splash keeps nixpkgs' order, greetd
+  # once Plymouth has quit.
+  the-splash-stays-until-niri-draws =
+    let
+      systemd = modules: (bareNixos ([ self.nixosModules.graphical ] ++ modules)).config.systemd;
+      splash = systemd [ { jitsusama.login.account = "someone"; } ];
+      plain = systemd [ ];
+      waits = machine: lib.elem "plymouth-quit-wait.service" machine.services.greetd.unitConfig.After;
+      timer = splash.timers.plymouth-quit;
+    in
+    holds "the-splash-stays-until-niri-draws"
+      "Plymouth quits before niri can open the GPU, or a machine without the splash lost greetd's wait."
+      (
+        lib.any (lib.hasSuffix "/bin/plymouth deactivate") (
+          lib.toList splash.services.greetd.serviceConfig.ExecStartPre
+        )
+        && !waits splash
+        && splash.services.plymouth-quit.wantedBy == [ ]
+        && splash.services.plymouth-quit-wait.wantedBy == [ ]
+        && lib.elem "greetd.service" timer.after
+        && timer.timerConfig.OnActiveSec == "10s"
+        && waits plain
+      );
+
   # The splash keeps systemd's lines off the console, so nothing shows
   # between the firmware's logo and the splash, which a test machine can't
   # show: its kernel writes everything to the screen, and systemd writes to

@@ -180,9 +180,12 @@ driven on; the installed machine's steps come later.
   a stamp in /run skips it for the rest of the boot, and a switch never
   restarts it. It's
   after lanzaboote's unit that restarts the first boot to enrol the keys
-  and the one that makes the disk's policy. While it runs, systemd holds
-  its lines about the units still starting, which would otherwise land
-  across the guide wherever the console is the screen, as on a laptop.
+  and the one that makes the disk's policy. Plymouth's splash stays up
+  until the desktop draws over it, so the guide quits it (`plymouth quit`,
+  once `plymouth --ping` answers) only when it has something to show.
+  While it runs, systemd holds its lines about the units still
+  starting, which would otherwise land across the guide wherever the
+  console is the screen, as on a laptop.
   NixOS's test driver turns those lines off, so the install test turns
   them back on, as a laptop has them. Its last card signs in rather
   than restarting, since a boot it holds back hasn't counted as good and
