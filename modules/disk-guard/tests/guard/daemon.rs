@@ -444,6 +444,9 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
     let mut guard = home.guard(config);
     guard.step(&at(0.0), &CALM).unwrap();
     assert_eq!(runs(), 1, "the first upkeep runs it");
+    // Due at the next upkeep, six hours on, and not before: a producer's
+    // news is its own, and walked every source each time on 29 October.
+    let trashed = home.trashed("old.txt", "2001-09-09T01:46:40");
     guard.step(&at(61.0), &CALM).unwrap();
     assert_eq!(runs(), 1, "nothing it watches has changed");
     #[expect(clippy::cast_possible_truncation, reason = "a wall clock in seconds")]
@@ -459,6 +462,7 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
     fs::write(&stamp, "a version").unwrap();
     guard.step(&at(305.0), &CALM).unwrap();
     assert_eq!(runs(), 3, "a file saying something new");
+    assert!(trashed.exists(), "only the producer ran, not all of upkeep");
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
