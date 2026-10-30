@@ -352,10 +352,14 @@ fn copied(built: &Path, out: &Path) -> i32 {
 
 /// A flake that's a folder here, sent to the builder as a tarball and
 /// built there as a `path:` flake, its inputs fetched there: `whole`, the
-/// folder as `path:` reads it, but its git history and any result links,
-/// and otherwise the files its git tree tracks, as Nix reads a git
-/// tree's flake. It costs the folder's size, 4.7 MB for a checkout of
-/// this repository, so a commit GitHub has is sent by name instead.
+/// folder as `path:` reads it, but its git history, any result links and
+/// what its git tree ignores, and otherwise the files its git tree
+/// tracks, as Nix reads a git tree's flake. It costs the folder's size,
+/// 4.7 MB for a checkout of this repository, so a commit GitHub has is
+/// sent by name instead, and its size is said before it goes. Ignored
+/// files stay here even where `path:` would read them: a Rust tree's
+/// target folder held 793 MB on 30 October, which no build reads and
+/// whose upload took longer than the build.
 fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, String> {
     let lock = fs::read_to_string(folder.join("flake.lock")).unwrap_or_default();
     let kept = kept_here(&lock);
@@ -370,12 +374,23 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
     let tarball = mine(scratch, "folder.tgz");
     let mut tar = Command::new("tar");
     tar.arg("-czf").arg(&tarball).arg("-C").arg(folder);
-    let tracked = (!whole)
-        .then(|| git(folder, &["ls-files", "-z"], None))
-        .flatten();
-    let packed = match tracked {
+    let listing: &[&str] = if whole {
+        &[
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ]
+    } else {
+        &["ls-files", "-z"]
+    };
+    let packed = match git(folder, listing, None) {
         Some(files) => {
-            tar.args(["--null", "-T", "-"]).stdin(Stdio::piped());
+            // A tracked file deleted and not yet committed is listed but
+            // gone, which a build of the folder doesn't read either.
+            tar.args(["--ignore-failed-read", "--null", "-T", "-"])
+                .stdin(Stdio::piped());
             tar.spawn().and_then(|mut packing| {
                 if let Some(mut input) = packing.stdin.take() {
                     std::io::Write::write_all(&mut input, files.as_bytes())?;
@@ -391,6 +406,12 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
         let _ = fs::remove_file(&tarball);
         return Err(format!("{} couldn't be packed", folder.display()));
     }
+    let size = fs::metadata(&tarball).map_or(0, |file| file.len());
+    eprintln!(
+        "nix-offload: sending {} as a tarball of {}",
+        folder.display(),
+        sized(size)
+    );
     // A folder named for this run, gone when its shell ends.
     let into = format!("/tmp/nix-offload-there-{}", std::process::id());
     let command = format!(
@@ -599,9 +620,36 @@ fn source(folder: &Path, scratch: &Path) -> Result<Source, String> {
 fn reaching(ssh: &str, said: &Path) -> Command {
     let mut command = Command::new(ssh);
     command
-        .args(["-o", "BatchMode=yes", "-o", "LogLevel=VERBOSE", "-E"])
+        .args(["-o", "BatchMode=yes", "-o", "LogLevel=VERBOSE"])
+        // A tunnel's connection can die with nothing on either end
+        // closing it, and then ssh waits on it forever: on 30 October it
+        // waited 30 minutes under a build, saying nothing. Unanswered for
+        // a minute, it's lost, which a lent builder's run sends again.
+        .args([
+            "-o",
+            "ServerAliveInterval=15",
+            "-o",
+            "ServerAliveCountMax=4",
+        ])
+        .arg("-E")
         .arg(said);
     command
+}
+
+/// A size in bytes as a person reads it, to a tenth of its unit.
+fn sized(bytes: u64) -> String {
+    let mut scale = 1;
+    for unit in ["KB", "MB", "GB"] {
+        scale *= 1000;
+        if bytes < scale * 1000 || unit == "GB" {
+            let tenths = bytes / (scale / 10);
+            if bytes >= scale {
+                return format!("{}.{} {unit}", tenths / 10, tenths % 10);
+            }
+            break;
+        }
+    }
+    format!("{bytes} bytes")
 }
 
 /// A file of this run's own in `scratch`.
@@ -1139,6 +1187,15 @@ fn decoded(encoded: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_size_is_said_to_a_tenth_of_its_unit() {
+        assert_eq!(sized(500), "500 bytes");
+        assert_eq!(sized(11_964), "11.9 KB");
+        assert_eq!(sized(3_913_640), "3.9 MB");
+        assert_eq!(sized(793_000_000), "793.0 MB");
+        assert_eq!(sized(2_500_000_000_000), "2500.0 GB");
+    }
 
     fn words(line: &str) -> Vec<String> {
         line.split_whitespace().map(str::to_owned).collect()
