@@ -42,6 +42,9 @@ pub struct Sets {
     /// The windows in an account's apps whose pi sessions run turns nobody
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
+    /// The firewall marks of the VPNs carrying only bulk now, whose own
+    /// packets go as bulk too.
+    pub vpnbulk: Vec<String>,
 }
 
 const SYSTEM_BULK: [&str; 2] = ["build.slice", "machine.slice"];
@@ -168,6 +171,13 @@ pub fn untyped(root: &Path, sessions: &[Session]) -> Vec<String> {
         .collect()
 }
 
+/// Whether any pi session runs a turn someone typed.
+pub fn typed(sessions: &[Session]) -> bool {
+    sessions
+        .iter()
+        .any(|session| session.typed.join(session.pid.to_string()).exists())
+}
+
 /// Every account's user manager: user.slice/user-<uid>.slice/user@<uid>.service.
 fn managers(root: &Path) -> Vec<String> {
     let mut found = Vec::new();
@@ -226,6 +236,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("video5", &sets.video5, true);
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
+    fill("vpnbulk", &sets.vpnbulk, false);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
     fill("uplinks", &local.links, true);
@@ -348,9 +359,12 @@ mod tests {
         let found = sessions(&proc, &run);
         assert_eq!(found.len(), 5, "{found:?}");
         assert_eq!(untyped(&root, &found), [format!("{apps}/kitty-1-1.scope")]);
+        assert!(typed(&found));
         // The turn ends and its file goes: it's bulk at once.
         fs::remove_file(run.join("1000/pi/typed/20")).unwrap();
         assert_eq!(untyped(&root, &found).len(), 2);
+        fs::remove_file(run.join("1000/pi/typed/31")).unwrap();
+        assert!(!typed(&found), "no turn typed anywhere");
     }
 
     #[test]
@@ -363,6 +377,7 @@ mod tests {
     fn the_transaction_empties_every_set_and_fills_what_has_members() {
         let sets = Sets {
             bulk1: vec!["build.slice".into()],
+            vpnbulk: vec!["0xca6c".into()],
             ..Sets::default()
         };
         let local = Local {
@@ -376,6 +391,7 @@ mod tests {
         ));
         assert!(text.contains(
             "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
+             flush set inet shaper vpnbulk\nadd element inet shaper vpnbulk { 0xca6c }\n\
              flush set inet shaper local4\n"
         ));
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));

@@ -23,6 +23,7 @@ mod links;
 mod memory;
 mod probe;
 mod qdisc;
+mod quiet;
 mod rate;
 
 use memory::{Held, Memory};
@@ -370,8 +371,10 @@ fn run(options: &Options) -> ExitCode {
     // turn is read at every step.
     let mut sessions = Vec::new();
     let mut last_sessions: Option<Instant> = None;
+    let mut quiet: BTreeMap<String, quiet::Quiet> = BTreeMap::new();
     loop {
         let now = Instant::now();
+        let t = (now - began).as_secs_f64();
         if last_sessions.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_sessions = Some(now);
             sessions = classes::sessions(&options.proc, &options.users);
@@ -407,6 +410,7 @@ fn run(options: &Options) -> ExitCode {
         // the sets are also written every few seconds, changed or not.
         let mut sets = classes::read(&options.cgroups);
         sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
+        sets.vpnbulk = quiet_vpns(&vpns, &mut quiet, t, classes::typed(&sessions));
         let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
@@ -418,7 +422,6 @@ fn run(options: &Options) -> ExitCode {
                 s.controller.sample(&echo.host, echo.rtt_ms);
             }
         }
-        let t = (now - began).as_secs_f64();
         // Every link is counted, followers too: their traffic crosses the
         // leader's connection, and a leader blind to it reads the queue a
         // download over Wi-Fi builds against an idle download, and cuts
@@ -496,12 +499,51 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
 /// share left over is for what goes round the VPN.
 const VPN_SHARE: f64 = 0.95;
 
-/// What the shaper holds a VPN to each way, in kbit/s, and the IFB its
-/// downloads are turned round through.
+/// What the shaper holds a VPN to each way, in kbit/s, the IFB its
+/// downloads are turned round through, and the firewall mark its own
+/// packets carry, when it routes by one.
 struct Vpn {
     up: u64,
     down: u64,
     ifb: String,
+    mark: Option<String>,
+}
+
+/// The marks of the VPNs carrying only bulk now, whose own packets go as
+/// bulk on the connection: none while a typed turn runs, which may be
+/// inside one. Each VPN's CAKE is counted at every step, typed or not.
+fn quiet_vpns(
+    vpns: &BTreeMap<String, Vpn>,
+    quiet: &mut BTreeMap<String, quiet::Quiet>,
+    t: f64,
+    typed: bool,
+) -> Vec<String> {
+    quiet.retain(|name, _| vpns.contains_key(name));
+    let mut marks = Vec::new();
+    for (name, vpn) in vpns {
+        let json = sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default();
+        let Some(unbulk) = qdisc::unbulk_bytes(&json) else {
+            continue;
+        };
+        let still = quiet.entry(name.clone()).or_default().sample(unbulk, t);
+        if still
+            && !typed
+            && let Some(mark) = &vpn.mark
+        {
+            marks.push(mark.clone());
+        }
+    }
+    marks.sort();
+    marks.dedup();
+    marks
+}
+
+/// The mark a VPN's own packets carry, read from the routing rules.
+fn vpn_mark(name: &str) -> Option<String> {
+    let rules = sh(&words("ip -j rule show")).unwrap_or_default();
+    quiet::mark_of(&rules, name, |table| {
+        sh(&words(&format!("ip -j route show table {table}"))).unwrap_or_default()
+    })
 }
 
 /// Whether a rate moved by more than a hundredth from what was applied.
@@ -542,6 +584,7 @@ fn follow_vpns(applied: &mut BTreeMap<String, Vpn>, names: &[String], base: Opti
             up: was_up.unwrap_or(0),
             down: was_down.unwrap_or(0),
             ifb: ifb.clone(),
+            mark: vpn_mark(name),
         };
         if !qdisc::vpn_ours(&json) || moved(was_up, up) {
             match sh(&qdisc::vpn(name, up)) {
