@@ -151,8 +151,14 @@ impl Asked {
     /// which there is always locked. With `--out`, the output comes back
     /// as a tarball on its standard output, the log staying on its error.
     fn command_of(&self, flake: &str) -> String {
+        self.command_in(flake, true)
+    }
+
+    /// The same, from a `flake` that's locked or, as a folder unpacked
+    /// there is, not.
+    fn command_in(&self, flake: &str, locked: bool) -> String {
         let build = std::iter::once("nix".to_owned())
-            .chain(self.build_of(flake, true).iter().map(|word| quoted(word)))
+            .chain(self.build_of(flake, locked).iter().map(|word| quoted(word)))
             .collect::<Vec<_>>()
             .join(" ");
         if self.out.is_some() {
@@ -228,9 +234,20 @@ pub struct Ran {
 /// first line), or here when there's none or ssh can't reach it. `scratch`
 /// holds, for the length of the build, the builder's host key as ssh
 /// reads it and ssh's own log; `ssh` and `nix` are the programs run.
-pub fn run(asked: &Asked, store: Option<&str>, scratch: &Path, ssh: &str, nix: &str) -> Ran {
+/// Builds `asked` on the lent builder `store` names, or here without one.
+/// A builder lost mid-build, as a switch's takeback restarts its tunnel,
+/// is asked `again` for, a store's text or none, and the build is sent
+/// once more: built here, a VM test held the person's machine for minutes
+/// on 30 October while the builder stood again within 20 s.
+pub fn run(
+    asked: &Asked,
+    store: Option<&str>,
+    again: &dyn Fn() -> Option<String>,
+    scratch: &Path,
+    [ssh, nix]: [&str; 2],
+) -> Ran {
     let lent = store.and_then(|store| builder(store.lines().next()?.trim()));
-    let Some(lent) = lent else {
+    let Some(mut lent) = lent else {
         eprintln!("nix-offload: no builder is lent, so this builds here");
         return here(asked, nix);
     };
@@ -239,10 +256,30 @@ pub fn run(asked: &Asked, store: Option<&str>, scratch: &Path, ssh: &str, nix: &
             command: asked.command(),
             bundle: None,
         }),
-        Some(folder) => source(&folder, scratch).map(|source| source.sending(asked)),
+        // A `path:` flake is read as its folder holds it, git or not.
+        Some(folder) if asked.flake.starts_with("path:") => packed(&folder, asked, scratch, true),
+        Some(folder) => source(&folder, scratch)
+            .map(|source| source.sending(asked))
+            .or_else(|why| {
+                eprintln!("nix-offload: {why}, so it goes as a tarball");
+                packed(&folder, asked, scratch, false)
+            }),
     };
     let reached = reached.and_then(|sending| {
-        let ran = on(&lent, &sending, asked.out.as_deref(), scratch, ssh);
+        let ran = loop {
+            let ran = on(&lent, &sending, asked.out.as_deref(), scratch, ssh);
+            if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
+                break ran;
+            }
+            eprintln!(
+                "nix-offload: ssh lost {}, so this waits for a builder to stand again",
+                lent.host
+            );
+            match again().and_then(|store| builder(store.lines().next()?.trim())) {
+                Some(stood) => lent = stood,
+                None => break ran,
+            }
+        };
         if let Some(bundle) = &sending.bundle {
             let _ = fs::remove_file(bundle);
         }
@@ -308,8 +345,54 @@ fn copied(built: &Path, out: &Path) -> i32 {
     }
 }
 
+/// A flake that's a folder here, sent to the builder as a tarball and
+/// built there as a `path:` flake, its inputs fetched there: `whole`, the
+/// folder as `path:` reads it, but its git history and any result links,
+/// and otherwise the files its git tree tracks, as Nix reads a git
+/// tree's flake. It costs the folder's size, 4.7 MB for a checkout of
+/// this repository, so a commit GitHub has is sent by name instead.
+fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<Sending, String> {
+    fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+    let tarball = mine(scratch, "folder.tgz");
+    let mut tar = Command::new("tar");
+    tar.arg("-czf").arg(&tarball).arg("-C").arg(folder);
+    let tracked = (!whole)
+        .then(|| git(folder, &["ls-files", "-z"], None))
+        .flatten();
+    let packed = match tracked {
+        Some(files) => {
+            tar.args(["--null", "-T", "-"]).stdin(Stdio::piped());
+            tar.spawn().and_then(|mut packing| {
+                if let Some(mut input) = packing.stdin.take() {
+                    std::io::Write::write_all(&mut input, files.as_bytes())?;
+                }
+                packing.wait()
+            })
+        }
+        None => tar
+            .args(["--exclude=./.git", "--exclude=./result*", "."])
+            .status(),
+    };
+    if !packed.is_ok_and(|status| status.success()) {
+        let _ = fs::remove_file(&tarball);
+        return Err(format!("{} couldn't be packed", folder.display()));
+    }
+    // A folder named for this run, gone when its shell ends.
+    let into = format!("/tmp/nix-offload-there-{}", std::process::id());
+    let command = format!(
+        "set -e; rm -rf {into}; mkdir -p {into}; trap 'rm -rf {into}' EXIT; \
+         tar -xzf - -C {into}; {}",
+        asked.command_in(&format!("path:{into}"), false)
+    );
+    Ok(Sending {
+        command,
+        bundle: Some(tarball),
+    })
+}
+
 /// What the lent builder is given for a build: the command its shell
-/// runs, and a bundle of commits it lacks, sent on its standard input.
+/// runs, and a file sent on its standard input, a bundle of commits it
+/// lacks or a tarball of a folder.
 struct Sending {
     command: String,
     bundle: Option<PathBuf>,
@@ -374,8 +457,9 @@ impl Source {
 }
 
 /// What `there --takes` says it takes: a flake that's a git tree here,
-/// `--apply`, `--out`, and waiting for a builder it asks for.
-pub const TAKES: [&str; 4] = ["tree", "apply", "out", "wants"];
+/// `--apply`, `--out`, waiting for a builder it asks for, and a flake
+/// that's a folder no commit names.
+pub const TAKES: [&str; 5] = ["tree", "apply", "out", "wants", "folder"];
 
 /// The ref a bundle carries its commit under, here only while it's made.
 const BUNDLED: &str = "refs/nix-offload/there";
@@ -643,6 +727,26 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
     let _ = fs::remove_file(&want);
     stood
 }
+
+/// A builder's store once one stands again after ssh lost it, giving up
+/// `waiting.longest` after `since`: it looks every few seconds, since the
+/// store may still name the builder whose tunnel just went, and waits as
+/// `waited` does once the store is empty.
+pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> Option<String> {
+    // Only a lender running stands one again.
+    let lending = pid_in(&dir.join("lender")).is_some_and(runs);
+    if !lending || since.elapsed() >= waiting.longest {
+        return None;
+    }
+    std::thread::sleep(AGAIN.min(waiting.answered));
+    fs::read_to_string(dir.join("store"))
+        .ok()
+        .filter(|store| !store.trim().is_empty())
+        .or_else(|| waited(dir, waiting))
+}
+
+/// How long a build lost mid-way waits before it's sent again.
+const AGAIN: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Whether a build in `dir`'s `wanted` is waiting for a builder: a file
 /// there is named for a pid that still runs. One whose build ended
