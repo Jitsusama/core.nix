@@ -350,6 +350,16 @@ fn copied(built: &Path, out: &Path) -> i32 {
     }
 }
 
+/// The files of a folder in a git tree, NUL-separated, that `path:` reads
+/// and its git doesn't ignore.
+const UNIGNORED: &[&str] = &[
+    "ls-files",
+    "-z",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+];
+
 /// A flake that's a folder here, sent to the builder as a tarball and
 /// built there as a `path:` flake, its inputs fetched there: `whole`, the
 /// folder as `path:` reads it, but its git history, any result links and
@@ -375,13 +385,7 @@ fn packed(folder: &Path, asked: &Asked, scratch: &Path, whole: bool) -> Result<S
     let mut tar = Command::new("tar");
     tar.arg("-czf").arg(&tarball).arg("-C").arg(folder);
     let listing: &[&str] = if whole {
-        &[
-            "ls-files",
-            "-z",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-        ]
+        UNIGNORED
     } else {
         &["ls-files", "-z"]
     };
@@ -1051,7 +1055,10 @@ fn sent_nearby(
         None => asked.command(),
         Some(folder) => {
             let into = unpacked();
-            let status = send(&folder, &into, &machine.host, &said, ssh, tar)?;
+            let listed = mine(scratch, "files");
+            let status = send(&folder, &into, &machine.host, &said, &listed, ssh, tar);
+            let _ = fs::remove_file(&listed);
+            let status = status?;
             counted(&mut sent, &said);
             if status != 0 {
                 return Ok(Ran {
@@ -1094,20 +1101,37 @@ fn counted(sent: &mut Option<u64>, said: &Path) {
     let _ = fs::remove_file(said);
 }
 
-/// Sends `folder` to `into` on `host` as a compressed tarball, leaving out
-/// the `result` links builds leave there, and gives ssh's status.
+/// Sends `folder` to `into` on `host` as a compressed tarball and gives
+/// ssh's status. In a git tree it holds the files git doesn't ignore,
+/// listed in `listed`, as `packed` sends them: a working tree's zone held
+/// 509 MB on 30 October, almost all one ignored target folder. Outside
+/// one it holds the folder but its git history and the `result` links
+/// builds leave there.
 fn send(
     folder: &Path,
     into: &str,
     host: &str,
     said: &Path,
+    listed: &Path,
     ssh: &str,
     tar: &str,
 ) -> Result<i32, String> {
-    let mut packing = Command::new(tar)
-        .args(["-czf", "-", "--exclude=./result*", "-C"])
-        .arg(folder)
-        .arg(".")
+    let mut packing = Command::new(tar);
+    packing.arg("-czf").arg("-").arg("-C").arg(folder);
+    match git(folder, UNIGNORED, None) {
+        Some(files) => {
+            fs::write(listed, files).map_err(|error| format!("{}: {error}", listed.display()))?;
+            // A tracked file deleted and not yet committed is listed but
+            // gone, which a build of the folder doesn't read either.
+            packing
+                .args(["--ignore-failed-read", "--null", "-T"])
+                .arg(listed);
+        }
+        None => {
+            packing.args(["--exclude=./.git", "--exclude=./result*", "."]);
+        }
+    }
+    let mut packing = packing
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|error| format!("couldn't run {tar}: {error}"))?;
