@@ -236,6 +236,13 @@ impl Step for WhenCarried {
                 evidence: "nothing is carried, so it isn't needed".into(),
             });
         }
+        // Once they're packed, the old system is put away for the wipe,
+        // and never opened again.
+        if packed_onto(machine).is_some() {
+            return Ok(Standing::Done {
+                evidence: "its home folders are packed, so it isn't needed again".into(),
+            });
+        }
         self.0.observe(machine)
     }
 
@@ -331,9 +338,25 @@ impl Step for PackHome {
         // Unmounted whatever happened, so the drive can come out whole.
         machine.run(Tool::Umount, &[ONTO])?.ok()?;
         let said = packed?;
+        put_away(machine)?;
         machine.write(PACKED, said.as_bytes())?;
         machine.journal().record(self.id(), &uuid)
     }
+}
+
+/// The old system unmounted and its volume closed, as they were before it
+/// was opened to pack from, before the pack counts as done: a volume left
+/// open at the root is what a laid-out disk looks like, so the wipe would
+/// otherwise take it for its own and never wipe.
+fn put_away(machine: &mut dyn Machine) -> Result<(), Fault> {
+    let target = target(machine)?;
+    machine.run(Tool::Umount, &["--recursive", ROOT])?.ok()?;
+    if machine.resolve(&target.mapped())?.is_some() {
+        machine
+            .run(Tool::Cryptsetup, &["close", &target.disk_name])?
+            .ok()?;
+    }
+    Ok(())
 }
 
 /// The drive's partition mounted where the archive is kept, with these

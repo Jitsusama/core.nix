@@ -149,8 +149,22 @@ fn strs(args: &[String]) -> Vec<&str> {
 }
 
 /// A drive with `free` bytes left, home folders of `needed` bytes, which
-/// tar packs finishing with `packed` and reads back finishing with `read`.
+/// tar packs finishing with `packed` and reads back finishing with `read`,
+/// and an old system that closes.
 fn ready_to_pack(
+    scratch: &std::path::Path,
+    leave_out: &[&str],
+    free: u64,
+    packed: i32,
+    read: i32,
+) -> StandIn {
+    let mut stand_in = ready_to_pack_but(scratch, leave_out, free, packed, read);
+    stand_in.prints(Tool::Cryptsetup, &["close", "system"], "");
+    stand_in
+}
+
+/// As `ready_to_pack`, but with how the old system closes left to script.
+fn ready_to_pack_but(
     scratch: &std::path::Path,
     leave_out: &[&str],
     free: u64,
@@ -189,7 +203,11 @@ fn ready_to_pack(
             "",
             "tar: Unexpected EOF in archive",
         )
-        .prints(Tool::Umount, &["/run/guide/carry"], "");
+        .prints(Tool::Umount, &["/run/guide/carry"], "")
+        // The old system, open and mounted to pack from, as Recover's
+        // steps left it.
+        .link("/dev/mapper/system", Some("/dev/dm-0"))
+        .prints(Tool::Umount, &["--recursive", "/mnt"], "");
     stand_in
 }
 
@@ -205,7 +223,8 @@ fn programs(stand_in: &StandIn) -> Vec<&str> {
         .iter()
         .filter_map(|call| call.split_whitespace().next())
         .filter(|program| {
-            program.ends_with("mount") || ["du", "df", "tar", "chown"].contains(program)
+            program.ends_with("mount")
+                || ["du", "df", "tar", "chown", "cryptsetup"].contains(program)
         })
         .collect()
 }
@@ -278,12 +297,37 @@ fn the_home_folders_are_packed_sealed_and_read_back_before_anything_is_wiped() {
     let leave_out = [".config/gh/config.yml", ".tpm2_pkcs11"];
     let mut stand_in = ready_to_pack(&scratch, &leave_out, 50_000_000_000, 0, 0);
     PackHome.run(&mut stand_in, &chosen("drive", 0)).unwrap();
+    // The old system is put away before anything counts as packed, since
+    // one left open at /mnt looks to the wipe like a disk laid out already.
     assert_eq!(
         programs(&stand_in),
-        ["mount", "du", "df", "tar", "tar", "umount"],
+        [
+            "mount",
+            "du",
+            "df",
+            "tar",
+            "tar",
+            "umount",
+            "umount",
+            "cryptsetup"
+        ],
         "{:#?}",
         stand_in.calls
     );
+    assert!(
+        stand_in
+            .calls
+            .iter()
+            .any(|call| call.ends_with("cryptsetup close system")),
+        "{:#?}",
+        stand_in.calls
+    );
+    // Packed, the steps that opened it aren't wanted again.
+    let open = WhenCarried(Box::new(OpenDisk));
+    assert!(matches!(
+        open.observe(&mut stand_in),
+        Ok(Standing::Done { evidence }) if evidence.contains("packed")
+    ));
     // The archive opens only with its own key, and holds what tar packed,
     // which is what was read back.
     let key = VaultKey::from_secret(&Secret::new(
@@ -331,6 +375,25 @@ fn a_drive_too_small_packs_nothing() {
         "{refused:?}"
     );
     assert_eq!(programs(&stand_in), ["mount", "du", "df", "umount"]);
+    assert!(!matches!(
+        PackHome.observe(&mut stand_in),
+        Ok(Standing::Done { .. })
+    ));
+}
+
+#[test]
+fn an_old_system_that_wont_close_is_never_taken_as_packed() {
+    let scratch = Scratch::new("carry-unclosed");
+    let mut stand_in = ready_to_pack_but(&scratch, &[], 50_000_000_000, 0, 0);
+    stand_in.refuses(
+        Tool::Cryptsetup,
+        &["close", "system"],
+        5,
+        "Device system is still in use.",
+    );
+    assert!(PackHome.run(&mut stand_in, &chosen("drive", 0)).is_err());
+    // Still open, it would pass for a laid-out disk, so nothing is wiped
+    // on the strength of it.
     assert!(!matches!(
         PackHome.observe(&mut stand_in),
         Ok(Standing::Done { .. })
