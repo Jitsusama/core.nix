@@ -4,9 +4,10 @@
 //! said to the shell as one JSON line ([`Found`]).
 //!
 //! It only ever reads: `users.lookupByEmail`, and where a workspace
-//! refuses that to the sign-in, `search.messages` and `users.info`, are
-//! the methods it calls, and nothing it does sends a message or changes
-//! anything in Slack.
+//! refuses that to the sign-in, `search.messages` and `users.info`, then
+//! `users.info` and `users.getPresence` for how they are, are the methods
+//! it calls, and nothing it does sends a message or changes anything in
+//! Slack.
 
 use std::path::Path;
 
@@ -55,6 +56,13 @@ pub struct Found {
     pub name: String,
     /// Their zone, as "America/Toronto", or "" when Slack keeps none.
     pub zone: String,
+    /// "active", "away" or "in a huddle", or "" until Slack says.
+    pub presence: String,
+    /// Their status's words while it's set, or "".
+    pub status: String,
+    /// Their status's emoji as Unicode while it's set, or "" for none or
+    /// for a workspace's own picture, which has no Unicode form to show.
+    pub emoji: String,
 }
 
 /// Why Slack said nothing of an address.
@@ -115,6 +123,29 @@ impl Slack {
         } else {
             found(&nobody(), email, &account.team)
         }
+    }
+
+    /// Who they are now, for someone already found: Slack asked again by
+    /// their id, so a name, a zone or a status changed since is taken.
+    pub fn again(&self, account: &Account, known: &Found) -> Result<Found, Refused> {
+        let Some(id) = &known.id else {
+            return Ok(known.clone());
+        };
+        let user = self.ask(account, "users.info", &[("user", id)])?;
+        found(&user, &known.email, &known.team)
+    }
+
+    /// Whether someone is active in Slack now or away, as
+    /// `users.getPresence` says, or "" when it says neither.
+    pub fn presence(&self, account: &Account, id: &str) -> Result<String, Refused> {
+        let said = self.ask(account, "users.getPresence", &[("user", id)])?;
+        if said.get("ok").and_then(Value::as_bool) != Some(true) {
+            return found(&said, "", "").map(|_| String::new());
+        }
+        Ok(match said.get("presence").and_then(Value::as_str) {
+            Some(word @ ("active" | "away")) => word.to_owned(),
+            _ => String::new(),
+        })
     }
 
     /// What Slack answers to one method, asked with the sign-in.
@@ -183,6 +214,46 @@ pub fn addressed(said: &Value) -> Option<String> {
         .map(str::to_lowercase)
 }
 
+/// Their status as a profile Slack gave keeps it, while it's set: its
+/// words, and its emoji as Unicode (VKCF3Z, 67f6cbac). `now` is in seconds
+/// since the epoch, as Slack says when a status ends, 0 for never.
+pub fn status(profile: &Value, now: u64) -> (String, String) {
+    let until = profile
+        .get("status_expiration")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if until != 0 && until <= now {
+        return (String::new(), String::new());
+    }
+    let words = profile
+        .get("status_text")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    let emoji = profile
+        .pointer("/status_emoji_display_info/0/unicode")
+        .and_then(Value::as_str)
+        .and_then(unicode)
+        .unwrap_or_default();
+    (words.to_owned(), emoji)
+}
+
+/// An emoji as Slack writes its code points, in hex joined by `-`, or
+/// none when one isn't a character.
+fn unicode(points: &str) -> Option<String> {
+    points
+        .split('-')
+        .map(|point| u32::from_str_radix(point, 16).ok().and_then(char::from_u32))
+        .collect()
+}
+
+/// Seconds since the epoch, as Slack keeps when a status ends.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+}
+
 /// What Slack's answer to a look-up says.
 pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
     let nobody = || Found {
@@ -191,6 +262,9 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
         team: team.to_owned(),
         name: String::new(),
         zone: String::new(),
+        presence: String::new(),
+        status: String::new(),
+        emoji: String::new(),
     };
     if said.get("ok").and_then(Value::as_bool) == Some(true) {
         let user = said.get("user").unwrap_or(&Value::Null);
@@ -206,12 +280,18 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
             .or_else(|| text("/real_name"))
             .or_else(|| text("/profile/display_name"))
             .unwrap_or_default();
+        let (status, emoji) = status(user.get("profile").unwrap_or(&Value::Null), now());
+        // In a huddle says more than active, so it's said in its place.
+        let huddle = text("/profile/huddle_state") == Some("in_a_huddle");
         return Ok(Found {
             email: email.to_owned(),
             id: Some(id.to_owned()),
             team: text("/team_id").unwrap_or(team).to_owned(),
             name: name.to_owned(),
             zone: text("/tz").unwrap_or_default().to_owned(),
+            presence: if huddle { "in a huddle" } else { "" }.to_owned(),
+            status,
+            emoji,
         });
     }
     match said.get("error").and_then(Value::as_str).unwrap_or("") {
@@ -255,8 +335,47 @@ mod tests {
                 team: "T9".into(),
                 name: "Ada Lovelace".into(),
                 zone: "Europe/London".into(),
+                presence: String::new(),
+                status: String::new(),
+                emoji: String::new(),
             })
         );
+    }
+
+    #[test]
+    fn a_status_is_its_words_and_its_emoji_while_it_lasts() {
+        let palm = json!({ "status_text": "Away on the coast ", "status_expiration": 2000,
+            "status_emoji_display_info": [{ "emoji_name": "palm_tree", "unicode": "1f334" }] });
+        assert_eq!(
+            status(&palm, 1000),
+            ("Away on the coast".into(), "🌴".into())
+        );
+        assert_eq!(status(&palm, 2000), (String::new(), String::new()));
+        let joined = json!({ "status_text": "Cooking", "status_expiration": 0,
+            "status_emoji_display_info": [{ "unicode": "1f469-200d-1f373" }] });
+        assert_eq!(
+            status(&joined, u64::MAX),
+            ("Cooking".into(), "👩\u{200d}🍳".into())
+        );
+        // A workspace's own picture has no Unicode form, so only the words.
+        let own = json!({ "status_text": "Shipping", "status_emoji": ":ship-it:",
+            "status_emoji_display_info": [{ "emoji_name": "ship-it",
+                "display_url": "https://emoji.example/ship-it.png" }] });
+        assert_eq!(status(&own, 0), ("Shipping".into(), String::new()));
+        assert_eq!(status(&json!({}), 0), (String::new(), String::new()));
+    }
+
+    #[test]
+    fn someone_in_a_huddle_is_said_so_in_place_of_active() {
+        let said = json!({ "ok": true, "user": { "id": "U1",
+            "profile": { "huddle_state": "in_a_huddle" } } });
+        assert_eq!(
+            found(&said, "a@example.com", "T1").unwrap().presence,
+            "in a huddle"
+        );
+        let not = json!({ "ok": true, "user": { "id": "U1",
+            "profile": { "huddle_state": "default_unset" } } });
+        assert_eq!(found(&not, "a@example.com", "T1").unwrap().presence, "");
     }
 
     #[test]

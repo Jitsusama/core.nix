@@ -913,9 +913,10 @@
     leftovers after three quiet seconds
   '';
   slack-finds-who-it-knows = ''
-    slack-people says who Slack knows by an email address with their time zone, and one it knows
-    nobody by, asking each address once with the harness's sign-in and only ever looking up, and
-    asks nobody once Slack refuses the sign-in or with none at all
+    slack-people says who Slack knows by an email address with their time zone, presence and
+    status, on a grid by a search their profile confirms, and one it knows nobody by; finds each
+    once with the harness's sign-in and asks how they are each time, only ever reading; and asks
+    nobody once Slack refuses the sign-in or with none at all
   '';
   slack-passes-clippy = ''
     clippy finds nothing in slack-people or its tests
