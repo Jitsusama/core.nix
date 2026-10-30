@@ -7,10 +7,11 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
-/// records its last two words (the host and the command) and exits as the
-/// `status` file beside it says.
+/// records every word it was given and its last two (the host and the
+/// command) apart, and exits as the `status` file beside it says.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
+echo "$@" > "$here/ssh-options"
 while [ "$#" -gt 2 ]; do
   if [ "$1" = -E ]; then log=$2; fi
   shift
@@ -144,6 +145,78 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
         !listed.contains(".git") && !listed.contains("result"),
         "{listed}"
     );
+}
+
+#[test]
+fn a_builder_that_stops_answering_is_given_up_on_within_a_minute() {
+    // On 30 October a tunnel's connection died under a build, and ssh
+    // waited on it for 30 minutes, saying nothing.
+    let folder = tempfile::tempdir().unwrap();
+    stand_ins(folder.path(), 0);
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = there(folder.path(), &offload);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let options = fs::read_to_string(folder.path().join("ssh-options")).unwrap();
+    assert!(
+        options.contains("ServerAliveInterval=15") && options.contains("ServerAliveCountMax=4"),
+        "{options}"
+    );
+}
+
+#[test]
+fn a_folders_ignored_files_stay_here_and_its_size_is_said() {
+    // A Rust tree's target folder held 793 MB that no build reads.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        let path = bin.join(name);
+        fs::write(&path, script).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    let config = folder.path().join("gitconfig");
+    fs::write(&config, "[user]\n  name = t\n  email = t@t\n").unwrap();
+    let tree = folder.path().join("tree");
+    fs::create_dir_all(tree.join("target/debug")).unwrap();
+    git(&tree, &config, &["init", "-q"]);
+    fs::write(tree.join(".gitignore"), "/target\n").unwrap();
+    fs::write(tree.join("flake.nix"), "{ }").unwrap();
+    git(&tree, &config, &["add", "."]);
+    git(&tree, &config, &["commit", "-qm", "one"]);
+    fs::write(tree.join("new.nix"), "{ }").unwrap();
+    fs::write(tree.join("target/debug/big"), "built").unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+        .args(["there", &format!("path:{}", tree.display()), "checks.x.a"])
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", &offload)
+        .env("XDG_RUNTIME_DIR", folder.path())
+        .env("XDG_STATE_HOME", folder.path())
+        .env("XDG_CONFIG_HOME", folder.path())
+        .env("GIT_CONFIG_GLOBAL", &config)
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("as a tarball of "), "{said}");
+    let listed = Command::new("tar")
+        .arg("-tzf")
+        .arg(bin.join("received"))
+        .output()
+        .unwrap();
+    let listed = String::from_utf8_lossy(&listed.stdout);
+    for kept in ["flake.nix", "new.nix", ".gitignore"] {
+        assert!(listed.contains(kept), "{listed}");
+    }
+    assert!(!listed.contains("target"), "{listed}");
 }
 
 #[test]
