@@ -813,6 +813,10 @@
   qt-programs-wear-the-theme = ''
     Qt programs in the session take GTK's platform theme, and Quickshell is started without it
   '';
+  quickshell-compiles-every-file = ''
+    Qt's own compiler compiles every file of the account's shell and the greeter without refusing or
+    crashing
+  '';
   quickshell-opens-programs-through-niri = ''
     programs the shell opens survive the shell restarting
   '';
