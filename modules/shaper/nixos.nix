@@ -118,13 +118,20 @@ in
       StateDirectory = "shaper";
       RuntimeDirectory = "shaper";
       RuntimeDirectoryMode = "0755";
+      # It reads, and only reads, the file the harness keeps in an
+      # account's runtime folder while a pi session runs a turn a person
+      # typed, so that one goes ahead of the turns nobody typed. That
+      # folder is the account's alone, so reading it takes searching past
+      # its mode, and it's the only part of the accounts' folders shown.
       CapabilityBoundingSet = [
         "CAP_NET_ADMIN"
         "CAP_NET_RAW"
+        "CAP_DAC_READ_SEARCH"
       ];
       NoNewPrivileges = true;
       ProtectSystem = "strict";
-      ProtectHome = true;
+      ProtectHome = "tmpfs";
+      BindReadOnlyPaths = [ "-/run/user" ];
       PrivateTmp = true;
     };
   };
