@@ -423,19 +423,31 @@ Singleton {
         function onLayoutsChanged() {
             arranging.restart();
         }
-        // The window a session being reopened opens in, which niri
-        // focuses as it opens it: one that sat below another in its
-        // column goes back into the column to its left, as it was.
+        // The window a session being reopened opens in. niri lists it
+        // before it focuses it, and focusing it focuses its workspace, so
+        // the next is only begun once it has.
         function onWindowOpenedOrChanged(window) {
             const waiting = root.reopening?.waiting;
-            if (!waiting || window.app_id !== "kitty" || waiting.known.includes(String(window.id)))
-                return;
-            if (waiting.tile > 1)
-                Niri.act({ ConsumeOrExpelWindowLeft: { id: window.id } });
-            root.reopening.waiting = null;
-            reopenPatience.stop();
-            root.reopenNext();
+            if (waiting && window.app_id === "kitty" && !waiting.known.includes(String(window.id)))
+                waiting.opened = window.id;
+            root.reopenedYet();
         }
+        function onFocusedChanged() {
+            root.reopenedYet();
+        }
+    }
+    // Whether the session being reopened is open and focused, when one
+    // that sat below another in its column goes back into the column to
+    // its left, as it was, and the next is begun.
+    function reopenedYet() {
+        const waiting = reopening?.waiting;
+        if (!waiting || waiting.opened === null || Niri.focused !== waiting.opened)
+            return;
+        if (waiting.tile > 1)
+            Niri.act({ ConsumeOrExpelWindowLeft: { id: waiting.opened } });
+        reopening.waiting = null;
+        reopenPatience.stop();
+        reopenNext();
     }
 
     // Reopens every session the last boot took away, each in its own
@@ -488,7 +500,8 @@ Singleton {
             } else if (reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
-            reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1 };
+            reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
+                opened: null };
             reopened(next.one.id, next.one.cwd);
             reopenPatience.restart();
         });
