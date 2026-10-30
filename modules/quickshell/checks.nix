@@ -288,6 +288,18 @@ onLinux {
       touch $out
     '';
 
+  # Every file a shell file imports by its path is installed beside it, as
+  # home.nix's list lays them out. One left off the list only warns as the
+  # shell starts, and the component needing it is never made: Firmware.js
+  # was found that way, by a VM test, 25 minutes in (2026-10-30).
+  quickshell-installs-what-it-imports =
+    pkgs.runCommandLocal "quickshell-installs-what-it-imports" { }
+      ''
+        ${shellAsGiven}
+        ${lib.getExe pkgs.bash} ${../../tests/imports-installed.sh} qs
+        touch $out
+      '';
+
   # The shell hands every program it opens to niri, which gives it a scope of
   # its own. One the shell started itself would leave its helpers in the
   # shell's service, and restarting the shell would kill them.

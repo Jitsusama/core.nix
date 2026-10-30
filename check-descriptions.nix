@@ -821,6 +821,9 @@
   quickshell-opens-programs-through-niri = ''
     programs the shell opens survive the shell restarting
   '';
+  quickshell-installs-what-it-imports = ''
+    every file a shell file imports by its path is installed beside it
+  '';
   quickshell-passes-qmllint = ''
     qmllint finds nothing in the account's shell or the greeter, leaving out only types Quickshell's
     files don't export and Qt enum parameters
