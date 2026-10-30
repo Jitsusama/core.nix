@@ -110,8 +110,8 @@ let
         does = "The page on the whole screen";
       }
     ];
-  # What tells the launcher Chrome's open tabs (open-tabs/host).
-  openTabs = lib.getExe (pkgs.callPackage ./open-tabs/host/package.nix { });
+  # What reads Chrome's sites and its session (recent-sites).
+  recentSites = lib.getExe (pkgs.callPackage ./recent-sites/package.nix { });
 in
 {
   imports = [
@@ -121,28 +121,20 @@ in
 
   jitsusama.keys.chrome = keys;
 
-  # Its sites, and its tabs open now through our extension's host
-  # (nixosModules.chrome installs both); with Chrome closed, or neither
-  # installed, the host prints nothing and Recent lists the sites alone.
+  # Its sites, and its tabs open now as its own session file holds them,
+  # which needs no extension, so a browser that allows none still says
+  # them. The file is only read, so Go To brings a tab's window forward
+  # rather than the tab, and nothing closes one; the extension's host
+  # (open-tabs) could, where an extension is allowed.
   jitsusama.quickshell.launcher.recents = [
     {
       app = "google-chrome";
       kind = "site";
       asked = true;
-      list = [ (lib.getExe (pkgs.callPackage ./recent-sites/package.nix { })) ];
+      list = [ recentSites ];
       opened = [
-        openTabs
-        "list"
-      ];
-      go = [
-        openTabs
-        "go"
-        "{id}"
-      ];
-      close = [
-        openTabs
-        "close"
-        "{id}"
+        recentSites
+        "open"
       ];
     }
   ];

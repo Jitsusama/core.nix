@@ -28,7 +28,10 @@
 // looked at first, saying it's open and in how many tabs, Return going to
 // it through its source's command and its window, Close It closing each of
 // its tabs and leaving the page where it was, dimmed, until the launcher
-// opens again; a page open is never listed again as closed. A program whose
+// opens again; a page open is never listed again as closed. A tab the
+// source leaves out has no row but still finds the window it's in front
+// of, and a source that only says what's open, as Chrome's session file
+// does, gives Go To bringing the window forward and no Close It. A program whose
 // entry hides itself is listed only when another provider gives it acts,
 // and then steps in on Return rather than starting. Typing on
 // looks only through what the last key found, and finds what looking
@@ -253,7 +256,9 @@ ShellRoot {
             "21": { id: 21, app_id: "browser", title: "Open A - Browser", workspace_id: 1,
                 focus_timestamp: { secs: 300, nanos: 0 } },
             "22": { id: 22, app_id: "browser", title: "Another - Browser", workspace_id: 1,
-                focus_timestamp: { secs: 250, nanos: 0 } }
+                focus_timestamp: { secs: 250, nanos: 0 } },
+            "23": { id: 23, app_id: "browser", title: "Left out - Browser", workspace_id: 1,
+                focus_timestamp: { secs: 200, nanos: 0 } }
         });
         Niri.revision += 1;
         launcher.open = false;
@@ -271,22 +276,23 @@ ShellRoot {
         try {
             const rows = program("browser").verbs();
             same("stepped into, it reads its sites as its Recent", names(rows),
-                "Go To, New Window, New Window Below, Recent, Another, Quit");
+                "Go To, New Window, New Window Below, Recent, Another, Left out, Quit");
             const sites = rows[3].targets();
             same("what's open first, one row a page, newest looked at first, then what was "
-                + "open, never a page open now", names(sites),
-                `Open A, Older page, Another, Page ${reading}`);
+                + "open, never a page open now nor one left out", names(sites),
+                `Open A, Older page, Another, Behind, Page ${reading}`);
             same("each beside its host, saying it's open and in how many tabs",
                 sites.map(row => row.side).join(" | "),
                 "open.example.com \u00b7 open in 2 tabs | other.example.net \u00b7 open "
-                + "| another.example.com \u00b7 open | example.org");
+                + "| another.example.com \u00b7 open | behind.example.com \u00b7 open "
+                + "| example.org");
             same("each made as every site is, keyed by the page",
                 sites.map(row => `${row.component} ${row.key}`).join(" "),
                 "site site:https://open.example.com/a site site:https://other.example.net/a "
-                + "site site:https://another.example.com/b "
+                + "site site:https://another.example.com/b site site:https://behind.example.com/ "
                 + `site site:https://example.org/${reading}`);
             same("Return goes to one open, and opens one that was",
-                sites.map(row => row.verb).join(" "), "go go go open");
+                sites.map(row => row.verb).join(" "), "go go go go open");
             const inside = sites[0].verbs();
             same("one open holds Go To, Close It, its window, then Copy the Link", names(inside),
                 "Go To, Close It, Open A, Copy the Link");
@@ -305,6 +311,10 @@ ShellRoot {
             sites[2].run();
             same("and one in front of the other window to that one", acted(),
                 '[{"FocusWindow":{"id":22}}]');
+            Niri.acted = [];
+            sites[3].run();
+            same("a tab behind one left out goes to the window titled by that one", acted(),
+                '[{"FocusWindow":{"id":23}}]');
             same("Close It keeps the launcher, saying how many tabs it closes",
                 `${inside[1].stays} ${inside[1].note}`, "true closes 2 tabs");
             Niri.spawns = [];
@@ -318,15 +328,29 @@ ShellRoot {
             const copied = inside[3];
             same("Copy the Link copies its address", `${copied.verb} ${copied.copy}`,
                 "copy https://open.example.com/a");
-            same("one that was open holds Open, then Copy the Link", names(sites[3].verbs()),
+            same("one that was open holds Open, then Copy the Link", names(sites[4].verbs()),
                 "Open, Copy the Link");
             same("read once an opening, however often it's stepped into",
                 JSON.stringify(applications.recents.asked), '{"browser":true}');
             if (reading === 2) {
+                // A source that only says what's open, as Chrome's session
+                // file does, with nothing to bring a tab forward or close it.
+                const source = applications.settings.recents.find(one => one.app === "browser");
+                delete source.go;
+                delete source.close;
+                const bare = program("browser").verbs()[3].targets()
+                    .find(row => row.key === "site:https://another.example.com/b");
+                same("with only what's open said, a page holds Go To, its window, then Copy the Link",
+                    names(bare.verbs()), "Go To, Another, Copy the Link");
+                Niri.acted = [];
+                Niri.spawns = [];
+                bare.run();
+                same("and Return brings its window forward, asking the program nothing",
+                    `${JSON.stringify(Niri.spawns)} ${acted()}`, '[] [{"FocusWindow":{"id":22}}]');
                 Qt.exit(0);
                 return;
             }
-            sites[3].run();
+            sites[4].run();
             same("Return opens the page by the program's own command", JSON.stringify(Niri.spawned),
                 JSON.stringify(["browser", "https://example.org/1"]));
             launcher.open = false;

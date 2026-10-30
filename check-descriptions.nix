@@ -1481,11 +1481,13 @@
     with two screens of different sizes, the splash's ask shows whole on both, its bottom left
     corner on the smaller one included
   '';
-  vm-chrome-installs-the-open-tabs-extension = ''
+  vm-chrome-says-its-open-tabs = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
     Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
     disabling it, and chrome-open-tabs lists two pages it opened, brings one to the front and
-    closes the other
+    closes the other; and with no extension asked, chrome-recent-sites reads two pages it
+    opened from the session file it writes, each with its address, in one window with one in
+    front, looked at lately
   '';
   vm-checks-go-first = ''
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,

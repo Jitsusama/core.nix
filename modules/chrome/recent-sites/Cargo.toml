@@ -1,5 +1,5 @@
-# chrome-recent-sites prints the sites Chrome visited lately, for Chrome's
-# Recent inside the launcher (src/main.rs says how).
+# chrome-recent-sites prints the sites Chrome visited lately, or the tabs it
+# has open, for Chrome's Recent inside the launcher (src/main.rs says how).
 [package]
 name = "chrome-recent-sites"
 version = "0.1.0"
