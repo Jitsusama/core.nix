@@ -56,6 +56,17 @@
     # lag-watch's marks for waits on memory from 11 to 3. kswapd then keeps
     # 1.2 to 2.5 GiB more free, two of its 2% steps at most.
     "vm.watermark_scale_factor" = 200;
+
+    # Never raise those watermarks after a fragmentation event. The boost
+    # is a share of the high watermark, 150% by default, so at the spacing
+    # above it lifted the floor every allocation must keep free from 64 MB
+    # to 3.9 GB. Free memory then sat on that floor, so every program that
+    # allocated, Chrome, Slack and the compositor among them, reclaimed for
+    # itself: on 30 October, programs' own reclaim scanned three pages for
+    # every one kswapd did, memory stalled every task 12.7% of a minute,
+    # and reclaim that couldn't free 3.9 GB in time had the OOM killer end
+    # Slack with 34.7 GB of file cache and 123 GB of swap free.
+    "vm.watermark_boost_factor" = 0;
   };
 
   # Evict what reclaim reaches however recently it was used, as the kernel

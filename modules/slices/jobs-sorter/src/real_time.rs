@@ -62,7 +62,7 @@ pub fn is_real_time(policy: u64) -> bool {
 }
 
 /// Every process in a cgroup and in the cgroups below it.
-fn processes_under(dir: &Path) -> Vec<u32> {
+pub fn processes_under(dir: &Path) -> Vec<u32> {
     let mut found: Vec<u32> = fs::read_to_string(dir.join("cgroup.procs"))
         .unwrap_or_default()
         .lines()
