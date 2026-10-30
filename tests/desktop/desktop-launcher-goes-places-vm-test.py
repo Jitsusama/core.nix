@@ -791,6 +791,15 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     desktop.type_in("reopen last", selecting="Reopen Last Boot's Sessions")
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Reopen Them All"])
+    # kitty focuses a window it made with the token niri gave it, and on a
+    # busy machine that can come after the next session's workspace was
+    # focused, so north opens on the first. This stands in for that, every
+    # time: the first workspace is focused again until north is there.
+    pulling = (
+        "for _ in $(seq 400); do niri msg --json windows | grep -q 'session 01c3-north' && break;"
+        " niri msg action focus-workspace 1; sleep 0.05; done"
+    )
+    desktop.as_account(f"setsid sh -c {shlex.quote(pulling)} > /dev/null 2>&1 &")
     machine.send_key("ret")
     opening = "niri msg --json windows | grep -o 'pi --session 01c3-' | wc -l"
     machine.wait_until_succeeds(
