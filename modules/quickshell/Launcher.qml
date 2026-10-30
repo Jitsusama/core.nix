@@ -564,8 +564,9 @@ Scope {
     // details from a root view that would put me in the hierarchy"). Only
     // what a thing reads or holds is a spot; what it does, such as
     // Disconnect, is said once for each thing and would be found many
-    // times over. Made a moment after each closing (spotsLater), and by
-    // the first search of three letters or more when none were made yet,
+    // times over. Made a few seconds after the shell starts and a moment
+    // after each closing (spotsLater), and by the first search of three
+    // letters or more when none were made yet,
     // of the collections whose things are devices, few and read whole, so
     // a search never reads them again.
     readonly property var spotCollections: ["sound", "bluetooth", "displays", "wifi",
@@ -656,6 +657,7 @@ Scope {
         if (!spotsMade) {
             spots = spotsFrom();
             spotsMade = true;
+            Report.say("spots made on a key");
         }
         const found = [];
         for (const spot of spots) {
@@ -3299,19 +3301,34 @@ Scope {
     // closes, from what it just showed, so the next opening has it
     // ready. Read on the third letter instead, as it was, it held that
     // key 115 to 250 ms once every opening (launcher-trials.json,
-    // 2026-10-26: "wha" 252 ms, "cpu" 248, "key" 211). The first opening
-    // after the shell starts still reads it on its third letter.
+    // 2026-10-26: "wha" 252 ms, "cpu" 248, "key" 211).
     Timer {
         id: spotsLater
 
         interval: 500
+        onTriggered: root.spotsMadeClosed()
+    }
+
+    // And a few seconds after the shell starts, once its devices have been
+    // heard, since every switch restarts it and its first opening read them
+    // on its third letter: 236 and 183 ms on two keys (launcher-trials.json,
+    // 2026-10-29 and 30). One opened sooner still reads them on that letter.
+    Timer {
+        interval: 5000
+        running: true
         onTriggered: {
-            if (!root.open) {
-                root.freshen();
-                root.spots = root.spotsFrom();
-                root.spotsMade = true;
-            }
+            if (!root.spotsMade)
+                root.spotsMadeClosed();
         }
+    }
+
+    function spotsMadeClosed() {
+        if (open)
+            return;
+        freshen();
+        spots = spotsFrom();
+        spotsMade = true;
+        Report.say("spots made while closed");
     }
 
     // The screen the keys are on, followed while the launcher is closed so
