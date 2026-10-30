@@ -2159,7 +2159,9 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
         drawer = selected.get("drawer") or {}
         return (
             selected.get("is") == "mail:lunch"
-            and re.fullmatch(r"Ada Lovelace \u00b7 \d\d:\d\d", selected["side"]) is not None
+            # Past midnight, what came minutes before it is yesterday's.
+            and re.fullmatch(r"Ada Lovelace \u00b7 (\d\d:\d\d|yesterday)", selected["side"])
+            is not None
             and drawer.get("title") == lunch["title"]
             and drawer.get("facts", [])[:2] == lunch["facts"]
             and drawer.get("facts", [{}] * 3)[2].get("label") == "Date"
@@ -2533,7 +2535,8 @@ def test_docs_recent_lists_what_joel_opened_lately_and_return_opens_it(desktop: 
     desktop.launcher_until(lambda shown: shown["rows"] == ["Quarterly Plan"])
     plan = desktop.showing()["selected"]
     assert plan["is"] == "gdoc:plan", plan
-    assert re.fullmatch(r"Ada Lovelace \u00b7 \d\d:\d\d", plan["side"]), plan
+    # Past midnight, what he viewed minutes before it is yesterday's.
+    assert re.fullmatch(r"Ada Lovelace \u00b7 (\d\d:\d\d|yesterday)", plan["side"]), plan
     facts = (plan.get("drawer") or {}).get("facts") or [{}]
     assert facts[0] == {"label": "Owner", "value": "Ada Lovelace"}, plan
     # Return opens it in a window of its own, leaving the launcher.
