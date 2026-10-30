@@ -127,6 +127,11 @@ in
     Delegate = "cpu io memory pids";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
+    # When memory runs out, a build dies before anything Joel uses: its
+    # builders inherit this, and a Chromium app sets its own processes to
+    # 300, so at the daemon's 0 the kernel chose Slack over a build. Among
+    # builds alike, the largest goes.
+    OOMScoreAdjust = 1000;
     # A VM check's guest syncs the folders it shares with the host, and
     # virtiofsd forwards each as syncfs() of the host's whole filesystem,
     # read-only shares too. On btrfs each one commits a transaction, which
