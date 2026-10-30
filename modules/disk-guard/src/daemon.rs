@@ -1349,7 +1349,7 @@ impl Guard {
         let seen = Owners {
             boot: tick.boot.clone(),
             guard: std::env::current_exe().ok(),
-            spent: spent_trees(&self.config, running)
+            spent: spent_trees(&self.config, running, (&tick.boot, &boot))
                 .into_iter()
                 .filter(|tree| tree.exists())
                 .collect(),
@@ -1858,7 +1858,7 @@ impl Guard {
                 process.pid == pid && (!process.readable || (since - started).abs() <= 2.0)
             })
         };
-        let quests_over = spent_trees(&self.config, running);
+        let quests_over = spent_trees(&self.config, running, (&tick.boot, &boot));
         let mut finished = |dir: &Path| {
             if quests_over.iter().any(|tree| dir.starts_with(tree)) {
                 return true;
@@ -2410,24 +2410,41 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
 
 /// Whether a user daemon spoke for the filesystem within the minute, so it
 /// drives that filesystem's passes.
-/// The trees whose builds are spent: every tree a finished quest lists, and
+/// The trees whose builds are spent: every tree a finished quest lists,
 /// every tree whose broker record names no holder still `running`, unless a
-/// quest at work lists it.
-fn spent_trees(config: &Config, running: impl Fn(u32, f64) -> bool + Copy) -> Vec<PathBuf> {
+/// quest at work lists it, and every tree a quest lists while none of its
+/// sessions is `running` in this boot, `boot`, whose clock is `clock`.
+fn spent_trees(
+    config: &Config,
+    running: impl Fn(u32, f64) -> bool + Copy,
+    (boot, clock): (&str, &crate::snapshots::Boot),
+) -> Vec<PathBuf> {
+    // A session keeps when it started in clock ticks since boot.
+    let alive =
+        |pid: u32, ticks: u64| running(pid, clock.wall + crate::units::float(ticks) / clock.ticks);
     config
         .sources
         .values()
         .filter_map(|source| match source {
-            Source::Workspaces { quests, trees, .. } => Some((quests, trees)),
+            Source::Workspaces {
+                quests,
+                trees,
+                sessions,
+                ..
+            } => Some((quests, trees, sessions)),
             _ => None,
         })
-        .flat_map(|(quests, trees)| {
+        .flat_map(|(quests, trees, sessions)| {
             let unheld = trees.as_deref().map_or_else(Vec::new, |records| {
                 crate::workspaces::unheld_trees(records, quests, running)
+            });
+            let idle = sessions.as_deref().map_or_else(Vec::new, |sessions| {
+                crate::workspaces::idle_trees(quests, sessions, boot, alive)
             });
             crate::workspaces::finished_trees(quests)
                 .into_iter()
                 .chain(unheld)
+                .chain(idle)
         })
         .collect()
 }

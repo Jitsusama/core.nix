@@ -184,12 +184,17 @@ pub enum Source {
     /// Quest workspaces, judged by their quest's README. `trees`, when
     /// given, is a tree broker's records, one JSON file per tree naming
     /// its `path` and the `owners` holding it: a tree none of them still
-    /// holds, and no quest going lists, has its builds spent.
+    /// holds, and no quest going lists, has its builds spent. `sessions`,
+    /// when given, is the harness's record of each coding session and the
+    /// quest it works on: a quest none of them still works on has its
+    /// trees' builds spent.
     Workspaces {
         path: PathBuf,
         quests: PathBuf,
         #[serde(default)]
         trees: Option<PathBuf>,
+        #[serde(default)]
+        sessions: Option<PathBuf>,
     },
     /// A temporary directory's per-run leftovers: the one named, or the
     /// account's own, which on a Mac is a folder of its own under
@@ -327,9 +332,11 @@ impl Source {
                 path,
                 quests,
                 trees,
+                sessions,
             } => [path, quests]
                 .into_iter()
                 .chain(trees)
+                .chain(sessions)
                 .map(PathBuf::as_path)
                 .collect(),
             Source::Cache { path, .. }
