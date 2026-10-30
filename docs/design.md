@@ -949,20 +949,30 @@ works the same way everywhere.
 - **The drawer is the card continued** (Joel, 2026-10-28: "it should come
   out of the right side like a drawer, making sure it never passes the
   bound of the screen"). What a row has to show beyond its line (a
-  picture, a notice's whole words, a mail, a meeting's details) slides
-  out of the card's right side, a floating surface like the card, top
+  picture, a notice's whole words, a mail, a meeting's details) shows
+  beside the card's right side, a floating surface like the card, top
   aligned and as tall as it: its title in strong type, its facts as a
   name and a figure, a fact still being read a fixed placeholder, then
   its words, then its picture. The card's room and the drawer's are
   worked out for the screen as the launcher opens, the card centred
   unless the screen is too narrow for the drawer beside it, so the card
   never moves and never changes size for what's selected. It's out
-  inside a place while any of its rows has one, so it slides only as
-  Joel steps in or out, and never for a search typed at home; stepping
-  between two places that both have one, it stays, and what it shows
-  changes in place. Ctrl+Up and Ctrl+Down scroll it, said in the foot
-  while it holds more than fits, since Page Up and Page Down page the
-  list. Another program's words are shown plain, never as markup.
+  only while the selected row is a thing (a program, a session, a
+  quest, a mail, a meeting, a person, a file, a folder, a notice, a
+  window, a device, a network, a copy, a value with a history) and the
+  drawer holds something the row doesn't already say: facts, a picture,
+  words beyond its name, side and note, or more. A drawer that would
+  only repeat the row is never shown (Joel, 2026-10-29: "we should
+  never show the side panel when it is just repeating the currently
+  selected text"). It's the same at home, in a search and in every
+  place; an act, a switch, a choice or a place has none (Joel,
+  2026-10-29: "the side drawer shows when it's not needed, and only
+  shows in certain places"). Between two things it stays and what it
+  shows changes in place; onto or off one it fades in place once the
+  selection rests, so holding an arrow never flickers it. Ctrl+Up and
+  Ctrl+Down scroll it, said in the foot while it holds more than fits,
+  since Page Up and Page Down page the list. Another program's words
+  are shown plain, never as markup.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
   Ctrl+C copies everywhere else on the desktop; while text is selected

@@ -1721,9 +1721,9 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         timeout=dt.timedelta(seconds=30),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # In Now, where the drawer is out, a row with nothing more to show
-    # shows its name alone, never another row's details nor its own note,
-    # which the foot says.
+    # In Now, the drawer is out for the meeting, which has details, and
+    # goes in once the selection rests on a row with none, as Time is: it's
+    # the selected row's, never the place's (docs/design.md, the drawer).
     desktop.answer("now")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
@@ -1738,10 +1738,18 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         )
     desktop.launcher_until(
         lambda shown: (
-            (shown.get("drawer") or {}).get("title") == "Time"
-            and shown["drawer"]["out"] is True
-            and shown["drawer"]["facts"] == []
-            and shown["drawer"]["body"] == ""
+            (shown["selected"] or {}).get("name") == "Time"
+            and (shown.get("drawer") or {}).get("out") is False
+            and shown["drawer"]["drawn"] == ""
+        )
+    )
+    # Back on the meeting, gone and let go of, the drawer draws the meeting
+    # again, though it's given the very details it was given before.
+    desktop.down_to("Design Review")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["drawn"] == "Design Review"
         )
     )
     machine.send_key("esc")
@@ -1775,10 +1783,14 @@ def test_a_meeting_further_off_is_shown_by_return_and_joined_from_its_acts(
     assert facts.get("Holds It") == "Ada Lovelace", drawer
     assert facts.get("Asked") == "Grace Hopper, not going", drawer
     assert drawer.get("body") == "What we did yesterday,\nwhat we do today.", drawer
-    # Found by a search typed at home, the drawer stays in: it slides only
-    # as Joel steps in or out (docs/design.md, "The drawer is the card
-    # continued").
-    assert (desktop.showing().get("drawer") or {}).get("out") is False, desktop.showing()
+    # Found by a search typed at home, it's out too, since the drawer is
+    # the selected row's wherever it's found (docs/design.md, "The drawer
+    # is the card continued").
+    desktop.launcher_until(
+        lambda shown: (
+            (shown.get("drawer") or {}).get("out") is True and shown["drawer"]["title"] == "Standup"
+        )
+    )
     # Return shows it, a step in named for it, its day and times first,
     # and the launcher stays.
     desktop.step_in("ret")
@@ -2234,6 +2246,8 @@ def test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_
         + "\n".join(said["uncomposed"])
     )
     assert said["composed"] > 0, "the walk found no mail to ask of"
+    # Nor does a mail's or a meeting's drawer only say its row again.
+    assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
 
 
 @pytest.mark.usefixtures("google")
@@ -3004,6 +3018,20 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.launcher_until(lambda shown: not shown["open"])
 
 
+def repeating(said: Json) -> str:
+    """Say each row the walk found whose drawer would only repeat it, one a line."""
+    # Joel, 2026-10-29: "we should never show the side panel when it is
+    # just repeating the currently selected text". A drawer says more with
+    # a fact, a picture, or words that aren't the row's name, side or note.
+    return "\n".join(
+        drawer["in"]
+        for drawer in cast("list[Json]", said["drawers"])
+        if drawer["facts"] == 0
+        and not drawer["picture"]
+        and all(words in ("", *drawer["row"]) for words in (drawer["title"], drawer["body"]))
+    )
+
+
 def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     """Every row the launcher shows does something on Return."""
     # Joel, 2026-10-26: a row that holds more steps in, a row that only
@@ -3035,6 +3063,9 @@ def test_every_row_has_a_return_act(desktop: Desktop) -> None:
     assert skipped == [], "A step doesn't lead with the act Return stepped over:\n" + "\n".join(
         f"{row['in']} \u203a {row['words']}" for row in skipped
     )
+    # And no row's drawer only says the row again (docs/design.md, the
+    # drawer).
+    assert repeating(said) == "", "A drawer only repeats its row:\n" + repeating(said)
 
 
 def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds(

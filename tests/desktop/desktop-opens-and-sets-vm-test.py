@@ -188,8 +188,8 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
         desktop.type_in("image", selecting="Image 256 \u00d7 256")
     # The picture shows in the drawer, out of the card's right side and
     # within the screen, and the card keeps its height for it.
+    desktop.launcher_until(lambda shown: shown["drawer"]["out"] is True)
     drawer = desktop.showing()["drawer"]
-    assert drawer["out"], drawer
     assert drawer["title"] == "Image 256 \u00d7 256", drawer
     assert drawer["cardHeight"] == tall, f"the card grew for the picture: {drawer}, from {tall}"
     assert drawer["height"] == tall, drawer
@@ -199,11 +199,19 @@ def test_a_picture_copied_is_kept_shown_as_it_is_and_copied_again(desktop: Deskt
     desktop.photograph("launcher-copies-picture")
     machine.send_key("ret")
     retry(desktop.pasted_the_picture, timeout=timedelta(seconds=10))
-    # A search typed at home opens no drawer, whatever it finds.
+    # Found by a search typed at home, it's in the drawer the same, as the
+    # drawer is the selected row's wherever it's found. A program leads what
+    # "image" finds, and the copy, found once copies are read, below it.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("image")
-    assert not desktop.showing()["drawer"]["out"], desktop.showing()["drawer"]
+    desktop.launcher_until(lambda shown: "Image 256 \u00d7 256" in shown["rows"])
+    desktop.down_to("Image 256 \u00d7 256")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["drawer"]["out"] is True and shown["drawer"]["title"] == "Image 256 \u00d7 256"
+        )
+    )
     machine.send_key("esc")
     desktop.launcher_until(lambda shown: not shown["open"])
 

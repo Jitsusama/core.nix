@@ -26,7 +26,7 @@ Floating {
         if (given)
             shown = given;
     }
-    // Whether it's out, which it slides only for, never for what it shows.
+    // Whether it's out, which it fades only for, never for what it shows.
     property bool out: false
     // How tall it is, the card's height.
     property real tall: 0
@@ -50,17 +50,16 @@ Floating {
     height: tall
     opacity: out ? 1 : 0
     visible: opacity > 0
-    // In from just behind where it rests, on the one curve, and back.
-    transform: Translate {
-        x: drawer.out ? 0 : -Theme.space.xl
-        Behavior on x {
-            NumberAnimation {
-                duration: drawer.out ? Theme.motion.medium : Theme.motion.short
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.motion.curve
-            }
-        }
+    // Gone once it has faded away, so what it showed is let go: a picture
+    // kept while hidden would be read again as the screen's scale changes,
+    // after its file may be gone.
+    onVisibleChanged: {
+        if (!visible && !out)
+            shown = null;
     }
+    // It fades in where it rests and out again, on the one curve, never
+    // sliding, so nothing beside the card moves as the selection does
+    // (VKCF3Z, 2026-10-29).
     Behavior on opacity {
         NumberAnimation {
             duration: drawer.out ? Theme.motion.medium : Theme.motion.short
