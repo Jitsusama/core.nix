@@ -589,6 +589,71 @@ def test_the_launchers_picker_fetches_a_file_from_google_drive_for_the_portal(
         desktop.as_account(f"rm -rf {notes}")
 
 
+def test_the_launchers_picker_saves_into_google_drive_for_the_portal(
+    desktop: Desktop,
+) -> None:
+    """The launcher's picker saves into Google Drive by the path Google's program uploads from."""
+    machine = desktop.machine
+    notes = f"/home/{desktop.account}/drive-saves-notes"
+    chose = "/run/user/1000/portal-chose"
+    staged = f"/home/{desktop.account}/.local/state/google/drive-saves/root"
+    desktop.as_account("systemctl --user restart google.service")
+    try:
+        desktop.answer("design review")
+        desktop.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name") == "Design Review"
+        )
+        machine.send_key("esc")
+        desktop.launcher_until(lambda shown: not shown["open"])
+        machine.succeed(f"rm -f {chose}")
+        desktop.as_account(f"rm -rf {staged} && mkdir -p {notes}")
+        desktop.as_account(
+            "systemd-run --user --collect --unit=save-into-drive"
+            f" {desktop.values['choose_a_file']} save {notes} draft.md"
+        )
+        desktop.launcher_until(
+            lambda shown: shown["path"] == ["Save the Notes", "~/drive-saves-notes"],
+            timeout=timedelta(seconds=60),
+        )
+        # Typed in any folder, Google Drive is found, after the name what's
+        # typed gives the file, and holds only what a file can be saved in.
+        machine.send_chars("drive")
+        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["drive", "Google Drive"])
+        desktop.down_to("Google Drive")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["rows"][:2] == ["My Drive", "Shared Drives"])
+        desktop.step_in()
+        # My Drive leads with the name given, saved by Return.
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "draft.md")
+        desktop.photograph("file-chooser-drive-save")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            f'[ "$(cat {chose})" = "$(printf \'0\\nfile://{staged}/draft.md\')" ]',
+            timeout=timedelta(seconds=60),
+        )
+        desktop.launcher_until(lambda shown: not shown["open"])
+        desktop.as_account(f"test -d {staged}")
+    finally:
+        # An ask left open would hold the launcher for the next subtest.
+        desktop.as_account("systemctl --user stop save-into-drive.service || true")
+        for _ in range(6):
+            before = desktop.showing()
+            if not before["open"]:
+                break
+
+            def backed(shown: Json, before: Json = before) -> bool:
+                """Whether Escape closed the launcher, backed out a step or cleared the typing."""
+                return not shown["open"] or (shown["path"], shown["typed"]) != (
+                    before["path"],
+                    before["typed"],
+                )
+
+            machine.send_key("esc")
+            desktop.launcher_until(backed)
+        desktop.as_account("systemctl --user stop google.service")
+        desktop.as_account(f"rm -rf {notes} {staged}")
+
+
 def test_a_picture_opens_floating_in_swayimg_and_e_takes_it_to_gimp(desktop: Desktop) -> None:
     """A picture opens floating in swayimg, and e takes it to GIMP."""
     machine = desktop.machine

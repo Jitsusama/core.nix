@@ -21,13 +21,18 @@
 // again unmarks it; and Open the Marked answers every one marked, in the
 // order they were, wherever each was. A place kept elsewhere, given by a
 // stand-in for Google's Drive, is listed after home's files, apart, and
-// found by typing from another folder, never while saving; held, it says
+// found by typing from another folder, never for a local folder alone;
+// held, it says
 // its folder's name; a file there is drawn as a file, or as the row it is
 // everywhere, and picked once fetched, the launcher staying and saying so
 // until then; marked with others, it's answered in the order marked, and
 // one that can't be fetched keeps the launcher, saying why, until Return
-// again fetches it. It exits 0 once every case holds, and otherwise 1,
-// saying which didn't.
+// again fetches it. Saving there, it holds only the folders a file can
+// be saved in, each leading with the name, a name already there stepping
+// in to Replace It; what's typed names it instead, and Return makes the
+// folder the place stages it in and answers the path there, closing the
+// launcher once it's made. It exits 0 once every case holds, and
+// otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 
 import qs
@@ -107,9 +112,14 @@ ShellRoot {
         }
 
         function chooserPlaces(chooser) {
-            if (chooser.saving || chooser.folders)
+            if (chooser.folders)
                 return [];
             drive.asked = chooser;
+            if (chooser.saving)
+                return [chooser.folder({ key: "drive", name: "Google Drive", note: "",
+                    inside: () => [chooser.folder(root.savedIn("root", { key: "drive:folder:mine",
+                        name: "My Drive", note: "", inside: () => [chooser.folder(root.savedIn("plans", {
+                            key: "drive:folder:plans", name: "Plans", note: "", inside: () => [] }))] }))] })];
             const files = () => [
                 chooser.file({ key: "drive:report", name: "report.pdf", note: "In My Drive.",
                     drawer: null, adopt: null, fetch: fetched("drive:report") }),
@@ -126,9 +136,18 @@ ShellRoot {
         }
     }
 
+    // Where the stand-in stages a file saved in its folder, and the names
+    // its files have.
+    function savedIn(folder, fields) {
+        return Object.assign(fields, {
+            saveTo: name => `${root.home}/staged/${folder}/${name}`,
+            names: () => folder === "root" ? ["report.pdf"] : []
+        });
+    }
+
     // A socket of open-with's, by its number: each answer it's given.
     Variants {
-        model: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
         SocketServer {
             id: socket
@@ -257,7 +276,7 @@ ShellRoot {
                 expect("Open the Marked answers every one marked, in the order they were",
                     answers[5] === JSON.stringify({ paths: [`${notes}/a.md`, `${home}/elsewhere/old.md`],
                         filter: null, choices: {} }), answers[5]);
-                chooser.chooseToSave({ name: "copy.pdf", folder: notes, title: "Save a Copy" },
+                chooser.chooseToSave({ name: "copy.pdf", folder: notes, title: "Save a Copy", local: true },
                     root.heardFromTheShell);
             } else if (stage === 13 && chooser.shown.startsWith("shell:") && ready([notes])) {
                 stage = 14;
@@ -315,6 +334,15 @@ ShellRoot {
                     answers[7] === JSON.stringify({ paths: [`${runtime}/picked/plan.docx`,
                         `${runtime}/picked/report.pdf`], filter: null, choices: {} }) && !launcher.open,
                     `${answers[7]}, ${launcher.open}`);
+                ask(10, { mode: "save", title: "Save", name: "report.pdf", folder: home });
+            } else if (stage === 24 && chooser.asking?.reply.endsWith("/10.sock") && ready([home])) {
+                stage = 25;
+                savingElsewhere();
+            } else if (stage === 25 && answers.length === 9) {
+                stage = 26;
+                expect("Return makes the folder the place stages it in, then answers the path there",
+                    answers[8] === JSON.stringify({ paths: [`${home}/staged/plans/new.md`], filter: null,
+                        choices: {} }) && !launcher.open, `${answers[8]}, ${launcher.open}`);
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
@@ -479,9 +507,32 @@ ShellRoot {
         Qt.callLater(root.step);
     }
 
+    function savingElsewhere() {
+        const place = named(rowsIn(home), "Google Drive");
+        expect("saving, a place kept elsewhere is offered", place !== undefined, names(rowsIn(home)));
+        launcher.enter(place);
+        expect("saving, it holds only the folders a file can be saved in",
+            names(place.verbs()) === "My Drive", names(place.verbs()));
+        const mine = place.verbs()[0];
+        launcher.enter(mine);
+        const rows = mine.verbs();
+        expect("it leads with the name, apart from its folders", names(rows) === "report.pdf, | Plans",
+            names(rows));
+        expect("a name already there steps in to Replace It", rows[0].verb === "more"
+            && names(rows[0].verbs()) === "Replace It", `${rows[0].verb}: ${names(rows[0].verbs())}`);
+        const plans = named(rows, "Plans");
+        const typed = plans.typed("new.md");
+        expect("what's typed names the file Return saves there, saying the folder",
+            names(typed) === "new.md" && typed[0].verb === "save" && typed[0].side === "Plans"
+                && typed[0].stays === true, `${names(typed)} ${typed[0]?.side} ${typed[0]?.stays}`);
+        typed[0].run();
+        expect("the launcher stays while the folder is made", launcher.open && answers.length === 8,
+            `${launcher.open}, ${answers.length} answers`);
+    }
+
     function savingForTheShell() {
-        expect("saving, no place kept elsewhere is offered", chooser.places.length === 0,
-            names(chooser.places));
+        expect("asked for a local folder alone, no place kept elsewhere is offered",
+            chooser.places.length === 0, names(chooser.places));
         const given = rowsIn(notes)[0];
         expect("asked from inside the shell, it leads with the name given, saved by Return",
             given.name === "copy.pdf" && given.verb === "save", `${given.name} ${given.verb}`);

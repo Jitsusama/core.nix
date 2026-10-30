@@ -114,11 +114,17 @@ Singleton {
     // FileChooser.qml, which asks each provider's chooserPlaces as it
     // opens): one Google Drive folder, holding My Drive, Shared with Me,
     // and Shared Drives once Drive says he has any. None while signed out,
-    // while a save is asked, or while a folder is. Each opening starts
-    // afresh, so what's listed is never older than the picker.
+    // or while a folder is asked. Saving, it holds My Drive and Shared
+    // Drives alone, since another's folder takes nothing of his by
+    // default, and each folder only its folders; a file saved in one is
+    // staged in the state home's google/drive-saves/<folder>/<name>, which
+    // the google program uploads once it's written (VKCF3Z and 427IH3,
+    // 2026-10-30). Each opening starts afresh, so what's listed is never
+    // older than the picker.
     function chooserPlaces(chooser, provider) {
-        if (Google.account !== "ready" || chooser.saving || chooser.folders)
+        if (Google.account !== "ready" || chooser.folders)
             return [];
+        root.saving = chooser.saving;
         root.chooser = chooser;
         root.provider = provider;
         root.shown = {};
@@ -134,6 +140,12 @@ Singleton {
 
     // The picker last opened, and the provider its document rows are made by.
     property var chooser: null
+    // Whether it opened to save.
+    property bool saving: false
+    // Where a file saved into Drive waits to be uploaded, a folder each
+    // folder of Drive's, by its id.
+    readonly property string saves: `${Quickshell.env("XDG_STATE_HOME")
+        || `${Quickshell.env("HOME")}/.local/state`}/google/drive-saves`
     property var provider: null
     // What each folder listed since it opened, by its id: { files } or
     // { failed }. The program keeps only the last listing, and the
@@ -151,15 +163,28 @@ Singleton {
 
     function tops() {
         const drives = root.holds("drives");
-        const place = (folder, word) => root.chooser.folder({
+        const place = (folder, word) => root.chooser.folder(root.savedIn(folder, {
                 key: `drive:folder:${folder}`,
                 name: Words.name(word),
                 note: "",
                 inside: () => root.inside(folder),
                 empty: () => root.empty(folder)
-            });
-        return [place("root", "drive:mine"), place("shared", "drive:shared")]
+            }));
+        return [place("root", "drive:mine")].concat(root.saving ? [] : [place("shared", "drive:shared")])
             .concat(drives?.files?.length > 0 ? [place("drives", "drive:drives")] : []);
+    }
+
+    // A folder's fields, and, saving, where a file named so is staged and
+    // the names its files have, so the picker asks before one is replaced.
+    // Shared Drives itself holds only drives, so nothing is saved in it.
+    function savedIn(folder, fields) {
+        if (!root.saving || folder === "drives")
+            return fields;
+        return Object.assign(fields, {
+            saveTo: name => `${root.saves}/${folder}/${name}`,
+            names: () => (root.shown[folder]?.files ?? []).filter(file => file.kind !== "folder")
+                .map(file => file.name)
+        });
     }
 
     // What a folder holds, asking Drive the first time, once the picker
@@ -178,21 +203,21 @@ Singleton {
     // program that asked would take, each picked by fetching it.
     function inside(folder) {
         const files = root.holds(folder)?.files ?? [];
-        return files.filter(file => file.kind === "folder"
-            || root.chooser.wants(Said.pickedAs(file).name, Said.pickedAs(file).mime))
+        return files.filter(file => file.kind === "folder" || !root.saving
+            && root.chooser.wants(Said.pickedAs(file).name, Said.pickedAs(file).mime))
             .map(file => root.pickable(file));
     }
 
     function pickable(file) {
         const facts = Said.placed(file, Calendar.now);
         if (file.kind === "folder")
-            return root.chooser.folder({
+            return root.chooser.folder(root.savedIn(file.id, {
                 key: facts.key,
                 name: facts.name,
                 note: facts.note,
                 inside: () => root.inside(file.id),
                 empty: () => root.empty(file.id)
-            });
+            }));
         const document = Said.asDocument(file);
         return root.chooser.file({
             key: facts.key,

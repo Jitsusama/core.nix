@@ -1602,6 +1602,7 @@ onLinux {
         export KINDS=$PWD/kinds
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml
+        [ -d $HOME/staged/plans ] || { echo "saving into a place kept elsewhere made no folder"; exit 1; }
         touch $out
       '';
 
