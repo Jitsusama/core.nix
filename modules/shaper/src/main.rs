@@ -492,9 +492,8 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
 /// What a VPN may send and bring in, against the connection it rides: a
 /// little under, so its own queue forms inside the VPN, where its packets
 /// can still be told apart, before the connection's CAKE sees them as one
-/// flow. A VPN's
-/// own header takes about 4% of a packet (MASQUE's or `WireGuard`'s on
-/// 1300 bytes).
+/// flow. Its CAKE counts the VPN's own headers on each packet, so the
+/// share left over is for what goes round the VPN.
 const VPN_SHARE: f64 = 0.95;
 
 /// What the shaper holds a VPN to each way, in kbit/s, and the IFB its
