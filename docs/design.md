@@ -969,8 +969,8 @@ works the same way everywhere.
   2026-10-29: "the side drawer shows when it's not needed, and only
   shows in certain places"). Between two things it stays and what it
   shows changes in place; onto or off one it fades in place once the
-  selection rests, so holding an arrow never flickers it. Ctrl+Up and Ctrl+Down scroll it, said in the foot
-  while it holds more than fits, since Page Up and Page Down page the
+  selection rests, so holding an arrow never flickers it. Ctrl+Up and
+  Ctrl+Down scroll it, said in the foot while it holds more than fits, since Page Up and Page Down page the
   list. Another program's words are shown plain, never as markup.
 - **Ctrl+C copies the selected row.** Any row with a Copy inside copies
   it with Ctrl+C from wherever it's listed, without stepping in, as
