@@ -408,8 +408,12 @@ Scope {
                 return;
         } else if (category !== null && (steps[last].rows.some(row => row.asker === source)
             || (answer && answer.asker === source))) {
+            // A row a condition holds back stays dimmed as it's said again,
+            // or each new reading would light it for a moment.
+            const place = steps[last].row.category ?? category;
             steps[last] = Object.assign({}, steps[last], {
-                rows: steps[last].rows.map(row => row.asker === source ? again(row) ?? row : row)
+                rows: steps[last].rows.map(row => row.asker === source
+                    ? heldBack(place, again(row) ?? row) : row)
             });
         } else {
             return;
@@ -2244,14 +2248,16 @@ Scope {
         reshow(steps.length);
     }
 
-    // A row a condition holds back now, dimmed by Steady, saying why in
-    // the place's words; any other as it is.
+    // A row a condition holds back now, dimmed, saying why in the place's
+    // words; any other as it is. It's judged by the row's id alone, so a
+    // row said again from a new reading is held back the same as one
+    // Steady kept.
     function heldBack(category, row) {
-        const id = row.gone && (row.is ?? "").startsWith("answer:") ? row.is.slice(7) : "";
+        const id = (row.is ?? "").startsWith("answer:") ? row.is.slice(7) : "";
         const named = (category.while ?? {})[id];
         if (named === undefined || holdsNow(category, id))
             return row;
-        return Object.assign({}, row, { note: (category.said ?? {})[named] ?? "" });
+        return Object.assign({}, row, { gone: true, note: (category.said ?? {})[named] ?? "" });
     }
 
     Connections {
@@ -2301,6 +2307,7 @@ Scope {
             return;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
             rows: Steady.kept(step.rows, members(step.row.category), steadyId)
+                .map(row => heldBack(step.row.category, row))
         }) : step);
         const above = top ? source.things : from < 0 ? [] : source.everything();
         if (!remade(steps, top ? 0 : from < 0 ? held.length : from + 1, above))

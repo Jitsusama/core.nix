@@ -1880,14 +1880,22 @@ def stand_in_for_the_telemetry(desktop: Desktop) -> None:
     """Serve the reader's reading on its socket, each second, as the reader does."""
     socket = f"{TELEMETRY_HELD}/io.jitsusama.ProcessorTelemetry"
     desktop.machine.succeed(f"install -d -o 1000 {TELEMETRY_HELD}")
-    told = json.dumps({"parameters": TELEMETRY_READING})
-    desktop.as_account(f"printf '%s\\0' '{told}' > /tmp/telemetry-said")
+    the_telemetry_says(desktop, TELEMETRY_READING)
     desktop.as_account(
         "systemd-run --user --collect --quiet --unit=telemetry-stand-in -- "
         f"systemd-socket-activate --inetd --accept --listen={socket} "
         "sh -c 'while cat /tmp/telemetry-said; do sleep 1; done'"
     )
     desktop.machine.wait_until_succeeds(f"test -S {socket}", timeout=dt.timedelta(seconds=10))
+
+
+def the_telemetry_says(desktop: Desktop, reading: Json) -> None:
+    """Have the reader's stand-in serve this reading from its next second on."""
+    told = json.dumps({"parameters": reading})
+    desktop.as_account(
+        f"printf '%s\\0' '{told}' > /tmp/telemetry-said.new"
+        " && mv /tmp/telemetry-said.new /tmp/telemetry-said"
+    )
 
 
 def the_telemetry_is_let_go(desktop: Desktop) -> None:
@@ -1999,17 +2007,47 @@ def test_power_says_what_kept_the_processor_from_resting_on_battery(desktop: Des
                 and shown["rows"][:2] == ["Battery", "Kept From Resting"]
             )
         )
-        desktop.type_in("kept", "Kept From Resting")
+        desktop.down_to("Kept From Resting")
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "12%")
         desktop.photograph("launcher-kept-from-resting-on-battery")
         # The charger going in while it's shown doesn't move it: it stays
         # where it was, dimmed, saying why, until Power is opened again.
         desktop.power("on")
+
+        def kept_from_resting(shown: Json) -> Json:
+            return next(
+                (
+                    thing
+                    for thing in shown["things"]
+                    if str(thing["reads"]).startswith("Kept From Resting")
+                ),
+                {},
+            )
+
         desktop.launcher_until(
             lambda shown: (
-                shown["rows"][1:2] == ["Kept From Resting"] and shown["footer"] == "on the charger"
+                cast("list[str]", shown["rows"])[:2] == ["Battery", "Kept From Resting"]
+                and kept_from_resting(shown).get("gone") is True
+                and (shown["selected"] or {}).get("note") == "on the charger"
             )
         )
+        # It stays so as readings go on coming, rather than lighting again
+        # with each: a new one is said on the dimmed row, and every report
+        # until then has it dimmed and second.
+        lit: list[str] = []
+
+        def said_dimmed(shown: Json) -> bool:
+            rows = cast("list[str]", shown["rows"])
+            kept = kept_from_resting(shown)
+            if rows[:2] != ["Battery", "Kept From Resting"] or kept.get("gone") is not True:
+                lit.append(str(shown["things"]))
+            return str(kept.get("reads", "")).startswith("Kept From Resting \u00b7 20%")
+
+        more = dict(TELEMETRY_READING)
+        more["keptFromResting"] = {"kept": 0.2, "by": [{"by": "display", "share": 0.2}]}
+        the_telemetry_says(desktop, more)
+        desktop.launcher_until(said_dimmed)
+        assert lit == [], lit
         machine.send_key("esc")
         machine.wait_until_fails(
             desktop.in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10)
