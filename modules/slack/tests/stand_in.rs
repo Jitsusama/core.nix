@@ -114,10 +114,36 @@ const ADA: &str = concat!(
     r#""zone":"Europe/London"}"#
 );
 
+/// Grace as the program says her, found by a search, as an enterprise
+/// grid has it.
+const GRACE: &str = concat!(
+    r#"{"email":"grace@example.com","id":"U2","team":"T1","name":"Grace Hopper","#,
+    r#""zone":"America/New_York"}"#
+);
+
+/// Slack as a workspace that looks Ada up by her address, and as an
+/// enterprise grid for Grace and Eve, refusing that to the sign-in: a
+/// search finds each by their handle, and only Grace's profile keeps the
+/// address asked about.
 fn slack(line: &str) -> String {
     if line.contains("email=ada%40example.com") {
         r#"{"ok": true, "user": {"id": "U1", "team_id": "T1", "tz": "Europe/London",
             "profile": {"real_name": "Ada Lovelace"}}}"#
+            .into()
+    } else if line.contains("email=grace%40example.com") || line.contains("email=eve%40example.com")
+    {
+        r#"{"ok": false, "error": "not_allowed_token_type"}"#.into()
+    } else if line.contains("search.messages") && line.contains("grace") {
+        r#"{"ok": true, "messages": {"matches": [{"user": "U2", "username": "grace"}]}}"#.into()
+    } else if line.contains("search.messages") && line.contains("eve") {
+        r#"{"ok": true, "messages": {"matches": [{"user": "U3", "username": "eve"}]}}"#.into()
+    } else if line.contains("users.info") && line.contains("user=U2") {
+        r#"{"ok": true, "user": {"id": "U2", "team_id": "T1", "tz": "America/New_York",
+            "profile": {"real_name": "Grace Hopper", "email": "Grace@Example.com"}}}"#
+            .into()
+    } else if line.contains("users.info") && line.contains("user=U3") {
+        r#"{"ok": true, "user": {"id": "U3", "team_id": "T1",
+            "profile": {"real_name": "Another Eve", "email": "eve@elsewhere.example"}}}"#
             .into()
     } else {
         r#"{"ok": false, "error": "users_not_found"}"#.into()
@@ -167,6 +193,39 @@ fn each_address_is_asked_once_with_the_harness_sign_in_and_said_a_line() {
             .iter()
             .all(|heard| heard.line.starts_with("GET /api/users.lookupByEmail?"))
     );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn a_grid_refusing_the_look_up_finds_them_by_a_search_their_profile_confirms() {
+    let stand_in = StandIn::new(slack);
+    let path = credentials("grid");
+    let said = told(&stand_in, &path, "grace@example.com\neve@example.com\n");
+    assert_eq!(
+        said,
+        [
+            GRACE,
+            r#"{"email":"eve@example.com","id":null,"team":"T1","name":"","zone":""}"#,
+        ]
+    );
+    let heard = stand_in.heard();
+    assert!(
+        heard
+            .iter()
+            .any(|heard| heard.line.contains("query=from%3A%40grace")),
+        "{heard:?}"
+    );
+    // Still only reading: a look-up, a search and a profile, each a GET.
+    for heard in &heard {
+        let method = heard.line.trim_start_matches("GET /api/");
+        assert!(
+            ["users.lookupByEmail?", "search.messages?", "users.info?"]
+                .iter()
+                .any(|read| method.starts_with(read)),
+            "{}",
+            heard.line
+        );
+    }
     let _ = std::fs::remove_file(path);
 }
 
