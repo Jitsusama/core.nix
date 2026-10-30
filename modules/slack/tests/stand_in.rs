@@ -376,6 +376,14 @@ fn their_conversation_with_joel_is_found_ahead_once_and_again_at_each_step_in() 
     assert_eq!(stepped.len(), 2, "{stepped:?}");
     assert!(!stepped[0].contains("conversation"), "{}", stepped[0]);
     assert!(stepped[1].contains(r#""channel":"D4""#), "{}", stepped[1]);
+    // Asked ahead after another restart, who she is is said at once too,
+    // then what she said, which is all Slack is asked.
+    let third = StandIn::new(slack);
+    let ahead = told(&third, &path, "?lin@example.com\n");
+    assert_eq!(asked(&third), ["GET /api/search.messages"]);
+    assert_eq!(ahead.len(), 2, "{ahead:?}");
+    assert!(!ahead[0].contains("conversation"), "{}", ahead[0]);
+    assert!(ahead[1].contains(r#""channel":"D4""#), "{}", ahead[1]);
     forget(&path);
 }
 

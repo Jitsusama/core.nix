@@ -93,12 +93,19 @@ fn main() {
         let said = if let Some(line) = line {
             if let Some(email) = line.trim().strip_prefix('?') {
                 let email = email.to_lowercase();
-                if asked(&email) && queued.insert(email.clone()) {
+                if !(asked(&email) && queued.insert(email.clone())) {
+                    continue;
+                }
+                // Who's kept is said at once, so a restart leaves nobody
+                // waiting; only what needs Slack waits its turn.
+                let (said, more) = asker.kept_ahead(&email);
+                if more {
                     ahead.push_back(email);
                 }
-                continue;
+                said
+            } else {
+                asker.step_in(&line.trim().to_lowercase())
             }
-            asker.step_in(&line.trim().to_lowercase())
         } else {
             let Some(email) = ahead.pop_front() else {
                 if ended || line_ended(&heard) {
@@ -168,11 +175,7 @@ impl Asker {
         let Some(account) = Account::read(&self.credentials) else {
             return vec![NOT_SIGNED_IN.to_owned()];
         };
-        let had = self
-            .known
-            .get(email)
-            .cloned()
-            .or_else(|| self.kept.get(email, now()).cloned());
+        let had = self.had(email);
         let said: Vec<String> = had.iter().filter_map(line).collect();
         // A shell gone is found by the next line said, so nothing more
         // is needed of this one.
@@ -195,20 +198,38 @@ impl Asker {
         }
     }
 
-    /// What to say of someone asked about ahead: who they are, kept or
-    /// found now, with their conversation, asked once a run.
-    fn ahead(&mut self, email: &str) -> Vec<String> {
-        let had = self
-            .known
+    /// Who an address is, as said last while running or kept.
+    fn had(&self, email: &str) -> Option<Found> {
+        self.known
             .get(email)
             .cloned()
-            .or_else(|| self.kept.get(email, now()).cloned());
-        if let Some(had) = had
+            .or_else(|| self.kept.get(email, now()).cloned())
+    }
+
+    /// What's known of someone asked about ahead, said with nothing
+    /// asked of Slack, and whether Slack still has more to say of them
+    /// this run: who they are, or their conversation.
+    fn kept_ahead(&self, email: &str) -> (Vec<String>, bool) {
+        let had = self.had(email);
+        let more = had
             .as_ref()
-            .filter(|had| had.id.is_none() || self.talked.contains(email))
+            .is_none_or(|had| had.id.is_some() && !self.talked.contains(email));
+        (had.iter().filter_map(line).collect(), more)
+    }
+
+    /// What Slack says now of someone asked about ahead, unless it's what
+    /// was said already: who they are, found now, with their
+    /// conversation, asked once a run.
+    fn ahead(&mut self, email: &str) -> Vec<String> {
+        let had = self.had(email);
+        // A step-in since it was queued may have asked already.
+        if had
+            .as_ref()
+            .is_some_and(|had| had.id.is_none() || self.talked.contains(email))
         {
-            return line(had).into_iter().collect();
+            return Vec::new();
         }
+        let said: Vec<String> = had.iter().filter_map(line).collect();
         let Some(account) = Account::read(&self.credentials) else {
             return vec![NOT_SIGNED_IN.to_owned()];
         };
@@ -220,7 +241,10 @@ impl Asker {
         }
         .map(|found| self.talking(&account, found));
         match self.heard(found) {
-            Heard::Found(found) => line(&found).into_iter().collect(),
+            Heard::Found(found) => line(&found)
+                .filter(|fresh| !said.contains(fresh))
+                .into_iter()
+                .collect(),
             Heard::SignedOut(line) => vec![line],
             Heard::Unreachable => Vec::new(),
         }
