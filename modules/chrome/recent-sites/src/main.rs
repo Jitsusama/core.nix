@@ -9,6 +9,14 @@
 //! history prints nothing. Google's own windows (Mail, Calendar, Meet,
 //! Drive and the documents) are left out, since their programs keep their
 //! own, as are sign-in pages and this machine's own addresses.
+//!
+//! `chrome-recent-sites open [PROFILE]` prints instead what Chrome has open
+//! now, a tab a line, from its session file (session.rs): its id, its
+//! window, whether it's in front there, when it was last looked at in
+//! milliseconds since 1970, its address and its title, tab-separated. A
+//! page left out above is told of by its title alone.
+
+mod session;
 
 use std::collections::HashSet;
 use std::env;
@@ -113,19 +121,35 @@ fn read(profile: &Path, scratch: &Path) -> Result<Vec<Site>, String> {
 }
 
 fn main() -> ExitCode {
-    let profile = match env::args_os().nth(1) {
+    let mut arguments = env::args_os().skip(1).peekable();
+    let open = arguments.next_if(|first| first == "open").is_some();
+    let profile = match arguments.next() {
         Some(profile) => PathBuf::from(profile),
         None => PathBuf::from(env::var_os("HOME").unwrap_or_default())
             .join(".config/google-chrome/Default"),
     };
-    let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
-    let printed = read(&profile, &scratch).and_then(|found| {
-        let mut out = io::stdout().lock();
-        found
-            .iter()
-            .try_for_each(|site| writeln!(out, "{}\t{}", site.address, site.title))
-            .map_err(|error| error.to_string())
-    });
+    let mut out = io::stdout().lock();
+    let printed = if open {
+        session::read(&profile).and_then(|tabs| {
+            tabs.iter()
+                .try_for_each(|tab| {
+                    writeln!(
+                        out,
+                        "{}\t{}\t{}\t{}\t{}\t{}",
+                        tab.id, tab.window, tab.front, tab.last, tab.address, tab.title
+                    )
+                })
+                .map_err(|error| error.to_string())
+        })
+    } else {
+        let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
+        read(&profile, &scratch).and_then(|found| {
+            found
+                .iter()
+                .try_for_each(|site| writeln!(out, "{}\t{}", site.address, site.title))
+                .map_err(|error| error.to_string())
+        })
+    };
     match printed {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

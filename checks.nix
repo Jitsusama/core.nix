@@ -261,8 +261,8 @@ let
     vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     # Only Chrome, started, says whether it installed what the preferences
-    # file names.
-    vm-chrome-installs-the-open-tabs-extension = import ./tests/chrome-extension.nix {
+    # file names, and writes a session file as it browses.
+    vm-chrome-says-its-open-tabs = import ./tests/chrome-extension.nix {
       inherit self pkgs;
     };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };

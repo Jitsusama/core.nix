@@ -693,12 +693,15 @@ Provider {
     // tab a line: its id, its window, whether it's in front there, when it
     // was last looked at, its address and its title. One row a page, newest
     // looked at first; two tabs on one page are one row, going to the one
-    // looked at last and saying how many.
+    // looked at last and saying how many. A tab with no address, one the
+    // source leaves out, has no row, but its title still finds the window
+    // it's in front of.
     function openSites(entry, source) {
-        const tabs = provider.recents.openIn(entry.id).map(line => {
+        const all = provider.recents.openIn(entry.id).map(line => {
             const [id, window, front, last, address, title] = line.split("\t");
             return { id, window, front: front === "true", last: Number(last), address, title };
-        }).filter(tab => (tab.address ?? "") !== "")
+        });
+        const tabs = all.filter(tab => (tab.address ?? "") !== "")
             .sort((a, b) => b.last - a.last);
         const pages = [];
         for (const tab of tabs) {
@@ -708,16 +711,19 @@ Provider {
             else
                 pages.push([tab]);
         }
-        return pages.map(page => openSite(entry, source, page, tabs));
+        return pages.map(page => openSite(entry, source, page, all));
     }
 
     // One page open now: Return goes to the tab looked at last, inside Go
     // To, Close It, its window, then Copy the Link. Its window is the one
     // niri titles by what's in front of it, as Chrome titles its windows,
-    // of two the one used last. Close It keeps the launcher, its foot
-    // saying how many tabs it closes when it's more than one, and the page
-    // stays where it was, said closed and holding only Copy the Link, until
-    // the launcher opens again.
+    // of two the one used last. Go To asks the source to bring the tab
+    // forward (`go`) when it can, and brings its window forward either
+    // way. Close It is there only when the source can close a tab
+    // (`close`); it keeps the launcher, its foot saying how many tabs it
+    // closes when it's more than one, and the page stays where it was,
+    // said closed and holding only Copy the Link, until the launcher opens
+    // again.
     function openSite(entry, source, page, tabs) {
         const [tab] = page;
         const words = Words.of("recent:site").said ?? {};
@@ -731,16 +737,18 @@ Provider {
         const open = page.length > 1 ? counted(words.tabs) : words.open ?? "";
         const ask = (command, id) => (command ?? []).map(part => part.replace("{id}", id));
         const go = () => {
-            Niri.spawn(ask(source.go, tab.id));
+            if (source.go)
+                Niri.spawn(ask(source.go, tab.id));
             if (window)
                 Niri.act({ FocusWindow: { id: window.id } });
         };
-        const acts = [said("verb:recent:site:go", "", {
+        const goes = said("verb:recent:site:go", "", {
             key: `verb:recent:site:go:${tab.address}`,
             hue: "action",
             side: window ? titled(window, entry) : "",
             run: go
-        }), said("verb:recent:site:close", "", {
+        });
+        const closes = !source.close ? [] : [said("verb:recent:site:close", "", {
             key: `verb:recent:site:close:${tab.address}`,
             hue: "action",
             stays: true,
@@ -750,7 +758,8 @@ Provider {
                     Niri.spawn(ask(source.close, one.id));
                 provider.recents.closing(entry.id, tab.address);
             }
-        })].concat(window ? [windowRow(window, entry)] : []);
+        })];
+        const acts = [goes].concat(closes, window ? [windowRow(window, entry)] : []);
         return site(tab.address, tab.title, `${host} \u00b7 ${open}`, acts);
     }
 

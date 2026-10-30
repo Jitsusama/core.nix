@@ -9,11 +9,19 @@
 # The second opens two pages and asks chrome-open-tabs, the extension's
 # host, to list them, bring one to the front and close the other, as the
 # launcher will. Chromium without a screen opens one page alone, so that
-# case gives it a virtual X screen. The script is chrome-extension-vm-test.py.
+# case gives it a virtual X screen. The third needs no extension: Chromium
+# opens two pages served here, and chrome-recent-sites reads both, in one
+# window with one in front, from the session file Chromium writes, as the
+# launcher reads Chrome's. The script is chrome-extension-vm-test.py.
 { self, pkgs }:
 let
   id = "eefbjjlcekpocpoiobhilnmpabjhmjhm";
   values = pkgs.writeText "chrome-extension-values.json" (builtins.toJSON { inherit id; });
+  pages = pkgs.runCommandLocal "chrome-session-pages" { } ''
+    mkdir $out
+    echo '<title>One</title>' > $out/one.html
+    echo '<title>Two</title>' > $out/two.html
+  '';
 in
 import ./lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "chrome-extension";
@@ -30,13 +38,21 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       "/etc/opt/chrome/native-messaging-hosts/jitsusama.chrome_open_tabs.json";
     environment.systemPackages = [
       pkgs.chromium
+      pkgs.curl
       pkgs.xvfb-run
+      (pkgs.callPackage ../modules/chrome/recent-sites/package.nix { })
       (pkgs.runCommandLocal "chromium-takes-the-open-tabs-extension" { } ''
         mkdir -p $out/share/chromium/extensions
         ln -s /usr/share/google-chrome/extensions/${id}.json $out/share/chromium/extensions/
       '')
     ];
     environment.pathsToLink = [ "/share/chromium" ];
+    # Pages of the web for the session case, at an address of their own.
+    networking.hosts."127.0.0.1" = [ "pages.example.org" ];
+    systemd.services.pages = {
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig.ExecStart = "${pkgs.python3}/bin/python3 -m http.server 80 --bind 127.0.0.1 --directory ${pages}";
+    };
     virtualisation.memorySize = 2048;
   };
 

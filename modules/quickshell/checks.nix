@@ -1541,15 +1541,18 @@ onLinux {
         n=$(wc -l < "$HOME/sites-read")
         printf 'https://example.org/%s\tPage %s\nhttps://other.example.net/a\tOlder page\n' "$n" "$n"
       ''}
-      # Its tabs open now, as chrome-open-tabs lists them: one page open in
-      # two windows, the older page open again, and another in front of
-      # the second window.
+      # Its tabs open now, as chrome-recent-sites open lists them: one page
+      # open in two windows, the older page open again, another in front
+      # of the second window, and in a third one left out, told of by its
+      # title alone, in front of a page behind it.
       export OPENED_LIST=${pkgs.writeShellScript "opened-list" ''
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
           7 1 true 3000 https://open.example.com/a 'Open A' \
           8 1 false 2000 https://other.example.net/a 'Older page' \
           9 2 false 1000 https://open.example.com/a 'Open A' \
-          10 2 true 500 https://another.example.com/b Another
+          10 2 true 500 https://another.example.com/b Another \
+          11 3 true 400 "" 'Left out' \
+          12 3 false 450 https://behind.example.com/ Behind
       ''}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

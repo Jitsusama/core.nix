@@ -1,4 +1,4 @@
-"""Chromium installs the open-tabs extension from the file the Chrome module names, unasked.
+"""Chromium says its open tabs: through the open-tabs extension, and in its session file.
 
 tests/chrome-extension.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The extension's id is the `values`
@@ -7,6 +7,7 @@ fixture's.
 
 from __future__ import annotations
 
+import base64
 import json
 import shlex
 from datetime import timedelta
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from test_driver.machine import QemuMachine
 
 PROFILE = "/home/joel/profile"
+SESSIONED = "/home/joel/sessioned"
 LOG = "/home/joel/chromium.log"
 
 
@@ -124,3 +126,56 @@ def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
     as_account(machine, f"chrome-open-tabs close {two[0]}")
     left = [tab[5] for tab in tabs(machine)]
     assert left == ["One"], f"closing Two left {left}"
+
+
+def written(machine: QemuMachine) -> str:
+    """Say what the session file holds, what's served, and what Chromium itself has open."""
+    sessions = f"{SESSIONED}/Default/Sessions"
+    _, listed = machine.execute(f"ls -la {sessions} 2>&1")
+    _, read = machine.execute(f"su - joel -c 'chrome-recent-sites open {SESSIONED}/Default' 2>&1")
+    _, served = machine.execute("curl -sS http://pages.example.org/one.html 2>&1")
+    _, live = machine.execute(
+        "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 chrome-open-tabs list' 2>&1"
+    )
+    _, encoded = machine.execute(f"cat {sessions}/Session_* | base64 -w0")
+    raw = base64.b64decode(encoded)
+    titles = {title: title.encode("utf-16-le") in raw for title in ("One", "Two")}
+    return (
+        f"sessions:\n{listed}\nread:\n{read}\nserved: {served}\nChromium has open:\n{live}\n"
+        f"each title in the file's bytes: {titles}, {len(raw)} bytes"
+    )
+
+
+def test_chrome_recent_sites_reads_every_tab_from_the_session_file(machine: QemuMachine) -> None:
+    """chrome-recent-sites reads both pages Chromium opened, from the session file it writes."""
+    minute = int(timedelta(minutes=1).total_seconds())
+    machine.succeed("pkill -u joel -f chromium; true")
+    machine.wait_until_fails("pgrep -u joel -f chromium", timeout=minute)
+    machine.wait_for_open_port(80)
+    pages = " ".join(f"http://pages.example.org/{name}.html" for name in ("one", "two"))
+    as_account(
+        machine,
+        "xvfb-run -a chromium --ozone-platform=x11 --no-sandbox --disable-gpu --no-first-run "
+        f"--password-store=basic --user-data-dir={SESSIONED} {pages} > {LOG} 2>&1 &",
+        account="joel",
+    )
+    reading = f"chrome-recent-sites open {SESSIONED}/Default"
+    # Chromium here writes the session as it starts, before either page has loaded, so their
+    # titles aren't in it yet; the case reads what that holds. Tests in session.rs read titles.
+    try:
+        machine.wait_until_succeeds(
+            f"[ $(su - joel -c '{reading}' | grep -c pages.example.org) = 2 ]", timeout=2 * minute
+        )
+    except AssertionError as late:
+        message = f"the session never held both pages; {written(machine)}"
+        raise AssertionError(message) from late
+    listed = [line.split("\t") for line in as_account(machine, reading).splitlines()]
+    addresses = [f"http://pages.example.org/{name}.html" for name in ("one", "two")]
+    assert sorted(tab[4] for tab in listed) == addresses, f"not the two pages: {listed}"
+    one, two = sorted(listed, key=lambda tab: tab[4])
+    assert one[1] == two[1], f"the two pages aren't in one window: {listed}"
+    fronts = [tab for tab in listed if tab[2] == "true"]
+    assert len(fronts) == 1, f"not one page in front: {listed}"
+    now = int(machine.succeed("date +%s%3N"))
+    looked = now - int(fronts[0][3])
+    assert 0 <= looked < 10 * minute * 1000, f"the front page last looked at {looked} ms ago"
