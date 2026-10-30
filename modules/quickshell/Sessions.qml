@@ -438,11 +438,18 @@ Singleton {
     }
     // Whether the session being reopened is open and focused, when one
     // that sat below another in its column goes back into the column to
-    // its left, as it was, and the next is begun.
+    // its left, as it was, and the next is begun. kitty can ask niri to
+    // focus the window before last after this one's workspace was
+    // focused, with the activation token niri gave it, so a window that
+    // opened on another workspace is moved onto its own.
     function reopenedYet() {
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened === null || Niri.focused !== waiting.opened)
             return;
+        const opened = Niri.windows[waiting.opened];
+        if (waiting.into !== null && opened && opened.workspace_id !== waiting.into)
+            Niri.act({ MoveWindowToWorkspace: { window_id: waiting.opened,
+                reference: { Id: waiting.into }, focus: true } });
         if (waiting.tile > 1)
             Niri.act({ ConsumeOrExpelWindowLeft: { id: waiting.opened } });
         reopening.waiting = null;
@@ -501,10 +508,22 @@ Singleton {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
             reopening.waiting = { known: Object.keys(Niri.windows), tile: next.at?.tile ?? 1,
-                opened: null };
+                into: next.at ? root.into(next.at) : null, opened: null };
             reopened(next.one.id, next.one.cwd);
             reopenPatience.restart();
         });
+    }
+    // The workspace a kept place names, as niri finds it by its number:
+    // on its screen, or the one in use when that's gone, and the empty one
+    // after the last when the number is past them. Its id, since a window
+    // opening on the empty one makes another after it.
+    function into(at) {
+        const every = Object.values(Niri.workspaces);
+        const screen = every.some(one => one.output === at.output) ? at.output
+            : Niri.workspace()?.output;
+        const its = every.filter(one => one.output === screen).sort((a, b) => a.idx - b.idx);
+        const found = its.find(one => one.idx === at.workspace) ?? its[its.length - 1];
+        return found ? found.id : null;
     }
     Timer {
         id: reopenPatience
