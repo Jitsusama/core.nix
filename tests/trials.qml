@@ -94,6 +94,27 @@ QtObject {
             JSON.stringify(three));
         expect("kept from nothing", Trials.kept(null, { at: 1 }, 2).length === 1, "lost");
 
+        // At 120 Hz: a frame 8 ms after the one before is on time, one 25 ms
+        // after missed two, and one half a second after is the launcher at
+        // rest moving again, as a caret's blink or a key after a pause.
+        const pace = Trials.unpaced();
+        for (const at of [1000, 1008, 1016, 1041, 1049, 1549, 1557])
+            Trials.drew(pace, at, 120);
+        expect("frames while moving", pace.drawn === 5, pace.drawn);
+        expect("the late one", pace.late === 1 && pace.longest === 25, JSON.stringify(pace));
+        const moved = Trials.paced(Trials.begun(0, "today"), pace);
+        expect("kept with the opening", moved.frames.drawn === 5 && moved.frames.late === 1
+            && moved.frames.longest === 25, JSON.stringify(moved.frames));
+        // A screen that doesn't say its rate is taken at 60 Hz: 20 ms is on
+        // time there, and an opening that never moved keeps no frames.
+        const unsaid = Trials.unpaced();
+        Trials.drew(unsaid, 0, 0);
+        Trials.drew(unsaid, 20, 0);
+        expect("60 Hz when unsaid", unsaid.drawn === 1 && unsaid.late === 0,
+            JSON.stringify(unsaid));
+        const still = Trials.begun(0, "today");
+        expect("nothing moved", Trials.paced(still, Trials.unpaced()) === still, "framed");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
